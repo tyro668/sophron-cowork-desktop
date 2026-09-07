@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 
-function ok(config: Record<string, unknown>) {
+interface OkResult {
+  dsl: string;
+  config: Record<string, unknown> & { conversions?: Array<Record<string, unknown>> };
+}
+
+function ok(config: Record<string, unknown>): OkResult {
   const type = 'type_convert' as const;
   const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
   const parsed = parsePrepOperatorDsl(dsl, type);
@@ -77,7 +82,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
       conversions: [{ column: 'date_str', type: 'date', format: '%m/%d/%y' }],
     });
     expect(r.dsl).toContain('format "%m/%d/%y"');
-    expect(r.config.conversions[0].format).toBe('%m/%d/%y');
+    expect(r.config.conversions![0].format).toBe('%m/%d/%y');
   });
 
   it('datetime conversion with format', () => {
@@ -85,7 +90,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
       conversions: [{ column: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
     });
     expect(r.dsl).toContain('format "%Y-%m-%d %H:%M:%S"');
-    expect(r.config.conversions[0].format).toBe('%Y-%m-%d %H:%M:%S');
+    expect(r.config.conversions![0].format).toBe('%Y-%m-%d %H:%M:%S');
   });
 
   it('DSL idempotent with format', () => {

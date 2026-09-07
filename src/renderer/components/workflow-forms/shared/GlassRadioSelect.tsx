@@ -25,7 +25,7 @@ export function GlassRadioSelect({
     <div className={isHorizontal ? 'flex items-center gap-2' : 'flex flex-col gap-1.5'}>
       {label && (
         <div
-          className={`text-[11px] font-medium text-text-muted ${isHorizontal ? 'shrink-0' : ''}`}
+          className={`text-[12px] font-medium text-text-muted ${isHorizontal ? 'shrink-0' : ''}`}
         >
           {label}
         </div>
@@ -36,14 +36,15 @@ export function GlassRadioSelect({
           type="button"
           title={opt.tip}
           onClick={() => onChange(opt.value)}
-          className={`flex items-center gap-1 text-[12px] transition-colors ${
+          aria-pressed={value === opt.value}
+          className={`flex min-h-7 items-center gap-1.5 rounded-md px-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
             isHorizontal
-              ? 'cursor-pointer text-text-secondary hover:text-text-primary'
-              : 'w-full rounded-md px-2 py-1.5 text-left hover:bg-surface-hover'
+              ? 'cursor-pointer text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              : 'w-full text-left hover:bg-surface-hover'
           } ${value === opt.value ? (isHorizontal ? 'text-text-primary font-medium' : 'bg-accent/10 font-medium text-accent') : ''}`}
         >
           <span
-            className={`h-3 w-3 shrink-0 rounded-full ${value === opt.value ? 'bg-accent' : 'bg-border-muted'}`}
+            className={`h-3.5 w-3.5 shrink-0 rounded-full ${value === opt.value ? 'bg-accent' : 'bg-border-muted'}`}
             aria-hidden="true"
           />
           {opt.label}

@@ -10,7 +10,14 @@ export const limitCodec: OperatorDslCodec = {
     text.startsWith('limit ') || text.startsWith('top ') || text.startsWith('sample '),
   parse: (command, diagnostics) => parseLimit(command.text, command.line, diagnostics),
   format: (config) => {
-    const limit = Number(config?.limit ?? 10);
+    if (
+      typeof config?.limit !== 'number' ||
+      !Number.isSafeInteger(config.limit) ||
+      config.limit < 1
+    ) {
+      return null;
+    }
+    const limit = config.limit;
     if (config?.mode === 'random') {
       const isPercent = config?.unit === 'percent';
       const unit = isPercent ? ' percent' : ' rows';
@@ -42,7 +49,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
   const cursor = new PrepTokenCursor(text, line, diagnostics);
   if (text.startsWith('top ')) {
     cursor.expect('top', 'invalidTop');
-    const limit = cursor.expectNonNegativeInteger('invalidLimit');
+    const limit = cursor.expectPositiveInteger('invalidLimit');
     const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
     validatePercentLimit(limit, unit, line, diagnostics);
     cursor.expect('by', 'invalidTop');
@@ -88,7 +95,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
 
   if (text.startsWith('sample ')) {
     cursor.expect('sample', 'invalidSample');
-    const limit = cursor.expectNonNegativeInteger('invalidLimit');
+    const limit = cursor.expectPositiveInteger('invalidLimit');
     const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
     validatePercentLimit(limit, unit, line, diagnostics);
     const specifiedMethod = cursor.expectOneOfIfPresent(['bernoulli', 'system']);
@@ -117,7 +124,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
   }
 
   cursor.expect('limit', 'invalidLimit');
-  const limit = cursor.expectNonNegativeInteger('invalidLimit');
+  const limit = cursor.expectPositiveInteger('invalidLimit');
   const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
   validatePercentLimit(limit, unit, line, diagnostics);
   let offset: number | undefined;

@@ -1,5 +1,8 @@
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import { SCHEMA_MAP, validateOperatorConfig } from '../../../shared/operator-schemas';
+import {
+  getOperatorConfigValidation,
+  validateOperatorConfig,
+} from '../../../shared/operator-schemas';
 
 /**
  * Generated nodes use the platform schemas as a read-only compatibility contract,
@@ -15,9 +18,7 @@ export function validateGeneratedOperatorConfig(
   const diagnostics = validateOperatorConfig(type, config);
   if (diagnostics.length > 0) return diagnostics;
 
-  const schema = SCHEMA_MAP[type];
-  if (!schema) return diagnostics;
-  const parsed = schema.safeParse(config);
+  const parsed = getOperatorConfigValidation(type, config);
   if (!parsed.success) return diagnostics;
 
   return collectNonCanonicalConfigPaths(config, parsed.data).map(({ path, reason }) => ({

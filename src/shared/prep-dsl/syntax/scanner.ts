@@ -123,6 +123,18 @@ export function splitTopLevel(value: string): string[] {
   return parts;
 }
 
+export function findMatchingParenthesis(value: string, openIndex: number): number {
+  if (value[openIndex] !== '(') return -1;
+  let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: undefined };
+  for (let index = openIndex; index < value.length; ) {
+    const step = advanceScanState(value, index, state);
+    state = step.state;
+    if (state.inString === undefined && state.parenthesisDepth === 0) return index;
+    index = step.nextIndex;
+  }
+  return -1;
+}
+
 export function stripComment(line: string): string {
   let state: ScanState = { bracketDepth: 0, parenthesisDepth: 0, inString: undefined };
   for (let index = 0; index < line.length; ) {

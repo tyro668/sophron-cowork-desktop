@@ -1,13 +1,34 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { Pencil, X, ChevronDown, Search } from 'lucide-react';
+import { Pencil, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
-import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
+import { DataTypeIcon } from './DataTypeIcon';
+
+export interface ExpressionAssistantPanelContext {
+  currentExpression: string;
+  insertExpression: (expression: string) => void;
+  replaceExpression: (expression: string) => void;
+  closePanel: () => void;
+}
+
+export interface ExpressionAssistantPanel {
+  openLabel: string;
+  closeLabel: string;
+  render: (context: ExpressionAssistantPanelContext) => ReactNode;
+}
 
 export interface HelperToken {
   label: string;
@@ -19,7 +40,7 @@ export interface HelperToken {
   examples?: string[];
 }
 
-function functionToken(
+export function functionToken(
   label: string,
   descKey?: string,
   params?: HelperToken['params'],
@@ -38,19 +59,28 @@ function functionToken(
 }
 
 const FN_CHIP =
-  'inline-flex h-6 cursor-pointer items-center rounded-md border border-border-muted/60 bg-background/20 px-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent';
+  'flex min-h-9 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const FN_CHIP_HOVERED =
-  'inline-flex h-6 cursor-pointer items-center rounded-md border border-accent bg-accent/10 px-1.5 font-mono text-[11px] text-accent';
+  'flex min-h-9 w-full cursor-pointer items-center bg-accent/10 px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
+const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
+const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
+const EXPRESSION_EDITOR_RESIZE_STEP = 16;
 
-const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
+export interface ExpressionFunctionGroup {
+  i18nKey: string;
+  tokens: HelperToken[];
+}
+
+export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
   {
-    i18nKey: 'calcFieldCategoryCondition',
+    i18nKey: 'expressionFunctionCategoryCondition',
     tokens: [
       {
         label: 'if … then … else … end',
         apply: 'if  then  else  end',
         cursorOffset: 3,
-        i18nDescKey: 'calcFieldDesc_ifElseEnd',
+        i18nDescKey: 'expressionFunctionDesc_ifElseEnd',
         params: [
           { name: 'condition', type: 'boolean' },
           { name: 'thenExpr', type: 'any' },
@@ -63,7 +93,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'if … then … end',
         apply: 'if  then  end',
         cursorOffset: 3,
-        i18nDescKey: 'calcFieldDesc_ifEnd',
+        i18nDescKey: 'expressionFunctionDesc_ifEnd',
         params: [
           { name: 'condition', type: 'boolean' },
           { name: 'thenExpr', type: 'any' },
@@ -75,7 +105,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'case … when … then … end',
         apply: 'case  when  then  end',
         cursorOffset: 5,
-        i18nDescKey: 'calcFieldDesc_caseWhenEnd',
+        i18nDescKey: 'expressionFunctionDesc_caseWhenEnd',
         params: [
           { name: 'value', type: 'any' },
           { name: 'match', type: 'any' },
@@ -87,20 +117,45 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryDate',
+    i18nKey: 'expressionFunctionCategoryDate',
     tokens: [
-      functionToken('year', 'calcFieldDesc_year', [{ name: 'date', type: 'date' }], 'int', [
-        'year([order_date])',
-      ]),
-      functionToken('month', 'calcFieldDesc_month', [{ name: 'date', type: 'date' }], 'int', [
-        'month([order_date])',
-      ]),
-      functionToken('day', 'calcFieldDesc_day', [{ name: 'date', type: 'date' }], 'int', [
+      functionToken(
+        'year',
+        'expressionFunctionDesc_year',
+        [{ name: 'date', type: 'date' }],
+        'int',
+        ['year([order_date])']
+      ),
+      functionToken(
+        'month',
+        'expressionFunctionDesc_month',
+        [{ name: 'date', type: 'date' }],
+        'int',
+        ['month([order_date])']
+      ),
+      functionToken('day', 'expressionFunctionDesc_day', [{ name: 'date', type: 'date' }], 'int', [
         'day([order_date])',
       ]),
+      ...[
+        ['quarter', 'int'],
+        ['week', 'int'],
+        ['dayofweek', 'int'],
+        ['dayofyear', 'int'],
+        ['hour', 'int'],
+        ['minute', 'int'],
+        ['second', 'int'],
+      ].map(([name, returnType]) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [{ name: 'date', type: 'date/time' }],
+          returnType,
+          [`${name}([order_time])`]
+        )
+      ),
       functionToken(
         'date_diff',
-        'calcFieldDesc_date_diff',
+        'expressionFunctionDesc_date_diff',
         [
           { name: 'part', type: 'string' },
           { name: 'start', type: 'date' },
@@ -111,7 +166,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'date_trunc',
-        'calcFieldDesc_date_trunc',
+        'expressionFunctionDesc_date_trunc',
         [
           { name: 'part', type: 'string' },
           { name: 'date', type: 'date' },
@@ -120,8 +175,25 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         ["date_trunc('month', [date])"]
       ),
       functionToken(
+        'strftime',
+        'expressionFunctionDesc_strftime',
+        [
+          { name: 'date', type: 'date/time' },
+          { name: 'format', type: 'string' },
+        ],
+        'string',
+        ["strftime([order_date], '%Y-%m')"]
+      ),
+      functionToken(
+        'last_day',
+        'expressionFunctionDesc_last_day',
+        [{ name: 'date', type: 'date' }],
+        'date',
+        ['last_day([order_date])']
+      ),
+      functionToken(
         'strptime',
-        'calcFieldDesc_parse_date',
+        'expressionFunctionDesc_parse_date',
         [
           { name: 'str', type: 'string' },
           { name: 'format', type: 'string' },
@@ -133,7 +205,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'current_date',
         apply: 'current_date',
         cursorOffset: 12,
-        i18nDescKey: 'calcFieldDesc_current_date',
+        i18nDescKey: 'expressionFunctionDesc_current_date',
         params: [],
         returnType: 'date',
         examples: ['current_date'],
@@ -142,7 +214,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'now',
         apply: 'now()',
         cursorOffset: 4,
-        i18nDescKey: 'calcFieldDesc_now',
+        i18nDescKey: 'expressionFunctionDesc_now',
         params: [],
         returnType: 'timestamp',
         examples: ['now()'],
@@ -150,90 +222,18 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryWindow',
+    i18nKey: 'expressionFunctionCategoryMath',
     tokens: [
-      functionToken('row_number', 'calcFieldDesc_rowNumber', [], 'int', [
-        'row_number() over(partition by [dept] order by [salary] desc)',
-      ]),
-      functionToken('rank', 'calcFieldDesc_rank', [], 'int', [
-        'rank() over(order by [score] desc)',
-      ]),
-      functionToken('dense_rank', 'calcFieldDesc_dense_rank', [], 'int', [
-        'dense_rank() over(order by [score] desc)',
-      ]),
-      functionToken('ntile', 'calcFieldDesc_ntile', [{ name: 'buckets', type: 'int' }], 'int', [
-        'ntile(4) over(order by [amount] desc)',
-      ]),
       functionToken(
-        'first_value',
-        'calcFieldDesc_first_value',
-        [{ name: 'expr', type: 'any' }],
-        'any',
-        ['first_value([amount]) over(partition by [dept] order by [date])']
+        'abs',
+        'expressionFunctionDesc_abs',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['abs([amount])', 'abs([profit] - [cost])']
       ),
-      functionToken(
-        'last_value',
-        'calcFieldDesc_last_value',
-        [{ name: 'expr', type: 'any' }],
-        'any',
-        ['last_value([amount]) over(partition by [dept] order by [date])']
-      ),
-      functionToken(
-        'lag',
-        'calcFieldDesc_lag',
-        [
-          { name: 'expr', type: 'any' },
-          { name: 'offset', type: 'int', optional: true },
-          { name: 'default', type: 'any', optional: true },
-        ],
-        'any',
-        ['lag([amount])', 'lag([amount], 2)']
-      ),
-      functionToken(
-        'lead',
-        'calcFieldDesc_lead',
-        [
-          { name: 'expr', type: 'any' },
-          { name: 'offset', type: 'int', optional: true },
-          { name: 'default', type: 'any', optional: true },
-        ],
-        'any',
-        ['lead([amount])']
-      ),
-    ],
-  },
-  {
-    i18nKey: 'calcFieldCategoryAggregate',
-    tokens: [
-      functionToken('sum', 'calcFieldDesc_sum', [{ name: 'expr', type: 'number' }], 'number', [
-        'sum([amount])',
-        'sum([quantity] * [price])',
-      ]),
-      functionToken('avg', 'calcFieldDesc_avg', [{ name: 'expr', type: 'number' }], 'number', [
-        'avg([amount])',
-      ]),
-      functionToken('count', 'calcFieldDesc_count', [{ name: 'expr', type: 'any' }], 'int', [
-        'count(*)',
-        'count([order_id])',
-      ]),
-      functionToken('min', 'calcFieldDesc_min', [{ name: 'expr', type: 'any' }], 'any', [
-        'min([amount])',
-      ]),
-      functionToken('max', 'calcFieldDesc_max', [{ name: 'expr', type: 'any' }], 'any', [
-        'max([amount])',
-      ]),
-    ],
-  },
-  {
-    i18nKey: 'calcFieldCategoryMath',
-    tokens: [
-      functionToken('abs', 'calcFieldDesc_abs', [{ name: 'expr', type: 'number' }], 'number', [
-        'abs([amount])',
-        'abs([profit] - [cost])',
-      ]),
       functionToken(
         'round',
-        'calcFieldDesc_round',
+        'expressionFunctionDesc_round',
         [
           { name: 'expr', type: 'number' },
           { name: 'precision', type: 'int', optional: true },
@@ -241,32 +241,107 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         'number',
         ['round([amount])', 'round([amount], 2)']
       ),
-      functionToken('ceil', 'calcFieldDesc_ceil', [{ name: 'expr', type: 'number' }], 'number', [
-        'ceil([amount])',
-      ]),
-      functionToken('floor', 'calcFieldDesc_floor', [{ name: 'expr', type: 'number' }], 'number', [
-        'floor([amount])',
-      ]),
+      functionToken(
+        'ceil',
+        'expressionFunctionDesc_ceil',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['ceil([amount])']
+      ),
+      functionToken(
+        'floor',
+        'expressionFunctionDesc_floor',
+        [{ name: 'expr', type: 'number' }],
+        'number',
+        ['floor([amount])']
+      ),
+      functionToken(
+        'trunc',
+        'expressionFunctionDesc_trunc',
+        [
+          { name: 'expr', type: 'number' },
+          { name: 'precision', type: 'int', optional: true },
+        ],
+        'number',
+        ['trunc([amount])', 'trunc([amount], 2)']
+      ),
+      ...['sqrt', 'exp', 'ln', 'log10', 'sign'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [{ name: 'expr', type: 'number' }],
+          'number',
+          [`${name}([amount])`]
+        )
+      ),
+      functionToken(
+        'pow',
+        'expressionFunctionDesc_pow',
+        [
+          { name: 'base', type: 'number' },
+          { name: 'exponent', type: 'number' },
+        ],
+        'number',
+        ['pow([amount], 2)']
+      ),
+      functionToken(
+        'mod',
+        'expressionFunctionDesc_mod',
+        [
+          { name: 'dividend', type: 'number' },
+          { name: 'divisor', type: 'number' },
+        ],
+        'number',
+        ['mod([amount], 10)']
+      ),
+      ...['greatest', 'least'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [
+            { name: 'expr', type: 'comparable' },
+            { name: '...rest', type: 'comparable' },
+          ],
+          'any',
+          [`${name}([actual], [target])`]
+        )
+      ),
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryString',
+    i18nKey: 'expressionFunctionCategoryString',
     tokens: [
-      functionToken('upper', 'calcFieldDesc_upper', [{ name: 'str', type: 'string' }], 'string', [
-        'upper([name])',
-      ]),
-      functionToken('lower', 'calcFieldDesc_lower', [{ name: 'str', type: 'string' }], 'string', [
-        'lower([name])',
-      ]),
-      functionToken('trim', 'calcFieldDesc_trim', [{ name: 'str', type: 'string' }], 'string', [
-        'trim([name])',
-      ]),
-      functionToken('length', 'calcFieldDesc_length', [{ name: 'str', type: 'string' }], 'int', [
-        'length([name])',
-      ]),
+      functionToken(
+        'upper',
+        'expressionFunctionDesc_upper',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['upper([name])']
+      ),
+      functionToken(
+        'lower',
+        'expressionFunctionDesc_lower',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['lower([name])']
+      ),
+      functionToken(
+        'trim',
+        'expressionFunctionDesc_trim',
+        [{ name: 'str', type: 'string' }],
+        'string',
+        ['trim([name])']
+      ),
+      functionToken(
+        'length',
+        'expressionFunctionDesc_length',
+        [{ name: 'str', type: 'string' }],
+        'int',
+        ['length([name])']
+      ),
       functionToken(
         'substr',
-        'calcFieldDesc_substr',
+        'expressionFunctionDesc_substr',
         [
           { name: 'str', type: 'string' },
           { name: 'start', type: 'int' },
@@ -277,7 +352,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'split_part',
-        'calcFieldDesc_splitPart',
+        'expressionFunctionDesc_splitPart',
         [
           { name: 'str', type: 'string' },
           { name: 'delimiter', type: 'string' },
@@ -288,7 +363,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'concat',
-        'calcFieldDesc_concat',
+        'expressionFunctionDesc_concat',
         [
           { name: 'str', type: 'string' },
           { name: '...rest', type: 'string' },
@@ -297,8 +372,31 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         ["concat([first], ' ', [last])"]
       ),
       functionToken(
+        'concat_ws',
+        'expressionFunctionDesc_concat_ws',
+        [
+          { name: 'separator', type: 'string' },
+          { name: 'str', type: 'string' },
+          { name: '...rest', type: 'string' },
+        ],
+        'string',
+        ["concat_ws('-', [province], [city], [district])"]
+      ),
+      ...['left', 'right'].map((name) =>
+        functionToken(
+          name,
+          `expressionFunctionDesc_${name}`,
+          [
+            { name: 'str', type: 'string' },
+            { name: 'count', type: 'int' },
+          ],
+          'string',
+          [`${name}([code], 3)`]
+        )
+      ),
+      functionToken(
         'contains',
-        'calcFieldDesc_contains',
+        'expressionFunctionDesc_contains',
         [
           { name: 'str', type: 'string' },
           { name: 'substr', type: 'string' },
@@ -308,7 +406,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'starts_with',
-        'calcFieldDesc_starts_with',
+        'expressionFunctionDesc_starts_with',
         [
           { name: 'str', type: 'string' },
           { name: 'prefix', type: 'string' },
@@ -318,7 +416,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'ends_with',
-        'calcFieldDesc_ends_with',
+        'expressionFunctionDesc_ends_with',
         [
           { name: 'str', type: 'string' },
           { name: 'suffix', type: 'string' },
@@ -328,7 +426,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'replace',
-        'calcFieldDesc_replace',
+        'expressionFunctionDesc_replace',
         [
           { name: 'str', type: 'string' },
           { name: 'search', type: 'string' },
@@ -339,7 +437,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'regexp_replace',
-        'calcFieldDesc_regexp_replace',
+        'expressionFunctionDesc_regexp_replace',
         [
           { name: 'str', type: 'string' },
           { name: 'pattern', type: 'string' },
@@ -349,8 +447,29 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         ["regexp_replace([phone], '[^0-9]', '')"]
       ),
       functionToken(
+        'regexp_extract',
+        'expressionFunctionDesc_regexp_extract',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'pattern', type: 'string' },
+          { name: 'group', type: 'int', optional: true },
+        ],
+        'string',
+        ["regexp_extract([code], '([0-9]+)', 1)"]
+      ),
+      functionToken(
+        'regexp_matches',
+        'expressionFunctionDesc_regexp_matches',
+        [
+          { name: 'str', type: 'string' },
+          { name: 'pattern', type: 'string' },
+        ],
+        'boolean',
+        ["regexp_matches([email], '^[^@]+@[^@]+$')"]
+      ),
+      functionToken(
         'lpad',
-        'calcFieldDesc_lpad',
+        'expressionFunctionDesc_lpad',
         [
           { name: 'str', type: 'string' },
           { name: 'len', type: 'int' },
@@ -361,7 +480,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'rpad',
-        'calcFieldDesc_rpad',
+        'expressionFunctionDesc_rpad',
         [
           { name: 'str', type: 'string' },
           { name: 'len', type: 'int' },
@@ -372,14 +491,14 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
       ),
       functionToken(
         'reverse',
-        'calcFieldDesc_reverse',
+        'expressionFunctionDesc_reverse',
         [{ name: 'str', type: 'string' }],
         'string',
         ['reverse([name])']
       ),
       functionToken(
         'repeat',
-        'calcFieldDesc_repeat',
+        'expressionFunctionDesc_repeat',
         [
           { name: 'str', type: 'string' },
           { name: 'count', type: 'int' },
@@ -390,11 +509,11 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryNull',
+    i18nKey: 'expressionFunctionCategoryNull',
     tokens: [
       functionToken(
         'coalesce',
-        'calcFieldDesc_coalesce',
+        'expressionFunctionDesc_coalesce',
         [
           { name: 'expr', type: 'any' },
           { name: '...rest', type: 'any' },
@@ -406,7 +525,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'nullif',
         apply: 'nullif( )',
         cursorOffset: 7,
-        i18nDescKey: 'calcFieldDesc_nullif',
+        i18nDescKey: 'expressionFunctionDesc_nullif',
         params: [
           { name: 'expr1', type: 'any' },
           { name: 'expr2', type: 'any' },
@@ -414,16 +533,26 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         returnType: 'any',
         examples: ["nullif([status], 'CANCELLED')", "nullif([name], '')"],
       },
+      functionToken(
+        'ifnull',
+        'expressionFunctionDesc_ifnull',
+        [
+          { name: 'expr', type: 'any' },
+          { name: 'fallback', type: 'any' },
+        ],
+        'any',
+        ['ifnull([discount], 0)']
+      ),
     ],
   },
   {
-    i18nKey: 'calcFieldCategoryType',
+    i18nKey: 'expressionFunctionCategoryType',
     tokens: [
       {
         label: 'CAST',
         apply: 'CAST( AS )',
         cursorOffset: 5,
-        i18nDescKey: 'calcFieldDesc_cast',
+        i18nDescKey: 'expressionFunctionDesc_cast',
         params: [
           { name: 'expr', type: 'any' },
           { name: 'type', type: 'type' },
@@ -435,7 +564,7 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         label: 'try_cast',
         apply: 'try_cast( AS )',
         cursorOffset: 9,
-        i18nDescKey: 'calcFieldDesc_try_cast',
+        i18nDescKey: 'expressionFunctionDesc_try_cast',
         params: [
           { name: 'expr', type: 'any' },
           { name: 'type', type: 'type' },
@@ -443,17 +572,26 @@ const FUNCTION_GROUPS: Array<{ i18nKey: string; tokens: HelperToken[] }> = [
         returnType: 'any',
         examples: ['try_cast([amount] AS int)', 'try_cast([revenue] AS double)'],
       },
+      functionToken(
+        'typeof',
+        'expressionFunctionDesc_typeof',
+        [{ name: 'expr', type: 'any' }],
+        'string',
+        ['typeof([amount])']
+      ),
     ],
   },
 ];
 
-interface GlassExpressionInputProps {
+export interface GlassExpressionInputProps {
   value: string;
   onChange: (value: string) => void;
   fieldCompletions: string[];
   columnTypes?: Record<string, string>;
   placeholder?: string;
   excludeFunctionCategories?: string[];
+  functionGroups?: ExpressionFunctionGroup[];
+  assistantPanel?: ExpressionAssistantPanel;
 }
 
 const exprLanguage = StreamLanguage.define({
@@ -491,8 +629,8 @@ const exprTheme = EditorView.theme({
     borderRadius: '0.5rem',
     backgroundColor: 'transparent',
     fontSize: '13px',
+    height: '100%',
     minHeight: '80px',
-    maxHeight: '104px',
   },
   '&.cm-focused': {
     outline: 'none',
@@ -504,6 +642,7 @@ const exprTheme = EditorView.theme({
       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     lineHeight: '1.6',
     overflow: 'auto',
+    height: '100%',
   },
   '.cm-content': {
     boxSizing: 'border-box',
@@ -519,7 +658,7 @@ function sortFields(fields: string[], query: string): string[] {
   const filtered = query.trim()
     ? fields.filter((f) => f.toLowerCase().includes(query.toLowerCase()))
     : fields;
-  return ['*', ...filtered.sort((a, b) => a.localeCompare(b, 'zh-CN'))];
+  return [...filtered].sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
 function FunctionDetailPanel({
@@ -532,7 +671,7 @@ function FunctionDetailPanel({
   if (!token) {
     return (
       <div className="flex h-full items-center justify-center text-[11px] text-text-muted px-3 text-center leading-5">
-        {tr('calcFieldDetailHint')}
+        {tr('expressionFunctionDetailHint')}
       </div>
     );
   }
@@ -541,7 +680,7 @@ function FunctionDetailPanel({
       <div className="text-[13px] font-semibold text-text-primary font-mono">{token.label}</div>
       <div className="space-y-0.5">
         <div className="flex gap-2">
-          <span className="text-text-muted shrink-0">{tr('calcFieldFunctionDesc')}:</span>
+          <span className="text-text-muted shrink-0">{tr('expressionFunctionDescription')}:</span>
           <span className="text-text-secondary">
             {token.i18nDescKey ? tr(token.i18nDescKey) : '-'}
           </span>
@@ -555,7 +694,7 @@ function FunctionDetailPanel({
       </div>
       {token.params && token.params.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldFnArg')}:</div>
+          <div className="mb-1 text-text-muted">{tr('expressionFunctionArgument')}:</div>
           <div className="space-y-0.5">
             {token.params.map((p) => (
               <div
@@ -574,7 +713,7 @@ function FunctionDetailPanel({
       )}
       {token.examples && token.examples.length > 0 && (
         <div>
-          <div className="mb-1 text-text-muted">{tr('calcFieldExampleLabel')}:</div>
+          <div className="mb-1 text-text-muted">{tr('expressionFunctionExampleLabel')}:</div>
           <div className="space-y-1">
             {token.examples.map((ex) => (
               <pre
@@ -593,23 +732,26 @@ function FunctionDetailPanel({
 
 function GlassFunctionHelper({
   onInsert,
+  functionGroups,
   excludeCategories,
   onTokenHover,
 }: {
   onInsert: (text: string, cursorOffset?: number) => void;
+  functionGroups: ExpressionFunctionGroup[];
   excludeCategories?: string[];
   onTokenHover?: (token: HelperToken | null) => void;
 }) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('expression');
   const [query, setQuery] = useState('');
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   const rawGroups = useMemo(
     () =>
       excludeCategories
-        ? FUNCTION_GROUPS.filter((g) => !excludeCategories.includes(g.i18nKey))
-        : FUNCTION_GROUPS,
-    [excludeCategories]
+        ? functionGroups.filter((g) => !excludeCategories.includes(g.i18nKey))
+        : functionGroups,
+    [excludeCategories, functionGroups]
   );
   const groups = useMemo(() => {
     if (!query.trim()) return rawGroups;
@@ -620,45 +762,64 @@ function GlassFunctionHelper({
   }, [rawGroups, query]);
 
   return (
-    <div className="flex flex-col gap-2 min-h-0">
-      <div className="relative shrink-0">
-        <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative shrink-0 border-b border-border-muted/60 p-2">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={tr('calcFieldFnSearchPlaceholder')}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-6 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          placeholder={tr('expressionFunctionSearchPlaceholder')}
+          className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
-      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+      <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
         {groups.length === 0 ? (
-          <div className="px-2 py-4 text-center text-[11px] text-text-muted">{tr('noMatch')}</div>
+          <div className="px-2 py-4 text-center text-[11px] text-text-muted">
+            {tr('fieldPicker.noMatch')}
+          </div>
         ) : (
           groups.map((group) => (
-            <div key={group.i18nKey}>
-              <div className="mb-1 text-[11px] font-medium text-text-muted">
-                {tr(group.i18nKey)}
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {group.tokens.map((token) => (
-                  <button
-                    key={token.label}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      onInsert(token.apply, token.cursorOffset);
-                    }}
-                    onMouseEnter={() => {
-                      setHoveredLabel(token.label);
-                      onTokenHover?.(token);
-                    }}
-                    className={hoveredLabel === token.label ? FN_CHIP_HOVERED : FN_CHIP}
-                  >
-                    {token.label}
-                  </button>
-                ))}
-              </div>
+            <div key={group.i18nKey} className="border-b border-border-muted/60 last:border-b-0">
+              <button
+                type="button"
+                aria-expanded={!collapsedGroups.has(group.i18nKey)}
+                onClick={() => {
+                  setCollapsedGroups((current) => {
+                    const next = new Set(current);
+                    if (next.has(group.i18nKey)) next.delete(group.i18nKey);
+                    else next.add(group.i18nKey);
+                    return next;
+                  });
+                }}
+                className="flex w-full items-center gap-2 border-b border-border-muted/60 bg-background/20 px-3 py-2 text-left text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+              >
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsedGroups.has(group.i18nKey) ? '-rotate-90' : ''}`}
+                />
+                <span>{tr(group.i18nKey)}</span>
+              </button>
+              {!collapsedGroups.has(group.i18nKey) && (
+                <div className="divide-y divide-border-muted/60">
+                  {group.tokens.map((token) => (
+                    <button
+                      key={token.label}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onInsert(token.apply, token.cursorOffset);
+                      }}
+                      onMouseEnter={() => {
+                        setHoveredLabel(token.label);
+                        onTokenHover?.(token);
+                      }}
+                      className={hoveredLabel === token.label ? FN_CHIP_HOVERED : FN_CHIP}
+                    >
+                      {token.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}
@@ -674,9 +835,10 @@ export function GlassExpressionInput({
   columnTypes,
   placeholder: placeholderProp,
   excludeFunctionCategories,
+  functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
+  assistantPanel,
 }: GlassExpressionInputProps) {
-  const tr = useFormTranslation();
-  const dataTypeLabel = useDataFieldTypeLabel();
+  const tr = useFormTranslation('expression');
   const [open, setOpen] = useState(false);
 
   if (!open) {
@@ -686,7 +848,11 @@ export function GlassExpressionInput({
         className="relative h-7 w-full cursor-pointer rounded-md border border-border-muted bg-background/42 text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
       >
         <span className="block truncate px-1.5 leading-7">
-          {value || <span className="text-text-muted">{placeholderProp ?? '输入表达式'}</span>}
+          {value || (
+            <span className="text-text-muted">
+              {placeholderProp ?? tr('expressionPlaceholder')}
+            </span>
+          )}
         </span>
         <span className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-tl bg-background/60 text-text-muted opacity-50 hover:opacity-100 transition-opacity">
           <Pencil className="h-3 w-3" />
@@ -703,8 +869,9 @@ export function GlassExpressionInput({
       columnTypes={columnTypes}
       onClose={() => setOpen(false)}
       excludeFunctionCategories={excludeFunctionCategories}
+      functionGroups={functionGroups}
+      assistantPanel={assistantPanel}
       tr={tr}
-      dataTypeLabel={dataTypeLabel}
     />
   );
 }
@@ -716,18 +883,22 @@ function ExpressionEditorDialog({
   columnTypes,
   onClose,
   excludeFunctionCategories,
+  functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
+  assistantPanel,
   tr,
-  dataTypeLabel,
 }: GlassExpressionInputProps & {
   onClose: () => void;
   tr: (key: string) => string;
-  dataTypeLabel: (type: string | null | undefined) => string;
 }) {
   const [draft, setDraft] = useState(value);
   const initialDraftRef = useRef(value);
-  const [showFields, setShowFields] = useState(true);
-  const [showFn, setShowFn] = useState(true);
-  const [showDetail, setShowDetail] = useState(true);
+  const [showAssistantPanel, setShowAssistantPanel] = useState(false);
+  const [editorHeight, setEditorHeight] = useState(DEFAULT_EXPRESSION_EDITOR_HEIGHT);
+  const editorResizeRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startHeight: number;
+  } | null>(null);
   const [fieldQuery, setFieldQuery] = useState('');
   const [hoveredToken, setHoveredToken] = useState<HelperToken | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -738,7 +909,7 @@ function ExpressionEditorDialog({
     () => sortFields(fieldCompletions, fieldQuery),
     [fieldCompletions, fieldQuery]
   );
-  const placeholderText = useMemo(() => tr('calcFieldExpressionPlaceholder'), [tr]);
+  const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
 
   useLayoutEffect(() => {
     if (!hostRef.current) return;
@@ -779,6 +950,52 @@ function ExpressionEditorDialog({
     view.focus();
   }, []);
 
+  const replaceExpression = useCallback((text: string) => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: text.length },
+    });
+    view.focus();
+  }, []);
+
+  const clampEditorHeight = useCallback(
+    (height: number) =>
+      Math.min(MAX_EXPRESSION_EDITOR_HEIGHT, Math.max(MIN_EXPRESSION_EDITOR_HEIGHT, height)),
+    []
+  );
+
+  const handleEditorResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      editorResizeRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: editorHeight,
+      };
+    },
+    [editorHeight]
+  );
+
+  const handleEditorResizeMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const resize = editorResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) return;
+      setEditorHeight(clampEditorHeight(resize.startHeight + event.clientY - resize.startY));
+    },
+    [clampEditorHeight]
+  );
+
+  const handleEditorResizeEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (editorResizeRef.current?.pointerId !== event.pointerId) return;
+    editorResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
   function handleConfirm() {
     onChange(draft);
     onClose();
@@ -795,9 +1012,25 @@ function ExpressionEditorDialog({
     >
       <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <h3 className="text-[14px] font-medium text-text-primary">
-            {tr('aggregateExpressionEditor')}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[14px] font-medium text-text-primary">
+              {tr('aggregateExpressionEditor')}
+            </h3>
+            {assistantPanel && (
+              <button
+                type="button"
+                onClick={() => setShowAssistantPanel((current) => !current)}
+                className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                  showAssistantPanel
+                    ? 'border-accent/30 bg-accent/10 text-accent'
+                    : 'border-border-muted bg-background/42 text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                <WandSparkles className="h-3.5 w-3.5" />
+                {showAssistantPanel ? assistantPanel.closeLabel : assistantPanel.openLabel}
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -806,21 +1039,45 @@ function ExpressionEditorDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
-          <div ref={hostRef} />
-          <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-3 min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowFields(!showFields)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors border-b border-border-muted/60"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showFields ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldTabFields')}
-              </button>
-              {showFields && (
+        <div className="flex flex-1 flex-col overflow-hidden p-4">
+          <div ref={hostRef} className="shrink-0" style={{ height: editorHeight }} />
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuenow={editorHeight}
+            tabIndex={0}
+            onPointerDown={handleEditorResizeStart}
+            onPointerMove={handleEditorResizeMove}
+            onPointerUp={handleEditorResizeEnd}
+            onPointerCancel={handleEditorResizeEnd}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              const delta =
+                event.key === 'ArrowUp'
+                  ? -EXPRESSION_EDITOR_RESIZE_STEP
+                  : EXPRESSION_EDITOR_RESIZE_STEP;
+              setEditorHeight((current) => clampEditorHeight(current + delta));
+            }}
+            className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
+          >
+            <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
+          </div>
+          {showAssistantPanel && assistantPanel ? (
+            assistantPanel.render({
+              currentExpression: draft,
+              insertExpression: editAtCursor,
+              replaceExpression,
+              closePanel: () => setShowAssistantPanel(false),
+            })
+          ) : (
+            <div className="grid grid-cols-[1fr_1fr_1.5fr] min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
+              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted border-b border-border-muted/60">
+                  {tr('expressionFieldsTab')}
+                </div>
                 <div className="flex-1 flex flex-col min-h-0">
                   <div className="relative shrink-0 px-3 pt-2 pb-2">
                     <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
@@ -828,40 +1085,33 @@ function ExpressionEditorDialog({
                       type="text"
                       value={fieldQuery}
                       onChange={(e) => setFieldQuery(e.target.value)}
-                      placeholder={tr('calcFieldFieldSearchPlaceholder')}
+                      placeholder={tr('expressionFieldSearchPlaceholder')}
                       className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 min-h-0">
+                  <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
                     {sortedFields.length === 0 ? (
                       <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                        {tr('noMatch')}
+                        {tr('fieldPicker.noMatch')}
                       </div>
                     ) : (
-                      <div className="flex flex-wrap gap-1">
+                      <div className="divide-y divide-border-muted/60">
                         {sortedFields.map((col) => {
-                          const isStar = col === '*';
-                          const colType = isStar ? undefined : columnTypes?.[col];
+                          const colType = columnTypes?.[col];
                           return (
                             <button
                               key={col}
                               type="button"
                               onMouseDown={(e) => {
                                 e.preventDefault();
-                                if (isStar) {
-                                  editAtCursor('*');
-                                  return;
-                                }
                                 editAtCursor(`[${col}]`);
                               }}
-                              className={`inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border-muted/60 bg-background/20 px-1.5 text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent ${isStar ? 'bg-accent/5 border-accent/30 font-semibold' : ''}`}
+                              className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
                             >
-                              {colType && (
-                                <span className="rounded bg-background/60 px-0.5 text-[10px] leading-none text-text-muted">
-                                  {dataTypeLabel(colType)}
-                                </span>
-                              )}
-                              <span>{isStar ? tr('calcFieldAllFieldsStar') : col}</span>
+                              <span className="flex min-w-0 items-center gap-2">
+                                <DataTypeIcon type={colType} />
+                                <span className="min-w-0 truncate">{col}</span>
+                              </span>
                             </button>
                           );
                         })}
@@ -869,47 +1119,30 @@ function ExpressionEditorDialog({
                     )}
                   </div>
                 </div>
-              )}
-            </div>
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowFn(!showFn)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showFn ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldFnHelperLabel')}
-              </button>
-              {showFn && (
-                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+              </div>
+              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                  {tr('expressionFunctionHelperLabel')}
+                </div>
+                <div className="flex-1 border-t border-border-muted/60 min-h-0">
                   <GlassFunctionHelper
                     onInsert={editAtCursor}
+                    functionGroups={functionGroups}
                     excludeCategories={excludeFunctionCategories}
                     onTokenHover={setHoveredToken}
                   />
                 </div>
-              )}
-            </div>
-            <div className="flex flex-col rounded-lg border border-border-muted/60 min-h-0">
-              <button
-                type="button"
-                onClick={() => setShowDetail(!showDetail)}
-                className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary transition-colors"
-              >
-                <ChevronDown
-                  className={`h-3 w-3 transition-transform ${showDetail ? 'rotate-180' : ''}`}
-                />
-                {tr('calcFieldDetailLabel')}
-              </button>
-              {showDetail && (
-                <div className="flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+              </div>
+              <div className="flex flex-col min-h-0">
+                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                  {tr('expressionFunctionDetailLabel')}
+                </div>
+                <div className="scrollbar-hover flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
                   <FunctionDetailPanel token={hoveredToken} tr={tr} />
                 </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-4 py-3">
           <button

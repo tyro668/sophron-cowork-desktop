@@ -16,18 +16,19 @@ describe('UnpivotConfigSchema', () => {
     expect(result.includeNulls).toBe(true);
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = UnpivotConfigSchema.parse({});
-    expect(result.columns).toEqual([]);
-    expect(result.mode).toBe('include');
-    expect(result.includeNulls).toBe(false);
+  it('rejects configs without an unpivot field', () => {
+    expect(() => UnpivotConfigSchema.parse({})).toThrow(z.ZodError);
   });
 
   it('rejects invalid mode value', () => {
-    expect(() => UnpivotConfigSchema.parse({ mode: 'invalid' })).toThrow(z.ZodError);
+    expect(() => UnpivotConfigSchema.parse({ columns: ['q1'], mode: 'invalid' })).toThrow(
+      z.ZodError
+    );
   });
 
   it('rejects includeNulls with wrong type', () => {
-    expect(() => UnpivotConfigSchema.parse({ includeNulls: 'yes' })).toThrow(z.ZodError);
+    expect(() => UnpivotConfigSchema.parse({ columns: ['q1'], includeNulls: 'yes' })).toThrow(
+      z.ZodError
+    );
   });
 });

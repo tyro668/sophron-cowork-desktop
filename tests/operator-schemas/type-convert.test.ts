@@ -7,6 +7,14 @@ import {
 } from '../../src/shared/operator-schemas';
 
 describe('TypeConvertConfigSchema', () => {
+  it('preserves stable UI row ids', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ id: 'conversion-1', column: 'age', type: 'integer' }],
+    });
+
+    expect(result.conversions[0].id).toBe('conversion-1');
+  });
+
   it('parses valid conversions with all fields', () => {
     const result = TypeConvertConfigSchema.parse({
       conversions: [{ column: 'age', type: 'integer', onError: 'fail' }],
@@ -30,13 +38,26 @@ describe('TypeConvertConfigSchema', () => {
     expect(result.conversions[0].onError).toBeUndefined();
   });
 
-  it('defaults to empty array when conversions omitted', () => {
-    const result = TypeConvertConfigSchema.parse({});
-    expect(result.conversions).toEqual([]);
+  it('rejects configs without a conversion', () => {
+    expect(() => TypeConvertConfigSchema.parse({})).toThrow(z.ZodError);
   });
 
   it('rejects conversions with wrong type', () => {
     expect(() => TypeConvertConfigSchema.parse({ conversions: 'not-array' })).toThrow(z.ZodError);
+  });
+
+  it('rejects a conversion without a source column', () => {
+    expect(() => TypeConvertConfigSchema.parse({ conversions: [{ type: 'integer' }] })).toThrow(
+      z.ZodError
+    );
+  });
+
+  it('does not normalize a non-empty source column name', () => {
+    const result = TypeConvertConfigSchema.parse({
+      conversions: [{ column: ' amount ', type: 'float' }],
+    });
+
+    expect(result.conversions[0].column).toBe(' amount ');
   });
 
   it('rejects invalid format string', () => {

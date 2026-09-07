@@ -13,14 +13,14 @@ export const UnnestConfigSchema = z
   .superRefine((data, ctx) => {
     if (data.sourceKind === 'list' && !data.alias?.trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Alias is required for list mode',
         path: ['alias'],
       });
     }
-    if (data.withIndex !== undefined && !data.withIndex.trim()) {
+    if (data.sourceKind === 'list' && data.withIndex !== undefined && !data.withIndex.trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Index column name cannot be empty',
         path: ['withIndex'],
       });

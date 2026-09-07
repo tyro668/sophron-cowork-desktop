@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { compileScalarExpression } from '../../src/main/data/operators/compute';
 import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
+import type { CalculationFunctionInput } from '../../src/shared/calculate-field/function-registry';
+import { buildCalculationFunctionExpression } from '../../src/shared/calculate-field/sql-expression-builder';
+import { buildCalculationFunctionDslExpression } from '../../src/shared/calculate-field/domain-dsl';
+import {
+  normalizeCalculationEntries,
+  type CalculationConfigEntry,
+} from '../../src/shared/calculate-field';
+import { parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 
 async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');
@@ -258,6 +266,182 @@ describe('compileScalarExpression', () => {
   });
 });
 
+describe('DuckDB integration — period comparison and time accumulation', () => {
+  it('executes canonical domain DSL expressions through the SQL compiler', async () => {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15)"
+    );
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [
+          {
+            field: 'running_sales',
+            expression: 'accumulate(yeartodate(sum([sales]), [date])) over(partition by [region])',
+          },
+        ],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT running_sales FROM out ORDER BY id');
+    const rows = reader.getRowObjectsJson() as Record<string, unknown>[];
+
+    expect(rows.map((row) => row.running_sales)).toEqual([10, 25]);
+  });
+
+  async function runGeneratedCalculation(
+    functionId: string,
+    parameters: Record<string, string>,
+    insertRows: string
+  ): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(insertRows);
+    const expression = buildCalculationFunctionExpression({
+      functionId,
+      value: 'sales',
+      partitionBy: ['region'],
+      parameters,
+    });
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [{ field: 'result', expression }],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    return reader.getRowObjectsJson() as Record<string, unknown>[];
+  }
+
+  it('compares with the previous row after date ordering', async () => {
+    const rows = await runGeneratedCalculation(
+      'previous_difference',
+      { dateField: 'date' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-02', 15), (2, 'A', DATE '2024-01-01', 10)"
+    );
+
+    expect(rows[0].result).toBe(5);
+    expect(rows[1].result).toBe(null);
+  });
+
+  it('returns null when the matching year-over-year period is missing', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'month' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2023-01-01', 10), (2, 'A', DATE '2025-01-01', 30), (3, 'A', DATE '2026-01-01', 40)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(null);
+    expect(rows[2].result).toBe(30);
+  });
+
+  it('accumulates from the start of the year through the current row', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_to_date',
+      { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '1' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2025-01-01', 7)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([10, 25, 7]);
+  });
+
+  it('week_to_date keeps ISO week rows in the same partition across the year boundary', async () => {
+    const rows = await runGeneratedCalculation(
+      'week_to_date',
+      { dateField: 'date', aggregation: 'sum' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-12-30', 10), (2, 'A', DATE '2024-12-31', 15), (3, 'A', DATE '2025-01-01', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([10, 25, 45]);
+  });
+
+  it('year_over_year week grain matches by ISO year, not calendar year', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'week' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 100), (2, 'A', DATE '2024-12-30', 10), (3, 'A', DATE '2025-01-01', 15)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(100);
+    expect(rows[2].result).toBe(null);
+  });
+
+  it('month grain year_over_year still matches by calendar year', async () => {
+    const rows = await runGeneratedCalculation(
+      'year_over_year_value',
+      { dateField: 'date', granularity: 'month' },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 100), (2, 'A', DATE '2025-01-01', 15)"
+    );
+
+    expect(rows[0].result).toBe(null);
+    expect(rows[1].result).toBe(100);
+  });
+
+  async function runGeneratedOffsetCalculation(
+    functionId: string,
+    input: Omit<CalculationFunctionInput, 'functionId'>,
+    insertRows: string
+  ): Promise<Record<string, unknown>[]> {
+    const conn = await connect();
+    await conn.run('CREATE TABLE period_data (id INT, region VARCHAR, date DATE, sales DOUBLE)');
+    await conn.run(insertRows);
+    const expression = buildCalculationFunctionDslExpression({ functionId, ...input });
+    await conn.run(
+      compileCalculateFieldSql('out', 'period_data', {
+        calculations: [{ field: 'result', expression }],
+      })
+    );
+    const reader = await conn.runAndReadAll('SELECT * FROM out ORDER BY id');
+    return reader.getRowObjectsJson() as Record<string, unknown>[];
+  }
+
+  it('lag returns the previous row after date ordering', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'lag',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([null, 10, 15]);
+  });
+
+  it('offset_difference compares against N rows back', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'offset_difference',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        extraParameter: '2',
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([null, null, 10]);
+  });
+
+  it('last_value returns the last row of the partition', async () => {
+    const rows = await runGeneratedOffsetCalculation(
+      'last_value',
+      {
+        value: '[sales]',
+        valueIsExpression: true,
+        partitionBy: ['region'],
+        orderBy: [{ field: 'date', direction: 'asc' }],
+      },
+      "INSERT INTO period_data VALUES (1, 'A', DATE '2024-01-01', 10), (2, 'A', DATE '2024-01-02', 15), (3, 'A', DATE '2024-01-03', 20)"
+    );
+
+    expect(rows.map((row) => row.result)).toEqual([20, 20, 20]);
+  });
+});
+
 describe('compileCalculateFieldSql', () => {
   it('replaces an existing input column when imported DSL omitted the action flag', () => {
     const sql = compileCalculateFieldSql(
@@ -276,6 +460,45 @@ describe('compileCalculateFieldSql', () => {
 
     expect(sql).toContain('SELECT * REPLACE (');
     expect(sql).not.toContain('SELECT *,');
+  });
+
+  it('rejects an explicit add action that conflicts with an input column', () => {
+    expect(() =>
+      compileCalculateFieldSql(
+        'out',
+        'inp',
+        {
+          calculations: [{ field: 'amount', expression: '[amount] * 2', action: 'add' }],
+        },
+        ['amount']
+      )
+    ).toThrow(/already exists/);
+  });
+
+  it('rejects an explicit replace action for a missing input column', () => {
+    expect(() =>
+      compileCalculateFieldSql(
+        'out',
+        'inp',
+        {
+          calculations: [{ field: 'missing', expression: '[amount] * 2', action: 'replace' }],
+        },
+        ['amount']
+      )
+    ).toThrow(/does not exist/);
+  });
+
+  it('replaces an existing input column for an explicit replace action', () => {
+    const sql = compileCalculateFieldSql(
+      'out',
+      'inp',
+      {
+        calculations: [{ field: 'amount', expression: '[amount] * 2', action: 'replace' }],
+      },
+      ['amount']
+    );
+
+    expect(sql).toContain('SELECT * REPLACE (');
   });
 
   it('single calculation', () => {
@@ -297,9 +520,10 @@ describe('compileCalculateFieldSql', () => {
     );
   });
 
-  it('empty calculations', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {});
-    expect(sql).toBe('CREATE TEMP TABLE out AS SELECT * FROM inp');
+  it('rejects empty calculations', () => {
+    expect(() => compileCalculateFieldSql('out', 'inp', {})).toThrow(
+      'At least one calculated field is required'
+    );
   });
 
   it('if/then/else in calculation', () => {
@@ -321,32 +545,46 @@ describe('compileCalculateFieldSql', () => {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [amount] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [amount] desc)',
         },
       ],
     });
     expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, row_number() over(partition by "region" order by "amount" desc) AS "rn" FROM inp'
+      'CREATE TEMP TABLE out AS SELECT *, row_number() OVER (PARTITION BY "region" ORDER BY "amount" desc) AS "rn" FROM inp'
     );
   });
 
-  it('skips calculation with empty field name', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {
-      calculations: [
-        { field: 'good', expression: '[a] + [b]' },
-        { field: '', expression: '[x]' },
-        { expression: '[y]' },
-        { field: 'also_good', expression: '[c]' },
-      ],
-    });
-    expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, "a" + "b" AS "good", "c" AS "also_good" FROM inp'
-    );
+  it('rejects a calculation with an empty field name', () => {
+    expect(() =>
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'good', expression: '[a] + [b]' },
+          { field: '', expression: '[x]' },
+        ],
+      })
+    ).toThrow('Calculated field name is required');
   });
 
-  it('calculations as undefined', () => {
-    const sql = compileCalculateFieldSql('out', 'inp', {});
-    expect(sql).toBe('CREATE TEMP TABLE out AS SELECT * FROM inp');
+  it('rejects a calculation with an empty expression', () => {
+    expect(() =>
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'good', expression: '[a] + [b]' },
+          { field: 'blank', expression: '   ' },
+        ],
+      })
+    ).toThrow('Calculation expression is required');
+  });
+
+  it('rejects a duplicate target field', () => {
+    expect(() =>
+      compileCalculateFieldSql('out', 'inp', {
+        calculations: [
+          { field: 'dup', expression: '[a] + [b]' },
+          { field: 'DUP', expression: '[c]' },
+        ],
+      })
+    ).toThrow(/configured more than once/);
   });
 
   it('field name with Chinese', () => {
@@ -407,6 +645,52 @@ describe('compileCalculateFieldSql', () => {
 });
 
 describe('DuckDB integration — compileCalculateFieldSql execution', () => {
+  it('keeps an imported DSL replacement executable after form normalization and editing', async () => {
+    const parsed = parsePrepOperatorDsl('derive [amount] = [amount] * 2', 'calculate_field');
+    expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
+    const imported = parsed.operator?.config.calculations as CalculationConfigEntry[];
+    const calculations = normalizeCalculationEntries(imported, [
+      'revenue',
+      'cost',
+      'amount',
+      'region',
+      'name',
+    ]).map((calculation) => ({
+      ...calculation,
+      expression: '[amount] * 3',
+    }));
+    const sql = compileCalculateFieldSql('out', 'inp', { calculations }, [
+      'revenue',
+      'cost',
+      'amount',
+      'region',
+      'name',
+    ]);
+
+    const rows = await runSql(sql);
+
+    expect(rows.map((row) => row.amount)).toEqual([45, 15, 60]);
+  });
+
+  it('executes a string aggregation generated by the calculation wizard registry', async () => {
+    const expression = buildCalculationFunctionExpression({
+      functionId: 'string_agg',
+      value: 'name',
+      extraParameter: ';',
+    });
+    const sql = compileCalculateFieldSql(
+      'out',
+      'inp',
+      { calculations: [{ field: 'names', expression }] },
+      ['revenue', 'cost', 'amount', 'region', 'name']
+    );
+
+    const rows = await runSql(sql);
+
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((row) => row.names))).toEqual(new Set(['Alice;Bob;Charlie']));
+  });
+
   it('arithmetic expression produces correct results', async () => {
     const sql = compileCalculateFieldSql('out', 'inp', {
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
@@ -461,7 +745,7 @@ describe('DuckDB integration — compileCalculateFieldSql execution', () => {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [amount] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [amount] desc)',
         },
       ],
     });
@@ -905,47 +1189,77 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Ranking ──
-  it('rank() OVER (ORDER BY amount DESC)', async () => {
-    const rows = await runW('rank() OVER (ORDER BY amount DESC)');
+  it('ranking(rank()) orders rows by amount descending', async () => {
+    const rows = await runW('ranking(rank()) over(order by [amount] desc)');
     // 200(Bob) rank1, 100(Alice) rank2, 50(Charlie) rank3
     expect(rows[0].r).toBe('2'); // Alice rank 2
     expect(rows[1].r).toBe('1'); // Bob rank 1
     expect(rows[2].r).toBe('3'); // Charlie rank 3
   });
 
-  it('row_number() OVER (ORDER BY id)', async () => {
-    const rows = await runW('row_number() OVER (ORDER BY id)');
+  it('ranking(row_number()) assigns row numbers', async () => {
+    const rows = await runW('ranking(row_number()) over(order by [id])');
     expect(rows[0].r).toBe('1');
     expect(rows[1].r).toBe('2');
     expect(rows[2].r).toBe('3');
   });
 
-  it('dense_rank() OVER (PARTITION BY region ORDER BY amount)', async () => {
-    const rows = await runW('dense_rank() OVER (PARTITION BY region ORDER BY amount)');
+  it('ranking(dense_rank()) assigns dense ranks within a partition', async () => {
+    const rows = await runW('ranking(dense_rank()) over(partition by [region] order by [amount])');
     // East: 50(Charlie)=1, 100(Alice)=2; West: 200(Bob)=1
     expect(rows[0].r).toBe('2'); // Alice (East, amount=100 rank2)
     expect(rows[1].r).toBe('1'); // Bob (West, amount=200 rank1)
     expect(rows[2].r).toBe('1'); // Charlie (East, amount=50 rank1)
   });
 
-  it('ntile(2) OVER (ORDER BY id) divides into 2 buckets', async () => {
-    const rows = await runW('ntile(2) OVER (ORDER BY id)');
+  it('ranking(ntile(2)) divides rows into two buckets', async () => {
+    const rows = await runW('ranking(ntile(2)) over(order by [id])');
     // 3 rows, 2 buckets: 1→bucket1, 2→bucket1, 3→bucket2
     expect(rows[0].r).toBe('1');
     expect(rows[1].r).toBe('1');
     expect(rows[2].r).toBe('2');
   });
 
+  it('ranking(percent_rank()) calculates the relative rank', async () => {
+    const rows = await runW('ranking(percent_rank()) over(order by [amount])');
+    expect(Number(rows[0].r)).toBeCloseTo(0.5);
+    expect(Number(rows[1].r)).toBeCloseTo(1);
+    expect(Number(rows[2].r)).toBeCloseTo(0);
+  });
+
+  it('ranking(cume_dist()) calculates the cumulative distribution', async () => {
+    const rows = await runW('ranking(cume_dist()) over(order by [amount])');
+    expect(Number(rows[0].r)).toBeCloseTo(2 / 3);
+    expect(Number(rows[1].r)).toBeCloseTo(1);
+    expect(Number(rows[2].r)).toBeCloseTo(1 / 3);
+  });
+
+  it('ranking(row_number()) over(...) domain DSL expands to the same result', async () => {
+    const rows = await runW(
+      'ranking(row_number()) over(partition by [region] order by [amount] desc)'
+    );
+    expect(rows[0].r).toBe('1'); // Alice (East, amount=100)
+    expect(rows[1].r).toBe('1'); // Bob (West, amount=200)
+    expect(rows[2].r).toBe('2'); // Charlie (East, amount=50)
+  });
+
+  it('ranking(ntile(2)) domain DSL with a bare order identifier expands correctly', async () => {
+    const rows = await runW('ranking(ntile(2)) over(order by id)');
+    expect(rows[0].r).toBe('1');
+    expect(rows[1].r).toBe('1');
+    expect(rows[2].r).toBe('2');
+  });
+
   // ── Offset ──
-  it('lag([amount]) OVER (ORDER BY id) returns previous row value', async () => {
-    const rows = await runW('lag([amount]) OVER (ORDER BY id)');
+  it('reference(lag([amount])) returns the previous row value', async () => {
+    const rows = await runW('reference(lag([amount])) over(order by [id])');
     expect(rows[0].r).toBe(null); // Alice: no previous
     expect(rows[1].r).toBe(100); // Bob: previous=100
     expect(rows[2].r).toBe(200); // Charlie: previous=200
   });
 
-  it('lead([amount]) OVER (ORDER BY id) returns next row value', async () => {
-    const rows = await runW('lead([amount]) OVER (ORDER BY id)');
+  it('reference(lead([amount])) returns the next row value', async () => {
+    const rows = await runW('reference(lead([amount])) over(order by [id])');
     expect(rows[0].r).toBe(200); // Alice: next=200
     expect(rows[1].r).toBe(50); // Bob: next=50
     expect(rows[2].r).toBe(null); // Charlie: no next
@@ -971,22 +1285,51 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Value ──
-  it('first_value([amount]) OVER (PARTITION BY region ORDER BY id)', async () => {
-    const rows = await runW('first_value([amount]) OVER (PARTITION BY region ORDER BY id)');
+  it('reference(first([amount])) returns the first partition value', async () => {
+    const rows = await runW('reference(first([amount])) over(partition by [region] order by [id])');
     // East: first=100(Alice), West: first=200(Bob)
     expect(rows[0].r).toBe(100); // Alice (East, first=100)
     expect(rows[1].r).toBe(200); // Bob (West, first=200)
     expect(rows[2].r).toBe(100); // Charlie (East, first=100)
   });
 
-  it('last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)', async () => {
-    const rows = await runW(
-      'last_value([amount]) OVER (PARTITION BY region ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)'
-    );
+  it('reference(last([amount])) uses the full partition frame', async () => {
+    const rows = await runW('reference(last([amount])) over(partition by [region] order by [id])');
     // East: last=50(Charlie), West: last=200(Bob)
     expect(rows[0].r).toBe(50); // Alice (East, last=50)
     expect(rows[1].r).toBe(200); // Bob (West, last=200)
     expect(rows[2].r).toBe(50); // Charlie (East, last=50)
+  });
+
+  it('executes renamed group aggregate operations', async () => {
+    const variance = await runW('group(var_pop([amount])) over(partition by [region])');
+    expect(Number(variance[0].r)).toBeCloseTo(625);
+    expect(Number(variance[1].r)).toBeCloseTo(0);
+    expect(Number(variance[2].r)).toBeCloseTo(625);
+
+    const distinct = await runW('group(count_distinct([name])) over(partition by [region])');
+    expect(distinct.map((row) => row.r)).toEqual(['2', '1', '2']);
+
+    const quantile = await runW('group(quantile_cont([amount], 0.5)) over(partition by [region])');
+    expect(quantile.map((row) => Number(row.r))).toEqual([75, 200, 75]);
+
+    const allPositive = await runW('group(bool_and([amount] > 0)) over(partition by [region])');
+    expect(allPositive.map((row) => row.r)).toEqual([true, true, true]);
+
+    const anyAbove150 = await runW('group(bool_or([amount] > 150)) over(partition by [region])');
+    expect(anyAbove150.map((row) => row.r)).toEqual([false, true, false]);
+  });
+
+  it('executes group percentoftotal and string_agg operations', async () => {
+    const percentage = await runW('group(percentoftotal([amount])) over(partition by [region])');
+    expect(Number(percentage[0].r)).toBeCloseTo(2 / 3);
+    expect(Number(percentage[1].r)).toBeCloseTo(1);
+    expect(Number(percentage[2].r)).toBeCloseTo(1 / 3);
+
+    const concatenated = await runW('group(string_agg([name], ",")) over(partition by [region])');
+    expect(new Set(String(concatenated[0].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));
+    expect(concatenated[1].r).toBe('Bob');
+    expect(new Set(String(concatenated[2].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));
   });
 
   // ── Percentage ──
@@ -998,8 +1341,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(Number(rows[2].r)).toBeCloseTo(50 / 350, 5);
   });
 
-  // ── Cross type frame ──
-  it('cross type with frame produces correct running total', async () => {
+  it('executes a raw window expression with a bounded frame', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE wf (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO wf VALUES (1, 100), (2, 200), (3, 50)');
@@ -1022,7 +1364,7 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Custom offset types ──
-  it('offset_diff with N=2 compares against 2 rows back', async () => {
+  it('compound lag expression with N=2 compares against 2 rows back', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');
@@ -1043,7 +1385,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(rows[2].r).toBe(-50); // id=3: 50 - 100(1) = -50
   });
 
-  it('offset_rate with N=2 calculates rate against 2 rows back', async () => {
+  it('compound lag rate expression with N=2 calculates rate against 2 rows back', async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE w (id INTEGER, amount DOUBLE)');
     await conn.run('INSERT INTO w VALUES (1, 100), (2, 200), (3, 50)');
@@ -1095,7 +1437,7 @@ describe('DuckDB integration — cross-row window functions', () => {
       compileCalculateFieldSql('out', 'w', {
         calculations: [
           { field: 'total', expression: 'sum([amount]) OVER ()' },
-          { field: 'rn', expression: 'row_number() OVER (ORDER BY id)' },
+          { field: 'rn', expression: 'ranking(row_number()) over(order by [id])' },
         ],
       })
     );

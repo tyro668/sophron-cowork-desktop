@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const MissingMethodSchema = z.enum([
+export const MissingValueMethodSchema = z.enum([
   'skip',
   'nullify_values',
   'literal_fill',
@@ -12,10 +12,12 @@ const MissingMethodSchema = z.enum([
   'backward_fill',
 ]);
 
-const MissingRuleSchema = z.object({
+export type MissingValueMethod = z.infer<typeof MissingValueMethodSchema>;
+
+export const MissingValueRuleSchema = z.object({
   id: z.string().optional(),
   column: z.string().trim().min(1),
-  method: MissingMethodSchema.default('literal_fill'),
+  method: MissingValueMethodSchema.default('literal_fill'),
   values: z.array(z.unknown()).optional(),
   value: z.unknown().optional(),
 });
@@ -23,21 +25,21 @@ const MissingRuleSchema = z.object({
 export const MissingValueConfigSchema = z
   .object({
     strategy: z.enum(['by_column', 'drop_empty_rows', 'drop_rows_by_nulls']).default('by_column'),
-    rules: z.array(MissingRuleSchema).default([]),
+    rules: z.array(MissingValueRuleSchema).default([]),
     columns: z.array(z.string().trim().min(1)).optional(),
     condition: z.enum(['all_null', 'any_null']).optional(),
   })
   .superRefine((config, context) => {
     if (config.strategy === 'drop_rows_by_nulls' && !config.condition) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['condition'],
         message: 'Row deletion requires an explicit all_null or any_null condition',
       });
     }
     if (config.strategy === 'drop_empty_rows' && config.condition === 'any_null') {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['condition'],
         message: 'drop_empty_rows only supports the all_null condition',
       });
@@ -47,7 +49,7 @@ export const MissingValueConfigSchema = z
       config.columns.forEach((column, index) => {
         if (seenColumns.has(column)) {
           context.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             path: ['columns', index],
             message: `Row deletion field "${column}" is duplicated`,
           });
@@ -59,7 +61,7 @@ export const MissingValueConfigSchema = z
     if (config.strategy !== 'by_column') return;
     if (config.rules.length === 0) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['rules'],
         message: 'Column-based missing-value processing requires at least one rule',
       });
@@ -70,7 +72,7 @@ export const MissingValueConfigSchema = z
       const column = rule.column;
       if (seen.has(column)) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['rules', index, 'column'],
           message: `Field "${column}" can only be configured once per missing-value operator`,
         });
@@ -79,17 +81,22 @@ export const MissingValueConfigSchema = z
       }
       if (rule.method === 'nullify_values' && (!rule.values || rule.values.length === 0)) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['rules', index, 'values'],
           message: 'Nullify values requires at least one value',
         });
       }
-      if (rule.method === 'literal_fill' && (rule.value === null || rule.value === undefined)) {
+      if (
+        rule.method === 'literal_fill' &&
+        (rule.value === null || rule.value === undefined || rule.value === '')
+      ) {
         context.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['rules', index, 'value'],
           message: 'Literal fill requires a non-null value',
         });
       }
     });
   });
+
+export type MissingValueRule = z.infer<typeof MissingValueRuleSchema>;

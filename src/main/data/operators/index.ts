@@ -7,7 +7,7 @@ export { compileSortSql } from './sort';
 export { compileCalculateFieldSql } from './calculate-field';
 export { compileAggregateSql } from './aggregate';
 export { compileLimitSql } from './limit';
-export { compilePivotSql } from './pivot';
+export { compilePivotSql, RESOLVED_DYNAMIC_PIVOT_VALUES } from './pivot';
 export { compileUnpivotSql } from './unpivot';
 export { compileUnnestSql } from './unnest';
 export { compileScalarExpression } from './compute';

@@ -566,9 +566,14 @@ describe('filter SQL compiler', () => {
         'utf8'
       );
 
-      expect(storeSource).toContain('COMPILE_STRATEGIES');
       expect(storeSource).not.toContain('WHERE ${compileFilterConditionExpression(');
       expect(storeSource).not.toContain('WHERE ${compileScalarExpression(');
+
+      const compilerSource = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/main/data/store/workflow-compiler.ts'),
+        'utf8'
+      );
+      expect(compilerSource).toContain('COMPILE_STRATEGIES');
 
       const strategySource = fs.readFileSync(
         path.resolve(process.cwd(), 'src/main/data/operators/strategy.ts'),

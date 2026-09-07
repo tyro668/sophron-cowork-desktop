@@ -2,220 +2,12 @@ export interface CalculationConfigEntry {
   id?: string;
   field: string;
   expression: string;
-  type?: 'row' | 'agg' | 'window' | 'cross';
   action?: 'add' | 'replace';
-  fn?: string;
-  fnArg?: string;
-  fnArg2?: string;
-  scenario?: string;
-  partitionBy?: string[];
-  orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
-  frameType?: 'rows' | 'range' | 'groups';
-  frameStart?: string;
-  frameEnd?: string;
-  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
-  fiscalStartMonth?: number;
 }
 
-export interface CalculationRow {
+export interface CalculationRow extends CalculationConfigEntry {
   id: string;
-  field: string;
-  expression: string;
-  type?: 'row' | 'agg' | 'window' | 'cross';
-  action?: 'add' | 'replace';
-  fn?: string;
-  fnArg?: string;
-  fnArg2?: string;
-  scenario?: string;
-  partitionBy?: string[];
-  orderBy?: Array<{ field: string; direction?: 'asc' | 'desc' }>;
-  frameType?: 'rows' | 'range' | 'groups';
-  frameStart?: string;
-  frameEnd?: string;
-  frameExclude?: 'current row' | 'group' | 'ties' | 'no others';
-  fiscalStartMonth?: number;
 }
-
-export interface ParamSpec {
-  key: 'fnArg' | 'fnArg2';
-  type: 'field' | 'number' | 'text';
-  numberRule?: {
-    integer?: boolean;
-    min?: number;
-    max?: number;
-  };
-}
-
-export const SCENARIO_MIGRATION: Record<string, string> = {
-  group: 'group_metrics',
-  sorted: 'moving_window',
-  rank: 'ranking',
-  period: 'period_compare',
-  time: 'time_intel',
-};
-
-export const FN_ARG_SPEC: Record<string, ParamSpec[]> = {
-  '*': [{ key: 'fnArg', type: 'field' }],
-  ntile: [{ key: 'fnArg', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } }],
-  nth_value: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  quantile_cont: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { min: 0, max: 1 } },
-  ],
-  lag: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
-  ],
-  lead: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 0, max: 1_000_000 } },
-  ],
-  offset_diff: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  offset_rate: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'number', numberRule: { integer: true, min: 1, max: 1_000_000 } },
-  ],
-  string_agg: [
-    { key: 'fnArg', type: 'field' },
-    { key: 'fnArg2', type: 'text' },
-  ],
-};
-
-export const FN_WHITELIST = new Set([
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'count',
-  'count_distinct',
-  'median',
-  'stddev',
-  'var',
-  'var_pop',
-  'mode',
-  'quantile_cont',
-  'product',
-  'string_agg',
-  'bool_and',
-  'bool_or',
-  'row_number',
-  'rank',
-  'dense_rank',
-  'ntile',
-  'percent_rank',
-  'cume_dist',
-  'first_value',
-  'last_value',
-  'nth_value',
-  'lag',
-  'lead',
-  'offset_diff',
-  'offset_rate',
-  'period_yoy_value',
-  'period_yoy_rate',
-  'period_yoy_prev',
-  'period_mom_value',
-  'period_mom_rate',
-  'period_mom_prev',
-  'percentage',
-]);
-
-const TIME_AGG_WHITELIST = new Set(['sum', 'avg', 'count', 'min', 'max', 'distinct_count']);
-
-export function isAllowedCalculationFunction(fn: string): boolean {
-  if (FN_WHITELIST.has(fn)) return true;
-  const prefix = Object.keys(TIME_WINDOW_DEFS).find((item) => fn.startsWith(`${item}_`));
-  return Boolean(prefix && TIME_AGG_WHITELIST.has(fn.slice((prefix?.length ?? 0) + 1)));
-}
-
-function fieldRef(value: string): string {
-  if (!/[\]`\\]/.test(value)) return `[${value}]`;
-  const escaped = value.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
-  return `[\`${escaped}\`]`;
-}
-
-function numericArg(
-  value: string | undefined,
-  fallback: number = 1,
-  rule: NonNullable<ParamSpec['numberRule']> = {}
-): string {
-  const raw = value?.trim() || String(fallback);
-  if (!/^\d+(?:\.\d+)?$/.test(raw)) {
-    throw new Error(`Invalid numeric calculation argument '${raw}'`);
-  }
-  const parsed = Number(raw);
-  const min = rule.min ?? 0;
-  const max = rule.max ?? 1_000_000;
-  if (
-    !Number.isFinite(parsed) ||
-    (rule.integer && !Number.isSafeInteger(parsed)) ||
-    parsed < min ||
-    parsed > max
-  ) {
-    throw new Error(`Calculation argument '${raw}' is outside the allowed range`);
-  }
-  return String(parsed);
-}
-
-function textArg(value: string | undefined): string {
-  return JSON.stringify(value ?? '');
-}
-
-export const TIME_WINDOW_DEFS: Record<
-  string,
-  {
-    partitions: (f: string) => string;
-    frame: (n: string) => string;
-    hasParam: boolean;
-  }
-> = {
-  ytd: {
-    partitions: (f) => `year([${f}])`,
-    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
-    hasParam: false,
-  },
-  qtd: {
-    partitions: (f) => `year([${f}]), quarter([${f}])`,
-    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
-    hasParam: false,
-  },
-  mtd: {
-    partitions: (f) => `year([${f}]), month([${f}])`,
-    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
-    hasParam: false,
-  },
-  wtd: {
-    partitions: (f) => `year([${f}]), week([${f}])`,
-    frame: () => 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW',
-    hasParam: false,
-  },
-  rolling_year: {
-    partitions: () => '',
-    frame: (n) => `RANGE BETWEEN INTERVAL ${n} YEAR PRECEDING AND CURRENT ROW`,
-    hasParam: true,
-  },
-  rolling_month: {
-    partitions: () => '',
-    frame: (n) => `RANGE BETWEEN INTERVAL ${n} MONTH PRECEDING AND CURRENT ROW`,
-    hasParam: true,
-  },
-  rolling_day: {
-    partitions: () => '',
-    frame: (n) => `RANGE BETWEEN INTERVAL ${n} DAY PRECEDING AND CURRENT ROW`,
-    hasParam: true,
-  },
-  rolling_week: {
-    partitions: () => '',
-    frame: (n) => `RANGE BETWEEN INTERVAL ${n} WEEK PRECEDING AND CURRENT ROW`,
-    hasParam: true,
-  },
-};
 
 export function createCalculationId(): string {
   const globalCrypto = globalThis.crypto;
@@ -230,237 +22,43 @@ export function createCalculationRow(): CalculationRow {
     id: createCalculationId(),
     field: '',
     expression: '',
-    type: 'row',
     action: 'add',
-    frameType: 'rows',
-    frameStart: 'unbounded preceding',
-    frameEnd: 'unbounded following',
-    frameExclude: 'no others',
   };
 }
 
+/**
+ * Normalizes structured calculation config into the unified expression model used
+ * by the form. The persisted contract is { id, field, expression, action }.
+ */
 export function normalizeCalculationEntries(
-  entries: readonly CalculationConfigEntry[] | null | undefined
+  entries: readonly CalculationConfigEntry[] | null | undefined,
+  sourceFields: readonly string[] = []
 ): CalculationRow[] {
   const seenIds = new Set<string>();
+  const sourceFieldsByName = new Map(
+    sourceFields.map((field) => [field.trim().toLowerCase(), field] as const)
+  );
   return (entries ?? []).map((entry) => {
     const currentId = typeof entry.id === 'string' ? entry.id.trim() : '';
+    const field = typeof entry.field === 'string' ? entry.field : '';
+    const expression = typeof entry.expression === 'string' ? entry.expression : '';
     let id = currentId || createCalculationId();
     while (seenIds.has(id)) {
       id = createCalculationId();
     }
     seenIds.add(id);
+    const matchingSourceField = sourceFieldsByName.get(field.trim().toLowerCase());
+    const action =
+      entry.action === 'add' || entry.action === 'replace'
+        ? entry.action
+        : matchingSourceField
+          ? 'replace'
+          : 'add';
     return {
       id,
-      field: typeof entry.field === 'string' ? entry.field : '',
-      expression: typeof entry.expression === 'string' ? entry.expression : '',
-      type:
-        entry.type === 'agg' || entry.type === 'window' || entry.type === 'cross'
-          ? entry.type
-          : 'row',
-      action: entry.action === 'replace' ? 'replace' : 'add',
-      fn: typeof entry.fn === 'string' ? entry.fn : undefined,
-      fnArg: typeof entry.fnArg === 'string' ? entry.fnArg : undefined,
-      fnArg2: typeof entry.fnArg2 === 'string' ? entry.fnArg2 : undefined,
-      scenario:
-        typeof entry.scenario === 'string'
-          ? SCENARIO_MIGRATION[entry.scenario] || entry.scenario
-          : undefined,
-      partitionBy: Array.isArray(entry.partitionBy) ? entry.partitionBy : undefined,
-      orderBy: Array.isArray(entry.orderBy) ? entry.orderBy : undefined,
-      frameType:
-        entry.frameType === 'rows' || entry.frameType === 'range' || entry.frameType === 'groups'
-          ? entry.frameType
-          : undefined,
-      frameStart: typeof entry.frameStart === 'string' ? entry.frameStart : undefined,
-      frameEnd: typeof entry.frameEnd === 'string' ? entry.frameEnd : undefined,
-      frameExclude:
-        entry.frameExclude === 'current row' ||
-        entry.frameExclude === 'group' ||
-        entry.frameExclude === 'ties'
-          ? entry.frameExclude
-          : undefined,
-      fiscalStartMonth:
-        typeof entry.fiscalStartMonth === 'number' &&
-        entry.fiscalStartMonth >= 1 &&
-        entry.fiscalStartMonth <= 12
-          ? entry.fiscalStartMonth
-          : undefined,
+      field: action === 'replace' && matchingSourceField ? matchingSourceField : field,
+      action,
+      expression,
     };
   });
-}
-
-export function exprFromParts(item: CalculationRow): string {
-  if (item.type === 'row') return item.expression || '';
-  const fn = item.fn || 'sum';
-  const partition = item.partitionBy?.filter(Boolean);
-  const order = item.orderBy?.filter((o) => o.field);
-
-  function overStr(useOrder: boolean): string {
-    const parts: string[] = [];
-    if (partition?.length) parts.push(`PARTITION BY ${partition.map(fieldRef).join(', ')}`);
-    if (useOrder && order?.length)
-      parts.push(
-        `ORDER BY ${order.map((o) => `${fieldRef(o.field)}${o.direction === 'desc' ? ' desc' : ''}`).join(', ')}`
-      );
-    if (item.frameStart && order?.length) {
-      const ft = (item.frameType || 'rows').toUpperCase();
-      const end = item.frameEnd || 'current row';
-      parts.push(`${ft} BETWEEN ${item.frameStart} AND ${end}`);
-    }
-    if (item.frameExclude && item.frameExclude !== 'no others') {
-      parts.push(`EXCLUDE ${item.frameExclude.toUpperCase()}`);
-    }
-    return parts.length > 0 ? ` OVER (${parts.join(' ')})` : ' OVER ()';
-  }
-
-  const fieldArg = item.fnArg || '*';
-  const wrappedFieldArg = fieldArg === '*' ? fieldArg : fieldRef(fieldArg.replace(/^\[|\]$/g, ''));
-
-  // percentage: [arg] / sum([arg]) OVER (...)  — no ORDER BY
-  if (fn === 'percentage') {
-    return `${wrappedFieldArg} / sum(${wrappedFieldArg})${overStr(false)}`;
-  }
-
-  // Period comparison types
-  if (
-    fn === 'period_mom_value' ||
-    fn === 'period_mom_rate' ||
-    fn === 'period_mom_prev' ||
-    fn === 'period_yoy_value' ||
-    fn === 'period_yoy_rate' ||
-    fn === 'period_yoy_prev'
-  ) {
-    const isRate = fn.endsWith('_rate');
-    const isPrev = fn.endsWith('_prev');
-    const isYoy = fn.startsWith('period_yoy');
-    const dateField = order?.[0]?.field;
-    if (dateField && isYoy) {
-      const userPart = partition?.length ? `${partition.map(fieldRef).join(', ')}, ` : '';
-      const dateRef = fieldRef(dateField);
-      const datePart = `PARTITION BY ${userPart}extract('month' FROM ${dateRef}), extract('day' FROM ${dateRef})`;
-      const yearExpr = `extract('year' FROM ${dateRef})`;
-      const lag = `lag(${wrappedFieldArg}) OVER (${datePart} ORDER BY ${yearExpr})`;
-      const yearLag = `lag(${yearExpr}) OVER (${datePart} ORDER BY ${yearExpr})`;
-      const guard = `CASE WHEN (${yearExpr} - ${yearLag}) = 1 THEN `;
-      if (isPrev) return `${guard}${lag} ELSE NULL END`;
-      if (isRate) return `${guard}(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0) ELSE NULL END`;
-      return `${guard}${wrappedFieldArg} - ${lag} ELSE NULL END`;
-    }
-    const lag = `lag(${wrappedFieldArg})${overStr(true)}`;
-    if (isPrev) return lag;
-    if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
-    return `${wrappedFieldArg} - ${lag}`;
-  }
-
-  // Custom offset types
-  if (fn === 'offset_diff' || fn === 'offset_rate') {
-    const offset = numericArg(item.fnArg2, 1, {
-      integer: true,
-      min: 1,
-      max: 1_000_000,
-    });
-    const isRate = fn === 'offset_rate';
-    const lag = `lag(${wrappedFieldArg}, ${offset})${overStr(true)}`;
-    if (isRate) return `(${wrappedFieldArg} - ${lag}) / nullif(${lag}, 0)`;
-    return `${wrappedFieldArg} - ${lag}`;
-  }
-  // Time intelligence: ytd_sum, qtd_avg, rolling_year_count, etc.
-  const prefix = Object.keys(TIME_WINDOW_DEFS).find((p) => fn.startsWith(p + '_'));
-  if (prefix) {
-    const def = TIME_WINDOW_DEFS[prefix];
-    const agg = fn.slice(prefix.length + 1);
-    if (!TIME_AGG_WHITELIST.has(agg)) {
-      throw new Error(`Unsupported aggregation '${agg}' in time window calculation`);
-    }
-    const dateField = order?.[0]?.field;
-    if (!dateField) return `${agg}(${wrappedFieldArg}) OVER ()`;
-    const n = def.hasParam
-      ? numericArg(item.fnArg2, 1, { integer: true, min: 1, max: 1_000_000 })
-      : '';
-    let partitionStr = def.partitions(dateField);
-    const fiscalMonth = item.fiscalStartMonth;
-    if (prefix === 'ytd' && fiscalMonth && fiscalMonth > 1) {
-      const dateRef = fieldRef(dateField);
-      partitionStr = `CASE WHEN month(${dateRef}) >= ${fiscalMonth} THEN year(${dateRef}) ELSE year(${dateRef}) - 1 END`;
-    }
-    const aggFn =
-      agg === 'distinct_count'
-        ? `count(DISTINCT ${wrappedFieldArg})`
-        : `${agg}(${wrappedFieldArg})`;
-    const fullPartition = [partitionStr, ...(partition?.map(fieldRef) ?? [])]
-      .filter(Boolean)
-      .join(', ');
-    const partitionClause = fullPartition ? `PARTITION BY ${fullPartition} ` : '';
-    return `${aggFn} OVER (${partitionClause}ORDER BY ${fieldRef(dateField)} ${def.frame(n)})`;
-  }
-  // Generic: fn(args) OVER (PARTITION BY ... ORDER BY ...)
-  const fnSqlMap: Record<string, string> = {
-    var: 'var_pop',
-  };
-  const noArgFns = new Set(['row_number', 'rank', 'dense_rank', 'percent_rank', 'cume_dist']);
-  let fnCall: string;
-  if (noArgFns.has(fn)) {
-    fnCall = `${fn}()`;
-  } else if (fn === 'count_distinct') {
-    fnCall = `count(DISTINCT ${wrappedFieldArg})`;
-  } else {
-    if (!isAllowedCalculationFunction(fn)) {
-      throw new Error(`Unsupported function '${fn}' in calculation expression`);
-    }
-    const sqlFn = fnSqlMap[fn] || fn;
-    const specs = FN_ARG_SPEC[fn] || FN_ARG_SPEC['*'];
-    const args = specs
-      .map((s) => {
-        const raw = item[s.key];
-        if (!raw) return s.type === 'field' ? '*' : '';
-        if (s.type === 'field') return fieldRef(raw.replace(/^\[|\]$/g, ''));
-        if (s.type === 'number') return numericArg(raw, 1, s.numberRule);
-        return textArg(raw);
-      })
-      .filter((a) => a !== '');
-    fnCall = `${sqlFn}(${args.join(', ')})`;
-  }
-  const over = overStr(true);
-  return fnCall + over;
-}
-
-export function parseBound(bound: string | undefined): { type: string; value: number | null } {
-  const normalized = bound?.trim().toLowerCase();
-  if (!normalized || normalized === 'unbounded preceding')
-    return { type: 'unbounded preceding', value: null };
-  if (normalized === 'unbounded following') return { type: 'unbounded following', value: null };
-  if (normalized === 'current row') return { type: 'current row', value: null };
-  const m = normalized.match(/^(\d+) preceding$/);
-  if (m && isAllowedBoundOffset(m[1])) return { type: 'n_preceding', value: Number(m[1]) };
-  const n = normalized.match(/^(\d+) following$/);
-  if (n && isAllowedBoundOffset(n[1])) return { type: 'n_following', value: Number(n[1]) };
-  const interval = normalized.match(
-    /^interval (\d+) (day|week|month|quarter|year) (preceding|following)$/
-  );
-  if (interval && isAllowedBoundOffset(interval[1]))
-    return {
-      type: interval[3] === 'preceding' ? 'n_preceding' : 'n_following',
-      value: Number(interval[1]),
-    };
-  return { type: 'invalid', value: null };
-}
-
-function isAllowedBoundOffset(value: string): boolean {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 1_000_000;
-}
-
-export function needsCalculationIdNormalization(
-  entries: readonly CalculationConfigEntry[] | null | undefined
-): boolean {
-  const seenIds = new Set<string>();
-  for (const entry of entries ?? []) {
-    const id = typeof entry.id === 'string' ? entry.id.trim() : '';
-    if (!id || seenIds.has(id)) {
-      return true;
-    }
-    seenIds.add(id);
-  }
-  return false;
 }

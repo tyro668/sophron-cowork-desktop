@@ -8,28 +8,26 @@ import {
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
-import { computeUsedFields } from './shared/used-fields';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
+import { computeUsedFields } from '../../../shared/collections/used-fields';
+import { parseTypeConversionScale, prepareTypeConversion } from '../../../shared/operator-config';
 import {
   DATE_FORMAT_PRESETS,
   SCALE_MIN,
   SCALE_MAX,
+  type DateFormat,
+  type TypeConversionEntry,
 } from '../../../shared/operator-schemas/type-convert';
 
-interface ConversionEntry {
-  column: string;
-  type: string;
-  onError?: string;
-  format?: string;
-  scale?: number;
-}
-
-const DEFAULT_CONVERSION: ConversionEntry = { column: '', type: 'text' };
+const EMPTY_TYPE_CONVERSION: Readonly<TypeConversionEntry> = {
+  column: '',
+  type: 'text',
+};
 
 export default function FormTypeConvert({
   node,
@@ -38,19 +36,25 @@ export default function FormTypeConvert({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('typeConvert');
   const dataTypeLabel = useDataFieldTypeLabel();
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const conversions = useMemo<ConversionEntry[]>(
-    () => (node.config.conversions as ConversionEntry[]) ?? [{ ...DEFAULT_CONVERSION }],
-    [node.config.conversions]
-  );
+  const conversions = useMemo<TypeConversionEntry[]>(() => {
+    const configuredConversions =
+      (node.config.conversions as TypeConversionEntry[] | undefined) ?? [];
+    return configuredConversions.length > 0
+      ? ensureStableRowIds(configuredConversions)
+      : [{ ...EMPTY_TYPE_CONVERSION, id: createStableRowId() }];
+  }, [node.config.conversions]);
 
   const commitConversions = useCallback(
-    (next: ConversionEntry[]) => {
-      updateConfig((cfg) => ({ ...cfg, conversions: next.length > 0 ? next : undefined }));
+    (next: TypeConversionEntry[]) => {
+      updateConfig((cfg) => ({
+        ...cfg,
+        conversions: next.length > 0 ? ensureStableRowIds(next) : undefined,
+      }));
     },
     [updateConfig]
   );
@@ -60,6 +64,7 @@ export default function FormTypeConvert({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -70,7 +75,7 @@ export default function FormTypeConvert({
   }, [conversions, isDragging, resetDrag]);
 
   const updateConversion = useCallback(
-    (index: number, patch: Partial<ConversionEntry>) => {
+    (index: number, patch: Partial<TypeConversionEntry>) => {
       const next = activeConversions.map((c, i) => (i === index ? { ...c, ...patch } : c));
       commitConversions(next);
     },
@@ -79,17 +84,18 @@ export default function FormTypeConvert({
 
   const addConversionAfter = useCallback(
     (index: number) => {
+      if (activeConversions.length >= fieldCompletions.length) return;
       const next = [...activeConversions];
-      next.splice(index + 1, 0, { ...DEFAULT_CONVERSION });
+      next.splice(index + 1, 0, { ...EMPTY_TYPE_CONVERSION, id: createStableRowId() });
       commitConversions(next);
     },
-    [activeConversions, commitConversions]
+    [activeConversions, fieldCompletions.length, commitConversions]
   );
 
   const removeConversion = useCallback(
     (index: number) => {
       if (activeConversions.length <= 1) {
-        commitConversions([{ ...DEFAULT_CONVERSION }]);
+        commitConversions([]);
         return;
       }
       commitConversions(activeConversions.filter((_, i) => i !== index));
@@ -103,12 +109,13 @@ export default function FormTypeConvert({
       const source = activeConversions[index];
       const next = [...activeConversions];
       next.splice(index + 1, 0, {
+        id: createStableRowId(),
         column: '',
         type: source.type,
         onError: source.onError,
         format: source.format,
         scale: source.scale,
-      } as ConversionEntry);
+      } as TypeConversionEntry);
       commitConversions(next);
     },
     [activeConversions, fieldCompletions.length, commitConversions]
@@ -132,15 +139,16 @@ export default function FormTypeConvert({
     <div className="flex h-full overflow-hidden">
       {/* Left: conversion rules */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+        <div className="scrollbar-hover flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={activeConversions}
+            getKey={(conversion, index) => conversion.id ?? `conversion-${index}`}
             columns={[
               {
-                flex: 'flex-[2]',
+                flex: 'flex-[1]',
                 header: tr('typeConvertSourceField'),
-                render: (conv: ConversionEntry, i: number) => {
+                render: (conv: TypeConversionEntry, i: number) => {
                   const disabledFields = new Set(usedFields);
                   if (conv.column) disabledFields.delete(conv.column);
                   return (
@@ -150,8 +158,8 @@ export default function FormTypeConvert({
                       columnTypes={columnTypes}
                       onChange={(value) => updateConversion(i, { column: value })}
                       placeholder={tr('typeConvertSelectField')}
-                      searchPlaceholder={tr('searchField')}
-                      emptyText={tr('noMatch')}
+                      searchPlaceholder={tr('fieldPicker.searchField')}
+                      emptyText={tr('fieldPicker.noMatch')}
                       disabledOptions={disabledFields}
                       className="flex-1 min-w-0 h-7"
                     />
@@ -160,39 +168,14 @@ export default function FormTypeConvert({
               },
               {
                 flex: 'flex-[1]',
-                header: tr('typeConvertOriginalType'),
-                render: (conv: ConversionEntry) => (
-                  <span className="w-full text-center text-[11px] text-text-muted tabular-nums">
-                    {conv.column && columnTypes?.[conv.column]
-                      ? dataTypeLabel(columnTypes[conv.column])
-                      : ''}
-                  </span>
-                ),
-              },
-              {
-                flex: 'flex-[0.5]',
-                header: '',
-                render: () => (
-                  <div className="flex items-center gap-0.5 justify-center text-text-muted">
-                    <div className="h-[2.5px] w-[14px] bg-current rounded-full" />
-                    <div className="h-0 w-0 border-l-[9px] border-l-current border-y-[7px] border-y-transparent" />
-                  </div>
-                ),
-              },
-              {
-                flex: 'flex-[1.5]',
                 header: tr('typeConvertTargetType'),
-                render: (conv: ConversionEntry, i: number) => (
+                render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={normalizeDataFieldType(conv.type)}
                     onChange={(v) => {
                       const newType = v as DataFieldType;
-                      const isDateType = newType === 'date' || newType === 'datetime';
-                      const isDecimal = newType === 'decimal';
                       updateConversion(i, {
-                        type: newType,
-                        ...(isDateType ? {} : { format: undefined }),
-                        ...(isDecimal ? {} : { scale: undefined }),
+                        ...prepareTypeConversion(newType),
                       });
                     }}
                     groups={[
@@ -204,61 +187,84 @@ export default function FormTypeConvert({
                         })),
                       },
                     ]}
-                    className="h-6 w-full text-[12px]"
+                    className="h-7 w-full text-[12px]"
                   />
                 ),
               },
               {
-                flex: 'flex-[1.5]',
-                header: tr('typeConvertDateFormat'),
-                render: (conv: ConversionEntry, i: number) => {
+                flex: 'flex-[1]',
+                header: tr('typeConvertTypeSettings'),
+                render: (conv: TypeConversionEntry, i: number) => {
                   const isDateType = conv.type === 'date' || conv.type === 'datetime';
-                  const formatOptions = [
-                    { value: '', label: tr('typeConvertAutoParse') },
-                    ...DATE_FORMAT_PRESETS.map((p) => ({ value: p.value, label: p.example })),
-                  ];
+                  if (isDateType) {
+                    const formatOptions = [
+                      {
+                        value: '',
+                        label: tr('typeConvertAutoParse'),
+                        title: tr('typeConvertAutoParseHint'),
+                      },
+                      ...DATE_FORMAT_PRESETS.map((preset) => ({
+                        value: preset.value,
+                        label: preset.value,
+                        title: tr('typeConvertFormatExample', { example: preset.example }),
+                      })),
+                    ];
+                    return (
+                      <GlassOptionSingleSelect
+                        value={conv.format ?? ''}
+                        groups={[{ key: 'formats', items: formatOptions }]}
+                        onChange={(v) =>
+                          updateConversion(i, {
+                            format: (v || undefined) as DateFormat | undefined,
+                          })
+                        }
+                        variant="highlight"
+                        className="h-7 w-full text-[12px]"
+                      />
+                    );
+                  }
+                  if (conv.type === 'decimal') {
+                    return (
+                      <GlassOptionSingleSelect
+                        value={conv.scale != null ? String(conv.scale) : String(SCALE_MIN)}
+                        groups={[
+                          {
+                            key: 'scale',
+                            items: Array.from({ length: SCALE_MAX - SCALE_MIN + 1 }, (_, k) => {
+                              const n = SCALE_MIN + k;
+                              return {
+                                value: String(n),
+                                label: tr('typeConvertScaleOption', { n }),
+                              };
+                            }),
+                          },
+                        ]}
+                        onChange={(v) =>
+                          updateConversion(i, {
+                            scale: parseTypeConversionScale(v),
+                          })
+                        }
+                        variant="highlight"
+                        className="h-7 w-full text-[12px]"
+                      />
+                    );
+                  }
                   return (
-                    <GlassOptionSingleSelect
-                      value={isDateType ? (conv.format ?? '') : ''}
-                      disabled={!isDateType}
-                      groups={[{ key: 'formats', items: formatOptions }]}
-                      onChange={(v) => updateConversion(i, { format: v || undefined })}
-                      className="h-6 w-full text-[12px]"
-                    />
+                    <span className="flex h-7 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
+                      {tr('typeConvertNoSettings')}
+                    </span>
                   );
                 },
               },
               {
                 flex: 'flex-[1]',
-                header: tr('typeConvertScale'),
-                render: (conv: ConversionEntry, i: number) => (
-                  <GlassFormTextInput
-                    value={conv.type === 'decimal' ? String(conv.scale ?? '') : ''}
-                    disabled={conv.type !== 'decimal'}
-                    textCenter
-                    className="h-6 w-full text-[12px]"
-                    placeholder={`${SCALE_MIN}`}
-                    min={SCALE_MIN}
-                    max={SCALE_MAX}
-                    type="number"
-                    onChange={(v) => {
-                      const n = v === '' ? undefined : Number(v);
-                      updateConversion(i, {
-                        scale: n !== undefined && !isNaN(n) ? n : undefined,
-                      });
-                    }}
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[2]',
                 header: tr('typeConvertErrorHandling'),
-                render: (conv: ConversionEntry, i: number) => (
+                render: (conv: TypeConversionEntry, i: number) => (
                   <GlassOptionSingleSelect
                     value={conv.onError ?? 'null'}
                     onChange={(v) =>
                       updateConversion(i, {
-                        onError: v !== 'null' ? v : undefined,
+                        onError: v !== 'null' ? (v as 'keep' | 'fail') : undefined,
                       })
                     }
                     groups={[
@@ -270,7 +276,7 @@ export default function FormTypeConvert({
                         })),
                       },
                     ]}
-                    className="h-6 w-full text-[12px]"
+                    className="h-7 w-full text-[12px]"
                   />
                 ),
               },
@@ -280,7 +286,6 @@ export default function FormTypeConvert({
             onCopy={copyConversion}
             addTitle={tr('typeConvertAdd')}
             removeTitle={tr('typeConvertRemove')}
-            copyTitle={tr('fieldMappingCopy')}
             actions={['add', 'copy', 'remove']}
             canAct={(action: RowAction) =>
               action === 'remove' ? true : activeConversions.length < fieldCompletions.length
@@ -289,8 +294,9 @@ export default function FormTypeConvert({
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder')}
+            dragTitle={tr('rowList.dragToReorder')}
           />
         </div>
       </div>

@@ -3,6 +3,14 @@ import { z } from 'zod';
 import { FieldMappingConfigSchema } from '../../src/shared/operator-schemas';
 
 describe('FieldMappingConfigSchema', () => {
+  it('preserves stable UI row ids', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ id: 'mapping-1', source: 'a', targetMode: 'rename', targetValue: 'b' }],
+    });
+
+    expect(result.mappings[0].id).toBe('mapping-1');
+  });
+
   it('parses valid mappings with all fields', () => {
     const result = FieldMappingConfigSchema.parse({
       mappings: [
@@ -15,10 +23,26 @@ describe('FieldMappingConfigSchema', () => {
     expect(result.mappings[1].targetMode).toBe('prefix');
   });
 
-  it('defaults optional fields in legacy mapping entries', () => {
-    const result = FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] });
-    expect(result.mappings[0].source).toBe('a');
-    expect(result.mappings[0].targetValue).toBe('');
+  it('allows a rename whose source and target names are equal', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ source: 'status', targetMode: 'rename', targetValue: 'status' }],
+    });
+
+    expect(result.mappings[0]).toMatchObject({ source: 'status', targetValue: 'status' });
+  });
+
+  it('validates whitespace without changing field names or affixes', () => {
+    const result = FieldMappingConfigSchema.parse({
+      mappings: [{ source: ' amount ', targetMode: 'suffix', targetValue: ' kg' }],
+    });
+
+    expect(result.mappings[0]).toMatchObject({ source: ' amount ', targetValue: ' kg' });
+  });
+
+  it('rejects mappings without an explicit target mode', () => {
+    expect(() =>
+      FieldMappingConfigSchema.parse({ mappings: [{ source: 'a', target: 'b' }] })
+    ).toThrow(z.ZodError);
   });
 
   it('rejects config when mappings are omitted', () => {
@@ -75,13 +99,6 @@ describe('FieldMappingConfigSchema', () => {
         ],
       })
     ).toThrow(z.ZodError);
-  });
-
-  it('accepts old format without targetMode (legacy compat)', () => {
-    const result = FieldMappingConfigSchema.parse({
-      mappings: [{ source: 'a', target: 'b' }],
-    });
-    expect(result.mappings[0].source).toBe('a');
   });
 
   it('rejects an empty source placeholder row', () => {

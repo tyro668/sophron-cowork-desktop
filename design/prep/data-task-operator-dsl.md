@@ -375,16 +375,16 @@ input source dataset "dataset_01HXYZ" as imported_orders
 
 配置字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `source` | `"task" | "file" | "dataset"` | 输入来源 |
-| `filePath` | `string?` | 文件路径，`source=file` 时必填 |
-| `datasetId` | `string?` | 数据集 ID，`source=dataset` 时必填 |
-| `format` | `string?` | 文件格式，默认 `auto` |
-| `sheet` | `string?` | Excel sheet |
-| `header` | `boolean?` | 是否首行为表头 |
-| `encoding` | `string?` | 文本编码 |
-| `alias` | `string?` | 数据流别名 |
+| 字段        | 类型                            | 说明                               |
+| ----------- | ------------------------------- | ---------------------------------- |
+| `source`    | `"task" \| "file" \| "dataset"` | 输入来源                           |
+| `filePath`  | `string?`                       | 文件路径，`source=file` 时必填     |
+| `datasetId` | `string?`                       | 数据集 ID，`source=dataset` 时必填 |
+| `format`    | `string?`                       | 文件格式，默认 `auto`              |
+| `sheet`     | `string?`                       | Excel sheet                        |
+| `header`    | `boolean?`                      | 是否首行为表头                     |
+| `encoding`  | `string?`                       | 文本编码                           |
+| `alias`     | `string?`                       | 数据流别名                         |
 
 约束：
 
@@ -426,10 +426,10 @@ drop [debug_col], [unused_col]
 
 配置字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `mode` | `"include" | "exclude"` | 保留或删除 |
-| `columns` | `string[]` | 字段列表 |
+| 字段      | 类型                     | 说明       |
+| --------- | ------------------------ | ---------- |
+| `mode`    | `"include" \| "exclude"` | 保留或删除 |
+| `columns` | `string[]`               | 字段列表   |
 
 约束：
 
@@ -561,12 +561,12 @@ deduplicate by [order_id], [sku_id] keep last order by [updated_at] desc
 
 配置字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `strategy` | `"all_columns" | "by_columns"` | 去重范围 |
-| `columns` | `string[]?` | 指定字段 |
-| `keep` | `"first" | "last"` | 保留规则，默认 `first` |
-| `orderBy` | `SortKey[]?` | 有保留规则时的排序依据 |
+| 字段       | 类型                            | 说明                   |
+| ---------- | ------------------------------- | ---------------------- |
+| `strategy` | `"all_columns" \| "by_columns"` | 去重范围               |
+| `columns`  | `string[]?`                     | 指定字段               |
+| `keep`     | `"first" \| "last"`             | 保留规则，默认 `first` |
+| `orderBy`  | `SortKey[]?`                    | 有保留规则时的排序依据 |
 
 约束：
 
@@ -628,17 +628,17 @@ missing value [device_id] skip
 
 方法规范化：
 
-| DSL | `method` |
-| --- | --- |
-| `skip` | `skip` |
-| `drop rows` | `drop` |
+| DSL                    | `method`         |
+| ---------------------- | ---------------- |
+| `skip`                 | `skip`           |
+| `drop rows`            | `drop`           |
 | `nullify values (...)` | `nullify_values` |
-| `fill <literal/expr>` | `literal_fill` |
-| `fill forward` | `forward_fill` |
-| `fill backward` | `backward_fill` |
-| `fill mean` | `mean_fill` |
-| `fill median` | `median_fill` |
-| `fill mode` | `mode_fill` |
+| `fill <literal/expr>`  | `literal_fill`   |
+| `fill forward`         | `forward_fill`   |
+| `fill backward`        | `backward_fill`  |
+| `fill mean`            | `mean_fill`      |
+| `fill median`          | `median_fill`    |
+| `fill mode`            | `mode_fill`      |
 
 约束：
 
@@ -724,9 +724,7 @@ sort by [region] asc, [revenue] desc nulls last
   "type": "sort",
   "label": "排序",
   "config": {
-    "keys": [
-      { "field": "order_date", "direction": "desc", "nulls": "last" }
-    ]
+    "keys": [{ "field": "order_date", "direction": "desc", "nulls": "last" }]
   }
 }
 ```
@@ -903,16 +901,16 @@ ASOF 节点映射：
 
 配置字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `joinType` | `inner | left | right | full | cross | semi | anti | asof` | 连接类型 |
-| `rightInput` | `string` | 右侧输入源 alias |
-| `rightAlias` | `string?` | 右侧在连接条件中的临时 alias |
-| `conditions` | `JoinCondition[]` | 连接条件，`cross` 可为空 |
-| `asof` | `object?` | ASOF 连接的时间键、方向、容忍窗口和分组键 |
-| `keep` | `JoinKeepItem[]?` | 输出字段控制 |
-| `cardinality` | `string?` | 预期连接基数，用于运行时告警 |
-| `conflict` | `object?` | 同名字段冲突处理 |
+| 字段          | 类型                                                              | 说明                                      |
+| ------------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| `joinType`    | `inner \| left \| right \| full \| cross \| semi \| anti \| asof` | 连接类型                                  |
+| `rightInput`  | `string`                                                          | 右侧输入源 alias                          |
+| `rightAlias`  | `string?`                                                         | 右侧在连接条件中的临时 alias              |
+| `conditions`  | `JoinCondition[]`                                                 | 连接条件，`cross` 可为空                  |
+| `asof`        | `object?`                                                         | ASOF 连接的时间键、方向、容忍窗口和分组键 |
+| `keep`        | `JoinKeepItem[]?`                                                 | 输出字段控制                              |
+| `cardinality` | `string?`                                                         | 预期连接基数，用于运行时告警              |
+| `conflict`    | `object?`                                                         | 同名字段冲突处理                          |
 
 图边映射：
 
@@ -1063,8 +1061,8 @@ derive_pair             := field_ref "=" expression
 derive [margin] = if [revenue] = 0 then 0 else [profit] / [revenue]
 derive [month] = month([order_date])
 derive [sku_prefix] = regexp_extract([sku], "^([A-Z]+)-", 1)
-derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
-derive [running_revenue] = sum([revenue]) over(partition by [region] order by [order_date] rows between unbounded preceding and current row)
+derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
+derive [running_revenue] = running(sum([revenue])) over(partition by [region] order by [order_date])
 ```
 
 节点映射：
@@ -1088,7 +1086,7 @@ derive [running_revenue] = sum([revenue]) over(partition by [region] order by [o
 
 - 允许标量表达式、条件表达式和窗口表达式。
 - 窗口函数必须带 `over(...)`，并整体作为 `derive` 的右侧表达式。
-- `row_number`、`rank`、`dense_rank`、`lag`、`lead` 等排序敏感窗口函数必须在 `over(...)` 中声明 `order by`。
+- `ranking`、`reference`、`running`、`moving` 等排序敏感场景必须在 `over(...)` 中声明 `order by`。
 - 不允许裸聚合函数；`sum`、`avg`、`count` 等聚合函数只有带 `over(...)` 时才可作为窗口聚合出现在 `derive`。
 - 目标字段可以是新字段，也可以覆盖现有字段。覆盖时 UI 应提示。
 
@@ -1134,11 +1132,11 @@ output file "/path/to/output/clean_orders.parquet" format parquet mode replace
 
 目标规范化：
 
-| DSL | `destination` |
-| --- | --- |
-| `output table` | `duckdb_table` |
-| `output dataset` | `dataset` |
-| `output file` | `file` |
+| DSL              | `destination`  |
+| ---------------- | -------------- |
+| `output table`   | `duckdb_table` |
+| `output dataset` | `dataset`      |
+| `output file`    | `file`         |
 
 约束：
 
@@ -1150,13 +1148,13 @@ output file "/path/to/output/clean_orders.parquet" format parquet mode replace
 
 以下算子是对齐 DuckDB 能力后的目标扩展设计。它们可以分批进入运行时，但 DSL 结构必须先固定，避免 CLI、UI、LLM tool_call 各自发明语法。
 
-| 算子 | 内部类型 | 会改变行数 | 会改变列集合 | 多输入 | 主要用途 |
-| --- | --- | ---: | ---: | ---: | --- |
-| 限制/Top N | `limit` | 是 | 否 | 否 | 截取、分页、Top N |
-| 透视 | `pivot` | 是 | 是 | 否 | 长表转宽表 |
-| 反透视 | `unpivot` | 是 | 是 | 否 | 宽表转长表 |
-| 集合操作 | `set_op` | 是 | 可能 | 是 | union/intersect/except |
-| 嵌套展开 | `unnest` | 是 | 是 | 否 | list/struct/JSON array 展开 |
+| 算子       | 内部类型  | 会改变行数 | 会改变列集合 | 多输入 | 主要用途                    |
+| ---------- | --------- | ---------: | -----------: | -----: | --------------------------- |
+| 限制/Top N | `limit`   |         是 |           否 |     否 | 截取、分页、Top N           |
+| 透视       | `pivot`   |         是 |           是 |     否 | 长表转宽表                  |
+| 反透视     | `unpivot` |         是 |           是 |     否 | 宽表转长表                  |
+| 集合操作   | `set_op`  |         是 |         可能 |     是 | union/intersect/except      |
+| 嵌套展开   | `unnest`  |         是 |           是 |     否 | list/struct/JSON array 展开 |
 
 如果某个扩展算子还没有接入执行层，parser 可以识别并返回计划态诊断，但保存或执行时必须返回稳定错误，例如 `UNSUPPORTED_OPERATOR_EXECUTION`，不能静默退化成 `SELECT *`。
 
@@ -1198,22 +1196,20 @@ top 5 by [updated_at] desc nulls last
     "limit": 10,
     "unit": "rows",
     "offset": 0,
-    "orderBy": [
-      { "field": "revenue", "direction": "desc" }
-    ]
+    "orderBy": [{ "field": "revenue", "direction": "desc" }]
   }
 }
 ```
 
 配置字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `mode` | `"limit" | "top"` | 普通限制或 Top N |
-| `limit` | `number` | 限制数量 |
-| `unit` | `"rows" | "percent"` | 行数或百分比 |
-| `offset` | `number?` | 分页偏移 |
-| `orderBy` | `SortKey[]?` | Top N 排序字段 |
+| 字段      | 类型                  | 说明             |
+| --------- | --------------------- | ---------------- |
+| `mode`    | `"limit" \| "top"`    | 普通限制或 Top N |
+| `limit`   | `number`              | 限制数量         |
+| `unit`    | `"rows" \| "percent"` | 行数或百分比     |
+| `offset`  | `number?`             | 分页偏移         |
+| `orderBy` | `SortKey[]?`          | Top N 排序字段   |
 
 约束：
 
@@ -1254,9 +1250,7 @@ pivot on [status] in ("paid", "refund") using count(*) group by [region]
   "config": {
     "on": ["month"],
     "values": [],
-    "using": [
-      { "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }
-    ],
+    "using": [{ "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }],
     "groupBy": ["region"]
   }
 }
@@ -1545,19 +1539,19 @@ window_spec      := ["partition" "by" field_ref_list]
 示例：
 
 ```text
-derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
 ```
 
 ### 7.5 表达式位置矩阵
 
-| 上下文 | 标量函数 | 聚合函数 | 窗口函数 | 条件表达式 |
-| --- | ---: | ---: | ---: | ---: |
-| `filter` | 是 | 否 | 否 | 是 |
-| `missing value fill` | 是 | 否 | 否 | 是 |
-| `derive` | 是 | 裸聚合否；带 `over(...)` 的窗口聚合是 | 是 | 是 |
-| `aggregate metrics` | 聚合参数可用 | 主函数必须是聚合 | 否 | 是 |
-| `join on` | 否 | 否 | 否 | 否 |
-| `sort by` | 否 | 否 | 否 | 否 |
+| 上下文               |     标量函数 |                              聚合函数 | 窗口函数 | 条件表达式 |
+| -------------------- | -----------: | ------------------------------------: | -------: | ---------: |
+| `filter`             |           是 |                                    否 |       否 |         是 |
+| `missing value fill` |           是 |                                    否 |       否 |         是 |
+| `derive`             |           是 | 裸聚合否；带 `over(...)` 的窗口聚合是 |       是 |         是 |
+| `aggregate metrics`  | 聚合参数可用 |                      主函数必须是聚合 |       否 |         是 |
+| `join on`            |           否 |                                    否 |       否 |         否 |
+| `sort by`            |           否 |                                    否 |       否 |         否 |
 
 ---
 
@@ -1842,7 +1836,7 @@ input source dataset "clean_orders" as orders
 
 ```text
 input source dataset "clean_orders" as orders
-  | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+  | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
   | filter [rn] <= 10
   | output table "top_orders_by_region" mode replace
 ```
@@ -1967,63 +1961,63 @@ interface PrepOperatorRunStats {
 
 `droppedRows` 取值建议：
 
-| 取值 | 说明 |
-| --- | --- |
-| `none` | 不保留删除样本，只记录统计 |
-| `count` | 只记录删除行数 |
-| `preview` | 保存删除行预览 |
-| `table` | 保存完整 reject table |
+| 取值      | 说明                       |
+| --------- | -------------------------- |
+| `none`    | 不保留删除样本，只记录统计 |
+| `count`   | 只记录删除行数             |
+| `preview` | 保存删除行预览             |
+| `table`   | 保存完整 reject table      |
 
 v0.1 可以先实现 `count`，后续再支持 `preview` 或 `table`。
 
 ### 13.3 清洗能力覆盖矩阵
 
-| 清洗需求 | v0.1 DSL 表达 | 内部算子 |
-| --- | --- | --- |
-| 删除空行 | `missing value row drop when all_null` | `missing_value` |
-| 关键字段缺失即删除 | `missing value row drop when any_null in ...` | `missing_value` |
-| 特殊值转空 | `missing value [field] nullify values (...)` | `missing_value` |
-| 缺失填充 | `missing value [field] fill ...` | `missing_value` |
-| 类型转换 | `cast [field] as ...` | `type_convert` |
-| 字段改名 | `map [old] to [new]` | `field_mapping` |
-| 文本标准化 | `derive [field] = trim/replace/regexp_replace(...)` | `calculate_field` |
-| 值域过滤 | `filter [field] in (...)` | `filter` |
-| 范围过滤 | `filter [field] between ... and ...` | `filter` |
-| 正则过滤 | `filter [field] matches "..."` | `filter` |
-| 去重 | `deduplicate by ... keep ...` | `deduplicate` |
-| 维表补充字段 | `join left dim on ... keep ...` | `join` |
-| 黑名单/白名单过滤 | `join anti blacklist on ...` / `join semi whitelist on ...` | `join` |
-| 时间近邻补齐 | `join asof snapshot on ... by ... tolerance ...` | `join` |
-| 汇总质量指标 | `aggregate ... metrics ...` | `aggregate` |
-| Top N | `top 10 by [metric] desc` | `limit` |
-| 组内排名/累计 | `derive [rn] = row_number() over(partition by ... order by ...)` | `calculate_field` |
-| 长表转宽表 | `pivot on ... using ... group by ...` | `pivot` |
-| 宽表转长表 | `unpivot ... into name ... value ...` | `unpivot` |
-| 多表追加 | `union other_table mode all by name` | `set_op` |
-| list/array 展开 | `unnest [items] as [item]` | `unnest` |
+| 清洗需求           | v0.1 DSL 表达                                                             | 内部算子          |
+| ------------------ | ------------------------------------------------------------------------- | ----------------- |
+| 删除空行           | `missing value row drop when all_null`                                    | `missing_value`   |
+| 关键字段缺失即删除 | `missing value row drop when any_null in ...`                             | `missing_value`   |
+| 特殊值转空         | `missing value [field] nullify values (...)`                              | `missing_value`   |
+| 缺失填充           | `missing value [field] fill ...`                                          | `missing_value`   |
+| 类型转换           | `cast [field] as ...`                                                     | `type_convert`    |
+| 字段改名           | `map [old] to [new]`                                                      | `field_mapping`   |
+| 文本标准化         | `derive [field] = trim/replace/regexp_replace(...)`                       | `calculate_field` |
+| 值域过滤           | `filter [field] in (...)`                                                 | `filter`          |
+| 范围过滤           | `filter [field] between ... and ...`                                      | `filter`          |
+| 正则过滤           | `filter [field] matches "..."`                                            | `filter`          |
+| 去重               | `deduplicate by ... keep ...`                                             | `deduplicate`     |
+| 维表补充字段       | `join left dim on ... keep ...`                                           | `join`            |
+| 黑名单/白名单过滤  | `join anti blacklist on ...` / `join semi whitelist on ...`               | `join`            |
+| 时间近邻补齐       | `join asof snapshot on ... by ... tolerance ...`                          | `join`            |
+| 汇总质量指标       | `aggregate ... metrics ...`                                               | `aggregate`       |
+| Top N              | `top 10 by [metric] desc`                                                 | `limit`           |
+| 组内排名/累计      | `derive [rn] = ranking(row_number()) over(partition by ... order by ...)` | `calculate_field` |
+| 长表转宽表         | `pivot on ... using ... group by ...`                                     | `pivot`           |
+| 宽表转长表         | `unpivot ... into name ... value ...`                                     | `unpivot`         |
+| 多表追加           | `union other_table mode all by name`                                      | `set_op`          |
+| list/array 展开    | `unnest [items] as [item]`                                                | `unnest`          |
 
 ### 13.4 扩展算子落地分层
 
 本文档已经给出扩展算子的 DSL 结构，但运行时可以按优先级分批落地。未落地前，运行时 reference 不应把对应算子标记为可执行。
 
-| 阶段 | 算子 | 说明 |
-| --- | --- | --- |
-| 先补齐 | `missing_value`、`type_convert`、`aggregate` 扩展 | 补齐已承诺语法的执行语义和诊断 |
-| 第一批 | `limit`、`derive ... over(...)` 窗口表达式 | 实现成本较低，且对 Top N、排名/累计价值高 |
-| 第二批 | `pivot`、`unpivot`、`aggregate rollup/cube/grouping sets` | 结构变换和高级汇总 |
-| 第三批 | `set_op`、`unnest` | 多输入和嵌套数据 |
+| 阶段   | 算子                                                      | 说明                                      |
+| ------ | --------------------------------------------------------- | ----------------------------------------- |
+| 先补齐 | `missing_value`、`type_convert`、`aggregate` 扩展         | 补齐已承诺语法的执行语义和诊断            |
+| 第一批 | `limit`、`derive ... over(...)` 窗口表达式                | 实现成本较低，且对 Top N、排名/累计价值高 |
+| 第二批 | `pivot`、`unpivot`、`aggregate rollup/cube/grouping sets` | 结构变换和高级汇总                        |
+| 第三批 | `set_op`、`unnest`                                        | 多输入和嵌套数据                          |
 
 ### 13.5 后续候选能力
 
 以下能力仍属于后续候选。它们可以先通过现有表达式、`derive`、`filter` 或组合算子表达；只有当 UI 和 LLM 需要稳定表单/工具文档时，再扩展为独立内部算子。
 
-| 候选能力 | 推荐后续内部类型 | 说明 |
-| --- | --- | --- |
-| 异常值处理 | `outlier` | IQR、Z-score、分位数截尾、winsorize、置空或删除 |
-| 值标准化字典 | `value_standardize` | 分类值归一，例如 `"CN" -> "China"` |
-| schema/profile | `profile_schema` | 字段类型推断、空值率、唯一值、分布摘要 |
-| 文本清洗语法糖 | `text_clean` | trim、case、正则替换、空白标准化的表单化封装 |
-| 日期时间语法糖 | `date_time` | 日期解析、截断、部件提取的表单化封装 |
+| 候选能力       | 推荐后续内部类型    | 说明                                            |
+| -------------- | ------------------- | ----------------------------------------------- |
+| 异常值处理     | `outlier`           | IQR、Z-score、分位数截尾、winsorize、置空或删除 |
+| 值标准化字典   | `value_standardize` | 分类值归一，例如 `"CN" -> "China"`              |
+| schema/profile | `profile_schema`    | 字段类型推断、空值率、唯一值、分布摘要          |
+| 文本清洗语法糖 | `text_clean`        | trim、case、正则替换、空白标准化的表单化封装    |
+| 日期时间语法糖 | `date_time`         | 日期解析、截断、部件提取的表单化封装            |
 
 候选语法示例，仅作为 v0.2 参考：
 

@@ -4,69 +4,48 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
+import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
-import { computeUsedFields } from './shared/used-fields';
-
-export interface MappingEntry {
-  source: string;
-  targetMode: 'prefix' | 'suffix' | 'rename';
-  targetValue: string;
-}
-
-function computeTarget(m: MappingEntry): string {
-  if (!m.source) return '';
-  if (m.targetMode === 'rename') return m.targetValue || '';
-  return m.targetMode === 'prefix' ? `${m.targetValue}${m.source}` : `${m.source}${m.targetValue}`;
-}
-
-function migrateEntry(e: Record<string, unknown>): MappingEntry {
-  const source = (e.source as string) || '';
-  const target = (e.target as string) || '';
-  const targetMode = e.targetMode as string;
-  if (targetMode === 'prefix' || targetMode === 'suffix' || targetMode === 'rename') {
-    const targetValue = (e.targetValue as string) || '';
-    return { source, targetMode, targetValue };
-  }
-  if (!source || !target) return { source, targetMode: 'rename', targetValue: target };
-  if (target.startsWith(source))
-    return {
-      source,
-      targetMode: 'suffix',
-      targetValue: target.slice(source.length),
-    };
-  if (target.endsWith(source))
-    return {
-      source,
-      targetMode: 'prefix',
-      targetValue: target.slice(0, -source.length),
-    };
-  return { source, targetMode: 'rename', targetValue: target };
-}
-
-const DEFAULT_MAPPING: MappingEntry = { source: '', targetMode: 'rename', targetValue: '' };
+import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { computeUsedFields } from '../../../shared/collections/used-fields';
+import {
+  computeFieldMappingTarget,
+  EMPTY_FIELD_MAPPING,
+  normalizeFieldMappingEntry,
+} from '../../../shared/operator-config';
+import type { FieldMappingEntry } from '../../../shared/operator-schemas';
 
 export default function FormFieldMapping({
   node,
+  taskId,
   fieldCompletions,
+  sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldMapping');
   const updateConfig = useUpdateConfig(onNodeChange);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
-  const mappings = useMemo<MappingEntry[]>(
-    () => ((node.config.mappings as Record<string, unknown>[]) ?? []).map(migrateEntry),
+  const mappings = useMemo<FieldMappingEntry[]>(
+    () =>
+      ensureStableRowIds(
+        ((node.config.mappings as Record<string, unknown>[]) ?? []).map(normalizeFieldMappingEntry)
+      ),
     [node.config.mappings]
   );
   const editableMappings = useMemo(
-    () => (mappings.length > 0 ? mappings : [{ ...DEFAULT_MAPPING }]),
+    () => (mappings.length > 0 ? mappings : [{ ...EMPTY_FIELD_MAPPING, id: createStableRowId() }]),
     [mappings]
   );
 
   const commitMappings = useCallback(
-    (next: MappingEntry[]) => {
-      updateConfig((cfg) => ({ ...cfg, mappings: next.length > 0 ? next : undefined }));
+    (next: FieldMappingEntry[]) => {
+      updateConfig((cfg) => ({
+        ...cfg,
+        mappings: next.length > 0 ? ensureStableRowIds(next) : undefined,
+      }));
     },
     [updateConfig]
   );
@@ -76,6 +55,7 @@ export default function FormFieldMapping({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -91,7 +71,7 @@ export default function FormFieldMapping({
   );
 
   const updateMapping = useCallback(
-    (index: number, patch: Partial<MappingEntry>) => {
+    (index: number, patch: Partial<FieldMappingEntry>) => {
       const next = activeMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
       commitMappings(next);
     },
@@ -100,10 +80,9 @@ export default function FormFieldMapping({
 
   const addMappingAfter = useCallback(
     (index: number) => {
-      const hasEmpty = activeMappings.some((m) => !m.source);
-      if (hasEmpty || activeMappings.length >= fieldCompletions.length) return;
+      if (activeMappings.length >= fieldCompletions.length) return;
       const next = [...activeMappings];
-      next.splice(index + 1, 0, { ...DEFAULT_MAPPING });
+      next.splice(index + 1, 0, { ...EMPTY_FIELD_MAPPING, id: createStableRowId() });
       commitMappings(next);
     },
     [activeMappings, fieldCompletions.length, commitMappings]
@@ -115,10 +94,11 @@ export default function FormFieldMapping({
       const source = activeMappings[index];
       const next = [...activeMappings];
       next.splice(index + 1, 0, {
+        id: createStableRowId(),
         source: '',
         targetMode: source.targetMode,
         targetValue: source.targetValue,
-      } as MappingEntry);
+      } as FieldMappingEntry);
       commitMappings(next);
     },
     [activeMappings, fieldCompletions.length, commitMappings]
@@ -144,10 +124,10 @@ export default function FormFieldMapping({
     [tr]
   );
 
-  const columns = useMemo<GlassRowListColumn<MappingEntry>[]>(
+  const columns = useMemo<GlassRowListColumn<FieldMappingEntry>[]>(
     () => [
       {
-        flex: 'flex-[3]',
+        flex: 'flex-[1]',
         header: tr('fieldMappingSourceField'),
         render: (item, i) => {
           const disabledFields = new Set(usedFields);
@@ -156,10 +136,11 @@ export default function FormFieldMapping({
             <GlassFieldSingleSelect
               value={item.source}
               options={fieldCompletions}
+              columnTypes={columnTypes}
               onChange={(value) => updateMapping(i, { source: value })}
               placeholder={tr('fieldMappingSelectField')}
-              searchPlaceholder={tr('searchField')}
-              emptyText={tr('noMatch')}
+              searchPlaceholder={tr('fieldPicker.searchField')}
+              emptyText={tr('fieldPicker.noMatch')}
               disabledOptions={disabledFields}
               className="flex-1 min-w-0 h-7"
             />
@@ -167,19 +148,20 @@ export default function FormFieldMapping({
         },
       },
       {
-        flex: 'flex-[1.5]',
+        flex: 'flex-[1]',
         header: tr('fieldMappingMode'),
         render: (item, i) => (
           <GlassOptionSingleSelect
             value={item.targetMode}
-            onChange={(v) => updateMapping(i, { targetMode: v as MappingEntry['targetMode'] })}
+            onChange={(v) => updateMapping(i, { targetMode: v as FieldMappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}
+            variant="highlight"
             className="h-7 w-full text-[12px]"
           />
         ),
       },
       {
-        flex: 'flex-[2.5]',
+        flex: 'flex-[1]',
         header: tr('fieldMappingValue'),
         render: (item, i) => (
           <GlassFormTextInput
@@ -197,33 +179,32 @@ export default function FormFieldMapping({
         ),
       },
       {
-        flex: 'w-8',
-        header: '',
-        render: () => <div />,
-      },
-      {
-        flex: 'flex-[2]',
+        flex: 'flex-[1]',
         header: tr('fieldMappingTargetField'),
         render: (item, _i) => {
-          const target = computeTarget(item);
+          const target = computeFieldMappingTarget(item);
           return (
-            <span className="truncate text-[12px] text-text-muted" title={target}>
+            <span
+              className="truncate w-full rounded border border-border-subtle/80 bg-surface-hover/45 px-1.5 py-1 text-[12px] text-text-muted"
+              title={target}
+            >
               {target || '—'}
             </span>
           );
         },
       },
     ],
-    [fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
+    [columnTypes, fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
   );
 
   return (
     <div className="flex h-full overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+        <div className="scrollbar-hover flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
           <GlassRowList
-            headerClassName="text-[12px]"
+            headerClassName=""
             items={activeMappings}
+            getKey={(mapping, index) => mapping.id ?? `mapping-${index}`}
             columns={columns}
             actions={['add', 'copy', 'remove']}
             onAdd={addMappingAfter}
@@ -235,16 +216,16 @@ export default function FormFieldMapping({
               action === 'copy'
                 ? activeMappings.length < fieldCompletions.length
                 : action === 'add'
-                  ? !activeMappings.some((m) => !m.source) &&
-                    activeMappings.length < fieldCompletions.length
+                  ? activeMappings.length < fieldCompletions.length
                   : true
             }
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
             getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('dragToReorder')}
+            dragTitle={tr('rowList.dragToReorder')}
           />
         </div>
       </div>

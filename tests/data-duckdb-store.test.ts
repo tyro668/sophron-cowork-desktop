@@ -23,6 +23,102 @@ afterEach(() => {
 });
 
 describe('DuckDB data task store', () => {
+  it('resolves dynamic pivot empty-string names without merging conflicting values', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const sourcePath = path.join(tempRoot, 'pivot-empty.csv');
+    fs.writeFileSync(sourcePath, 'id,amount\n1,10\n2,20\n3,30\n4,40\n', 'utf8');
+
+    const store = createDataTaskStore(dbPath, { now: () => 1_780_000_000_000 });
+    stores.push(store);
+    const task = await store.createTask({ name: 'Dynamic empty pivot', sourcePath });
+    const parsed = parsePrepDsl(`
+      input source task as source
+
+      from source
+        | derive [status] = case when [id] = 1 then "" when [id] = 2 then "empty" when [id] = 3 then "empty_0" else "paid" end
+        | derive [segment] = case when [id] = 1 or [id] = 3 then "east" else "west" end
+        | select [status], [segment], [amount]
+        | pivot on [status], [segment] using sum([amount])
+        | output table "pivot_empty_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const pivotNode = saved.nodes.find((node) => node.type === 'pivot');
+    expect(pivotNode).toBeTruthy();
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: pivotNode!.id,
+      nodeType: pivotNode!.type,
+      nodeConfig: pivotNode!.config,
+    });
+    expect(preview.columns).toHaveLength(8);
+    expect(preview.columns).toEqual(
+      expect.arrayContaining([
+        'empty_1_east_sum_amount',
+        'empty_west_sum_amount',
+        'empty_0_east_sum_amount',
+        'paid_west_sum_amount',
+      ])
+    );
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0]).toMatchObject({
+      empty_1_east_sum_amount: '10',
+      empty_west_sum_amount: '20',
+      empty_0_east_sum_amount: '30',
+      paid_west_sum_amount: '40',
+    });
+  });
+
+  it('executes a dynamic pivot when the resolved input has no rows', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const sourcePath = path.join(tempRoot, 'empty-pivot.csv');
+    fs.writeFileSync(sourcePath, 'region,status,amount\n', 'utf8');
+
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+    const task = await store.createTask({ name: 'Empty dynamic pivot', sourcePath });
+    const parsed = parsePrepDsl(`
+      input source task as source
+
+      from source
+        | pivot on [status] using sum([amount]) group by [region]
+        | output table "empty_pivot_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    const pivotNode = saved.nodes.find((node) => node.type === 'pivot');
+    expect(pivotNode).toBeTruthy();
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: pivotNode!.id,
+      nodeType: pivotNode!.type,
+      nodeConfig: pivotNode!.config,
+    });
+    expect(preview.columns).toEqual(['region']);
+    expect(preview.rows).toEqual([]);
+  });
+
   it('starts without demo tasks or demo datasets', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -161,7 +257,7 @@ describe('DuckDB data task store', () => {
     let activeRuns = 0;
     let maxActiveRuns = 0;
     let callCount = 0;
-    let releaseFirstRun: (() => void) | null = null;
+    let releaseFirstRun!: () => void;
     internals.cleanSourceIntoTaskOutput = async (task) => {
       callCount += 1;
       activeRuns += 1;
@@ -187,7 +283,7 @@ describe('DuckDB data task store', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(callCount).toBe(1);
 
-      releaseFirstRun?.();
+      releaseFirstRun();
       await firstRun;
       await secondRun;
 
@@ -249,6 +345,9 @@ describe('DuckDB data task store', () => {
     });
     expect(imported.sourceKind).toBe('excel');
     expect(imported.inputConfig.sourceKind).toBe('excel');
+    if (imported.inputConfig.sourceKind !== 'excel') {
+      throw new Error('Expected imported input configuration to be Excel');
+    }
     expect(imported.inputConfig.sheetName).toBe('Orders');
     expect(imported.inputConfig.headerMode).toBe('manual');
     expect(imported.inputConfig.headerRow).toBe(2);

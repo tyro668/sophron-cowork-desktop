@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
+import { getOperatorConfigIssue } from '../../src/shared/operator-validation';
+import FormFilter from '../../src/renderer/components/workflow-forms/FormFilter';
+import { incompleteConfigMessageKey } from '../../src/renderer/components/data-view/workflow-config-guards';
+import type { DataWorkflowNode } from '../../src/renderer/types';
 import {
   buildFilterCondition,
   formatFilterConditionValue,
@@ -14,14 +20,26 @@ import {
   addLeafToBranch,
   removeNodeFromBranch,
   updateLeafInBranch,
+  updateBranchInTree,
+  toggleBranchConnectiveInTree,
   wrapItemsInGroup,
   unwrapGroup,
   createEmptyLeaf,
+  firstValidFilterOp,
+  normalizeFilterConditionOps,
+  validFilterOpsForType,
   splitInValues,
   joinInValues,
+  MAX_NESTING_DEPTH,
   type FilterConditionLeaf,
   type FilterConditionBranch,
-} from '../../src/renderer/components/workflow-forms/shared/filter-condition';
+} from '../../src/shared/filter-condition';
+import fs from 'node:fs';
+import path from 'node:path';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -586,6 +604,29 @@ describe('FilterCondition — tree mutation helpers', () => {
     expect(next.items).toHaveLength(1);
   });
 
+  it('removeNodeFromBranch unwraps a nested group after it is reduced to one condition', () => {
+    const retained = leaf('b', '=', '2');
+    const removed = leaf('c', '=', '3');
+    const inner: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'inner',
+      connective: 'or',
+      items: [retained, removed],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [leaf('a', '=', '1'), inner],
+    };
+
+    const next = removeNodeFromBranch(root, removed.id);
+
+    expect(next.items).toHaveLength(2);
+    expect(next.items[1]).toBe(retained);
+    expect(isLeaf(next.items[1])).toBe(true);
+  });
+
   it('updateLeafInBranch patches leaf fields', () => {
     resetNodeIdCounter();
     const l1 = leaf('a', '=', '1');
@@ -602,6 +643,50 @@ describe('FilterCondition — tree mutation helpers', () => {
       expect(updated.op).toBe('>');
       expect(updated.val1).toBe('10');
     }
+  });
+
+  it('updateBranchInTree updates a nested branch without changing its siblings', () => {
+    const sibling = leaf('a', '=', '1');
+    const nested: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'nested',
+      connective: 'and',
+      items: [leaf('b', '=', '2')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [sibling, nested],
+    };
+
+    const next = updateBranchInTree(root, nested.id, (branch) => ({
+      ...branch,
+      items: [...branch.items, leaf('c', '=', '3')],
+    }));
+
+    expect(next.items[0]).toBe(sibling);
+    expect(isBranch(next.items[1]) && next.items[1].items).toHaveLength(2);
+  });
+
+  it('toggleBranchConnectiveInTree toggles only the requested nested branch', () => {
+    const nested: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'nested',
+      connective: 'and',
+      items: [leaf('a', '=', '1')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [nested],
+    };
+
+    const next = toggleBranchConnectiveInTree(root, nested.id);
+
+    expect(next.connective).toBe('and');
+    expect(isBranch(next.items[0]) && next.items[0].connective).toBe('or');
   });
 
   it('wrapItemsInGroup wraps two adjacent leaves into a group', () => {
@@ -1011,23 +1096,44 @@ describe('FilterCondition — addWithConnective logical equivalence', () => {
 
 // ── Source inspection of FormFilter.tsx UI structure ────────────────────
 
-const fs = await import('node:fs');
-const path = await import('node:path');
 const formFilterSource = fs.readFileSync(
   path.resolve(process.cwd(), 'src/renderer/components/workflow-forms/FormFilter.tsx'),
   'utf8'
 );
 
-describe('FormFilter — UI source inspection', () => {
-  it('catches parser failures and renders an inline error', () => {
-    expect(formFilterSource).toContain('function parseFilterConfig(');
-    expect(formFilterSource).toContain('catch (error)');
-    expect(formFilterSource).toContain('role="alert"');
-  });
+const filterOpsSource = fs.readFileSync(
+  path.resolve(process.cwd(), 'src/shared/filter-condition/ops.ts'),
+  'utf8'
+);
 
-  it('does not block graphical edits when a parse error is active', () => {
-    expect(formFilterSource).not.toContain('if (parseError) return;');
-    expect(formFilterSource).not.toMatch(/disabled=\{Boolean\(parseError\)\}/);
+describe('FormFilter — UI source inspection', () => {
+  it('renders parser failures while keeping the graphical add action available', () => {
+    const node: DataWorkflowNode = {
+      id: 'filter-node',
+      taskId: 'task',
+      type: 'filter',
+      label: 'Filter',
+      x: 0,
+      y: 0,
+      config: { condition: '[a] =' },
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    const html = renderToStaticMarkup(
+      React.createElement(FormFilter, {
+        node,
+        fieldCompletions: ['a'],
+        otherNodes: [],
+        onNodeChange: () => undefined,
+      })
+    );
+
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('Invalid filter condition segment');
+    expect(html).toMatch(
+      /<button(?![^>]*disabled)[^>]*>[\s\S]*?data\.workflow\.formLabels\.filter\.filterAddCondition[\s\S]*?<\/button>/
+    );
   });
 
   it('has addWithConnective in LeafRowContext', () => {
@@ -1038,34 +1144,60 @@ describe('FormFilter — UI source inspection', () => {
     expect(formFilterSource).toContain('parentConnective');
   });
 
-  it('AND button has square A icon', () => {
-    expect(formFilterSource).toContain('rounded-sm');
-    expect(formFilterSource).toMatch(/>\s*A\s*<\/span>/);
+  it('AND button has rounded style', () => {
+    expect(formFilterSource).toContain('rounded');
+    expect(formFilterSource).toContain('filterConnectiveAnd');
   });
 
-  it('OR button has circle + icon', () => {
-    expect(formFilterSource).toContain('rounded-full');
-    expect(formFilterSource).toMatch(/>\s*\+\s*<\/span>/);
+  it('OR button has rounded style', () => {
+    expect(formFilterSource).toContain('rounded');
+    expect(formFilterSource).toContain('filterConnectiveOr');
   });
 
-  it('AND button guards mismatched connective + max depth', () => {
-    expect(formFilterSource).toContain("parentConnective !== 'and' && depth >= MAX_NESTING_DEPTH");
+  it('AND is disabled at max depth when it differs from the current group', () => {
+    expect(formFilterSource).toContain(
+      "const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;"
+    );
+    expect(formFilterSource).toContain('if (!canAddAnd) return;');
   });
 
-  it('OR button guards mismatched connective + max depth', () => {
-    expect(formFilterSource).toContain("parentConnective !== 'or' && depth >= MAX_NESTING_DEPTH");
+  it('OR is disabled at max depth when it differs from the current group', () => {
+    expect(formFilterSource).toContain(
+      "const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;"
+    );
+    expect(formFilterSource).toContain('if (!canAddOr) return;');
   });
 
-  it('MAX_NESTING_DEPTH is imported from shared filter-condition', () => {
+  it('limits graphical condition groups to root plus one nested group', () => {
+    expect(MAX_NESTING_DEPTH).toBe(1);
     expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
   });
 
-  it('single-item branch passes depth through unchanged', () => {
-    expect(formFilterSource).toContain('item.items.length > 1 ? depth + 1 : depth');
+  it('counts every nested branch as one visual tree level', () => {
+    expect(formFilterSource).toContain('depth={depth + 1}');
+    expect(formFilterSource).not.toContain('item.items.length > 1 ? depth + 1 : depth');
   });
 
   it('addAfterAndGroup accepts connective parameter', () => {
     expect(formFilterSource).toContain("connective: FilterConditionConnective = 'and'");
+  });
+
+  it('adds a sibling when the requested connective matches the current group', () => {
+    expect(formFilterSource).toMatch(
+      /if \(targetConnective === parentConnective\) \{\s*addAfter\(branchId, afterIndex\);\s*return;\s*\}/
+    );
+  });
+
+  it('creates a child group when the requested connective differs from the current group', () => {
+    expect(formFilterSource).toMatch(
+      /if \(depth < MAX_NESTING_DEPTH\) \{\s*addAfterAndGroup\(branchId, leafId, afterIndex, targetConnective\);\s*\}/
+    );
+    expect(formFilterSource).not.toContain('addSiblingWithConnective');
+  });
+
+  it('does not escape to the ancestor group after reaching max depth', () => {
+    expect(formFilterSource).not.toContain('ancestorBranchId');
+    expect(formFilterSource).not.toContain('ancestorConnective');
   });
 
   it('delete button still present', () => {
@@ -1075,18 +1207,57 @@ describe('FormFilter — UI source inspection', () => {
 
   it('imports MAX_NESTING_DEPTH from shared module', () => {
     expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
-    expect(formFilterSource).toContain("from './shared/filter-condition'");
+    expect(formFilterSource).toContain("from '../../../shared/filter-condition'");
   });
 
   it('no longer imports Layers icon', () => {
     expect(formFilterSource).not.toContain('Layers');
   });
 
+  it('renders logical nodes and orthogonal tree connectors only for multi-item groups', () => {
+    expect(formFilterSource).toContain('if (itemCount === 1)');
+    expect(formFilterSource).toContain('grid-cols-[36px_minmax(0,1fr)]');
+    expect(formFilterSource).toContain('i < itemCount - 1');
+    expect(formFilterSource).toContain('border-l border-text-secondary/55');
+    expect(formFilterSource).toContain('border-t border-text-secondary/55');
+    expect(formFilterSource).not.toContain('ResizeObserver');
+    expect(formFilterSource).not.toContain('diagLines');
+    expect(formFilterSource).not.toContain('<svg');
+    expect(formFilterSource).not.toContain('pl-[56px]');
+  });
+
+  it('owns a global vertical scrollbar like other operator forms', () => {
+    expect(formFilterSource).toContain('flex h-full min-h-0 overflow-hidden');
+    expect(formFilterSource).toContain('scrollbar-hover');
+    expect(formFilterSource).toContain('flex-1 overflow-y-auto');
+    // The root must not rely on the host panel's own scroll (double scrollbar).
+    expect(formFilterSource).not.toContain('grid content-start gap-2.5 min-w-0');
+  });
+
+  it('uses stable columns so value variants do not shift row actions', () => {
+    expect(formFilterSource).toContain(
+      'grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_40px_40px_28px]'
+    );
+    expect(formFilterSource).toContain('className="!w-full"');
+  });
+
   it('passes column types into the condition tree builder', () => {
     expect(formFilterSource).toContain('const columnTypesRef = useRef(columnTypes);');
     expect(formFilterSource).toContain('columnTypesRef.current = columnTypes;');
-    expect(formFilterSource).toMatch(/buildFilterConditionTree\(root, columnTypesRef\.current\)/);
     expect(formFilterSource).toMatch(/buildFilterConditionTree\(next, columnTypesRef\.current\)/);
+    expect(formFilterSource).not.toMatch(
+      /buildFilterConditionTree\(root, columnTypesRef\.current\)/
+    );
+  });
+
+  it('guards external config sync so local write-back and column-type refreshes never clobber edits', () => {
+    expect(formFilterSource).toContain('lastSyncedConfigRef');
+    expect(formFilterSource).toContain('useRef<string | undefined>(');
+    expect(formFilterSource).toContain('incoming === lastSyncedConfigRef.current');
+    expect(formFilterSource).toContain('lastSyncedConfigRef.current = incoming;');
+    // The old round-trip comparison that could reparse on column-type drift
+    // must be gone.
+    expect(formFilterSource).not.toContain('(fromTree || undefined) === (fromConfig || undefined)');
   });
 
   it('does not auto-fetch value suggestions on mount', () => {
@@ -1103,24 +1274,38 @@ describe('FormFilter — UI source inspection', () => {
 
   it('resets the operator to a value valid for the new field type on field switch', () => {
     expect(formFilterSource).toMatch(
-      /newValidOps = flattenOps\(operatorsForType\(ctx\.columnTypes\[v\]\)\)\.map\(/
+      /const nextOp = validFilterOpsForType\(ctx\.columnTypes\[v\]\)\.includes\(leaf\.op\)/
     );
-    expect(formFilterSource).toMatch(/newValidOps\.includes\(leaf\.op\) \? leaf\.op : '='/);
+    expect(formFilterSource).toMatch(/: firstValidFilterOp\(ctx\.columnTypes\[v\]\);/);
     expect(formFilterSource).not.toMatch(/updateLeaf\(leaf\.id, \{ field: v, op: effectiveOp \}\)/);
   });
 
   it('renders empty values without falling back to stale val1 after clear', () => {
+    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
     expect(formFilterSource).toMatch(
+      /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
+    );
+    // The multi-value input must not carry a `value`/`onChange` pair that could
+    // fall back to a stale comma-joined val1 after values are cleared.
+    expect(formFilterSource).not.toMatch(
       /joinInValues\(leaf\.values \?\? splitInValues\(leaf\.val1\)\)/
     );
-    expect(formFilterSource).toMatch(
+    expect(formFilterSource).not.toMatch(
       /onChange=\{\(v\) => ctx\.updateLeaf\(leaf\.id, \{ values: splitInValues\(v\), val1: v \}\)\}/
     );
   });
 
+  it('passes structured multi-values to avoid splitting values that contain commas', () => {
+    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
+    expect(formFilterSource).toMatch(
+      /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
+    );
+  });
+
   it('offers is null / is not null operators and hides the value input for them', () => {
-    expect(formFilterSource).toContain("value: 'is null'");
-    expect(formFilterSource).toContain("value: 'is not null'");
+    // op values live in shared/filter-condition/ops since the type-compatibility refactor
+    expect(filterOpsSource).toContain("value: 'is null'");
+    expect(filterOpsSource).toContain("value: 'is not null'");
     expect(formFilterSource).toMatch(
       /isNullOp = effectiveOp === 'is null' \|\| effectiveOp === 'is not null'/
     );
@@ -1137,15 +1322,33 @@ const glassValueInputSource = fs.readFileSync(
 
 describe('GlassValueInput — single-value input survives remount', () => {
   it('initializes single-value input from the value prop', () => {
-    expect(glassValueInputSource).toContain("useState(multi ? '' : value)");
+    expect(glassValueInputSource).toContain("useState<string>(multi ? '' : (value ?? '')");
   });
 
   it('syncs inputText from the value prop when it changes externally', () => {
-    expect(glassValueInputSource).toContain('if (!multi) setInputText(value);');
+    expect(glassValueInputSource).toContain("if (!multi) setInputText(value ?? '');");
+  });
+
+  it('commits single-value input on blur without delayed timeout races', () => {
+    expect(glassValueInputSource).toContain('function commitSingleValue()');
+    expect(glassValueInputSource).toContain('onBlur={multi ? undefined : commitSingleValue}');
+    expect(glassValueInputSource).not.toContain('setTimeout(() => onChange(inputText)');
   });
 
   it('drives multi-value tags from the value prop', () => {
-    expect(glassValueInputSource).toContain('splitInValues(value)');
+    expect(glassValueInputSource).toContain("splitInValues(value ?? '')");
+  });
+
+  it('can drive multi-value tags from a structured values prop', () => {
+    expect(glassValueInputSource).toContain('values?: string[];');
+    expect(glassValueInputSource).toContain('onValuesChange?: (values: string[]) => void;');
+    expect(glassValueInputSource).toContain("values ?? splitInValues(value ?? '')");
+  });
+
+  it('uses the compact hover scrollbar for overflowing multi-value tags', () => {
+    expect(glassValueInputSource).toContain(
+      'scrollbar-hover items-end overflow-x-auto overflow-y-hidden'
+    );
   });
 
   it('exposes an onOpen callback triggered once when the dropdown opens', () => {
@@ -1169,18 +1372,24 @@ describe('GlassValueInput — single-value input survives remount', () => {
 
 // ── Empty-config gating (aligned with sort) ─────────────────────────────
 
-const dataTasksSource = fs.readFileSync(
-  path.resolve(process.cwd(), 'src/renderer/components/data-view/data-tasks.tsx'),
-  'utf8'
-);
-
 describe('FormFilter — empty-config run is blocked', () => {
-  it('defines hasInvalidFilterConfig and blocks empty conditions', () => {
-    expect(dataTasksSource).toContain('function hasInvalidFilterConfig(');
-    expect(dataTasksSource).toContain("node.type !== 'filter'");
-    expect(dataTasksSource).toContain("typeof node.config.condition === 'string'");
-    expect(dataTasksSource).toContain('condition.length === 0');
-    expect(dataTasksSource).toContain('filterIncompleteField');
+  it('maps an empty condition through the shared validator to the renderer message key', () => {
+    const node: DataWorkflowNode = {
+      id: 'filter-node',
+      taskId: 'task',
+      type: 'filter',
+      label: 'Filter',
+      x: 0,
+      y: 0,
+      config: { condition: '' },
+      createdAt: 0,
+      updatedAt: 0,
+    };
+
+    expect(getOperatorConfigIssue(node)).toEqual({ code: 'filter_incomplete_field' });
+    expect(incompleteConfigMessageKey(node)).toBe(
+      'data.workflow.formLabels.filter.filterIncompleteField'
+    );
   });
 });
 
@@ -1208,5 +1417,62 @@ describe('Filter — null operator i18n keys', () => {
     expect(flat).toContain('filterOpIsNotNull');
     expect(flat).toContain('noMatchValue');
     expect(flat).toContain('loadingValues');
+  });
+});
+
+// ── Op/type compatibility + normalization (shared/filter-condition/ops) ──
+
+describe('filter op type compatibility', () => {
+  it('restricts text columns to string-safe operators', () => {
+    const ops = validFilterOpsForType('text');
+    expect(ops).toContain('=');
+    expect(ops).toContain('like');
+    expect(ops).toContain('begin');
+    expect(ops).not.toContain('>');
+    expect(ops).not.toContain('between');
+  });
+
+  it('restricts boolean columns to equality and null checks', () => {
+    expect(validFilterOpsForType('boolean')).toEqual(['=', 'is null', 'is not null']);
+  });
+
+  it('allows the full operator set for unknown and numeric types', () => {
+    for (const type of [undefined, 'integer', 'decimal'] as const) {
+      const ops = validFilterOpsForType(type as string | undefined);
+      expect(ops).toContain('between');
+      expect(ops).toContain('>');
+    }
+  });
+
+  it('normalizes ops that the column type no longer supports', () => {
+    const branch = {
+      kind: 'branch',
+      id: 'b',
+      connective: 'and',
+      items: [
+        { kind: 'leaf', id: 'l1', field: 'amount', op: 'like', val1: '', val2: '' },
+        { kind: 'leaf', id: 'l2', field: 'name', op: 'like', val1: 'x', val2: '' },
+      ],
+    } as unknown as FilterConditionBranch;
+    const { next, changed } = normalizeFilterConditionOps(branch, {
+      amount: 'integer',
+      name: 'text',
+    });
+    expect(changed).toBe(true);
+    const leaves = next.items.filter(isLeaf);
+    expect(leaves.find((l) => l.id === 'l1')?.op).toBe(firstValidFilterOp('integer'));
+    expect(leaves.find((l) => l.id === 'l2')?.op).toBe('like');
+  });
+
+  it('leaves the tree untouched when every op is valid', () => {
+    const branch = {
+      kind: 'branch',
+      id: 'b',
+      connective: 'and',
+      items: [{ kind: 'leaf', id: 'l1', field: 'name', op: 'like', val1: '', val2: '' }],
+    } as unknown as FilterConditionBranch;
+    const { next, changed } = normalizeFilterConditionOps(branch, { name: 'text' });
+    expect(changed).toBe(false);
+    expect(next).toBe(branch);
   });
 });

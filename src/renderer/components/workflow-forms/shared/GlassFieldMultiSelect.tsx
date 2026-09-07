@@ -4,6 +4,7 @@ import { useFormTranslation } from '../../../hooks/useFormTranslation';
 
 import { Search } from 'lucide-react';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
+import { DataTypeIcon } from './DataTypeIcon';
 
 export type SelectionMode = 'single' | 'multi';
 
@@ -15,6 +16,8 @@ export interface GlassFieldMultiSelectProps {
   maxHeight?: string;
   selectionMode?: SelectionMode;
   variant?: 'flat' | 'glass';
+  className?: string;
+  searchBordered?: boolean;
   itemExtras?: (column: string) => ReactNode;
   columnLabel?: (column: string) => string;
 }
@@ -27,10 +30,12 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   maxHeight = '160px',
   selectionMode = 'multi',
   variant = 'flat',
+  className = '',
+  searchBordered = false,
   itemExtras,
   columnLabel,
 }: GlassFieldMultiSelectProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldPicker');
   const dataTypeLabel = useDataFieldTypeLabel();
 
   const [search, setSearch] = useState('');
@@ -89,9 +94,19 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
       if (type.toLowerCase().includes(lower)) return true;
       return dataTypeLabel(type).toLowerCase().includes(lower);
     });
-  }, [columns, columnTypes, search]);
+  }, [columns, columnTypes, dataTypeLabel, search]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.includes(c));
+  const someFilteredSelected = filtered.some((c) => selected.includes(c));
+  const selectAllIndeterminate = someFilteredSelected && !allFilteredSelected;
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectAllIndeterminate;
+    }
+  }, [selectAllIndeterminate]);
 
   const isGlass = variant === 'glass';
 
@@ -123,15 +138,15 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   return (
     <div
       className={`flex min-h-0 flex-col rounded-lg border ${
-        isGlass
-          ? 'border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl'
-          : 'border-border-muted bg-background/60'
-      }`}
+        isGlass ? 'border-border-subtle bg-background/48' : 'border-border-muted bg-background/60'
+      } ${className}`}
     >
       <div
-        className={`flex items-center border-b border-border-subtle px-2.5 py-1 ${
-          isGlass ? 'gap-1.5' : 'gap-2'
-        }`}
+        className={`flex min-h-9 items-center px-2.5 py-1 ${
+          searchBordered
+            ? 'mb-2 rounded-md border border-border-muted bg-background/60'
+            : 'border-b border-border-subtle'
+        } ${isGlass ? 'gap-1.5' : 'gap-2'}`}
       >
         <Search
           className={`flex-shrink-0 text-text-muted ${isGlass ? 'h-3 w-3' : 'h-3.5 w-3.5'}`}
@@ -141,13 +156,13 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tr('searchField')}
-          className={`${isGlass ? 'h-6' : 'h-5'} min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted`}
+          className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
         />
         {selectionMode === 'multi' && (
           <label
             className={`flex shrink-0 cursor-pointer items-center gap-1 ${
               isGlass
-                ? 'text-[11px] text-text-muted hover:text-text-secondary'
+                ? 'text-[12px] text-text-muted hover:text-text-secondary'
                 : 'text-[12px] text-text-secondary font-medium'
             }`}
             onMouseDown={(e) => {
@@ -156,19 +171,20 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             }}
           >
             <input
+              ref={selectAllRef}
               type="checkbox"
               checked={allFilteredSelected}
               onChange={toggleAll}
               className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
             />
-            {allFilteredSelected ? tr('deselectAll') : tr('selectAll')}
+            {tr('selectAll')}
           </label>
         )}
       </div>
 
       <div
         ref={listRef}
-        className={`overflow-y-auto [overflow-anchor:none] ${isGlass ? '' : 'flex-1 min-h-0'}`}
+        className={`scrollbar-hover overflow-y-auto ${isGlass ? '' : 'flex-1 min-h-0'}`}
         style={{ maxHeight }}
       >
         {filtered.length === 0 ? (
@@ -183,8 +199,8 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             return (
               <label
                 key={col}
-                className={`flex cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
-                  isGlass ? 'py-1.5 text-[12px]' : 'py-[4px] text-[13px]'
+                className={`flex min-h-7 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
+                  isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
                 } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -198,17 +214,9 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
                   onChange={() => selectItem(col)}
                   className="h-3.5 w-3.5 flex-shrink-0 accent-accent"
                 />
+                <DataTypeIcon type={columnTypes?.[col]} />
                 <span className="flex-1 min-w-0 truncate">{columnLabel?.(col) ?? col}</span>
                 {itemExtras?.(col)}
-                {columnTypes?.[col] && (
-                  <span
-                    className={`flex-shrink-0 text-[11px] text-text-muted tabular-nums ${
-                      isGlass ? '' : 'w-14 text-right'
-                    }`}
-                  >
-                    {dataTypeLabel(columnTypes[col])}
-                  </span>
-                )}
               </label>
             );
           })

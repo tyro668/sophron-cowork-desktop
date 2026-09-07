@@ -1,0 +1,18 @@
+export type DataWorkflowOperatorType =
+  | 'input_source'
+  | 'filter'
+  | 'field_select'
+  | 'deduplicate'
+  | 'missing_value'
+  | 'type_convert'
+  | 'sort'
+  | 'join'
+  | 'aggregate'
+  | 'calculate_field'
+  | 'field_mapping'
+  | 'limit'
+  | 'pivot'
+  | 'unpivot'
+  | 'set_op'
+  | 'unnest'
+  | 'output';

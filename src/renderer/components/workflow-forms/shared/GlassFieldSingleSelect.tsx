@@ -2,29 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
-import { dataFieldTypeLabel } from '@/shared/data-field-types';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
-import { useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
+import { DataTypeIcon } from './DataTypeIcon';
+import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 
 function extractFieldName(value: string): string {
   return parseFieldRef(value)?.name ?? value;
-}
-
-function calcMaxOptionWidth(options: string[], columnTypes: Record<string, string>): number {
-  const el = document.createElement('span');
-  el.style.cssText =
-    'position:fixed;visibility:hidden;white-space:nowrap;font-size:12px;line-height:1.4;padding:0 2px;font-family:inherit';
-  document.body.appendChild(el);
-  let max = 0;
-  for (const opt of options) {
-    const name = extractFieldName(opt);
-    const type = columnTypes[opt] ? `  ${dataFieldTypeLabel(columnTypes[opt])}` : '';
-    el.textContent = name + type;
-    max = Math.max(max, el.offsetWidth);
-  }
-  document.body.removeChild(el);
-  return max + 48;
 }
 
 interface GlassFieldSingleSelectProps {
@@ -51,7 +36,7 @@ export function GlassFieldSingleSelect({
   emptyText,
   disabledOptions,
   className,
-  showType = false,
+  showType = true,
   displayLabel,
 }: GlassFieldSingleSelectProps) {
   const { t } = useTranslation();
@@ -81,12 +66,14 @@ export function GlassFieldSingleSelect({
       if (!type) return false;
       return dataTypeLabel(type).toLowerCase().includes(lower);
     });
-  }, [options, search, columnTypes]);
+  }, [columnTypes, dataTypeLabel, options, search]);
 
   const selectedIndex = useMemo(
     () => filteredOptions.findIndex((opt) => opt === value),
     [filteredOptions, value]
   );
+
+  const optionTexts = useMemo(() => options.map(extractFieldName), [options]);
 
   useEffect(() => {
     setHighlightedIndex(Math.max(0, selectedIndex));
@@ -95,16 +82,18 @@ export function GlassFieldSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const contentWidth = calcMaxOptionWidth(options, columnTypes);
+    const contentWidth = measureMaxTextWidth(optionTexts);
+    const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
+    const placement = computeDropdownPlacement(rect);
+    setMaxHeight(placement.maxHeight);
     setPosition({
       left: rect.left,
-      top: rect.bottom + 2,
+      top: placement.top,
+      bottom: placement.bottom,
       width: rect.width,
-      minWidth: Math.max(rect.width, contentWidth),
+      ...dropdownWidth,
     });
-    const spaceBelow = window.innerHeight - rect.bottom - 4;
-    setMaxHeight(Math.min(240, Math.max(100, spaceBelow)));
-  }, [options, columnTypes, triggerRef, setPosition, setMaxHeight]);
+  }, [optionTexts, triggerRef, setPosition, setMaxHeight]);
 
   const handleClose = useCallback(() => {
     close();
@@ -112,6 +101,9 @@ export function GlassFieldSingleSelect({
   }, [close]);
 
   const handleOpen = useCallback(() => {
+    // The hook's outside-click/resize close bypasses handleClose, so stale
+    // search text must be cleared here to avoid reopening with a hidden filter.
+    setSearch('');
     updatePosition();
     setOpen(true);
   }, [updatePosition, setOpen]);
@@ -125,13 +117,6 @@ export function GlassFieldSingleSelect({
     },
     [disabledOptions, onChange, handleClose, triggerRef]
   );
-
-  // Close on window resize to avoid stale positioning
-  useEffect(() => {
-    if (!open) return;
-    window.addEventListener('resize', handleClose);
-    return () => window.removeEventListener('resize', handleClose);
-  }, [open, handleClose]);
 
   // Focus search input on open
   useEffect(() => {
@@ -147,7 +132,7 @@ export function GlassFieldSingleSelect({
       `[data-index="${highlightedIndex}"]`
     ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, open]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   const handleTriggerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -182,7 +167,7 @@ export function GlassFieldSingleSelect({
         if (opt) handleSelect(opt);
       }
     },
-    [filteredOptions, highlightedIndex, handleSelect, handleClose]
+    [filteredOptions, highlightedIndex, handleSelect, handleClose, triggerRef]
   );
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,27 +198,23 @@ export function GlassFieldSingleSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex h-6 min-w-0 items-center gap-1 rounded border px-1.5 text-[12px] outline-none transition-colors',
-          'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus:border-accent',
+          'inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
+          'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
       >
-        <span className="flex-1 text-center truncate">
-          {value ? (
-            showType && columnTypes[value] ? (
-              <>
-                {displayLabel || value}
-                <span className="ml-1 text-[11px] text-text-muted">
-                  ({dataTypeLabel(columnTypes[value])})
-                </span>
-              </>
-            ) : (
-              displayLabel || value
-            )
+        {value ? (
+          showType ? (
+            <>
+              <DataTypeIcon type={columnTypes[value]} />
+              <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+            </>
           ) : (
-            <span className="text-text-muted">{placeholder}</span>
-          )}
-        </span>
+            <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+          )
+        ) : (
+          <span className="flex-1 min-w-0 truncate text-left text-text-muted">{placeholder}</span>
+        )}
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
@@ -249,30 +230,34 @@ export function GlassFieldSingleSelect({
             aria-label={placeholder}
             style={{
               left: position.left,
-              top: position.top,
+              top: position.top ?? undefined,
+              bottom: position.bottom ?? undefined,
               width: position.width,
               minWidth: position.minWidth,
+              maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
+            className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
-            <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
-              <Search className="h-3 w-3 flex-shrink-0 text-text-muted" />
+            <div className="flex min-h-9 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
                 type="text"
                 value={search}
                 onChange={handleSearchChange}
                 placeholder={searchPlaceholder}
-                className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+                className="h-7 flex-1 min-w-0 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
               />
             </div>
 
-            <div className="flex-1 overflow-y-auto p-1">
+            <div className="scrollbar-hover flex-1 overflow-y-auto p-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
                   {emptyText ||
-                    t('data.workflow.formLabels.noMatch', { defaultValue: '无匹配字段' })}
+                    t('data.workflow.formLabels.fieldPicker.noMatch', {
+                      defaultValue: '无匹配字段',
+                    })}
                 </div>
               ) : (
                 filteredOptions.map((opt, idx) => {
@@ -290,7 +275,7 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] outline-none transition-colors',
+                        'flex min-h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
                           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',
@@ -300,12 +285,8 @@ export function GlassFieldSingleSelect({
                           : '',
                       ].join(' ')}
                     >
+                      <DataTypeIcon type={columnTypes[opt]} />
                       <span className="min-w-0 flex-1 truncate">{optLabel}</span>
-                      {columnTypes[opt] && (
-                        <span className="flex-shrink-0 text-[11px] text-text-muted tabular-nums">
-                          {dataTypeLabel(columnTypes[opt])}
-                        </span>
-                      )}
                     </button>
                   );
                 })

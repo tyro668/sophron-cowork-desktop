@@ -9,6 +9,7 @@ interface UseColumnValuesInput {
 export interface WorkflowNodeColumnValuesResult {
   values: string[];
   loading: boolean;
+  loaded: boolean;
   error: boolean;
   reload: () => void;
 }
@@ -35,6 +36,7 @@ export function useWorkflowNodeColumnValues({
 }: UseColumnValuesInput): WorkflowNodeColumnValuesResult {
   const [values, setValues] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [queryToken, setQueryToken] = useState(0);
 
@@ -50,8 +52,9 @@ export function useWorkflowNodeColumnValues({
   useEffect(() => {
     setValues([]);
     setLoading(false);
+    setLoaded(false);
     setError(false);
-  }, [column]);
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, column]);
 
   // 查询只由 reload()（queryToken）驱动；queryToken === 0 表示尚未发起过查询（懒加载）。
   useEffect(() => {
@@ -66,12 +69,14 @@ export function useWorkflowNodeColumnValues({
     if (!api?.getWorkflowNodeColumnValues) {
       setValues([]);
       setLoading(false);
+      setLoaded(false);
       setError(true);
       return;
     }
     let cancelled = false;
     setValues([]);
     setLoading(true);
+    setLoaded(false);
     setError(false);
     api
       .getWorkflowNodeColumnValues({
@@ -85,12 +90,14 @@ export function useWorkflowNodeColumnValues({
         if (cancelled) return;
         setValues(result);
         setLoading(false);
+        setLoaded(true);
       })
       .catch(() => {
         if (cancelled) return;
         setValues([]);
         setError(true);
         setLoading(false);
+        setLoaded(false);
       });
     return () => {
       cancelled = true;
@@ -99,5 +106,5 @@ export function useWorkflowNodeColumnValues({
 
   const reload = useCallback(() => setQueryToken((token) => token + 1), []);
 
-  return { values, loading, error, reload };
+  return { values, loading, loaded, error, reload };
 }

@@ -1,11 +1,28 @@
 import { z } from 'zod';
-import { ConditionSchema, ConflictSchema, KeepItemSchema, nonEmptyTrimmed } from './common';
+import {
+  ConditionSchema,
+  ConflictSchema,
+  KeepItemSchema,
+  MAX_ROW_ID_LENGTH,
+  nonEmptyTrimmed,
+} from './common';
 
-const JoinConditionSchema = ConditionSchema.extend({
+export const MAX_JOIN_CONDITION_COUNT = 100;
+
+export const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
 });
 
 export const ASOF_TOLERANCE_PATTERN = /^(?:\d+(?:\.\d+)?(?:ms|[dhms]))+$/;
+
+export type JoinCondition = z.infer<typeof JoinConditionSchema>;
+export interface DurationParts {
+  d: number;
+  h: number;
+  m: number;
+  s: number;
+  ms: number;
+}
 
 export function isValidAsofTolerance(value: string): boolean {
   return ASOF_TOLERANCE_PATTERN.test(value.trim());
@@ -25,19 +42,21 @@ export const AsofConfigSchema = z.object({
   by: z
     .array(
       z.object({
+        id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
         left: nonEmptyTrimmed('left field is required'),
         right: nonEmptyTrimmed('right field is required'),
       })
     )
+    .max(MAX_JOIN_CONDITION_COUNT)
     .optional(),
 });
 
-export const JoinConfigSchema = z
+const JoinConfigObjectSchema = z
   .object({
     joinType: z
       .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
       .default('left'),
-    conditions: z.array(JoinConditionSchema).optional(),
+    conditions: z.array(JoinConditionSchema).max(MAX_JOIN_CONDITION_COUNT).optional(),
     conflict: ConflictSchema.optional(),
     keep: z.array(KeepItemSchema).default([]),
     asof: AsofConfigSchema.optional(),
@@ -47,14 +66,14 @@ export const JoinConfigSchema = z
     if (data.joinType === 'semi' || data.joinType === 'anti') {
       if (data.keep && data.keep.length > 0) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Semi/Anti join outputs all left columns and does not support keep',
           path: ['keep'],
         });
       }
       if (data.conflict) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Semi/Anti join does not support conflict resolution',
           path: ['conflict'],
         });
@@ -62,7 +81,7 @@ export const JoinConfigSchema = z
     }
     if (data.conflict?.strategy === 'right_prefix' && !(data.conflict.rightPrefix ?? '').trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'right_prefix strategy requires a non-empty prefix',
         path: ['conflict', 'rightPrefix'],
       });
@@ -73,7 +92,7 @@ export const JoinConfigSchema = z
       (!data.conditions || data.conditions.length === 0)
     ) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Non-cross join requires at least one condition',
         path: ['conditions'],
       });
@@ -82,14 +101,14 @@ export const JoinConfigSchema = z
       const asof = data.asof;
       if (!asof || !asof.leftTime || !asof.rightTime) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'ASOF join requires leftTime and rightTime',
           path: ['asof'],
         });
       }
       if (asof?.operator === 'nearest' && !asof?.tolerance) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'ASOF nearest requires tolerance',
           path: ['asof', 'tolerance'],
         });
@@ -97,7 +116,15 @@ export const JoinConfigSchema = z
     }
   });
 
-function msToParts(ms: number): { d: number; h: number; m: number; s: number; ms: number } {
+export const JoinConfigSchema = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const config = { ...(value as Record<string, unknown>) };
+  if (config.joinType === 'asof') delete config.conditions;
+  else delete config.asof;
+  return config;
+}, JoinConfigObjectSchema);
+
+function msToParts(ms: number): DurationParts {
   let r = ms;
   const d = Math.floor(r / 86_400_000);
   r -= d * 86_400_000;
@@ -110,13 +137,7 @@ function msToParts(ms: number): { d: number; h: number; m: number; s: number; ms
   return { d, h, m, s, ms: r };
 }
 
-export function parseDuration(value: string): {
-  d: number;
-  h: number;
-  m: number;
-  s: number;
-  ms: number;
-} {
+export function parseDuration(value: string): DurationParts {
   if (!value) return { d: 0, h: 0, m: 0, s: 0, ms: 0 };
   if (/^\d+$/.test(value)) return msToParts(Number(value));
   let totalMs = 0;

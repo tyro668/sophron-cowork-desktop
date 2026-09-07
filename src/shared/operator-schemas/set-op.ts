@@ -9,8 +9,8 @@ export const SetOpConfigSchema = z.object({
   operation: z.enum(['union', 'intersect', 'except']).default(DEFAULT_OPERATION),
   mode: z.enum(['all', 'distinct']).default(DEFAULT_MODE),
   match: z.enum(['by_name', 'by_position']).default(DEFAULT_MATCH),
-  rightInput: z.string().optional(),
-  keep: z.array(z.object({}).passthrough()).default([]),
+  rightInput: z.string().trim().min(1),
+  keep: z.array(z.looseObject({})).default([]),
   conflict: ConflictSchema.optional(),
   rightAlias: z.string().optional(),
 });

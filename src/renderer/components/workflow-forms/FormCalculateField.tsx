@@ -1,42 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassRadioSelect } from './shared/GlassRadioSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import { canAppendRow, insertRowAfter } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { useDragReorder } from '../../hooks/useDragReorder';
 import {
   createCalculationRow,
-  exprFromParts,
-  FN_ARG_SPEC,
-  TIME_WINDOW_DEFS,
-  needsCalculationIdNormalization,
   normalizeCalculationEntries,
   type CalculationConfigEntry,
   type CalculationRow,
-} from './shared/calculate-field';
-import { SCENARIO_OPTIONS, FUNCTION_CATEGORIES, parseBound } from './calculate-field/index';
-import { isTemporalDataFieldType } from '@/shared/data-field-types';
-import { GlassPartitionConfig } from './calculate-field/partition';
-import { GlassOrderByConfig } from './calculate-field/order-by';
-import { GlassWindowFrameConfig } from './calculate-field/window-frame';
-import { GlassTimeIntelConfig } from './calculate-field/time-intel';
+} from '../../../shared/calculate-field';
+import { MAX_CALCULATION_COUNT } from '../../../shared/operator-schemas';
 
-const EXCLUDE_ROW_FUNCTIONS = ['calcFieldCategoryWindow', 'calcFieldCategoryAggregate'];
-
-const SCENARIO_DEFAULT_FN: Record<string, string> = {
-  group_metrics: 'sum',
-  ranking: 'row_number',
-  cumulative: 'sum',
-  offset: 'lag',
-  moving_window: 'sum',
-  period_compare: 'period_yoy_value',
-};
+function persistableCalculation(row: CalculationRow): CalculationConfigEntry {
+  return {
+    id: row.id,
+    field: row.field,
+    expression: row.expression,
+    action: row.action,
+  };
+}
 
 export default function FormCalculateField({
   node,
@@ -45,247 +35,139 @@ export default function FormCalculateField({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('calculateField');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
-
-  const rawCalculations = useMemo(
-    () => (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [],
-    [node.config.calculations]
-  );
-  const [localItems, setLocalItems] = useState<CalculationRow[]>(() =>
-    normalizeCalculationEntries(rawCalculations)
-  );
-  const needsNormalization = useMemo(
-    () => needsCalculationIdNormalization(rawCalculations),
-    [rawCalculations]
+  const calculations = useMemo(() => {
+    const configuredCalculations =
+      (node.config.calculations as CalculationConfigEntry[] | undefined) ?? [];
+    const normalized = normalizeCalculationEntries(configuredCalculations, fieldCompletions);
+    return normalized.length > 0 ? normalized : [createCalculationRow()];
+  }, [fieldCompletions, node.config.calculations]);
+  const sourceFieldNames = useMemo(
+    () => new Set(fieldCompletions.map((field) => field.toLowerCase())),
+    [fieldCompletions]
   );
 
-  const savedMode = node.config?._activeMode;
-  const [activeMode, setActiveMode] = useState<'row' | 'cross'>(
-    savedMode === 'row' || savedMode === 'cross' ? savedMode : 'row'
-  );
-  const savedScenario = node.config?._activeScenario;
-  const [activeScenario, setActiveScenario] = useState<string>(
-    typeof savedScenario === 'string' && savedScenario ? savedScenario : 'group_metrics'
-  );
-
-  const storeCalculations = useCallback(
+  const commitCalculations = useCallback(
     (next: CalculationRow[]) => {
-      const toPersist = next.filter((i) =>
-        activeMode === 'row'
-          ? i.type === 'row'
-          : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
-      );
       updateConfig((cfg) => ({
         ...cfg,
-        calculations: toPersist.length > 0 ? toPersist : undefined,
-        _activeMode: activeMode,
-        _activeScenario: activeScenario,
+        calculations: next.length > 0 ? next.map(persistableCalculation) : undefined,
       }));
     },
-    [updateConfig, activeMode, activeScenario]
+    [updateConfig]
   );
 
-  const isMounted = useRef(false);
+  const {
+    activeItems: activeCalculations,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    handleKeyboardMove,
+    isDragging,
+    resetDrag,
+    dragIndexRef,
+  } = useDragReorder(calculations, commitCalculations);
 
   useEffect(() => {
-    if (isMounted.current) return;
-    isMounted.current = true;
-    if (activeMode === 'cross') {
-      const hasItems = localItems.some(
-        (i) => i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
-      );
-      if (!hasItems) {
-        updateItem(0, { fn: SCENARIO_DEFAULT_FN[activeScenario] || 'sum' });
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isDragging) resetDrag();
+  }, [calculations, isDragging, resetDrag]);
 
-  useEffect(() => {
-    const toPersist = localItems.filter((i) =>
-      activeMode === 'row'
-        ? i.type === 'row'
-        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
+  function updateCalculation(index: number, patch: Partial<CalculationRow>): void {
+    commitCalculations(
+      activeCalculations.map((calculation, currentIndex) =>
+        currentIndex === index ? { ...calculation, ...patch } : calculation
+      )
     );
-    updateConfig((cfg) => ({
-      ...cfg,
-      calculations: toPersist.length > 0 ? toPersist : undefined,
-      _activeMode: activeMode,
-      _activeScenario: activeScenario,
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMode, activeScenario]);
-
-  useEffect(() => {
-    if (!needsNormalization) return;
-    const persisted = normalizeCalculationEntries(rawCalculations);
-    if (persisted.length > 0) storeCalculations(persisted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsNormalization]);
-
-  const visibleItems = useMemo(() => {
-    const filtered = localItems.filter((i) =>
-      activeMode === 'row'
-        ? i.type === 'row'
-        : i.type !== 'row' && (i.scenario || activeScenario) === activeScenario
-    );
-    if (filtered.length > 0) return [filtered[0]];
-    if (activeMode === 'row') return [createCalculationRow()];
-    return [
-      { ...createCalculationRow(), type: 'cross' as const, scenario: activeScenario },
-    ] as CalculationRow[];
-  }, [localItems, activeMode, activeScenario]);
-
-  function toBackingIndex(visibleIndex: number): number {
-    let count = 0;
-    for (let i = 0; i < localItems.length; i++) {
-      const match =
-        activeMode === 'row'
-          ? localItems[i].type === 'row'
-          : localItems[i].type !== 'row' &&
-            (localItems[i].scenario || activeScenario) === activeScenario;
-      if (match) {
-        if (count === visibleIndex) return i;
-        count++;
-      }
-    }
-    return -1;
   }
 
-  const handleChange = useCallback(
-    (next: CalculationRow[]) => {
-      const normalized = normalizeCalculationEntries(next);
-      setLocalItems(normalized);
-      storeCalculations(normalized);
-    },
-    [storeCalculations]
-  );
-
-  function validateFrameBounds(
-    frameStart: string | undefined,
-    frameEnd: string | undefined
-  ): { frameStart: string; frameEnd: string } | null {
-    if (!frameStart || !frameEnd) return null;
-    const s = parseBound(frameStart);
-    const e = parseBound(frameEnd);
-    function boundOrderRank(type: string, value: number | null): number {
-      switch (type) {
-        case 'unbounded preceding':
-          return Number.MIN_SAFE_INTEGER;
-        case 'n_preceding':
-          return -(value ?? 1);
-        case 'current row':
-          return 0;
-        case 'n_following':
-          return value ?? 1;
-        case 'unbounded following':
-          return Number.MAX_SAFE_INTEGER;
-        default:
-          return Number.MIN_SAFE_INTEGER;
-      }
-    }
-    if (boundOrderRank(s.type, s.value) > boundOrderRank(e.type, e.value)) {
-      return { frameStart: frameEnd, frameEnd: frameStart };
-    }
-    return null;
+  function updateCalculationAction(index: number, action: CalculationRow['action']): void {
+    const calculation = activeCalculations[index];
+    const targetIsInputField = calculation
+      ? sourceFieldNames.has(calculation.field.toLowerCase())
+      : false;
+    const targetIsIncompatible =
+      (action === 'replace' && !targetIsInputField) || (action === 'add' && targetIsInputField);
+    updateCalculation(index, {
+      action,
+      ...(targetIsIncompatible ? { field: '' } : {}),
+    });
   }
 
-  function applyFrameDefaults(item: CalculationRow, scenario: string): void {
-    if (scenario === 'cumulative') {
-      item.frameType = 'rows';
-      item.frameStart = 'unbounded preceding';
-      item.frameEnd = 'current row';
-    }
-    const validated = validateFrameBounds(item.frameStart, item.frameEnd);
-    if (validated) {
-      item.frameStart = validated.frameStart;
-      item.frameEnd = validated.frameEnd;
-    }
+  function addCalculation(index: number): void {
+    if (!canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)) return;
+    commitCalculations(insertRowAfter(activeCalculations, index, createCalculationRow()));
   }
 
-  function updateItem(visibleIndex: number, patch: Partial<CalculationRow>) {
-    const bi = toBackingIndex(visibleIndex);
-    if (bi === -1) {
-      const entry = {
-        ...createCalculationRow(),
-        type: activeMode,
-        scenario: activeMode === 'cross' ? activeScenario : undefined,
-        ...patch,
-      };
-      if (entry.type !== 'row') {
-        applyFrameDefaults(entry, activeScenario);
-        entry.expression = exprFromParts(entry);
-      }
-      handleChange([...localItems, entry]);
+  function copyCalculation(index: number): void {
+    if (!canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)) return;
+    const source = activeCalculations[index];
+    const copy = { ...source, id: createCalculationRow().id, field: '' };
+    commitCalculations(insertRowAfter(activeCalculations, index, copy));
+  }
+
+  function removeCalculation(index: number): void {
+    if (activeCalculations.length <= 1) {
+      commitCalculations([]);
       return;
     }
-    handleChange(
-      localItems.map((item, i) => {
-        if (i !== bi) return item;
-        const updated = { ...item, ...patch };
-        if (updated.type !== 'row') {
-          applyFrameDefaults(updated, activeScenario);
-          updated.expression = exprFromParts(updated);
-        }
-        return updated;
-      })
-    );
+    commitCalculations(activeCalculations.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  const [partitionOpen, setPartitionOpen] = useState<Record<number, boolean>>({});
-  const [orderOpen, setOrderOpen] = useState<Record<number, boolean>>({});
-  const lastPartitionByRef = useRef<Record<string, string[] | undefined>>({});
+  const actionOptions = [
+    { value: 'add', label: tr('calcFieldActionAdd') },
+    { value: 'replace', label: tr('calcFieldActionReplace') },
+  ];
 
-  function rowColumns() {
-    const actionOptions = [
-      { value: 'add', label: tr('calcFieldActionAdd') },
-      { value: 'replace', label: tr('calcFieldActionReplace') },
-    ];
-
-    const insertModeCol: GlassRowListColumn<CalculationRow> = {
+  const columns: GlassRowListColumn<CalculationRow>[] = [
+    {
       flex: 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => (
+      header: tr('calcFieldActionHeader'),
+      render: (calculation, index) => (
         <GlassOptionSingleSelect
-          value={item.action || 'add'}
+          value={calculation.action ?? 'add'}
           groups={[{ key: 'action', items: actionOptions }]}
-          onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
-          className="h-7 text-[12px] [&>span]:text-left w-full"
+          onChange={(action) => updateCalculationAction(index, action as CalculationRow['action'])}
+          variant="highlight"
+          className="h-7 w-full text-[12px] [&>span]:text-left"
         />
       ),
-    };
-    const targetFieldCol: GlassRowListColumn<CalculationRow> = {
+    },
+    {
       flex: 'flex-[1]',
-      header: '',
-      render: (item: CalculationRow, index: number) => {
-        const fieldConflict =
-          item.action === 'add' && item.field && fieldCompletions.includes(item.field);
+      header: tr('calcFieldTargetField'),
+      render: (calculation, index) => {
+        const hasAddConflict =
+          calculation.action !== 'replace' &&
+          Boolean(calculation.field) &&
+          sourceFieldNames.has(calculation.field.toLowerCase());
         return (
-          <div className="flex items-center gap-1 w-full">
-            {item.action === 'replace' ? (
+          <div className="flex w-full items-center gap-1">
+            {calculation.action === 'replace' ? (
               <GlassFieldSingleSelect
-                value={fieldCompletions.includes(item.field) ? item.field : ''}
+                value={fieldCompletions.includes(calculation.field) ? calculation.field : ''}
                 options={fieldCompletions}
                 columnTypes={columnTypes}
-                onChange={(v) => updateItem(index, { field: v })}
+                showType
+                onChange={(field) => updateCalculation(index, { field })}
                 placeholder={tr('calcFieldSelectPlaceholder')}
                 className="h-7 w-full text-[12px]"
               />
             ) : (
               <div className="relative w-full">
                 <GlassFormTextInput
-                  value={item.field}
-                  onChange={(v) => updateItem(index, { field: v })}
+                  value={calculation.field}
+                  onChange={(field) => updateCalculation(index, { field })}
                   placeholder={tr('calcFieldTargetPlaceholder')}
-                  className="!h-7 w-full rounded-md pr-6 px-1.5 text-[12px] shadow-none focus:ring-0"
+                  className="!h-7 w-full rounded-md px-1.5 pr-6 text-[12px] shadow-none focus:ring-0"
                 />
-                {fieldConflict && (
-                  <span className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex group">
+                {hasAddConflict && (
+                  <span className="group absolute right-1 top-1/2 inline-flex -translate-y-1/2">
                     <AlertCircle className="h-4 w-4 text-error" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
+                    <span className="invisible absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error opacity-0 shadow-elevated backdrop-blur-xl transition-opacity group-hover:visible group-hover:opacity-100">
                       {tr('calcFieldConflictWarning')}
-                    </div>
+                    </span>
                   </span>
                 )}
               </div>
@@ -293,360 +175,47 @@ export default function FormCalculateField({
           </div>
         );
       },
-    };
-
-    return [
-      { ...insertModeCol, flex: 'flex-[1]', header: tr('calcFieldActionHeader') },
-      { ...targetFieldCol, flex: 'flex-[2]', header: tr('calcFieldTargetField') },
-      {
-        flex: 'flex-[4]',
-        header: tr('calcFieldExpressionLabel'),
-        render: (item: CalculationRow, index: number) => (
-          <GlassExpressionInput
-            value={item.expression}
-            onChange={(v) =>
-              updateItem(index, {
-                expression: v,
-                ...(v && item.type === 'row' ? { type: 'row' as const } : {}),
-              })
-            }
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            placeholder={tr('calcFieldExpressionPlaceholder')}
-            excludeFunctionCategories={EXCLUDE_ROW_FUNCTIONS}
-          />
-        ),
-      },
-    ];
-  }
-
-  function renderCrossLayout(item: CalculationRow, index: number, scenario: string) {
-    const defaultFn = SCENARIO_DEFAULT_FN[scenario] || 'sum';
-    const currentFn = item.fn || defaultFn;
-    const specs = FN_ARG_SPEC[currentFn] || FN_ARG_SPEC['*'];
-    const isPartition = item.partitionBy !== undefined;
-    const ordOpen = orderOpen[index];
-    const timePrefix = Object.keys(TIME_WINDOW_DEFS).find((p) => currentFn.startsWith(p + '_'));
-    const currentTimeWindow = timePrefix || 'ytd';
-    const currentTimeAgg = timePrefix ? currentFn.slice(timePrefix.length + 1) : 'sum';
-    const timeDef = TIME_WINDOW_DEFS[currentTimeWindow];
-    const timeFieldValue = item.orderBy?.[0]?.field ?? '';
-
-    const FN_ARG2_DEFAULTS: Record<string, string> = {
-      ntile: '4',
-      nth_value: '2',
-      quantile_cont: '0.5',
-      lag: '1',
-      lead: '1',
-      offset_diff: '1',
-      offset_rate: '1',
-    };
-
-    const FN_ARG2_LABELS: Record<string, string> = {
-      ntile_fnArg: tr('calcFieldPlaceholderBuckets'),
-      nth_value_fnArg2: tr('calcFieldPlaceholderNth'),
-      quantile_cont_fnArg2: tr('calcFieldPlaceholderQuantile'),
-      lag_fnArg2: tr('calcFieldPlaceholderOffset'),
-      lead_fnArg2: tr('calcFieldPlaceholderOffset'),
-      offset_diff_fnArg2: tr('calcFieldPlaceholderOffset'),
-      offset_rate_fnArg2: tr('calcFieldPlaceholderOffset'),
-      string_agg_fnArg2: tr('calcFieldPlaceholderDelimiter'),
-    };
-
-    const fnGroupOptions = (FUNCTION_CATEGORIES[scenario] || []).map((cat) => ({
-      key: cat.key,
-      header: tr(cat.header),
-      items: cat.items.map((f) => ({
-        value: f,
-        label: tr('calcFieldFn_' + f),
-      })),
-    }));
-
-    const actionOptions = [
-      { value: 'add', label: tr('calcFieldActionAdd') },
-      { value: 'replace', label: tr('calcFieldActionReplace') },
-    ];
-
-    const showOrderBy =
-      scenario === 'ranking' ||
-      scenario === 'cumulative' ||
-      scenario === 'offset' ||
-      scenario === 'moving_window';
-
-    const isPeriodCompare = scenario === 'period_compare';
-    const isTimeIntel = scenario === 'time_intel';
-
-    return (
-      <div className="flex flex-col gap-3">
-        {/* Row 0: 计算类别 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldScenarioLabel')}
-            </span>
-            <GlassOptionSingleSelect
-              value={activeScenario}
-              groups={[
-                {
-                  key: 'scenario',
-                  items: SCENARIO_OPTIONS.map((s) => ({
-                    value: s.value,
-                    label: tr(s.key),
-                  })),
-                },
-              ]}
-              onChange={(v) => setActiveScenario(v)}
-              className="h-7 text-[12px] w-28"
-            />
-          </div>
-          <span className="text-[10px] text-text-muted">{tr(scenario + 'Hint')}</span>
-        </div>
-
-        {/* Row 1: 插入模式 + 目标字段 */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldActionHeader')}
-            </span>
-            <GlassOptionSingleSelect
-              value={item.action || 'add'}
-              groups={[{ key: 'action', items: actionOptions }]}
-              onChange={(v) => updateItem(index, { action: v as 'add' | 'replace' })}
-              className="h-7 text-[12px] w-28"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-              {tr('calcFieldTargetField')}
-            </span>
-            <div className="flex items-center gap-1">
-              <div className="w-36">
-                {item.action === 'replace' ? (
-                  <GlassFieldSingleSelect
-                    value={fieldCompletions.includes(item.field) ? item.field : ''}
-                    options={fieldCompletions}
-                    columnTypes={columnTypes}
-                    onChange={(v) => updateItem(index, { field: v })}
-                    placeholder={tr('calcFieldSelectPlaceholder')}
-                    className="h-7 w-full text-[12px]"
-                  />
-                ) : (
-                  <GlassFormTextInput
-                    value={item.field}
-                    onChange={(v) => updateItem(index, { field: v })}
-                    placeholder={tr('calcFieldTargetPlaceholder')}
-                    className="h-7 w-full rounded-md px-1.5 text-[12px] shadow-none focus:ring-0"
-                  />
-                )}
-              </div>
-              {item.action === 'add' && item.field && fieldCompletions.includes(item.field) && (
-                <span className="relative inline-flex group shrink-0">
-                  <AlertCircle className="h-4 w-4 text-error cursor-pointer" />
-                  <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error shadow-elevated backdrop-blur-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity pointer-events-none">
-                    {tr('calcFieldConflictWarning')}
-                  </div>
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: 计算函数 */}
-        {isTimeIntel ? (
-          <GlassTimeIntelConfig
-            item={item}
-            index={index}
-            updateItem={updateItem}
-            tr={tr}
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            currentTimeWindow={currentTimeWindow}
-            currentTimeAgg={currentTimeAgg}
-            timeDef={timeDef}
-            timeFieldValue={timeFieldValue}
-          />
-        ) : (
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                {tr('calcFieldFunction')}
-              </span>
-              <GlassOptionSingleSelect
-                value={currentFn}
-                groups={fnGroupOptions}
-                onChange={(v) => {
-                  const defaultVal = FN_ARG2_DEFAULTS[v];
-                  const patch: Partial<CalculationRow> = { fn: v };
-                  if (defaultVal !== undefined && !item.fnArg2) patch.fnArg2 = defaultVal;
-                  updateItem(index, patch);
-                }}
-                className="h-7 text-[12px] w-28"
-              />
-            </div>
-            {specs.map((s) => (
-              <div key={s.key} className="flex items-center gap-2">
-                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                  {s.type === 'field'
-                    ? tr('calcFieldFnArg')
-                    : FN_ARG2_LABELS[currentFn + '_' + s.key] || tr('calcFieldFnArgConst')}
-                </span>
-                <div className={s.type === 'field' ? 'w-36' : 'w-28'}>
-                  {s.type === 'field' ? (
-                    <GlassFieldSingleSelect
-                      value={item[s.key] ?? ''}
-                      options={fieldCompletions}
-                      columnTypes={columnTypes}
-                      onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
-                      placeholder={tr('calcFieldFnArgPlaceholder')}
-                      className="h-7 w-full text-[12px]"
-                    />
-                  ) : (
-                    <GlassFormTextInput
-                      inputMode={s.type === 'text' ? undefined : 'numeric'}
-                      value={item[s.key] ?? ''}
-                      onChange={(v) => updateItem(index, { [s.key]: v } as Partial<CalculationRow>)}
-                      placeholder={
-                        FN_ARG2_LABELS[currentFn + '_' + s.key] ||
-                        tr('calcFieldFnArgNumPlaceholder')
-                      }
-                      className="h-7 rounded-md px-1.5 text-[12px] w-full"
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
-            {isPeriodCompare && (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-muted shrink-0 w-16 h-7 leading-7">
-                  {tr('calcFieldRefField')}
-                </span>
-                <GlassFieldSingleSelect
-                  value={item.orderBy?.[0]?.field ?? ''}
-                  options={fieldCompletions.filter((c) => isTemporalDataFieldType(columnTypes[c]))}
-                  columnTypes={columnTypes}
-                  onChange={(v) =>
-                    updateItem(index, { orderBy: v ? [{ field: v, direction: 'asc' }] : undefined })
-                  }
-                  placeholder={tr('calcFieldDatePlaceholder')}
-                  className="h-7 w-28 text-[12px]"
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Row 3: 分区范围 */}
-        <GlassPartitionConfig
-          item={item}
-          index={index}
-          updateItem={updateItem}
-          tr={tr}
+    },
+    {
+      flex: 'flex-[2]',
+      header: tr('calcFieldExpressionLabel'),
+      render: (calculation, index) => (
+        <CalculateFieldExpressionInput
+          value={calculation.expression}
+          onChange={(expression) => updateCalculation(index, { expression })}
           fieldCompletions={fieldCompletions}
           columnTypes={columnTypes}
-          scenario={scenario}
-          isPartition={isPartition}
-          partitionOpen={partitionOpen}
-          setPartitionOpen={setPartitionOpen}
-          lastPartitionByRef={lastPartitionByRef}
+          placeholder={tr('expression.expressionPlaceholder')}
         />
-
-        {/* Row 4: 排序字段 */}
-        {showOrderBy && (
-          <GlassOrderByConfig
-            item={item}
-            index={index}
-            updateItem={updateItem}
-            tr={tr}
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            ordOpen={ordOpen}
-            setOrderOpen={setOrderOpen}
-          />
-        )}
-
-        {/* Row 5: 窗口帧 */}
-        {scenario === 'moving_window' && (
-          <GlassWindowFrameConfig
-            item={item}
-            index={index}
-            updateItem={updateItem}
-            tr={tr}
-            columnTypes={columnTypes}
-          />
-        )}
-      </div>
-    );
-  }
+      ),
+    },
+  ];
 
   return (
-    <div className="flex gap-2.5 h-full min-h-0">
-      <div className="flex-[1] rounded-lg border border-border-muted bg-background/42 content-start">
-        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5">
-          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-            1
-          </span>
-          <div className="grid">
-            <span className="text-[13px] font-semibold text-text-primary">
-              {tr('calcFieldModeHeader')}
-            </span>
-            <span className="text-[10px] text-text-muted">{tr('calcFieldModeHint')}</span>
-          </div>
-        </div>
-        <div className="px-3 pb-3 flex flex-col gap-1.5">
-          <GlassRadioSelect
-            value={activeMode}
-            options={[
-              {
-                value: 'row',
-                label: tr('calcFieldModeRow'),
-                tip: tr('calcFieldModeRowTip'),
-              },
-              {
-                value: 'cross',
-                label: tr('calcFieldModeCross'),
-                tip: tr('calcFieldModeCrossTip'),
-              },
-            ]}
-            onChange={(v) => setActiveMode(v as 'row' | 'cross')}
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="scrollbar-hover flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
+          <GlassRowList
+            headerClassName=""
+            items={activeCalculations}
+            getKey={(calculation) => calculation.id}
+            columns={columns}
+            actions={['add', 'copy', 'remove']}
+            onAdd={addCalculation}
+            onCopy={copyCalculation}
+            onRemove={removeCalculation}
+            canAct={(action) =>
+              (action !== 'add' && action !== 'copy') ||
+              canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
+            }
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+            dragTitle={tr('rowList.dragToReorder')}
           />
-        </div>
-      </div>
-      <div className="flex-[4] rounded-lg border border-border-muted bg-background/42 content-start overflow-hidden flex flex-col">
-        <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
-          <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-            2
-          </span>
-          <div className="flex items-start gap-2 min-w-0 flex-1">
-            <div className="grid min-w-0 flex-1">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('calcFieldConfigHeader')}
-              </span>
-              {activeMode === 'row' && (
-                <span className="text-[10px] text-text-muted">{tr('calcFieldConfigHintRow')}</span>
-              )}
-              {activeMode === 'cross' && (
-                <span className="text-[10px] text-text-muted">
-                  {tr('calcFieldConfigHintCross')}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="px-3 pb-3 overflow-y-auto flex-1 min-h-0">
-          {activeMode === 'row' ? (
-            <GlassRowList
-              headerClassName="text-[12px]"
-              items={visibleItems as CalculationRow[]}
-              columns={rowColumns()}
-              onAdd={() => {}}
-              onRemove={() => {}}
-              addTitle=""
-              removeTitle=""
-              actions={[]}
-            />
-          ) : (
-            renderCrossLayout(visibleItems[0], 0, activeScenario)
-          )}
         </div>
       </div>
     </div>

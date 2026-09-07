@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
-import { useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
+import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 
 function flattenItems(groups: GlassOptionGroup[]): GlassOptionItem[] {
   const result: GlassOptionItem[] = [];
@@ -22,6 +23,7 @@ interface GlassOptionGroup {
 interface GlassOptionItem {
   value: string;
   label: string;
+  title?: string;
 }
 
 interface GlassOptionSingleSelectProps {
@@ -31,6 +33,7 @@ interface GlassOptionSingleSelectProps {
   disabled?: boolean;
   className?: string;
   placeholder?: string;
+  variant?: 'default' | 'highlight' | 'muted';
 }
 
 export function GlassOptionSingleSelect({
@@ -40,6 +43,7 @@ export function GlassOptionSingleSelect({
   onChange,
   className,
   placeholder,
+  variant = 'default',
 }: GlassOptionSingleSelectProps) {
   const {
     open,
@@ -68,19 +72,18 @@ export function GlassOptionSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const spaceBelow = window.innerHeight - rect.bottom - 4;
-    const spaceAbove = rect.top - 4;
-    const MIN_DROP = 140;
-    const preferDown = spaceBelow >= MIN_DROP;
-    const maxAvail = Math.min(240, Math.max(100, preferDown ? spaceBelow : spaceAbove));
-    setMaxHeight(maxAvail);
+    const contentWidth = measureMaxTextWidth(flattenedItems.map((item) => item.label));
+    const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
+    const placement = computeDropdownPlacement(rect);
+    setMaxHeight(placement.maxHeight);
     setPosition({
       left: rect.left,
-      top: preferDown ? rect.bottom + 2 : undefined,
-      bottom: preferDown ? undefined : window.innerHeight - rect.top + 2,
+      top: placement.top,
+      bottom: placement.bottom,
       width: rect.width,
+      ...dropdownWidth,
     });
-  }, [triggerRef, setPosition, setMaxHeight]);
+  }, [flattenedItems, triggerRef, setPosition, setMaxHeight]);
 
   const toggleOpen = useCallback(() => {
     if (open) {
@@ -112,7 +115,7 @@ export function GlassOptionSingleSelect({
         if (open) close();
       }
     },
-    [open, highlightedIndex, toggleOpen, close]
+    [close, dropdownRef, highlightedIndex, open, toggleOpen]
   );
 
   const handleDropdownKeyDown = useCallback(
@@ -139,7 +142,7 @@ export function GlassOptionSingleSelect({
         }
       }
     },
-    [flattenedItems, highlightedIndex, onChange, close]
+    [close, flattenedItems, highlightedIndex, onChange, triggerRef]
   );
 
   // Scroll highlighted item into view
@@ -149,7 +152,7 @@ export function GlassOptionSingleSelect({
       `[data-index="${highlightedIndex}"]`
     ) as HTMLElement | null;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [highlightedIndex, open]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   // Focus highlighted option on open so keyboard navigation works immediately
   useEffect(() => {
@@ -161,7 +164,7 @@ export function GlassOptionSingleSelect({
       el?.focus();
     }, 0);
     return () => window.clearTimeout(id);
-  }, [open, highlightedIndex]);
+  }, [dropdownRef, highlightedIndex, open]);
 
   return (
     <>
@@ -171,9 +174,15 @@ export function GlassOptionSingleSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
-        className={`flex items-center rounded border border-border-muted bg-background/42 text-text-secondary outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ''}`}
+        className={`flex min-h-7 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
+          variant === 'highlight'
+            ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
+            : variant === 'muted'
+              ? 'border-border-subtle/80 bg-surface-hover/45 text-text-secondary'
+              : 'border-border-muted bg-background/42 text-text-secondary'
+        } ${className ?? ''}`}
       >
-        <span className="flex-1 px-2 text-center whitespace-nowrap truncate">
+        <span className="flex-1 truncate whitespace-nowrap px-2 text-left">
           {value ? (
             selectedLabel
           ) : placeholder ? (
@@ -199,9 +208,11 @@ export function GlassOptionSingleSelect({
               top: position.top ?? undefined,
               bottom: position.bottom ?? undefined,
               width: position.width,
+              minWidth: position.minWidth,
+              maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
           >
             {groups.map((g, gi) => (
               <div key={g.key}>
@@ -209,7 +220,7 @@ export function GlassOptionSingleSelect({
                   <div className="mx-3 my-0.5 border-t border-border-muted" />
                 )}
                 {g.header && (
-                  <div className="px-3 py-1 text-[10px] font-medium text-text-muted uppercase">
+                  <div className="px-3 py-1.5 text-[12px] font-medium text-text-muted uppercase">
                     {g.header}
                   </div>
                 )}
@@ -223,8 +234,9 @@ export function GlassOptionSingleSelect({
                       type="button"
                       role="option"
                       aria-selected={selected}
+                      title={o.title}
                       data-index={globalIdx}
-                      className={`w-full whitespace-nowrap px-3 py-1.5 text-center text-[12px] transition-colors ${
+                      className={`min-h-7 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'

@@ -1,7 +1,7 @@
 import { quoteIdentifier } from './utils';
 import { compileScalarExpression } from './compute';
 import { CalculateFieldConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
-import { exprFromParts, type CalculationRow } from '../../../shared/calculate-field/index';
+import { expandCalculationDomainExpression } from '../../../shared/calculate-field/domain-dsl';
 
 export function compileCalculateFieldSql(
   output: string,
@@ -13,24 +13,36 @@ export function compileCalculateFieldSql(
   const replaces: string[] = [];
   const additions: string[] = [];
   const existingColumns = new Set(inputColumns.map((column) => column.toLowerCase()));
+  const generatedFields = new Set<string>();
   for (const calculation of calculations) {
     if (!calculation.field?.trim()) continue;
-    let expr: string;
-    if (calculation.type !== 'row' && calculation.fn?.trim()) {
-      expr = exprFromParts(calculation as CalculationRow);
-    } else {
-      if (!calculation.expression?.trim()) continue;
-      expr = calculation.expression;
+    const field = calculation.field.trim();
+    const normalizedField = field.toLowerCase();
+    if (generatedFields.has(normalizedField)) {
+      throw new Error(`Calculate field target '${field}' is configured more than once`);
     }
-    const compiled = `${compileScalarExpression(expr)} AS ${quoteIdentifier(calculation.field)}`;
-    if (
-      calculation.action === 'replace' ||
-      existingColumns.has(calculation.field.trim().toLowerCase())
-    ) {
+    const expression = calculation.expression.trim();
+    if (!expression) continue;
+    const expanded = expandCalculationDomainExpression(expression);
+    const compiledExpression = compileScalarExpression(expanded);
+    const compiled = `${compiledExpression} AS ${quoteIdentifier(field)}`;
+    const fieldExists = existingColumns.has(normalizedField);
+    if (calculation.action === 'replace') {
+      if (!fieldExists) {
+        throw new Error(`Calculate field replacement target '${field}' does not exist`);
+      }
+      replaces.push(compiled);
+    } else if (calculation.action === 'add') {
+      if (fieldExists) {
+        throw new Error(`Calculate field addition target '${field}' already exists`);
+      }
+      additions.push(compiled);
+    } else if (fieldExists) {
       replaces.push(compiled);
     } else {
       additions.push(compiled);
     }
+    generatedFields.add(normalizedField);
   }
   let sql = `CREATE TEMP TABLE ${output} AS SELECT *`;
   if (replaces.length > 0) sql += ` REPLACE (${replaces.join(', ')})`;

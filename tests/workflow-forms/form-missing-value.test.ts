@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { normalizeMissingValueMethods } from '../../src/shared/operator-config';
+import type { MissingValueRule } from '../../src/shared/operator-schemas/missing-value';
 
 function ok(config: Record<string, unknown>) {
   const type = 'missing_value' as const;
@@ -256,8 +258,24 @@ describe('FormMissingValue — config ↔ DSL', () => {
       )
     );
     expect(source).not.toContain('disabled={!item.column}');
-    expect(source).toContain('if (!colType)');
-    expect(source).toContain('...STATISTICAL_METHODS, ...MODE_METHODS');
+    expect(source).toContain('methodsForMissingValueType(colType)');
+    expect(source).toContain('STATISTICAL_METHODS');
+    expect(source).toContain('MODE_METHODS');
+  });
+
+  it('assigns stable rule ids before rendering legacy rules', async () => {
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile(
+        new URL(
+          '../../src/renderer/components/workflow-forms/FormMissingValue.tsx',
+          import.meta.url
+        ),
+        'utf8'
+      )
+    );
+
+    expect(source).toContain('ensureStableRowIds(configuredRules)');
+    expect(source).toContain('ensureStableRowIds(items)');
   });
 
   it('derives all-null condition from legacy drop_empty_rows graphical config', async () => {
@@ -392,5 +410,43 @@ describe('FormMissingValue — DSL idempotent', () => {
       });
       expect(dsl2).toBe(dsl1);
     }
+  });
+});
+
+// ── method/type compatibility normalization ──────────────────────────────
+
+describe('normalizeMissingValueMethods', () => {
+  const asRules = (rules: Array<{ id: string; column: string; method: string }>) =>
+    rules as MissingValueRule[];
+
+  it('resets methods the column type no longer supports', () => {
+    const rules = asRules([
+      { id: 'r1', column: 'amount', method: 'mean_fill' },
+      { id: 'r2', column: 'name', method: 'median_fill' },
+    ]);
+    const { rules: next, changed } = normalizeMissingValueMethods(rules, {
+      amount: 'text',
+      name: 'text',
+    });
+    expect(changed).toBe(true);
+    // text columns do not support mean/median fills; first allowed method is 'skip'
+    expect(next[0].method).toBe('skip');
+    expect(next[1].method).toBe('skip');
+  });
+
+  it('keeps rules whose methods stay valid for the column type', () => {
+    const rules = asRules([
+      { id: 'r1', column: 'amount', method: 'mean_fill' },
+      { id: 'r2', column: 'name', method: 'skip' },
+    ]);
+    const { rules: next, changed } = normalizeMissingValueMethods(rules, { name: 'text' });
+    expect(changed).toBe(false);
+    expect(next).toBe(rules);
+  });
+
+  it('ignores rules whose column has no known type yet', () => {
+    const rules = asRules([{ id: 'r1', column: 'amount', method: 'mean_fill' }]);
+    const { changed } = normalizeMissingValueMethods(rules, {});
+    expect(changed).toBe(false);
   });
 });

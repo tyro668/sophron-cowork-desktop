@@ -150,10 +150,13 @@ describe('FormLimit — new features', () => {
     expect(r.dsl).not.toContain('system');
   });
 
-  it('limit 0 produces limit 0 DSL', () => {
-    const r = ok({ mode: 'fixed', limit: 0, unit: 'rows' });
-    expect(r.dsl).toContain('limit 0');
-    expect(r.config.limit).toBe(0);
+  it('rejects a zero limit', () => {
+    expect(exportPrepOperatorDsl({ id: 'limit-zero', type: 'limit', config: { limit: 0 } })).toBe(
+      ''
+    );
+    expect(parsePrepOperatorDsl('limit 0', 'limit').diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidLimit' })])
+    );
   });
 
   it('percent + orderBy + ties preserves the percent unit', () => {
@@ -196,13 +199,19 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('GlassSortKeyEditor');
   });
 
-  it('no longer imports GlassRadioSelect (sidebar removed)', () => {
-    expect(limitSource).not.toContain('GlassRadioSelect');
+  it('uses GlassRadioSelect for the mode sidebar', () => {
+    expect(limitSource).toContain('import { GlassRadioSelect }');
+    expect(limitSource).toContain('<GlassRadioSelect');
+    expect(limitSource).toContain('w-[180px]');
   });
 
-  it('mode uses GlassOperatorSelect (single-column layout)', () => {
-    expect(limitSource).toContain('<GlassOptionSingleSelect');
+  it('mode selection is separate from the detail controls', () => {
     expect(limitSource).toContain("'limitMode'");
+    expect(limitSource).toContain('onChange={setMode}');
+  });
+
+  it('clears the persisted limit when the quantity input is cleared', () => {
+    expect(limitSource).toContain('updateConfig((cfg) => ({ ...cfg, limit: undefined }))');
   });
 
   it('sort field tag-input has direction toggles (↑↓)', () => {
@@ -232,19 +241,14 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
   });
 
-  it('mode select width is w-28', () => {
-    const modeSelect = limitSource.match(/className="h-7 text-\[12px\] w-28"/);
-    expect(modeSelect).not.toBeNull();
-  });
-
-  it('quantity, unit, offset/seed controls all w-28', () => {
-    const w28Controls = limitSource.match(/w-28/g);
-    // Mode select + quantity + unit + offset/seed + group range select = at least 5
-    expect(w28Controls!.length).toBeGreaterThanOrEqual(5);
+  it('all quantity/unit/offset/seed/method controls use the standard width w-60', () => {
+    const w60Controls = limitSource.match(/w-60/g);
+    expect(w60Controls!.length).toBe(5);
+    expect(limitSource).not.toMatch(/w-28/);
   });
 
   it('only shows system and bernoulli methods for percentage sampling', () => {
-    expect(limitSource).toContain('{isRandomMode && !isRows && (');
+    expect(limitSource).toContain('{!isRows && (');
   });
 
   it('sort tags use compact padding (px-1)', () => {

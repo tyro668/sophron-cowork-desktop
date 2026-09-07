@@ -51,7 +51,7 @@ coverage/
 *.pem
 *.p12
 
-# Claude 
+# Claude
 .claude/*
 !.claude/skills/
 CLAUDE.md
@@ -60,6 +60,7 @@ AGENTS.md
 
 # codex
 .codex/*
+.codex-tmp/
 .cowork-user-data/
 
 dist*
@@ -69,6 +70,8 @@ resources/python
 docs/*
 !docs/development/
 !docs/development/**
+/docs/Review/
+/docs/feature/
 /.mcp.json
 /eng.traineddata
 /jpn.traineddata
@@ -84,6 +87,8 @@ vendor/
 
 # Design drafts
 workflow-form-design/
+docs/development/operator-ui-audit.md
+docs/development/operator-ui-typography-migration.md
 
 # Temp work products
 progress.md
@@ -101,6 +106,7 @@ DEV_LOG.md
 
 # Agents
 .agents/
+.opencode/
 
 # Build cache
 .build-cache/

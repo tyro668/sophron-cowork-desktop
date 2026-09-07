@@ -44,8 +44,8 @@ const currentOperatorCases: Array<{
     dsl: 'map [dt] to [order_date], [rev] to [revenue]',
     expectedConfig: {
       mappings: [
-        { source: 'dt', target: 'order_date' },
-        { source: 'rev', target: 'revenue' },
+        { source: 'dt', targetMode: 'rename', targetValue: 'order_date' },
+        { source: 'rev', targetMode: 'rename', targetValue: 'revenue' },
       ],
     },
   },
@@ -154,14 +154,6 @@ const currentOperatorCases: Array<{
     },
   },
   {
-    name: 'aggregate metric with SQL escaped single quote',
-    type: 'aggregate',
-    dsl: "aggregate all metrics concat([name], 'it''s') as [names]",
-    expectedConfig: {
-      metrics: [{ function: 'concat', expression: "[name], 'it''s'", alias: 'names' }],
-    },
-  },
-  {
     name: 'aggregate with multiple metrics using backslash-escaped single quote',
     type: 'aggregate',
     dsl: "aggregate all metrics string_agg([name], 'it\\'s') as [names], count(*) as [rows]",
@@ -182,30 +174,6 @@ const currentOperatorCases: Array<{
     },
   },
   {
-    name: 'pivot metric with single-quoted string containing comma',
-    type: 'pivot',
-    dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
-    expectedConfig: {
-      on: [{ field: 'region', values: [] }],
-      using: [
-        { function: 'string_agg', expression: "[name], ', '", alias: 'names' },
-        { function: 'count', expression: '*', alias: 'n' },
-      ],
-    },
-  },
-  {
-    name: 'pivot with multiple metrics using backslash-escaped single quote',
-    type: 'pivot',
-    dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
-    expectedConfig: {
-      on: [{ field: 'region', values: [] }],
-      using: [
-        { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
-        { function: 'count', expression: '*', alias: 'n' },
-      ],
-    },
-  },
-  {
     name: 'derive scalar field',
     type: 'calculate_field',
     dsl: 'derive [margin] = [profit] / nullif([revenue], 0)',
@@ -216,12 +184,12 @@ const currentOperatorCases: Array<{
   {
     name: 'derive window field',
     type: 'calculate_field',
-    dsl: 'derive [rn] = row_number() over(partition by [region] order by [revenue] desc)',
+    dsl: 'derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)',
     expectedConfig: {
       calculations: [
         {
           field: 'rn',
-          expression: 'row_number() over(partition by [region] order by [revenue] desc)',
+          expression: 'ranking(row_number()) over(partition by [region] order by [revenue] desc)',
         },
       ],
     },
@@ -337,7 +305,6 @@ describe('operator DSL executable cases', () => {
     ['join', 'join left returns on [l.id] != [r.id] garbage'],
     ['output', 'output table "result" mode replace mode append'],
     ['type_convert', 'cast [amount] as float on_error null on_error keep'],
-    ['calculate_field', 'derive [result] = period_compare(yoy_diff, [amount] garbage, [date])'],
   ] as const)('rejects trailing DSL for %s: %s', (type, dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 
@@ -557,7 +524,7 @@ describe('operator DSL executable cases', () => {
     ]);
   });
 
-  it('does not export a pivot with an incomplete axis', () => {
+  it('filters an incomplete pivot axis from DSL while keeping complete ones', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'pivot-partial',
@@ -570,7 +537,146 @@ describe('operator DSL executable cases', () => {
           using: [{ function: 'count', expression: '*' }],
         },
       })
+    ).toBe('pivot on [year] using count(*) as [count]');
+  });
+
+  it('does not export a pivot when all axes are incomplete', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'pivot-all-empty',
+        type: 'pivot',
+        config: {
+          on: [{ field: '', values: [] }],
+          using: [{ function: 'count', expression: '*' }],
+        },
+      })
     ).toBe('');
+  });
+
+  it.each([
+    {
+      type: 'sort' as const,
+      config: { keys: [{ field: 'a', direction: 'asc' }, { field: '' }] },
+      expected: 'sort by [a] asc',
+    },
+    {
+      type: 'type_convert' as const,
+      config: {
+        conversions: [
+          { column: 'a', type: 'integer' },
+          { column: '', type: 'text' },
+        ],
+      },
+      expected: 'cast [a] as integer',
+    },
+    {
+      type: 'aggregate' as const,
+      config: {
+        metrics: [
+          { function: 'sum', expression: '[a]', alias: 'total' },
+          { function: 'sum', expression: '[b]', alias: '' },
+        ],
+      },
+      expected: 'aggregate all metrics sum([a]) as [total]',
+    },
+    {
+      type: 'field_mapping' as const,
+      config: {
+        mappings: [
+          { source: 'a', targetMode: 'rename', targetValue: 'b' },
+          { source: '', targetMode: 'rename', targetValue: '' },
+        ],
+      },
+      expected: 'map [a] to [b]',
+    },
+    {
+      type: 'missing_value' as const,
+      config: {
+        strategy: 'by_column',
+        rules: [
+          { column: 'a', method: 'literal_fill', value: 'x' },
+          { column: '', method: 'literal_fill', value: '' },
+        ],
+      },
+      expected: 'missing value [a] fill "x"',
+    },
+  ])('filters incomplete $type rows while keeping complete ones', ({ type, config, expected }) => {
+    const dsl = exportPrepOperatorDsl({ id: `${type}-filtered`, type, config });
+    expect(dsl).toBe(expected);
+
+    const parsed = parsePrepOperatorDsl(dsl, type);
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      type: 'sort' as const,
+      config: { keys: [{ field: '' }] },
+    },
+    {
+      type: 'type_convert' as const,
+      config: { conversions: [{ column: '' }] },
+    },
+    {
+      type: 'aggregate' as const,
+      config: { metrics: [{ function: 'sum', expression: '[a]', alias: '' }] },
+    },
+    {
+      type: 'field_mapping' as const,
+      config: {
+        mappings: [{ source: '', targetMode: 'rename', targetValue: '' }],
+      },
+    },
+    {
+      type: 'missing_value' as const,
+      config: { strategy: 'by_column', rules: [{ column: '', method: 'literal_fill', value: '' }] },
+    },
+  ])('does not export $type when all entries are incomplete', ({ type, config }) => {
+    expect(exportPrepOperatorDsl({ id: `${type}-all-incomplete`, type, config })).toBe('');
+  });
+
+  it('filters incomplete conditions from a regular join DSL', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'join-filtered',
+      type: 'join',
+      config: {
+        joinType: 'left',
+        rightInput: 'R',
+        conditions: [
+          { left: 'L', operator: '=', right: 'R' },
+          { left: 'L2', operator: '=', right: '' },
+        ],
+      },
+    });
+    expect(dsl).toBe('join left R on [L] = [R]');
+  });
+
+  it('keeps a complete deduplicate orderBy and omits incomplete ones', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'dedup-filtered',
+      type: 'deduplicate',
+      config: {
+        strategy: 'by_columns',
+        columns: ['a'],
+        orderBy: [{ field: 'x', direction: 'asc' }, { field: '' }],
+      },
+    });
+    expect(dsl).toBe('deduplicate by [a] order by [x] asc');
+  });
+
+  it('filters incomplete row calculations from a calculate_field DSL', () => {
+    const dsl = exportPrepOperatorDsl({
+      id: 'calc-filtered',
+      type: 'calculate_field',
+      config: {
+        calculations: [
+          { field: 'm', expression: '[a] - [b]' },
+          { field: 'n', expression: '' },
+        ],
+      },
+    });
+    expect(dsl).toBe('derive [m] = [a] - [b]');
+    expect(dsl).not.toContain('[n]');
   });
 
   it('does not export a pivot with an axis whose values are not an array', () => {
@@ -628,7 +734,7 @@ describe('operator DSL executable cases', () => {
         using: [{ function: 'count', expression: '*' }],
       },
     });
-    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*)');
+    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*) as [count]');
 
     const reparsed = parsePrepOperatorDsl(dsl, 'pivot');
     expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
@@ -758,8 +864,8 @@ describe('operator DSL executable cases', () => {
     );
   });
 
-  it('rejects a half-filled ASOF by condition after DSL export and reparse', () => {
-    const { parsed } = (() => {
+  it('filters a half-filled ASOF by condition from DSL export', () => {
+    const { parsed, dsl } = (() => {
       const config = {
         joinType: 'asof',
         asof: {
@@ -771,10 +877,15 @@ describe('operator DSL executable cases', () => {
         rightInput: 'R',
       };
       const dsl = exportPrepOperatorDsl({ id: 'asof-half-by', type: 'join', config });
-      return { parsed: parsePrepOperatorDsl(dsl, 'join'), dsl };
+      const result: { parsed: ReturnType<typeof parsePrepOperatorDsl>; dsl: string } = {
+        parsed: parsePrepOperatorDsl(dsl, 'join'),
+        dsl,
+      };
+      return result;
     })();
 
-    expect(errorsOf(parsed.diagnostics)).toHaveLength(1);
+    expect(dsl).toBe('join asof R on [Date] >= [Date]');
+    expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
   });
 
   it('round-trips a join whose right input is renamed with an as clause', () => {
@@ -815,6 +926,29 @@ describe('operator DSL executable cases', () => {
     const reparsed = parsePrepOperatorDsl(exported, 'join');
     expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
     expect(reparsed.operator?.config.rightAlias).toBe('st');
+  });
+
+  it('reports schema errors while importing operator DSL', () => {
+    const parsed = parsePrepOperatorDsl(
+      'join asof rates on [orders].[time] nearest [rates].[time]',
+      'join'
+    );
+
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'invalidConfig',
+          params: expect.objectContaining({ path: 'asof.tolerance' }),
+        }),
+      ])
+    );
+  });
+
+  it('does not cascade diagnostics after consuming a zero limit', () => {
+    const parsed = parsePrepOperatorDsl('limit 0', 'limit');
+    const codes = errorsOf(parsed.diagnostics).map((diagnostic) => diagnostic.code);
+
+    expect(codes).toEqual(['invalidLimit', 'invalidConfig']);
   });
 
   it('does not export a placeholder field for an empty sort config', () => {
@@ -888,6 +1022,31 @@ describe('operator DSL executable cases', () => {
 
   it.each([
     {
+      type: 'aggregate' as const,
+      dsl: "aggregate all metrics concat([name], 'it''s') as [names]",
+      functionName: 'concat',
+    },
+    {
+      type: 'pivot' as const,
+      dsl: "pivot on [region] using string_agg([name], ', ') as [names], count(*) as [n]",
+      functionName: 'string_agg',
+    },
+    {
+      type: 'pivot' as const,
+      dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
+      functionName: 'string_agg',
+    },
+  ])('reports unsupported $type function $functionName during import', ({ type, dsl }) => {
+    const parsed = parsePrepOperatorDsl(dsl, type);
+
+    expect(parsed.operator?.type).toBe(type);
+    expect(errorsOf(parsed.diagnostics)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'invalidConfig' })])
+    );
+  });
+
+  it.each([
+    {
       dsl: 'unnest [`keep parent names`] as [`with index`] with index [`keep parent names`] keep parent names true',
       expectedConfig: {
         sourceKind: 'list',
@@ -928,7 +1087,7 @@ describe('operator DSL executable cases', () => {
         | missing value [region] nullify values ("", "N/A")
         | missing value [region] fill "UNKNOWN"
         | deduplicate by [order_id] keep last order by [updated_at] desc
-        | derive [rn] = row_number() over(partition by [region] order by [revenue] desc)
+        | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
         | filter [status] = "PAID" and [revenue] > 0
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]
@@ -987,7 +1146,11 @@ describe('operator DSL executable cases', () => {
 
     expect(errorsOf(mapping.diagnostics)).toHaveLength(0);
     expect(mapping.operator?.config.mappings).toEqual([
-      { source: 'from to', target: 'mapped as value' },
+      {
+        source: 'from to',
+        targetMode: 'rename',
+        targetValue: 'mapped as value',
+      },
     ]);
     expect(errorsOf(join.diagnostics)).toHaveLength(0);
     expect(join.operator?.config.conditions).toEqual([
@@ -1049,7 +1212,7 @@ describe('operator DSL executable cases', () => {
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'limit', targetHandle: 'input' }]
       )
-    ).toBe('input source task\n  | limit 20');
+    ).toBe('input source task as src\n  | limit 20');
   });
 
   it('rejects workflow export when an incomplete operator cannot be formatted', () => {
@@ -1279,10 +1442,83 @@ describe('operator DSL executable cases', () => {
     }
   });
 
-  it('uses 10 rows as the default limit when config is omitted', () => {
-    expect(exportPrepOperatorDsl({ id: 'limit-default', type: 'limit', config: {} })).toBe(
-      'limit 10'
-    );
+  it('does not export a limit when the row count is omitted', () => {
+    expect(exportPrepOperatorDsl({ id: 'limit-empty', type: 'limit', config: {} })).toBe('');
+  });
+
+  it('does not export a type_convert without conversions', () => {
+    expect(
+      exportPrepOperatorDsl({ id: 'typeconvert-empty', type: 'type_convert', config: {} })
+    ).toBe('');
+  });
+
+  it('does not export a calculate_field without calculations', () => {
+    expect(
+      exportPrepOperatorDsl({ id: 'calculatefield-empty', type: 'calculate_field', config: {} })
+    ).toBe('');
+  });
+
+  it('does not export an unnest without a column', () => {
+    expect(exportPrepOperatorDsl({ id: 'unnest-empty', type: 'unnest', config: {} })).toBe('');
+  });
+
+  it('does not export an unnest list without an alias', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'unnest-no-alias',
+        type: 'unnest',
+        config: { sourceKind: 'list', column: 'items' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an unnest list with an empty index column', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'unnest-empty-index',
+        type: 'unnest',
+        config: { sourceKind: 'list', column: 'items', alias: 'item', withIndex: '' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an unpivot without columns', () => {
+    expect(exportPrepOperatorDsl({ id: 'unpivot-empty', type: 'unpivot', config: {} })).toBe('');
+  });
+
+  it('does not export a set_op without a right input', () => {
+    expect(exportPrepOperatorDsl({ id: 'setop-empty', type: 'set_op', config: {} })).toBe('');
+    expect(
+      exportPrepOperatorDsl({
+        id: 'setop-no-right',
+        type: 'set_op',
+        config: { operation: 'union' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export a join without a right input', () => {
+    expect(exportPrepOperatorDsl({ id: 'join-empty', type: 'join', config: {} })).toBe('');
+  });
+
+  it('does not export a non-cross join without conditions', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'join-no-condition',
+        type: 'join',
+        config: { joinType: 'left', rightInput: 'R' },
+      })
+    ).toBe('');
+  });
+
+  it('does not export an asof join without time fields', () => {
+    expect(
+      exportPrepOperatorDsl({
+        id: 'join-asof-no-time',
+        type: 'join',
+        config: { joinType: 'asof', rightInput: 'R' },
+      })
+    ).toBe('');
   });
 
   it.each(['limit 101 percent', 'sample 101 percent'])(

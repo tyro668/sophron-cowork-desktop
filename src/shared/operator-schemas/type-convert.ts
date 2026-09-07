@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_ROW_ID_LENGTH, nonEmptyTrimmed } from './common';
 
 export const DATE_FORMAT_VALUES = [
   '%Y-%m-%d',
@@ -39,9 +40,10 @@ export const DATE_FORMAT_PRESETS: Array<{ value: DateFormat; example: string }> 
 export const SCALE_MIN = 0;
 export const SCALE_MAX = 18;
 
-const ConversionEntrySchema = z
+export const TypeConversionEntrySchema = z
   .object({
-    column: z.string().optional().default(''),
+    id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
+    column: nonEmptyTrimmed('Source column is required'),
     type: z
       .enum(['text', 'integer', 'float', 'decimal', 'date', 'datetime', 'boolean'])
       .optional()
@@ -56,20 +58,27 @@ const ConversionEntrySchema = z
   .superRefine((data, ctx) => {
     if (data.format && data.type !== 'date' && data.type !== 'datetime') {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: `Format is only valid for date/datetime conversions, not ${data.type}`,
         path: ['format'],
       });
     }
     if (data.scale !== undefined && data.type !== 'decimal') {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: `Scale is only valid for decimal conversions, not ${data.type}`,
         path: ['scale'],
       });
     }
   });
 
-export const TypeConvertConfigSchema = z.object({
-  conversions: z.array(ConversionEntrySchema).default([]),
-});
+export const TypeConvertConfigSchema = z
+  .object({
+    conversions: z.array(TypeConversionEntrySchema).default([]),
+  })
+  .refine((config) => config.conversions.length > 0, {
+    path: ['conversions'],
+    message: 'At least one type conversion is required',
+  });
+
+export type TypeConversionEntry = z.infer<typeof TypeConversionEntrySchema>;

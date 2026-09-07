@@ -15,19 +15,22 @@ describe('SetOpConfigSchema', () => {
     expect(result.match).toBe('by_name');
   });
 
-  it('applies defaults for omitted fields', () => {
-    const result = SetOpConfigSchema.parse({});
-    expect(result.operation).toBe('union');
-    expect(result.mode).toBe('all');
-    expect(result.match).toBe('by_name');
+  it('requires a right input', () => {
+    expect(() => SetOpConfigSchema.parse({})).toThrow(z.ZodError);
   });
 
   it('accepts all valid operation values', () => {
-    expect(SetOpConfigSchema.parse({ operation: 'intersect' }).operation).toBe('intersect');
-    expect(SetOpConfigSchema.parse({ operation: 'except' }).operation).toBe('except');
+    expect(SetOpConfigSchema.parse({ operation: 'intersect', rightInput: 'R' }).operation).toBe(
+      'intersect'
+    );
+    expect(SetOpConfigSchema.parse({ operation: 'except', rightInput: 'R' }).operation).toBe(
+      'except'
+    );
   });
 
   it('rejects keep with wrong type', () => {
-    expect(() => SetOpConfigSchema.parse({ keep: 'not-array' })).toThrow(z.ZodError);
+    expect(() => SetOpConfigSchema.parse({ rightInput: 'R', keep: 'not-array' })).toThrow(
+      z.ZodError
+    );
   });
 });

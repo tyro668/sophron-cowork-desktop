@@ -10,6 +10,7 @@ import { createPrepDiagnostic } from '../diagnostics';
 import { prepDslLexer, tokenizePrepDsl } from '../tokens';
 import { stripComment } from '../syntax/scanner';
 import { parseRegisteredOperator } from './registry';
+import { validateOperatorConfig } from '../../operator-schemas';
 
 export { parseFieldRef, toFieldName, toQualifiedName, unwrapFieldName } from '../syntax/fields';
 
@@ -155,6 +156,14 @@ export function parsePrepOperatorDsl(
   }
 
   const operator = parseOperator(command, diagnostics);
+  if (operator) {
+    diagnostics.push(
+      ...validateOperatorConfig(operator.type, operator.config).map((diagnostic) => ({
+        ...diagnostic,
+        line: command.line,
+      }))
+    );
+  }
   if (operator && expectedType && operator.type !== expectedType) {
     diagnostics.push({
       ...createPrepDiagnostic(

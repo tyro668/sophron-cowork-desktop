@@ -66,10 +66,12 @@ export const unpivotCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
+    const columns = stringArray(config?.columns);
+    if (columns.length === 0) return null;
     const includeNulls = config?.includeNulls ? 'include nulls ' : '';
     const mode = config?.mode === 'except' ? 'columns except ' : '';
-    const columns = stringArray(config?.columns).map(formatFieldRef).join(', ') || '[field]';
-    return `unpivot ${includeNulls}${mode}${columns} into name ${formatFieldRef(
+    const columnsDsl = columns.map(formatFieldRef).join(', ');
+    return `unpivot ${includeNulls}${mode}${columnsDsl} into name ${formatFieldRef(
       String(config?.nameColumn ?? 'name')
     )} value ${formatFieldRef(String(config?.valueColumn ?? 'value'))}`;
   },

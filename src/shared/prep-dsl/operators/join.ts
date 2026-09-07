@@ -6,6 +6,7 @@ import { quoteString, unquoteString } from '../syntax/literals';
 import { findFirstTopLevelKeyword, splitTopLevel, splitTopLevelKeyword } from '../syntax/scanner';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorCommand, type OperatorDslCodec } from './codec';
+import { isCompleteJoinCondition } from '../../operator-completeness';
 
 interface Clause {
   name: string;
@@ -431,9 +432,10 @@ function findClause(clauses: Clause[], name: string): string | undefined {
   return clauses.find((clause) => clause.name === name)?.value;
 }
 
-function formatJoin(config: Record<string, unknown> | undefined): string {
+function formatJoin(config: Record<string, unknown> | undefined): string | null {
+  const rightInput = String(config?.rightInput ?? '').trim();
+  if (!rightInput) return null;
   const joinType = String(config?.joinType ?? 'left');
-  const rightInput = String(config?.rightInput ?? 'right_source');
   const rightAlias =
     typeof config?.rightAlias === 'string' && config.rightAlias.trim()
       ? config.rightAlias
@@ -441,6 +443,9 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   const asClause = rightAlias !== rightInput ? ` as ${rightAlias}` : '';
   if (joinType === 'asof') {
     const asof = objectValue(config?.asof);
+    if (!asof || !String(asof?.leftTime ?? '').trim() || !String(asof?.rightTime ?? '').trim()) {
+      return null;
+    }
     const parts = [
       `join asof ${rightInput}${asClause} on ${formatFieldRef(
         String(asof?.leftTime ?? 'left.time')
@@ -457,9 +462,8 @@ function formatJoin(config: Record<string, unknown> | undefined): string {
   const parts = [`join ${joinType} ${rightInput}${asClause}`];
   const conditions = formatConditions(config?.conditions);
   if (joinType !== 'cross') {
-    parts.push(
-      `on ${conditions || `${formatFieldRef('left.id')} = ${formatFieldRef(`${rightAlias}.id`)}`}`
-    );
+    if (!conditions) return null;
+    parts.push(`on ${conditions}`);
   }
   appendCommonParts(parts, config);
   return parts.join(' ');
@@ -486,11 +490,12 @@ function formatConflict(value: unknown): string | null {
 
 function formatConditions(value: unknown): string {
   return objectArray(value)
+    .filter(isCompleteJoinCondition)
     .map(
       (condition) =>
-        `${formatFieldRef(String(condition.left ?? 'left.id'))} ${String(
+        `${formatFieldRef(String(condition.left))} ${String(
           condition.operator || '='
-        )} ${formatFieldRef(String(condition.right ?? 'right.id'))}`
+        )} ${formatFieldRef(String(condition.right))}`
     )
     .join(' and ');
 }

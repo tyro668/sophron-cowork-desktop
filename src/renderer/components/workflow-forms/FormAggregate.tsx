@@ -1,37 +1,52 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Settings } from 'lucide-react';
+import { GripVertical, Plus, Settings, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
+import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import {
+  canAppendRow,
+  ensureStableRowIds,
+  insertRowAfter,
+  removeRowAt,
+} from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
-import { AGGREGATE_FUNCTIONS } from '../../../shared/operator-schemas/common';
+import { AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas/common';
+import {
+  retainSelectedDateGranularity,
+  setDateGranularity,
+  type AggregateDateGranularity,
+} from '../../../shared/operator-config';
+import {
+  MAX_METRIC_COUNT,
+  type AggregateFunction,
+  type MetricEntry,
+} from '../../../shared/operator-schemas';
+
+const EMPTY_METRIC: Readonly<Omit<MetricEntry, 'id'>> = {
+  function: 'count',
+  expression: '',
+  alias: '',
+};
+
+function createEmptyMetric(): MetricEntry {
+  return { ...EMPTY_METRIC, id: createMetricId() };
+}
 
 const GRANULARITY_OPTIONS = [
-  { value: '', labelKey: 'granularityNone', labelFallback: '不处理' },
-  { value: 'year', labelKey: 'granularityYear', labelFallback: '按年' },
-  { value: 'quarter', labelKey: 'granularityQuarter', labelFallback: '按季度' },
-  { value: 'month', labelKey: 'granularityMonth', labelFallback: '按月' },
-  { value: 'week', labelKey: 'granularityWeek', labelFallback: '按周' },
-  { value: 'day', labelKey: 'granularityDay', labelFallback: '按天' },
+  { value: '', labelKey: 'granularityNone' },
+  { value: 'year', labelKey: 'granularityYear' },
+  { value: 'quarter', labelKey: 'granularityQuarter' },
+  { value: 'month', labelKey: 'granularityMonth' },
+  { value: 'week', labelKey: 'granularityWeek' },
+  { value: 'day', labelKey: 'granularityDay' },
 ] as const;
-
-interface MetricEntry {
-  function: string;
-  expression: string;
-  alias: string;
-}
-
-function createDefault(): MetricEntry {
-  return { function: 'count', expression: '', alias: '' };
-}
 
 export default function FormAggregate({
   node,
@@ -40,7 +55,7 @@ export default function FormAggregate({
   taskId,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('aggregate');
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
@@ -54,7 +69,10 @@ export default function FormAggregate({
     [node.config.metrics]
   );
   const metrics = useMemo(
-    () => (rawMetrics.length > 0 ? rawMetrics : [createDefault()]),
+    () =>
+      rawMetrics.length > 0
+        ? ensureStableRowIds(rawMetrics, createMetricId)
+        : [createEmptyMetric()],
     [rawMetrics]
   );
 
@@ -64,7 +82,7 @@ export default function FormAggregate({
         key: 'default',
         items: AGGREGATE_FUNCTIONS.map((f) => ({
           value: f,
-          label: tr('aggregateFn_' + f),
+          label: tr('aggregateFns.' + f),
         })),
       },
     ],
@@ -74,14 +92,13 @@ export default function FormAggregate({
   const handleGroupByChange = useCallback(
     (next: string[]) => {
       updateConfig((cfg) => {
-        const granularity = cfg.dateGranularity as Record<string, string> | undefined;
-        const filtered = granularity
-          ? Object.fromEntries(Object.entries(granularity).filter(([k]) => next.includes(k)))
-          : undefined;
         return {
           ...cfg,
           groupBy: next.length > 0 ? next : undefined,
-          dateGranularity: filtered && Object.keys(filtered).length > 0 ? filtered : undefined,
+          dateGranularity: retainSelectedDateGranularity(
+            cfg.dateGranularity as Record<string, string> | undefined,
+            next
+          ),
         };
       });
     },
@@ -91,15 +108,14 @@ export default function FormAggregate({
   const handleGranularityChange = useCallback(
     (field: string, value: string) => {
       updateConfig((cfg) => {
-        const next: Record<string, string> = {
-          ...((cfg.dateGranularity ?? {}) as Record<string, string>),
+        return {
+          ...cfg,
+          dateGranularity: setDateGranularity(
+            cfg.dateGranularity as Record<string, string> | undefined,
+            field,
+            value as AggregateDateGranularity | ''
+          ),
         };
-        if (value) {
-          next[field] = value;
-        } else {
-          delete next[field];
-        }
-        return { ...cfg, dateGranularity: Object.keys(next).length > 0 ? next : undefined };
       });
     },
     [updateConfig]
@@ -109,7 +125,7 @@ export default function FormAggregate({
     (items: MetricEntry[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        metrics: items.length > 0 ? items : undefined,
+        metrics: items.length > 0 ? ensureStableRowIds(items, createMetricId) : undefined,
       }));
     },
     [updateConfig]
@@ -120,23 +136,12 @@ export default function FormAggregate({
   }
 
   function addMetricAfter(index: number) {
-    const hasEmpty = activeMetrics.some((m) => !m.expression);
-    if (hasEmpty) return;
-    const entry = createDefault();
-    handleMetricsChange([
-      ...activeMetrics.slice(0, index + 1),
-      entry,
-      ...activeMetrics.slice(index + 1),
-    ]);
+    if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
+    handleMetricsChange(insertRowAfter(activeMetrics, index, createEmptyMetric()));
   }
 
   function removeMetric(index: number) {
-    let next = activeMetrics.filter((_, i) => i !== index);
-    const firstEmpty = next.findIndex((m) => !m.expression);
-    if (firstEmpty >= 0) {
-      next = next.filter((m, i) => i === firstEmpty || m.expression);
-    }
-    handleMetricsChange(next);
+    handleMetricsChange(removeRowAt(activeMetrics, index));
   }
 
   const {
@@ -144,6 +149,7 @@ export default function FormAggregate({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleKeyboardMove,
     isDragging,
     resetDrag,
     dragIndexRef,
@@ -154,23 +160,21 @@ export default function FormAggregate({
   }, [metrics, isDragging, resetDrag]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex gap-2.5 flex-1 min-h-0">
+    <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 w-full flex-1 gap-2.5">
         {/* Left: group-by fields */}
-        <div className="flex-[1.5] rounded-lg border border-border-muted bg-background/42 content-start flex flex-col min-h-0">
-          <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              1
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateGroupBy')}
-              </span>
-              <span className="text-[10px] text-text-muted">{tr('aggregateGroupByHint')}</span>
+        <section className="operator-section flex-[4] content-start flex min-h-0 min-w-0 w-0 flex-col">
+          <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
+            <div className="mb-3 px-0.5 pt-1">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                {tr('aggregateDimensionsLabel')}
+              </div>
+              <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                {tr('aggregateDimensionsHint')}
+              </p>
             </div>
-          </div>
-          <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
-            <GlassFieldMultiSelect
+            <GlassFieldCompactSelect
               columns={fieldCompletions}
               selected={groupBy}
               onChange={handleGroupByChange}
@@ -181,7 +185,7 @@ export default function FormAggregate({
                 if (gran && isTemporalDataFieldType(columnTypes[col])) {
                   const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
                   const label = opt ? tr(opt.labelKey) : gran;
-                  return `${col}（${label}）`;
+                  return tr('aggregateFieldWithGranularity', { field: col, granularity: label });
                 }
                 return col;
               }}
@@ -216,80 +220,105 @@ export default function FormAggregate({
               }}
             />
           </div>
-        </div>
+        </section>
 
         {/* Right: metrics */}
-        <div className="flex-[8.5] rounded-lg border border-border-muted bg-background/42 content-start flex flex-col min-h-0">
-          <div className="flex items-end gap-3 px-3 pt-2.5 pb-1.5 shrink-0">
-            <span className="h-8 w-8 rounded-full bg-accent/20 text-[14px] font-bold text-accent flex items-center justify-center leading-none">
-              2
-            </span>
-            <div className="grid">
-              <span className="text-[13px] font-semibold text-text-primary">
-                {tr('aggregateMetric')}
-              </span>
-              <span className="text-[10px] text-text-muted">{tr('aggregateMetricHint')}</span>
+        <section className="operator-section flex flex-[6] min-h-0 min-w-0 w-0 flex-col content-start">
+          <div className="scrollbar-hover grid min-h-0 min-w-0 flex-1 content-start gap-3 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
+            <div className="flex min-w-0 items-start justify-between gap-3 pt-1">
+              <div>
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
+                  <span className="h-2 w-2 rounded-full bg-accent" />
+                  {tr('aggregateMeasuresLabel')}
+                </div>
+                <p className="mt-1 text-[12px] leading-5 text-text-muted">
+                  {tr('aggregateMeasuresHint')}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)}
+                onClick={() => addMetricAfter(activeMetrics.length - 1)}
+                className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tr('aggregateAddMetric')}
+              </button>
             </div>
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
-            <GlassRowList
-              headerClassName="text-[12px]"
-              items={activeMetrics}
-              columns={[
-                {
-                  flex: 'flex-[2.5]',
-                  header: tr('aggregateFunction'),
-                  render: (item: MetricEntry, i: number) => (
+
+            <div className="grid min-w-0 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
+              <span />
+              <span>{tr('aggregateFns.aggregateFunction')}</span>
+              <span>{tr('expression.expressionLabel')}</span>
+              <span>{tr('aggregateAlias')}</span>
+              <span />
+            </div>
+
+            <div className="grid min-w-0 gap-2">
+              {activeMetrics.map((metric, index) => {
+                const dragging = isDragging && dragIndexRef.current === index;
+                return (
+                  <div
+                    key={metric.id ?? `metric-${index}`}
+                    onDragOver={(event) => handleDragOver(event, index)}
+                    className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
+                      dragging ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragEnd={handleDragEnd}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                        event.preventDefault();
+                        handleKeyboardMove(index, event.key === 'ArrowUp' ? 'up' : 'down');
+                      }}
+                      className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
+                      title={tr('rowList.dragToReorder')}
+                      aria-label={tr('rowList.dragToReorder')}
+                      aria-keyshortcuts="ArrowUp ArrowDown"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
                     <GlassOptionSingleSelect
-                      value={item.function}
+                      value={metric.function}
                       groups={functionGroups}
-                      onChange={(v) => updateMetric(i, { function: v })}
-                      className="h-7 rounded-md text-[12px] w-full"
+                      onChange={(value) =>
+                        updateMetric(index, { function: value as AggregateFunction })
+                      }
+                      variant="highlight"
+                      className="h-7 w-full text-[12px] [&>span]:text-left"
                     />
-                  ),
-                },
-                {
-                  flex: 'flex-[3.5]',
-                  header: tr('expressionLabel'),
-                  render: (item: MetricEntry, i: number) => (
                     <GlassExpressionInput
-                      value={item.expression}
-                      onChange={(v) => updateMetric(i, { expression: v })}
+                      value={metric.expression}
+                      onChange={(value) => updateMetric(index, { expression: value })}
                       fieldCompletions={fieldCompletions}
                       columnTypes={columnTypes}
                       placeholder={tr('aggregateExpressionPlaceholder')}
                     />
-                  ),
-                },
-                {
-                  flex: 'flex-[2]',
-                  header: tr('aggregateAlias'),
-                  render: (item: MetricEntry, i: number) => (
                     <GlassFormTextInput
-                      value={item.alias ?? ''}
-                      onChange={(v) => updateMetric(i, { alias: v })}
+                      value={metric.alias ?? ''}
+                      onChange={(value) => updateMetric(index, { alias: value })}
                       placeholder={tr('aggregateAliasPlaceholder')}
-                      className="h-7 px-1.5 text-[12px] w-full"
+                      className="h-7 w-full px-2 text-[12px]"
                     />
-                  ),
-                },
-              ]}
-              onAdd={(i) => addMetricAfter(i)}
-              onRemove={(i) => removeMetric(i)}
-              addTitle={tr('aggregateAddMetric')}
-              removeTitle={tr('aggregateRemoveMetric')}
-              canAct={(action: RowAction) =>
-                action === 'add' ? !activeMetrics.some((m) => !m.expression) : true
-              }
-              draggable
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-              dragTitle={tr('dragToReorder')}
-            />
+                    <button
+                      type="button"
+                      onClick={() => removeMetric(index)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                      title={tr('aggregateRemoveMetric')}
+                      aria-label={tr('aggregateRemoveMetric')}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

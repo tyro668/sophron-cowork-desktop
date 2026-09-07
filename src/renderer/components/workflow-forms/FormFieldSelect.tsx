@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldMultiSelect } from './shared/GlassFieldMultiSelect';
-import { GlassRowList } from './shared/GlassRowList';
+import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { DataTypeIcon } from './shared/DataTypeIcon';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
-import { useConfirmDialog } from '../../components/ConfirmDialog';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
+import { mergeSelectedFields } from '../../../shared/operator-config';
 
 export default function FormFieldSelect({
   node,
@@ -17,9 +18,8 @@ export default function FormFieldSelect({
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
-  const tr = useFormTranslation();
+  const tr = useFormTranslation('fieldSelect');
   const dataTypeLabel = useDataFieldTypeLabel();
-  const { confirm } = useConfirmDialog();
 
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
@@ -28,209 +28,227 @@ export default function FormFieldSelect({
     () => (node.config.columns as string[] | undefined) ?? [],
     [node.config.columns]
   );
+  const mode = node.config.mode === 'exclude' ? 'exclude' : 'include';
 
   const commitColumns = useCallback(
     (next: string[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        mode: 'include',
+        mode,
         columns: next.length > 0 ? next : undefined,
       }));
     },
-    [updateConfig]
+    [mode, updateConfig]
   );
 
-  const handleSelectionChange = useCallback(
+  const orderedFields = useMemo(() => {
+    const selectedSet = new Set(columns);
+    return [...columns, ...fieldCompletions.filter((field) => !selectedSet.has(field))];
+  }, [columns, fieldCompletions]);
+
+  const commitReorder = useCallback(
     (next: string[]) => {
-      const existing = columns.filter((c) => next.includes(c));
-      const added = next.filter((c) => !columns.includes(c));
-      updateConfig((cfg) => ({
-        ...cfg,
-        mode: 'include',
-        columns: [...existing, ...added],
-      }));
-    },
-    [columns, updateConfig]
-  );
-
-  const removeColumn = useCallback(
-    (col: string) => {
-      commitColumns(columns.filter((c) => c !== col));
+      const selectedSet = new Set(columns);
+      commitColumns(next.filter((field) => selectedSet.has(field)));
     },
     [columns, commitColumns]
   );
 
   const moveToTop = useCallback(
     (col: string) => {
-      const next = columns.filter((c) => c !== col);
-      next.unshift(col);
-      commitColumns(next);
+      commitReorder([col, ...orderedFields.filter((candidate) => candidate !== col)]);
     },
-    [columns, commitColumns]
+    [commitReorder, orderedFields]
   );
 
   const moveToBottom = useCallback(
     (col: string) => {
-      const next = columns.filter((c) => c !== col);
-      next.push(col);
-      commitColumns(next);
+      commitReorder([...orderedFields.filter((candidate) => candidate !== col), col]);
     },
-    [columns, commitColumns]
+    [commitReorder, orderedFields]
   );
-
-  const clearAll = useCallback(async () => {
-    const ok = await confirm({
-      title: tr('clearAllConfirm'),
-      message: tr('clearAllConfirmMessage'),
-      confirmLabel: tr('clearAll'),
-      cancelLabel: tr('cancel'),
-    });
-    if (ok) commitColumns([]);
-  }, [commitColumns, confirm, tr]);
 
   const [rightSearch, setRightSearch] = useState('');
 
-  const filteredList = useMemo(() => {
-    if (!rightSearch.trim()) return columns;
-    const lower = rightSearch.toLowerCase().trim();
-    return columns.filter((c) => c.toLowerCase().includes(lower));
-  }, [columns, rightSearch]);
+  const visibleFields = useMemo(() => {
+    const query = rightSearch.toLowerCase().trim();
+    if (!query) return orderedFields;
+    return orderedFields.filter((field) => {
+      if (field.toLowerCase().includes(query)) return true;
+      const type = columnTypes?.[field];
+      return Boolean(
+        type &&
+        (type.toLowerCase().includes(query) || dataTypeLabel(type).toLowerCase().includes(query))
+      );
+    });
+  }, [columnTypes, dataTypeLabel, orderedFields, rightSearch]);
 
-  const {
-    activeItems: displayItems,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnd,
-    isDragging,
-    resetDrag,
-    dragIndexRef,
-  } = useDragReorder(columns, commitColumns, filteredList);
+  const allVisibleSelected =
+    visibleFields.length > 0 && visibleFields.every((field) => columns.includes(field));
+  const someVisibleSelected = visibleFields.some((field) => columns.includes(field));
+  const selectAllIndeterminate = someVisibleSelected && !allVisibleSelected;
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectAllIndeterminate;
+    }
+  }, [selectAllIndeterminate]);
+
+  const { handleDragStart, handleDragOver, handleDragEnd, isDragging, resetDrag, dragIndexRef } =
+    useDragReorder(orderedFields, commitReorder);
 
   useEffect(() => {
     if (!isDragging) resetDrag();
-  }, [columns, isDragging, resetDrag]);
-
-  const typeStats = useMemo(() => {
-    const stats: Record<string, number> = {};
-    for (const col of columns) {
-      const type = columnTypes?.[col] ?? 'unknown';
-      stats[type] = (stats[type] || 0) + 1;
-    }
-    return stats;
-  }, [columns, columnTypes]);
+  }, [orderedFields, isDragging, resetDrag]);
 
   return (
-    <div className="flex flex-col min-h-0 overflow-hidden" style={{ height: '100%' }}>
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* Title bar */}
-        <div className="flex items-center justify-between py-1.5">
-          <div className="flex items-center gap-3 text-[12px] text-text-muted">
-            <span>
-              {tr('fieldSelectCount')
-                .replace('{{n}}', String(columns.length))
-                .replace('{{total}}', String(fieldCompletions.length))}
+    <div className="flex h-full min-h-0 overflow-hidden">
+      <div className="scrollbar-hover flex w-[180px] shrink-0 flex-col overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
+        <GlassRadioSelect
+          value={mode}
+          options={[
+            {
+              value: 'include',
+              label: tr('fieldSelectIncludeMode'),
+              tip: tr('fieldSelectIncludeModeTip'),
+            },
+            {
+              value: 'exclude',
+              label: tr('fieldSelectExcludeMode'),
+              tip: tr('fieldSelectExcludeModeTip'),
+            },
+          ]}
+          onChange={(value) =>
+            updateConfig((cfg) => ({
+              ...cfg,
+              mode: value as 'include' | 'exclude',
+            }))
+          }
+          label={tr('fieldSelectMode')}
+        />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+        <div className="flex min-h-0 w-2/3 min-w-0 flex-col overflow-hidden">
+          <div className="flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+            <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            <input
+              type="text"
+              value={rightSearch}
+              onChange={(event) => setRightSearch(event.target.value)}
+              placeholder={tr('fieldPicker.searchField')}
+              className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
+            />
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={() => {
+                  if (allVisibleSelected) {
+                    const visibleSet = new Set(visibleFields);
+                    commitColumns(columns.filter((field) => !visibleSet.has(field)));
+                  } else {
+                    commitColumns(mergeSelectedFields(columns, visibleFields));
+                  }
+                }}
+                className="h-3.5 w-3.5 accent-accent"
+              />
+              {tr('fieldPicker.selectAll')}
+            </label>
+            <span className="text-[12px] text-text-secondary">
+              {tr('fieldSelectCount', {
+                n: String(columns.length),
+                total: String(fieldCompletions.length),
+              })}
             </span>
-            {columns.length > 0 && (
-              <div className="flex items-center gap-2">
-                {Object.entries(typeStats).map(([type, count]) => (
-                  <span key={type} className="text-[11px] text-text-muted">
-                    {dataTypeLabel(type)}: {count}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
-          <div className="flex items-center gap-2">
-            {columns.length > 0 && (
-              <button
-                type="button"
-                onClick={clearAll}
-                className="text-[12px] text-text-muted hover:text-error transition-colors"
-              >
-                {tr('clearAll')}
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Dual-pane layout */}
-        <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
-          {/* Left: field library */}
-          <GlassFieldMultiSelect
-            columns={fieldCompletions}
-            selected={columns}
-            onChange={handleSelectionChange}
-            columnTypes={columnTypes}
-            maxHeight="none"
-          />
-
-          {/* Right: selected fields */}
-          <div className="flex min-h-0 flex-col rounded-lg border border-border-subtle bg-background/24">
-            <div className="flex items-center justify-between border-b border-border-subtle px-2.5 py-1.5">
-              <span className="text-[12px] font-medium text-text-secondary">
-                {tr('selectedFields')}
-                {columns.length > 0 && (
-                  <span className="ml-1.5 text-[11px] font-normal text-text-muted">
-                    · {tr('reorderHint')}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {columns.length > 0 && (
-              <div className="flex items-center gap-1.5 border-b border-border-subtle px-2 py-1">
-                <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                <input
-                  type="text"
-                  value={rightSearch}
-                  onChange={(e) => setRightSearch(e.target.value)}
-                  placeholder={tr('searchField')}
-                  className="h-5 flex-1 min-w-0 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
-                />
+          <div className="scrollbar-hover mt-2 flex-1 min-h-0 overflow-y-auto">
+            {visibleFields.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
+                {rightSearch ? tr('fieldPicker.noMatch') : tr('fieldPicker.noFields')}
               </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto px-1.5 py-1">
-              {displayItems.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
-                  {rightSearch ? tr('noMatch') : tr('noFieldsSelected')}
-                </div>
-              ) : (
-                <GlassRowList
-                  items={displayItems}
-                  columns={[
-                    {
-                      flex: 'flex-1',
-                      header: '',
-                      render: (col: string) => (
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="flex-1 min-w-0 truncate text-[12px] text-text-primary">
-                            {col}
-                          </span>
-                          {columnTypes?.[col] && (
-                            <span className="shrink-0 rounded bg-background/60 px-1.5 py-0.5 text-[11px] text-text-muted">
-                              {dataTypeLabel(columnTypes[col])}
-                            </span>
-                          )}
-                        </div>
-                      ),
+            ) : (
+              <GlassRowList
+                items={visibleFields}
+                hideHeader
+                draggable
+                onDragStart={(i) => {
+                  const field = visibleFields[i];
+                  handleDragStart(orderedFields.indexOf(field));
+                }}
+                onDragOver={(e, i) => {
+                  const field = visibleFields[i];
+                  handleDragOver(e, orderedFields.indexOf(field));
+                }}
+                onDragEnd={handleDragEnd}
+                onKeyboardMove={(i, direction) => {
+                  const field = visibleFields[i];
+                  const adjacentField = visibleFields[direction === 'up' ? i - 1 : i + 1];
+                  if (!field || !adjacentField) return;
+                  const next = [...orderedFields];
+                  const fieldIndex = next.indexOf(field);
+                  const adjacentIndex = next.indexOf(adjacentField);
+                  [next[fieldIndex], next[adjacentIndex]] = [next[adjacentIndex], next[fieldIndex]];
+                  commitReorder(next);
+                }}
+                getRowOpacity={(i) => {
+                  const field = visibleFields[i];
+                  return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
+                }}
+                dragTitle={tr('rowList.dragToReorder')}
+                actions={['toTop', 'toBottom']}
+                onToTop={(i) => moveToTop(visibleFields[i])}
+                onToBottom={(i) => moveToBottom(visibleFields[i])}
+                toTopTitle={tr('rowList.toTop')}
+                toBottomTitle={tr('rowList.toBottom')}
+                canAct={(action: RowAction, i) => {
+                  const field = visibleFields[i];
+                  if (action === 'toTop') return orderedFields[0] !== field;
+                  if (action === 'toBottom')
+                    return orderedFields[orderedFields.length - 1] !== field;
+                  return true;
+                }}
+                columns={[
+                  {
+                    flex: 'w-8',
+                    header: '',
+                    render: (field: string) => {
+                      const selected = columns.includes(field);
+                      return (
+                        <label className="flex h-7 cursor-pointer items-center justify-center">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() =>
+                              commitColumns(
+                                selected
+                                  ? columns.filter((candidate) => candidate !== field)
+                                  : [...columns, field]
+                              )
+                            }
+                            className="h-3.5 w-3.5 accent-accent"
+                          />
+                        </label>
+                      );
                     },
-                  ]}
-                  actions={['toTop', 'toBottom', 'remove']}
-                  onToTop={(i) => moveToTop(displayItems[i])}
-                  onToBottom={(i) => moveToBottom(displayItems[i])}
-                  onRemove={(i) => removeColumn(displayItems[i])}
-                  removeTitle={tr('removeField')}
-                  draggable
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragEnd={handleDragEnd}
-                  getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                  dragTitle={tr('dragToReorder')}
-                  hideHeader
-                />
-              )}
-            </div>
+                  },
+                  {
+                    flex: 'flex-[1]',
+                    header: '',
+                    render: (field: string) => (
+                      <div className="flex min-w-0 items-center gap-2">
+                        <DataTypeIcon type={columnTypes?.[field]} />
+                        <span className="min-w-0 truncate text-text-primary">{field}</span>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ interface GlassSelectProps {
   value?: string;
   options: GlassSelectOption[];
   onValueChange: (value: string) => void;
+  ariaLabel?: string;
   placeholder?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -34,6 +35,7 @@ export function GlassSelect({
   value,
   options,
   onValueChange,
+  ariaLabel,
   placeholder,
   open,
   onOpenChange,
@@ -62,6 +64,7 @@ export function GlassSelect({
       disabled={disabled}
     >
       <Select.Trigger
+        aria-label={ariaLabel}
         className={cx(
           'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-2.5 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50',
           triggerClassName

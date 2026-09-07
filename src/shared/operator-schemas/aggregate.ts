@@ -3,7 +3,7 @@ import { MetricEntrySchema } from './common';
 
 const MAX_FIELD_NAME_LENGTH = 256;
 const MAX_GROUP_BY_COUNT = 100;
-const MAX_METRIC_COUNT = 100;
+export const MAX_METRIC_COUNT = 100;
 
 export const AggregateConfigSchema = z.object({
   groupBy: z
