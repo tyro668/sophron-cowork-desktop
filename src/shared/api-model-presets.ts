@@ -3,6 +3,7 @@ export type SharedProviderType =
   | 'anthropic'
   | 'custom'
   | 'openai'
+  | 'openai-codex'
   | 'deepseek'
   | 'moonshot'
   | 'aliyun'
@@ -21,6 +22,7 @@ export const VISIBLE_API_PROVIDER_OPTIONS = [
   'zai',
   'anthropic',
   'openai',
+  'openai-codex',
   'openrouter',
   'ollama',
 ] as const satisfies readonly VisibleApiProviderType[];
@@ -38,6 +40,7 @@ export interface SharedProviderPresets {
   anthropic: SharedProviderPreset;
   custom: SharedProviderPreset;
   openai: SharedProviderPreset;
+  'openai-codex': SharedProviderPreset;
   deepseek: SharedProviderPreset;
   moonshot: SharedProviderPreset;
   aliyun: SharedProviderPreset;
@@ -96,6 +99,18 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 platform.openai.com 获取',
+  },
+  'openai-codex': {
+    name: 'OpenAI Codex（订阅）',
+    baseUrl: 'https://chatgpt.com/backend-api',
+    models: [
+      { id: 'gpt-6-astra', name: 'GPT-6 Astra' },
+      { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' },
+      { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
+      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
+    ],
+    keyPlaceholder: '使用 ChatGPT 订阅登录',
+    keyHint: '使用本地 codex CLI 登录态或浏览器 OAuth 登录，无需 API Key',
   },
   deepseek: {
     name: 'DeepSeek',
@@ -233,6 +248,10 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
       'o4-mini',
     ],
   },
+  'openai-codex': {
+    piProvider: 'openai-codex',
+    pick: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+  },
   deepseek: {
     piProvider: 'deepseek',
     pick: ['deepseek-v4-pro', 'deepseek-v4-flash'],
@@ -294,6 +313,13 @@ export function getModelInputGuidance(
     return {
       placeholder: 'gpt-5.4, gpt-5.4-mini, o3',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
+    };
+  }
+
+  if (provider === 'openai-codex') {
+    return {
+      placeholder: 'gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna',
+      hint: 'Use a model available to your ChatGPT subscription (Codex).',
     };
   }
 

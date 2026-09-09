@@ -96,6 +96,7 @@ import {
   normalizeToolExecutionResultForUi,
 } from './tool-result-utils';
 import { fetchOllamaModelInfo } from '../config/ollama-api';
+import { ensureCodexCredentials } from '../config/codex-auth';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { createSandboxCodingTools } from './sandbox-tool-operations';
 import {
@@ -1715,7 +1716,17 @@ ${hints.join('\n')}
       // Set up API keys via AuthStorage
       const authStorage = getSharedAuthStorage();
       const apiKey = runtimeConfig.apiKey?.trim();
-      if (apiKey) {
+      if (provider === 'openai-codex' && !apiKey) {
+        // ChatGPT subscription auth: credentials live in AuthStorage as OAuth
+        // (imported from the local codex CLI or acquired via in-app login) and
+        // are refreshed automatically by AuthStorage.getApiKey().
+        if (!ensureCodexCredentials()) {
+          throw new Error(
+            'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex，连接本地 codex CLI 登录态或完成浏览器登录。'
+          );
+        }
+        log('[ClaudeAgentRunner] Using OAuth credentials for openai-codex');
+      } else if (apiKey) {
         // Map our config provider to pi-ai provider name
         const piProvider =
           provider === 'custom' ? runtimeConfig.customProtocol || 'anthropic' : provider;

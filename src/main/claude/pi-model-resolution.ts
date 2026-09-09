@@ -57,6 +57,7 @@ export function resolvePiRouteProtocol(provider?: string, customProtocol?: strin
     }
     return 'anthropic';
   }
+  if (provider === 'openai-codex') return 'openai-codex';
   if (provider && OPENAI_COMPATIBLE_ROUTE_PROVIDERS.has(provider)) return 'openai';
   if (provider === 'gemini') return 'gemini';
   return provider || 'anthropic';
@@ -97,6 +98,8 @@ export function inferPiApi(protocol: string): string {
     case 'gemini':
     case 'google':
       return 'google-generative-ai';
+    case 'openai-codex':
+      return 'openai-codex-responses';
     case 'openai':
     default:
       return 'openai-completions';
@@ -125,6 +128,8 @@ const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: numb
   'deepseek-v4': { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   deepseek: { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   claude: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'gpt-6': { contextWindow: 272_000, maxTokens: 128_000 },
+  'gpt-5.6': { contextWindow: 272_000, maxTokens: 128_000 },
   'gpt-5': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
   o3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
   'o4-mini': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },

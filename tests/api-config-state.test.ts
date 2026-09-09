@@ -26,6 +26,7 @@ describe('api config state helpers', () => {
       'zai',
       'anthropic',
       'openai',
+      'openai-codex',
       'openrouter',
       'ollama',
     ]);

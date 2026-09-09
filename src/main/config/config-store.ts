@@ -27,6 +27,7 @@ import {
   shouldUseAnthropicAuthToken,
 } from './auth-utils';
 import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-model-presets';
+import { hasCodexCredentials } from './codex-auth';
 import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
 import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
 
@@ -38,6 +39,7 @@ export type ProviderType =
   | 'anthropic'
   | 'custom'
   | 'openai'
+  | 'openai-codex'
   | 'deepseek'
   | 'moonshot'
   | 'aliyun'
@@ -51,6 +53,7 @@ export type ProviderProfileKey =
   | 'openrouter'
   | 'anthropic'
   | 'openai'
+  | 'openai-codex'
   | 'deepseek'
   | 'moonshot'
   | 'aliyun'
@@ -226,6 +229,11 @@ const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> =
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-5.4',
   },
+  'openai-codex': {
+    apiKey: '',
+    baseUrl: 'https://chatgpt.com/backend-api',
+    model: 'gpt-6-astra',
+  },
   deepseek: {
     apiKey: '',
     baseUrl: 'https://api.deepseek.com',
@@ -397,6 +405,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'openrouter',
   'anthropic',
   'openai',
+  'openai-codex',
   'deepseek',
   'moonshot',
   'aliyun',
@@ -416,6 +425,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'anthropic' ||
     value === 'custom' ||
     value === 'openai' ||
+    value === 'openai-codex' ||
     value === 'deepseek' ||
     value === 'moonshot' ||
     value === 'aliyun' ||
@@ -563,6 +573,9 @@ function profileKeyToProvider(profileKey: ProviderProfileKey): {
   if (profileKey === 'openai') {
     return { provider: 'openai', customProtocol: 'openai' };
   }
+  if (profileKey === 'openai-codex') {
+    return { provider: 'openai-codex', customProtocol: 'openai' };
+  }
   if (profileKey === 'openrouter') {
     return { provider: 'openrouter', customProtocol: 'openai' };
   }
@@ -619,6 +632,7 @@ function normalizeCustomProtocol(
 function defaultProtocolForProvider(provider: ProviderType): CustomProtocolType {
   if (
     provider === 'openai' ||
+    provider === 'openai-codex' ||
     provider === 'openrouter' ||
     provider === 'deepseek' ||
     provider === 'moonshot' ||
@@ -1089,6 +1103,14 @@ export class ConfigStore {
     const activeConfigSetId = configSets.some((set) => set.id === requestedActiveSetId)
       ? (requestedActiveSetId as string)
       : configSets[0].id;
+
+    // The "default" (system) flag always tracks the active set: switching the
+    // default transfers the flag, so previously-default sets become deletable
+    // while the active default stays protected from deletion.
+    configSets = configSets.map((set) => ({
+      ...set,
+      isSystem: set.id === activeConfigSetId,
+    }));
 
     const activeConfigSet = configSets.find((set) => set.id === activeConfigSetId) || configSets[0];
     const projected = this.projectFromConfigSet(activeConfigSet);
@@ -1603,6 +1625,9 @@ export class ConfigStore {
     }
     if (projection.provider === 'sophron') {
       return true;
+    }
+    if (projection.provider === 'openai-codex') {
+      return hasCodexCredentials();
     }
     const apiKey = projection.apiKey?.trim();
     if (apiKey) {

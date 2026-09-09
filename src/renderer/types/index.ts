@@ -1511,6 +1511,7 @@ export type ProviderType =
   | 'anthropic'
   | 'custom'
   | 'openai'
+  | 'openai-codex'
   | 'deepseek'
   | 'moonshot'
   | 'aliyun'
@@ -1524,6 +1525,7 @@ export type ProviderProfileKey =
   | 'openrouter'
   | 'anthropic'
   | 'openai'
+  | 'openai-codex'
   | 'deepseek'
   | 'moonshot'
   | 'aliyun'
@@ -1679,6 +1681,24 @@ export interface DesktopAuthStatus {
   error?: string;
 }
 
+export interface CodexAuthStatus {
+  connected: boolean;
+  source: 'codex-cli' | 'app' | null;
+  accountId?: string;
+  expiresAt?: number;
+}
+
+export interface CodexAuthActionResult {
+  success: boolean;
+  status: CodexAuthStatus;
+  error?: string;
+}
+
+export interface CodexLoginPromptPayload {
+  requestId: string;
+  message: string;
+}
+
 export interface ListCloudProjectsInput extends PersonalAnalysisConnectionInput {
   spaceId: string;
 }
@@ -1789,6 +1809,7 @@ export interface ProviderPresets {
   anthropic: ProviderPreset;
   custom: ProviderPreset;
   openai: ProviderPreset;
+  'openai-codex': ProviderPreset;
   deepseek: ProviderPreset;
   moonshot: ProviderPreset;
   aliyun: ProviderPreset;

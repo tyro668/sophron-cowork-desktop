@@ -60,6 +60,12 @@ import {
 import { runConfigApiTest } from './config/config-test-routing';
 import { resolveDesktopAuthOrigin, resolveDesktopLlmBaseUrl } from './config/desktop-auth-config';
 import { listOllamaModels } from './config/ollama-api';
+import {
+  ensureCodexCredentials,
+  getCodexAuthStatus,
+  loginCodex,
+  logoutCodex,
+} from './config/codex-auth';
 import { setPermissionRules } from './config/permission-rules-store';
 import { mcpConfigStore } from './mcp/mcp-config-store';
 import { getSandboxAdapter, shutdownSandbox } from './sandbox/sandbox-adapter';
@@ -2196,6 +2202,82 @@ ipcMain.handle('config.discover-local', async (_event, payload?: { baseUrl?: str
   } catch (error) {
     logError('[Config] Error discovering local services:', error);
     return [];
+  }
+});
+
+ipcMain.handle('config.codexAuthStatus', () => {
+  try {
+    return getCodexAuthStatus();
+  } catch (error) {
+    logError('[Config] Error getting codex auth status:', error);
+    return { connected: false, source: null };
+  }
+});
+
+ipcMain.handle('config.codexImportCli', () => {
+  try {
+    const imported = ensureCodexCredentials({ forceImport: true });
+    return { success: imported, status: getCodexAuthStatus() };
+  } catch (error) {
+    logError('[Config] Error importing codex CLI credentials:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      status: getCodexAuthStatus(),
+    };
+  }
+});
+
+const pendingCodexLoginPrompts = new Map<string, (code: string) => void>();
+
+ipcMain.handle('config.codexLogin', async (event) => {
+  try {
+    const status = await loginCodex({
+      onAuthUrl: (url) => {
+        void shell.openExternal(url);
+      },
+      onPromptCode: (message) =>
+        new Promise<string>((resolve) => {
+          const requestId = crypto.randomUUID();
+          pendingCodexLoginPrompts.set(requestId, resolve);
+          event.sender.send('config.codexLoginPrompt', { requestId, message });
+        }),
+    });
+    return { success: true, status };
+  } catch (error) {
+    logError('[Config] Codex OAuth login failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      status: getCodexAuthStatus(),
+    };
+  }
+});
+
+ipcMain.handle(
+  'config.codexLoginCode',
+  (_event, payload: { requestId?: string; code?: string }) => {
+    const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+    const resolve = pendingCodexLoginPrompts.get(requestId);
+    if (!resolve) {
+      return { success: false };
+    }
+    pendingCodexLoginPrompts.delete(requestId);
+    resolve(typeof payload?.code === 'string' ? payload.code : '');
+    return { success: true };
+  }
+);
+
+ipcMain.handle('config.codexLogout', () => {
+  try {
+    return { success: true, status: logoutCodex() };
+  } catch (error) {
+    logError('[Config] Error removing codex credentials:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      status: getCodexAuthStatus(),
+    };
   }
 });
 

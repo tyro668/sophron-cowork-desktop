@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => {
   const openaiModelsList = vi.fn();
   const fetch = vi.fn();
   const probeWithClaudeSdk = vi.fn();
+  const ensureCodexCredentials = vi.fn();
+  const codexGetApiKey = vi.fn();
 
   return {
     dnsLookup,
@@ -15,6 +17,8 @@ const mocks = vi.hoisted(() => {
     openaiModelsList,
     fetch,
     probeWithClaudeSdk,
+    ensureCodexCredentials,
+    codexGetApiKey,
   };
 });
 
@@ -74,6 +78,15 @@ vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
   probeWithClaudeSdk: mocks.probeWithClaudeSdk,
 }));
 
+vi.mock('../src/main/claude/shared-auth', () => ({
+  getSharedAuthStorage: () => ({ getApiKey: mocks.codexGetApiKey }),
+}));
+
+vi.mock('../src/main/config/codex-auth', () => ({
+  ensureCodexCredentials: mocks.ensureCodexCredentials,
+  OPENAI_CODEX_PROVIDER: 'openai-codex',
+}));
+
 vi.mock('../src/main/utils/logger', () => ({
   log: vi.fn(),
   logWarn: vi.fn(),
@@ -93,11 +106,15 @@ describe('runDiagnostics TLS step', () => {
     mocks.openaiModelsList.mockReset();
     mocks.fetch.mockReset();
     mocks.probeWithClaudeSdk.mockReset();
+    mocks.ensureCodexCredentials.mockReset();
+    mocks.codexGetApiKey.mockReset();
     global.fetch = mocks.fetch;
 
     mocks.dnsLookup.mockResolvedValue({ address: '127.0.0.1', family: 4 });
     mocks.openaiModelsList.mockResolvedValue({});
     mocks.probeWithClaudeSdk.mockResolvedValue({ ok: true, latencyMs: 10 });
+    mocks.ensureCodexCredentials.mockReturnValue(true);
+    mocks.codexGetApiKey.mockResolvedValue('codex-access-token');
 
     mocks.tcpConnect.mockImplementation(() => {
       const handlers: Record<string, () => void> = {};
@@ -408,5 +425,89 @@ describe('runDiagnostics TLS step', () => {
       status: 'models_available',
     });
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('runDiagnostics codex auth step', () => {
+  beforeEach(() => {
+    mocks.dnsLookup.mockReset();
+    mocks.tcpConnect.mockReset();
+    mocks.tlsConnect.mockReset();
+    mocks.probeWithClaudeSdk.mockReset();
+    mocks.ensureCodexCredentials.mockReset();
+    mocks.codexGetApiKey.mockReset();
+
+    mocks.dnsLookup.mockResolvedValue({ address: '93.184.216.34', family: 4 });
+    mocks.probeWithClaudeSdk.mockResolvedValue({ ok: true, latencyMs: 10 });
+
+    mocks.tcpConnect.mockImplementation(() => {
+      const handlers: Record<string, () => void> = {};
+      const socket = {
+        once(event: string, handler: () => void) {
+          handlers[event] = handler;
+          if (event === 'connect') queueMicrotask(handler);
+          return socket;
+        },
+        destroy: vi.fn(),
+      };
+      return socket;
+    });
+
+    mocks.tlsConnect.mockImplementation(
+      (_options: Record<string, unknown>, onSecure?: () => void) => {
+        const socket = {
+          authorized: true,
+          authorizationError: null,
+          once: vi.fn(),
+          destroy: vi.fn(),
+        };
+        queueMicrotask(() => onSecure?.());
+        return socket;
+      }
+    );
+  });
+
+  const codexInput = {
+    provider: 'openai-codex' as const,
+    apiKey: '',
+    baseUrl: 'https://chatgpt.com/backend-api',
+    model: 'gpt-6-astra',
+  };
+
+  it('passes the auth step when OAuth credentials resolve an access token', async () => {
+    mocks.ensureCodexCredentials.mockReturnValue(true);
+    mocks.codexGetApiKey.mockResolvedValue('codex-access-token');
+
+    const result = await runDiagnostics(codexInput);
+
+    expect(result.overallOk).toBe(true);
+    const authStep = result.steps.find((s) => s.name === 'auth');
+    expect(authStep?.status).toBe('ok');
+    expect(mocks.codexGetApiKey).toHaveBeenCalledWith('openai-codex');
+  });
+
+  it('fails at the auth step when no codex credentials exist', async () => {
+    mocks.ensureCodexCredentials.mockReturnValue(false);
+
+    const result = await runDiagnostics(codexInput);
+
+    expect(result.overallOk).toBe(false);
+    expect(result.failedAt).toBe('auth');
+    const authStep = result.steps.find((s) => s.name === 'auth');
+    expect(authStep?.fix).toBe('codex_auth_missing');
+    const modelStep = result.steps.find((s) => s.name === 'model');
+    expect(modelStep?.status).toBe('skip');
+  });
+
+  it('fails at the auth step when the token cannot be refreshed', async () => {
+    mocks.ensureCodexCredentials.mockReturnValue(true);
+    mocks.codexGetApiKey.mockResolvedValue(undefined);
+
+    const result = await runDiagnostics(codexInput);
+
+    expect(result.overallOk).toBe(false);
+    expect(result.failedAt).toBe('auth');
+    const authStep = result.steps.find((s) => s.name === 'auth');
+    expect(authStep?.fix).toBe('codex_auth_invalid');
   });
 });

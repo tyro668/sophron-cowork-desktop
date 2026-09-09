@@ -70,6 +70,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'openrouter',
   'anthropic',
   'openai',
+  'openai-codex',
   'deepseek',
   'moonshot',
   'aliyun',
@@ -92,6 +93,7 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'anthropic' ||
     value === 'custom' ||
     value === 'openai' ||
+    value === 'openai-codex' ||
     value === 'deepseek' ||
     value === 'moonshot' ||
     value === 'aliyun' ||
@@ -144,6 +146,9 @@ export function profileKeyToProvider(profileKey: ProviderProfileKey): {
   }
   if (profileKey === 'openai') {
     return { provider: 'openai', customProtocol: 'openai' };
+  }
+  if (profileKey === 'openai-codex') {
+    return { provider: 'openai-codex', customProtocol: 'openai' };
   }
   if (profileKey === 'openrouter') {
     return { provider: 'openrouter', customProtocol: 'openai' };
@@ -1143,6 +1148,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   const allowEmptyApiKey =
     provider === 'sophron' ||
     provider === 'ollama' ||
+    provider === 'openai-codex' ||
     (provider === 'custom' &&
       ((customProtocol === 'anthropic' && isCustomAnthropicLoopbackGateway(baseUrl)) ||
         (customProtocol === 'openai' && isCustomOpenAiLoopbackGateway(baseUrl)) ||
@@ -2077,10 +2083,6 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     ]
   );
 
-  const canDeleteCurrentConfigSet = Boolean(
-    currentConfigSet && !currentConfigSet.isSystem && configSets.length > 1
-  );
-
   return {
     isLoadingConfig,
     presets,
@@ -2126,7 +2128,6 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     pendingConfigSet,
     hasUnsavedChanges,
     isMutatingConfigSet,
-    canDeleteCurrentConfigSet,
     configSetLimit: CONFIG_SET_LIMIT,
     setApiKey,
     setBaseUrl,

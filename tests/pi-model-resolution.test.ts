@@ -5,6 +5,7 @@ import {
   buildSyntheticPiModel,
   inferPiApi,
   resolvePiModelString,
+  resolvePiRegistryModel,
   resolvePiRouteProtocol,
   resolveSyntheticPiModelFallback,
 } from '../src/main/claude/pi-model-resolution';
@@ -87,6 +88,63 @@ describe('pi model resolution helpers', () => {
     expect(resolvePiRouteProtocol('ollama', 'openai')).toBe('openai');
     expect(resolvePiRouteProtocol('custom', 'gemini')).toBe('gemini');
     expect(resolvePiRouteProtocol('custom', 'anthropic')).toBe('anthropic');
+  });
+
+  it('keeps openai-codex on the codex responses protocol', () => {
+    expect(resolvePiRouteProtocol('openai-codex', 'openai')).toBe('openai-codex');
+    expect(inferPiApi('openai-codex')).toBe('openai-codex-responses');
+    expect(
+      resolvePiModelString({
+        provider: 'openai-codex',
+        customProtocol: 'openai',
+        model: 'gpt-5.3-codex',
+      })
+    ).toBe('openai-codex/gpt-5.3-codex');
+  });
+
+  it('resolves codex models from the pi-ai registry without downgrading the api', () => {
+    const model = resolvePiRegistryModel('openai-codex/gpt-5.3-codex', {
+      configProvider: 'openai-codex',
+      rawProvider: 'openai-codex',
+      customBaseUrl: 'https://chatgpt.com/backend-api',
+      customProtocol: 'openai',
+    });
+
+    expect(model).toBeDefined();
+    expect(model?.provider).toBe('openai-codex');
+    expect(model?.api).toBe('openai-codex-responses');
+    expect(model?.baseUrl).toBe('https://chatgpt.com/backend-api');
+  });
+
+  it('builds synthetic codex models for ids missing from the registry', () => {
+    const fallback = resolveSyntheticPiModelFallback({
+      rawModel: 'gpt-6-astra',
+      resolvedModelString: 'gpt-6-astra',
+      rawProvider: 'openai-codex',
+      routeProtocol: 'openai-codex',
+      baseUrl: 'https://chatgpt.com/backend-api',
+    });
+    expect(fallback).toEqual({ provider: 'openai-codex', modelId: 'gpt-6-astra' });
+
+    const model = buildSyntheticPiModel(
+      fallback.modelId,
+      fallback.provider,
+      'openai-codex',
+      'https://chatgpt.com/backend-api'
+    );
+    expect(model.api).toBe('openai-codex-responses');
+    expect(model.baseUrl).toBe('https://chatgpt.com/backend-api');
+    expect(model.contextWindow).toBe(272_000);
+    expect(model.maxTokens).toBe(128_000);
+
+    const overridden = applyPiModelRuntimeOverrides(model, {
+      configProvider: 'openai-codex',
+      rawProvider: 'openai-codex',
+      customBaseUrl: 'https://chatgpt.com/backend-api',
+      customProtocol: 'openai',
+    });
+    expect(overridden.api).toBe('openai-codex-responses');
+    expect(overridden.baseUrl).toBe('https://chatgpt.com/backend-api');
   });
 
   it('builds synthetic models with protocol-specific api defaults', () => {

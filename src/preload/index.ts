@@ -89,6 +89,9 @@ import type {
   SearchCloudTablesResult,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
+  CodexAuthStatus,
+  CodexAuthActionResult,
+  CodexLoginPromptPayload,
 } from '../renderer/types';
 import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
@@ -400,6 +403,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.diagnose', input),
     discoverLocal: (payload?: { baseUrl?: string }): Promise<LocalOllamaDiscoveryResult> =>
       ipcRenderer.invoke('config.discover-local', payload),
+    codexAuthStatus: (): Promise<CodexAuthStatus> => ipcRenderer.invoke('config.codexAuthStatus'),
+    codexImportCli: (): Promise<CodexAuthActionResult> =>
+      ipcRenderer.invoke('config.codexImportCli'),
+    codexLogin: (): Promise<CodexAuthActionResult> => ipcRenderer.invoke('config.codexLogin'),
+    codexSubmitLoginCode: (payload: {
+      requestId: string;
+      code: string;
+    }): Promise<{ success: boolean }> => ipcRenderer.invoke('config.codexLoginCode', payload),
+    codexLogout: (): Promise<CodexAuthActionResult> => ipcRenderer.invoke('config.codexLogout'),
+    onCodexLoginPrompt: (callback: (payload: CodexLoginPromptPayload) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: CodexLoginPromptPayload) =>
+        callback(payload);
+      ipcRenderer.on('config.codexLoginPrompt', listener);
+      return () => ipcRenderer.removeListener('config.codexLoginPrompt', listener);
+    },
     listPersonalAnalysisDatasources: (payload: {
       apiOrigin?: string;
       apiKey?: string;
@@ -862,6 +880,15 @@ declare global {
         }) => Promise<ProviderModelInfo[]>;
         diagnose: (input: DiagnosticInput) => Promise<DiagnosticResult>;
         discoverLocal: (payload?: { baseUrl?: string }) => Promise<LocalOllamaDiscoveryResult>;
+        codexAuthStatus: () => Promise<CodexAuthStatus>;
+        codexImportCli: () => Promise<CodexAuthActionResult>;
+        codexLogin: () => Promise<CodexAuthActionResult>;
+        codexSubmitLoginCode: (payload: {
+          requestId: string;
+          code: string;
+        }) => Promise<{ success: boolean }>;
+        codexLogout: () => Promise<CodexAuthActionResult>;
+        onCodexLoginPrompt: (callback: (payload: CodexLoginPromptPayload) => void) => () => void;
         listPersonalAnalysisDatasources: (payload: {
           apiOrigin?: string;
           apiKey?: string;

@@ -33,6 +33,8 @@ import type {
 } from '../../renderer/types';
 import { log, logWarn } from '../utils/logger';
 import { probeWithClaudeSdk } from '../claude/claude-sdk-one-shot';
+import { getSharedAuthStorage } from '../claude/shared-auth';
+import { ensureCodexCredentials, OPENAI_CODEX_PROVIDER } from './codex-auth';
 import { fetchOllamaModelIndex } from './ollama-api';
 
 const STEP_NAMES: DiagnosticStepName[] = ['dns', 'tcp', 'tls', 'auth', 'model'];
@@ -356,6 +358,35 @@ async function stepTls(
 }
 
 async function stepAuth(input: DiagnosticInput, step: DiagnosticStep): Promise<void> {
+  // Codex (ChatGPT subscription): no static API key — verify that OAuth
+  // credentials exist and a fresh access token can be resolved (auto-refresh).
+  // The real request-level auth check happens in stepModel via the live probe.
+  if (input.provider === 'openai-codex') {
+    const start = Date.now();
+    try {
+      if (!ensureCodexCredentials()) {
+        step.status = 'fail';
+        step.error = 'Codex OAuth credentials not found';
+        step.fix = 'codex_auth_missing';
+      } else {
+        const accessToken = await getSharedAuthStorage().getApiKey(OPENAI_CODEX_PROVIDER);
+        if (accessToken) {
+          step.status = 'ok';
+        } else {
+          step.status = 'fail';
+          step.error = 'Codex OAuth token unavailable or refresh failed';
+          step.fix = 'codex_auth_invalid';
+        }
+      }
+    } catch (err) {
+      step.status = 'fail';
+      step.error = getErrorMessage(err);
+      step.fix = 'codex_auth_invalid';
+    }
+    step.latencyMs = Date.now() - start;
+    return;
+  }
+
   // Gemini: verify key via models.get() — lightweight and always available
   if (isGeminiProtocol(input)) {
     const start = Date.now();

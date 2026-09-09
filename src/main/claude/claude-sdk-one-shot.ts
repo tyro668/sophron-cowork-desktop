@@ -21,6 +21,11 @@ import { log, logWarn } from '../utils/logger';
 import { normalizeGeneratedTitle } from '../session/session-title-utils';
 import { getSharedAuthStorage } from './shared-auth';
 import {
+  ensureCodexCredentials,
+  hasCodexCredentials,
+  OPENAI_CODEX_PROVIDER,
+} from '../config/codex-auth';
+import {
   applyPiModelRuntimeOverrides,
   buildSyntheticPiModel,
   inferPiApi,
@@ -240,7 +245,20 @@ export async function runPiAiOneShot(
   const resolvedModel = piModel!;
 
   // Set API key via AuthStorage (for agent sessions) AND env vars (for pi-ai completeSimple)
-  const apiKey = config.apiKey?.trim();
+  let apiKey = config.apiKey?.trim();
+  if (!apiKey && config.provider === 'openai-codex') {
+    // ChatGPT subscription auth: resolve a fresh access token from the OAuth
+    // credentials held in AuthStorage (auto-refreshed by getApiKey).
+    if (!ensureCodexCredentials()) {
+      throw new Error(
+        'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex 并完成连接后再试。'
+      );
+    }
+    apiKey = (await getSharedAuthStorage().getApiKey(OPENAI_CODEX_PROVIDER)) || '';
+    if (!apiKey) {
+      throw new Error('OpenAI Codex 登录凭据不可用或刷新失败，请在 设置 → API 中重新连接。');
+    }
+  }
   if (apiKey) {
     const authStorage = getSharedAuthStorage();
     // Set for the config provider
@@ -377,7 +395,11 @@ export async function probeWithClaudeSdk(
   }
 
   if (!probeConfig.apiKey?.trim()) {
-    return { ok: false, errorType: 'missing_key', details: 'API key is required.' };
+    // openai-codex authenticates via OAuth; the access token is resolved
+    // inside runPiAiOneShot from AuthStorage.
+    if (!(input.provider === 'openai-codex' && hasCodexCredentials())) {
+      return { ok: false, errorType: 'missing_key', details: 'API key is required.' };
+    }
   }
 
   const probeStart = Date.now();

@@ -101,19 +101,41 @@ describe('ConfigStore config sets', () => {
     expect(defaultSetView.apiKey).toBe('sk-openrouter-origin');
   });
 
-  it('guards default set deletion and falls back to default after delete', () => {
+  it('transfers default protection on switch so the old default becomes deletable', () => {
     const store = new ConfigStore();
+
+    // Initially the built-in default set is active and protected.
+    expect(() => store.deleteSet({ id: 'default' })).toThrowError();
+
     const created = store.createSet({ name: 'My Set', mode: 'clone' });
-    const customSet = created.configSets.find((set) => !set.isSystem);
+    const customSet = created.configSets.find((set) => set.id !== 'default');
     expect(customSet).toBeTruthy();
 
-    expect(() => store.deleteSet({ id: 'default' })).toThrowError();
+    // Creating switches to the new set: it becomes the default and the
+    // previous default loses its protection.
+    expect(created.activeConfigSetId).toBe(customSet!.id);
+    expect(created.configSets.find((set) => set.id === customSet!.id)?.isSystem).toBe(true);
+    expect(created.configSets.find((set) => set.id === 'default')?.isSystem).toBe(false);
+
+    // The active default is protected; the previous default can be deleted.
+    expect(() => store.deleteSet({ id: customSet!.id })).toThrowError();
+    const afterDelete = store.deleteSet({ id: 'default' });
+    expect(afterDelete.configSets.length).toBe(1);
+    expect(afterDelete.activeConfigSetId).toBe(customSet!.id);
+    expect(afterDelete.configSets[0].isSystem).toBe(true);
+  });
+
+  it('guards the active default and keeps the active set after deleting a non-default set', () => {
+    const store = new ConfigStore();
+    const created = store.createSet({ name: 'My Set', mode: 'clone' });
+    const customSet = created.configSets.find((set) => set.id !== 'default');
+    expect(customSet).toBeTruthy();
 
     const renamed = store.renameSet({ id: customSet!.id, name: 'My Renamed Set' });
     const renamedSet = renamed.configSets.find((set) => set.id === customSet!.id);
     expect(renamedSet?.name).toBe('My Renamed Set');
 
-    store.switchSet({ id: customSet!.id });
+    store.switchSet({ id: 'default' });
     const afterDelete = store.deleteSet({ id: customSet!.id });
     expect(afterDelete.activeConfigSetId).toBe('default');
     expect(afterDelete.configSets.length).toBe(1);

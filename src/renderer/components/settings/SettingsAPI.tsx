@@ -15,6 +15,7 @@ import { ApiConfigSetManager } from '../ApiConfigSetManager';
 import { GlassSelect } from '../GlassSelect';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
+import { CodexAuthCard } from './CodexAuthCard';
 import { VISIBLE_API_PROVIDER_OPTIONS } from '../../../shared/api-model-presets';
 
 interface ModelOptionItem {
@@ -57,7 +58,6 @@ export function SettingsAPI() {
     pendingConfigSet,
     hasUnsavedChanges,
     isMutatingConfigSet,
-    canDeleteCurrentConfigSet,
     setApiKey,
     setBaseUrl,
     setModel,
@@ -97,6 +97,7 @@ export function SettingsAPI() {
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
   const isSophronMode = provider === 'sophron';
+  const isCodexMode = provider === 'openai-codex';
   const showsBaseUrl = provider === 'ollama';
   const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
@@ -112,7 +113,6 @@ export function SettingsAPI() {
         hasUnsavedChanges={hasUnsavedChanges}
         isMutatingConfigSet={isMutatingConfigSet}
         isSaving={isSaving}
-        canDeleteCurrentConfigSet={canDeleteCurrentConfigSet}
         onSwitchSet={requestConfigSetSwitch}
         onRequestCreateBlankSet={requestCreateBlankConfigSet}
         onSaveCurrentSet={handleSave}
@@ -147,7 +147,7 @@ export function SettingsAPI() {
         </div>
       </div>
 
-      {!isSophronMode && (
+      {!isSophronMode && !isCodexMode && (
         <div className="glass-card space-y-3 rounded-xl px-4 py-3">
           <label
             htmlFor="api-key-input"
@@ -166,6 +166,8 @@ export function SettingsAPI() {
           />
         </div>
       )}
+
+      {isCodexMode && <CodexAuthCard />}
 
       {/* Custom Protocol */}
       {provider === 'custom' && (

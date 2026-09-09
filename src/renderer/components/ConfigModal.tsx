@@ -30,6 +30,7 @@ interface ConfigModalProps {
 const PROVIDER_LABELS: Record<
   | 'anthropic'
   | 'openai'
+  | 'openai-codex'
   | 'openrouter'
   | 'deepseek'
   | 'moonshot'
@@ -41,6 +42,7 @@ const PROVIDER_LABELS: Record<
 > = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
+  'openai-codex': 'OpenAI Codex（订阅）',
   openrouter: 'OpenRouter',
   deepseek: 'DeepSeek',
   moonshot: 'Moonshot',
@@ -89,7 +91,6 @@ export function ConfigModal({
     pendingConfigSet,
     hasUnsavedChanges,
     isMutatingConfigSet,
-    canDeleteCurrentConfigSet,
     setApiKey,
     setBaseUrl,
     setModel,
@@ -130,6 +131,7 @@ export function ConfigModal({
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
   const isSophronMode = provider === 'sophron';
+  const isCodexMode = provider === 'openai-codex';
   const showsBaseUrl = provider === 'ollama';
   const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
@@ -197,7 +199,6 @@ export function ConfigModal({
             hasUnsavedChanges={hasUnsavedChanges}
             isMutatingConfigSet={isMutatingConfigSet}
             isSaving={isSaving}
-            canDeleteCurrentConfigSet={canDeleteCurrentConfigSet}
             onSwitchSet={requestConfigSetSwitch}
             onRequestCreateBlankSet={requestCreateBlankConfigSet}
             onSaveCurrentSet={handleSave}
@@ -231,7 +232,7 @@ export function ConfigModal({
             </div>
           </div>
 
-          {!isSophronMode && (
+          {!isSophronMode && !isCodexMode && (
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
                 <Key className="w-4 h-4" />
@@ -245,6 +246,10 @@ export function ConfigModal({
                 className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
+          )}
+
+          {isCodexMode && (
+            <p className="text-xs text-text-muted">{t('api.codexAuthDescription')}</p>
           )}
 
           {/* Custom Protocol */}

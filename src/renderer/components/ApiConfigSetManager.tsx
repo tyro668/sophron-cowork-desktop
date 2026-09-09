@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers, Plus, Save, Trash2, Pencil } from 'lucide-react';
+import { Check, Layers, Plus, Save, Trash2, Pencil } from 'lucide-react';
 import type { ApiConfigSet } from '../types';
 import { GlassSelect } from './GlassSelect';
 
-type PendingConfigSetAction =
-  | { type: 'switch'; targetSetId: string };
+type PendingConfigSetAction = { type: 'switch'; targetSetId: string };
 
 interface ApiConfigSetManagerProps {
   configSets: ApiConfigSet[];
@@ -16,7 +15,6 @@ interface ApiConfigSetManagerProps {
   hasUnsavedChanges: boolean;
   isMutatingConfigSet: boolean;
   isSaving: boolean;
-  canDeleteCurrentConfigSet: boolean;
   onSwitchSet: (setId: string) => Promise<void> | void;
   onRequestCreateBlankSet: () => Promise<void> | void;
   onSaveCurrentSet: () => Promise<boolean> | Promise<void> | void;
@@ -38,7 +36,6 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
     hasUnsavedChanges,
     isMutatingConfigSet,
     isSaving,
-    canDeleteCurrentConfigSet,
     onSwitchSet,
     onRequestCreateBlankSet,
     onSaveCurrentSet,
@@ -49,24 +46,34 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
     onDiscardAndContinuePendingAction,
   } = props;
 
-  const [activeLocalDialog, setActiveLocalDialog] = useState<'none' | 'delete'>('none');
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
   const [isInlineRenaming, setIsInlineRenaming] = useState(false);
 
   useEffect(() => {
-    setActiveLocalDialog('none');
+    setDeleteTargetId(null);
     setRenameName(currentConfigSet?.name || '');
     setIsInlineRenaming(false);
   }, [activeConfigSetId, currentConfigSet?.name]);
 
-  const pendingActionMessage = t('api.unsavedSwitchPrompt', { name: pendingConfigSet?.name || '-' });
-  const hasDialogOpen = activeLocalDialog !== 'none';
+  const pendingActionMessage = t('api.unsavedSwitchPrompt', {
+    name: pendingConfigSet?.name || '-',
+  });
+  const hasDialogOpen = deleteTargetId !== null;
   const canRenameCurrentConfigSet = Boolean(currentConfigSet);
+  const deleteTargetSet = deleteTargetId
+    ? configSets.find((set) => set.id === deleteTargetId) || null
+    : null;
+  const canDeleteSet = (set: ApiConfigSet): boolean =>
+    set.id !== activeConfigSetId && configSets.length > 1;
 
   const cancelInlineRename = () => {
     setRenameName(currentConfigSet?.name || '');
     setIsInlineRenaming(false);
   };
+
+  const configSetModelSummary = (set: ApiConfigSet): string =>
+    set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
 
   const commitInlineRename = async () => {
     if (!currentConfigSet) {
@@ -93,7 +100,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
         <Layers className="w-4 h-4" />
         {t('api.configSet')}
         {hasUnsavedChanges && (
-          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] text-warning">{t('api.unsavedBadge')}</span>
+          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] text-warning">
+            {t('api.unsavedBadge')}
+          </span>
         )}
       </label>
       <div className="space-y-2">
@@ -102,7 +111,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
             type="text"
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
-            onBlur={() => { void commitInlineRename(); }}
+            onBlur={() => {
+              void commitInlineRename();
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -139,7 +150,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => { void onSaveCurrentSet(); }}
+            onClick={() => {
+              void onSaveCurrentSet();
+            }}
             disabled={isMutatingConfigSet || hasDialogOpen || isInlineRenaming}
             className="px-3 py-2 rounded-lg border border-border-muted bg-background hover:bg-surface-hover text-text-secondary text-xs hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
           >
@@ -148,7 +161,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
           </button>
           <button
             type="button"
-            onClick={() => { void onRequestCreateBlankSet(); }}
+            onClick={() => {
+              void onRequestCreateBlankSet();
+            }}
             disabled={isMutatingConfigSet || hasDialogOpen || isInlineRenaming}
             className="px-3 py-2 rounded-lg border border-border-muted bg-background hover:bg-surface-hover text-text-secondary text-xs hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
           >
@@ -164,34 +179,75 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
               setRenameName(currentConfigSet.name);
               setIsInlineRenaming(true);
             }}
-            disabled={isMutatingConfigSet || !canRenameCurrentConfigSet || hasDialogOpen || isInlineRenaming}
+            disabled={
+              isMutatingConfigSet || !canRenameCurrentConfigSet || hasDialogOpen || isInlineRenaming
+            }
             className="px-3 py-2 rounded-lg border border-border-muted bg-background hover:bg-surface-hover text-text-secondary text-xs hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
           >
             <Pencil className="w-3.5 h-3.5" />
             {t('api.renameSet')}
           </button>
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={() => setActiveLocalDialog('delete')}
-            disabled={isMutatingConfigSet || !canDeleteCurrentConfigSet || hasDialogOpen || isInlineRenaming}
-            className="px-2.5 py-2 rounded-lg text-text-muted text-xs hover:text-error hover:bg-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+        </div>
+        <div className="space-y-1.5 pt-1">
+          {configSets.map((set) => {
+            const isActive = set.id === activeConfigSetId;
+            const modelSummary = configSetModelSummary(set);
+            return (
+              <div
+                key={set.id}
+                className="flex items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2"
+              >
+                <span className="min-w-0 truncate text-[13px] text-text-primary">{set.name}</span>
+                {modelSummary && (
+                  <span className="min-w-0 truncate text-xs text-text-muted">{modelSummary}</span>
+                )}
+                <div className="flex-1" />
+                {isActive ? (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
+                    <Check className="w-3 h-3" />
+                    {t('api.defaultSetTag')}
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onSwitchSet(set.id);
+                      }}
+                      disabled={isMutatingConfigSet || hasDialogOpen || isInlineRenaming}
+                      className="shrink-0 px-2 py-1 rounded-md border border-border-muted bg-background text-[11px] text-text-secondary hover:text-text-primary hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {t('api.setAsDefaultSet')}
+                    </button>
+                    {canDeleteSet(set) && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTargetId(set.id)}
+                        disabled={isMutatingConfigSet || hasDialogOpen || isInlineRenaming}
+                        title={t('api.deleteSet')}
+                        className="shrink-0 px-1.5 py-1 rounded-md text-text-muted hover:text-error hover:bg-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
       <p className="text-xs text-text-muted">{t('api.currentSetSavingHint')}</p>
 
-      {activeLocalDialog === 'delete' && currentConfigSet && (
+      {deleteTargetSet && (
         <div className="space-y-3 rounded-lg border border-error/30 bg-error/10 px-3 py-3">
           <p className="text-xs text-text-primary">
-            {t('api.configSetDeleteConfirm', { name: currentConfigSet.name })}
+            {t('api.configSetDeleteConfirm', { name: deleteTargetSet.name })}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => setActiveLocalDialog('none')}
+              onClick={() => setDeleteTargetId(null)}
               disabled={isMutatingConfigSet}
               className="px-2 py-2 rounded-lg border border-border bg-surface text-text-secondary text-xs font-medium hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -200,12 +256,12 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
             <button
               type="button"
               onClick={async () => {
-                if (!currentConfigSet || !canDeleteCurrentConfigSet) {
+                if (!deleteTargetSet || !canDeleteSet(deleteTargetSet)) {
                   return;
                 }
-                const deleted = await onDeleteSet(currentConfigSet.id);
+                const deleted = await onDeleteSet(deleteTargetSet.id);
                 if (deleted !== false) {
-                  setActiveLocalDialog('none');
+                  setDeleteTargetId(null);
                 }
               }}
               disabled={isMutatingConfigSet}
@@ -223,7 +279,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
-              onClick={() => { void onSaveAndContinuePendingAction(); }}
+              onClick={() => {
+                void onSaveAndContinuePendingAction();
+              }}
               disabled={isMutatingConfigSet || isSaving}
               className="px-2 py-2 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
@@ -231,7 +289,9 @@ export function ApiConfigSetManager(props: ApiConfigSetManagerProps) {
             </button>
             <button
               type="button"
-              onClick={() => { void onDiscardAndContinuePendingAction(); }}
+              onClick={() => {
+                void onDiscardAndContinuePendingAction();
+              }}
               disabled={isMutatingConfigSet || isSaving}
               className="px-2 py-2 rounded-lg bg-surface-hover text-text-secondary text-xs font-medium hover:bg-surface-active disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
