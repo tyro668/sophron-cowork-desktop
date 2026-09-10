@@ -23,7 +23,7 @@ import {
   normalizeDataProcessLocation,
 } from './types';
 
-export function createEmptyDraft(): AutomationDraft {
+export function createEmptyDraft(name: string): AutomationDraft {
   const trigger: EditableAutomationTrigger = {
     kind: 'daily',
     times: ['09:00'],
@@ -32,7 +32,7 @@ export function createEmptyDraft(): AutomationDraft {
   const conversationNodeId = crypto.randomUUID();
   const dataTaskNodeId = crypto.randomUUID();
   return {
-    name: 'New automation',
+    name,
     description: '',
     projectId: '',
     enabled: true,
@@ -483,7 +483,7 @@ export function automationToDraft(automation: Automation): AutomationDraft {
     trigger,
     actionGraph: automation.actionGraph.nodes.length
       ? automation.actionGraph
-      : createEmptyDraft().actionGraph,
+      : createEmptyDraft(automation.name).actionGraph,
   };
 }
 

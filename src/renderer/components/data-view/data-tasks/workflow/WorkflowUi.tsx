@@ -28,7 +28,6 @@ interface WorkflowDslDialogProps {
 
 interface WorkflowOperatorPaletteProps {
   operators: WorkflowOperatorCatalogItem[];
-  onAddOperator: (type: DataWorkflowOperatorType) => void;
 }
 
 export function WorkflowDslDialog({
@@ -123,10 +122,7 @@ export function WorkflowDslDialog({
   );
 }
 
-export function WorkflowOperatorPalette({
-  operators,
-  onAddOperator,
-}: WorkflowOperatorPaletteProps) {
+export function WorkflowOperatorPalette({ operators }: WorkflowOperatorPaletteProps) {
   const { t } = useTranslation();
   const handleDragStart = useCallback(
     (event: DragEvent<HTMLButtonElement>, type: DataWorkflowOperatorType) => {
@@ -142,10 +138,10 @@ export function WorkflowOperatorPalette({
         {operators.map(({ type, labelKey, Icon, colorClassName }) => (
           <button
             key={type}
+            type="button"
             draggable
             onDragStart={(event) => handleDragStart(event, type)}
-            onClick={() => onAddOperator(type)}
-            className="flex h-9 w-full items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="flex h-9 w-full cursor-grab items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent active:cursor-grabbing"
           >
             <span
               className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${colorClassName}`}

@@ -6,7 +6,6 @@ import {
   useSettings,
   useSystemDarkMode,
   useSettingsState,
-  useLayoutState,
   useMainView,
   useConfigModalState,
   useGlobalNotice,
@@ -95,7 +94,6 @@ function App() {
   const systemDarkMode = useSystemDarkMode();
   const { showSettings } = useSettingsState();
   const mainView = useMainView();
-  const { sidebarCollapsed } = useLayoutState();
   const { showConfigModal, isConfigured, appConfig } = useConfigModalState();
   const globalNotice = useGlobalNotice();
   const { progress: sandboxSetupProgress, isComplete: isSandboxSetupComplete } =
@@ -110,13 +108,11 @@ function App() {
   const clearGlobalNotice = useAppStore((s) => s.clearGlobalNotice);
   const setSandboxSetupComplete = useAppStore((s) => s.setSandboxSetupComplete);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
-  const setSidebarCollapsed = useAppStore((s) => s.setSidebarCollapsed);
   const setContextPanelCollapsed = useAppStore((s) => s.setContextPanelCollapsed);
 
   const { listSessions, isElectron } = useIPC();
   const { width } = useWindowSize();
   const initialized = useRef(false);
-  const sidebarBeforeSettings = useRef(false);
   const [mountedMainRouteIds, setMountedMainRouteIds] = useState<Set<KeepAliveMainRouteId>>(
     () => new Set()
   );
@@ -147,23 +143,9 @@ function App() {
     }
   }, [settings.theme, systemDarkMode]);
 
-  // Auto-collapse panels based on window width
   useEffect(() => {
     setContextPanelCollapsed(width < 1100);
-    setSidebarCollapsed(width < 800);
-  }, [width, setContextPanelCollapsed, setSidebarCollapsed]);
-
-  // Auto-collapse sidebar when Settings is open, restore on close
-  useEffect(() => {
-    if (showSettings) {
-      sidebarBeforeSettings.current = !sidebarCollapsed;
-      setSidebarCollapsed(true);
-    } else if (sidebarBeforeSettings.current) {
-      setSidebarCollapsed(false);
-      sidebarBeforeSettings.current = false;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettings]);
+  }, [width, setContextPanelCollapsed]);
 
   // Handle config save
   const handleConfigSave = useCallback(
@@ -278,7 +260,7 @@ function App() {
         <div className="flex-1 min-h-0 flex overflow-hidden px-3 pb-3">
           {/* Sidebar */}
           <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
-            <Sidebar />
+            <Sidebar forceCollapsed={showSettings} />
           </PanelErrorBoundary>
 
           {/* Main Content Area */}

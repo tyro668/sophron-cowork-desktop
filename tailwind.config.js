@@ -3,10 +3,7 @@ const colorVar = (name) => `rgb(var(${name}) / <alpha-value>)`;
 
 module.exports = {
   darkMode: 'class',
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -30,6 +27,11 @@ module.exports = {
           DEFAULT: colorVar('--color-accent-rgb'),
           hover: colorVar('--color-accent-hover-rgb'),
           muted: colorVar('--color-accent-muted-rgb'),
+          text: {
+            DEFAULT: colorVar('--color-accent-text-rgb'),
+            hover: colorVar('--color-accent-text-hover-rgb'),
+            muted: colorVar('--color-accent-text-muted-rgb'),
+          },
         },
         mcp: {
           DEFAULT: colorVar('--color-mcp-rgb'),
@@ -43,6 +45,12 @@ module.exports = {
         warning: colorVar('--color-warning-rgb'),
         error: colorVar('--color-error-rgb'),
       },
+      textColor: {
+        accent: {
+          DEFAULT: colorVar('--color-accent-text-rgb'),
+          hover: colorVar('--color-accent-text-hover-rgb'),
+        },
+      },
       fontFamily: {
         sans: [
           'PingFang SC',
@@ -55,36 +63,36 @@ module.exports = {
         mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
       },
       boxShadow: {
-        'soft': 'var(--shadow-soft)',
-        'card': 'var(--shadow-card)',
-        'elevated': 'var(--shadow-elevated)',
+        soft: 'var(--shadow-soft)',
+        card: 'var(--shadow-card)',
+        elevated: 'var(--shadow-elevated)',
       },
       opacity: {
-        '18': '0.18',
-        '24': '0.24',
-        '28': '0.28',
-        '34': '0.34',
-        '35': '0.35',
-        '38': '0.38',
-        '42': '0.42',
-        '45': '0.45',
-        '46': '0.46',
-        '48': '0.48',
-        '55': '0.55',
-        '58': '0.58',
-        '62': '0.62',
-        '64': '0.64',
-        '68': '0.68',
-        '72': '0.72',
-        '86': '0.86',
-        '88': '0.88',
-        '92': '0.92',
-        '94': '0.94',
-        '96': '0.96',
+        18: '0.18',
+        24: '0.24',
+        28: '0.28',
+        34: '0.34',
+        35: '0.35',
+        38: '0.38',
+        42: '0.42',
+        45: '0.45',
+        46: '0.46',
+        48: '0.48',
+        55: '0.55',
+        58: '0.58',
+        62: '0.62',
+        64: '0.64',
+        68: '0.68',
+        72: '0.72',
+        86: '0.86',
+        88: '0.88',
+        92: '0.92',
+        94: '0.94',
+        96: '0.96',
       },
       borderRadius: {
-        'lg': '8px',
-        'xl': '10px',
+        lg: '8px',
+        xl: '10px',
         '2xl': '14px',
         '3xl': '16px',
       },
@@ -95,7 +103,7 @@ module.exports = {
         'fade-in': 'fadeIn 0.2s ease-out',
         'slide-up': 'slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
         'spin-slow': 'spin 2s linear infinite',
-        'expand': 'expand 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        expand: 'expand 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
       },
       keyframes: {
         fadeIn: {
@@ -114,4 +122,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};

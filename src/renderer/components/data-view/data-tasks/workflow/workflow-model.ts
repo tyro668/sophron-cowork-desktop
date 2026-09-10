@@ -9,7 +9,7 @@ export const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
 
 export type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
 export type WorkflowFlowEdge = Edge<Record<string, never>>;
-export type WorkflowInspectorTab = 'config' | 'data' | 'logs';
+export type WorkflowInspectorTab = 'config' | 'dsl' | 'data' | 'logs';
 export type WorkflowAlignmentLine =
   | { id: string; orientation: 'horizontal'; x1: number; x2: number; y: number }
   | { id: string; orientation: 'vertical'; x: number; y1: number; y2: number };

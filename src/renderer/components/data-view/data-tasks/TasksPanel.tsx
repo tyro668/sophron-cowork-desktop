@@ -154,13 +154,36 @@ export function TasksPanel({
       </div>
       <div className="glass-table flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
-          <TasksTable
-            tasks={tasks}
-            isLoading={isLoading}
-            selectedTaskId={selectedTaskId}
-            onSelectTask={setSelectedTaskId}
-            onEdit={onEdit}
-          />
+          {!isLoading && tasks.length === 0 ? (
+            <EmptyState
+              label={t('data.emptyTasks')}
+              description={t(
+                searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.dataHint'
+              )}
+              action={
+                searchQuery.trim() ? (
+                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                    {t('workspaceEmpty.clearSearch')}
+                  </button>
+                ) : (
+                  !isCreateDisabled && (
+                    <button className="btn btn-primary" onClick={onCreate}>
+                      <Plus className="h-4 w-4" />
+                      {t('data.newCleaningTask')}
+                    </button>
+                  )
+                )
+              }
+            />
+          ) : (
+            <TasksTable
+              tasks={tasks}
+              isLoading={isLoading}
+              selectedTaskId={selectedTaskId}
+              onSelectTask={setSelectedTaskId}
+              onEdit={onEdit}
+            />
+          )}
         </div>
         <PaginationFooter
           count={totalTasks}

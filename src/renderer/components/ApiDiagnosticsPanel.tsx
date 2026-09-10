@@ -25,6 +25,7 @@ interface ApiDiagnosticsPanelProps {
   onRunDiagnostics: () => void;
   onRunDeepDiagnostics?: () => void;
   disabled?: boolean;
+  showActions?: boolean;
 }
 
 const STEP_NAME_FALLBACKS: Record<string, string> = {
@@ -199,6 +200,7 @@ export default function ApiDiagnosticsPanel({
   onRunDiagnostics,
   onRunDeepDiagnostics,
   disabled = false,
+  showActions = true,
 }: ApiDiagnosticsPanelProps) {
   const { t } = useTranslation();
   const showSteps = result !== null;
@@ -212,40 +214,42 @@ export default function ApiDiagnosticsPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onRunDiagnostics()}
-          disabled={disabled || isRunning}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl
+      {showActions && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onRunDiagnostics()}
+            disabled={disabled || isRunning}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl
             bg-accent text-white text-sm font-medium
             hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed
             transition-colors"
-        >
-          {isRunning ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Stethoscope className="w-4 h-4" />
-          )}
-          {onRunDeepDiagnostics
-            ? t('api.diagnostic.runQuickDiagnostics', 'Quick Diagnose')
-            : t('api.diagnostic.runDiagnostics', 'Diagnose Connection')}
-        </button>
-        {onRunDeepDiagnostics && (
-          <button
-            type="button"
-            onClick={() => onRunDeepDiagnostics()}
-            disabled={disabled || isRunning}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border
+          >
+            {isRunning ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Stethoscope className="w-4 h-4" />
+            )}
+            {onRunDeepDiagnostics
+              ? t('api.diagnostic.runQuickDiagnostics', 'Quick Diagnose')
+              : t('api.diagnostic.runDiagnostics', 'Diagnose Connection')}
+          </button>
+          {onRunDeepDiagnostics && (
+            <button
+              type="button"
+              onClick={() => onRunDeepDiagnostics()}
+              disabled={disabled || isRunning}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border
               bg-background text-text-primary text-sm font-medium
               hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed
               transition-colors"
-          >
-            <Cpu className="w-4 h-4" />
-            {t('api.diagnostic.runDeepDiagnostics', 'Deep Inference Check')}
-          </button>
-        )}
-      </div>
+            >
+              <Cpu className="w-4 h-4" />
+              {t('api.diagnostic.runDeepDiagnostics', 'Deep Inference Check')}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Pipeline visualization */}
       {(showSteps || isRunning) && (
@@ -256,10 +260,7 @@ export default function ApiDiagnosticsPanel({
               <div key={step.name} className="contents">
                 <PipelineNode step={step} />
                 {i < displaySteps.length - 1 && (
-                  <Connector
-                    leftStatus={step.status}
-                    rightStatus={displaySteps[i + 1].status}
-                  />
+                  <Connector leftStatus={step.status} rightStatus={displaySteps[i + 1].status} />
                 )}
               </div>
             ))}
@@ -277,7 +278,10 @@ export default function ApiDiagnosticsPanel({
           {/* Skipped info */}
           {result?.skippedReason && !isRunning && (
             <div className="mt-3 pt-3 border-t border-border text-sm text-text-muted">
-              {t('api.diagnostic.skipped', 'Diagnostics skipped: another run is already in progress.')}
+              {t(
+                'api.diagnostic.skipped',
+                'Diagnostics skipped: another run is already in progress.'
+              )}
             </div>
           )}
 

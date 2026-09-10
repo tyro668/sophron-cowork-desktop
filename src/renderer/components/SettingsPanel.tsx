@@ -151,6 +151,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       <div className="flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-background/28 px-3 py-2 backdrop-blur-xl sm:px-4">
         <button
           onClick={onClose}
+          aria-label={t('common.close')}
           className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
         >
           <X className="w-5 h-5 text-text-secondary" />
@@ -162,7 +163,9 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
         <div
           className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} ml-2 mr-0 mt-3 mb-2 rounded-2xl border border-border-subtle bg-background/46 flex flex-col flex-shrink-0 shadow-card backdrop-blur-xl`}
         >
-          <div className={`flex-1 ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}>
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}
+          >
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -210,7 +213,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
             <div className="max-w-[1120px] h-full w-full min-w-0 mx-auto">
               <div className="h-full">
-                <div className={activeTab === 'api' ? '' : 'hidden'}>
+                <div className={activeTab === 'api' ? 'h-full' : 'hidden'}>
                   {viewedTabs.has('api') && (
                     <>
                       <SettingsAPI />

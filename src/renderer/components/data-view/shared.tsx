@@ -47,26 +47,39 @@ export function StatCard({
   value,
   Icon,
   iconClassName,
+  compact = false,
 }: {
   label: string;
   description: string;
   value: number;
   Icon: LucideIcon;
   iconClassName: string;
+  compact?: boolean;
 }) {
   return (
-    <article className="glass-card flex h-[5.75rem] items-center gap-3 rounded-xl px-3">
+    <article
+      title={description}
+      className={`flex items-center gap-3 rounded-lg border border-border-muted px-3 ${compact ? 'h-14' : 'glass-card h-[5.75rem]'}`}
+    >
       <div
-        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
+        className={`flex shrink-0 items-center justify-center rounded-lg ${compact ? 'h-7 w-7' : 'h-12 w-12'} ${iconClassName}`}
       >
-        <Icon className="h-6 w-6" />
+        <Icon className={compact ? 'h-4 w-4' : 'h-6 w-6'} />
       </div>
-      <div className="min-w-0">
-        <div className="text-[1.25rem] font-medium leading-none text-text-secondary">{value}</div>
-        <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
+      <div className={`min-w-0 ${compact ? 'flex flex-1 items-center justify-between gap-2' : ''}`}>
+        <div
+          className={`font-medium leading-none text-text-primary ${compact ? 'order-2 text-[16px]' : 'text-[20px]'}`}
+        >
+          {value}
+        </div>
+        <div
+          className={`text-[13px] font-medium leading-4 text-text-secondary ${compact ? '' : 'mt-1.5'}`}
+        >
           {label}
         </div>
-        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">{description}</div>
+        {!compact && (
+          <div className="mt-1 truncate text-[11px] leading-4 text-text-muted">{description}</div>
+        )}
       </div>
     </article>
   );
@@ -224,10 +237,22 @@ export function InputTableStatusBadge({
   );
 }
 
-export function EmptyState({ label }: { label: string }) {
+export function EmptyState({
+  label,
+  description,
+  action,
+}: {
+  label: string;
+  description?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs text-text-muted">
-      {label}
+    <div className="flex min-h-[16rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+      <p className="text-[14px] font-medium text-text-primary">{label}</p>
+      {description && (
+        <p className="max-w-sm text-[13px] leading-6 text-text-secondary">{description}</p>
+      )}
+      {action}
     </div>
   );
 }

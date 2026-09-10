@@ -201,7 +201,6 @@ export function ConfigModal({
             isSaving={isSaving}
             onSwitchSet={requestConfigSetSwitch}
             onRequestCreateBlankSet={requestCreateBlankConfigSet}
-            onSaveCurrentSet={handleSave}
             onRenameSet={renameConfigSet}
             onDeleteSet={deleteConfigSet}
             onCancelPendingAction={cancelPendingConfigSetAction}
@@ -215,7 +214,7 @@ export function ConfigModal({
               <Server className="w-4 h-4" />
               {t('api.provider')}
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))] gap-2">
               {providerOptions.map((p) => (
                 <button
                   key={p}

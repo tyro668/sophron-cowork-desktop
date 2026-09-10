@@ -431,6 +431,8 @@
       "layout": "布局",
       "grid": "网格",
       "config": "配置",
+      "visualConfig": "可视化配置",
+      "dsl": "DSL",
       "data": "数据",
       "logs": "日志",
       "noLogs": "暂无运行日志",
@@ -477,7 +479,7 @@
       "syntaxOk": "语法正常",
       "syntaxInvalid": "语法异常",
       "noNodeSelected": "选择一个节点后配置会显示在这里。",
-      "emptyCanvas": "从左侧添加算子开始构建流程。",
+      "emptyCanvas": "从左侧拖拽算子到画布开始构建流程。",
       "selectedOperator": "已选择 {{count}} 个{{name}}",
       "noOperatorSelected": "未选择算子",
       "configureSelected": "配置",
@@ -541,7 +543,7 @@
           "incompleteConfigRows": "请删除或补齐不完整配置行",
           "search": "搜索...",
           "noFormSupport": "该算子暂不支持图形化配置",
-          "noFormSupportHint": "该算子暂不支持图形化配置，请切换到 DSL 模式",
+          "noFormSupportHint": "该算子暂不支持图形化配置，请切换到 DSL 标签",
           "dataTypeUnknown": "类型未推断",
           "dataTypeText": "文本",
           "dataTypeDate": "日期",
@@ -1544,6 +1546,18 @@
     "settingsTitle": "API 设置",
     "settingsSubtitle": "管理 API 提供商、密钥和模型",
     "configSet": "配置方案",
+    "configSetDescription": "管理不同的模型配置方案，每个方案可使用不同的服务商与模型",
+    "serviceAuth": "服务与认证",
+    "serviceAuthDescription": "配置当前方案使用的模型服务商与认证信息",
+    "modelInference": "模型与推理",
+    "modelInferenceDescription": "配置当前方案的模型及推理参数",
+    "customModel": "自定义模型",
+    "showApiKey": "显示 API 密钥",
+    "hideApiKey": "隐藏 API 密钥",
+    "moreActions": "方案操作",
+    "connectionNotTested": "连接尚未测试",
+    "connectionSuccess": "连接正常 · {{ms}} ms",
+    "connectionFailed": "连接测试失败",
     "defaultSetTag": "默认",
     "setAsDefaultSet": "设为默认",
     "saveAs": "另存为",
@@ -1781,7 +1795,8 @@
         "ollama_model_loading": "模型 {{model}} 可能仍在加载中，稍后再试深度验证。",
         "model_cold_start": "模型可能仍在加载到 GPU/CPU 内存中。大型模型（7B+）首次使用可能需要 30–120 秒，请稍后重试。"
       }
-    }
+    },
+    "manageConfigSets": "管理其他方案"
   },
   "window": {
     "minimize": "最小化",
@@ -3023,5 +3038,12 @@
     "description": "应用遇到了意外错误。你可以点击下方按钮尝试恢复。",
     "details": "错误详情",
     "retry": "重试"
+  },
+  "workspaceEmpty": {
+    "searchHint": "试试其他关键词，或清除搜索。",
+    "clearSearch": "清除搜索",
+    "dataHint": "新建一个数据任务，选择输入数据并配置处理步骤。",
+    "skillsHint": "前往在线市场，选择适合当前工作的技能。",
+    "automationHint": "设置触发时间和执行动作，让重复工作自动完成。"
   }
 }

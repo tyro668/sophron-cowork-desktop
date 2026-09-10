@@ -18,36 +18,8 @@ import { formatAppDateTime } from '../../../utils/i18n-format';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
 
-export function StatCard({
-  label,
-  description,
-  value,
-  Icon,
-  iconClassName,
-}: {
-  label: string;
-  description: string;
-  value: number;
-  Icon: LucideIcon;
-  iconClassName: string;
-}) {
-  return (
-    <article className="glass-card flex h-[5.75rem] items-center gap-3 rounded-xl px-3">
-      <div
-        className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${iconClassName}`}
-      >
-        <Icon className="h-6 w-6" />
-      </div>
-      <div className="min-w-0">
-        <div className="text-[1.25rem] font-medium leading-none text-text-secondary">{value}</div>
-        <div className="mt-1.5 whitespace-nowrap text-[13px] font-medium leading-4 text-text-secondary">
-          {label}
-        </div>
-        <div className="mt-1 truncate text-[11px] leading-4 text-text-secondary">{description}</div>
-      </div>
-    </article>
-  );
-}
+import { EmptyState } from '../../data-view/shared';
+export { StatCard } from '../../data-view/shared';
 
 export function TabButton({
   active,
@@ -158,14 +130,40 @@ export function AutomationListPanel({
       </div>
       <div className="glass-table flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
-          <AutomationTable
-            automations={automations}
-            selectedId={selectedId}
-            isLoading={isLoading}
-            onSelect={onSelect}
-            onEdit={onEdit}
-            tr={tr}
-          />
+          {!isLoading && automations.length === 0 ? (
+            <EmptyState
+              label={tr('schedule.empty', '暂无自动化')}
+              description={
+                searchQuery.trim()
+                  ? tr('workspaceEmpty.searchHint', '试试其他关键词，或清除搜索。')
+                  : tr(
+                      'workspaceEmpty.automationHint',
+                      '设置触发时间和执行动作，让重复工作自动完成。'
+                    )
+              }
+              action={
+                searchQuery.trim() ? (
+                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                    {tr('workspaceEmpty.clearSearch', '清除搜索')}
+                  </button>
+                ) : (
+                  <button className="btn btn-primary" onClick={onCreate}>
+                    <Plus className="h-4 w-4" />
+                    {tr('schedule.newAutomation', '新建自动化')}
+                  </button>
+                )
+              }
+            />
+          ) : (
+            <AutomationTable
+              automations={automations}
+              selectedId={selectedId}
+              isLoading={isLoading}
+              onSelect={onSelect}
+              onEdit={onEdit}
+              tr={tr}
+            />
+          )}
         </div>
         <PaginationFooter
           count={totalAutomations}
@@ -637,14 +635,6 @@ function DataMoreMenu({
   );
 }
 
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs text-text-muted">
-      {label}
-    </div>
-  );
-}
-
 function LoadingState({ label }: { label: string }) {
   return (
     <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
@@ -687,26 +677,30 @@ function PaginationFooter({
     >
       <span>{totalLabel}</span>
       <div className="flex items-center gap-2">
-        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
+        <span className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
           {pageSizeLabel}
-        </button>
-        <button
-          className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={currentPage <= 1}
-          onClick={() => onPageChange(currentPage - 1)}
-        >
-          ‹
-        </button>
+        </span>
+        {pageCount > 1 && (
+          <button
+            className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(currentPage - 1)}
+          >
+            ‹
+          </button>
+        )}
         <span className="min-w-[4rem] text-center">
           {currentPage} / {pageCount}
         </span>
-        <button
-          className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={currentPage >= pageCount}
-          onClick={() => onPageChange(currentPage + 1)}
-        >
-          ›
-        </button>
+        {pageCount > 1 && (
+          <button
+            className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={currentPage >= pageCount}
+            onClick={() => onPageChange(currentPage + 1)}
+          >
+            ›
+          </button>
+        )}
       </div>
     </div>
   );

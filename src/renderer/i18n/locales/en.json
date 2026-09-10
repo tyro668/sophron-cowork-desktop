@@ -431,6 +431,8 @@
       "layout": "Layout",
       "grid": "Grid",
       "config": "Config",
+      "visualConfig": "Visual",
+      "dsl": "DSL",
       "data": "Data",
       "logs": "Logs",
       "noLogs": "No run logs yet",
@@ -477,7 +479,7 @@
       "syntaxOk": "Syntax OK",
       "syntaxInvalid": "Syntax issue",
       "noNodeSelected": "Select a node to configure it here.",
-      "emptyCanvas": "Add operators from the left to start building the flow.",
+      "emptyCanvas": "Drag operators from the left onto the canvas to start building the flow.",
       "selectedOperator": "Selected {{count}} {{name}}",
       "noOperatorSelected": "No operator selected",
       "configureSelected": "Config",
@@ -541,7 +543,7 @@
           "incompleteConfigRows": "Please remove or complete the incomplete configuration rows",
           "search": "Search...",
           "noFormSupport": "This operator does not support graphical configuration yet",
-          "noFormSupportHint": "This operator does not support graphical configuration yet. Switch to DSL mode.",
+          "noFormSupportHint": "This operator does not support graphical configuration yet. Switch to the DSL tab.",
           "dataTypeUnknown": "Type not inferred",
           "dataTypeText": "Text",
           "dataTypeDate": "Date",
@@ -1544,6 +1546,18 @@
     "settingsTitle": "API Settings",
     "settingsSubtitle": "Manage provider, key, and model settings",
     "configSet": "Config Set",
+    "configSetDescription": "Manage model configurations with a different provider and model in each set",
+    "serviceAuth": "Service & Authentication",
+    "serviceAuthDescription": "Configure the provider and credentials used by this configuration",
+    "modelInference": "Model & Inference",
+    "modelInferenceDescription": "Configure the model and inference limits for this configuration",
+    "customModel": "Custom Model",
+    "showApiKey": "Show API key",
+    "hideApiKey": "Hide API key",
+    "moreActions": "Configuration actions",
+    "connectionNotTested": "Connection not tested",
+    "connectionSuccess": "Connected · {{ms}} ms",
+    "connectionFailed": "Connection test failed",
     "defaultSetTag": "Default",
     "setAsDefaultSet": "Set as default",
     "saveAs": "Save As",
@@ -1781,7 +1795,8 @@
         "ollama_model_loading": "Model {{model}} may still be loading. Try the deep check again in a moment.",
         "model_cold_start": "The model may still be loading into GPU/CPU memory. Large models (7B+) can take 30–120 seconds on first use. Try again shortly."
       }
-    }
+    },
+    "manageConfigSets": "Manage other configurations"
   },
   "window": {
     "minimize": "Minimize",
@@ -3023,5 +3038,12 @@
     "description": "An unexpected error occurred in the application. You can try to recover by clicking the button below.",
     "details": "Error details",
     "retry": "Try again"
+  },
+  "workspaceEmpty": {
+    "searchHint": "Try another keyword or clear your search.",
+    "clearSearch": "Clear search",
+    "dataHint": "Create a data task, choose its input data, and configure the processing steps.",
+    "skillsHint": "Browse the marketplace to find skills for your work.",
+    "automationHint": "Choose a trigger and actions to automate recurring work."
   }
 }

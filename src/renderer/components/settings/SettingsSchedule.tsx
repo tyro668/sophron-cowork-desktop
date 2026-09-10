@@ -76,7 +76,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [activeListTab, setActiveListTab] = useState<ListTab>('automations');
   const [automationRunLogs, setAutomationRunLogs] = useState<AutomationRunLogEntry[]>([]);
-  const [draft, setDraft] = useState<AutomationDraft>(() => createEmptyDraft());
+  const [draft, setDraft] = useState<AutomationDraft>(() =>
+    createEmptyDraft(tr('schedule.newAutomation', '新建自动化'))
+  );
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -324,7 +326,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const createNew = () => {
     suppressSelectedAutomationSyncRef.current = false;
     setSelectedId(null);
-    setDraft(createEmptyDraft());
+    setDraft(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')));
     setViewMode('detail');
     setBanner(null);
   };
@@ -458,14 +460,15 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     await window.electronAPI.automation.delete(selectedAutomation.id);
     setSelectedId(null);
     setAutomationRunLogs([]);
-    setDraft(createEmptyDraft());
+    setDraft(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')));
     setViewMode('list');
     await load();
   };
 
   const summaryContent = (
-    <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
       <StatCard
+        compact={automations.length === 0}
         label={tr('schedule.summary.total', '总数')}
         description={tr('schedule.summary.totalDesc', '全部自动化流程')}
         value={automations.length}
@@ -473,6 +476,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         iconClassName="bg-accent/10 text-accent"
       />
       <StatCard
+        compact={automations.length === 0}
         label={tr('schedule.summary.enabled', '开启')}
         description={tr('schedule.summary.enabledDesc', '当前会自动触发')}
         value={automations.filter((item) => item.enabled).length}
@@ -480,6 +484,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         iconClassName="bg-success/10 text-success"
       />
       <StatCard
+        compact={automations.length === 0}
         label={tr('schedule.summary.running', '运行中')}
         description={tr('schedule.summary.runningDesc', '正在执行动作链')}
         value={automations.filter((item) => item.status === 'running').length}
@@ -487,6 +492,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         iconClassName="bg-[#E9F7F5] text-[#238C80]"
       />
       <StatCard
+        compact={automations.length === 0}
         label={tr('schedule.summary.failed', '失败')}
         description={tr('schedule.summary.failedDesc', '最近执行失败')}
         value={automations.filter((item) => item.lastRunStatus === 'failed').length}
@@ -546,9 +552,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         />
         {bannerContent}
 
-        <section className="flex min-h-0 flex-1 flex-col gap-4">
+        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           <TaskStatusSection enabled={draft.enabled} onEnabledChange={updateDraftEnabled} tr={tr} />
-          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(340px,0.58fr)_minmax(620px,1fr)]">
+          <div className="automation-editor-grid grid items-start gap-3">
             <div className="flex min-h-0 flex-col gap-4">
               <ExecutionProjectPanel
                 draft={draft}

@@ -756,7 +756,7 @@ export function TaskEditor({
         </div>
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
-          <WorkflowOperatorPalette operators={OPERATOR_CATALOG} onAddOperator={addOperator} />
+          <WorkflowOperatorPalette operators={OPERATOR_CATALOG} />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
             <WorkflowCanvas
               nodes={nodes}

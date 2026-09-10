@@ -1178,10 +1178,11 @@ export function DataView() {
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
               {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
                 <StatCard
                   key={key}
+                  compact={summaryCards.every((card) => card.value === 0)}
                   label={label}
                   description={description}
                   value={value}

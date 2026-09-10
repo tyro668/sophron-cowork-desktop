@@ -1844,7 +1844,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   );
 
   const switchConfigSet = useCallback(
-    async (setId: string, options?: { silentSuccess?: boolean }) => {
+    async (setId: string) => {
       if (!isElectron) {
         return false;
       }
@@ -1854,10 +1854,6 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       try {
         const result = await window.electronAPI.config.switchSet({ id: setId });
         applyPersistedConfigToStore(result.config, presets);
-        if (!options?.silentSuccess) {
-          showSuccessKey('api.configSetSwitched');
-          setTimeout(() => clearSuccessMessage(), 1500);
-        }
         return true;
       } catch (switchError) {
         if (switchError instanceof Error) {
@@ -1870,16 +1866,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: false });
       }
     },
-    [
-      applyPersistedConfigToStore,
-      clearError,
-      clearSuccessMessage,
-      presets,
-      showErrorKey,
-      showErrorText,
-      showSuccessKey,
-      t,
-    ]
+    [applyPersistedConfigToStore, clearError, presets, showErrorKey, showErrorText, t]
   );
 
   const createConfigSet = useCallback(

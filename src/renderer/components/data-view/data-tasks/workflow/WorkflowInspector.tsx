@@ -55,6 +55,7 @@ export function WorkflowInspector({
   const [operatorDsl, setOperatorDsl] = useState('');
   const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
   const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
+  const [isDslDialogOpen, setIsDslDialogOpen] = useState(false);
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
@@ -140,10 +141,18 @@ export function WorkflowInspector({
 
   useEffect(() => {
     setIsEditingNodeTitle(false);
+    setIsEditingOperatorDsl(false);
+    setIsDslDialogOpen(false);
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
   }, [node?.id]);
+
+  useEffect(() => {
+    if (activeTab === 'dsl' && !usesOperatorDsl) {
+      onActiveTabChange('config');
+    }
+  }, [activeTab, onActiveTabChange, usesOperatorDsl]);
 
   useEffect(() => {
     if (activeTab !== 'data' || !node) return;
@@ -189,21 +198,28 @@ export function WorkflowInspector({
     nodeTitleInputRef.current?.select();
   }, [isEditingNodeTitle]);
 
-  const handleOperatorDslChange = useCallback((value: string) => {
-    setOperatorDsl(value);
-    setOperatorDslStatus(null);
-  }, []);
+  const handleOperatorDslChange = useCallback(
+    (value: string) => {
+      setOperatorDsl(value);
+      setOperatorDslStatus(null);
+      setIsEditingOperatorDsl(value !== operatorDslBeforeEdit);
+    },
+    [operatorDslBeforeEdit]
+  );
 
   const handleStartOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
     flushSync(() => {
-      setOperatorDslBeforeEdit(operatorDsl);
-      setOperatorDslStatus(null);
-      setOperatorDslDiagnostics([]);
-      setIsEditingOperatorDsl(true);
-      onActiveTabChange('config');
+      if (!isEditingOperatorDsl) {
+        setOperatorDslBeforeEdit(operatorDsl);
+        setOperatorDslStatus(null);
+        setOperatorDslDiagnostics([]);
+        setIsEditingOperatorDsl(true);
+      }
+      setIsDslDialogOpen(true);
+      onActiveTabChange('dsl');
     });
-  }, [node, onActiveTabChange, operatorDsl, usesOperatorDsl]);
+  }, [isEditingOperatorDsl, node, onActiveTabChange, operatorDsl, usesOperatorDsl]);
 
   const handleCancelOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
@@ -212,10 +228,11 @@ export function WorkflowInspector({
     setOperatorDslStatus(null);
     setOperatorDslDiagnostics([]);
     setIsEditingOperatorDsl(false);
+    setIsDslDialogOpen(false);
   }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
 
   const handleFormatOperatorDsl = useCallback(() => {
-    if (!node || !usesOperatorDsl || !isEditingOperatorDsl) return;
+    if (!node || !usesOperatorDsl) return;
     const result = parsePrepOperatorDsl(operatorDsl, node.type);
     setOperatorDslDiagnostics(result.diagnostics);
     const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
@@ -223,11 +240,12 @@ export function WorkflowInspector({
       setOperatorDslStatus(null);
       return;
     }
+    setIsEditingOperatorDsl(true);
     setOperatorDsl(
       exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config })
     );
     setOperatorDslStatus(null);
-  }, [isEditingOperatorDsl, node, operatorDsl, usesOperatorDsl]);
+  }, [node, operatorDsl, usesOperatorDsl]);
 
   const handleApplyOperatorDsl = useCallback(async () => {
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
@@ -244,6 +262,7 @@ export function WorkflowInspector({
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
     setOperatorDslDiagnostics([]);
     setIsEditingOperatorDsl(false);
+    setIsDslDialogOpen(false);
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
@@ -280,6 +299,19 @@ export function WorkflowInspector({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const summary = getWorkflowConfigSummary(node, t);
+  const resolvedTab = activeTab === 'dsl' && !usesOperatorDsl ? 'config' : activeTab;
+  const inspectorTabs: { id: WorkflowInspectorTab; label: string }[] = usesOperatorDsl
+    ? [
+        { id: 'config', label: t('data.workflow.visualConfig') },
+        { id: 'dsl', label: t('data.workflow.dsl') },
+        { id: 'data', label: t('data.workflow.data') },
+        { id: 'logs', label: t('data.workflow.logs') },
+      ]
+    : [
+        { id: 'config', label: t('data.workflow.visualConfig') },
+        { id: 'data', label: t('data.workflow.data') },
+        { id: 'logs', label: t('data.workflow.logs') },
+      ];
 
   return (
     <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
@@ -323,52 +355,36 @@ export function WorkflowInspector({
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           <div className="flex rounded-lg bg-surface-active p-0.5 text-xs font-medium">
-            <button
-              onClick={() => onActiveTabChange('config')}
-              className={`h-7 rounded-md px-3 ${
-                activeTab === 'config'
-                  ? 'bg-background text-accent shadow-soft'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {t('data.workflow.config')}
-            </button>
-            <button
-              onClick={() => onActiveTabChange('data')}
-              className={`h-7 rounded-md px-3 ${
-                activeTab === 'data'
-                  ? 'bg-background text-accent shadow-soft'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {t('data.workflow.data')}
-            </button>
-            <button
-              onClick={() => onActiveTabChange('logs')}
-              className={`h-7 rounded-md px-3 ${
-                activeTab === 'logs'
-                  ? 'bg-background text-accent shadow-soft'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {t('data.workflow.logs')}
-            </button>
+            {inspectorTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => onActiveTabChange(tab.id)}
+                className={`h-7 whitespace-nowrap rounded-md px-3 ${
+                  resolvedTab === tab.id
+                    ? 'bg-background text-accent shadow-soft'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
           <X className="h-4 w-4 text-text-muted" />
         </div>
       </div>
       <div
         className={`min-h-0 flex-1 overflow-hidden ${
-          activeTab === 'config' && usesOperatorDsl ? 'p-0' : 'p-2.5'
+          (resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl ? 'p-0' : 'p-2.5'
         }`}
       >
-        {activeTab === 'logs' ? (
+        {resolvedTab === 'logs' ? (
           <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
-        ) : activeTab === 'data' ? (
+        ) : resolvedTab === 'data' ? (
           <WorkflowNodeDataPreview
             preview={nodePreviewData}
             isLoading={nodePreviewLoading}
@@ -378,6 +394,7 @@ export function WorkflowInspector({
           />
         ) : usesOperatorDsl ? (
           <WorkflowOperatorConfigPanel
+            mode={resolvedTab === 'dsl' ? 'dsl' : 'form'}
             node={node}
             workflowNodes={workflowNodes}
             sourceNode={
@@ -404,6 +421,7 @@ export function WorkflowInspector({
             operatorDslStatus={operatorDslStatus}
             operatorDslDiagnostics={operatorDslDiagnostics}
             isEditingOperatorDsl={isEditingOperatorDsl}
+            isDslDialogOpen={isDslDialogOpen}
             isRunningOperatorDsl={isRunningOperatorDsl}
             editorCompletionLabels={editorCompletionLabels}
             formatEditorDiagnostic={formatEditorDiagnostic}

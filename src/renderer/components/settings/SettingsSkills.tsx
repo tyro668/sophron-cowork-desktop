@@ -34,6 +34,7 @@ import {
   DataTableSearch,
   DataToolbarButton,
   StatCard,
+  EmptyState,
   TabButton,
 } from '../data-view/shared';
 import { useConfirmDialog } from '../ConfirmDialog';
@@ -544,8 +545,9 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         </div>
       )}
 
-      <section className="grid flex-shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
         <StatCard
+          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
           Icon={Box}
           value={installedCount}
           label={t('skills.workspace.installedCount')}
@@ -553,6 +555,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           iconClassName="bg-accent/10 text-accent"
         />
         <StatCard
+          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
           Icon={Layers}
           value={builtinSkills.length}
           label={t('skills.workspace.builtinCount')}
@@ -560,6 +563,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           iconClassName="bg-accent/10 text-accent"
         />
         <StatCard
+          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
           Icon={Cloud}
           value={onlineCount}
           label={t('skills.workspace.onlineCount')}
@@ -567,6 +571,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           iconClassName="bg-accent/10 text-accent"
         />
         <StatCard
+          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
           Icon={Clock3}
           value={recentUpdatedCount || enabledCount}
           label={t('skills.workspace.recentCount')}
@@ -665,7 +670,9 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           )}
         </div>
 
-        <div className="mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div
+          className={`mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
+        >
           <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
             <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted backdrop-blur-xl 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
               <span />
@@ -677,12 +684,28 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
               {pageItems.length === 0 ? (
-                <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 px-6 text-center text-text-muted">
-                  <Package className="h-10 w-10 opacity-40" />
-                  <div className="text-[13px] font-medium text-text-secondary">
-                    {t('skills.workspace.emptyTitle')}
-                  </div>
-                </div>
+                <EmptyState
+                  label={t('skills.workspace.emptyTitle')}
+                  description={t(
+                    searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.skillsHint'
+                  )}
+                  action={
+                    searchQuery.trim() ? (
+                      <button className="btn btn-secondary" onClick={() => setSearchQuery('')}>
+                        {t('workspaceEmpty.clearSearch')}
+                      </button>
+                    ) : (
+                      activeWorkspaceTab !== 'market' && (
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => void handleBrowseMarket()}
+                        >
+                          {t('skills.workspace.marketTab')}
+                        </button>
+                      )
+                    )
+                  }
+                />
               ) : (
                 pageItems.map((item) => (
                   <SkillTableRow
@@ -706,35 +729,39 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                 <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/42 px-3">
                   {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                  disabled={safeCurrentPage <= 1}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
+                {pageCount > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={safeCurrentPage <= 1}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                )}
                 <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 px-2 text-accent">
                   {safeCurrentPage}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => void handleNextPage()}
-                  disabled={!hasNextPage || isPluginLoadingMore}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {isPluginLoadingMore ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </button>
+                {(pageCount > 1 || hasNextPage) && (
+                  <button
+                    type="button"
+                    onClick={() => void handleNextPage()}
+                    disabled={!hasNextPage || isPluginLoadingMore}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isPluginLoadingMore ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
-          <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
-            {selectedItem ? (
+          {selectedItem && (
+            <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
               <>
                 <div className="flex items-start gap-3">
                   <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
@@ -828,13 +855,8 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   </div>
                 )}
               </>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-text-muted">
-                <Package className="h-10 w-10 opacity-40" />
-                <p className="text-[13px] font-medium">{t('skills.workspace.emptyTitle')}</p>
-              </div>
-            )}
-          </aside>
+            </aside>
+          )}
         </div>
       </section>
 

@@ -40,7 +40,7 @@ import sidebarLogoSrc from '../assets/logo.png';
 
 const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
 
-export function Sidebar() {
+export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }) {
   const { t } = useTranslation();
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
@@ -53,7 +53,8 @@ export function Sidebar() {
   const setTraceSteps = useAppStore((s) => s.setTraceSteps);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const isConfigured = useAppStore((s) => s.isConfigured);
-  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const preferredSidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
+  const sidebarCollapsed = forceCollapsed || preferredSidebarCollapsed;
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const showSettings = useAppStore((s) => s.showSettings);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
@@ -669,13 +670,15 @@ export function Sidebar() {
     return (
       <aside className="glass-surface mr-3 w-[4.25rem] rounded-2xl flex flex-col overflow-hidden">
         <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
-          <button
-            onClick={toggleSidebar}
-            className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
-            title={t('context.expandPanel')}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {!forceCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
+              title={t('context.expandPanel')}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={handleNewSession}
             className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors text-white shadow-soft"
@@ -719,13 +722,15 @@ export function Sidebar() {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-3 py-4">
-          <button
-            onClick={toggleSidebar}
-            className="rounded-2xl px-2 py-3 text-[11px] leading-4 text-center text-text-muted hover:bg-surface-hover transition-colors"
-            title={t('sidebar.expandToView')}
-          >
-            {t('sidebar.expandToView')}
-          </button>
+          {!forceCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="rounded-2xl px-2 py-3 text-[11px] leading-4 text-center text-text-muted hover:bg-surface-hover transition-colors"
+              title={t('sidebar.expandToView')}
+            >
+              {t('sidebar.expandToView')}
+            </button>
+          )}
         </div>
 
         <div className="border-t border-border-subtle py-2 flex flex-col items-center gap-2">

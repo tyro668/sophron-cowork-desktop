@@ -19,7 +19,6 @@ import {
   Plus,
   BookOpen,
   Table2,
-  Sparkles,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -554,16 +553,13 @@ export function WelcomeView() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-transparent px-4 py-6 md:px-8">
-      <div className="w-full max-w-[980px] animate-fade-in">
+    <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto bg-transparent px-4 py-6 md:px-8">
+      <div className="my-auto w-full max-w-[860px] animate-fade-in">
         <div className="mx-auto max-w-[36rem] text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-border-subtle bg-background/58 text-accent shadow-soft">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <h1 className="mt-5 text-[24px] font-semibold tracking-normal text-text-primary">
+          <h1 className="text-[18px] font-semibold tracking-normal text-text-primary">
             {t('welcome.title')}
           </h1>
-          <p className="mt-2 text-[14px] font-medium text-text-muted">{t('welcome.subtitle')}</p>
+          <p className="mt-2 text-[13px] text-text-secondary">{t('welcome.subtitle')}</p>
         </div>
 
         {/* API Not Configured Hint */}
@@ -584,44 +580,13 @@ export function WelcomeView() {
           </p>
         )}
 
-        {/* Quick Action Tags */}
-        <div className="mx-auto mt-10 grid w-full max-w-[860px] gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {quickTags.map((tag) => (
-            <button
-              key={tag.id}
-              onClick={() => handleTagClick(tag.id, tag.prompt)}
-              className={`group flex min-h-[8.5rem] flex-col items-start rounded-xl border px-5 py-4 text-left shadow-soft transition-all ${
-                selectedTag === tag.id
-                  ? 'border-accent/35 bg-accent/10 ring-1 ring-inset ring-accent/20'
-                  : 'border-border-subtle bg-background/62 hover:border-accent/25 hover:bg-surface-hover/70'
-              }`}
-            >
-              <span
-                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  selectedTag === tag.id
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-accent/10 text-accent group-hover:bg-accent/15'
-                }`}
-              >
-                <tag.icon className="h-5 w-5" />
-              </span>
-              <span className="mt-4 text-[15px] font-semibold text-text-primary">
-                {tag.label}
-              </span>
-              <span className="mt-1 text-[12px] leading-5 text-text-muted">
-                {tag.description}
-              </span>
-            </button>
-          ))}
-        </div>
-
         {/* Main Input Card */}
         <form
           onSubmit={handleSubmit}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`chat-composer-panel relative mx-auto mt-10 w-full max-w-[860px] px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+          className={`chat-composer-panel relative mx-auto mt-5 w-full max-w-[860px] px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
@@ -812,6 +777,33 @@ export function WelcomeView() {
             </div>
           </div>
         </form>
+        {/* Quick Action Tags */}
+        <div className="mx-auto mt-3 grid w-full max-w-[860px] gap-2 sm:grid-cols-2">
+          {quickTags.map((tag) => (
+            <button
+              key={tag.id}
+              title={tag.description}
+              aria-pressed={selectedTag === tag.id}
+              onClick={() => handleTagClick(tag.id, tag.prompt)}
+              className={`group flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
+                selectedTag === tag.id
+                  ? 'border-accent/35 bg-accent/10 ring-1 ring-inset ring-accent/20'
+                  : 'border-border-subtle bg-background/62 hover:border-accent/25 hover:bg-surface-hover/70'
+              }`}
+            >
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                  selectedTag === tag.id
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-accent/10 text-accent group-hover:bg-accent/15'
+                }`}
+              >
+                <tag.icon className="h-4 w-4" />
+              </span>
+              <span className="text-[13px] font-medium text-text-primary">{tag.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

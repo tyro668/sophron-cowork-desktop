@@ -392,7 +392,7 @@ export function TriggerConditionPanel({
         </ConfigRow>
       </div>
 
-      <div className="mt-6 min-h-0 flex-1">
+      <div className="mt-4 min-h-0 flex-1">
         {trigger.kind === 'file_change' ? (
           <FileChangeConfigCard
             draft={draft}
@@ -680,8 +680,8 @@ function ScheduledConfigCard({
   tr: (key: string, fallback: string) => string;
 }) {
   return (
-    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-[13px] font-medium text-text-primary">
         <Clock className="h-4 w-4" />
         {tr('schedule.scheduledConfig', '定时配置')}
       </div>
@@ -2120,7 +2120,7 @@ export function ActionChainSection({
         </h2>
         {addActionButton}
       </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto pt-4 pr-1">
+      <div className="min-w-0 space-y-3 pt-4">
         {nodes.map((node, index) => (
           <ActionStepCard
             key={node.id}
@@ -2213,7 +2213,7 @@ function SegmentedControl<T extends string>({
 }) {
   return (
     <div
-      className={`h-9 items-center gap-0.5 rounded-lg border border-border-muted bg-bg-secondary/30 p-0.5 ${
+      className={`min-h-9 flex-wrap items-center gap-1 rounded-lg border border-border-muted bg-surface-muted p-1 ${
         fill ? 'flex w-full' : 'inline-flex'
       }`}
     >
@@ -2223,12 +2223,12 @@ function SegmentedControl<T extends string>({
           <button
             key={option.value}
             type="button"
+            aria-label={option.label}
+            aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className={`h-8 rounded-md px-3 text-[12px] font-medium transition-colors ${
-              fill ? 'min-w-0 flex-1' : ''
-            } ${
-              active ? 'bg-success/15 text-success' : 'text-text-muted hover:text-text-secondary'
-            }`}
+            className={`h-8 whitespace-nowrap rounded-md px-3 text-[12px] font-medium transition-colors ${
+              fill ? 'min-w-max flex-1' : 'shrink-0'
+            } ${active ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
             {option.label}
           </button>
@@ -2569,9 +2569,9 @@ function ActionConfigEditor({
 
 function ConfigRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="grid gap-2 text-[12px] font-medium text-text-secondary sm:grid-cols-[112px_1fr] sm:items-start">
-      <span className="pt-2">{label}</span>
-      {children}
+    <label className="automation-config-row grid min-w-0 gap-2 text-[12px] font-medium text-text-secondary">
+      <span className="automation-config-label">{label}</span>
+      <span className="block min-w-0">{children}</span>
     </label>
   );
 }
