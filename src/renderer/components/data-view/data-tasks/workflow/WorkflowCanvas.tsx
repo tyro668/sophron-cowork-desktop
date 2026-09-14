@@ -21,6 +21,7 @@ import {
   applyNodeChanges,
   reconnectEdge,
   type Connection,
+  type DefaultEdgeOptions,
   type Edge,
   type EdgeChange,
   type FinalConnectionState,
@@ -54,6 +55,30 @@ import {
 const WORKFLOW_NODE_TYPES = {
   operator: WorkflowOperatorNode,
 };
+
+// Hoisted to module scope: passing new object/function identities to ReactFlow
+// on every render defeats the memoization of GraphView/NodeRenderer/NodeWrapper,
+// which makes every node re-render on each drag frame.
+const WORKFLOW_DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+const WORKFLOW_PRO_OPTIONS = { hideAttribution: true };
+const WORKFLOW_MINIMAP_STYLE = { width: 100, height: 75 };
+const WORKFLOW_DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
+  type: 'smoothstep',
+  markerEnd: {
+    type: MarkerType.ArrowClosed,
+    width: 16,
+    height: 16,
+    color: 'var(--workflow-edge)',
+  },
+  style: {
+    stroke: 'var(--workflow-edge)',
+    strokeWidth: 1.8,
+  },
+};
+
+function getWorkflowMinimapNodeColor() {
+  return 'var(--workflow-minimap-node)';
+}
 
 export function WorkflowCanvas({
   nodes,
@@ -227,16 +252,14 @@ function WorkflowCanvasContent({
         };
       });
       setAlignmentGuides(nextGuides);
-      setFlowNodes((currentNodes) => {
-        const nextNodes = applyNodeChanges(snappedChanges, currentNodes);
-        flowNodesRef.current = nextNodes;
-        for (const change of snappedChanges) {
-          if (change.type === 'select' && change.selected) {
-            onSelectNode(change.id);
-          }
+      for (const change of snappedChanges) {
+        if (change.type === 'select' && change.selected) {
+          onSelectNode(change.id);
         }
-        return nextNodes;
-      });
+      }
+      const nextNodes = applyNodeChanges(snappedChanges, flowNodesRef.current);
+      flowNodesRef.current = nextNodes;
+      setFlowNodes(nextNodes);
     },
     [onSelectNode]
   );
@@ -367,21 +390,25 @@ function WorkflowCanvasContent({
       const position = currentNode?.position ?? node.position;
       const snap = getWorkflowAlignmentSnap(node.id, position, flowNodesRef.current);
       setAlignmentGuides(EMPTY_WORKFLOW_ALIGNMENT_GUIDES);
-      setFlowNodes((currentNodes) => {
-        const nextNodes = currentNodes.map((item) =>
-          item.id === node.id
-            ? {
-                ...item,
-                position: snap.position,
-              }
-            : item
-        );
-        flowNodesRef.current = nextNodes;
-        return nextNodes;
-      });
+      const nextNodes = flowNodesRef.current.map((item) =>
+        item.id === node.id
+          ? {
+              ...item,
+              position: snap.position,
+            }
+          : item
+      );
+      flowNodesRef.current = nextNodes;
+      setFlowNodes(nextNodes);
       onMoveNode(node.id, snap.position.x, snap.position.y);
     },
     [onMoveNode]
+  );
+  const handleNodeClick = useCallback(
+    (_event: ReactMouseEvent, node: WorkflowFlowNode) => {
+      onSelectNode(node.id);
+    },
+    [onSelectNode]
   );
 
   return (
@@ -468,28 +495,16 @@ function WorkflowCanvasContent({
           onReconnect={handleReconnect}
           onReconnectEnd={handleReconnectEnd}
           onNodeDragStop={handleNodeDragStop}
-          onNodeClick={(_, node) => onSelectNode(node.id)}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          onNodeClick={handleNodeClick}
+          defaultViewport={WORKFLOW_DEFAULT_VIEWPORT}
           nodesDraggable
           edgesReconnectable
-          proOptions={{ hideAttribution: true }}
+          proOptions={WORKFLOW_PRO_OPTIONS}
           connectionMode={ConnectionMode.Loose}
           connectionRadius={48}
           reconnectRadius={12}
           isValidConnection={isValidWorkflowConnection}
-          defaultEdgeOptions={{
-            type: 'smoothstep',
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              width: 16,
-              height: 16,
-              color: 'var(--workflow-edge)',
-            },
-            style: {
-              stroke: 'var(--workflow-edge)',
-              strokeWidth: 1.8,
-            },
-          }}
+          defaultEdgeOptions={WORKFLOW_DEFAULT_EDGE_OPTIONS}
           className="workflow-react-flow bg-transparent"
         >
           <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />
@@ -497,8 +512,8 @@ function WorkflowCanvasContent({
           <MiniMap
             pannable
             zoomable
-            style={{ width: 100, height: 75 }}
-            nodeColor={() => 'var(--workflow-minimap-node)'}
+            style={WORKFLOW_MINIMAP_STYLE}
+            nodeColor={getWorkflowMinimapNodeColor}
             maskColor="var(--workflow-minimap-mask)"
           />
           <ViewportPortal>

@@ -3770,7 +3770,10 @@ ipcMain.handle('memory.setEnabled', (_event, enabled: boolean) => {
   return result;
 });
 
-ipcMain.handle('logs.write', (_event, level: 'info' | 'warn' | 'error', args: unknown[]) => {
+// The preload invokes this with spread args (`invoke('logs.write', level, ...args)`),
+// so collect them with a rest parameter here — a single `args: unknown[]` parameter
+// would silently drop every argument after the first.
+ipcMain.handle('logs.write', (_event, level: 'info' | 'warn' | 'error', ...args: unknown[]) => {
   try {
     if (level === 'warn') {
       logWarn(...args);

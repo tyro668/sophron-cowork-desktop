@@ -1,4 +1,4 @@
-import { useCallback, type DragEvent } from 'react';
+import { memo, useCallback, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { AlertCircle, Copy, Upload, Workflow, X } from 'lucide-react';
@@ -156,7 +156,10 @@ export function WorkflowOperatorPalette({ operators }: WorkflowOperatorPalettePr
   );
 }
 
-export function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
+export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
+  data,
+  selected,
+}: NodeProps<WorkflowFlowNode>) {
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
@@ -206,7 +209,7 @@ export function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowN
       <span className="min-w-0 truncate text-xs font-medium text-text-secondary">{node.label}</span>
     </div>
   );
-}
+});
 
 export function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentGuides }) {
   const lines = [guides.horizontal, guides.vertical].filter((line): line is WorkflowAlignmentLine =>
