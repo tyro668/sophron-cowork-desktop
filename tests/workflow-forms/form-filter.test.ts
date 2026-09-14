@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 import { getOperatorConfigIssue } from '../../src/shared/operator-validation';
-import FormFilter from '../../src/renderer/components/workflow-forms/FormFilter';
+import FormFilter, {
+  getFilterConditionNodeLayout,
+} from '../../src/renderer/components/workflow-forms/FormFilter';
 import { incompleteConfigMessageKey } from '../../src/renderer/components/data-view/workflow-config-guards';
 import type { DataWorkflowNode } from '../../src/renderer/types';
 import {
@@ -1094,6 +1096,66 @@ describe('FilterCondition — addWithConnective logical equivalence', () => {
   });
 });
 
+// ── Tree layout anchors ───────────────────────────────────────────────
+
+describe('FormFilter — tree layout anchors', () => {
+  it('aligns a three-condition connective with the middle condition', () => {
+    resetNodeIdCounter();
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [leaf('a', '=', '1'), leaf('b', '=', '2'), leaf('c', '=', '3')],
+    };
+
+    expect(getFilterConditionNodeLayout(root)).toEqual({ height: 104, anchor: 52 });
+  });
+
+  it('uses the middle child anchor instead of the subtree bounding-box center', () => {
+    resetNodeIdCounter();
+    const firstGroup: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'first-group',
+      connective: 'or',
+      items: [leaf('a', '=', '1'), leaf('b', '=', '2')],
+    };
+    const lastGroup: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'last-group',
+      connective: 'or',
+      items: [leaf('d', '=', '4'), leaf('e', '=', '5'), leaf('f', '=', '6')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [firstGroup, leaf('c', '=', '3'), lastGroup],
+    };
+
+    const layout = getFilterConditionNodeLayout(root);
+    expect(layout).toEqual({ height: 212, anchor: 88 });
+    expect(layout.anchor).not.toBe(layout.height / 2);
+  });
+
+  it('centers an even condition count between the two middle child anchors', () => {
+    resetNodeIdCounter();
+    const nestedGroup: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'nested-group',
+      connective: 'or',
+      items: [leaf('b', '=', '2'), leaf('c', '=', '3')],
+    };
+    const root: FilterConditionBranch = {
+      kind: 'branch',
+      id: 'root',
+      connective: 'and',
+      items: [leaf('a', '=', '1'), nestedGroup],
+    };
+
+    expect(getFilterConditionNodeLayout(root)).toEqual({ height: 104, anchor: 43 });
+  });
+});
+
 // ── Source inspection of FormFilter.tsx UI structure ────────────────────
 
 const formFilterSource = fs.readFileSync(
@@ -1131,41 +1193,76 @@ describe('FormFilter — UI source inspection', () => {
 
     expect(html).toContain('role="alert"');
     expect(html).toContain('Invalid filter condition segment');
-    expect(html).toMatch(
-      /<button(?![^>]*disabled)[^>]*>[\s\S]*?data\.workflow\.formLabels\.filter\.filterAddCondition[\s\S]*?<\/button>/
+    const addMenuTrigger = html.match(/<button[^>]*aria-haspopup="menu"[^>]*>/)?.[0];
+    expect(addMenuTrigger).toBeDefined();
+    expect(addMenuTrigger).not.toMatch(/\sdisabled(?:=|\s|>)/);
+    expect(html).toContain('data.workflow.formLabels.filter.filterAddCondition');
+  });
+
+  it('tracks and renders the selected filter condition', () => {
+    expect(formFilterSource).toContain('selectedLeafId');
+    expect(formFilterSource).toContain("data-selected={selected ? 'true' : 'false'}");
+    expect(formFilterSource).toContain('onPointerDownCapture={() => ctx.selectLeaf(leaf.id)}');
+    expect(formFilterSource).toContain('onFocusCapture={() => ctx.selectLeaf(leaf.id)}');
+    expect(formFilterSource).toContain("selected ? 'bg-accent' : 'bg-transparent'");
+    expect(formFilterSource).toContain('absolute bottom-1 right-0 top-1 w-0.5');
+    expect(formFilterSource).not.toContain('absolute bottom-1 left-0 top-1 w-0.5');
+    expect(formFilterSource).not.toContain(
+      "selected ? 'bg-accent/10 ring-1 ring-inset ring-accent/30'"
     );
   });
 
-  it('has addWithConnective in LeafRowContext', () => {
-    expect(formFilterSource).toContain('addWithConnective');
+  it('provides an explicit selection point in the safe area on the far right', () => {
+    expect(formFilterSource).toContain('-ml-1 -mr-3');
+    expect(formFilterSource).toContain('py-0.5 pl-1 pr-3');
+    expect(formFilterSource).toContain('aria-pressed={selected}');
+    expect(formFilterSource).toContain("ctx.tr('filterSelectCondition')");
+    expect(formFilterSource).toContain('group/selector');
+    expect(formFilterSource).toContain("? 'border-accent bg-accent'");
   });
 
-  it('has parentConnective prop in ConditionLeafRow', () => {
-    expect(formFilterSource).toContain('parentConnective');
-  });
-
-  it('AND button has rounded style', () => {
-    expect(formFilterSource).toContain('rounded');
-    expect(formFilterSource).toContain('filterConnectiveAnd');
-  });
-
-  it('OR button has rounded style', () => {
-    expect(formFilterSource).toContain('rounded');
-    expect(formFilterSource).toContain('filterConnectiveOr');
-  });
-
-  it('AND is disabled at max depth when it differs from the current group', () => {
+  it('vertically centers group connectives across all connected conditions', () => {
     expect(formFilterSource).toContain(
-      "const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;"
+      'const branchLayout = getFilterConditionNodeLayout(branch);'
     );
-    expect(formFilterSource).toContain('if (!canAddAnd) return;');
+    expect(formFilterSource).toContain('style={{ top: branchLayout.anchor }}');
+    expect(formFilterSource).not.toContain('self-stretch items-center');
   });
 
-  it('OR is disabled at max depth when it differs from the current group', () => {
+  it('renders the add-condition trigger as a subdued secondary action', () => {
     expect(formFilterSource).toContain(
-      "const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;"
+      'border-border-subtle bg-transparent px-2.5 text-[12px] font-medium text-text-muted opacity-75'
     );
-    expect(formFilterSource).toContain('if (!canAddOr) return;');
+    expect(formFilterSource).toContain('hover:bg-surface-hover');
+    expect(formFilterSource).toContain('hover:opacity-100');
+  });
+
+  it('moves AND and OR add actions into the global add-condition dropdown', () => {
+    expect(formFilterSource).toContain('<DropdownMenu.Trigger asChild>');
+    expect(formFilterSource).toContain('<DropdownMenu.Content');
+    expect(formFilterSource).toContain("onSelect={() => addConditionWithConnective('and')}");
+    expect(formFilterSource).toContain("onSelect={() => addConditionWithConnective('or')}");
+    expect(formFilterSource).toContain("tr('filterAddAnd')");
+    expect(formFilterSource).toContain("tr('filterAddOr')");
+  });
+
+  it('does not render per-row AND or OR add buttons', () => {
+    expect(formFilterSource).not.toContain('ctx.addWithConnective');
+    expect(formFilterSource).not.toContain('canAddAnd');
+    expect(formFilterSource).not.toContain('canAddOr');
+  });
+
+  it('disables a different connective after reaching max depth', () => {
+    expect(formFilterSource).toContain('function canAddWithConnective(');
+    expect(formFilterSource).toContain(
+      'location.parentConnective === connective || location.depth < MAX_NESTING_DEPTH'
+    );
+    expect(formFilterSource).toContain(
+      "disabled={!canAddWithConnective(selectedLeafLocation, 'and')}"
+    );
+    expect(formFilterSource).toContain(
+      "disabled={!canAddWithConnective(selectedLeafLocation, 'or')}"
+    );
   });
 
   it('limits graphical condition groups to root plus one nested group', () => {
@@ -1178,21 +1275,20 @@ describe('FormFilter — UI source inspection', () => {
     expect(formFilterSource).not.toContain('item.items.length > 1 ? depth + 1 : depth');
   });
 
-  it('addAfterAndGroup accepts connective parameter', () => {
-    expect(formFilterSource).toContain("connective: FilterConditionConnective = 'and'");
+  it('inserts the new condition immediately after the selected leaf', () => {
+    expect(formFilterSource).toContain('const targetLeafId = selectedLeafLocation?.leafId;');
+    expect(formFilterSource).toContain('const location = findLeafLocation(prev, targetLeafId);');
+    expect(formFilterSource).toContain('items.splice(location.index + 1, 0, newLeaf);');
+    expect(formFilterSource).toContain('setSelectedLeafId(newLeaf.id);');
   });
 
-  it('adds a sibling when the requested connective matches the current group', () => {
-    expect(formFilterSource).toMatch(
-      /if \(targetConnective === parentConnective\) \{\s*addAfter\(branchId, afterIndex\);\s*return;\s*\}/
+  it('creates a child group when the requested connective differs from the selected group', () => {
+    expect(formFilterSource).toContain(
+      'if (location.parentConnective === targetConnective) return withNewLeaf;'
     );
-  });
-
-  it('creates a child group when the requested connective differs from the current group', () => {
-    expect(formFilterSource).toMatch(
-      /if \(depth < MAX_NESTING_DEPTH\) \{\s*addAfterAndGroup\(branchId, leafId, afterIndex, targetConnective\);\s*\}/
+    expect(formFilterSource).toContain(
+      'wrapItemsInGroup(withNewLeaf, [targetLeafId, newLeaf.id], targetConnective)'
     );
-    expect(formFilterSource).not.toContain('addSiblingWithConnective');
   });
 
   it('does not escape to the ancestor group after reaching max depth', () => {
@@ -1217,9 +1313,15 @@ describe('FormFilter — UI source inspection', () => {
   it('renders logical nodes and orthogonal tree connectors only for multi-item groups', () => {
     expect(formFilterSource).toContain('if (itemCount === 1)');
     expect(formFilterSource).toContain('grid-cols-[36px_minmax(0,1fr)]');
+    expect(formFilterSource).toContain('const itemLayout = getFilterConditionNodeLayout(item);');
+    expect(formFilterSource).toContain('style={{ top: itemLayout.anchor }}');
+    expect(formFilterSource).toContain('style={{ top: -2, height: itemLayout.anchor + 2 }}');
+    expect(formFilterSource).toContain('style={{ top: itemLayout.anchor, bottom: -2 }}');
+    expect(formFilterSource).toContain('i > 0');
     expect(formFilterSource).toContain('i < itemCount - 1');
     expect(formFilterSource).toContain('border-l border-text-secondary/55');
     expect(formFilterSource).toContain('border-t border-text-secondary/55');
+    expect(formFilterSource).not.toContain('-bottom-[18px]');
     expect(formFilterSource).not.toContain('ResizeObserver');
     expect(formFilterSource).not.toContain('diagLines');
     expect(formFilterSource).not.toContain('<svg');
@@ -1236,7 +1338,7 @@ describe('FormFilter — UI source inspection', () => {
 
   it('uses stable columns so value variants do not shift row actions', () => {
     expect(formFilterSource).toContain(
-      'grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_40px_40px_28px]'
+      'grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_28px_32px]'
     );
     expect(formFilterSource).toContain('className="!w-full"');
   });
@@ -1331,7 +1433,7 @@ describe('GlassValueInput — single-value input survives remount', () => {
 
   it('commits single-value input on blur without delayed timeout races', () => {
     expect(glassValueInputSource).toContain('function commitSingleValue()');
-    expect(glassValueInputSource).toContain('onBlur={multi ? undefined : commitSingleValue}');
+    expect(glassValueInputSource).toContain('onBlur={commitSingleValue}');
     expect(glassValueInputSource).not.toContain('setTimeout(() => onChange(inputText)');
   });
 
@@ -1345,26 +1447,29 @@ describe('GlassValueInput — single-value input survives remount', () => {
     expect(glassValueInputSource).toContain("values ?? splitInValues(value ?? '')");
   });
 
-  it('uses the compact hover scrollbar for overflowing multi-value tags', () => {
-    expect(glassValueInputSource).toContain(
-      'scrollbar-hover items-end overflow-x-auto overflow-y-hidden'
-    );
+  it('keeps multi-value tags on one line and collapses overflow into a circled count badge', () => {
+    expect(glassValueInputSource).toContain('OVERFLOW_BADGE_CLASSES');
+    expect(glassValueInputSource).toContain('rounded-full');
+    expect(glassValueInputSource).toContain('visibleTagCount');
+    expect(glassValueInputSource).toContain('ResizeObserver');
+    expect(glassValueInputSource).toContain('overflow-hidden');
+    expect(glassValueInputSource).not.toContain('flex-wrap');
   });
 
-  it('exposes an onOpen callback triggered once when the dropdown opens', () => {
+  it('exposes an onOpen callback triggered when the dropdown opens', () => {
     expect(glassValueInputSource).toContain('onOpen?: () => void;');
-    expect(glassValueInputSource).toMatch(/if \(!prev\) onOpen\?\.\(\);/);
+    expect(glassValueInputSource).toContain('onOpen?.();');
+    expect(glassValueInputSource).toContain('setOpen(true);');
   });
 
   it('toggles the dropdown closed when the toggle button is clicked while open', () => {
-    expect(glassValueInputSource).toMatch(/return !prev;/);
+    expect(glassValueInputSource).toMatch(/if \(open\) \{\s*setOpen\(false\);\s*return;\s*\}/);
   });
 
-  it('uses i18n keys for dropdown empty/loading/clear labels instead of hardcoded Chinese', () => {
+  it('uses i18n keys for dropdown empty/loading labels instead of hardcoded Chinese', () => {
     expect(glassValueInputSource).toContain("tr('noMatchValue')");
     expect(glassValueInputSource).toContain("tr('loadingValues')");
     expect(glassValueInputSource).toContain("tr('noSuggestions')");
-    expect(glassValueInputSource).toContain("tr('filterClearValues')");
     expect(glassValueInputSource).not.toContain("'无匹配值'");
     expect(glassValueInputSource).not.toContain("'加载中…'");
   });
@@ -1406,6 +1511,10 @@ describe('Filter — null operator i18n keys', () => {
     expect(flat).toContain('filterOpIsNotNull');
     expect(flat).toContain('noMatchValue');
     expect(flat).toContain('loadingValues');
+    expect(zh.data.workflow.formLabels.filter.filterConnectiveAnd).toBe('且');
+    expect(zh.data.workflow.formLabels.filter.filterAddAnd).toBe('添加且条件');
+    expect(zh.data.workflow.formLabels.filter.filterAddOr).toBe('添加或条件');
+    expect(zh.data.workflow.formLabels.filter.filterSelectCondition).toBe('选择此条件');
   });
 
   it('defines 为空 / 不为空 in en', () => {
@@ -1417,6 +1526,7 @@ describe('Filter — null operator i18n keys', () => {
     expect(flat).toContain('filterOpIsNotNull');
     expect(flat).toContain('noMatchValue');
     expect(flat).toContain('loadingValues');
+    expect(en.data.workflow.formLabels.filter.filterSelectCondition).toBe('Select this condition');
   });
 });
 

@@ -1,5 +1,6 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import type { OperatorFormProps } from './index';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
@@ -16,7 +17,6 @@ import {
   parseEditableFilterCondition,
   isLeaf,
   createEmptyLeaf,
-  addLeafToBranch,
   removeNodeFromBranch,
   updateLeafInBranch,
   updateBranchInTree,
@@ -38,6 +38,93 @@ import {
 
 // ── Condition Leaf Row ────────────────────────────────────────────────
 
+// Destructive row actions stay hidden until the row is hovered or focused.
+const ROW_ACTION_CLASSES =
+  'opacity-0 pointer-events-none transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100';
+
+const FILTER_CONDITION_ROW_HEIGHT = 32;
+const FILTER_CONDITION_ROW_GAP = 4;
+
+export function getFilterConditionNodeLayout(node: FilterConditionNode): {
+  height: number;
+  anchor: number;
+} {
+  if (isLeaf(node) || node.items.length === 0) {
+    return {
+      height: FILTER_CONDITION_ROW_HEIGHT,
+      anchor: FILTER_CONDITION_ROW_HEIGHT / 2,
+    };
+  }
+
+  const childLayouts = node.items.map(getFilterConditionNodeLayout);
+  const childAnchors: number[] = [];
+  let height = 0;
+
+  childLayouts.forEach((layout, index) => {
+    childAnchors.push(height + layout.anchor);
+    height += layout.height;
+    if (index < childLayouts.length - 1) height += FILTER_CONDITION_ROW_GAP;
+  });
+
+  const middleIndex = Math.floor(childAnchors.length / 2);
+  const anchor =
+    childAnchors.length % 2 === 1
+      ? childAnchors[middleIndex]
+      : (childAnchors[middleIndex - 1] + childAnchors[middleIndex]) / 2;
+
+  return { height, anchor };
+}
+
+interface LeafLocation {
+  leafId: string;
+  branchId: string;
+  index: number;
+  parentConnective: FilterConditionConnective;
+  depth: number;
+}
+
+function findFirstLeafId(branch: FilterConditionBranch): string | null {
+  for (const item of branch.items) {
+    if (isLeaf(item)) return item.id;
+    const nestedLeafId = findFirstLeafId(item);
+    if (nestedLeafId) return nestedLeafId;
+  }
+  return null;
+}
+
+function findLeafLocation(
+  branch: FilterConditionBranch,
+  leafId: string,
+  depth = 0
+): LeafLocation | null {
+  for (let index = 0; index < branch.items.length; index += 1) {
+    const item = branch.items[index];
+    if (isLeaf(item) && item.id === leafId) {
+      return {
+        leafId,
+        branchId: branch.id,
+        index,
+        parentConnective: branch.connective,
+        depth,
+      };
+    }
+    if (!isLeaf(item)) {
+      const nestedLocation = findLeafLocation(item, leafId, depth + 1);
+      if (nestedLocation) return nestedLocation;
+    }
+  }
+  return null;
+}
+
+function canAddWithConnective(
+  location: LeafLocation | null,
+  connective: FilterConditionConnective
+): boolean {
+  return Boolean(
+    location && (location.parentConnective === connective || location.depth < MAX_NESTING_DEPTH)
+  );
+}
+
 interface LeafRowContext {
   columnTypes: Record<string, string>;
   columnValues: Record<string, string[]>;
@@ -48,32 +135,12 @@ interface LeafRowContext {
   retryColumnValues: (colName: string) => void;
   updateLeaf: (leafId: string, patch: Partial<FilterConditionLeaf>) => void;
   removeNode: (nodeId: string) => void;
-  addWithConnective: (
-    branchId: string,
-    afterIndex: number,
-    leafId: string,
-    parentConnective: FilterConditionConnective,
-    targetConnective: FilterConditionConnective,
-    depth: number
-  ) => void;
+  selectedLeafId: string | null;
+  selectLeaf: (leafId: string) => void;
   tr: (key: string) => string;
 }
 
-function ConditionLeafRow({
-  leaf,
-  branchId,
-  index,
-  depth,
-  parentConnective,
-  ctx,
-}: {
-  leaf: FilterConditionLeaf;
-  branchId: string;
-  index: number;
-  depth: number;
-  parentConnective: FilterConditionConnective;
-  ctx: LeafRowContext;
-}) {
+function ConditionLeafRow({ leaf, ctx }: { leaf: FilterConditionLeaf; ctx: LeafRowContext }) {
   const { tr } = ctx;
   const colType = ctx.columnTypes[leaf.field];
   const opGroups = useMemo(() => filterOpGroupsForType(colType), [colType]);
@@ -93,12 +160,24 @@ function ConditionLeafRow({
   const colVals = ctx.columnValues[leaf.field] ?? [];
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
   const isValsError = ctx.columnValuesError[leaf.field] ?? false;
-  const canAddAnd = parentConnective === 'and' || depth < MAX_NESTING_DEPTH;
-  const canAddOr = parentConnective === 'or' || depth < MAX_NESTING_DEPTH;
+  const selected = ctx.selectedLeafId === leaf.id;
 
   return (
-    <div className="group relative py-0.5">
-      <div className="grid min-w-0 grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_40px_40px_28px] items-center gap-2">
+    <div
+      data-selected={selected ? 'true' : 'false'}
+      onPointerDownCapture={() => ctx.selectLeaf(leaf.id)}
+      onFocusCapture={() => ctx.selectLeaf(leaf.id)}
+      className={`group relative -ml-1 -mr-3 h-8 cursor-default rounded-lg py-0.5 pl-1 pr-3 outline-none transition-colors ${
+        selected ? '' : 'hover:bg-surface-hover/30'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute bottom-1 right-0 top-1 w-0.5 rounded-full transition-colors ${
+          selected ? 'bg-accent' : 'bg-transparent'
+        }`}
+      />
+      <div className="grid min-w-0 grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_28px_32px] items-center gap-2">
         {/* Field */}
         <div className="min-w-0">
           <GlassFieldSingleSelect
@@ -145,7 +224,6 @@ function ConditionLeafRow({
                 className="!w-full"
                 addLabel={ctx.tr('filterAddValue')}
                 noSuggestionsLabel={ctx.tr('valueInput.noSuggestions')}
-                clearLabel={ctx.tr('valueInput.filterClearValues')}
                 onOpen={() => ctx.fetchColumnValues(leaf.field)}
               />
             ) : (
@@ -182,52 +260,38 @@ function ConditionLeafRow({
           )}
         </div>
 
-        {/* Add AND condition */}
-        <button
-          type="button"
-          onClick={() => {
-            if (!canAddAnd) return;
-            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'and', depth);
-          }}
-          className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
-            !canAddAnd
-              ? 'text-text-muted/20 cursor-not-allowed'
-              : 'text-text-muted/50 hover:text-accent'
-          }`}
-          title={!canAddAnd ? ctx.tr('filterMaxDepth') : ctx.tr('filterAddAnd')}
-        >
-          <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] font-medium leading-none">
-            {ctx.tr('filterConnectiveAnd')}
-          </span>
-        </button>
-
-        {/* Add OR condition */}
-        <button
-          type="button"
-          onClick={() => {
-            if (!canAddOr) return;
-            ctx.addWithConnective(branchId, index, leaf.id, parentConnective, 'or', depth);
-          }}
-          className={`flex h-7 flex-shrink-0 items-center justify-center transition-colors ${
-            !canAddOr
-              ? 'text-text-muted/20 cursor-not-allowed'
-              : 'text-text-muted/50 hover:text-accent'
-          }`}
-          title={!canAddOr ? ctx.tr('filterMaxDepth') : ctx.tr('filterAddOr')}
-        >
-          <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] font-medium leading-none">
-            {ctx.tr('filterConnectiveOr')}
-          </span>
-        </button>
-
         {/* Delete */}
         <button
           type="button"
-          onClick={() => ctx.removeNode(leaf.id)}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
+          onClick={(event) => {
+            event.stopPropagation();
+            ctx.removeNode(leaf.id);
+          }}
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 ${ROW_ACTION_CLASSES}`}
           title={ctx.tr('filterDeleteCondition')}
         >
           <Trash2 className="h-3.5 w-3.5" />
+        </button>
+
+        {/* Explicit selection point in the safe area at the far right. */}
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={(event) => {
+            event.stopPropagation();
+            ctx.selectLeaf(leaf.id);
+          }}
+          className="group/selector flex h-7 w-8 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30"
+          title={ctx.tr('filterSelectCondition')}
+        >
+          <span
+            aria-hidden="true"
+            className={`h-2 w-2 rounded-full border transition-colors ${
+              selected
+                ? 'border-accent bg-accent'
+                : 'border-border-muted bg-surface group-hover/selector:border-accent/60'
+            }`}
+          />
         </button>
       </div>
     </div>
@@ -252,19 +316,13 @@ function BranchGroupRenderer({
   };
 }) {
   const itemCount = branch.items.length;
+  const branchLayout = getFilterConditionNodeLayout(branch);
 
-  const renderItem = (item: FilterConditionNode, i: number) => {
+  const renderItem = (item: FilterConditionNode) => {
     if (isLeaf(item)) {
       return (
         <div>
-          <ConditionLeafRow
-            leaf={item}
-            branchId={branch.id}
-            index={i}
-            depth={depth}
-            parentConnective={branch.connective}
-            ctx={ctx}
-          />
+          <ConditionLeafRow leaf={item} ctx={ctx} />
         </div>
       );
     }
@@ -286,34 +344,54 @@ function BranchGroupRenderer({
 
   // Root and single-item branches do not need a standalone group header.
   if (itemCount === 1) {
-    return <div>{renderItem(branch.items[0], 0)}</div>;
+    return <div>{renderItem(branch.items[0])}</div>;
   }
 
   // Nested groups: file-tree style header + indentation.
   return (
     <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] gap-x-3">
-      <div className="relative flex h-7 items-center">
+      <div className="relative min-h-7 self-stretch">
         <button
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
-          className="flex h-6 w-8 items-center justify-center rounded border border-accent/70 bg-accent/10 text-center text-[12px] font-medium text-accent-text transition-colors hover:border-accent hover:bg-accent/15"
+          style={{ top: branchLayout.anchor }}
+          className="absolute left-0 flex h-6 w-8 -translate-y-1/2 items-center justify-center rounded border border-accent/70 bg-accent/10 text-center text-[12px] font-medium text-accent-text transition-colors hover:border-accent hover:bg-accent/15"
           title={ctx.tr('filterToggleAndOr')}
         >
           {ctx.tr(branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr')}
         </button>
-        <span className="pointer-events-none absolute left-8 top-1/2 w-1 border-t border-text-secondary/55" />
+        <span
+          style={{ top: branchLayout.anchor }}
+          className="pointer-events-none absolute left-8 w-1 border-t border-text-secondary/55"
+        />
       </div>
 
       <div className="relative space-y-1">
-        {branch.items.map((item, i) => (
-          <div key={item.id} className="relative min-w-0">
-            <span className="pointer-events-none absolute -left-3 top-3.5 w-3 border-t border-text-secondary/55" />
-            {i < itemCount - 1 && (
-              <span className="pointer-events-none absolute -bottom-[18px] -left-3 top-3.5 border-l border-text-secondary/55" />
-            )}
-            {renderItem(item, i)}
-          </div>
-        ))}
+        {branch.items.map((item, i) => {
+          const itemLayout = getFilterConditionNodeLayout(item);
+
+          return (
+            <div key={item.id} className="relative min-w-0">
+              <span
+                style={{ top: itemLayout.anchor }}
+                className="pointer-events-none absolute -left-3 w-3 border-t border-text-secondary/55"
+              />
+              {i > 0 && (
+                <span
+                  style={{ top: -2, height: itemLayout.anchor + 2 }}
+                  className="pointer-events-none absolute -left-3 border-l border-text-secondary/55"
+                />
+              )}
+              {i < itemCount - 1 && (
+                <span
+                  style={{ top: itemLayout.anchor, bottom: -2 }}
+                  className="pointer-events-none absolute -left-3 border-l border-text-secondary/55"
+                />
+              )}
+              {renderItem(item)}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -338,6 +416,9 @@ export default function FormFilter({
   );
   const [root, setRoot] = useState<FilterConditionBranch>(initialParse.tree);
   const [parseError, setParseError] = useState<string | null>(initialParse.error);
+  const [selectedLeafId, setSelectedLeafId] = useState<string | null>(() =>
+    findFirstLeafId(initialParse.tree)
+  );
 
   const localUpdateRef = useRef(false);
   const lastSyncedConfigRef = useRef<string | undefined>(
@@ -364,6 +445,11 @@ export default function FormFilter({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.config.condition]);
+
+  useEffect(() => {
+    if (selectedLeafId && findLeafLocation(root, selectedLeafId)) return;
+    setSelectedLeafId(findFirstLeafId(root));
+  }, [root, selectedLeafId]);
 
   // ── Column metadata ────────────────────────────────────────────────
 
@@ -465,38 +551,32 @@ export default function FormFilter({
     [updateConfig]
   );
 
-  const addAfter = useCallback(
-    (branchId: string, afterIndex: number) => {
-      setParseError(null);
-      setRoot((prev) => {
-        const next = updateBranchInTree(prev, branchId, (b) => addLeafToBranch(b, afterIndex));
-        localUpdateRef.current = true;
-        updateConfig((cfg) => ({
-          ...cfg,
-          condition: buildFilterConditionTree(next, columnTypesRef.current),
-        }));
-        return next;
-      });
-    },
-    [updateConfig]
+  const selectedLeafLocation = useMemo(
+    () => (selectedLeafId ? findLeafLocation(root, selectedLeafId) : null),
+    [root, selectedLeafId]
   );
 
-  const addAfterAndGroup = useCallback(
-    (
-      branchId: string,
-      leafId: string,
-      afterIndex: number,
-      connective: FilterConditionConnective = 'and'
-    ) => {
+  const addConditionWithConnective = useCallback(
+    (targetConnective: FilterConditionConnective) => {
+      const targetLeafId = selectedLeafLocation?.leafId;
+      if (!targetLeafId || !canAddWithConnective(selectedLeafLocation, targetConnective)) return;
+
+      const newLeaf = createEmptyLeaf();
       setParseError(null);
+      setSelectedLeafId(newLeaf.id);
       setRoot((prev) => {
-        const next = updateBranchInTree(prev, branchId, (b) => {
-          const withNewLeaf = addLeafToBranch(b, afterIndex);
-          const newLeafId = withNewLeaf.items[afterIndex + 1]?.id;
-          if (newLeafId) {
-            return wrapItemsInGroup(withNewLeaf, [leafId, newLeafId], connective) ?? withNewLeaf;
-          }
-          return withNewLeaf;
+        const location = findLeafLocation(prev, targetLeafId);
+        if (!location || !canAddWithConnective(location, targetConnective)) return prev;
+
+        const next = updateBranchInTree(prev, location.branchId, (branch) => {
+          const items = [...branch.items];
+          items.splice(location.index + 1, 0, newLeaf);
+          const withNewLeaf = { ...branch, items };
+          if (location.parentConnective === targetConnective) return withNewLeaf;
+          return (
+            wrapItemsInGroup(withNewLeaf, [targetLeafId, newLeaf.id], targetConnective) ??
+            withNewLeaf
+          );
         });
         localUpdateRef.current = true;
         updateConfig((cfg) => ({
@@ -506,27 +586,7 @@ export default function FormFilter({
         return next;
       });
     },
-    [updateConfig]
-  );
-
-  const addWithConnective = useCallback(
-    (
-      branchId: string,
-      afterIndex: number,
-      leafId: string,
-      parentConnective: FilterConditionConnective,
-      targetConnective: FilterConditionConnective,
-      depth: number
-    ) => {
-      if (targetConnective === parentConnective) {
-        addAfter(branchId, afterIndex);
-        return;
-      }
-      if (depth < MAX_NESTING_DEPTH) {
-        addAfterAndGroup(branchId, leafId, afterIndex, targetConnective);
-      }
-    },
-    [addAfter, addAfterAndGroup]
+    [selectedLeafLocation, updateConfig]
   );
 
   const updateBranch = useCallback(
@@ -573,7 +633,8 @@ export default function FormFilter({
       retryColumnValues,
       updateLeaf,
       removeNode,
-      addWithConnective,
+      selectedLeafId,
+      selectLeaf: setSelectedLeafId,
       tr,
     }),
     [
@@ -586,7 +647,7 @@ export default function FormFilter({
       retryColumnValues,
       updateLeaf,
       removeNode,
-      addWithConnective,
+      selectedLeafId,
       tr,
     ]
   );
@@ -610,26 +671,49 @@ export default function FormFilter({
                 {tr('filterParseError')}: {parseError}
               </p>
             )}
-            {/* Global add button */}
-            <button
-              type="button"
-              onClick={() => {
-                setParseError(null);
-                setRoot((prev) => {
-                  const next = addLeafToBranch(prev, prev.items.length - 1);
-                  localUpdateRef.current = true;
-                  updateConfig((cfg) => ({
-                    ...cfg,
-                    condition: buildFilterConditionTree(next, columnTypesRef.current),
-                  }));
-                  return next;
-                });
-              }}
-              className="inline-flex h-7 items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-2.5 text-[13px] font-medium text-accent hover:border-accent/50 hover:text-accent-hover transition-colors"
-            >
-              <Plus className="h-3 w-3" />
-              {tr('filterAddCondition')}
-            </button>
+            {/* Add relative to the selected condition */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  disabled={!selectedLeafLocation}
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border-subtle bg-transparent px-2.5 text-[12px] font-medium text-text-muted opacity-75 outline-none transition-colors hover:border-border-muted hover:bg-surface-hover hover:text-text-secondary hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="h-3 w-3" />
+                  {tr('filterAddCondition')}
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="start"
+                  sideOffset={6}
+                  collisionPadding={12}
+                  className="z-50 min-w-36 overflow-hidden rounded-lg border border-border-muted bg-surface p-1 shadow-soft"
+                >
+                  <DropdownMenu.Item
+                    disabled={!canAddWithConnective(selectedLeafLocation, 'and')}
+                    onSelect={() => addConditionWithConnective('and')}
+                    className="flex min-h-8 cursor-default select-none items-center gap-2 rounded-md px-2.5 text-[13px] font-medium text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus:bg-surface-hover focus:text-text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-45"
+                  >
+                    <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] leading-none">
+                      {tr('filterConnectiveAnd')}
+                    </span>
+                    {tr('filterAddAnd')}
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    disabled={!canAddWithConnective(selectedLeafLocation, 'or')}
+                    onSelect={() => addConditionWithConnective('or')}
+                    className="flex min-h-8 cursor-default select-none items-center gap-2 rounded-md px-2.5 text-[13px] font-medium text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus:bg-surface-hover focus:text-text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-45"
+                  >
+                    <span className="inline-flex h-5 w-8 items-center justify-center rounded border border-current text-[10px] leading-none">
+                      {tr('filterConnectiveOr')}
+                    </span>
+                    {tr('filterAddOr')}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
 
             {/* Condition tree */}
             <BranchGroupRenderer branch={root} depth={0} ctx={branchCtx} />

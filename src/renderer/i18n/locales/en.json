@@ -560,6 +560,7 @@
         },
         "filter": {
           "filterDeleteCondition": "Delete this condition",
+          "filterSelectCondition": "Select this condition",
           "filterAddCondition": "Add condition",
           "filterOpIsNull": "Is null",
           "filterOpIsNotNull": "Is not null",

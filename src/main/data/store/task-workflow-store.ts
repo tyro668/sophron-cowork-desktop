@@ -1202,6 +1202,27 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     if (node.config.disabled === true) {
       return null;
     }
+    if (node.type === 'input_source') {
+      const source =
+        typeof node.config.source === 'string'
+          ? node.config.source
+          : stringConfigValue(node.config.datasetId)
+            ? 'dataset'
+            : 'task';
+      if (source === 'dataset') {
+        const datasetRef =
+          stringConfigValue(node.config.datasetId) ||
+          stringConfigValue(node.config.inputTableId) ||
+          stringConfigValue(node.config.sourceDatasetId) ||
+          stringConfigValue(node.config.name) ||
+          stringConfigValue(node.config.alias);
+        if (!datasetRef) {
+          return null;
+        }
+        const dataset = await this.findDatasetByReference(datasetRef);
+        return dataset?.tableName ?? null;
+      }
+    }
     const cachedTableName = await this.findWorkflowNodeCacheTable(task.id, node.id);
     if (cachedTableName) {
       return cachedTableName;

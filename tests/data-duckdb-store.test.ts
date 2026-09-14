@@ -1294,7 +1294,7 @@ describe('DuckDB data task store', () => {
     expect(expiredPreview.columns).toEqual([]);
   });
 
-  it('reads input table source columns for workflow field completions before a task run', async () => {
+  it('previews input table data and columns before a task run', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
     const dbPath = path.join(tempRoot, 'workspace.duckdb');
@@ -1331,6 +1331,19 @@ describe('DuckDB data task store', () => {
         nodeConfig: inputNode!.config,
       })
     ).resolves.toEqual(['order_id', 'revenue']);
+
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: inputNode!.id,
+      nodeType: inputNode!.type,
+      nodeConfig: inputNode!.config,
+    });
+    expect(preview.columns).toEqual(['order_id', 'revenue']);
+    expect(preview.rows).toEqual([
+      { order_id: '1', revenue: '20' },
+      { order_id: '2', revenue: '5' },
+    ]);
+    expect(preview.totalRows).toBe(2);
   });
 
   it('runs filter expressions with unicode field names and string literals', async () => {

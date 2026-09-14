@@ -1,8 +1,23 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { DataDataset, DataWorkflowNode } from '../../../../types';
+import {
+  Columns3,
+  Database,
+  FileSpreadsheet,
+  FileText,
+  Folder,
+  Rows3,
+  type LucideIcon,
+} from 'lucide-react';
+import type { DataDataset, DataInputTableSourceKind, DataWorkflowNode } from '../../../../types';
 import { GlassSelect } from '../../../GlassSelect';
 import { stringValue } from './workflow-summary';
+
+const SOURCE_KIND_ICONS: Record<DataInputTableSourceKind, LucideIcon> = {
+  excel: FileSpreadsheet,
+  csv: FileText,
+  folder: Folder,
+};
 
 export function WorkflowInputSourceConfig({
   node,
@@ -19,9 +34,10 @@ export function WorkflowInputSourceConfig({
   const selectedInputTableId = stringValue(node.config.datasetId);
   const selectedInputTableName =
     stringValue(node.config.inputTableName) || stringValue(node.config.name);
-  const hasSelectedInputTableInChoices = inputTables.some(
-    (inputTable) => inputTable.id === selectedInputTableId
-  );
+  const selectedDataset =
+    inputTables.find((inputTable) => inputTable.id === selectedInputTableId) ?? null;
+  const hasSelectedInputTableInChoices = selectedDataset !== null;
+  const SelectedSourceIcon = selectedDataset ? SOURCE_KIND_ICONS[selectedDataset.sourceKind] : null;
 
   const handleInputTableChange = useCallback(
     (inputTableId: string) => {
@@ -53,34 +69,53 @@ export function WorkflowInputSourceConfig({
   );
 
   return (
-    <div className="block sm:col-span-2">
-      <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-        {t('data.workflow.inputTable')}
-      </span>
-      <GlassSelect
-        ariaLabel={t('data.workflow.inputTable')}
-        value={selectedInputTableId || undefined}
-        onValueChange={handleInputTableChange}
-        options={[
-          ...(selectedInputTableId && !hasSelectedInputTableInChoices
-            ? [
-                {
-                  value: selectedInputTableId,
-                  label: selectedInputTableName || selectedInputTableId,
-                },
-              ]
-            : []),
-          ...inputTables.map((inputTable) => ({ value: inputTable.id, label: inputTable.name })),
-        ]}
-        placeholder={
-          isLoading
-            ? t('data.workflow.loadingInputTables')
-            : t('data.workflow.noAvailableInputTables')
-        }
-        disabled={isLoading || (!selectedInputTableId && inputTables.length === 0)}
-        triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
-        contentClassName="w-[var(--radix-select-trigger-width)]"
-      />
+    <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+      <div className="w-full max-w-sm">
+        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+          {t('data.workflow.inputTable')}
+        </span>
+        <GlassSelect
+          ariaLabel={t('data.workflow.inputTable')}
+          value={selectedInputTableId || undefined}
+          onValueChange={handleInputTableChange}
+          options={[
+            ...(selectedInputTableId && !hasSelectedInputTableInChoices
+              ? [
+                  {
+                    value: selectedInputTableId,
+                    label: selectedInputTableName || selectedInputTableId,
+                  },
+                ]
+              : []),
+            ...inputTables.map((inputTable) => ({ value: inputTable.id, label: inputTable.name })),
+          ]}
+          placeholder={
+            isLoading
+              ? t('data.workflow.loadingInputTables')
+              : t('data.workflow.noAvailableInputTables')
+          }
+          disabled={isLoading || (!selectedInputTableId && inputTables.length === 0)}
+          triggerIcon={<Database className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
+          triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
+      </div>
+      {selectedDataset && SelectedSourceIcon && (
+        <div className="flex items-center gap-5 pb-2 text-xs text-text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <Rows3 className="h-3.5 w-3.5" />
+            {t('data.columns.rows')} {selectedDataset.rowCount}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Columns3 className="h-3.5 w-3.5" />
+            {t('data.columns.columns')} {selectedDataset.columnCount}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <SelectedSourceIcon className="h-3.5 w-3.5" />
+            {t(`data.inputTables.sources.${selectedDataset.sourceKind}`)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

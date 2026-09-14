@@ -433,17 +433,17 @@ export function WorkflowInspector({
             onFormatDsl={handleFormatOperatorDsl}
             onApplyDsl={() => void handleApplyOperatorDsl()}
           />
+        ) : node.type === 'input_source' ? (
+          <WorkflowInputSourceConfig
+            node={node}
+            inputTables={inputTables}
+            isLoading={isInputTablesLoading}
+            onNodeChange={onNodeChange}
+          />
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
             <div className="grid content-start gap-3 sm:grid-cols-2">
-              {node.type === 'input_source' ? (
-                <WorkflowInputSourceConfig
-                  node={node}
-                  inputTables={inputTables}
-                  isLoading={isInputTablesLoading}
-                  onNodeChange={onNodeChange}
-                />
-              ) : node.type === 'output' ? (
+              {node.type === 'output' ? (
                 <WorkflowOutputConfig
                   node={node}
                   outputTables={outputTables}
