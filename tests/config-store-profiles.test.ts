@@ -179,7 +179,9 @@ describe('ConfigStore provider profiles', () => {
     const store = new ConfigStore();
 
     store.update({ provider: 'openrouter', apiKey: 'sk-or-global' });
-    store.createSet({ name: 'Blank Active', mode: 'blank' });
+    const created = store.createSet({ name: 'Blank Active', mode: 'blank' });
+    const blankSet = created.configSets.find((set) => set.id !== 'default');
+    store.switchSet({ id: blankSet!.id });
 
     expect(store.hasUsableCredentialsForActiveSet()).toBe(false);
     expect(store.hasAnyUsableCredentials()).toBe(true);

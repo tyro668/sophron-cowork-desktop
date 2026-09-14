@@ -47,6 +47,7 @@ interface ConfigStateSnapshot {
   activeProfileKey: ProviderProfileKey;
   profiles: Record<ProviderProfileKey, UIProviderProfile>;
   enableThinking: boolean;
+  providerUnset: boolean;
 }
 
 interface ApiConfigBootstrap {
@@ -57,7 +58,7 @@ interface ApiConfigBootstrap {
 
 type CreateMode = 'blank' | 'clone';
 
-type PendingConfigSetAction = { type: 'switch'; targetSetId: string };
+type PendingConfigSetAction = { type: 'select' | 'switch'; targetSetId: string };
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const CONFIG_SET_LIMIT = 20;
@@ -368,6 +369,7 @@ export function buildApiConfigSnapshot(
     activeProfileKey,
     profiles,
     enableThinking: Boolean(config?.enableThinking),
+    providerUnset: false,
   };
 }
 
@@ -424,15 +426,19 @@ export function buildApiConfigSets(
       });
       const provider = isMigratedOllamaSet
         ? 'ollama'
-        : isProviderType(set.provider)
-          ? set.provider
-          : 'openrouter';
+        : set.provider === ''
+          ? ''
+          : isProviderType(set.provider)
+            ? set.provider
+            : 'openrouter';
       const customProtocol = isMigratedOllamaSet
         ? 'openai'
         : isCustomProtocol(set.customProtocol)
           ? set.customProtocol
           : 'anthropic';
-      const fallbackActive = profileKeyFromProvider(provider, customProtocol);
+      const fallbackActive = provider
+        ? profileKeyFromProvider(provider, customProtocol)
+        : 'deepseek';
       const activeProfileKey = isMigratedOllamaSet
         ? 'ollama'
         : isProfileKey(set.activeProfileKey)
@@ -521,6 +527,30 @@ export function buildApiConfigBootstrap(
   };
 }
 
+function buildSnapshotFromConfigSet(
+  set: ApiConfigSet,
+  presets: ProviderPresets
+): ConfigStateSnapshot {
+  const fallbackProvider = isProviderType(set.provider) ? set.provider : 'deepseek';
+  const fallbackProtocol = isCustomProtocol(set.customProtocol) ? set.customProtocol : 'anthropic';
+  const rawActiveProfileKey = isProfileKey(set.activeProfileKey)
+    ? set.activeProfileKey
+    : profileKeyFromProvider(fallbackProvider, fallbackProtocol);
+  const activeProfileKey = normalizeVisibleApiProfileKey(rawActiveProfileKey);
+
+  const profiles = {} as Record<ProviderProfileKey, UIProviderProfile>;
+  for (const key of PROFILE_KEYS) {
+    profiles[key] = normalizeProfile(key, set.profiles?.[key], presets);
+  }
+
+  return {
+    activeProfileKey,
+    profiles,
+    enableThinking: Boolean(set.enableThinking),
+    providerUnset: set.provider === '',
+  };
+}
+
 function translateApiConfigErrorMessage(
   message: string,
   t: ReturnType<typeof useTranslation>['t']
@@ -598,9 +628,14 @@ interface ApiConfigState {
   profiles: Record<ProviderProfileKey, UIProviderProfile>;
   // Which profile tab is selected
   activeProfileKey: ProviderProfileKey;
+  // True when the selected set has no provider chosen yet (fresh blank set)
+  providerUnset: boolean;
   // Config-set list and selection
   configSets: ApiConfigSet[];
+  // Default set — only changed via the explicit "set as default" action
   activeConfigSetId: string;
+  // Set currently loaded into the editor (selection does not change the default)
+  selectedConfigSetId: string;
   // Deferred action waiting for unsaved-changes resolution
   pendingConfigSetAction: PendingConfigSetAction | null;
   // Extended thinking flag
@@ -645,15 +680,19 @@ type ApiConfigAction =
         presets: ProviderPresets;
         profiles: Record<ProviderProfileKey, UIProviderProfile>;
         activeProfileKey: ProviderProfileKey;
+        providerUnset: boolean;
         enableThinking: boolean;
         configSets: ApiConfigSet[];
         activeConfigSetId: string;
+        selectedConfigSetId: string;
         lastCustomProtocol: CustomProtocolType;
         savedDraftSignature: string;
       };
     }
   // Active profile key
   | { type: 'SET_ACTIVE_PROFILE_KEY'; payload: ProviderProfileKey }
+  // No-provider-selected flag for blank sets
+  | { type: 'SET_PROVIDER_UNSET'; payload: boolean }
   // Enable thinking toggle
   | { type: 'SET_ENABLE_THINKING'; payload: boolean }
   // Patch one profile in the profiles map
@@ -713,16 +752,21 @@ function apiConfigReducer(state: ApiConfigState, action: ApiConfigAction): ApiCo
         presets: action.payload.presets,
         profiles: action.payload.profiles,
         activeProfileKey: action.payload.activeProfileKey,
+        providerUnset: action.payload.providerUnset,
         enableThinking: action.payload.enableThinking,
         configSets: action.payload.configSets,
         activeConfigSetId: action.payload.activeConfigSetId,
+        selectedConfigSetId: action.payload.selectedConfigSetId,
         pendingConfigSetAction: null,
         lastCustomProtocol: action.payload.lastCustomProtocol,
         savedDraftSignature: action.payload.savedDraftSignature,
       };
 
     case 'SET_ACTIVE_PROFILE_KEY':
-      return { ...state, activeProfileKey: action.payload };
+      return { ...state, activeProfileKey: action.payload, providerUnset: false };
+
+    case 'SET_PROVIDER_UNSET':
+      return { ...state, providerUnset: action.payload };
 
     case 'SET_ENABLE_THINKING':
       return { ...state, enableThinking: action.payload };
@@ -869,8 +913,12 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       presets: FALLBACK_PROVIDER_PRESETS,
       profiles: initialBootstrap.snapshot.profiles,
       activeProfileKey: initialBootstrap.snapshot.activeProfileKey,
+      providerUnset:
+        initialBootstrap.configSets.find((set) => set.id === initialBootstrap.activeConfigSetId)
+          ?.provider === '',
       configSets: initialBootstrap.configSets,
       activeConfigSetId: initialBootstrap.activeConfigSetId,
+      selectedConfigSetId: initialBootstrap.activeConfigSetId,
       pendingConfigSetAction: null,
       isMutatingConfigSet: false,
       lastCustomProtocol: initialLastCustomProtocol,
@@ -900,8 +948,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     presets,
     profiles,
     activeProfileKey,
+    providerUnset,
     configSets,
     activeConfigSetId,
+    selectedConfigSetId,
     pendingConfigSetAction,
     isMutatingConfigSet,
     lastCustomProtocol,
@@ -926,6 +976,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   } = state;
 
   const ollamaRefreshRequestIdRef = useRef(0);
+  const selectedConfigSetIdRef = useRef(selectedConfigSetId);
+  useEffect(() => {
+    selectedConfigSetIdRef.current = selectedConfigSetId;
+  }, [selectedConfigSetId]);
   const latestOllamaTargetRef = useRef<{
     activeProfileKey: ProviderProfileKey;
     baseUrl: string;
@@ -984,12 +1038,12 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   const modelInputGuidance = getModelInputGuidance(provider, customProtocol);
 
   const currentConfigSet = useMemo(
-    () => configSets.find((set) => set.id === activeConfigSetId) || null,
-    [configSets, activeConfigSetId]
+    () => configSets.find((set) => set.id === selectedConfigSetId) || null,
+    [configSets, selectedConfigSetId]
   );
   const pendingConfigSet = useMemo(
     () =>
-      pendingConfigSetAction?.type === 'switch'
+      pendingConfigSetAction
         ? configSets.find((set) => set.id === pendingConfigSetAction.targetSetId) || null
         : null,
     [configSets, pendingConfigSetAction]
@@ -1162,13 +1216,30 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     savedDraftSignature !== '' && currentDraftSignature !== savedDraftSignature;
 
   const applyLoadedState = useCallback(
-    (config: AppConfig | null | undefined, loadedPresets: ProviderPresets) => {
+    (
+      config: AppConfig | null | undefined,
+      loadedPresets: ProviderPresets,
+      requestedSelectedConfigSetId?: string
+    ) => {
       const bootstrap = buildApiConfigBootstrap(config, loadedPresets);
 
-      const activeMeta = profileKeyToProvider(bootstrap.snapshot.activeProfileKey);
+      // Keep the editor on the previously selected set when it still exists;
+      // otherwise fall back to the default set.
+      const candidateSelectedId = requestedSelectedConfigSetId ?? selectedConfigSetIdRef.current;
+      const selectedConfigSetId = bootstrap.configSets.some((set) => set.id === candidateSelectedId)
+        ? (candidateSelectedId as string)
+        : bootstrap.activeConfigSetId;
+      const selectedSet =
+        bootstrap.configSets.find((set) => set.id === selectedConfigSetId) ?? null;
+      const snapshot =
+        selectedSet && selectedConfigSetId !== bootstrap.activeConfigSetId
+          ? buildSnapshotFromConfigSet(selectedSet, loadedPresets)
+          : bootstrap.snapshot;
+
+      const selectedMeta = profileKeyToProvider(snapshot.activeProfileKey);
       const resolvedLastCustomProtocol: CustomProtocolType =
-        activeMeta.provider === 'custom'
-          ? activeMeta.customProtocol
+        selectedMeta.provider === 'custom'
+          ? selectedMeta.customProtocol
           : config?.customProtocol === 'openai'
             ? 'openai'
             : config?.customProtocol === 'gemini'
@@ -1179,16 +1250,18 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         type: 'APPLY_LOADED_STATE',
         payload: {
           presets: loadedPresets,
-          profiles: bootstrap.snapshot.profiles,
-          activeProfileKey: bootstrap.snapshot.activeProfileKey,
-          enableThinking: bootstrap.snapshot.enableThinking,
+          profiles: snapshot.profiles,
+          activeProfileKey: snapshot.activeProfileKey,
+          providerUnset: selectedSet?.provider === '',
+          enableThinking: snapshot.enableThinking,
           configSets: bootstrap.configSets,
           activeConfigSetId: bootstrap.activeConfigSetId,
+          selectedConfigSetId,
           lastCustomProtocol: resolvedLastCustomProtocol,
           savedDraftSignature: buildApiConfigDraftSignature(
-            bootstrap.snapshot.activeProfileKey,
-            bootstrap.snapshot.profiles,
-            bootstrap.snapshot.enableThinking
+            snapshot.activeProfileKey,
+            snapshot.profiles,
+            snapshot.enableThinking
           ),
         },
       });
@@ -1197,8 +1270,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   );
 
   const applyPersistedConfigToStore = useCallback(
-    (config: AppConfig, loadedPresets: ProviderPresets) => {
-      applyLoadedState(config, loadedPresets);
+    (config: AppConfig, loadedPresets: ProviderPresets, selectedId?: string) => {
+      applyLoadedState(config, loadedPresets, selectedId);
       setAppConfig(config);
       setIsConfigured(Boolean(config.isConfigured));
     },
@@ -1222,6 +1295,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     },
     [lastCustomProtocol]
   );
+
+  const clearProviderSelection = useCallback(() => {
+    dispatch({ type: 'SET_PROVIDER_UNSET', payload: true });
+  }, []);
 
   const changeProtocol = useCallback((newProtocol: CustomProtocolType) => {
     dispatch({ type: 'SET_LAST_CUSTOM_PROTOCOL', payload: newProtocol });
@@ -1365,6 +1442,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     dispatch({ type: 'SET_DIAGNOSTIC_RESULT', payload: null });
   }, [
     activeConfigSetId,
+    selectedConfigSetId,
     activeProfileKey,
     apiKey,
     baseUrl,
@@ -1753,6 +1831,11 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
 
   const handleSave = useCallback(
     async (options?: { silentSuccess?: boolean }) => {
+      if (providerUnset) {
+        showErrorKey('api.providerRequired');
+        return false;
+      }
+
       if (requiresApiKey && !apiKey.trim()) {
         showErrorKey('api.testError.missing_key');
         return false;
@@ -1787,15 +1870,26 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           model: finalModel,
           activeProfileKey,
           profiles: persistedProfiles,
-          activeConfigSetId,
           enableThinking,
         };
 
-        if (onSave) {
-          await onSave(payload);
+        const isEditingDefaultSet = selectedConfigSetId === activeConfigSetId;
+        if (!isEditingDefaultSet && isElectron && window.electronAPI?.config?.updateSet) {
+          // Editing a non-default set: persist into that set only, keeping the
+          // default set untouched.
+          const result = await window.electronAPI.config.updateSet({
+            id: selectedConfigSetId,
+            updates: payload,
+          });
+          applyPersistedConfigToStore(result.config, presets, selectedConfigSetId);
         } else {
-          const result = await window.electronAPI.config.save(payload);
-          applyPersistedConfigToStore(result.config, presets);
+          const savePayload = { ...payload, activeConfigSetId };
+          if (onSave) {
+            await onSave(savePayload);
+          } else {
+            const result = await window.electronAPI.config.save(savePayload);
+            applyPersistedConfigToStore(result.config, presets);
+          }
         }
 
         dispatch({ type: 'SET_SAVED_DRAFT_SIGNATURE', payload: currentDraftSignature });
@@ -1818,6 +1912,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     },
     [
       activeConfigSetId,
+      selectedConfigSetId,
       activeProfileKey,
       apiKey,
       applyPersistedConfigToStore,
@@ -1832,6 +1927,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       presets,
       profiles,
       provider,
+      providerUnset,
       requiresApiKey,
       clearError,
       clearSuccessMessage,
@@ -1853,7 +1949,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       clearError();
       try {
         const result = await window.electronAPI.config.switchSet({ id: setId });
-        applyPersistedConfigToStore(result.config, presets);
+        // Setting the default also brings that set into the editor.
+        applyPersistedConfigToStore(result.config, presets, setId);
         return true;
       } catch (switchError) {
         if (switchError instanceof Error) {
@@ -1867,6 +1964,53 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       }
     },
     [applyPersistedConfigToStore, clearError, presets, showErrorKey, showErrorText, t]
+  );
+
+  const selectConfigSet = useCallback(
+    (setId: string) => {
+      const target = configSets.find((set) => set.id === setId);
+      if (!target || setId === selectedConfigSetId) return;
+      const snapshot = buildSnapshotFromConfigSet(target, presets);
+      const selectedMeta = profileKeyToProvider(snapshot.activeProfileKey);
+      dispatch({
+        type: 'APPLY_LOADED_STATE',
+        payload: {
+          presets,
+          profiles: snapshot.profiles,
+          activeProfileKey: snapshot.activeProfileKey,
+          providerUnset: target.provider === '',
+          enableThinking: snapshot.enableThinking,
+          configSets,
+          activeConfigSetId,
+          selectedConfigSetId: setId,
+          lastCustomProtocol:
+            selectedMeta.provider === 'custom' ? selectedMeta.customProtocol : lastCustomProtocol,
+          savedDraftSignature: buildApiConfigDraftSignature(
+            snapshot.activeProfileKey,
+            snapshot.profiles,
+            snapshot.enableThinking
+          ),
+        },
+      });
+    },
+    [activeConfigSetId, configSets, lastCustomProtocol, presets, selectedConfigSetId]
+  );
+
+  const requestSelectConfigSet = useCallback(
+    (setId: string) => {
+      if (!setId || setId === selectedConfigSetId) {
+        return;
+      }
+
+      const action: PendingConfigSetAction = { type: 'select', targetSetId: setId };
+      if (hasUnsavedChanges) {
+        dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: action });
+        return;
+      }
+
+      selectConfigSet(setId);
+    },
+    [hasUnsavedChanges, selectConfigSet, selectedConfigSetId]
   );
 
   const createConfigSet = useCallback(
@@ -1894,7 +2038,11 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           mode: payload.mode,
           fromSetId: payload.mode === 'clone' ? activeConfigSetId : undefined,
         });
-        applyPersistedConfigToStore(result.config, presets);
+        // Open the freshly created set in the editor without touching the default.
+        const createdSet = result.config.configSets?.find(
+          (set) => !configSets.some((existing) => existing.id === set.id)
+        );
+        applyPersistedConfigToStore(result.config, presets, createdSet?.id);
         showSuccessKey('api.configSetCreated');
         setTimeout(() => clearSuccessMessage(), 1500);
         return true;
@@ -1914,7 +2062,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       applyPersistedConfigToStore,
       clearError,
       clearSuccessMessage,
-      configSets.length,
+      configSets,
       presets,
       showErrorKey,
       showErrorText,
@@ -1949,9 +2097,13 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
 
   const continuePendingConfigSetAction = useCallback(
     async (action: PendingConfigSetAction) => {
+      if (action.type === 'select') {
+        selectConfigSet(action.targetSetId);
+        return;
+      }
       await switchConfigSet(action.targetSetId);
     },
-    [switchConfigSet]
+    [selectConfigSet, switchConfigSet]
   );
 
   const cancelPendingConfigSetAction = useCallback(() => {
@@ -2074,6 +2226,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     isLoadingConfig,
     presets,
     provider,
+    providerUnset,
     customProtocol,
     modelOptions,
     currentPreset,
@@ -2110,6 +2263,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     commonProviderSetups,
     configSets,
     activeConfigSetId,
+    selectedConfigSetId,
     currentConfigSet,
     pendingConfigSetAction,
     pendingConfigSet,
@@ -2126,8 +2280,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     setEnableThinking,
     applyCommonProviderSetup,
     changeProvider,
+    clearProviderSelection,
     changeProtocol,
     requestConfigSetSwitch,
+    requestSelectConfigSet,
     requestCreateBlankConfigSet,
     cancelPendingConfigSetAction,
     saveAndContinuePendingConfigSetAction,

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
-  ArrowRight,
   CalendarClock,
   ChevronRight,
   CheckCircle2,
@@ -18,12 +17,10 @@ import {
   Settings,
   ShieldCheck,
   Table2,
-  UploadCloud,
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
-import appLogoSrc from '../../assets/logo.png';
 import type {
   CloudTableChatAttachment,
   DataInputTablePreview,
@@ -128,106 +125,6 @@ const EMPTY_TABLE_PAGE_INFO = {
   total: 0,
   hasMore: false,
 };
-
-function CloudDataPermissionItem({
-  icon,
-  title,
-  description,
-}: {
-  icon: JSX.Element;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex min-w-0 gap-3">
-      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-background/72 text-text-primary">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <div className="text-[14px] font-medium text-text-primary">{title}</div>
-        <div className="mt-1 text-[12px] leading-5 text-text-muted">{description}</div>
-      </div>
-    </div>
-  );
-}
-
-function CloudConnectionOptionCard({
-  icon,
-  title,
-  badge,
-  description,
-  points,
-  actionLabel,
-  primary = false,
-  loading = false,
-  disabled = false,
-  onClick,
-}: {
-  icon: JSX.Element;
-  title: string;
-  badge?: string;
-  description: string;
-  points: string[];
-  actionLabel: string;
-  primary?: boolean;
-  loading?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div
-      className={`flex h-full min-w-0 flex-col rounded-xl border px-4 py-4 text-left shadow-soft transition-colors ${
-        primary
-          ? 'border-accent/30 bg-accent/5 ring-1 ring-accent/10'
-          : 'border-border-subtle bg-surface/55'
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
-            primary ? 'bg-accent/12 text-accent-text' : 'bg-background/72 text-text-primary'
-          }`}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="text-[14px] font-semibold text-text-primary">{title}</div>
-            {badge && (
-              <span className="rounded-full bg-accent/12 px-2 py-0.5 text-[11px] font-medium text-accent-text">
-                {badge}
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-[12px] leading-5 text-text-muted">{description}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-2 text-[12px] leading-5 text-text-secondary">
-        {points.map((point) => (
-          <div key={point} className="flex min-w-0 items-center gap-2">
-            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
-            <span className="min-w-0">{point}</span>
-          </div>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className={`mt-5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
-          primary
-            ? 'bg-accent text-white shadow-soft hover:bg-accent-hover'
-            : 'border border-border-subtle bg-background/70 text-text-primary hover:border-accent/35 hover:text-accent-text'
-        }`}
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {actionLabel}
-      </button>
-    </div>
-  );
-}
 
 function isResourceNotFoundError(error: unknown) {
   const status = readErrorStatus(error);
@@ -1262,88 +1159,44 @@ export function CloudAnalysisPanel() {
 
       {!isConnected ? (
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
-          <div className="flex w-full max-w-[680px] flex-col items-center text-center">
-            <div className="flex items-center justify-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
-                <img src={appLogoSrc} alt="" className="h-9 w-9 object-contain" />
-              </div>
-              <div className="flex items-center gap-1 text-accent/45">
-                <ArrowRight className="h-3.5 w-3.5" />
-                <ArrowRight className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent/10 text-accent-text shadow-soft ring-1 ring-accent/10">
-                <Cloud className="h-8 w-8" />
-              </div>
+          <div className="flex w-full max-w-[340px] flex-col items-center text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent-text">
+              <Cloud className="h-6 w-6" />
             </div>
 
-            <h3 className="mt-6 text-[21px] font-semibold leading-tight text-text-primary">
+            <h3 className="mt-4 text-[16px] font-semibold leading-tight text-text-primary">
               {t('cloudData.connectTitle')}
             </h3>
-            <p className="mt-2 max-w-[560px] text-[13px] leading-6 text-text-secondary">
+            <p className="mt-1.5 text-[13px] leading-6 text-text-secondary">
               {t('cloudData.connectDescription')}
             </p>
 
-            <div className="mt-6 w-full max-w-[560px] rounded-xl bg-surface/55 px-5 py-4 text-left shadow-soft ring-1 ring-border-subtle">
-              <div className="text-[13px] font-medium text-text-secondary">
-                {t('cloudData.availableAfterConnect')}
-              </div>
-              <div className="mt-4 grid gap-x-5 gap-y-4 sm:grid-cols-2">
-                <CloudDataPermissionItem
-                  icon={<LogIn className="h-4 w-4" />}
-                  title={t('cloudData.permissionReadTables')}
-                  description={t('cloudData.permissionReadTablesDesc')}
-                />
-                <CloudDataPermissionItem
-                  icon={<Database className="h-4 w-4" />}
-                  title={t('cloudData.permissionPreviewData')}
-                  description={t('cloudData.permissionPreviewDataDesc')}
-                />
-                <CloudDataPermissionItem
-                  icon={<FolderKanban className="h-4 w-4" />}
-                  title={t('cloudData.permissionImportData')}
-                  description={t('cloudData.permissionImportDataDesc')}
-                />
-                <CloudDataPermissionItem
-                  icon={<UploadCloud className="h-4 w-4" />}
-                  title={t('cloudData.permissionUploadData')}
-                  description={t('cloudData.permissionUploadDataDesc')}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 grid w-full max-w-[680px] gap-4 sm:grid-cols-2">
-              <CloudConnectionOptionCard
-                icon={<LogIn className="h-4 w-4" />}
-                title={t('cloudData.accountConnectTitle')}
-                badge={t('cloudData.recommended')}
-                description={t('cloudData.accountConnectDescription')}
-                points={[
-                  t('cloudData.accountConnectPointIdentity'),
-                  t('cloudData.accountConnectPointPermission'),
-                  t('cloudData.accountConnectPointDaily'),
-                ]}
-                actionLabel={t('cloudData.startConnect')}
-                primary
-                loading={loginBusy}
-                disabled={loginBusy}
+            <div className="mt-6 flex w-full flex-col gap-2.5">
+              <button
+                type="button"
                 onClick={() => void handleLogin()}
-              />
-              <CloudConnectionOptionCard
-                icon={<KeyRound className="h-4 w-4" />}
-                title={t('cloudData.apiKeyConnectTitle')}
-                description={t('cloudData.apiKeyConnectDescription')}
-                points={[
-                  t('cloudData.apiKeyConnectPointConfig'),
-                  t('cloudData.apiKeyConnectPointAutomation'),
-                  t('cloudData.apiKeyConnectPointFallback'),
-                ]}
-                actionLabel={t('cloudData.configureApiKey')}
+                disabled={loginBusy}
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+              >
+                {loginBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogIn className="h-4 w-4" />
+                )}
+                {t('cloudData.startConnect')}
+              </button>
+              <button
+                type="button"
                 onClick={openSettings}
-              />
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-4 text-[13px] font-medium text-text-primary transition-colors hover:bg-surface-active"
+              >
+                <KeyRound className="h-4 w-4" />
+                {t('cloudData.configureApiKey')}
+              </button>
             </div>
 
-            <div className="mt-4 flex max-w-[560px] items-center justify-center gap-2 text-[12px] text-text-muted">
-              <ShieldCheck className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
+            <div className="mt-4 flex items-center gap-1.5 text-[12px] text-text-muted">
+              <ShieldCheck className="h-3.5 w-3.5 flex-shrink-0" />
               <span>{t('cloudData.privacyHint')}</span>
             </div>
           </div>

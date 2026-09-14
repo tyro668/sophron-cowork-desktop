@@ -1550,7 +1550,8 @@ export interface ApiConfigSet {
   id: ConfigSetId;
   name: string;
   isSystem?: boolean;
-  provider: ProviderType;
+  // Empty string means "no provider selected yet" (a freshly created blank set)
+  provider: ProviderType | '';
   customProtocol: CustomProtocolType;
   activeProfileKey: ProviderProfileKey;
   profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;

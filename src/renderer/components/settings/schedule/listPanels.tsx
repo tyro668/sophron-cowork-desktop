@@ -19,7 +19,6 @@ import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
 
 import { EmptyState } from '../../data-view/shared';
-export { StatCard } from '../../data-view/shared';
 
 export function TabButton({
   active,

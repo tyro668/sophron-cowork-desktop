@@ -88,8 +88,10 @@ describe('ConfigStore config sets', () => {
     expect(created.configSets.length).toBe(2);
     const newSet = created.configSets.find((set) => set.id !== 'default');
     expect(newSet?.name).toBe('Work OpenAI');
-    expect(created.activeConfigSetId).toBe(newSet?.id);
+    // Creating a set must not change the default set.
+    expect(created.activeConfigSetId).toBe('default');
 
+    store.switchSet({ id: newSet!.id });
     store.update({ provider: 'openai', apiKey: 'sk-openai-new', model: 'gpt-5-mini' });
     const openaiSetView = store.getAll();
     expect(openaiSetView.provider).toBe('openai');
@@ -99,6 +101,65 @@ describe('ConfigStore config sets', () => {
     const defaultSetView = store.getAll();
     expect(defaultSetView.provider).toBe('openrouter');
     expect(defaultSetView.apiKey).toBe('sk-openrouter-origin');
+  });
+
+  it('updates a specific set without changing the default set', () => {
+    mocks.seed = {
+      provider: 'openrouter',
+      customProtocol: 'anthropic',
+      apiKey: 'sk-openrouter-origin',
+      baseUrl: 'https://openrouter.ai/api',
+      model: 'anthropic/claude-sonnet-4-6',
+      enableThinking: false,
+      isConfigured: true,
+    };
+
+    const store = new ConfigStore();
+    const created = store.createSet({ name: 'Side Set', mode: 'clone' });
+    const sideSet = created.configSets.find((set) => set.id !== 'default');
+    expect(sideSet).toBeTruthy();
+
+    const updated = store.updateSet({
+      id: sideSet!.id,
+      updates: {
+        provider: 'openai',
+        activeProfileKey: 'openai',
+        apiKey: 'sk-side-set',
+        model: 'gpt-5-mini',
+        profiles: {
+          openai: {
+            apiKey: 'sk-side-set',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-5-mini',
+          },
+        },
+      },
+    });
+
+    // The default set and the top-level projection stay untouched.
+    expect(updated.activeConfigSetId).toBe('default');
+    expect(updated.provider).toBe('openrouter');
+    expect(updated.apiKey).toBe('sk-openrouter-origin');
+    const updatedSideSet = updated.configSets.find((set) => set.id === sideSet!.id);
+    expect(updatedSideSet?.provider).toBe('openai');
+    expect(updatedSideSet?.profiles.openai?.apiKey).toBe('sk-side-set');
+    expect(updatedSideSet?.isSystem).toBe(false);
+
+    // activeConfigSetId inside updates is ignored and cannot hijack the default.
+    const hijackAttempt = store.updateSet({
+      id: sideSet!.id,
+      updates: { activeConfigSetId: sideSet!.id, model: 'gpt-5' },
+    });
+    expect(hijackAttempt.activeConfigSetId).toBe('default');
+
+    // Updating the default set itself reflects in the projection.
+    const updatedDefault = store.updateSet({
+      id: 'default',
+      updates: { apiKey: 'sk-openrouter-updated' },
+    });
+    expect(updatedDefault.apiKey).toBe('sk-openrouter-updated');
+
+    expect(() => store.updateSet({ id: 'missing', updates: {} })).toThrowError();
   });
 
   it('transfers default protection on switch so the old default becomes deletable', () => {
@@ -111,11 +172,16 @@ describe('ConfigStore config sets', () => {
     const customSet = created.configSets.find((set) => set.id !== 'default');
     expect(customSet).toBeTruthy();
 
-    // Creating switches to the new set: it becomes the default and the
-    // previous default loses its protection.
-    expect(created.activeConfigSetId).toBe(customSet!.id);
-    expect(created.configSets.find((set) => set.id === customSet!.id)?.isSystem).toBe(true);
-    expect(created.configSets.find((set) => set.id === 'default')?.isSystem).toBe(false);
+    // Creating does not switch the default; only an explicit switch transfers
+    // the default (and its delete protection) to the new set.
+    expect(created.activeConfigSetId).toBe('default');
+    expect(created.configSets.find((set) => set.id === 'default')?.isSystem).toBe(true);
+    expect(created.configSets.find((set) => set.id === customSet!.id)?.isSystem).toBe(false);
+
+    const switched = store.switchSet({ id: customSet!.id });
+    expect(switched.activeConfigSetId).toBe(customSet!.id);
+    expect(switched.configSets.find((set) => set.id === customSet!.id)?.isSystem).toBe(true);
+    expect(switched.configSets.find((set) => set.id === 'default')?.isSystem).toBe(false);
 
     // The active default is protected; the previous default can be deleted.
     expect(() => store.deleteSet({ id: customSet!.id })).toThrowError();
@@ -141,7 +207,7 @@ describe('ConfigStore config sets', () => {
     expect(afterDelete.configSets.length).toBe(1);
   });
 
-  it('creates blank set with default values for current provider/protocol', () => {
+  it('creates blank set with no provider selected and pristine profiles', () => {
     mocks.seed = {
       provider: 'custom',
       customProtocol: 'openai',
@@ -156,16 +222,24 @@ describe('ConfigStore config sets', () => {
     const created = store.createSet({ name: 'Blank Set', mode: 'blank' });
     const blankSet = created.configSets.find((set) => set.id !== 'default');
     expect(blankSet).toBeTruthy();
-    expect(blankSet?.provider).toBe('custom');
-    expect(blankSet?.customProtocol).toBe('openai');
+    // A blank set must not inherit anything from the existing set.
+    expect(blankSet?.provider).toBe('');
     expect(blankSet?.enableThinking).toBe(false);
     expect(blankSet?.profiles['custom:openai']?.apiKey).toBe('');
     expect(blankSet?.profiles['custom:openai']?.baseUrl).toBe('https://api.openai.com/v1');
     expect(blankSet?.profiles['custom:openai']?.model).toBe('gpt-5.4');
-    expect(created.activeConfigSetId).toBe(blankSet?.id);
+    // A blank set is never usable and its projection stays unconfigured.
+    expect(store.hasUsableCredentialsForActiveSet()).toBe(true);
+    // The projection still reflects the unchanged default set.
+    expect(created.activeConfigSetId).toBe('default');
     expect(created.provider).toBe('custom');
     expect(created.customProtocol).toBe('openai');
-    expect(created.apiKey).toBe('');
+    expect(created.apiKey).toBe('sk-existing');
+
+    // Even when the blank set becomes the default, it reads as unconfigured.
+    store.switchSet({ id: blankSet!.id });
+    expect(store.hasUsableCredentialsForActiveSet()).toBe(false);
+    expect(store.isConfigured()).toBe(true);
   });
 
   it('allows renaming default set but still blocks deleting it', () => {
@@ -175,7 +249,7 @@ describe('ConfigStore config sets', () => {
     expect(() => store.deleteSet({ id: 'default' })).toThrowError();
   });
 
-  it('creates blank set from gemini provider with gemini defaults intact', () => {
+  it('creates blank set with pristine gemini profile defaults intact', () => {
     mocks.seed = {
       provider: 'gemini',
       customProtocol: 'gemini',
@@ -190,7 +264,7 @@ describe('ConfigStore config sets', () => {
     const created = store.createSet({ name: 'Gemini Blank', mode: 'blank' });
     const blankSet = created.configSets.find((set) => set.id !== 'default');
 
-    expect(blankSet?.provider).toBe('gemini');
+    expect(blankSet?.provider).toBe('');
     expect(blankSet?.profiles.gemini?.apiKey).toBe('');
     expect(blankSet?.profiles.gemini?.baseUrl).toBe('https://generativelanguage.googleapis.com');
     expect(blankSet?.profiles.gemini?.model).toBe('gemini-2.5-flash');

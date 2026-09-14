@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CalendarClock, CheckCircle2, Clock3, Play, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type {
   Automation,
@@ -40,7 +40,6 @@ import {
 import {
   AutomationListPanel,
   AutomationRunLogPanel,
-  StatCard,
   TabButton,
   getRunSortTime,
 } from './schedule/listPanels';
@@ -465,42 +464,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     await load();
   };
 
-  const summaryContent = (
-    <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
-      <StatCard
-        compact={automations.length === 0}
-        label={tr('schedule.summary.total', '总数')}
-        description={tr('schedule.summary.totalDesc', '全部自动化流程')}
-        value={automations.length}
-        Icon={CalendarClock}
-        iconClassName="bg-accent/10 text-accent"
-      />
-      <StatCard
-        compact={automations.length === 0}
-        label={tr('schedule.summary.enabled', '开启')}
-        description={tr('schedule.summary.enabledDesc', '当前会自动触发')}
-        value={automations.filter((item) => item.enabled).length}
-        Icon={CheckCircle2}
-        iconClassName="bg-success/10 text-success"
-      />
-      <StatCard
-        compact={automations.length === 0}
-        label={tr('schedule.summary.running', '运行中')}
-        description={tr('schedule.summary.runningDesc', '正在执行动作链')}
-        value={automations.filter((item) => item.status === 'running').length}
-        Icon={Play}
-        iconClassName="bg-accent/10 text-accent"
-      />
-      <StatCard
-        compact={automations.length === 0}
-        label={tr('schedule.summary.failed', '失败')}
-        description={tr('schedule.summary.failedDesc', '最近执行失败')}
-        value={automations.filter((item) => item.lastRunStatus === 'failed').length}
-        Icon={Clock3}
-        iconClassName="bg-warning/10 text-warning"
-      />
-    </section>
-  );
   const bannerContent = banner ? (
     <div
       className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
@@ -598,7 +561,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
-      {summaryContent}
       {bannerContent}
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">

@@ -86,6 +86,7 @@ export function ConfigModal({
     commonProviderSetups,
     configSets,
     activeConfigSetId,
+    selectedConfigSetId,
     currentConfigSet,
     pendingConfigSetAction,
     pendingConfigSet,
@@ -100,6 +101,7 @@ export function ConfigModal({
     changeProvider,
     changeProtocol,
     requestConfigSetSwitch,
+    requestSelectConfigSet,
     requestCreateBlankConfigSet,
     cancelPendingConfigSetAction,
     saveAndContinuePendingConfigSetAction,
@@ -193,12 +195,14 @@ export function ConfigModal({
           <ApiConfigSetManager
             configSets={configSets}
             activeConfigSetId={activeConfigSetId}
+            selectedConfigSetId={selectedConfigSetId}
             currentConfigSet={currentConfigSet}
             pendingConfigSetAction={pendingConfigSetAction}
             pendingConfigSet={pendingConfigSet}
             hasUnsavedChanges={hasUnsavedChanges}
             isMutatingConfigSet={isMutatingConfigSet}
             isSaving={isSaving}
+            onSelectSet={requestSelectConfigSet}
             onSwitchSet={requestConfigSetSwitch}
             onRequestCreateBlankSet={requestCreateBlankConfigSet}
             onRenameSet={renameConfigSet}

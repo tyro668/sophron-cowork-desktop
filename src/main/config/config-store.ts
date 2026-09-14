@@ -86,7 +86,8 @@ export interface ApiConfigSet {
   id: ConfigSetId;
   name: string;
   isSystem?: boolean;
-  provider: ProviderType;
+  // Empty string means "no provider selected yet" (a freshly created blank set)
+  provider: ProviderType | '';
   customProtocol: CustomProtocolType;
   activeProfileKey: ProviderProfileKey;
   profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;
@@ -294,7 +295,7 @@ const defaultConfigSet: ApiConfigSet = {
 };
 
 const defaultConfig: AppConfig = {
-  provider: defaultConfigSet.provider,
+  provider: 'sophron',
   apiKey: '',
   baseUrl: '',
   customProtocol: defaultConfigSet.customProtocol,
@@ -867,11 +868,15 @@ export class ConfigStore {
     const profiles = this.cloneProfiles(configSet.profiles);
     const activeProfileKey = isProfileKey(configSet.activeProfileKey)
       ? configSet.activeProfileKey
-      : profileKeyFromProvider(configSet.provider, configSet.customProtocol);
+      : configSet.provider
+        ? profileKeyFromProvider(configSet.provider, configSet.customProtocol)
+        : 'deepseek';
     const activeProfile = profiles[activeProfileKey] || this.getDefaultProfile(activeProfileKey);
 
     return {
-      provider: configSet.provider,
+      // A set without a provider projects as an unconfigured deepseek profile
+      // so it never reads as usable.
+      provider: configSet.provider === '' ? 'deepseek' : configSet.provider,
       customProtocol: configSet.customProtocol,
       activeProfileKey,
       profiles,
@@ -897,12 +902,19 @@ export class ConfigStore {
       isSystem?: boolean;
     }
   ): ApiConfigSet {
-    const provider = isProviderType(rawSet?.provider) ? rawSet.provider : fallback.provider;
+    const provider =
+      rawSet?.provider === ''
+        ? ''
+        : isProviderType(rawSet?.provider)
+          ? rawSet.provider
+          : fallback.provider;
     const customProtocol: CustomProtocolType = isCustomProtocol(rawSet?.customProtocol)
       ? rawSet.customProtocol
-      : defaultProtocolForProvider(provider);
+      : defaultProtocolForProvider(provider || defaultConfig.provider);
 
-    const derivedProfileKey = profileKeyFromProvider(provider, customProtocol);
+    const derivedProfileKey = provider
+      ? profileKeyFromProvider(provider, customProtocol)
+      : fallback.activeProfileKey;
     const activeProfileKey = isProfileKey(rawSet?.activeProfileKey)
       ? rawSet.activeProfileKey
       : fallback.activeProfileKey || derivedProfileKey;
@@ -1074,6 +1086,9 @@ export class ConfigStore {
   }
 
   private hasUsableCredentialsForConfigSet(configSet: ApiConfigSet): boolean {
+    if (configSet.provider === '') {
+      return false;
+    }
     const projected = this.projectFromConfigSet(configSet);
     return this.hasUsableCredentialsForProjection({
       provider: projected.provider,
@@ -1219,29 +1234,17 @@ export class ConfigStore {
     return candidate;
   }
 
-  private buildBlankConfigSet(payload: {
-    id: ConfigSetId;
-    name: string;
-    provider: ProviderType;
-    customProtocol: CustomProtocolType;
-  }): ApiConfigSet {
-    const activeProfileKey = profileKeyFromProvider(payload.provider, payload.customProtocol);
-    const profiles = this.cloneProfiles(undefined);
-    const defaultProfile = this.getDefaultProfile(activeProfileKey);
-    profiles[activeProfileKey] = this.normalizeProfile(activeProfileKey, {
-      apiKey: '',
-      baseUrl: defaultProfile.baseUrl,
-      model: defaultProfile.model,
-    });
-
+  private buildBlankConfigSet(payload: { id: ConfigSetId; name: string }): ApiConfigSet {
+    // A blank set starts with no provider selected; the user picks one in the
+    // settings UI. Profiles stay at preset defaults.
     return {
       id: payload.id,
       name: payload.name,
       isSystem: false,
-      provider: payload.provider,
-      customProtocol: payload.customProtocol,
-      activeProfileKey,
-      profiles,
+      provider: '',
+      customProtocol: 'anthropic',
+      activeProfileKey: 'deepseek',
+      profiles: this.cloneProfiles(undefined),
       enableThinking: false,
       updatedAt: nowISO(),
     };
@@ -1302,6 +1305,8 @@ export class ConfigStore {
    * Create a new named config set.
    * - mode=blank: create a fresh set from current provider/protocol defaults
    * - mode=clone: clone current/selected set
+   * Creating a set never changes the active (default) set; the default is only
+   * changed by an explicit switch.
    */
   createSet(payload: CreateConfigSetPayload): AppConfig {
     const current = this.getAll();
@@ -1315,20 +1320,7 @@ export class ConfigStore {
     let newSet: ApiConfigSet;
 
     if (mode === 'blank') {
-      const activeSet =
-        current.configSets.find((set) => set.id === current.activeConfigSetId) ||
-        current.configSets[0];
-      const seedProvider = activeSet?.provider || current.provider;
-      const seedProtocol: CustomProtocolType = normalizeCustomProtocol(
-        activeSet?.customProtocol,
-        defaultProtocolForProvider(seedProvider)
-      );
-      newSet = this.buildBlankConfigSet({
-        id,
-        name,
-        provider: seedProvider,
-        customProtocol: seedProtocol,
-      });
+      newSet = this.buildBlankConfigSet({ id, name });
     } else {
       const source =
         current.configSets.find((set) => set.id === payload.fromSetId) ||
@@ -1350,7 +1342,11 @@ export class ConfigStore {
     }
 
     this.saveConfig({
-      ...this.composeProjectedConfig(current, [...current.configSets, newSet], id),
+      ...this.composeProjectedConfig(
+        current,
+        [...current.configSets, newSet],
+        current.activeConfigSetId
+      ),
     } as AppConfig);
 
     return this.getAll();
@@ -1417,6 +1413,24 @@ export class ConfigStore {
     return this.getAll();
   }
 
+  /**
+   * Update a specific config set without changing the active (default) set.
+   * activeConfigSetId/configSets in the updates are ignored on purpose.
+   */
+  updateSet(payload: { id: string; updates: ConfigStoreUpdate }): AppConfig {
+    const current = this.getAll();
+    if (!current.configSets.some((set) => set.id === payload.id)) {
+      throw new Error('Config set not found');
+    }
+
+    const updates = { ...payload.updates };
+    delete updates.activeConfigSetId;
+    delete updates.configSets;
+    this.update(updates, { targetSetId: payload.id });
+
+    return this.getAll();
+  }
+
   getRuntimeConfigForSet(id: string): AgentRuntimeConfig | null {
     const current = this.getAll();
     const configSet = current.configSets.find((set) => set.id === id);
@@ -1435,9 +1449,11 @@ export class ConfigStore {
   }
 
   /**
-   * Update multiple config values
+   * Update multiple config values.
+   * By default the mutated set and the projected (default) set are the same;
+   * pass options.targetSetId to edit a specific set while keeping the default.
    */
-  update(updates: ConfigStoreUpdate): void {
+  update(updates: ConfigStoreUpdate, options?: { targetSetId?: string }): void {
     const current = this.getAll();
     let nextConfigSets = current.configSets.map((set) => this.cloneConfigSet(set));
 
@@ -1461,7 +1477,11 @@ export class ConfigStore {
       ? requestedActiveConfigSetId
       : nextConfigSets[0].id;
 
-    const targetIndex = nextConfigSets.findIndex((set) => set.id === activeConfigSetId);
+    const targetSetId =
+      options?.targetSetId && nextConfigSets.some((set) => set.id === options.targetSetId)
+        ? options.targetSetId
+        : activeConfigSetId;
+    const targetIndex = nextConfigSets.findIndex((set) => set.id === targetSetId);
     const targetSet =
       targetIndex >= 0
         ? this.cloneConfigSet(nextConfigSets[targetIndex])
@@ -1469,10 +1489,10 @@ export class ConfigStore {
 
     const nextProfiles = this.cloneProfiles(targetSet.profiles);
     let nextActiveProfileKey = targetSet.activeProfileKey;
-    let nextProvider = targetSet.provider;
+    let nextProvider: ProviderType = targetSet.provider || 'deepseek';
     let nextCustomProtocol: CustomProtocolType = normalizeCustomProtocol(
       targetSet.customProtocol,
-      defaultProtocolForProvider(targetSet.provider)
+      defaultProtocolForProvider(nextProvider)
     );
 
     const mutatesActiveSet =
@@ -1538,7 +1558,12 @@ export class ConfigStore {
 
       const updatedSet: ApiConfigSet = {
         ...targetSet,
-        provider: nextProvider,
+        // Only overwrite the provider when the update determines one, so a
+        // blank set (provider '') keeps its "no provider selected" state.
+        provider:
+          updates.provider !== undefined || updates.activeProfileKey !== undefined
+            ? nextProvider
+            : targetSet.provider,
         customProtocol: nextCustomProtocol,
         activeProfileKey: nextActiveProfileKey,
         profiles: nextProfiles,

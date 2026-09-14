@@ -387,6 +387,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.deleteSet', payload),
     switchSet: (payload: { id: string }): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.switchSet', payload),
+    updateSet: (payload: {
+      id: string;
+      updates: Partial<AppConfig>;
+    }): Promise<{ success: boolean; config: AppConfig }> =>
+      ipcRenderer.invoke('config.updateSet', payload),
     selectBuiltinModel: (payload: {
       model: string;
     }): Promise<{ success: boolean; config: AppConfig }> =>
@@ -868,6 +873,10 @@ declare global {
         }) => Promise<{ success: boolean; config: AppConfig }>;
         deleteSet: (payload: { id: string }) => Promise<{ success: boolean; config: AppConfig }>;
         switchSet: (payload: { id: string }) => Promise<{ success: boolean; config: AppConfig }>;
+        updateSet: (payload: {
+          id: string;
+          updates: Partial<AppConfig>;
+        }) => Promise<{ success: boolean; config: AppConfig }>;
         selectBuiltinModel: (payload: {
           model: string;
         }) => Promise<{ success: boolean; config: AppConfig }>;

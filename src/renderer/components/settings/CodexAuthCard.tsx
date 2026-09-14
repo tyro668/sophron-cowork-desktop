@@ -110,102 +110,107 @@ export function CodexAuthCard() {
       : t('api.codexNotConnected');
 
   return (
-    <div className="glass-card space-y-3 rounded-xl px-4 py-3">
-      <label className="flex items-center gap-2 text-[13px] font-medium text-text-primary">
-        <KeyRound className="w-4 h-4" />
-        {t('api.codexAuthTitle')}
-      </label>
-      <p className="text-xs text-text-muted">{t('api.codexAuthDescription')}</p>
-
-      <div
-        className={`flex items-center gap-2 text-[13px] ${
-          connected ? 'text-success' : 'text-text-secondary'
-        }`}
-      >
-        {connected ? (
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-        ) : (
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-        )}
-        {statusText}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            void handleLogin();
-          }}
-          disabled={busy !== null}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 bg-accent/10 text-text-primary hover:bg-accent/15 disabled:opacity-50"
-        >
-          {busy === 'login' ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
+    <div className="rounded-xl border border-border-muted bg-background px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {connected ? (
+            <CheckCircle className="h-4.5 w-4.5 shrink-0 text-success" />
           ) : (
-            <LogIn className="w-3 h-3" />
+            <KeyRound className="h-4.5 w-4.5 shrink-0 text-text-muted" />
           )}
-          {busy === 'login' ? t('api.codexLoggingIn') : t('api.codexLogin')}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            void handleImport();
-          }}
-          disabled={busy !== null}
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 bg-surface-hover text-text-secondary hover:bg-surface-active disabled:opacity-50"
-        >
-          {busy === 'import' ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
+          <div className="min-w-0">
+            <div className="text-[13px] font-medium text-text-primary">
+              {t('api.codexAuthTitle')}
+            </div>
+            <div
+              className={`mt-0.5 truncate text-[12px] ${
+                connected ? 'text-success' : 'text-text-muted'
+              }`}
+            >
+              {statusText}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {connected ? (
+            <button
+              type="button"
+              onClick={() => {
+                void handleLogout();
+              }}
+              disabled={busy !== null}
+              className="btn btn-secondary h-8"
+            >
+              {busy === 'logout' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogOut className="h-3.5 w-3.5" />
+              )}
+              {t('api.codexLogout')}
+            </button>
           ) : (
-            <RefreshCw className="w-3 h-3" />
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleImport();
+                }}
+                disabled={busy !== null}
+                className="btn btn-secondary h-8"
+                title={t('api.codexRedetect')}
+              >
+                {busy === 'import' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {t('api.codexRedetect')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleLogin();
+                }}
+                disabled={busy !== null}
+                className="btn btn-primary h-8"
+              >
+                {busy === 'login' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5" />
+                )}
+                {busy === 'login' ? t('api.codexLoggingIn') : t('api.codexLogin')}
+              </button>
+            </>
           )}
-          {t('api.codexRedetect')}
-        </button>
-        {connected && (
-          <button
-            type="button"
-            onClick={() => {
-              void handleLogout();
-            }}
-            disabled={busy !== null}
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors active:scale-95 bg-surface-hover text-text-secondary hover:bg-surface-active disabled:opacity-50"
-          >
-            {busy === 'logout' ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <LogOut className="w-3 h-3" />
-            )}
-            {t('api.codexLogout')}
-          </button>
-        )}
+        </div>
       </div>
 
       {prompt && (
-        <div className="space-y-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2">
-          <p className="text-xs text-text-secondary">{t('api.codexManualCodeLabel')}</p>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              placeholder={t('api.codexManualCodePlaceholder')}
-              className="flex-1 rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
-            />
-            <button
-              type="button"
-              onClick={submitManualCode}
-              disabled={!manualCode.trim()}
-              className="text-xs px-3 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
-            >
-              {t('api.codexManualCodeSubmit')}
-            </button>
-          </div>
+        <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-3">
+          <input
+            type="text"
+            value={manualCode}
+            onChange={(e) => setManualCode(e.target.value)}
+            placeholder={t('api.codexManualCodePlaceholder')}
+            aria-label={t('api.codexManualCodeLabel')}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+          <button
+            type="button"
+            onClick={submitManualCode}
+            disabled={!manualCode.trim()}
+            className="btn btn-primary h-9 shrink-0"
+          >
+            {t('api.codexManualCodeSubmit')}
+          </button>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 text-error text-xs">
-          <AlertCircle className="w-3 h-3 flex-shrink-0" />
+        <div className="mt-3 flex items-center gap-2 text-[12px] text-error">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           {error}
         </div>
       )}

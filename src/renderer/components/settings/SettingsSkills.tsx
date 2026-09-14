@@ -3,13 +3,10 @@ import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
   BarChart3,
-  Box,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
   CheckCircle2,
-  Clock3,
-  Cloud,
   FileText,
   FolderOpen,
   GitBranch,
@@ -33,7 +30,6 @@ import {
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
-  StatCard,
   EmptyState,
   TabButton,
 } from '../data-view/shared';
@@ -402,15 +398,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }
 
-  const builtinSkills = skills.filter((s) => s.type === 'builtin');
   const language = i18n.resolvedLanguage || i18n.language;
-  const installedCount = skills.length;
-  const enabledCount = skills.filter((skill) => skill.enabled).length;
-  const recentUpdatedCount = skills.filter((skill) => {
-    const createdAt = typeof skill.createdAt === 'number' ? skill.createdAt : 0;
-    return createdAt > 0 && Date.now() - createdAt <= 7 * 24 * 60 * 60 * 1000;
-  }).length;
-  const onlineCount = plugins.length;
 
   const tableItems = useMemo<SkillTableItem[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -544,41 +532,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           {success.key ? t(success.key) : success.text}
         </div>
       )}
-
-      <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
-        <StatCard
-          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
-          Icon={Box}
-          value={installedCount}
-          label={t('skills.workspace.installedCount')}
-          description={t('skills.workspace.installedCountDesc')}
-          iconClassName="bg-accent/10 text-accent"
-        />
-        <StatCard
-          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
-          Icon={Layers}
-          value={builtinSkills.length}
-          label={t('skills.workspace.builtinCount')}
-          description={t('skills.workspace.builtinCountDesc')}
-          iconClassName="bg-accent/10 text-accent"
-        />
-        <StatCard
-          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
-          Icon={Cloud}
-          value={onlineCount}
-          label={t('skills.workspace.onlineCount')}
-          description={t('skills.workspace.onlineCountDesc')}
-          iconClassName="bg-accent/10 text-accent"
-        />
-        <StatCard
-          compact={installedCount === 0 && builtinSkills.length === 0 && onlineCount === 0}
-          Icon={Clock3}
-          value={recentUpdatedCount || enabledCount}
-          label={t('skills.workspace.recentCount')}
-          description={t('skills.workspace.recentCountDesc')}
-          iconClassName="bg-warning/10 text-warning"
-        />
-      </section>
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">

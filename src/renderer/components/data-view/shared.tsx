@@ -41,50 +41,6 @@ export function makeLocalId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-export function StatCard({
-  label,
-  description,
-  value,
-  Icon,
-  iconClassName,
-  compact = false,
-}: {
-  label: string;
-  description: string;
-  value: number;
-  Icon: LucideIcon;
-  iconClassName: string;
-  compact?: boolean;
-}) {
-  return (
-    <article
-      title={description}
-      className={`flex items-center gap-3 rounded-lg border border-border-muted px-3 ${compact ? 'h-14' : 'glass-card h-[5.75rem]'}`}
-    >
-      <div
-        className={`flex shrink-0 items-center justify-center rounded-lg ${compact ? 'h-7 w-7' : 'h-12 w-12'} ${iconClassName}`}
-      >
-        <Icon className={compact ? 'h-4 w-4' : 'h-6 w-6'} />
-      </div>
-      <div className={`min-w-0 ${compact ? 'flex flex-1 items-center justify-between gap-2' : ''}`}>
-        <div
-          className={`font-medium leading-none text-text-primary ${compact ? 'order-2 text-[16px]' : 'text-[20px]'}`}
-        >
-          {value}
-        </div>
-        <div
-          className={`text-[13px] font-medium leading-4 text-text-secondary ${compact ? '' : 'mt-1.5'}`}
-        >
-          {label}
-        </div>
-        {!compact && (
-          <div className="mt-1 truncate text-[11px] leading-4 text-text-muted">{description}</div>
-        )}
-      </div>
-    </article>
-  );
-}
-
 export function TabButton({
   active,
   onClick,

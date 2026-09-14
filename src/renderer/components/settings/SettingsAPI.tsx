@@ -35,24 +35,19 @@ interface ModelOptionItem {
 function SettingsCard({
   icon,
   title,
-  description,
   children,
 }: {
   icon: ReactNode;
   title: string;
-  description: string;
   children: ReactNode;
 }) {
   return (
     <section className="min-w-0 rounded-xl border border-border-muted bg-background p-4 shadow-soft sm:p-5 lg:h-full">
-      <div className="mb-5 flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+      <div className="mb-5 flex items-center gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
           {icon}
         </div>
-        <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold text-text-primary">{title}</h2>
-          <p className="mt-0.5 text-[12px] leading-5 text-text-muted">{description}</p>
-        </div>
+        <h2 className="min-w-0 text-[15px] font-semibold text-text-primary">{title}</h2>
       </div>
       <div className="space-y-4">{children}</div>
     </section>
@@ -73,6 +68,7 @@ export function SettingsAPI() {
   const [showApiKey, setShowApiKey] = useState(false);
   const {
     provider,
+    providerUnset,
     customProtocol,
     apiKey,
     baseUrl,
@@ -97,6 +93,7 @@ export function SettingsAPI() {
     commonProviderSetups,
     configSets,
     activeConfigSetId,
+    selectedConfigSetId,
     currentConfigSet,
     pendingConfigSetAction,
     pendingConfigSet,
@@ -112,8 +109,10 @@ export function SettingsAPI() {
     setEnableThinking,
     applyCommonProviderSetup,
     changeProvider,
+    clearProviderSelection,
     changeProtocol,
     requestConfigSetSwitch,
+    requestSelectConfigSet,
     requestCreateBlankConfigSet,
     cancelPendingConfigSetAction,
     saveAndContinuePendingConfigSetAction,
@@ -148,6 +147,7 @@ export function SettingsAPI() {
     !isSaving &&
     !isMutatingConfigSet &&
     !pendingConfigSetAction &&
+    !providerUnset &&
     (!requiresApiKey || Boolean(apiKey.trim()));
   const connectionOk = Boolean(diagnosticResult?.overallOk);
   const connectionFailed = Boolean(diagnosticResult && !diagnosticResult.overallOk);
@@ -157,12 +157,14 @@ export function SettingsAPI() {
       <ApiConfigSetManager
         configSets={configSets}
         activeConfigSetId={activeConfigSetId}
+        selectedConfigSetId={selectedConfigSetId}
         currentConfigSet={currentConfigSet}
         pendingConfigSetAction={pendingConfigSetAction}
         pendingConfigSet={pendingConfigSet}
         hasUnsavedChanges={hasUnsavedChanges}
         isMutatingConfigSet={isMutatingConfigSet}
         isSaving={isSaving}
+        onSelectSet={requestSelectConfigSet}
         onSwitchSet={requestConfigSetSwitch}
         onRequestCreateBlankSet={requestCreateBlankConfigSet}
         onRenameSet={renameConfigSet}
@@ -189,25 +191,30 @@ export function SettingsAPI() {
       )}
 
       <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-        <SettingsCard
-          icon={<Wifi className="h-4.5 w-4.5" />}
-          title={t('api.serviceAuth')}
-          description={t('api.serviceAuthDescription')}
-        >
+        <SettingsCard icon={<Wifi className="h-4.5 w-4.5" />} title={t('api.serviceAuth')}>
           <FieldRow label={t('api.provider')}>
             <GlassSelect
-              value={provider}
-              onValueChange={(value) => changeProvider(value as ProviderType)}
-              options={providerOptions.map((item) => ({
-                value: item,
-                label: presets[item]?.name || item,
-              }))}
+              value={providerUnset ? '' : provider}
+              onValueChange={(value) => {
+                if (value === '') {
+                  clearProviderSelection();
+                } else {
+                  changeProvider(value as ProviderType);
+                }
+              }}
+              options={[
+                { value: '', label: t('api.providerEmpty') },
+                ...providerOptions.map((item) => ({
+                  value: item,
+                  label: presets[item]?.name || item,
+                })),
+              ]}
               triggerClassName="h-11 w-full justify-between bg-background px-3 text-[13px] text-text-primary"
               contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </FieldRow>
 
-          {provider === 'custom' && (
+          {!providerUnset && provider === 'custom' && (
             <FieldRow label={t('api.protocol')}>
               <div className="grid grid-cols-3 gap-1 rounded-lg border border-border-muted bg-surface-muted p-1">
                 {(['anthropic', 'openai', 'gemini'] as const).map((item) => (
@@ -229,7 +236,7 @@ export function SettingsAPI() {
             </FieldRow>
           )}
 
-          {!isSophronMode && !isCodexMode && (
+          {!providerUnset && !isSophronMode && !isCodexMode && (
             <FieldRow label={t('api.apiKey')}>
               <div className="relative">
                 <input
@@ -253,38 +260,40 @@ export function SettingsAPI() {
             </FieldRow>
           )}
 
-          {isCodexMode && <CodexAuthCard />}
+          {!providerUnset && isCodexMode && <CodexAuthCard />}
 
-          <FieldRow label={t('api.baseUrl')}>
-            <div className="flex min-w-0 gap-2">
-              <input
-                id="api-base-url-input"
-                type="url"
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
-                className="h-11 min-w-0 flex-1 rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-                aria-label={t('api.baseUrl')}
-              />
-              {isOllamaMode && (
-                <button
-                  type="button"
-                  onClick={() => void discoverLocalOllama()}
-                  disabled={isDiscoveringLocalOllama}
-                  className="btn btn-secondary h-11 shrink-0"
-                  title={t('api.discoverLocalOllama')}
-                >
-                  {isDiscoveringLocalOllama ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plug className="h-4 w-4" />
-                  )}
-                </button>
-              )}
-            </div>
-          </FieldRow>
+          {!providerUnset && (provider === 'custom' || isOllamaMode) && (
+            <FieldRow label={t('api.baseUrl')}>
+              <div className="flex min-w-0 gap-2">
+                <input
+                  id="api-base-url-input"
+                  type="url"
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.target.value)}
+                  placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
+                  className="h-11 min-w-0 flex-1 rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  aria-label={t('api.baseUrl')}
+                />
+                {isOllamaMode && (
+                  <button
+                    type="button"
+                    onClick={() => void discoverLocalOllama()}
+                    disabled={isDiscoveringLocalOllama}
+                    className="btn btn-secondary h-11 shrink-0"
+                    title={t('api.discoverLocalOllama')}
+                  >
+                    {isDiscoveringLocalOllama ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plug className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </div>
+            </FieldRow>
+          )}
 
-          {provider === 'custom' && (
+          {!providerUnset && provider === 'custom' && (
             <CommonProviderSetupsCard
               setups={commonProviderSetups}
               onApplySetup={applyCommonProviderSetup}
@@ -295,112 +304,119 @@ export function SettingsAPI() {
         <SettingsCard
           icon={<SlidersHorizontal className="h-4.5 w-4.5" />}
           title={t('api.modelInference')}
-          description={t('api.modelInferenceDescription')}
         >
-          <FieldRow label={t('api.model')}>
-            <div className="flex min-w-0 gap-2">
-              <div className="min-w-0 flex-1">
-                {useCustomModel ? (
-                  <input
-                    id="api-model-input"
-                    type="text"
-                    value={customModel}
-                    onChange={(event) => setCustomModel(event.target.value)}
-                    placeholder={modelInputPlaceholder}
-                    className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          {providerUnset ? (
+            <p className="py-2 text-[13px] text-text-muted">{t('api.selectProviderFirst')}</p>
+          ) : (
+            <>
+              <FieldRow label={t('api.model')}>
+                <div className="flex min-w-0 gap-2">
+                  <div className="min-w-0 flex-1">
+                    {useCustomModel ? (
+                      <input
+                        id="api-model-input"
+                        type="text"
+                        value={customModel}
+                        onChange={(event) => setCustomModel(event.target.value)}
+                        placeholder={modelInputPlaceholder}
+                        className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      />
+                    ) : (
+                      <GlassSelect
+                        value={modelOptions.length ? model : ''}
+                        onValueChange={setModel}
+                        options={
+                          modelOptions.length
+                            ? (modelOptions as ModelOptionItem[]).map((item) => ({
+                                value: item.id,
+                                label: item.name,
+                              }))
+                            : [
+                                {
+                                  value: 'no-models',
+                                  label: t('api.noModelsAvailable'),
+                                  disabled: true,
+                                },
+                              ]
+                        }
+                        placeholder={t('api.noModelsAvailable')}
+                        disabled={!modelOptions.length}
+                        triggerClassName="h-11 w-full justify-between bg-background/42 px-3 text-[13px] text-text-primary"
+                        contentClassName="w-[var(--radix-select-trigger-width)]"
+                      />
+                    )}
+                  </div>
+                  {!isSophronMode && !isCodexMode && (
+                    <button
+                      type="button"
+                      onClick={toggleCustomModel}
+                      className={`btn h-11 shrink-0 ${useCustomModel ? 'btn-primary' : 'btn-secondary'}`}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      <span className="hidden lg:inline">
+                        {useCustomModel ? t('api.usePreset') : t('api.customModel')}
+                      </span>
+                    </button>
+                  )}
+                  {(isOllamaMode || provider === 'sophron') && !useCustomModel && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshModelOptions()}
+                      disabled={isRefreshingModels}
+                      className="btn btn-secondary h-11 shrink-0"
+                      title={t('api.refreshModels')}
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${isRefreshingModels ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                  )}
+                </div>
+              </FieldRow>
+
+              <FieldRow label={t('api.contextWindow')}>
+                <input
+                  id="api-context-window-input"
+                  type="number"
+                  value={contextWindow}
+                  onChange={(event) => setContextWindow(event.target.value)}
+                  placeholder={t('api.contextWindowPlaceholder')}
+                  min={1024}
+                  step={1024}
+                  className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </FieldRow>
+
+              <FieldRow label={t('api.maxOutputTokens')}>
+                <input
+                  id="api-max-tokens-input"
+                  type="number"
+                  value={maxTokens}
+                  onChange={(event) => setMaxTokens(event.target.value)}
+                  placeholder={t('api.maxOutputTokensPlaceholder')}
+                  min={256}
+                  step={256}
+                  className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+              </FieldRow>
+
+              <div className="border-t border-border-muted pt-4">
+                <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-muted px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <BrainCircuit className="h-4.5 w-4.5 shrink-0 text-accent" />
+                    <p className="text-[13px] font-medium text-text-primary">
+                      {t('api.enableThinking')}
+                    </p>
+                  </div>
+                  <GlassSwitch
+                    checked={enableThinking}
+                    onCheckedChange={setEnableThinking}
+                    ariaLabel={t('api.enableThinking')}
                   />
-                ) : (
-                  <GlassSelect
-                    value={modelOptions.length ? model : ''}
-                    onValueChange={setModel}
-                    options={
-                      modelOptions.length
-                        ? (modelOptions as ModelOptionItem[]).map((item) => ({
-                            value: item.id,
-                            label: item.name,
-                          }))
-                        : [
-                            {
-                              value: 'no-models',
-                              label: t('api.noModelsAvailable'),
-                              disabled: true,
-                            },
-                          ]
-                    }
-                    placeholder={t('api.noModelsAvailable')}
-                    disabled={!modelOptions.length}
-                    triggerClassName="h-11 w-full justify-between bg-background/42 px-3 text-[13px] text-text-primary"
-                    contentClassName="w-[var(--radix-select-trigger-width)]"
-                  />
-                )}
+                </div>
               </div>
-              {!isSophronMode && !isCodexMode && (
-                <button
-                  type="button"
-                  onClick={toggleCustomModel}
-                  className={`btn h-11 shrink-0 ${useCustomModel ? 'btn-primary' : 'btn-secondary'}`}
-                >
-                  <Edit3 className="h-4 w-4" />
-                  <span className="hidden lg:inline">
-                    {useCustomModel ? t('api.usePreset') : t('api.customModel')}
-                  </span>
-                </button>
-              )}
-              {(isOllamaMode || provider === 'sophron') && !useCustomModel && (
-                <button
-                  type="button"
-                  onClick={() => void refreshModelOptions()}
-                  disabled={isRefreshingModels}
-                  className="btn btn-secondary h-11 shrink-0"
-                  title={t('api.refreshModels')}
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshingModels ? 'animate-spin' : ''}`} />
-                </button>
-              )}
-            </div>
-          </FieldRow>
-
-          <FieldRow label={t('api.contextWindow')}>
-            <input
-              id="api-context-window-input"
-              type="number"
-              value={contextWindow}
-              onChange={(event) => setContextWindow(event.target.value)}
-              placeholder={t('api.contextWindowPlaceholder')}
-              min={1024}
-              step={1024}
-              className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
-          </FieldRow>
-
-          <FieldRow label={t('api.maxOutputTokens')}>
-            <input
-              id="api-max-tokens-input"
-              type="number"
-              value={maxTokens}
-              onChange={(event) => setMaxTokens(event.target.value)}
-              placeholder={t('api.maxOutputTokensPlaceholder')}
-              min={256}
-              step={256}
-              className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
-          </FieldRow>
-
-          <div className="border-t border-border-muted pt-4">
-            <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-muted px-3 py-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <BrainCircuit className="h-4.5 w-4.5 shrink-0 text-accent" />
-                <p className="text-[13px] font-medium text-text-primary">
-                  {t('api.enableThinking')}
-                </p>
-              </div>
-              <GlassSwitch
-                checked={enableThinking}
-                onCheckedChange={setEnableThinking}
-                ariaLabel={t('api.enableThinking')}
-              />
-            </div>
-          </div>
+            </>
+          )}
         </SettingsCard>
       </div>
 
@@ -421,7 +437,7 @@ export function SettingsAPI() {
         <button
           type="button"
           onClick={() => void handleDiagnose()}
-          disabled={isDiagnosing || (requiresApiKey && !apiKey.trim())}
+          disabled={isDiagnosing || providerUnset || (requiresApiKey && !apiKey.trim())}
           className="btn btn-secondary h-10"
         >
           {isDiagnosing ? (

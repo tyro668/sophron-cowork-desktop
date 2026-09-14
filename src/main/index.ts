@@ -2126,6 +2126,17 @@ ipcMain.handle('config.switchSet', async (_event, payload: { id: string }) => {
   return { success: true, config: updatedConfig };
 });
 
+ipcMain.handle(
+  'config.updateSet',
+  async (_event, payload: { id: string; updates: Parameters<typeof configStore.update>[0] }) => {
+    log('[Config] Updating config set:', { id: payload.id });
+    const previousConfig = configStore.getAll();
+    configStore.updateSet(payload);
+    const updatedConfig = await syncConfigAfterMutation(previousConfig);
+    return { success: true, config: updatedConfig };
+  }
+);
+
 ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: string }) => {
   const model = typeof payload.model === 'string' ? payload.model.trim() : '';
   if (!model) {

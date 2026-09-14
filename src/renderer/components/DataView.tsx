@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle2, Clock3, Database, Workflow } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import type {
   DataCleaningTask,
   DataDashboard,
@@ -16,7 +16,6 @@ import {
   DATA_DELETE_BATCH_SIZE,
   INPUT_TABLE_PREVIEW_PAGE_SIZE,
   OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
-  StatCard,
   TABLE_PAGE_SIZE,
   TabButton,
   getTablePageCount,
@@ -461,43 +460,6 @@ export function DataView() {
     setOutputPage(page);
   }, []);
 
-  const summaryCards = useMemo(
-    () => [
-      {
-        key: 'taskCount',
-        label: t('data.summary.tasks'),
-        description: t('data.summary.tasksDesc'),
-        value: dashboard.summary.taskCount,
-        Icon: Database,
-        iconClassName: 'bg-accent/10 text-accent',
-      },
-      {
-        key: 'workflowNodeCount',
-        label: t('data.summary.workflowNodes'),
-        description: t('data.summary.workflowNodesDesc'),
-        value: dashboard.summary.workflowNodeCount,
-        Icon: Workflow,
-        iconClassName: 'bg-accent/10 text-accent',
-      },
-      {
-        key: 'runningCount',
-        label: t('data.summary.running'),
-        description: t('data.summary.runningDesc'),
-        value: dashboard.summary.runningCount,
-        Icon: CheckCircle2,
-        iconClassName: 'bg-surface-active/70 text-text-secondary',
-      },
-      {
-        key: 'todayScheduleCount',
-        label: t('data.summary.todaySchedule'),
-        description: t('data.summary.todayScheduleDesc'),
-        value: dashboard.summary.todayScheduleCount,
-        Icon: Clock3,
-        iconClassName: 'bg-warning/10 text-warning',
-      },
-    ],
-    [dashboard.summary, t]
-  );
   const editingTask = useMemo(
     () =>
       dashboard.tasks.find((task) => task.id === editingTaskId) ??
@@ -1178,21 +1140,7 @@ export function DataView() {
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <section className="grid flex-shrink-0 grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-3">
-              {summaryCards.map(({ key, label, description, value, Icon, iconClassName }) => (
-                <StatCard
-                  key={key}
-                  compact={summaryCards.every((card) => card.value === 0)}
-                  label={label}
-                  description={description}
-                  value={value}
-                  Icon={Icon}
-                  iconClassName={iconClassName}
-                />
-              ))}
-            </section>
-
-            <section className="mt-3 flex min-h-0 flex-1 flex-col">
+            <section className="flex min-h-0 flex-1 flex-col">
               <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex items-end gap-5">
                   <TabButton
