@@ -2,103 +2,103 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-// SettingsPanel was split — schedule content lives in settings/SettingsSchedule.tsx
+const automationViewPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/AutomationView.tsx'
+);
 const settingsPanelPath = path.resolve(process.cwd(), 'src/renderer/components/SettingsPanel.tsx');
 const settingsDir = path.resolve(process.cwd(), 'src/renderer/components/settings');
-const settingsPanelContent = [
-  readFileSync(settingsPanelPath, 'utf8'),
-  ...readdirSync(settingsDir).map((f) => readFileSync(path.join(settingsDir, f), 'utf8')),
+
+function readSourceTree(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? readSourceTree(entryPath) : [readFileSync(entryPath, 'utf8')];
+  });
+}
+
+const settingsPanelSource = readFileSync(settingsPanelPath, 'utf8');
+const automationSource = [
+  readFileSync(automationViewPath, 'utf8'),
+  ...readSourceTree(settingsDir),
 ].join('\n');
 
-describe('SettingsPanel schedule tab entry', () => {
-  it('renders schedule tab id', () => {
-    expect(settingsPanelContent).toContain("id: 'schedule' as TabId");
+describe('Automation workspace', () => {
+  it('renders automation as an independent workspace', () => {
+    expect(automationSource).toContain(
+      "import { SettingsSchedule } from './settings/SettingsSchedule';"
+    );
+    expect(automationSource).toContain('<SettingsSchedule isActive={isActive} />');
+    expect(automationSource).toContain('max-w-[1120px]');
+    expect(settingsPanelSource).not.toContain("id: 'schedule' as TabId");
   });
 
-  it('uses schedule i18n keys', () => {
-    expect(settingsPanelContent).toContain("t('settings.schedule'");
-    expect(settingsPanelContent).toContain("t('settings.scheduleDesc'");
+  it('loads automations, action definitions, data resources, and run history', () => {
+    expect(automationSource).toContain('window.electronAPI.automation.list()');
+    expect(automationSource).toContain('window.electronAPI.automation.listActionDefinitions()');
+    expect(automationSource).toContain('window.electronAPI.data.getDashboard({');
+    expect(automationSource).toContain('window.electronAPI.automation.listRuns(automation.id');
   });
 
-  it('handles null nextRunAt explicitly', () => {
-    expect(settingsPanelContent).toContain('task.nextRunAt === null');
-    expect(settingsPanelContent).toContain("t('schedule.nextRunNone')");
-    expect(settingsPanelContent).toContain("t('schedule.nextRun', { value: formatTime(task.nextRunAt) })");
+  it('ignores stale asynchronous list and run-history responses', () => {
+    expect(automationSource).toContain('const loadRequestSeq = useRef(0)');
+    expect(automationSource).toContain('const loadRunsRequestSeq = useRef(0)');
+    expect(automationSource).toContain('requestId !== loadRequestSeq.current');
+    expect(automationSource).toContain('requestId !== loadRunsRequestSeq.current');
   });
 
-  it('avoids resetting schedule time when editing without changing runAt', () => {
-    expect(settingsPanelContent).toContain('shouldResetScheduleTime');
-    expect(settingsPanelContent).toContain('runAt !== originalRunAtInput');
+  it('polls only while an automation is running', () => {
+    expect(automationSource).toContain('if (!isActive || !hasRunningAutomation) return;');
+    expect(automationSource).toContain('void load({ silent: true });');
+    expect(automationSource).toContain('window.clearInterval(timer)');
   });
 
-  it('polls schedule list in background', () => {
-    expect(settingsPanelContent).toContain("void loadTasks({ silent: true })");
+  it('validates schedule-specific and action-specific requirements before saving', () => {
+    expect(automationSource).toContain("tr('schedule.weekdayRequired'");
+    expect(automationSource).toContain("tr('schedule.monthDayRequired'");
+    expect(automationSource).toContain("tr('schedule.endAtAfterStartRequired'");
+    expect(automationSource).toContain('validateEnabledActionNodes(draft, tr)');
+    expect(automationSource).toContain("tr('schedule.cloudSourceRequired'");
+    expect(automationSource).toContain("tr('schedule.cloudTargetRequired'");
   });
 
-  it('validates future run time and suggests runNow for immediate execution', () => {
-    expect(settingsPanelContent).toContain("setError({ key: 'schedule.futureTimeRequired' })");
+  it('supports all current trigger modes in the normalized model', () => {
+    expect(automationSource).toContain("kind: 'once'");
+    expect(automationSource).toContain("kind: 'daily'");
+    expect(automationSource).toContain("kind: 'weekly'");
+    expect(automationSource).toContain("kind: 'monthly'");
+    expect(automationSource).toContain("kind: 'interval'");
+    expect(automationSource).toContain("kind: 'file_change'");
   });
 
-  it('shows model-generated title hints and only regenerates on prompt change', () => {
-    expect(settingsPanelContent).toContain("t('schedule.autoTitleLabel')");
-    expect(settingsPanelContent).toContain('previewTitle');
-    expect(settingsPanelContent).toContain('shouldRegenerateTitle');
-    expect(settingsPanelContent).toContain("t('schedule.autoTitleChangedHint')");
-    expect(settingsPanelContent).toContain("t('schedule.autoTitleUnchangedHint')");
+  it('renders list, run history, and the full editor sections', () => {
+    expect(automationSource).toContain('<AutomationListPanel');
+    expect(automationSource).toContain('<AutomationRunLogPanel');
+    expect(automationSource).toContain('<TaskStatusSection');
+    expect(automationSource).toContain('<ExecutionProjectPanel');
+    expect(automationSource).toContain('<TriggerConditionPanel');
+    expect(automationSource).toContain('<ActionChainSection');
   });
 
-  it('renders schedule rule and last-run details for better task readability', () => {
-    expect(settingsPanelContent).toContain("t('schedule.strategy', {");
-    expect(settingsPanelContent).toContain('formatScheduleRule(task, t, weekdayOptions)');
-    expect(settingsPanelContent).toContain("t('schedule.lastRunNever')");
-    expect(settingsPanelContent).toContain("t('schedule.lastRun', { value: formatTime(task.lastRunAt) })");
-    expect(settingsPanelContent).toContain('{task.title}');
-    expect(settingsPanelContent).toContain("t('schedule.recentSession', { value: task.lastRunSessionId })");
+  it('formats missing next-run values and manual triggers explicitly', () => {
+    expect(automationSource).toContain("automation.trigger.kind === 'manual'");
+    expect(automationSource).toContain("tr('schedule.noAutoTrigger', '无自动触发')");
+    expect(automationSource).toContain(
+      "automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-'"
+    );
   });
 
-  it('supports daily and weekly multi-slot schedule editing', () => {
-    expect(settingsPanelContent).toContain("const [scheduleMode, setScheduleMode] = useState<ScheduleFormMode>('once')");
-    expect(settingsPanelContent).toContain('<ScheduleSelectMenu');
-    expect(settingsPanelContent).toContain('<TimeMultiSelectMenu');
-    expect(settingsPanelContent).toContain("label={t('schedule.mode')}");
-    expect(settingsPanelContent).toContain("label={t('schedule.weekday')}");
-    expect(settingsPanelContent).toContain("label={t('schedule.times')}");
-    expect(settingsPanelContent).toContain("t('schedule.previewAutoFind'");
-  });
-
-  it('allows editable custom time entries instead of fixed half-hour slots', () => {
-    expect(settingsPanelContent).toContain("t('schedule.pickerEditTimes')");
-    expect(settingsPanelContent).toContain("t('schedule.pickerAnyHHmm')");
-    expect(settingsPanelContent).toContain('type="time"');
-    expect(settingsPanelContent).toContain("t('schedule.pickerSuggestions')");
-    expect(settingsPanelContent).toContain('function isValidTimeValue(value: string): boolean');
-    expect(settingsPanelContent).toContain('const [openUpward, setOpenUpward] = useState(false)');
-    expect(settingsPanelContent).toContain('min-w-[92px]');
-    expect(settingsPanelContent).toContain('w-[min(22rem,calc(100vw-2rem))]');
-    expect(settingsPanelContent).toContain('rounded-full border px-3 py-1.5 text-sm');
-  });
-
-  it('formats daily and weekly schedule rules from scheduleConfig', () => {
-    expect(settingsPanelContent).toContain("if (task.scheduleConfig?.kind === 'daily')");
-    expect(settingsPanelContent).toContain("if (task.scheduleConfig?.kind === 'weekly')");
-    expect(settingsPanelContent).toContain("t('schedule.ruleWeekly'");
-  });
-
-  it('shows clear stop semantics hint', () => {
-    expect(settingsPanelContent).toContain("title={");
-    expect(settingsPanelContent).toContain("t('schedule.stopExecution')");
-  });
-
-  it('provides stop-run control for running scheduled sessions', () => {
-    expect(settingsPanelContent).toContain("type: 'session.stop'");
-    expect(settingsPanelContent).toContain("t('schedule.stopRunTitleActive')");
-    expect(settingsPanelContent).toContain("t('schedule.stopRunTitleIdle')");
-    expect(settingsPanelContent).toContain("setError({ key: 'schedule.noSessionToStop' })");
-  });
-
-  it('saves cwd in create and update payloads so backend validation can reject unsupported paths early', () => {
-    expect(settingsPanelContent).toContain("cwd: cwd.trim() || workingDir || ''");
-    expect(settingsPanelContent).toContain('const updated = await window.electronAPI.schedule.update(editingId, payload);');
-    expect(settingsPanelContent).toContain('await window.electronAPI.schedule.create(payload);');
+  it('creates, updates, runs, and deletes through the automation API', () => {
+    expect(automationSource).toContain(
+      'window.electronAPI.automation.update(selectedAutomation.id, payload)'
+    );
+    expect(automationSource).toContain(
+      'window.electronAPI.automation.create(payload as AutomationCreateInput)'
+    );
+    expect(automationSource).toContain(
+      'window.electronAPI.automation.runNow(selectedAutomation.id)'
+    );
+    expect(automationSource).toContain(
+      'window.electronAPI.automation.delete(selectedAutomation.id)'
+    );
   });
 });

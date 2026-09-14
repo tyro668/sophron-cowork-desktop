@@ -128,7 +128,7 @@ export class PrepTokenCursor {
     return null;
   }
 
-  expectFieldRef(code = 'expectedField'): PrepFieldRef | null {
+  expectFieldRef(code = 'expectedField', invalidCode = code): PrepFieldRef | null {
     const startIndex = this.position;
     if (!this.consumeBracketedName()) {
       this.report(code, `Expected a field reference but found ${this.describeCurrent()}`);
@@ -144,7 +144,7 @@ export class PrepTokenCursor {
 
     const field = parseFieldRefExact(this.slice(startIndex));
     if (field?.name.trim() && (!field.source || field.source.trim())) return field;
-    this.report(code, `Invalid field reference "${this.slice(startIndex)}"`);
+    this.report(invalidCode, `Invalid field reference "${this.slice(startIndex)}"`);
     return null;
   }
 
@@ -160,6 +160,29 @@ export class PrepTokenCursor {
     if (start === undefined || !endToken) return '';
     const end = (endToken.endOffset ?? endToken.startOffset) + 1;
     return this.text.slice(start, end);
+  }
+
+  consumeUntilTopLevelKeyword(keywords: readonly string[]): string {
+    const startIndex = this.position;
+    let bracketDepth = 0;
+    let parenthesisDepth = 0;
+    while (!this.eof) {
+      const type = this.tokenType();
+      if (
+        bracketDepth === 0 &&
+        parenthesisDepth === 0 &&
+        type === 'Identifier' &&
+        keywords.some((keyword) => keyword.toLowerCase() === this.image())
+      ) {
+        break;
+      }
+      if (type === 'LSquare') bracketDepth += 1;
+      else if (type === 'RSquare') bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (type === 'LParen') parenthesisDepth += 1;
+      else if (type === 'RParen') parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+      this.consume();
+    }
+    return this.slice(startIndex).trim();
   }
 
   report(code: string, message: string, token = this.peek()): void {

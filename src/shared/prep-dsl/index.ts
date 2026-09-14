@@ -18,10 +18,13 @@ export {
   parsePrepDsl,
   parsePrepOperatorDsl,
   parseFieldRef,
+  parseFieldRefExact,
+  formatFieldName,
   toFieldName,
   toQualifiedName,
   unwrapFieldName,
 } from './parser';
+export { findOpenFieldReference, PREP_DSL_KEYWORDS } from './editor-support';
 export { tokenizePrepDsl } from './tokens';
 export { validatePrepWorkflow } from './validator';
 export {

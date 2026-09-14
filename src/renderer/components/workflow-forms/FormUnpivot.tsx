@@ -48,7 +48,7 @@ export default function FormUnpivot({
           <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
             <div className="mb-3 px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                <span className="h-2 w-2 rounded-full bg-accent" />
                 {tr('unpivotDimensionsLabel')}
               </div>
               <p className="mt-1 text-[12px] leading-5 text-text-muted">

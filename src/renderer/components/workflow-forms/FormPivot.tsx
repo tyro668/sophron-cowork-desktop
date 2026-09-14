@@ -167,7 +167,7 @@ export default function FormPivot({
           <div className="grid min-w-0 content-start gap-3 px-3 pb-3">
             <div className="px-0.5 pt-1">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                <span className="h-2 w-2 rounded-full bg-accent" />
                 {tr('pivotDimensionsLabel')}
               </div>
               <p className="mt-1 text-[12px] leading-5 text-text-muted">

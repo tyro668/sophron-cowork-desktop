@@ -1,16 +1,8 @@
-/**
- * 内联词法分析器 & 递归下降编译器（不用共享 expression-tokenizer）
- *
- * 原因：filter.ts 要把 UI 过滤条件编译为 DuckDB SQL WHERE 子句，
- * 需要处理运算符优先级（or < and < not）、SQL 函数（regexp_matches、
- * starts_with、CAST）、IN 列表、括号嵌套 —— 本质是一个完整的解析 +
- * 编译管道。
- *
- * 共享 tokenizer 只产出扁平 token 序列，不提供预处理层级和编译能力。
- * 如果将共享 tokenizer 用于 tokenize 阶段，Compiler 类仍无法复用，
- * 且引入额外依赖反而增加维护成本，因此保留内联实现。
- */
-
+import {
+  ExpressionTokenizeError,
+  tokenizeExpression,
+  type ExprToken,
+} from '../../../shared/expression-tokenizer';
 import { quoteValueIdentifier, literalToSql, unwrapFieldToken } from './utils';
 
 type TokenType =
@@ -57,205 +49,47 @@ const KEYWORDS: Record<string, TokenType> = {
   null: 'Null',
 };
 
-const MULTI_CHAR_OPS = ['!=', '<>', '>=', '<='];
-const SINGLE_CHAR_OPS = ['=', '>', '<', '+', '-', '*', '/'];
-const MAX_FILTER_LENGTH = 16_384;
-const MAX_FILTER_TOKENS = 2_048;
-const MAX_FILTER_NESTING = 64;
-
-function isWordStart(ch: string): boolean {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_';
-}
-
-function isWordPart(ch: string): boolean {
-  return isWordStart(ch) || (ch >= '0' && ch <= '9');
-}
-
 function tokenize(input: string): Token[] {
-  if (input.length > MAX_FILTER_LENGTH) {
-    throw new Error(`Filter condition exceeds ${MAX_FILTER_LENGTH} characters`);
-  }
-  const tokens: Token[] = [];
-  let i = 0;
-  let nesting = 0;
-
-  const pushToken = (token: Token): void => {
-    if (tokens.length >= MAX_FILTER_TOKENS) {
-      throw new Error(`Filter condition exceeds ${MAX_FILTER_TOKENS} tokens`);
+  let expressionTokens: ExprToken[];
+  try {
+    expressionTokens = tokenizeExpression(input);
+  } catch (error) {
+    if (error instanceof ExpressionTokenizeError) {
+      throw new Error(`${error.message} in filter condition at position ${error.position}`);
     }
-    tokens.push(token);
-  };
-
-  while (i < input.length) {
-    const ch = input[i];
-
-    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
-      i++;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      const quote = ch;
-      let value = '';
-      i++;
-      while (i < input.length && input[i] !== quote) {
-        if (input[i] === '\\') {
-          i++;
-          if (i < input.length) {
-            if (input[i] === quote) {
-              value += quote;
-            } else {
-              value += '\\' + input[i];
-            }
-          }
-        } else {
-          value += input[i];
-        }
-        i++;
-      }
-      if (i >= input.length) {
-        throw new Error('Unterminated string literal in filter condition');
-      }
-      i++;
-      pushToken({ type: 'StringLiteral', raw: value });
-      continue;
-    }
-
-    if (ch === '[') {
-      i++;
-      let name = '';
-      if (i < input.length && input[i] === '`') {
-        name += '`';
-        i++;
-        while (i < input.length && input[i] !== '`') {
-          if (input[i] === '\\') {
-            i++;
-            if (i < input.length) name += input[i];
-          } else {
-            name += input[i];
-          }
-          i++;
-        }
-        name += '`';
-        if (i >= input.length) {
-          throw new Error('Unterminated backtick field reference in filter condition');
-        }
-        i++;
-      } else {
-        while (i < input.length && input[i] !== ']') {
-          name += input[i];
-          i++;
-        }
-        if (i >= input.length) {
-          throw new Error('Unterminated field reference in filter condition');
-        }
-      }
-      i++;
-      pushToken({ type: 'FieldRef', raw: name });
-      continue;
-    }
-
-    if (ch === '(') {
-      nesting++;
-      if (nesting > MAX_FILTER_NESTING) {
-        throw new Error(`Filter condition exceeds nesting depth ${MAX_FILTER_NESTING}`);
-      }
-      pushToken({ type: 'ParenOpen', raw: '(' });
-      i++;
-      continue;
-    }
-
-    if (ch === ')') {
-      nesting--;
-      if (nesting < 0) {
-        throw new Error('Unexpected closing parenthesis in filter condition');
-      }
-      pushToken({ type: 'ParenClose', raw: ')' });
-      i++;
-      continue;
-    }
-
-    if (ch === ',') {
-      pushToken({ type: 'Comma', raw: ',' });
-      i++;
-      continue;
-    }
-
-    let matched = false;
-    for (const op of MULTI_CHAR_OPS) {
-      if (input.startsWith(op, i)) {
-        pushToken({ type: 'Operator', raw: op });
-        i += op.length;
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
-
-    for (const op of SINGLE_CHAR_OPS) {
-      if (ch === op) {
-        pushToken({ type: 'Operator', raw: op });
-        i++;
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
-
-    if (/[\d.]/.test(ch) && (ch !== '.' || (i + 1 < input.length && /\d/.test(input[i + 1])))) {
-      let num = '';
-      let dotCount = 0;
-      let seenE = false;
-      while (i < input.length && /[\d.eE]/.test(input[i])) {
-        if (input[i] === '.') {
-          if (seenE) {
-            throw new Error(`Invalid number literal: ${num}${input[i]}`);
-          }
-          dotCount++;
-        }
-        if (input[i] === 'e' || input[i] === 'E') seenE = true;
-        num += input[i];
-        i++;
-      }
-      if (dotCount > 1) {
-        throw new Error(`Invalid number literal: ${num}`);
-      }
-      if (num.endsWith('e') || num.endsWith('E')) {
-        if (i < input.length && (input[i] === '+' || input[i] === '-')) {
-          num += input[i];
-          i++;
-        }
-        if (!(i < input.length && /\d/.test(input[i]))) {
-          throw new Error(`Invalid number literal: ${num}`);
-        }
-        while (i < input.length && /\d/.test(input[i])) {
-          num += input[i];
-          i++;
-        }
-      }
-      pushToken({ type: 'Number', raw: num });
-      continue;
-    }
-
-    if (isWordStart(ch)) {
-      let word = '';
-      while (i < input.length && isWordPart(input[i])) {
-        word += input[i];
-        i++;
-      }
-      const lower = word.toLowerCase();
-      const kw = KEYWORDS[lower];
-      pushToken({ type: kw ?? 'Ident', raw: word });
-      continue;
-    }
-
-    throw new Error(`Unexpected character '${ch}' in filter condition at position ${i}`);
+    throw error;
   }
 
-  if (nesting !== 0) {
-    throw new Error('Missing closing parenthesis in filter condition');
-  }
-  return tokens;
+  return expressionTokens.flatMap((token): Token[] => {
+    switch (token.type) {
+      case 'EOF':
+        return [];
+      case 'FieldRef':
+        return [{ type: 'FieldRef', raw: token.value }];
+      case 'StringLiteral':
+        return [{ type: 'StringLiteral', raw: unquoteFilterString(token.value) }];
+      case 'Number':
+      case 'Operator':
+      case 'Comma':
+      case 'ParenOpen':
+      case 'ParenClose':
+        return [{ type: token.type, raw: token.value }];
+      case 'Ident': {
+        const keyword = KEYWORDS[token.value.toLowerCase()];
+        return [{ type: keyword ?? 'Ident', raw: token.value }];
+      }
+      case 'Dot':
+        throw new Error(`Unexpected character '.' in filter condition at position ${token.start}`);
+    }
+  });
+}
+
+function unquoteFilterString(value: string): string {
+  const quote = value[0];
+  const inner = value.slice(1, -1);
+  return quote === "'"
+    ? inner.replace(/''/g, "'").replace(/\\'/g, "'")
+    : inner.replace(/\\"/g, '"');
 }
 
 export function compileFilterConditionExpression(condition: string): string {
@@ -494,7 +328,7 @@ class Compiler {
 
     switch (token.type) {
       case 'FieldRef':
-        return quoteValueIdentifier(unwrapFieldToken(`[${token.raw}]`));
+        return quoteValueIdentifier(unwrapFieldToken(token.raw));
       case 'StringLiteral':
         return literalToSql(token.raw);
       case 'Number':

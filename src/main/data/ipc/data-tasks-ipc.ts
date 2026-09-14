@@ -104,7 +104,9 @@ export function registerDataTasksIpc({
   ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
     try {
       const task = await requireDataTaskStore().runTask(id, payload ?? {});
-      notifyDataTaskCompleted(task);
+      if (payload?.outputMode !== 'temporary') {
+        notifyDataTaskCompleted(task);
+      }
       return task;
     } catch (error) {
       logError('[Data] Error running task:', error);

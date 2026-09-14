@@ -489,7 +489,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         description={tr('schedule.summary.runningDesc', '正在执行动作链')}
         value={automations.filter((item) => item.status === 'running').length}
         Icon={Play}
-        iconClassName="bg-[#E9F7F5] text-[#238C80]"
+        iconClassName="bg-accent/10 text-accent"
       />
       <StatCard
         compact={automations.length === 0}

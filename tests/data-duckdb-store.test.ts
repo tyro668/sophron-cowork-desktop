@@ -252,6 +252,7 @@ describe('DuckDB data task store', () => {
         columnCount: number;
         sourceDatasetId: string | null;
       }>;
+      runSql: (sql: string) => Promise<void>;
     };
     const originalCleanSourceIntoTaskOutput = internals.cleanSourceIntoTaskOutput.bind(store);
     let activeRuns = 0;
@@ -268,8 +269,10 @@ describe('DuckDB data task store', () => {
         });
       }
       activeRuns -= 1;
+      const outputTable = `serialized_output_${task.id.replace(/[^A-Za-z0-9]/g, '_')}`;
+      await internals.runSql(`CREATE TABLE "${outputTable}" AS SELECT 1 AS value`);
       return {
-        outputTable: `serialized_output_${task.id.replace(/[^A-Za-z0-9]/g, '_')}`,
+        outputTable,
         rowCount: 1,
         columnCount: 1,
         sourceDatasetId: null,
@@ -788,8 +791,11 @@ describe('DuckDB data task store', () => {
     const reopenedStore = createDataTaskStore(dbPath);
     stores.push(reopenedStore);
     const reopened = await reopenedStore.getTaskWorkflow(task.id);
-    expect(reopened.nodes.map((node) => node.id)).toEqual(['node_source', 'node_missing']);
-    expect(reopened.edges[0]?.sourceNodeId).toBe('node_source');
+    expect(reopened.nodes.map((node) => node.id)).toEqual([
+      expect.stringMatching(/__node_source$/),
+      expect.stringMatching(/__node_missing$/),
+    ]);
+    expect(reopened.edges[0]?.sourceNodeId).toMatch(/__node_source$/);
   });
 
   it('creates an associated output table when saving an automatic output node', async () => {
@@ -818,7 +824,7 @@ describe('DuckDB data task store', () => {
       edges: [],
     });
 
-    const outputNode = saved.nodes.find((node) => node.id === 'node_output');
+    const outputNode = saved.nodes.find((node) => node.id.endsWith('__node_output'));
     expect(outputNode?.config.outputStrategy).toBe('existing');
     expect(outputNode?.config.outputTableName).toBe('Sales curated output');
     expect(outputNode?.config.outputDatasetId).toEqual(expect.any(String));
@@ -913,6 +919,46 @@ describe('DuckDB data task store', () => {
       connection.closeSync();
       instance.closeSync();
     }
+  });
+
+  it('warns when a join violates its declared cardinality', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    const customersPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(ordersPath, 'order_id,customer_id\n1,c1\n', 'utf8');
+    fs.writeFileSync(customersPath, 'customer_id,name\nc1,Alice\nc1,Alicia\n', 'utf8');
+
+    const store = createDataTaskStore(dbPath, { now: () => 1_780_000_000_000 });
+    stores.push(store);
+    await store.importDataset({ filePath: customersPath, name: 'customers' });
+    const task = await store.createTask({ name: 'Cardinality warning', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+      input source dataset "customers" as customers
+
+      from orders
+        | join left customers
+            on [orders].[customer_id] = [customers].[customer_id]
+            keep left *, [customers].[name]
+            expect many_to_one
+        | output table "cardinality_warning" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    await store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges });
+
+    const result = await store.runTaskWithDiagnostics(task.id);
+    expect(result.task.status).toBe('completed');
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'warning',
+          code: 'joinCardinalityMismatch',
+          params: expect.objectContaining({ expectation: 'many_to_one', side: 'right' }),
+        }),
+      ])
+    );
   });
 
   it('writes workflow output nodes into selected output tables', async () => {
@@ -1665,24 +1711,26 @@ describe('DuckDB data task store', () => {
 
   it('keeps the DuckDB backend wired into IPC and packaging config', () => {
     const root = process.cwd();
-    const main = fs.readFileSync(path.join(root, 'src/main/index.ts'), 'utf8');
+    const dataIpc = ['data-tasks-ipc.ts', 'input-tables-ipc.ts', 'output-tables-ipc.ts']
+      .map((file) => fs.readFileSync(path.join(root, 'src/main/data/ipc', file), 'utf8'))
+      .join('\n');
     const preload = fs.readFileSync(path.join(root, 'src/preload/index.ts'), 'utf8');
     const vite = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf8');
     const builder = fs.readFileSync(path.join(root, 'electron-builder.config.cjs'), 'utf8');
 
-    expect(main).toContain("ipcMain.handle('data.getDashboard'");
-    expect(main).toContain("ipcMain.handle('data.runTask'");
-    expect(main).toContain("ipcMain.handle('data.updateTask'");
-    expect(main).toContain("ipcMain.handle('data.getTaskWorkflow'");
-    expect(main).toMatch(/ipcMain\.handle\(\s*['"]data\.saveTaskWorkflow['"]/);
-    expect(main).toContain("ipcMain.handle('data.importDataset'");
-    expect(main).toContain("ipcMain.handle('data.updateDataset'");
-    expect(main).toContain("ipcMain.handle('data.createOutputTable'");
-    expect(main).toContain("ipcMain.handle('data.updateOutputTable'");
-    expect(main).toContain("ipcMain.handle('data.previewDataset'");
-    expect(main).toContain("'data.getWorkflowNodeColumnTypes'");
-    expect(main).toContain("ipcMain.handle('data.deleteTask'");
-    expect(main).toContain("ipcMain.handle('data.deleteDataset'");
+    expect(dataIpc).toContain("ipcMain.handle('data.getDashboard'");
+    expect(dataIpc).toContain("ipcMain.handle('data.runTask'");
+    expect(dataIpc).toContain("ipcMain.handle('data.updateTask'");
+    expect(dataIpc).toContain("ipcMain.handle('data.getTaskWorkflow'");
+    expect(dataIpc).toMatch(/ipcMain\.handle\(\s*['"]data\.saveTaskWorkflow['"]/);
+    expect(dataIpc).toContain("ipcMain.handle('data.importDataset'");
+    expect(dataIpc).toContain("ipcMain.handle('data.updateDataset'");
+    expect(dataIpc).toContain("ipcMain.handle('data.createOutputTable'");
+    expect(dataIpc).toContain("ipcMain.handle('data.updateOutputTable'");
+    expect(dataIpc).toContain("ipcMain.handle('data.previewDataset'");
+    expect(dataIpc).toContain("'data.getWorkflowNodeColumnTypes'");
+    expect(dataIpc).toContain("ipcMain.handle('data.deleteTask'");
+    expect(dataIpc).toContain("ipcMain.handle('data.deleteDataset'");
     expect(preload).toContain('data: {');
     expect(preload).toContain("ipcRenderer.invoke('data.updateTask'");
     expect(preload).toContain("ipcRenderer.invoke('data.importDataset'");

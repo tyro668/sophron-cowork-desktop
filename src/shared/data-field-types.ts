@@ -97,6 +97,12 @@ export function duckDbTypeForDataFieldType(value: string | null | undefined): st
   }
 }
 
+export function duckDbDecimalTypeForScale(scale: number): string {
+  const normalizedScale = Math.max(0, Math.min(18, Math.trunc(scale)));
+  const precision = Math.max(18, normalizedScale + 1);
+  return `DECIMAL(${precision},${normalizedScale})`;
+}
+
 export function dataFieldTypeLabel(value: string | null | undefined): string {
   return DATA_FIELD_TYPE_LABELS[normalizeDataFieldType(value)];
 }

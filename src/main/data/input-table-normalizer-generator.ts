@@ -1,4 +1,6 @@
 import { basename } from 'path';
+import { parse } from 'acorn';
+import { spawnSync } from 'node:child_process';
 import type { AppConfig } from '../config/config-store';
 import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
 import type {
@@ -11,6 +13,8 @@ import {
   createInputTableNormalizerProjectTemplate,
   type InputTableNormalizerProjectTemplate,
 } from '../../shared/input-table-normalizer/templates';
+import { extractJsonObjectText } from '../../shared/structured-text';
+import { resolveNormalizerPythonExecutable } from './input-table-normalizer-runner';
 
 export interface GenerateInputTableNormalizerProjectInput {
   name: string;
@@ -438,171 +442,124 @@ function validateGeneratedTransform(
   ) {
     throw new Error('LLM normalizer transform still contains scaffold placeholder text');
   }
-  if (language === 'node' && !/export\s+async\s+function\s+transform/.test(file.content)) {
+  if (language === 'node') validateNodeTransform(file.content);
+  else validatePythonTransform(file.content);
+}
+
+function validateNodeTransform(content: string): void {
+  let program: ReturnType<typeof parse>;
+  try {
+    program = parse(content, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
+  } catch (error) {
+    throw new Error(
+      `Node normalizer transform contains invalid JavaScript: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  const body = program.body as Array<{
+    type: string;
+    declaration?: {
+      type: string;
+      async?: boolean;
+      id?: { name?: string } | null;
+      params?: Array<{ type: string; name?: string }>;
+    } | null;
+  }>;
+  const entry = body.find(
+    (node) =>
+      node.type === 'ExportNamedDeclaration' &&
+      node.declaration?.type === 'FunctionDeclaration' &&
+      node.declaration.id?.name === 'transform'
+  )?.declaration;
+  if (!entry?.async) {
     throw new Error('Node normalizer transform must export async function transform');
   }
-  if (language === 'python' && !/def\s+transform\s*\(/.test(file.content)) {
-    throw new Error('Python normalizer transform must define transform(...)');
-  }
-  if (language === 'python') {
-    const unsafeMaxCall = findPythonMaxDefaultWithMultipleArguments(file.content);
-    if (unsafeMaxCall) {
-      throw new Error(
-        `Python normalizer transform uses invalid max(..., default=...) form: ${unsafeMaxCall}`
-      );
-    }
+  const parameterNames = (entry.params ?? []).map((parameter) =>
+    parameter.type === 'Identifier' ? parameter.name : undefined
+  );
+  if (parameterNames[0] !== 'context' || parameterNames[1] !== 'outputDir') {
+    throw new Error('Node normalizer transform must declare transform(context, outputDir)');
   }
 }
 
-function findPythonMaxDefaultWithMultipleArguments(content: string): string | null {
-  const maxCallPattern = /\bmax\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = maxCallPattern.exec(content)) !== null) {
-    const callStart = match.index;
-    const openParenIndex = content.indexOf('(', callStart);
-    const call = readBalancedCall(content, openParenIndex);
-    if (!call) continue;
-    maxCallPattern.lastIndex = call.endIndex;
-    if (!/\bdefault\s*=/.test(call.argumentsText)) continue;
-    if (countTopLevelCommas(call.argumentsText) > 1) {
-      return content.slice(callStart, call.endIndex).replace(/\s+/g, ' ').trim();
-    }
-  }
-  return null;
+interface PythonAstValidationResult {
+  ok: boolean;
+  error?: string;
+  invalidMaxCall?: string;
 }
 
-function readBalancedCall(
-  content: string,
-  openParenIndex: number
-): { argumentsText: string; endIndex: number } | null {
-  if (openParenIndex < 0 || content[openParenIndex] !== '(') {
-    return null;
-  }
-  let depth = 1;
-  let quote: '"' | "'" | null = null;
-  let tripleQuote = false;
-  let escaped = false;
-  for (let index = openParenIndex + 1; index < content.length; index += 1) {
-    const char = content[index];
-    const nextThree = content.slice(index, index + 3);
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (tripleQuote && nextThree === quote.repeat(3)) {
-        quote = null;
-        tripleQuote = false;
-        index += 2;
-        continue;
-      }
-      if (!tripleQuote && char === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (nextThree === '"""' || nextThree === "'''") {
-      quote = char as '"' | "'";
-      tripleQuote = true;
-      index += 2;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      tripleQuote = false;
-      continue;
-    }
-    if (char === '(' || char === '[' || char === '{') {
-      depth += 1;
-      continue;
-    }
-    if (char === ')' || char === ']' || char === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        return {
-          argumentsText: content.slice(openParenIndex + 1, index),
-          endIndex: index + 1,
-        };
-      }
-    }
-  }
-  return null;
-}
+const PYTHON_AST_VALIDATOR = `
+import ast
+import json
+import sys
 
-function countTopLevelCommas(argumentsText: string): number {
-  let depth = 0;
-  let quote: '"' | "'" | null = null;
-  let tripleQuote = false;
-  let escaped = false;
-  let count = 0;
-  for (let index = 0; index < argumentsText.length; index += 1) {
-    const char = argumentsText[index];
-    const nextThree = argumentsText.slice(index, index + 3);
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (tripleQuote && nextThree === quote.repeat(3)) {
-        quote = null;
-        tripleQuote = false;
-        index += 2;
-        continue;
-      }
-      if (!tripleQuote && char === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (nextThree === '"""' || nextThree === "'''") {
-      quote = char as '"' | "'";
-      tripleQuote = true;
-      index += 2;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      tripleQuote = false;
-      continue;
-    }
-    if (char === '(' || char === '[' || char === '{') {
-      depth += 1;
-      continue;
-    }
-    if (char === ')' || char === ']' || char === '}') {
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-    if (char === ',' && depth === 0) {
-      count += 1;
-    }
+source = sys.stdin.read()
+result = {"ok": False}
+try:
+    tree = ast.parse(source)
+    entries = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "transform"
+    ]
+    if not entries:
+        result["error"] = "Python normalizer transform must define top-level transform(context, output_dir)"
+    else:
+        entry = entries[0]
+        names = [argument.arg for argument in entry.args.args]
+        if names[:2] != ["context", "output_dir"]:
+            result["error"] = "Python normalizer transform must declare transform(context, output_dir)"
+        else:
+            invalid_call = None
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not isinstance(node.func, ast.Name) or node.func.id != "max":
+                    continue
+                has_default = any(keyword.arg == "default" for keyword in node.keywords)
+                if has_default and len(node.args) > 1:
+                    invalid_call = ast.get_source_segment(source, node) or "max(...)"
+                    break
+            if invalid_call:
+                result["invalidMaxCall"] = invalid_call
+            else:
+                result["ok"] = True
+except SyntaxError as error:
+    result["error"] = "Invalid Python syntax at %s:%s: %s" % (
+        error.lineno or 1,
+        error.offset or 1,
+        error.msg,
+    )
+print(json.dumps(result))
+`;
+
+function validatePythonTransform(content: string): void {
+  const validation = spawnSync(resolveNormalizerPythonExecutable(), ['-c', PYTHON_AST_VALIDATOR], {
+    input: content,
+    encoding: 'utf8',
+    timeout: 5_000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (validation.error) {
+    throw new Error(`Python AST validation could not start: ${validation.error.message}`);
   }
-  return count;
+  if (validation.status !== 0) {
+    throw new Error(`Python AST validation failed: ${validation.stderr.trim() || 'unknown error'}`);
+  }
+  let result: PythonAstValidationResult;
+  try {
+    result = JSON.parse(validation.stdout) as PythonAstValidationResult;
+  } catch {
+    throw new Error('Python AST validation returned an invalid response');
+  }
+  if (result.invalidMaxCall) {
+    throw new Error(
+      `Python normalizer transform uses invalid max(..., default=...) form: ${result.invalidMaxCall}`
+    );
+  }
+  if (!result.ok) throw new Error(result.error ?? 'Python normalizer transform is invalid');
 }
 
 function extractJsonObject(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{')) {
-    return trimmed;
-  }
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]?.trim().startsWith('{')) {
-    return fenced[1].trim();
-  }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    return trimmed.slice(start, end + 1);
-  }
-  throw new Error('LLM normalizer response did not contain JSON');
+  return extractJsonObjectText(text);
 }
 
 function normalizeGeneratedPath(path: string): string {

@@ -4,10 +4,11 @@ import path from 'node:path';
 
 const welcomeViewPath = path.resolve(process.cwd(), 'src/renderer/components/WelcomeView.tsx');
 
-describe('WelcomeView Claude-style layout', () => {
+describe('WelcomeView layout', () => {
   it('uses a narrower landing column without the app brand or logo in the composer view', () => {
     const source = fs.readFileSync(welcomeViewPath, 'utf8');
-    expect(source).toContain('max-w-[840px]');
+    expect(source).toContain('max-w-[860px]');
+    expect(source).toContain('max-w-[36rem] text-center');
     expect(source).toContain("t('welcome.title')");
     expect(source).not.toContain('welcomeLogoSrc');
     expect(source).not.toContain("t('welcome.logoAlt')");
@@ -16,9 +17,8 @@ describe('WelcomeView Claude-style layout', () => {
 
   it('uses the shared rounded composer shell treatment with file, directory, model, and start controls', () => {
     const source = fs.readFileSync(welcomeViewPath, 'utf8');
-    expect(source).toContain('rounded-[28px]');
-    expect(source).toContain('bg-background');
-    expect(source).toContain('shadow-soft');
+    expect(source).toContain('chat-composer-panel relative mx-auto');
+    expect(source).toContain('max-w-[860px]');
     expect(source).toContain('onClick={handleFileSelect}');
     expect(source).toContain("t('welcome.attachFiles')");
     expect(source).toContain('PermissionPolicySelector');
@@ -31,7 +31,10 @@ describe('WelcomeView Claude-style layout', () => {
     expect(source).toContain('handleOpenModelSettings();');
     expect(source).toContain('setShowModelMenu((open) => !open);');
     expect(source).toContain('onClick={handleModelButtonClick}');
-    expect(source).toContain('showModelMenu && hasConfiguredModel');
+    expect(source).toContain('open={showModelMenu}');
+    expect(source).toContain(
+      'onSelect={(configSetId) => void handleModelOptionClick(configSetId)}'
+    );
     expect(source).toContain("t('welcome.letsGo')");
   });
 

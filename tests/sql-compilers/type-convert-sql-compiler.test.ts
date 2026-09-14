@@ -86,7 +86,7 @@ describe('compileTypeConvertSql — decimal scale', () => {
     expect(rows.map((r) => Number(r.val))).toEqual([12, 57, 10]);
   });
 
-  it('converts to DECIMAL(18,18) preserving many fractional digits', async () => {
+  it('keeps an integer digit when using decimal scale 18', async () => {
     const instance = await DuckDBInstance.create(':memory:');
     const connection = await instance.connect();
     await connection.run('CREATE TABLE inp (id INTEGER, val VARCHAR, extra VARCHAR)');
@@ -102,9 +102,9 @@ describe('compileTypeConvertSql — decimal scale', () => {
       'SELECT id, val::VARCHAR as val_str, typeof(val) as val_type FROM out ORDER BY id'
     );
     const rows = result.getRowObjectsJson() as Record<string, unknown>[];
-    expect(rows[0].val_str).toBe('.141592653589793238');
-    expect(rows[1].val_str).toBe('.718281828459045235');
-    expect(String(rows[0].val_type)).toBe('DECIMAL(18,18)');
+    expect(rows[0].val_str).toBe('0.141592653589793238');
+    expect(rows[1].val_str).toBe('0.718281828459045235');
+    expect(String(rows[0].val_type)).toBe('DECIMAL(19,18)');
   });
 });
 

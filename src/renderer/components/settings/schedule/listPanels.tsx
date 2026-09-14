@@ -421,7 +421,7 @@ function AutomationTable({
 
 const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
   { Icon: CalendarClock, className: 'bg-accent/10 text-accent' },
-  { Icon: Database, className: 'bg-[#E9F7F5] text-[#238C80]' },
+  { Icon: Database, className: 'bg-accent/10 text-accent' },
   { Icon: Bell, className: 'bg-warning/10 text-warning' },
 ];
 

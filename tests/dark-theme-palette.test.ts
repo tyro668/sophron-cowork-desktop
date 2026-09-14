@@ -5,16 +5,28 @@ import path from 'node:path';
 const stylesPath = path.resolve(process.cwd(), 'src/renderer/styles/globals.css');
 
 describe('dark theme palette', () => {
-  it('uses the 九思助理 green data-workspace palette for the default theme', () => {
+  it('uses the solid dark companion palette for the default theme', () => {
     const source = fs.readFileSync(stylesPath, 'utf8');
-    expect(source).toContain('--color-background: #101918;');
-    expect(source).toContain('--color-surface: #182927;');
-    expect(source).toContain('--color-text-primary: #eef7f5;');
+    expect(source).toContain('--color-background: #17251f;');
+    expect(source).toContain('--color-surface: #21342b;');
+    expect(source).toContain('--color-text-primary: #f2f8f4;');
   });
 
-  it('keeps the accent within the teal-green family', () => {
+  it('uses the Mint Workbench palette for the light theme', () => {
     const source = fs.readFileSync(stylesPath, 'utf8');
-    expect(source).toContain('--color-accent: #19a99a;');
-    expect(source).toContain('--color-accent-hover: #148f83;');
+    expect(source).toContain('--app-backdrop: #f4f8f5;');
+    expect(source).toContain('--color-background: #fbfdfb;');
+    expect(source).toContain('--color-surface-active: #eaf6ee;');
+    expect(source).toContain('--color-text-primary: #24362e;');
+  });
+
+  it('keeps the accent replaceable through semantic palettes', () => {
+    const source = fs.readFileSync(stylesPath, 'utf8');
+    expect(source).toContain('--color-accent: #2f8f63;');
+    expect(source).toContain('--color-accent-hover: #267b54;');
+    expect(source).toContain(":root[data-accent-theme='lake']");
+    expect(source).toContain(":root[data-accent-theme='lavender']");
+    expect(source).toContain(":root[data-accent-theme='orange']");
+    expect(source).toContain(":root[data-accent-theme='rose']");
   });
 });

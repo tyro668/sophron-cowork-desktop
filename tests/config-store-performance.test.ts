@@ -57,7 +57,7 @@ describe('ConfigStore lightweight reads', () => {
 
     const provider = store.get('provider');
 
-    expect(provider).toBe('deepseek');
+    expect(provider).toBe('sophron');
     expect(normalizeSpy).not.toHaveBeenCalled();
   });
 

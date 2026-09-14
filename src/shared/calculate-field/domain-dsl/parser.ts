@@ -42,6 +42,7 @@ export function parseDomainExpression(
   const scene = sceneToken.value.toLowerCase();
   if (!isCalculationSceneDslId(scene)) {
     if (LEGACY_DOMAIN_FUNCTION_IDS.has(scene)) {
+      if (options.allowLegacySql) return null;
       throw new Error(`Legacy calculation function '${scene}' is no longer supported`);
     }
     return null;

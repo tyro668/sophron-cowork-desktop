@@ -2,6 +2,7 @@ import { tokenizeExpression, type ExprToken } from '../../expression-tokenizer';
 
 export interface DomainParseOptions {
   allowBareIdentifiers?: boolean;
+  allowLegacySql?: boolean;
 }
 
 export function tokenizeDomainExpression(expression: string): ExprToken[] {

@@ -39,6 +39,7 @@ import type {
 import { DataToolbarButton } from '../../shared';
 import { getWorkflowAlignmentSnap, getWorkflowConnectionDropTarget } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { canConnectWorkflowNodes } from './workflow-graph-operations';
 import { WorkflowAlignmentGuidesOverlay, WorkflowOperatorNode } from './WorkflowUi';
 import {
   EMPTY_WORKFLOW_ALIGNMENT_GUIDES,
@@ -199,6 +200,7 @@ function WorkflowCanvasContent({
   const flowNodesRef = useRef<WorkflowFlowNode[]>(mappedFlowNodes);
   const connectSucceededRef = useRef(false);
   const reconnectSucceededRef = useRef(false);
+  const reconnectingEdgeIdRef = useRef<string | undefined>();
 
   useEffect(() => {
     flowNodesRef.current = mappedFlowNodes;
@@ -266,12 +268,27 @@ function WorkflowCanvasContent({
   );
   const isValidWorkflowConnection = useCallback(
     (connection: Edge | Connection) =>
-      Boolean(connection.source && connection.target && connection.source !== connection.target),
-    []
+      Boolean(
+        connection.source &&
+        connection.target &&
+        canConnectWorkflowNodes(
+          nodes,
+          edges,
+          {
+            sourceNodeId: connection.source,
+            targetNodeId: connection.target,
+            sourceHandle: connection.sourceHandle,
+            targetHandle: connection.targetHandle,
+          },
+          reconnectingEdgeIdRef.current
+        )
+      ),
+    [edges, nodes]
   );
   const handleReconnectStart = useCallback(
-    (_event: ReactMouseEvent, _edge: WorkflowFlowEdge, _handleType: HandleType) => {
+    (_event: ReactMouseEvent, edge: WorkflowFlowEdge, _handleType: HandleType) => {
       reconnectSucceededRef.current = false;
+      reconnectingEdgeIdRef.current = edge.id;
     },
     []
   );
@@ -297,6 +314,7 @@ function WorkflowCanvasContent({
         onRemoveEdge(edge.id);
       }
       reconnectSucceededRef.current = false;
+      reconnectingEdgeIdRef.current = undefined;
     },
     [onRemoveEdge]
   );

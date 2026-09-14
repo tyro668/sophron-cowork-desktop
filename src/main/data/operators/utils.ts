@@ -1,6 +1,7 @@
 import { duckDbTypeForDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
 import type { DataColumnTypeInfo } from '../../../renderer/types';
 import { parseDuration } from '../../../shared/operator-schemas/join';
+import { parseFieldRefExact } from '../../../shared/prep-dsl';
 
 export function quoteIdentifier(identifier: string): string {
   return quoteValueIdentifier(identifier);
@@ -54,8 +55,7 @@ export function positiveNumber(value: unknown, fallback: number): number {
 }
 
 export function lastQualifiedPart(value: string): string {
-  const raw = value.includes('.') ? (value.split('.').at(-1) ?? value) : value;
-  return raw.replace(/^\[|\]$/g, '');
+  return parseFieldRefExact(value)?.name ?? value.trim();
 }
 
 export function unwrapFieldToken(token: string): string {

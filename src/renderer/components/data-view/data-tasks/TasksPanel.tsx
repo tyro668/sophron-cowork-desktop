@@ -27,10 +27,10 @@ import {
 
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent/10 text-accent' },
-  { Icon: BarChart3, className: 'bg-[#E9F7F5] text-[#238C80]' },
+  { Icon: BarChart3, className: 'bg-accent/10 text-accent' },
   { Icon: Folder, className: 'bg-warning/10 text-warning' },
   { Icon: UploadCloud, className: 'bg-surface-active/70 text-text-secondary' },
-  { Icon: Cloud, className: 'bg-[#E7F8EF] text-success' },
+  { Icon: Cloud, className: 'bg-success/10 text-success' },
 ];
 
 export function TasksPanel({

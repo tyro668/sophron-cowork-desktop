@@ -39,6 +39,7 @@ import {
   type RequirementCapabilityContract,
 } from './requirement-capability-registry';
 import { extractJsonObject, isRecord } from './utils';
+import { extractFencedBlock } from '../../../shared/structured-text';
 
 export const GENERATED_WORKFLOW_REPAIR_ATTEMPTS = 5;
 export const GENERATED_WORKFLOW_REPAIR_POLICY: WorkflowRepairBudgetConfig = {
@@ -181,12 +182,13 @@ function extractGeneratedJavascriptSource(text: string): string {
   } catch {
     // Fall through to code-fence/raw program extraction.
   }
-  const fenced = trimmed.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
-  const candidate = fenced?.[1]?.trim() ?? trimmed;
-  const mainIndex = candidate.search(/\bfunction\s+main\s*\(/);
-  const firstFunctionIndex = candidate.search(/\bfunction\s+[$A-Z_a-z][$\w]*\s*\(/);
-  if (mainIndex >= 0 && firstFunctionIndex >= 0 && firstFunctionIndex <= mainIndex) {
-    return candidate.slice(firstFunctionIndex).trim();
+  const candidate = extractFencedBlock(trimmed, ['javascript', 'js']) ?? trimmed;
+  try {
+    if (indexJavaScriptFunctions(candidate).some((entry) => entry.name === 'main')) {
+      return candidate;
+    }
+  } catch {
+    // The caller reports the stable generation-contract error below.
   }
   throw new DataCommandError(
     'VALIDATION_FAILED',

@@ -67,18 +67,7 @@ export const MissingValueConfigSchema = z
       });
       return;
     }
-    const seen = new Set<string>();
     config.rules.forEach((rule, index) => {
-      const column = rule.column;
-      if (seen.has(column)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['rules', index, 'column'],
-          message: `Field "${column}" can only be configured once per missing-value operator`,
-        });
-      } else {
-        seen.add(column);
-      }
       if (rule.method === 'nullify_values' && (!rule.values || rule.values.length === 0)) {
         context.addIssue({
           code: 'custom',

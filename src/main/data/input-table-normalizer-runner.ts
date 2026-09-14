@@ -133,17 +133,17 @@ function shouldPrepareNormalizerDependencies(
   return hasInstallablePythonRequirements(version);
 }
 
-function hasInstallablePythonRequirements(version: DataInputTableNormalizerArtifactVersion): boolean {
+function hasInstallablePythonRequirements(
+  version: DataInputTableNormalizerArtifactVersion
+): boolean {
   const requirementFiles = new Set(version.dependencyPrepare?.lockFiles ?? ['requirements.lock']);
   const files = version.files.filter((file) => requirementFiles.has(file.path));
   if (files.length === 0) return false;
   return files.some((file) =>
-    file.content
-      .split(/\r?\n/)
-      .some((line) => {
-        const trimmed = line.trim();
-        return trimmed.length > 0 && !trimmed.startsWith('#');
-      })
+    file.content.split(/\r?\n/).some((line) => {
+      const trimmed = line.trim();
+      return trimmed.length > 0 && !trimmed.startsWith('#');
+    })
   );
 }
 
@@ -359,6 +359,16 @@ function createNormalizerCommandEnv(): NodeJS.ProcessEnv {
   }
   env.PATH = merged.join(delimiter);
   return env;
+}
+
+export function resolveNormalizerPythonExecutable(): string {
+  const configured = process.env.SOPHRON_PYTHON_PATH?.trim();
+  if (configured && fs.existsSync(configured)) return configured;
+  for (const binDir of resolveBundledRuntimeBinDirs()) {
+    const candidate = join(binDir, process.platform === 'win32' ? 'python.exe' : 'python3');
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 function resolveBundledRuntimeBinDirs(): string[] {

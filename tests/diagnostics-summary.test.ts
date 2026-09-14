@@ -112,6 +112,7 @@ describe('buildDiagnosticsSummary', () => {
       textBlockCount: 1,
       imageBlockCount: 0,
       fileAttachmentCount: 0,
+      cloudTableAttachmentCount: 0,
       toolUseCount: 0,
       toolResultCount: 0,
     });

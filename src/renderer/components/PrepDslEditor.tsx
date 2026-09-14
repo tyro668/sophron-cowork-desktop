@@ -14,7 +14,13 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import type { DataWorkflowOperatorType } from '../types';
-import { parsePrepOperatorDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
+import {
+  findOpenFieldReference,
+  formatFieldName,
+  parsePrepOperatorDsl,
+  PREP_DSL_KEYWORDS,
+  type PrepDiagnostic,
+} from '../../shared/prep-dsl';
 import { arePrepDiagnosticsEqual } from './prep-dsl-editor-utils';
 
 interface PrepDslEditorProps {
@@ -36,115 +42,7 @@ interface PrepDslEditorProps {
   height?: number | string;
 }
 
-const DSL_KEYWORDS = [
-  'input',
-  'source',
-  'from',
-  'select',
-  'map',
-  'rename',
-  'to',
-  'as',
-  'filter',
-  'or',
-  'not',
-  'in',
-  'between',
-  'like',
-  'matches',
-  'deduplicate',
-  'by',
-  'keep',
-  'first',
-  'last',
-  'order',
-  'missing',
-  'value',
-  'row',
-  'when',
-  'all_null',
-  'any_null',
-  'nullify',
-  'values',
-  'fill',
-  'forward',
-  'backward',
-  'mean',
-  'median',
-  'mode',
-  'cast',
-  'on_error',
-  'sort',
-  'derive',
-  'if',
-  'then',
-  'else',
-  'over',
-  'partition',
-  'rows',
-  'unbounded',
-  'preceding',
-  'aggregate',
-  'all',
-  'rollup',
-  'cube',
-  'grouping',
-  'sets',
-  'metrics',
-  'count',
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'join',
-  'inner',
-  'left',
-  'right',
-  'full',
-  'cross',
-  'semi',
-  'anti',
-  'asof',
-  'on',
-  'and',
-  'direction',
-  'tolerance',
-  'suffix',
-  'right_prefix',
-  'expect',
-  'limit',
-  'top',
-  'offset',
-  'percent',
-  'pivot',
-  'using',
-  'group',
-  'unpivot',
-  'into',
-  'except',
-  'nulls',
-  'include',
-  'union',
-  'intersect',
-  'mode',
-  'position',
-  'unnest',
-  'explode',
-  'json',
-  'path',
-  'with',
-  'index',
-  'recursive',
-  'max_depth',
-  'output',
-  'table',
-  'dataset',
-  'file',
-  'format',
-  'name',
-  'append',
-  'error_if_exists',
-];
+const PREP_DSL_KEYWORD_PATTERN = new RegExp(`\\b(?:${PREP_DSL_KEYWORDS.join('|')})\\b`);
 
 const prepDslLanguage = StreamLanguage.define({
   name: 'prep-dsl',
@@ -159,7 +57,7 @@ const prepDslLanguage = StreamLanguage.define({
       return 'variableName';
     }
     if (stream.match(/-?(?:0|[1-9]\d*)(?:\.\d+)?(?:ms|s|m|h|d)?/)) return 'number';
-    if (stream.match(new RegExp(`\\b(?:${DSL_KEYWORDS.join('|')})\\b`))) {
+    if (stream.match(PREP_DSL_KEYWORD_PATTERN)) {
       return 'keyword';
     }
     if (stream.match(/\b(?:text|date|datetime|integer|float|decimal|boolean)\b/)) {
@@ -458,9 +356,10 @@ function completePrepDsl(
   completionLabels: PrepDslEditorProps['completionLabels'],
   fieldCompletions: string[]
 ): CompletionResult | null {
-  const fieldRef = context.matchBefore(/\[[^\]\s,()]*/u);
-  if (fieldRef && fieldRef.text.startsWith('[')) {
-    const query = fieldRef.text.slice(1).replace(/^`/, '').toLocaleLowerCase();
+  const line = context.state.doc.lineAt(context.pos);
+  const fieldRef = findOpenFieldReference(line.text.slice(0, context.pos - line.from));
+  if (fieldRef) {
+    const query = fieldRef.query.toLocaleLowerCase();
     const options = uniqueFieldCompletions(fieldCompletions)
       .filter((field) => field.toLocaleLowerCase().includes(query))
       .map((field) =>
@@ -468,9 +367,8 @@ function completePrepDsl(
       );
     if (options.length > 0) {
       return {
-        from: fieldRef.from,
+        from: line.from + fieldRef.start,
         options,
-        validFor: /^\[[^\]\s,()]*/u,
       };
     }
   }
@@ -582,15 +480,13 @@ function uniqueFieldCompletions(fields: string[]): string[] {
 }
 
 function formatFieldCompletion(field: string): string {
-  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(field)
-    ? `[${field}]`
-    : `[\`${field.replace(/`/g, '\\`')}\`]`;
+  return formatFieldName(field);
 }
 
 function isFieldCompletionContext(view: EditorView): boolean {
   const position = view.state.selection.main.head;
   const line = view.state.doc.lineAt(position);
-  return /\[[^\]\s,()]*$/u.test(line.text.slice(0, position - line.from));
+  return findOpenFieldReference(line.text.slice(0, position - line.from)) !== null;
 }
 
 function toCodeMirrorDiagnostic(

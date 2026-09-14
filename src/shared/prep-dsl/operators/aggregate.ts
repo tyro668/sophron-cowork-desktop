@@ -4,6 +4,7 @@ import { tokenizeExpression } from '../../expression-tokenizer';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, parseFieldRefExact, toFieldName, unwrapFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
+import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, stringArray, type OperatorDslCodec } from './codec';
 import { parseMetrics } from './metrics';
 import { isCompleteAggregateMetric } from '../../operator-completeness';
@@ -20,21 +21,32 @@ export const aggregateCodec: OperatorDslCodec = {
   matches: (text) => text.startsWith('aggregate '),
   parse: (command, diagnostics) => {
     const { text } = command;
-    const match = /^aggregate\s+(all|by\s+.+?)\s+metrics\s+(.+)$/s.exec(text);
-    if (!match) {
+    const cursor = new PrepTokenCursor(text, command.line, diagnostics);
+    cursor.expect('aggregate', 'invalidAggregate');
+    const isAll = cursor.match('all');
+    let groupByText = '';
+    if (!isAll) {
+      if (!cursor.expect('by', 'invalidAggregate')) {
+        return createOperator('aggregate', text, { groupBy: [], metrics: [] });
+      }
+      groupByText = cursor.consumeUntilTopLevelKeyword(['metrics']);
+    }
+    if (!cursor.expect('metrics', 'invalidAggregate')) {
       diagnostics.push({
         ...createPrepDiagnostic('invalidAggregate', `Cannot parse aggregate: ${text}`),
         line: command.line,
       });
     }
-    const isAll = match?.[1] === 'all';
+    const metricsStart = cursor.index;
+    while (!cursor.eof) cursor.consume();
+    const metricsText = cursor.slice(metricsStart).trim();
     const parsedGroupBy = isAll
       ? { groupBy: [], dateGranularity: {} }
-      : parseFields((match?.[1] ?? '').replace(/^by\s+/, ''), command.line, diagnostics);
+      : parseFields(groupByText, command.line, diagnostics);
     const config: Record<string, unknown> = {
       groupBy: parsedGroupBy.groupBy,
       metrics: parseMetrics(
-        match?.[2] ?? '',
+        metricsText,
         { requireAlias: true, requireComplete: true },
         command.line,
         diagnostics

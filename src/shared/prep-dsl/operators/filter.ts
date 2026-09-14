@@ -5,7 +5,6 @@ import {
 } from '../../expression-tokenizer';
 import type { PrepDiagnostic } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
-import { quoteString } from '../syntax/literals';
 import { createOperator, type OperatorDslCodec } from './codec';
 
 const COMPARISON_OPERATORS = new Set(['=', '!=', '<>', '>', '<', '>=', '<=']);
@@ -21,7 +20,7 @@ export const filterCodec: OperatorDslCodec = {
   format: (config) => {
     const condition = String(config?.condition ?? '').trim();
     if (!condition) return null;
-    return `filter ${normalizeBareLiterals(condition)}`;
+    return `filter ${condition}`;
   },
 };
 
@@ -216,21 +215,4 @@ function parseInList(cursor: ConditionCursor): boolean {
     expectValue = false;
   }
   return false; // unterminated list
-}
-
-function normalizeBareLiterals(condition: string): string {
-  return condition.replace(
-    /((?:=|!=|>=|<=|>|<)\s*)([\p{L}_][\p{L}\p{N}_ -]*?)(?=\s*(?:$|\)|\band\b|\bor\b))/giu,
-    (_match, operator: string, value: string) => {
-      const trimmed = value.trim();
-      if (
-        !trimmed ||
-        /^(true|false|null)$/i.test(trimmed) ||
-        /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?$/i.test(trimmed)
-      ) {
-        return `${operator}${value}`;
-      }
-      return `${operator}${quoteString(trimmed)}`;
-    }
-  );
 }

@@ -96,16 +96,15 @@ describe('MissingValueConfigSchema', () => {
     expect(result.rules.map((rule) => rule.method)).toEqual(['forward_fill', 'backward_fill']);
   });
 
-  it('rejects duplicate fields inside one missing-value operator', () => {
-    expect(() =>
-      MissingValueConfigSchema.parse({
-        strategy: 'by_column',
-        rules: [
-          { column: 'status', method: 'forward_fill' },
-          { column: 'status', method: 'backward_fill' },
-        ],
-      })
-    ).toThrow(/can only be configured once/);
+  it('allows sequential treatments of one field inside a single operator', () => {
+    const result = MissingValueConfigSchema.parse({
+      strategy: 'by_column',
+      rules: [
+        { column: 'status', method: 'nullify_values', values: ['N/A'] },
+        { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
+      ],
+    });
+    expect(result.rules).toHaveLength(2);
   });
 
   it('accepts typed special values', () => {

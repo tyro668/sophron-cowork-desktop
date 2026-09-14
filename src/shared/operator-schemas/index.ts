@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 import type { PrepDiagnostic } from '../prep-dsl/ast';
 
 // Re-export schemas for external consumers (must use export-from for CJS compatibility)
@@ -53,7 +53,14 @@ export {
   MAX_PIVOT_VALUES_PER_FIELD,
 } from './pivot';
 export type { PivotLiteral, PivotAxisEntry, PivotMetric } from './pivot';
-export { JoinConfigSchema, JoinConditionSchema, MAX_JOIN_CONDITION_COUNT } from './join';
+export {
+  ASOF_DIRECTIONS,
+  JOIN_EXPECTATIONS,
+  REGULAR_JOIN_TYPES,
+  JoinConfigSchema,
+  JoinConditionSchema,
+  MAX_JOIN_CONDITION_COUNT,
+} from './join';
 export type { DurationParts, JoinCondition } from './join';
 export { FilterConfigSchema } from './filter';
 
@@ -101,13 +108,26 @@ export function getOperatorConfigValidation(
   config: Record<string, unknown>
 ): ReturnType<ZodType['safeParse']> {
   const schema = SCHEMA_MAP[type];
-  return schema
-    ? schema.safeParse(withoutOperatorMetadata(config))
-    : { success: true, data: config };
+  if (schema) {
+    return schema.safeParse(withoutOperatorMetadata(config));
+  }
+  if (type === 'input_source' || type === 'output') {
+    return z.record(z.string(), z.unknown()).safeParse(withoutOperatorMetadata(config));
+  }
+  return z
+    .record(z.string(), z.unknown())
+    .superRefine((_value, context) => {
+      context.addIssue({
+        code: 'custom',
+        message: `Unsupported workflow operator type: ${type}`,
+      });
+    })
+    .safeParse(withoutOperatorMetadata(config));
 }
 
 function withoutOperatorMetadata(config: Record<string, unknown>): Record<string, unknown> {
-  const { generatedOrigin: _generatedOrigin, ...operatorConfig } = config;
+  const operatorConfig = { ...config };
+  delete operatorConfig.generatedOrigin;
   return operatorConfig;
 }
 

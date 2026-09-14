@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import vm from 'node:vm';
-import { parse, type FunctionDeclaration } from 'acorn';
+import { parse, tokenizer, type FunctionDeclaration } from 'acorn';
 import { DataCommandError } from '../data-command-types';
 import type { WorkflowIr } from './workflow-model';
 import { validateAndNormalizeWorkflowIr } from './workflow-ir';
@@ -113,38 +113,65 @@ export function compileWorkflowJavaScript(
 }
 
 export function indexJavaScriptFunctionsBestEffort(source: string): JavaScriptFunctionIndexEntry[] {
-  const lines = source.split(/\r?\n/);
-  let offset = 0;
   const starts: Array<{
     name: string;
     start: number;
     line: number;
     column: number;
   }> = [];
-  lines.forEach((line, index) => {
-    const match = /^\s*function\s+([A-Za-z_$][\w$]*)\s*\(/.exec(line);
-    if (match) {
-      const functionOffset = line.indexOf('function', match.index);
+  const scanner = tokenizer(source, {
+    ecmaVersion: 'latest',
+    sourceType: 'script',
+    locations: true,
+  });
+  let braceDepth = 0;
+  let reachedEnd = false;
+  try {
+    while (!reachedEnd) {
+      const token = scanner.getToken();
+      if (token.type.label === 'eof') {
+        reachedEnd = true;
+        continue;
+      }
+      if (token.type.label === '{') {
+        braceDepth += 1;
+        continue;
+      }
+      if (token.type.label === '}') {
+        braceDepth = Math.max(0, braceDepth - 1);
+        continue;
+      }
+      if (braceDepth !== 0 || token.type.label !== 'function') continue;
+      const name = scanner.getToken();
+      const nameValue = (name as unknown as { value?: unknown }).value;
+      if (name.type.label !== 'name' || typeof nameValue !== 'string') continue;
       starts.push({
-        name: match[1],
-        start: offset + functionOffset,
-        line: index + 1,
-        column: functionOffset + 1,
+        name: nameValue,
+        start: token.start,
+        line: token.loc?.start.line ?? 1,
+        column: (token.loc?.start.column ?? 0) + 1,
       });
     }
-    const lineEnd = offset + line.length;
-    const newlineLength =
-      source.slice(lineEnd, lineEnd + 2) === '\r\n' ? 2 : lineEnd < source.length ? 1 : 0;
-    offset = lineEnd + newlineLength;
-  });
+  } catch {
+    // Return every complete top-level declaration seen before the syntax error.
+  }
+  const lineCount = countSourceLines(source);
   return starts.map((item, index) => ({
     name: item.name,
     start: item.start,
     end: starts[index + 1]?.start ?? source.length,
     line: item.line,
     column: item.column,
-    endLine: (starts[index + 1]?.line ?? lines.length + 1) - 1,
+    endLine: (starts[index + 1]?.line ?? lineCount + 1) - 1,
   }));
+}
+
+function countSourceLines(source: string): number {
+  let lines = 1;
+  for (let index = 0; index < source.length; index += 1) {
+    if (source[index] === '\n') lines += 1;
+  }
+  return lines;
 }
 
 export function executeWorkflowJavaScriptInSandbox({

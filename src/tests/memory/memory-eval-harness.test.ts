@@ -101,6 +101,8 @@ class EvalMockLLM implements MemoryLLMClientLike {
                   category: 'preferences',
                   key: 'response_language',
                   value: '中文',
+                  confidence: 0.98,
+                  source_type: 'explicit_user_statement',
                 },
               ]
             : [],
@@ -118,12 +120,14 @@ class EvalMockLLM implements MemoryLLMClientLike {
           text: JSON.stringify({
             session_summary: '记录 gateway token rotation 与 remote gateway 约束',
             session_keywords: ['gateway', 'rotation'],
+            session_confidence: 0.9,
             chunks: [
               {
                 summary: 'gateway token rotation 的实现与约束',
                 details: '需要同时同步 remote gateway，避免状态不一致。',
                 keywords: ['gateway', 'remote gateway'],
                 source_turns: [1, 2, 3, 4],
+                confidence: 0.9,
               },
             ],
           }),
@@ -133,12 +137,14 @@ class EvalMockLLM implements MemoryLLMClientLike {
         text: JSON.stringify({
           session_summary: '记录订单状态机设计约束',
           session_keywords: ['refund', 'cancel'],
+          session_confidence: 0.9,
           chunks: [
             {
               summary: 'refunded 和 cancelled 不能合并',
               details: '两者代表不同财务语义。',
               keywords: ['refunded', 'cancelled', '财务语义'],
               source_turns: [1, 2],
+              confidence: 0.9,
             },
           ],
         }),

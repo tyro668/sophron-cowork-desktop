@@ -125,6 +125,54 @@ describe('input table normalizer templates', () => {
       )
     ).not.toThrow();
   });
+
+  it('ignores Python code-like text in comments and strings during AST validation', () => {
+    expect(() =>
+      validateGeneratedNormalizerProjectFiles(
+        [
+          {
+            path: 'normalizer/transform.py',
+            content: [
+              '# max(first, second, default=0)',
+              'def transform(context, output_dir):',
+              '    note = "max(first, second, default=0)"',
+              '    return {"output": "normalized.csv", "format": "csv", "rowCount": 0, "columns": [{"name": note}]}',
+            ].join('\n'),
+          },
+        ],
+        'python'
+      )
+    ).not.toThrow();
+  });
+
+  it('does not accept transform declarations that only appear in comments', () => {
+    expect(() =>
+      validateGeneratedNormalizerProjectFiles(
+        [
+          {
+            path: 'src/transform.js',
+            content: '// export async function transform(context, outputDir) {}',
+          },
+        ],
+        'node'
+      )
+    ).toThrow('must export async function transform');
+  });
+
+  it('validates the exported Node transform signature from its AST', () => {
+    expect(() =>
+      validateGeneratedNormalizerProjectFiles(
+        [
+          {
+            path: 'src/transform.js',
+            content:
+              'export async function transform(context, outputDir) { return { output: "normalized.csv" }; }',
+          },
+        ],
+        'node'
+      )
+    ).not.toThrow();
+  });
 });
 
 describe('input table normalizer manifest', () => {
@@ -345,9 +393,7 @@ describe('input table normalizer runner', () => {
         },
       });
       expect(result.steps).toHaveLength(1);
-      expect(result.steps[0]?.command).toEqual(
-        expect.arrayContaining(['-m', 'normalizer.cli'])
-      );
+      expect(result.steps[0]?.command).toEqual(expect.arrayContaining(['-m', 'normalizer.cli']));
       expect(result.steps[0]?.command).not.toEqual(expect.arrayContaining(['venv']));
       expect(result.manifest).toMatchObject({
         format: 'csv',

@@ -14,7 +14,7 @@ function readChatView() {
   return fs.readFileSync(chatViewPath, 'utf8');
 }
 
-describe('ChatView Claude-style layout', () => {
+describe('ChatView layout', () => {
   it('keeps messages compact while allowing the composer to match the wide mockup', () => {
     const source = readChatView();
     expect(source).toContain('max-w-[980px]');
@@ -24,8 +24,7 @@ describe('ChatView Claude-style layout', () => {
   it('uses a quieter header treatment without a left app-name label', () => {
     const source = readChatView();
     expect(source).toContain('<div aria-hidden="true" />');
-    expect(source).toContain('bg-background/88');
-    expect(source).toContain('border-border-muted');
+    expect(source).toContain('glass-panel-header relative grid h-12');
     expect(source).not.toContain('tracking-[0.08em] uppercase text-text-muted');
   });
 
@@ -54,22 +53,20 @@ describe('ChatView Claude-style layout', () => {
 
   it('uses a compact rounded composer shell with bottom toolbar controls', () => {
     const source = readChatView();
-    expect(source).toContain('min-h-[96px]');
-    expect(source).toContain('sm:min-h-[104px]');
-    expect(source).toContain('rounded-2xl');
+    expect(source).toContain('chat-composer-panel flex min-h-[120px]');
+    expect(source).toContain('sm:min-h-[132px]');
     expect(source).toContain('min-h-[32px]');
     expect(source).toContain('sm:min-h-[36px]');
     expect(source).not.toContain('min-h-[150px]');
     expect(source).not.toContain('sm:min-h-[168px]');
-    expect(source).not.toContain('rounded-[28px]');
-    expect(source).toContain('bg-background');
-    expect(source).toContain('shadow-soft');
     expect(source).toContain('PermissionPolicySelector');
     expect(source).toContain('showPermissionMenu');
     expect(source).toContain('handlePermissionMenuOpenChange');
     expect(source).toContain('onClick={handleModelButtonClick}');
-    expect(source).toContain('showModelMenu && hasConfiguredModel');
-    expect(source).toContain('handleModelOptionClick(option.id)');
+    expect(source).toContain('open={showModelMenu}');
+    expect(source).toContain(
+      'onSelect={(configSetId) => void handleModelOptionClick(configSetId)}'
+    );
   });
 
   it('uses a shared permission policy dropdown with all three modes', () => {

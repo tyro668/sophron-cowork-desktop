@@ -37,6 +37,13 @@ import { WorkflowInspector } from './WorkflowInspector';
 import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import {
+  connectWorkflowNodes as connectWorkflowGraphNodes,
+  reconnectWorkflowEdge as reconnectWorkflowGraphEdge,
+  removeWorkflowEdge as removeWorkflowGraphEdge,
+  removeWorkflowNode,
+  synchronizeRightInputConfigs,
+} from './workflow-graph-operations';
+import {
   getWorkflowSaveInputSignature,
   toWorkflowSaveInput,
   type WorkflowInspectorTab,
@@ -58,7 +65,7 @@ export function TaskEditor({
   onWorkflowSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const { confirmDelete } = useConfirmDialog();
+  const { confirm, confirmDelete } = useConfirmDialog();
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
   const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -181,6 +188,30 @@ export function TaskEditor({
   );
   const isBusy = saving || renamingTask || actionId === task.id;
 
+  useEffect(() => {
+    if (!isWorkflowDirty) return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isWorkflowDirty]);
+
+  const handleBack = useCallback(async () => {
+    if (!isWorkflowDirty) {
+      onBack();
+      return;
+    }
+    const confirmed = await confirm({
+      title: t('data.editor.unsavedChangesTitle'),
+      message: t('data.editor.unsavedChangesMessage'),
+      confirmLabel: t('data.editor.leaveWithoutSaving'),
+      cancelLabel: t('common.cancel'),
+    });
+    if (confirmed) onBack();
+  }, [confirm, isWorkflowDirty, onBack, t]);
+
   const saveTaskTitle = useCallback(async () => {
     if (skipTaskTitleSaveRef.current) {
       skipTaskTitleSaveRef.current = false;
@@ -222,10 +253,10 @@ export function TaskEditor({
       if (!selectedNodeId) return;
       setWorkflow((current) => {
         if (!current) return current;
-        return {
+        return synchronizeRightInputConfigs({
           ...current,
           nodes: current.nodes.map((node) => (node.id === selectedNodeId ? updater(node) : node)),
-        };
+        });
       });
     },
     [selectedNodeId]
@@ -291,43 +322,19 @@ export function TaskEditor({
       if (sourceNodeId === targetNodeId) return;
       setWorkflow((current) => {
         if (!current) return current;
-        const exists = current.edges.some(
-          (edge) =>
-            edge.sourceNodeId === sourceNodeId &&
-            edge.targetNodeId === targetNodeId &&
-            edge.sourceHandle === sourceHandle &&
-            edge.targetHandle === targetHandle
-        );
-        if (exists) return current;
-        // When connecting to a join's right handle, sync the rightInput config
-        let nextNodes = current.nodes;
-        if (targetHandle === 'right') {
-          const sourceNode = current.nodes.find((n) => n.id === sourceNodeId);
-          if (sourceNode) {
-            const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
-            nextNodes = current.nodes.map((n) =>
-              n.id === targetNodeId
-                ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
-                : n
-            );
+        return connectWorkflowGraphNodes(
+          current,
+          { sourceNodeId, targetNodeId, sourceHandle, targetHandle },
+          {
+            id: makeLocalId('edge'),
+            taskId: task.id,
+            sourceNodeId,
+            targetNodeId,
+            sourceHandle,
+            targetHandle,
+            createdAt: Date.now(),
           }
-        }
-        return {
-          ...current,
-          nodes: nextNodes,
-          edges: [
-            ...current.edges,
-            {
-              id: makeLocalId('edge'),
-              taskId: task.id,
-              sourceNodeId,
-              targetNodeId,
-              sourceHandle,
-              targetHandle,
-              createdAt: Date.now(),
-            },
-          ],
-        };
+        );
       });
     },
     [task.id]
@@ -336,88 +343,18 @@ export function TaskEditor({
     if (!connection.source || !connection.target || connection.source === connection.target) return;
     setWorkflow((current) => {
       if (!current) return current;
-      const oldEdge = current.edges.find((e) => e.id === edgeId);
-      const duplicate = current.edges.some(
-        (edge) =>
-          edge.id !== edgeId &&
-          edge.sourceNodeId === connection.source &&
-          edge.targetNodeId === connection.target &&
-          edge.sourceHandle === (connection.sourceHandle ?? 'output') &&
-          edge.targetHandle === (connection.targetHandle ?? 'input')
-      );
-      if (duplicate) {
-        // If removing a right-handle edge, clear config.rightInput
-        let nextNodes = current.nodes;
-        if (oldEdge?.targetHandle === 'right') {
-          nextNodes = current.nodes.map((n) =>
-            n.id === oldEdge.targetNodeId
-              ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
-              : n
-          );
-        }
-        return {
-          ...current,
-          nodes: nextNodes,
-          edges: current.edges.filter((e) => e.id !== edgeId),
-        };
-      }
-      // Sync config when reconnecting to/from right handle
-      let nextNodes = current.nodes;
-      const newTargetHandle = connection.targetHandle ?? 'input';
-      if (newTargetHandle === 'right') {
-        // Reconnecting TO right handle: set config.rightInput
-        const sourceNode = current.nodes.find((n) => n.id === connection.source);
-        if (sourceNode) {
-          const alias = (sourceNode.config?.alias as string) || sourceNode.label || '';
-          nextNodes = current.nodes.map((n) =>
-            n.id === connection.target
-              ? { ...n, config: { ...n.config, rightInput: alias, rightAlias: alias } }
-              : n
-          );
-        }
-      } else if (oldEdge?.targetHandle === 'right' && newTargetHandle !== 'right') {
-        // Reconnecting AWAY from right handle: clear config.rightInput
-        nextNodes = current.nodes.map((n) =>
-          n.id === oldEdge.targetNodeId
-            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
-            : n
-        );
-      }
-      return {
-        ...current,
-        nodes: nextNodes,
-        edges: current.edges.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                sourceNodeId: connection.source,
-                targetNodeId: connection.target,
-                sourceHandle: connection.sourceHandle ?? 'output',
-                targetHandle: newTargetHandle,
-              }
-            : edge
-        ),
-      };
+      return reconnectWorkflowGraphEdge(current, edgeId, {
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        sourceHandle: connection.sourceHandle,
+        targetHandle: connection.targetHandle,
+      });
     });
   }, []);
   const removeWorkflowEdge = useCallback((edgeId: string) => {
     setWorkflow((current) => {
       if (!current) return current;
-      const removedEdge = current.edges.find((e) => e.id === edgeId);
-      const wasRightEdge = removedEdge?.targetHandle === 'right';
-      let nextNodes = current.nodes;
-      if (wasRightEdge && removedEdge) {
-        nextNodes = current.nodes.map((n) =>
-          n.id === removedEdge.targetNodeId
-            ? { ...n, config: { ...n.config, rightInput: undefined, rightAlias: undefined } }
-            : n
-        );
-      }
-      return {
-        ...current,
-        nodes: nextNodes,
-        edges: current.edges.filter((edge) => edge.id !== edgeId),
-      };
+      return removeWorkflowGraphEdge(current, edgeId);
     });
   }, []);
 
@@ -479,23 +416,13 @@ export function TaskEditor({
       message: t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label }),
     });
     if (!confirmed) return;
-    setWorkflow((current) =>
-      current
-        ? {
-            ...current,
-            nodes: current.nodes.filter((node) => node.id !== selectedNode.id),
-            edges: current.edges.filter(
-              (edge) =>
-                edge.sourceNodeId !== selectedNode.id && edge.targetNodeId !== selectedNode.id
-            ),
-          }
-        : current
-    );
+    setWorkflow((current) => (current ? removeWorkflowNode(current, selectedNode.id) : current));
     setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
   }, [confirmDelete, selectedNode, t]);
 
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
     if (!workflow || !window.electronAPI?.data) return null;
+    const submittedSignature = getWorkflowSaveInputSignature(workflow);
     setSaving(true);
     setLocalError(null);
     try {
@@ -503,9 +430,18 @@ export function TaskEditor({
         task.id,
         toWorkflowSaveInput(workflow)
       );
-      setWorkflow(saved);
-      setSavedWorkflowSignature(getWorkflowSaveInputSignature(saved));
-      setSelectedNodeId((current) => current ?? saved.nodes[0]?.id ?? null);
+      const savedSignature = getWorkflowSaveInputSignature(saved);
+      setWorkflow((current) =>
+        current && getWorkflowSaveInputSignature(current) !== submittedSignature ? current : saved
+      );
+      setSavedWorkflowSignature(savedSignature);
+      setSelectedNodeId((current) => {
+        if (!current) return saved.nodes[0]?.id ?? null;
+        return (
+          saved.nodes.find((node) => node.id === current || node.id.endsWith(`__${current}`))?.id ??
+          current
+        );
+      });
       await onWorkflowSaved();
       return saved;
     } catch (err) {
@@ -516,19 +452,36 @@ export function TaskEditor({
     }
   }, [onWorkflowSaved, task.id, workflow]);
 
-  const handleRun = useCallback(async () => {
+  const validateWorkflowBeforeRun = useCallback(() => {
     if (!workflowSaveInput) return;
     const incompleteMessageKey = nodes.map(incompleteConfigMessageKey).find(Boolean);
     if (incompleteMessageKey) {
       setLocalError(t(incompleteMessageKey));
-      return;
+      return false;
     }
     setLocalError(null);
+    return true;
+  }, [nodes, t, workflowSaveInput]);
+
+  const handleTrialRun = useCallback(async () => {
+    if (!workflowSaveInput || !validateWorkflowBeforeRun()) return;
     await onRun(task, {
       workflow: workflowSaveInput,
-      outputMode: isWorkflowDirty ? 'temporary' : 'persisted',
+      outputMode: 'temporary',
     });
-  }, [isWorkflowDirty, nodes, onRun, t, task, workflowSaveInput]);
+    setNodeDataRefreshVersion((current) => current + 1);
+  }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput]);
+
+  const handleSaveAndRun = useCallback(async () => {
+    if (!validateWorkflowBeforeRun()) return;
+    const saved = await saveWorkflow();
+    if (!saved) return;
+    await onRun(task, {
+      workflow: toWorkflowSaveInput(saved),
+      outputMode: 'persisted',
+    });
+    setNodeDataRefreshVersion((current) => current + 1);
+  }, [onRun, saveWorkflow, task, validateWorkflowBeforeRun]);
 
   const applyAndRunOperatorDsl = useCallback(
     async (nodeId: string, config: Record<string, unknown>) => {
@@ -656,7 +609,7 @@ export function TaskEditor({
       <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <button
-            onClick={onBack}
+            onClick={() => void handleBack()}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -710,12 +663,20 @@ export function TaskEditor({
             {saving ? t('common.saving') : t('common.save')}
           </button>
           <button
-            onClick={() => void handleRun()}
+            onClick={() => void handleTrialRun()}
+            disabled={isBusy || !workflow}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <Play className="h-3.5 w-3.5" />
+            {t('data.editor.trialRun')}
+          </button>
+          <button
+            onClick={() => void handleSaveAndRun()}
             disabled={isBusy || !workflow}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Play className="h-3.5 w-3.5" />
-            {t('data.editor.runTask')}
+            {t('data.editor.saveAndRun')}
           </button>
           <GlassDropdownMenu
             open={workflowMenuOpen}

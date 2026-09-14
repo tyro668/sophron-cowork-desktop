@@ -7,17 +7,14 @@ import {
   lastQualifiedPart,
   durationToMilliseconds,
 } from './utils';
-import { parseFieldRef } from '../../../shared/prep-dsl/parser';
+import { parseFieldRefExact } from '../../../shared/prep-dsl/parser';
 import { JoinConfigSchema } from '../../../shared/operator-schemas';
 import { z } from 'zod';
 
 const JOIN_CONDITION_OPERATORS = new Set(['=', '<', '<=', '>', '>=']);
 
 function extractFieldName(value: string): string {
-  const ref = parseFieldRef(value);
-  if (ref) return ref.name;
-  const stripped = value.replace(/^\[|\]$/g, '');
-  return stripped.includes('.') ? (stripped.split('.').pop() ?? stripped) : stripped;
+  return parseFieldRefExact(value)?.name ?? value.trim();
 }
 
 export function compileJoinConditionList(value: unknown): string {
@@ -29,8 +26,8 @@ export function compileJoinConditionList(value: unknown): string {
       }
       const left = condition.left.trim();
       const right = condition.right.trim();
-      const leftRef = parseFieldRef(left);
-      const rightRef = parseFieldRef(right);
+      const leftRef = parseFieldRefExact(left);
+      const rightRef = parseFieldRefExact(right);
       const leftName = leftRef?.name ?? lastQualifiedPart(left);
       const rightName = rightRef?.name ?? lastQualifiedPart(right);
       if (!left || !right || !leftName || !rightName) {
@@ -106,7 +103,7 @@ export function compileJoinProjection(
         continue;
       }
       if (typeof item.source !== 'string') continue;
-      const ref = parseFieldRef(item.source);
+      const ref = parseFieldRefExact(item.source);
       const fieldName = ref?.name ?? lastQualifiedPart(item.source);
       const side =
         item.side === 'right'
@@ -124,7 +121,7 @@ export function compileJoinProjection(
       const isConflict = isConflictColumn(fieldName);
       const alias =
         typeof item.alias === 'string'
-          ? (parseFieldRef(item.alias)?.name ?? item.alias)
+          ? (parseFieldRefExact(item.alias)?.name ?? item.alias)
           : isConflict
             ? getConflictAlias(conflict, conflictSide, fieldName)
             : fieldName;
@@ -166,7 +163,10 @@ export function compileAsofJoinSql(
   const leftTime = extractFieldName(asof.leftTime ?? '');
   const rightTime = extractFieldName(asof.rightTime ?? '');
   const operator = asof.operator ?? '>=';
-  const isBidirectional = operator === 'nearest';
+  const direction =
+    asof.direction ??
+    (operator === 'nearest' ? 'nearest' : operator === '>=' ? 'backward' : 'forward');
+  const isBidirectional = direction === 'nearest';
   const byConditions = (asof.by ?? [])
     .map((condition) => {
       const left = condition.left;
@@ -187,7 +187,7 @@ export function compileAsofJoinSql(
   if (isBidirectional) {
     conditions.push(`${absDiff} <= ${toleranceMs}`);
   } else {
-    const rightTimeOperator = operator === '>=' ? '<=' : '>=';
+    const rightTimeOperator = direction === 'backward' ? '<=' : '>=';
     conditions.push(
       `r.${quoteIdentifier(rightTime)} ${rightTimeOperator} l.${quoteIdentifier(leftTime)}`
     );
@@ -198,7 +198,7 @@ export function compileAsofJoinSql(
   if (byConditions) conditions.push(byConditions);
   const orderClause = isBidirectional
     ? `${absDiff} ASC`
-    : `r.${quoteIdentifier(rightTime)} ${operator === '>=' ? 'DESC' : 'ASC'}`;
+    : `r.${quoteIdentifier(rightTime)} ${direction === 'backward' ? 'DESC' : 'ASC'}`;
   const projection = compileJoinProjection(
     config.keep,
     leftColumns,

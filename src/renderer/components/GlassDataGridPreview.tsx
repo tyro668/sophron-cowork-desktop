@@ -432,9 +432,9 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
   const gridTextSecondary = color('--data-grid-text-secondary', PREVIEW_GRID_TEXT_SECONDARY);
   const gridTextMuted = color('--data-grid-text-muted', PREVIEW_GRID_TEXT_MUTED);
   return {
-    accentColor: color('--color-accent', '#62c99a'),
+    accentColor: color('--color-accent', '#2f8f63'),
     accentFg: '#ffffff',
-    accentLight: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    accentLight: color('--color-accent-muted', '#eaf6ee'),
     textDark: gridTextPrimary,
     textMedium: gridTextSecondary,
     textLight: gridTextMuted,
@@ -442,20 +442,20 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
     textHeader: gridTextPrimary,
     textHeaderSelected: gridTextPrimary,
     bgIconHeader: gridIconSurface,
-    fgIconHeader: color('--color-accent', '#3baf7a'),
+    fgIconHeader: color('--color-accent', '#2f8f63'),
     bgCell: gridCellSurface,
     bgCellMedium: gridCellMuted,
     bgHeader: gridHeaderSurface,
     bgHeaderHasFocus: gridHeaderSurface,
     bgHeaderHovered: gridHeaderSurface,
     bgBubble: gridCellMuted,
-    bgBubbleSelected: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
-    bgSearchResult: color('--color-accent-muted', 'rgba(98, 201, 154, 0.14)'),
+    bgBubbleSelected: color('--color-accent-muted', '#eaf6ee'),
+    bgSearchResult: color('--color-accent-muted', '#eaf6ee'),
     borderColor: gridBorder,
     horizontalBorderColor: gridBorder,
     headerBottomBorderColor: gridBorder,
     drilldownBorder: gridBorder,
-    linkColor: color('--color-accent', '#3baf7a'),
+    linkColor: color('--color-accent', '#2f8f63'),
     cellHorizontalPadding: 10,
     cellVerticalPadding: 0,
     headerFontStyle: '600 12px',
@@ -465,7 +465,7 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
       "'PingFang SC', 'Inter', 'SF Pro Text', 'Microsoft YaHei UI', 'Noto Sans SC', sans-serif",
     editorFontSize: '13px',
     lineHeight: 1.35,
-    resizeIndicatorColor: color('--color-accent', '#3baf7a'),
+    resizeIndicatorColor: color('--color-accent', '#2f8f63'),
     roundingRadius: 8,
   };
 }
@@ -477,14 +477,14 @@ function clamp(value: number, min: number, max: number): number {
 const INPUT_TABLE_FALLBACK_PAGE_SIZE = 20;
 const EMPTY_COLUMNS: string[] = [];
 const EMPTY_ROWS: Array<Record<string, string | number | boolean | null>> = [];
-const PREVIEW_GRID_HEADER_SURFACE = '#F2FAF5';
+const PREVIEW_GRID_HEADER_SURFACE = '#F0F7F2';
 const PREVIEW_GRID_CELL_SURFACE = '#FFFFFF';
-const PREVIEW_GRID_CELL_MUTED = '#F3FBF6';
-const PREVIEW_GRID_ICON_SURFACE = '#E7F8EF';
-const PREVIEW_GRID_BORDER = 'rgba(220, 236, 227, 0.82)';
-const PREVIEW_GRID_TEXT_PRIMARY = '#263B33';
-const PREVIEW_GRID_TEXT_SECONDARY = '#49685A';
-const PREVIEW_GRID_TEXT_MUTED = '#8AA99A';
+const PREVIEW_GRID_CELL_MUTED = '#F6FAF7';
+const PREVIEW_GRID_ICON_SURFACE = '#EAF6EE';
+const PREVIEW_GRID_BORDER = '#DCE8DF';
+const PREVIEW_GRID_TEXT_PRIMARY = '#24362E';
+const PREVIEW_GRID_TEXT_SECONDARY = '#52675D';
+const PREVIEW_GRID_TEXT_MUTED = '#718078';
 
 const DATA_FIELD_HEADER_ICONS: SpriteMap = {
   dataFieldTypeInteger: (props) => buildTextHeaderIcon(props.bgColor, props.fgColor, '#', '11px'),

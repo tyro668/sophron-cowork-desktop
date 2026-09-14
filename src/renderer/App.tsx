@@ -125,7 +125,7 @@ function App() {
     if (isElectron) {
       listSessions();
     }
-  }, []); // Empty deps - run once
+  }, [isElectron, listSessions]);
 
   useEffect(() => {
     document.title = t('common.appName');
@@ -161,7 +161,7 @@ function App() {
         setAppConfig(result.config);
       }
     },
-    [setIsConfigured, setAppConfig]
+    [isElectron, setIsConfigured, setAppConfig]
   );
 
   // Handle config modal close

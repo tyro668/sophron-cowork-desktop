@@ -32,7 +32,6 @@ describe('application branding', () => {
     expect(read('src/renderer/i18n/locales/en.json')).toContain('"appName": "sophron cowork"');
     expect(read('src/renderer/i18n/locales/zh.json')).toContain('"appName": "九思助理"');
     expect(read('src/renderer/components/Sidebar.tsx')).toContain("t('common.appName')");
-    expect(read('src/renderer/components/SettingsPanel.tsx')).toContain("t('common.appName')");
     expect(read('src/renderer/components/settings/SettingsGeneral.tsx')).toContain(
       "t('common.appName')"
     );

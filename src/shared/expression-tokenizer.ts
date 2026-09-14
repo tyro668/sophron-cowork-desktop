@@ -89,14 +89,15 @@ export function tokenizeExpression(input: string): ExprToken[] {
     if (ch === '[') {
       const start = i;
       i++;
-      if (i < input.length && input[i] === '`') {
+      const isBacktickQuoted = i < input.length && input[i] === '`';
+      if (isBacktickQuoted) {
         i++;
         while (i < input.length && input[i] !== '`') {
           if (input[i] === '\\') i++;
           i++;
         }
         if (i >= input.length) {
-          throw new ExpressionTokenizeError('Unterminated field reference', start);
+          throw new ExpressionTokenizeError('Unterminated backtick field reference', start);
         }
         i++;
       } else {
@@ -120,14 +121,16 @@ export function tokenizeExpression(input: string): ExprToken[] {
         while (i < input.length && isDigit(input[i])) i++;
       }
       if (i < input.length && (input[i] === 'e' || input[i] === 'E')) {
-        const beforeE = i;
         i++;
         if (i < input.length && (input[i] === '+' || input[i] === '-')) i++;
         if (i < input.length && isDigit(input[i])) {
           while (i < input.length && isDigit(input[i])) i++;
         } else {
-          i = beforeE;
+          throw new ExpressionTokenizeError('Invalid number literal', start);
         }
+      }
+      if (i < input.length && input[i] === '.') {
+        throw new ExpressionTokenizeError('Invalid number literal', start);
       }
       pushToken({ type: 'Number', value: input.slice(start, i), start, end: i });
       continue;

@@ -12,6 +12,7 @@ import {
   workflowExpressionFunctionResultType,
   workflowExpressionFunctionToDsl,
 } from './workflow-expression-registry';
+import { duckDbDecimalTypeForScale } from '../../../shared/data-field-types';
 import type { WorkflowExpressionArgumentType } from './workflow-expression-registry';
 import type {
   DataAutomationColumnSnapshot,
@@ -48,6 +49,11 @@ import {
   getWorkflowAggregateFunctionDefinition,
   normalizeWorkflowAggregateFunction,
 } from './workflow-aggregate-registry';
+import {
+  requirementHasCurrencyContext,
+  requirementHasRemovalIntent,
+  requirementMentionsColumn,
+} from './requirement-intent';
 export type {
   GeneratedDataTaskWorkflow,
   GeneratedWorkflowColumnBinding,
@@ -1079,7 +1085,7 @@ function compileWorkflowExpression(
       const targetType = normalizePlanTargetType(expression.targetType);
       const sqlType =
         targetType === 'decimal'
-          ? `DECIMAL(18,${normalizeDecimalScale(expression.options.scale)})`
+          ? duckDbDecimalTypeForScale(normalizeDecimalScale(expression.options.scale))
           : targetType.toUpperCase();
       return {
         dsl: `CAST(${value.dsl} AS ${sqlType})`,
@@ -1634,7 +1640,7 @@ function compilePlanTypeConversionExpression({
   if (targetType === 'text') return expression;
   const storageType =
     targetType === 'decimal'
-      ? `DECIMAL(18,${normalizeDecimalScale(scale)})`
+      ? duckDbDecimalTypeForScale(normalizeDecimalScale(scale))
       : targetType.toUpperCase();
   return `${failOnError ? 'CAST' : 'TRY_CAST'}(${expression} AS ${storageType})`;
 }
@@ -1646,11 +1652,11 @@ function inferPlanConversionRemovePrefixFromRequirement(
 ): string {
   if (!['integer', 'float', 'decimal'].includes(normalizeDslTypeName(targetType))) return '';
   if (!requirement.includes('$')) return '';
-  if (!/(去除|去掉|删除|移除|删掉|剔除|remove|strip)/i.test(requirement)) return '';
+  if (!requirementHasRemovalIntent(requirement)) return '';
   if (
     columnName &&
-    !requirement.toLowerCase().includes(columnName.toLowerCase()) &&
-    !/(美元|金额|价格|price|money|currency)/i.test(requirement)
+    !requirementMentionsColumn(requirement, columnName) &&
+    !requirementHasCurrencyContext(requirement)
   ) {
     return '';
   }
@@ -1842,7 +1848,7 @@ function inferDroppedColumnsFromSelectOperation(
   selectedNames: string[],
   context: WorkflowIrLoweringContext
 ): string[] {
-  if (selectedNames.length === 0 || !requirementHasColumnRemovalIntent(context.requirement)) {
+  if (selectedNames.length === 0 || !requirementHasRemovalIntent(context.requirement)) {
     return [];
   }
   const currentColumns = context.getCurrentColumns();
@@ -1862,31 +1868,7 @@ function inferDroppedColumnsFromSelectOperation(
     .filter((column) => !selected.has(column.name.toLowerCase()))
     .map((column) => column.name);
   if (dropped.length === 0) return [];
-  const normalizedRequirement = normalizeColumnMatchText(context.requirement);
-  return dropped.every((name) =>
-    normalizedRequirementContainsColumnName(normalizedRequirement, normalizeColumnMatchText(name))
-  )
+  return dropped.every((name) => requirementMentionsColumn(context.requirement, name))
     ? dropped
     : [];
-}
-
-function requirementHasColumnRemovalIntent(requirement: string): boolean {
-  return /删除|去掉|移除|去除|删掉|剔除|排除|不要|\bdrop\b|\bdelete\b|\bremove\b|\bexclude\b/i.test(
-    requirement
-  );
-}
-
-function normalizeColumnMatchText(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '');
-}
-
-function normalizedRequirementContainsColumnName(
-  normalizedRequirement: string,
-  normalizedColumnName: string
-): boolean {
-  if (!/^[a-z0-9_]+$/i.test(normalizedColumnName)) {
-    return normalizedRequirement.includes(normalizedColumnName);
-  }
-  const escapedName = normalizedColumnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9_])${escapedName}($|[^a-z0-9_])`, 'i').test(normalizedRequirement);
 }

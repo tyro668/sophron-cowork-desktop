@@ -8,6 +8,22 @@ import {
 } from './common';
 
 export const MAX_JOIN_CONDITION_COUNT = 100;
+export const REGULAR_JOIN_TYPES = [
+  'inner',
+  'left',
+  'right',
+  'full',
+  'cross',
+  'semi',
+  'anti',
+] as const;
+export const JOIN_EXPECTATIONS = [
+  'one_to_one',
+  'one_to_many',
+  'many_to_one',
+  'many_to_many',
+] as const;
+export const ASOF_DIRECTIONS = ['backward', 'forward', 'nearest'] as const;
 
 export const JoinConditionSchema = ConditionSchema.extend({
   operator: z.enum(['=', '<', '<=', '>', '>=']),
@@ -32,6 +48,7 @@ export const AsofConfigSchema = z.object({
   leftTime: z.string().optional().default(''),
   rightTime: z.string().optional().default(''),
   operator: z.enum(['>=', '<=', 'nearest']).optional(),
+  direction: z.enum(ASOF_DIRECTIONS).optional(),
   tolerance: z
     .string()
     .refine(isValidAsofTolerance, {
@@ -53,14 +70,13 @@ export const AsofConfigSchema = z.object({
 
 const JoinConfigObjectSchema = z
   .object({
-    joinType: z
-      .enum(['inner', 'left', 'right', 'full', 'cross', 'semi', 'anti', 'asof'])
-      .default('left'),
+    joinType: z.enum([...REGULAR_JOIN_TYPES, 'asof']).default('left'),
     conditions: z.array(JoinConditionSchema).max(MAX_JOIN_CONDITION_COUNT).optional(),
     conflict: ConflictSchema.optional(),
     keep: z.array(KeepItemSchema).default([]),
     asof: AsofConfigSchema.optional(),
     rightAlias: z.string().optional(),
+    expect: z.enum(JOIN_EXPECTATIONS).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.joinType === 'semi' || data.joinType === 'anti') {
@@ -97,6 +113,13 @@ const JoinConfigObjectSchema = z
         path: ['conditions'],
       });
     }
+    if (data.joinType === 'cross' && data.conditions && data.conditions.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Cross join does not support an on condition',
+        path: ['conditions'],
+      });
+    }
     if (data.joinType === 'asof') {
       const asof = data.asof;
       if (!asof || !asof.leftTime || !asof.rightTime) {
@@ -106,11 +129,26 @@ const JoinConfigObjectSchema = z
           path: ['asof'],
         });
       }
-      if (asof?.operator === 'nearest' && !asof?.tolerance) {
+      if ((asof?.operator === 'nearest' || asof?.direction === 'nearest') && !asof?.tolerance) {
         ctx.addIssue({
           code: 'custom',
           message: 'ASOF nearest requires tolerance',
           path: ['asof', 'tolerance'],
+        });
+      }
+      const operatorDirection =
+        asof?.operator === 'nearest'
+          ? 'nearest'
+          : asof?.operator === '<='
+            ? 'forward'
+            : asof?.operator === '>='
+              ? 'backward'
+              : undefined;
+      if (asof?.direction && operatorDirection && asof.direction !== operatorDirection) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `ASOF direction ${asof.direction} conflicts with operator ${asof.operator}`,
+          path: ['asof', 'direction'],
         });
       }
     }
@@ -119,6 +157,10 @@ const JoinConfigObjectSchema = z
 export const JoinConfigSchema = z.preprocess((value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const config = { ...(value as Record<string, unknown>) };
+  if (config.expect === undefined && config.cardinality !== undefined) {
+    config.expect = config.cardinality;
+  }
+  delete config.cardinality;
   if (config.joinType === 'asof') delete config.conditions;
   else delete config.asof;
   return config;

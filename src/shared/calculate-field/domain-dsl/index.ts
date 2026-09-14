@@ -11,9 +11,13 @@ export function parseCalculationFunctionDslExpression(
   return parseDomainExpression(expression);
 }
 
-export function expandCalculationDomainExpression(expression: string): string {
+export function expandCalculationDomainExpression(
+  expression: string,
+  options: { allowLegacySql?: boolean } = {}
+): string {
   const parsed = parseDomainExpression(expression, {
     allowBareIdentifiers: true,
+    allowLegacySql: options.allowLegacySql,
   });
   return parsed ? buildCalculationFunctionExpression(parsed) : expression;
 }

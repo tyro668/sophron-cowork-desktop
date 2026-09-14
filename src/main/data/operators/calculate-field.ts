@@ -23,7 +23,7 @@ export function compileCalculateFieldSql(
     }
     const expression = calculation.expression.trim();
     if (!expression) continue;
-    const expanded = expandCalculationDomainExpression(expression);
+    const expanded = expandCalculationDomainExpression(expression, { allowLegacySql: true });
     const compiledExpression = compileScalarExpression(expanded);
     const compiled = `${compiledExpression} AS ${quoteIdentifier(field)}`;
     const fieldExists = existingColumns.has(normalizedField);

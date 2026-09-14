@@ -1095,9 +1095,6 @@ export class ConfigStore {
     let configSets = this.shouldPreferLegacyConfigSetProjection(normalizedFromRaw, legacy)
       ? [this.makeDefaultConfigSetFromLegacy(legacy)]
       : normalizedFromRaw;
-    if (!this.hasAnyUsableConfigSet(configSets)) {
-      configSets = [this.cloneConfigSet(defaultConfigSet)];
-    }
 
     const requestedActiveSetId = toNonEmptyString(raw.activeConfigSetId);
     const activeConfigSetId = configSets.some((set) => set.id === requestedActiveSetId)

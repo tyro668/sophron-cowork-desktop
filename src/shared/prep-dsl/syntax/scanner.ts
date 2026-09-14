@@ -3,7 +3,7 @@ export interface KeywordMatch {
   keyword: string;
 }
 
-type QuoteType = "'" | '"';
+type QuoteType = "'" | '"' | '`';
 interface ScanState {
   bracketDepth: number;
   parenthesisDepth: number;
@@ -38,7 +38,7 @@ function advanceScanState(value: string, index: number, state: ScanState): ScanS
     return { state, nextIndex: index + 1 };
   }
 
-  if (char === "'" || char === '"') {
+  if (char === "'" || char === '"' || (char === '`' && state.bracketDepth > 0)) {
     return { state: { ...state, inString: char }, nextIndex: index + 1 };
   }
   if (char === '[')

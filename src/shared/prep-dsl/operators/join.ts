@@ -1,17 +1,34 @@
-import { isValidAsofTolerance } from '../../operator-schemas/join';
+import {
+  ASOF_DIRECTIONS,
+  JOIN_EXPECTATIONS,
+  REGULAR_JOIN_TYPES,
+  isValidAsofTolerance,
+} from '../../operator-schemas/join';
 import type { PrepAsofJoinConfig, PrepFieldRef, PrepJoinCondition } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRefExact, toFieldName, toQualifiedName } from '../syntax/fields';
+import { formatFieldRef, toFieldName, toQualifiedName } from '../syntax/fields';
 import { quoteString, unquoteString } from '../syntax/literals';
-import { findFirstTopLevelKeyword, splitTopLevel, splitTopLevelKeyword } from '../syntax/scanner';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorCommand, type OperatorDslCodec } from './codec';
 import { isCompleteJoinCondition } from '../../operator-completeness';
 
-interface Clause {
-  name: string;
-  value: string;
-}
+const REGULAR_CLAUSE_ORDER = new Map([
+  ['on', 0],
+  ['keep', 1],
+  ['suffix', 2],
+  ['right_prefix', 2],
+  ['expect', 3],
+]);
+const ASOF_CLAUSE_ORDER = new Map([
+  ['on', 0],
+  ['by', 1],
+  ['direction', 2],
+  ['tolerance', 3],
+  ['keep', 4],
+  ['suffix', 5],
+  ['right_prefix', 5],
+  ['expect', 6],
+]);
 
 function validateJoinFieldRef(
   ref: PrepFieldRef | null,
@@ -79,357 +96,377 @@ function validateConditionSides(
 export const joinCodec: OperatorDslCodec = {
   type: 'join',
   matches: (text) => text.startsWith('join '),
-  parse: (command, diagnostics) =>
-    command.text.startsWith('join asof ')
-      ? parseAsofJoin(command, diagnostics)
-      : parseRegularJoin(command, diagnostics),
+  parse: (command, diagnostics) => parseJoin(command, diagnostics),
   format: (config) => formatJoin(config),
 };
 
-function parseRegularJoin(
+function parseJoin(
   command: OperatorCommand,
   diagnostics: Parameters<OperatorDslCodec['parse']>[1]
 ) {
-  const match =
-    /^join\s+(inner|left|right|full|cross|semi|anti)\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(
-      command.text
-    );
-  if (!match) {
-    diagnostics.push({
-      ...createPrepDiagnostic('invalidJoin', `Cannot parse join: ${command.text}`, {
-        value: command.text,
-      }),
-      line: command.line,
-    });
-    return null;
-  }
-  const clauses = parseClauses(
-    match[4] ?? '',
-    ['on', 'keep', 'suffix', 'right_prefix'],
-    command,
-    diagnostics
-  );
-  const joinType = match[1];
-  if (joinType === 'semi' || joinType === 'anti') {
-    const invalidClauses = clauses.filter((c) =>
-      ['keep', 'suffix', 'right_prefix'].includes(c.name)
-    );
-    if (invalidClauses.length > 0) {
-      diagnostics.push({
-        ...createPrepDiagnostic(
-          'invalidSemiAntiClause',
-          `${joinType} join only supports an "on" condition and outputs all left columns. Remove: ${invalidClauses
-            .map((c) => c.name)
-            .join(', ')}`
-        ),
-        line: command.line,
-      });
+  const cursor = new PrepTokenCursor(command.text, command.line, diagnostics);
+  cursor.expect('join', 'invalidJoin');
+  const joinKind = cursor.expectOneOf(['asof', ...REGULAR_JOIN_TYPES], 'invalidJoinType');
+  const rightInput = cursor.expectIdentifier('invalidJoinRightInput');
+  if (!joinKind || !rightInput) return null;
+  const rightAlias = cursor.match('as')
+    ? (cursor.expectIdentifier('invalidJoinAlias') ?? rightInput)
+    : rightInput;
+  return joinKind === 'asof'
+    ? parseAsofJoin(cursor, rightInput, rightAlias, command, diagnostics)
+    : parseRegularJoin(
+        cursor,
+        joinKind as (typeof REGULAR_JOIN_TYPES)[number],
+        rightInput,
+        rightAlias,
+        command,
+        diagnostics
+      );
+}
+
+function parseRegularJoin(
+  cursor: PrepTokenCursor,
+  joinType: (typeof REGULAR_JOIN_TYPES)[number],
+  rightInput: string,
+  rightAlias: string,
+  command: OperatorCommand,
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
+) {
+  let conditions: PrepJoinCondition[] = [];
+  let keep: unknown[] | undefined;
+  let conflict: Record<string, string> = {
+    strategy: 'suffix',
+    leftSuffix: '_left',
+    rightSuffix: '_right',
+  };
+  let expectation: (typeof JOIN_EXPECTATIONS)[number] | undefined;
+  let conflictClause: string | undefined;
+  const seen = new Set<string>();
+  let lastOrder = -1;
+
+  while (!cursor.eof) {
+    const clause = consumeClauseName(cursor, REGULAR_CLAUSE_ORDER, seen, lastOrder);
+    if (!clause) break;
+    lastOrder = Math.max(lastOrder, REGULAR_CLAUSE_ORDER.get(clause) ?? lastOrder);
+    switch (clause) {
+      case 'on':
+        conditions = parseConditionList(cursor, rightAlias, command, diagnostics, false);
+        break;
+      case 'keep':
+        keep = parseKeep(cursor, REGULAR_CLAUSE_ORDER, command, diagnostics);
+        break;
+      case 'suffix':
+      case 'right_prefix':
+        if (conflictClause && conflictClause !== clause) {
+          cursor.report(
+            'conflictingJoinOptions',
+            'Join cannot use suffix and right_prefix together'
+          );
+        }
+        conflictClause = clause;
+        conflict = parseConflict(cursor, clause, REGULAR_CLAUSE_ORDER);
+        break;
+      case 'expect':
+        expectation =
+          (cursor.expectOneOf(JOIN_EXPECTATIONS, 'invalidJoinExpectation') as
+            | (typeof JOIN_EXPECTATIONS)[number]
+            | null) ?? undefined;
+        break;
     }
   }
-  const rightAlias = match[3] ?? match[2];
-  const conditions = parseConditions(
-    findClause(clauses, 'on') ?? '',
-    rightAlias,
-    command,
-    diagnostics
-  );
-  if (match[1] !== 'cross' && conditions.length === 0) {
-    diagnostics.push({
-      ...createPrepDiagnostic('joinMissingCondition', 'Non-cross join requires an on condition'),
-      line: command.line,
-    });
+
+  if (joinType !== 'cross' && conditions.length === 0) {
+    cursor.report('joinMissingCondition', 'Non-cross join requires an on condition');
   }
   const isSemiAnti = joinType === 'semi' || joinType === 'anti';
+  if (isSemiAnti && (keep || conflictClause)) {
+    cursor.report(
+      'invalidSemiAntiClause',
+      `${joinType} join only supports an "on" condition and outputs all left columns`
+    );
+  }
+  cursor.expectEof('unexpectedJoinToken');
   return createOperator('join', command.text, {
-    joinType: match[1],
-    rightInput: match[2],
+    joinType,
+    rightInput,
     rightAlias,
     conditions,
-    keep: isSemiAnti
-      ? undefined
-      : parseKeep(findClause(clauses, 'keep') ?? '', command, diagnostics),
-    conflict: isSemiAnti ? undefined : parseConflict(clauses, command, diagnostics),
+    keep: isSemiAnti ? undefined : keep,
+    conflict: isSemiAnti ? undefined : conflict,
+    expect: expectation,
   });
 }
 
 function parseAsofJoin(
+  cursor: PrepTokenCursor,
+  rightInput: string,
+  rightAlias: string,
   command: OperatorCommand,
   diagnostics: Parameters<OperatorDslCodec['parse']>[1]
 ) {
-  const match = /^join\s+asof\s+(\S+)(?:\s+as\s+(\S+))?(.*)$/s.exec(command.text);
-  if (!match) {
-    diagnostics.push({
-      ...createPrepDiagnostic('invalidAsofJoin', `Cannot parse asof join: ${command.text}`, {
-        value: command.text,
-      }),
-      line: command.line,
-    });
-    return null;
+  let on: PrepAsofJoinConfig | undefined;
+  let keep: unknown[] | undefined;
+  let conflict: Record<string, string> = {
+    strategy: 'suffix',
+    leftSuffix: '_left',
+    rightSuffix: '_right',
+  };
+  let expectation: (typeof JOIN_EXPECTATIONS)[number] | undefined;
+  let conflictClause: string | undefined;
+  const seen = new Set<string>();
+  let lastOrder = -1;
+
+  while (!cursor.eof) {
+    const clause = consumeClauseName(cursor, ASOF_CLAUSE_ORDER, seen, lastOrder);
+    if (!clause) break;
+    lastOrder = Math.max(lastOrder, ASOF_CLAUSE_ORDER.get(clause) ?? lastOrder);
+    switch (clause) {
+      case 'on':
+        on = parseAsofOn(cursor, rightAlias, command, diagnostics);
+        break;
+      case 'by':
+        if (!on) on = emptyAsofConfig();
+        on.by = parseConditionList(cursor, rightAlias, command, diagnostics, true);
+        break;
+      case 'direction':
+        if (!on) on = emptyAsofConfig();
+        on.direction =
+          (cursor.expectOneOf(ASOF_DIRECTIONS, 'invalidAsofDirection') as
+            | (typeof ASOF_DIRECTIONS)[number]
+            | null) ?? undefined;
+        break;
+      case 'tolerance': {
+        if (!on) on = emptyAsofConfig();
+        const start = cursor.index;
+        while (!cursor.eof && !isClauseStart(cursor, ASOF_CLAUSE_ORDER)) cursor.consume();
+        const tolerance = cursor.slice(start).trim();
+        if (!tolerance || !isValidAsofTolerance(tolerance)) {
+          cursor.report('invalidAsofTolerance', `Invalid ASOF tolerance: ${tolerance}`);
+        }
+        on.tolerance = tolerance || undefined;
+        break;
+      }
+      case 'keep':
+        keep = parseKeep(cursor, ASOF_CLAUSE_ORDER, command, diagnostics);
+        break;
+      case 'suffix':
+      case 'right_prefix':
+        if (conflictClause && conflictClause !== clause) {
+          cursor.report(
+            'conflictingJoinOptions',
+            'Join cannot use suffix and right_prefix together'
+          );
+        }
+        conflictClause = clause;
+        conflict = parseConflict(cursor, clause, ASOF_CLAUSE_ORDER);
+        break;
+      case 'expect':
+        expectation =
+          (cursor.expectOneOf(JOIN_EXPECTATIONS, 'invalidJoinExpectation') as
+            | (typeof JOIN_EXPECTATIONS)[number]
+            | null) ?? undefined;
+        break;
+    }
   }
-  const clauses = parseClauses(
-    match[3] ?? '',
-    ['on', 'by', 'tolerance', 'keep', 'suffix', 'right_prefix'],
-    command,
-    diagnostics
-  );
-  const rightAlias = match[2] ?? match[1];
+
+  if (!on?.leftTime || !on.rightTime) {
+    cursor.report('invalidAsofCondition', 'ASOF join requires a valid on condition');
+  }
+  cursor.expectEof('unexpectedJoinToken');
   return createOperator('join', command.text, {
     joinType: 'asof',
-    rightInput: match[1],
+    rightInput,
     rightAlias,
-    asof: parseAsofClause(
-      findClause(clauses, 'on') ?? '',
-      findClause(clauses, 'by') ?? '',
-      findClause(clauses, 'tolerance'),
-      rightAlias,
-      command,
-      diagnostics
-    ),
-    keep: parseKeep(findClause(clauses, 'keep') ?? '', command, diagnostics),
-    conflict: parseConflict(clauses, command, diagnostics),
+    asof: on,
+    keep,
+    conflict,
+    expect: expectation,
   });
 }
 
-function parseAsofClause(
-  onClause: string,
-  byClause: string,
-  tolerance?: string,
-  rightAlias?: string,
-  command?: OperatorCommand,
-  diagnostics?: Parameters<OperatorDslCodec['parse']>[1]
+function emptyAsofConfig(): PrepAsofJoinConfig {
+  return { leftTime: '', operator: '>=', rightTime: '' };
+}
+
+function parseAsofOn(
+  cursor: PrepTokenCursor,
+  rightAlias: string,
+  command: OperatorCommand,
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
 ): PrepAsofJoinConfig | undefined {
-  const match = /^(.+?)\s*(>=|<=|nearest)\s*(.+)$/.exec(onClause.trim());
-  const left = match ? parseFieldRefExact(match[1]) : null;
-  const right = match ? parseFieldRefExact(match[3]) : null;
-  const leftOk = validateJoinFieldRef(
-    left,
-    command as OperatorCommand,
-    diagnostics ?? [],
-    'ASOF on'
-  );
-  const rightOk = validateJoinFieldRef(
-    right,
-    command as OperatorCommand,
-    diagnostics ?? [],
-    'ASOF on'
-  );
-  if (!match || !left || !right || !leftOk || !rightOk) {
-    if (diagnostics) {
-      diagnostics.push({
-        ...createPrepDiagnostic('invalidAsofCondition', 'ASOF join requires a valid on condition'),
-        line: command?.line,
-      });
-    }
-    return undefined;
-  }
-  if (command && diagnostics) {
-    validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF on');
-  }
-  const operator = match[2] as PrepAsofJoinConfig['operator'];
-  if (tolerance && !isValidAsofTolerance(tolerance)) {
-    diagnostics?.push({
-      ...createPrepDiagnostic('invalidAsofTolerance', `Invalid ASOF tolerance: ${tolerance}`),
-      line: command?.line,
-    });
-  }
+  const left = cursor.expectFieldRef('invalidAsofCondition', 'invalidJoinFieldRef');
+  const operator = consumeJoinOperator(cursor, true);
+  const right = cursor.expectFieldRef('invalidAsofCondition', 'invalidJoinFieldRef');
+  const leftOk = validateJoinFieldRef(left, command, diagnostics, 'ASOF on');
+  const rightOk = validateJoinFieldRef(right, command, diagnostics, 'ASOF on');
+  if (!left || !right || !operator || !leftOk || !rightOk) return undefined;
+  validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF on');
   return {
     leftTime: toQualifiedName(left),
-    operator,
+    operator: operator as PrepAsofJoinConfig['operator'],
     rightTime: toQualifiedName(right),
-    tolerance,
-    by:
-      byClause && command && diagnostics
-        ? parseEquiConditions(byClause, rightAlias, command, diagnostics)
-        : undefined,
   };
 }
 
-function parseEquiConditions(
-  value: string,
-  rightAlias: string | undefined,
+function parseConditionList(
+  cursor: PrepTokenCursor,
+  rightAlias: string,
   command: OperatorCommand,
-  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
+  diagnostics: Parameters<OperatorDslCodec['parse']>[1],
+  equiOnly: boolean
 ): PrepJoinCondition[] {
-  if (!value) return [];
-  return splitTopLevelKeyword(value, 'and').flatMap((part) => {
-    const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
-    const operator = match?.[2] === '<>' ? '!=' : (match?.[2] ?? '=');
-    if (operator !== '=') {
-      diagnostics.push({
-        ...createPrepDiagnostic(
-          'invalidAsofByOperator',
-          `ASOF by conditions must be equi-joins using "=", got "${operator}"`
-        ),
-        line: command.line,
-      });
-      return [];
+  const conditions: PrepJoinCondition[] = [];
+  while (!cursor.eof) {
+    const left = cursor.expectFieldRef('invalidJoinCondition', 'invalidJoinFieldRef');
+    const operator = consumeJoinOperator(cursor, false);
+    const right = cursor.expectFieldRef('invalidJoinCondition', 'invalidJoinFieldRef');
+    if (!left || !operator || !right) break;
+    const leftOk = validateJoinFieldRef(
+      left,
+      command,
+      diagnostics,
+      equiOnly ? 'ASOF by' : 'Join on'
+    );
+    const rightOk = validateJoinFieldRef(
+      right,
+      command,
+      diagnostics,
+      equiOnly ? 'ASOF by' : 'Join on'
+    );
+    if (operator === '!=') {
+      cursor.report('invalidJoinOperator', 'Join condition operator "!=" is not supported');
+    } else if (equiOnly && operator !== '=') {
+      cursor.report(
+        'invalidAsofByOperator',
+        `ASOF by conditions must be equi-joins using "=", got "${operator}"`
+      );
+    } else if (leftOk && rightOk) {
+      validateConditionSides(
+        left,
+        right,
+        rightAlias,
+        command,
+        diagnostics,
+        equiOnly ? 'ASOF by' : 'Join on'
+      );
+      conditions.push({ left: toQualifiedName(left), operator, right: toQualifiedName(right) });
     }
-    const left = match ? parseFieldRefExact(match[1]) : null;
-    const right = match ? parseFieldRefExact(match[3]) : null;
-    const leftOk = validateJoinFieldRef(left, command, diagnostics, 'ASOF by');
-    const rightOk = validateJoinFieldRef(right, command, diagnostics, 'ASOF by');
-    if (!left || !right) {
-      diagnostics.push({
-        ...createPrepDiagnostic('invalidJoinCondition', `Cannot parse join condition: ${part}`),
-        line: command.line,
-      });
-      return [];
-    }
-    if (!leftOk || !rightOk) return [];
-    validateConditionSides(left, right, rightAlias, command, diagnostics, 'ASOF by');
-    return [{ left: toQualifiedName(left), operator: '=', right: toQualifiedName(right) }];
-  });
+    if (!cursor.match('and')) break;
+  }
+  return conditions;
 }
 
-function parseConditions(
-  value: string,
-  rightAlias: string | undefined,
-  command: OperatorCommand,
-  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
-): PrepJoinCondition[] {
-  if (!value) return [];
-  return splitTopLevelKeyword(value, 'and').flatMap((part) => {
-    const match = /^(.+?)\s*(>=|<=|!=|<>|>|=|<)\s*(.+)$/.exec(part.trim());
-    const operator = match?.[2] === '<>' ? '!=' : (match?.[2] ?? '=');
-    if (operator === '!=') {
-      diagnostics.push({
-        ...createPrepDiagnostic(
-          'invalidJoinOperator',
-          `Join condition operator "!=" is not supported. Use "=" for equi-joins or other operators (<, >, <=, >=) for range joins.`
-        ),
-        line: command.line,
-      });
-      return [];
-    }
-    const left = match ? parseFieldRefExact(match[1]) : null;
-    const right = match ? parseFieldRefExact(match[3]) : null;
-    const leftOk = validateJoinFieldRef(left, command, diagnostics, 'Join on');
-    const rightOk = validateJoinFieldRef(right, command, diagnostics, 'Join on');
-    if (!left || !right) {
-      diagnostics.push({
-        ...createPrepDiagnostic('invalidJoinCondition', `Cannot parse join condition: ${part}`),
-        line: command.line,
-      });
-    }
-    if (!left || !right || !leftOk || !rightOk) return [];
-    validateConditionSides(left, right, rightAlias, command, diagnostics, 'Join on');
-    return [
-      {
-        left: toQualifiedName(left),
-        operator,
-        right: toQualifiedName(right),
-      },
-    ];
-  });
+function consumeJoinOperator(cursor: PrepTokenCursor, allowNearest: boolean): string | null {
+  const type = cursor.tokenType();
+  const byType: Record<string, string> = {
+    Equals: '=',
+    Gte: '>=',
+    Lte: '<=',
+    GreaterThan: '>',
+    LessThan: '<',
+    NotEquals: '!=',
+  };
+  if (type && byType[type]) {
+    cursor.consume();
+    return byType[type];
+  }
+  if (allowNearest && cursor.match('nearest')) return 'nearest';
+  cursor.report('invalidJoinOperator', 'Expected a valid join condition operator');
+  return null;
 }
 
 function parseKeep(
-  value: string,
+  cursor: PrepTokenCursor,
+  clauseOrder: ReadonlyMap<string, number>,
   command: OperatorCommand,
   diagnostics: Parameters<OperatorDslCodec['parse']>[1]
-): unknown[] | undefined {
-  if (!value) return undefined;
-  return splitTopLevel(value).flatMap((item): unknown[] => {
-    const trimmed = item.trim();
-    if (trimmed === 'left *') return [{ side: 'left', wildcard: true }];
-    if (trimmed === 'right *') return [{ side: 'right', wildcard: true }];
-    const match = /^(.+?)(?:\s+as\s+(.+))?$/.exec(trimmed);
-    const source = match ? parseFieldRefExact(match[1]) : null;
-    const alias = match?.[2] ? parseFieldRefExact(match[2]) : null;
-    const sourceOk = validateJoinFieldRef(source, command, diagnostics, 'Join keep');
-    if (!source || (match?.[2] && !alias)) {
-      diagnostics.push({
-        ...createPrepDiagnostic('invalidJoinKeep', `Cannot parse join keep item: ${item}`),
-        line: command.line,
-      });
+): unknown[] {
+  const items: unknown[] = [];
+  while (!cursor.eof && !isClauseStart(cursor, clauseOrder)) {
+    const side = cursor.image();
+    if ((side === 'left' || side === 'right') && cursor.tokenType(1) === 'Star') {
+      cursor.consume();
+      cursor.consume();
+      items.push({ side, wildcard: true });
+    } else {
+      const source = cursor.expectFieldRef('invalidJoinKeep');
+      if (!source) break;
+      const sourceOk = validateJoinFieldRef(source, command, diagnostics, 'Join keep');
+      const alias = cursor.match('as') ? cursor.expectFieldRef('invalidJoinKeepAlias') : null;
+      if (sourceOk) {
+        items.push({
+          source: toQualifiedName(source),
+          alias: alias ? toFieldName(alias) : undefined,
+        });
+      }
     }
-    return source && sourceOk
-      ? [{ source: toQualifiedName(source), alias: alias ? toFieldName(alias) : undefined }]
-      : [];
-  });
+    if (cursor.matchType('Comma')) continue;
+    if (!cursor.eof && !isClauseStart(cursor, clauseOrder)) {
+      cursor.report('invalidJoinKeep', 'Join keep items must be separated with commas');
+    }
+    break;
+  }
+  if (items.length === 0) cursor.report('invalidJoinKeep', 'Join keep requires at least one item');
+  return items;
 }
 
 function parseConflict(
-  clauses: Clause[],
-  command: OperatorCommand,
-  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
+  cursor: PrepTokenCursor,
+  clause: 'suffix' | 'right_prefix',
+  clauseOrder: ReadonlyMap<string, number>
 ): Record<string, string> {
-  const rightPrefix = findClause(clauses, 'right_prefix');
-  const suffix = findClause(clauses, 'suffix');
-  if (rightPrefix && suffix) {
-    diagnostics.push({
-      ...createPrepDiagnostic(
-        'conflictingJoinOptions',
-        'Join cannot use suffix and right_prefix together'
-      ),
-      line: command.line,
-    });
-  }
-  if (rightPrefix) {
-    const cursor = new PrepTokenCursor(rightPrefix, command.line, diagnostics);
-    const value = consumeJoinText(cursor);
-    cursor.expectEof('unexpectedJoinPrefixToken');
-    return { strategy: 'right_prefix', rightPrefix: value ?? '' };
-  }
-  if (suffix) {
-    const cursor = new PrepTokenCursor(suffix, command.line, diagnostics);
-    const leftSuffix = consumeJoinText(cursor);
-    const rightSuffix = consumeJoinText(cursor);
-    if (!leftSuffix || !rightSuffix) {
-      cursor.report('invalidJoinSuffix', 'Join suffix requires left and right values');
-    }
-    cursor.expectEof('unexpectedJoinSuffixToken');
+  if (clause === 'right_prefix') {
     return {
-      strategy: 'suffix',
-      leftSuffix: leftSuffix ?? '_left',
-      rightSuffix: rightSuffix ?? '_right',
+      strategy: 'right_prefix',
+      rightPrefix: consumeJoinText(cursor, clauseOrder) ?? '',
     };
   }
-  return { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' };
+  const leftSuffix = consumeJoinText(cursor, clauseOrder);
+  const rightSuffix = consumeJoinText(cursor, clauseOrder);
+  if (!leftSuffix || !rightSuffix) {
+    cursor.report('invalidJoinSuffix', 'Join suffix requires left and right values');
+  }
+  return {
+    strategy: 'suffix',
+    leftSuffix: leftSuffix ?? '_left',
+    rightSuffix: rightSuffix ?? '_right',
+  };
 }
 
-function consumeJoinText(cursor: PrepTokenCursor): string | null {
+function consumeJoinText(
+  cursor: PrepTokenCursor,
+  clauseOrder: ReadonlyMap<string, number>
+): string | null {
   const stringToken = cursor.matchType('StringLiteral');
   if (stringToken) return unquoteString(stringToken.image);
+  if (isClauseStart(cursor, clauseOrder)) return null;
   return cursor.expectIdentifier('invalidJoinText');
 }
 
-function parseClauses(
-  text: string,
-  names: string[],
-  command: OperatorCommand,
-  diagnostics: Parameters<OperatorDslCodec['parse']>[1]
-): Clause[] {
-  const clauses: Clause[] = [];
-  let remaining = text.trim();
-  while (remaining) {
-    const clause = findFirstTopLevelKeyword(remaining, names);
-    if (!clause || clause.index !== 0) {
-      diagnostics.push({
-        ...createPrepDiagnostic('unexpectedJoinToken', `Unexpected join syntax: ${remaining}`),
-        line: command.line,
-      });
-      break;
-    }
-    const afterName = remaining.slice(clause.index + clause.keyword.length).trimStart();
-    const nextClause = findFirstTopLevelKeyword(afterName, names);
-    if (clauses.some((item) => item.name === clause.keyword)) {
-      diagnostics.push({
-        ...createPrepDiagnostic('duplicateJoinClause', `Duplicate join clause: ${clause.keyword}`),
-        line: command.line,
-      });
-    }
-    clauses.push({
-      name: clause.keyword,
-      value: afterName.slice(0, nextClause?.index ?? afterName.length).trim(),
-    });
-    remaining = nextClause ? afterName.slice(nextClause.index) : '';
+function consumeClauseName(
+  cursor: PrepTokenCursor,
+  order: ReadonlyMap<string, number>,
+  seen: Set<string>,
+  lastOrder: number
+): string | null {
+  const name = cursor.image();
+  const rank = name === undefined ? undefined : order.get(name);
+  if (name === undefined || rank === undefined) {
+    cursor.report('unexpectedJoinToken', `Unexpected join token "${cursor.peek()?.image ?? ''}"`);
+    return null;
   }
-  return clauses;
+  cursor.consume();
+  if (seen.has(name)) cursor.report('duplicateJoinClause', `Duplicate join clause: ${name}`);
+  if (rank < lastOrder) {
+    cursor.report('invalidJoinClauseOrder', `Join clause "${name}" is out of order`);
+  }
+  seen.add(name);
+  return name;
 }
 
-function findClause(clauses: Clause[], name: string): string | undefined {
-  return clauses.find((clause) => clause.name === name)?.value;
+function isClauseStart(cursor: PrepTokenCursor, order: ReadonlyMap<string, number>): boolean {
+  const image = cursor.image();
+  return image !== undefined && order.has(image);
 }
 
 function formatJoin(config: Record<string, unknown> | undefined): string | null {
@@ -455,6 +492,7 @@ function formatJoin(config: Record<string, unknown> | undefined): string | null 
     ];
     const by = formatConditions(asof?.by);
     if (by) parts.push(`by ${by}`);
+    if (typeof asof?.direction === 'string') parts.push(`direction ${asof.direction}`);
     if (typeof asof?.tolerance === 'string') parts.push(`tolerance ${asof.tolerance}`);
     appendCommonParts(parts, config);
     return parts.join(' ');
@@ -474,6 +512,10 @@ function appendCommonParts(parts: string[], config: Record<string, unknown> | un
   if (keep) parts.push(`keep ${keep}`);
   const conflict = formatConflict(config?.conflict);
   if (conflict) parts.push(conflict);
+  const expectation = config?.expect;
+  if (typeof expectation === 'string' && JOIN_EXPECTATIONS.includes(expectation as never)) {
+    parts.push(`expect ${expectation}`);
+  }
 }
 
 function formatConflict(value: unknown): string | null {

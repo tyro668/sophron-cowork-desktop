@@ -12,7 +12,14 @@ import { stripComment } from '../syntax/scanner';
 import { parseRegisteredOperator } from './registry';
 import { validateOperatorConfig } from '../../operator-schemas';
 
-export { parseFieldRef, toFieldName, toQualifiedName, unwrapFieldName } from '../syntax/fields';
+export {
+  parseFieldRef,
+  parseFieldRefExact,
+  formatFieldName,
+  toFieldName,
+  toQualifiedName,
+  unwrapFieldName,
+} from '../syntax/fields';
 
 const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   input_source: 'input_source',
@@ -365,11 +372,21 @@ function parseInputSource(
 }
 
 function collectInitialDiagnostics(input: string): PrepDiagnostic[] {
-  const diagnostics = tokenizePrepDsl(input).diagnostics;
-  const refs = input.match(/\[[^\]]+\]/g) ?? [];
-  for (const ref of refs) {
-    const inner = ref.slice(1, -1);
-    if (inner.includes('.') && !inner.startsWith('`')) {
+  const tokenized = tokenizePrepDsl(input);
+  const diagnostics = tokenized.diagnostics;
+  for (let index = 0; index < tokenized.tokens.length; index += 1) {
+    const open = tokenized.tokens[index];
+    if (open.tokenType.name !== 'LSquare') continue;
+    const closeIndex = tokenized.tokens.findIndex(
+      (token, candidateIndex) => candidateIndex > index && token.tokenType.name === 'RSquare'
+    );
+    if (closeIndex < 0) break;
+    const innerTokens = tokenized.tokens.slice(index + 1, closeIndex);
+    const isQuotedName =
+      innerTokens.length === 1 && innerTokens[0]?.tokenType.name === 'BacktickName';
+    if (!isQuotedName && innerTokens.some((token) => token.tokenType.name === 'Dot')) {
+      const end = (tokenized.tokens[closeIndex].endOffset ?? open.startOffset) + 1;
+      const ref = input.slice(open.startOffset, end);
       diagnostics.push({
         severity: 'error',
         code: 'invalidQualifiedField',
@@ -377,6 +394,7 @@ function collectInitialDiagnostics(input: string): PrepDiagnostic[] {
         params: { value: ref },
       });
     }
+    index = closeIndex;
   }
   return diagnostics;
 }

@@ -15,9 +15,13 @@ const contentBlockViewPath = path.resolve(
   'src/renderer/components/message/ContentBlockView.tsx'
 );
 const dataViewPath = path.resolve(process.cwd(), 'src/renderer/components/DataView.tsx');
+const inputTablesPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/data-view/input-tables.tsx'
+);
 const markdownPath = path.resolve(process.cwd(), 'src/renderer/components/MessageMarkdown.tsx');
 const preloadPath = path.resolve(process.cwd(), 'src/preload/index.ts');
-const mainIndexPath = path.resolve(process.cwd(), 'src/main/index.ts');
+const dataIpcDir = path.resolve(process.cwd(), 'src/main/data/ipc');
 
 describe('data resource chat links', () => {
   it('round-trips app data resource hrefs', () => {
@@ -31,9 +35,9 @@ describe('data resource chat links', () => {
       kind: 'task',
       id: 'task_1',
     });
-    expect(
-      normalizeDataResourceMarkdownLinks('[task](sophron://data/tasks/task_1)')
-    ).toBe('[task](#/data/tasks/task_1)');
+    expect(normalizeDataResourceMarkdownLinks('[task](sophron://data/tasks/task_1)')).toBe(
+      '[task](#/data/tasks/task_1)'
+    );
   });
 
   it('wires message markdown links to data navigation', () => {
@@ -73,20 +77,25 @@ describe('data resource chat links', () => {
   });
 
   it('keeps output table preview mapped to output-table copy', () => {
-    const source = fs.readFileSync(dataViewPath, 'utf8');
-    expect(source).toContain("tableKind={storedPreviewTarget?.kind ?? 'input'}");
-    expect(source).toContain("t('data.outputTables.previewTitle')");
-    expect(source).toContain("t('data.outputTables.previewEmpty')");
+    const dataView = fs.readFileSync(dataViewPath, 'utf8');
+    const inputTables = fs.readFileSync(inputTablesPath, 'utf8');
+    expect(dataView).toContain("tableKind={storedPreviewTarget?.kind ?? 'input'}");
+    expect(inputTables).toContain("t('data.outputTables.previewTitle')");
+    expect(inputTables).toContain("t('data.outputTables.previewEmpty')");
   });
 
   it('exposes direct resource lookup IPC methods', () => {
     const preload = fs.readFileSync(preloadPath, 'utf8');
-    const main = fs.readFileSync(mainIndexPath, 'utf8');
+    const mainHandlers = fs
+      .readdirSync(dataIpcDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+      .map((entry) => fs.readFileSync(path.join(dataIpcDir, entry.name), 'utf8'))
+      .join('\n');
     expect(preload).toContain("ipcRenderer.invoke('data.getTask', id)");
     expect(preload).toContain("ipcRenderer.invoke('data.getInputTable', id)");
     expect(preload).toContain("ipcRenderer.invoke('data.getOutputTable', id)");
-    expect(main).toContain("ipcMain.handle('data.getTask'");
-    expect(main).toContain("ipcMain.handle('data.getInputTable'");
-    expect(main).toContain("ipcMain.handle('data.getOutputTable'");
+    expect(mainHandlers).toContain("ipcMain.handle('data.getTask'");
+    expect(mainHandlers).toContain("ipcMain.handle('data.getInputTable'");
+    expect(mainHandlers).toContain("ipcMain.handle('data.getOutputTable'");
   });
 });

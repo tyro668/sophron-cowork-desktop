@@ -1,55 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { parseGeneratedWorkflowDslResponse } from '../src/main/data/workflow/schema-inferencer';
+import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
+
+function compileMissingValueWorkflow(
+  method: 'mean_fill' | 'median_fill' | 'mode_fill',
+  type: 'integer' | 'text'
+) {
+  return compileGeneratedJavaScriptWorkflow({
+    javascriptSource: `function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "source" });
+  const cleaned = workflow.step(input, "missing_value", {
+    config: {
+      strategy: "by_column",
+      rules: [{ column: "value", method: "${method}" }]
+    }
+  });
+  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`,
+    inputTableId: 'input-table',
+    outputTableName: 'result',
+    requirement: `Fill missing values using ${method}`,
+    columns: [{ name: 'value', type }],
+  });
+}
 
 describe('generated workflow missing-value schema inference', () => {
-  it.each(['mean', 'median'])('keeps an integer field after %s fill', (statistic) => {
-    const generated = parseGeneratedWorkflowDslResponse(
-      JSON.stringify({
-        workflowDsl: `
-            input source task as source
-            from source
-              | missing value [amount] fill ${statistic}
-              | output table "result" mode replace
-          `,
-        requiredColumns: [],
-      }),
-      [{ name: 'amount', type: 'integer' }]
-    );
-
-    expect(generated.expectedOutputSchema).toEqual([{ name: 'amount', type: 'integer' }]);
+  it.each(['mean_fill', 'median_fill'] as const)('keeps an integer field after %s', (method) => {
+    const generated = compileMissingValueWorkflow(method, 'integer');
+    expect(generated.expectedOutputSchema).toEqual([{ name: 'value', type: 'integer' }]);
   });
 
   it('keeps integer type for mode fill', () => {
-    const generated = parseGeneratedWorkflowDslResponse(
-      JSON.stringify({
-        workflowDsl: `
-          input source task as source
-          from source
-            | missing value [amount] fill mode
-            | output table "result" mode replace
-        `,
-        requiredColumns: [],
-      }),
-      [{ name: 'amount', type: 'integer' }]
-    );
-
-    expect(generated.expectedOutputSchema).toEqual([{ name: 'amount', type: 'integer' }]);
+    const generated = compileMissingValueWorkflow('mode_fill', 'integer');
+    expect(generated.expectedOutputSchema).toEqual([{ name: 'value', type: 'integer' }]);
   });
 
   it('rejects mean fill for a text field before execution', () => {
-    expect(() =>
-      parseGeneratedWorkflowDslResponse(
-        JSON.stringify({
-          workflowDsl: `
-            input source task as source
-            from source
-              | missing value [name] fill mean
-              | output table "result" mode replace
-          `,
-          requiredColumns: [],
-        }),
-        [{ name: 'name', type: 'text' }]
-      )
-    ).toThrow(/requires a numeric field/);
+    expect(() => compileMissingValueWorkflow('mean_fill', 'text')).toThrow(
+      /requires a numeric (?:field|column)/
+    );
   });
 });

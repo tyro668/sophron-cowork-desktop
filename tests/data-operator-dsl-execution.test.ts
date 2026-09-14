@@ -166,7 +166,7 @@ function main() {
           | map [dt] to [order_date], [rev] to [revenue]
           | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
           | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
-          | deduplicate by [order_id] keep last order by [updated_at] desc
+          | deduplicate by [order_id] keep first order by [updated_at] desc
           | derive [margin] = [profit] / nullif([revenue], 0)
           | filter [status] = "PAID" and [revenue] > 0
           | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
@@ -475,7 +475,10 @@ function main() {
     expect(completed.status).toBe('completed');
     const outputTable = completed.outputTable!;
 
-    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    const rows = await queryRows(
+      dbPath,
+      `SELECT id, val AT TIME ZONE 'UTC' AS val FROM ${outputTable} ORDER BY id`
+    );
     expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
     expect(String(rows[0].val)).toContain('02:00:00');
     expect(String(rows[1].val)).toContain('02:00:00');
@@ -514,7 +517,7 @@ function main() {
     const decPath = path.join(tempRoot, 'decimal18.csv');
     fs.writeFileSync(
       decPath,
-      ['id,val', '1,3.141592653589793238', '2,2.718281828459045235'].join('\n') + '\n',
+      ['id,val', '1,3.141592653589793238', '2,2.718281828459045235', '3,invalid'].join('\n') + '\n',
       'utf8'
     );
 

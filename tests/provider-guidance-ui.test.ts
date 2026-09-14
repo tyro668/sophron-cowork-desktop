@@ -6,9 +6,17 @@ const configModalPath = path.resolve(process.cwd(), 'src/renderer/components/Con
 // SettingsPanel was split — API settings (including provider guidance) live in settings/SettingsAPI.tsx
 const settingsPanelPath = path.resolve(process.cwd(), 'src/renderer/components/SettingsPanel.tsx');
 const settingsDir = path.resolve(process.cwd(), 'src/renderer/components/settings');
+
+function readSourceTree(directory: string): string[] {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? readSourceTree(entryPath) : [fs.readFileSync(entryPath, 'utf8')];
+  });
+}
+
 const settingsPanelContent = [
   fs.readFileSync(settingsPanelPath, 'utf8'),
-  ...fs.readdirSync(settingsDir).map((f) => fs.readFileSync(path.join(settingsDir, f), 'utf8')),
+  ...readSourceTree(settingsDir),
 ].join('\n');
 
 describe('provider guidance UI wiring', () => {

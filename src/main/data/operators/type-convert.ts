@@ -1,5 +1,8 @@
 import { requireDataFieldType } from '../../../shared/data-field-types';
-import { duckDbTypeForDataFieldType } from '../../../shared/data-field-types';
+import {
+  duckDbDecimalTypeForScale,
+  duckDbTypeForDataFieldType,
+} from '../../../shared/data-field-types';
 import { literalToSql, quoteIdentifier } from './utils';
 import { TypeConvertConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
@@ -49,7 +52,7 @@ function compileTypeConversionExpression(
   const failOnError = conversion.onError === 'fail';
   const storageType =
     targetType === 'decimal' && typeof conversion.scale === 'number'
-      ? `DECIMAL(18,${conversion.scale})`
+      ? duckDbDecimalTypeForScale(conversion.scale)
       : duckDbTypeForDataFieldType(targetType);
   if (conversion.format && (targetType === 'date' || targetType === 'datetime')) {
     const duckType = targetType === 'date' ? 'DATE' : 'TIMESTAMPTZ';

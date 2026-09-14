@@ -23,7 +23,7 @@ export function AskUserQuestionBlock({ block }: AskUserQuestionBlockProps) {
   }
 
   return (
-    <div className="rounded-xl border-2 border-accent/30 bg-gradient-to-br from-accent/5 to-transparent overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-accent/25 bg-surface">
       {/* Header */}
       <div className="px-4 py-3 bg-accent/10 border-b border-accent/20 flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">

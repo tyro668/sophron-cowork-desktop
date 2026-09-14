@@ -1,4 +1,5 @@
 import { Lexer, createToken } from 'chevrotain';
+import type { IToken } from 'chevrotain';
 import type { PrepDiagnostic } from './ast';
 
 export const WhiteSpace = createToken({
@@ -42,7 +43,10 @@ export const Slash = createToken({ name: 'Slash', pattern: /\// });
 export const Percent = createToken({ name: 'Percent', pattern: /%/ });
 export const Star = createToken({ name: 'Star', pattern: /\*/ });
 export const BacktickName = createToken({ name: 'BacktickName', pattern: /`(?:[^`\\]|\\.)*`/ });
-export const Identifier = createToken({ name: 'Identifier', pattern: /[^\s#[\](),.|=!<>+\-/*%"]+/ });
+export const Identifier = createToken({
+  name: 'Identifier',
+  pattern: /[^\s#[\](),.|=!<>+\-/*%"]+/,
+});
 
 export const prepDslTokens = [
   WhiteSpace,
@@ -73,9 +77,13 @@ export const prepDslTokens = [
 
 export const prepDslLexer = new Lexer(prepDslTokens);
 
-export function tokenizePrepDsl(input: string): { diagnostics: PrepDiagnostic[] } {
+export function tokenizePrepDsl(input: string): {
+  tokens: IToken[];
+  diagnostics: PrepDiagnostic[];
+} {
   const result = prepDslLexer.tokenize(input);
   return {
+    tokens: result.tokens,
     diagnostics: result.errors.map((error) => ({
       severity: 'error',
       message: error.message,

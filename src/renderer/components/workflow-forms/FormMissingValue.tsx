@@ -6,7 +6,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import type { OperatorFormProps } from './index';
 import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
 import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
+import { GlassRowList } from './shared/GlassRowList';
 import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -226,29 +226,26 @@ export default function FormMissingValue({
 
   const insertRule = useCallback(
     (index: number) => {
-      if (rules.length >= fieldCompletions.length) return;
       const next = [...rules];
       next.splice(index + 1, 0, createEmptyRule());
       handleRulesChange(next);
     },
-    [rules, fieldCompletions.length, handleRulesChange]
+    [rules, handleRulesChange]
   );
 
   const copyRule = useCallback(
     (index: number) => {
-      if (rules.length >= fieldCompletions.length) return;
       const source = rules[index];
       if (!source) return;
       const next = [...rules];
       next.splice(index + 1, 0, {
         ...source,
         id: createStableRowId(),
-        column: '',
         values: source.values ? [...source.values] : undefined,
       });
       handleRulesChange(next);
     },
-    [rules, fieldCompletions.length, handleRulesChange]
+    [rules, handleRulesChange]
   );
 
   const methodLabel = useCallback(
@@ -345,14 +342,6 @@ export default function FormMissingValue({
                       <GlassFieldSingleSelect
                         value={item.column}
                         options={fieldCompletions}
-                        disabledOptions={
-                          new Set(
-                            rules
-                              .filter((_, ruleIndex) => ruleIndex !== i)
-                              .map((rule) => rule.column)
-                              .filter(Boolean)
-                          )
-                        }
                         columnTypes={columnTypes}
                         onChange={(col) => {
                           const newType = columnTypes[col];
@@ -477,12 +466,6 @@ export default function FormMissingValue({
                 addTitle={tr('missingAddRow')}
                 copyTitle={tr('rowList.copyRow')}
                 removeTitle={tr('missingRemoveRow')}
-                canAct={(action: RowAction) => {
-                  if (action === 'add' || action === 'copy') {
-                    return rules.length < fieldCompletions.length;
-                  }
-                  return true;
-                }}
                 draggable
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}

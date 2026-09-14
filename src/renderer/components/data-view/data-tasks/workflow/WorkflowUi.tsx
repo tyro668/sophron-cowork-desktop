@@ -169,7 +169,7 @@ export function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowN
         selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
-      {node.type === 'join' || node.type === 'set_op' ? (
+      {node.type === 'input_source' ? null : node.type === 'join' || node.type === 'set_op' ? (
         <>
           <Handle
             id="left"
@@ -194,12 +194,14 @@ export function WorkflowOperatorNode({ data, selected }: NodeProps<WorkflowFlowN
           className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
         />
       )}
-      <Handle
-        id="output"
-        type="source"
-        position={Position.Right}
-        className="workflow-node-handle !right-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-      />
+      {node.type === 'output' ? null : (
+        <Handle
+          id="output"
+          type="source"
+          position={Position.Right}
+          className="workflow-node-handle !right-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+        />
+      )}
       <Icon className="h-3.5 w-3.5 flex-shrink-0" />
       <span className="min-w-0 truncate text-xs font-medium text-text-secondary">{node.label}</span>
     </div>

@@ -38,16 +38,12 @@ describe('compileMissingValueSql forward/backward fill', () => {
     expect(rows.map((row) => row.value)).toEqual(['B', 'B', 'B', null]);
   });
 
-  it('rejects repeated treatment of one field inside a single operator', () => {
-    expect(() =>
-      compileMissingValueSql('out', 'inp', columns, {
-        strategy: 'by_column',
-        rules: [
-          { column: 'value', method: 'forward_fill' },
-          { column: 'value', method: 'backward_fill' },
-        ],
-      })
-    ).toThrow(/can only be configured once/);
+  it('applies repeated treatment of one field in rule order', async () => {
+    const rows = await execute("(1, 'a', 10, 'N/A'), (2, 'b', 5, NULL)", [
+      { column: 'value', method: 'nullify_values', values: ['N/A'] },
+      { column: 'value', method: 'literal_fill', value: 'UNKNOWN' },
+    ]);
+    expect(rows.map((row) => row.value)).toEqual(['UNKNOWN', 'UNKNOWN']);
   });
 });
 

@@ -170,22 +170,16 @@ describe('FormMissingValue — config ↔ DSL', () => {
     expect(rules[2].method).toBe('mean_fill');
   });
 
-  it('reports duplicate fields in DSL instead of relying on implicit rule order', () => {
+  it('preserves sequential rules for the same field in DSL order', () => {
     const parsed = parsePrepOperatorDsl(
-      'missing value [status] fill forward, [status] fill backward',
+      'missing value [status] nullify values ("N/A"), [status] fill "UNKNOWN"',
       'missing_value'
     );
-    expect(parsed.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'duplicateMissingValueField',
-          severity: 'error',
-        }),
-      ])
-    );
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    expect(parsed.operator?.config.rules).toHaveLength(2);
   });
 
-  it('does not export a single operator containing duplicate fields', () => {
+  it('exports sequential rules for the same field', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'test',
@@ -198,10 +192,10 @@ describe('FormMissingValue — config ↔ DSL', () => {
           ],
         },
       })
-    ).toBe('');
+    ).toBe('missing value [status] fill forward, [status] fill backward');
   });
 
-  it('disables fields already selected by another graphical rule', async () => {
+  it('allows fields to be selected in more than one graphical rule', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile(
         new URL(
@@ -211,11 +205,10 @@ describe('FormMissingValue — config ↔ DSL', () => {
         'utf8'
       )
     );
-    expect(source).toContain('disabledOptions=');
-    expect(source).toContain('ruleIndex !== i');
+    expect(source).not.toContain('disabledOptions=');
   });
 
-  it('limits add and copy actions by the number of available fields', async () => {
+  it('allows adding sequential rules beyond the number of available fields', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile(
         new URL(
@@ -226,12 +219,11 @@ describe('FormMissingValue — config ↔ DSL', () => {
       )
     );
     expect(source).toContain("actions={['add', 'copy', 'remove']}");
-    expect(source).toContain('if (rules.length >= fieldCompletions.length) return;');
-    expect(source).toContain("action === 'add' || action === 'copy'");
-    expect(source).toContain('rules.length < fieldCompletions.length');
+    expect(source).not.toContain('if (rules.length >= fieldCompletions.length) return;');
+    expect(source).not.toContain('canAct=');
   });
 
-  it('copies processing settings into a new row without duplicating the selected field', async () => {
+  it('copies a processing rule so it can be adjusted as the next sequential step', async () => {
     const source = await import('node:fs/promises').then((fs) =>
       fs.readFile(
         new URL(
@@ -242,7 +234,6 @@ describe('FormMissingValue — config ↔ DSL', () => {
       )
     );
     expect(source).toContain('const copyRule = useCallback(');
-    expect(source).toContain("column: ''");
     expect(source).toContain('values: source.values ? [...source.values] : undefined');
     expect(source).toContain('onCopy={(i) => copyRule(i)}');
   });

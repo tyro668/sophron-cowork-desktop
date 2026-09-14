@@ -8,6 +8,8 @@ export {
   parsePrepDsl,
   parsePrepOperatorDsl,
   parseFieldRef,
+  parseFieldRefExact,
+  formatFieldName,
   toFieldName,
   toQualifiedName,
   unwrapFieldName,

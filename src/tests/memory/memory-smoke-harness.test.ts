@@ -93,6 +93,8 @@ class SmokeMemoryLLM implements MemoryLLMClientLike {
                   category: 'preferences',
                   key: 'response_language',
                   value: '中文',
+                  confidence: 0.98,
+                  source_type: 'explicit_user_statement',
                 },
               ]
             : [],
@@ -111,6 +113,7 @@ class SmokeMemoryLLM implements MemoryLLMClientLike {
             ? 'workspace A 的 gateway token rotation 经验'
             : 'workspace B 的其他经验',
           session_keywords: isWorkspaceA ? ['gateway', 'rotation'] : ['other'],
+          session_confidence: 0.9,
           chunks: [
             {
               summary: isWorkspaceA
@@ -121,6 +124,7 @@ class SmokeMemoryLLM implements MemoryLLMClientLike {
                 : '这条记录属于另一个 workspace。',
               keywords: isWorkspaceA ? ['gateway', 'rotation'] : ['other'],
               source_turns: [1, 2, 3, 4],
+              confidence: 0.9,
             },
           ],
         }),

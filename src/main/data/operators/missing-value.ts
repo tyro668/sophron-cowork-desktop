@@ -92,6 +92,8 @@ function compileNullifyValuesPredicate(column: string, values: unknown[]): strin
   for (const value of values) {
     if (value === null || value === undefined) {
       predicates.push(`${column} IS NULL`);
+    } else if (typeof value === 'string') {
+      predicates.push(`CAST(${column} AS VARCHAR) = ${literalToSql(value)}`);
     } else {
       predicates.push(`${column} = ${literalToSql(value)}`);
     }

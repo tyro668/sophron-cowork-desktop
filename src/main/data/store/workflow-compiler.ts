@@ -1,4 +1,6 @@
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../renderer/types';
+import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
+import { parseFieldRefExact } from '../../../shared/prep-dsl';
 import {
   JoinConfigSchema,
   MAX_PIVOT_VALUES_PER_FIELD,
@@ -124,10 +126,11 @@ export abstract class WorkflowCompiler extends DatasetStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    diagnostics: PrepDiagnostic[] = []
   ): Promise<string> {
     if (node.type === 'join') {
-      return this.compileJoinSql(node, outputRelation, relationByNode, edges);
+      return this.compileJoinSql(node, outputRelation, relationByNode, edges, diagnostics);
     }
     if (node.type === 'set_op') {
       return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
@@ -146,7 +149,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
       columnTypes.map((column) => [column.name, column.type])
     );
     if (!strategy) {
-      return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}`;
+      throw new Error(`Unsupported workflow operator type: ${node.type}`);
     }
     let compileConfig = node.config;
     if (node.type === 'pivot') {
@@ -235,7 +238,8 @@ export abstract class WorkflowCompiler extends DatasetStore {
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
-    edges: DataWorkflowEdge[]
+    edges: DataWorkflowEdge[],
+    diagnostics: PrepDiagnostic[] = []
   ): Promise<string> {
     const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
     const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
@@ -250,6 +254,13 @@ export abstract class WorkflowCompiler extends DatasetStore {
     const left = quoteIdentifier(leftRelation);
     const right = quoteIdentifier(rightRelation);
     const config = parseOperatorConfig(JoinConfigSchema, node.config);
+    await this.collectJoinCardinalityDiagnostics(
+      node,
+      config,
+      leftRelation,
+      rightRelation,
+      diagnostics
+    );
     const joinType = config.joinType;
     if (joinType === 'semi' || joinType === 'anti') {
       const existsOperator = joinType === 'semi' ? 'EXISTS' : 'NOT EXISTS';
@@ -284,6 +295,81 @@ export abstract class WorkflowCompiler extends DatasetStore {
       `;
   }
 
+  private async collectJoinCardinalityDiagnostics(
+    node: DataWorkflowNode,
+    config: ReturnType<typeof JoinConfigSchema.parse>,
+    leftRelation: string,
+    rightRelation: string,
+    diagnostics: PrepDiagnostic[]
+  ): Promise<void> {
+    const expectation = config.expect;
+    if (!expectation || expectation === 'many_to_many') return;
+
+    const leftKeys: string[] = [];
+    const rightKeys: string[] = [];
+    if (config.joinType === 'asof') {
+      const asof = config.asof;
+      if (asof?.leftTime) leftKeys.push(fieldNameOf(asof.leftTime));
+      if (asof?.rightTime) rightKeys.push(fieldNameOf(asof.rightTime));
+      for (const condition of asof?.by ?? []) {
+        leftKeys.push(fieldNameOf(condition.left));
+        rightKeys.push(fieldNameOf(condition.right));
+      }
+    } else {
+      for (const condition of config.conditions ?? []) {
+        leftKeys.push(fieldNameOf(condition.left));
+        rightKeys.push(fieldNameOf(condition.right));
+      }
+    }
+
+    const checks: Array<{ side: 'left' | 'right'; relation: string; keys: string[] }> = [];
+    if (expectation === 'one_to_one' || expectation === 'one_to_many') {
+      checks.push({ side: 'left', relation: leftRelation, keys: leftKeys });
+    }
+    if (expectation === 'one_to_one' || expectation === 'many_to_one') {
+      checks.push({ side: 'right', relation: rightRelation, keys: rightKeys });
+    }
+
+    for (const check of checks) {
+      if (!(await this.relationHasDuplicateJoinKeys(check.relation, check.keys))) continue;
+      diagnostics.push({
+        severity: 'warning',
+        code: 'joinCardinalityMismatch',
+        message: `Join expected ${expectation}, but the ${check.side} input has duplicate join keys`,
+        line: 0,
+        column: 0,
+        params: {
+          nodeId: node.id,
+          expectation,
+          side: check.side,
+          keys: check.keys.join(', '),
+        },
+      });
+    }
+  }
+
+  private async relationHasDuplicateJoinKeys(relation: string, keys: string[]): Promise<boolean> {
+    const normalizedKeys = [...new Set(keys.filter(Boolean))];
+    if (normalizedKeys.length === 0) {
+      const rows = await this.queryRows<{ hasDuplicates: boolean }>(
+        `SELECT COUNT(*) > 1 AS "hasDuplicates" FROM ${quoteIdentifier(relation)}`
+      );
+      return Boolean(rows[0]?.hasDuplicates);
+    }
+    const fields = normalizedKeys.map(quoteIdentifier);
+    const rows = await this.queryRows<{ hasDuplicates: boolean }>(`
+      SELECT EXISTS (
+        SELECT 1
+        FROM ${quoteIdentifier(relation)}
+        WHERE ${fields.map((field) => `${field} IS NOT NULL`).join(' AND ')}
+        GROUP BY ${fields.join(', ')}
+        HAVING COUNT(*) > 1
+        LIMIT 1
+      ) AS "hasDuplicates"
+    `);
+    return Boolean(rows[0]?.hasDuplicates);
+  }
+
   protected findIncomingNodeId(
     nodeId: string,
     edges: DataWorkflowEdge[],
@@ -295,4 +381,8 @@ export abstract class WorkflowCompiler extends DatasetStore {
       )?.sourceNodeId ?? null
     );
   }
+}
+
+function fieldNameOf(value: string): string {
+  return parseFieldRefExact(value)?.name ?? value.trim();
 }

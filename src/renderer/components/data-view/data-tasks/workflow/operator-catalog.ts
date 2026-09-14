@@ -148,7 +148,11 @@ export const OPERATOR_CATALOG: WorkflowOperatorCatalogItem[] = [
 ];
 
 export function getOperatorCatalog(type: DataWorkflowOperatorType): WorkflowOperatorCatalogItem {
-  return OPERATOR_CATALOG.find((item) => item.type === type) ?? OPERATOR_CATALOG[0];
+  const item = OPERATOR_CATALOG.find((candidate) => candidate.type === type);
+  if (!item) {
+    throw new Error(`Unsupported workflow operator type: ${type}`);
+  }
+  return item;
 }
 
 export function isWorkflowOperatorType(value: string): value is DataWorkflowOperatorType {

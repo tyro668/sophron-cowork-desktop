@@ -20,7 +20,7 @@ interface TodoWriteBlockProps {
 export const TodoWriteBlock = memo(function TodoWriteBlock({ block }: TodoWriteBlockProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
-  const todos: TodoItem[] = (block.input as Record<string, unknown>)?.todos as TodoItem[] || [];
+  const todos: TodoItem[] = ((block.input as Record<string, unknown>)?.todos as TodoItem[]) || [];
 
   const completedCount = todos.filter((item) => item.status === 'completed').length;
   const totalCount = todos.length;
@@ -90,7 +90,7 @@ export const TodoWriteBlock = memo(function TodoWriteBlock({ block }: TodoWriteB
       {/* Progress bar */}
       <div className="h-0.5 bg-surface-muted">
         <div
-          className="h-full bg-gradient-to-r from-accent to-accent-hover transition-all duration-500"
+          className="h-full bg-accent transition-all duration-500"
           style={{ width: `${progress}%` }}
         />
       </div>

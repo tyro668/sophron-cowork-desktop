@@ -51,7 +51,20 @@ type RemoteManagerInternals = {
   gateway?: { sendResponse(response: RemoteResponse): Promise<void> };
   responseBuffers: Map<
     string,
-    { texts: string[]; lastSent: number; toolSteps: string[]; retryCount: number }
+    {
+      items: Array<{
+        text: string;
+        channelInfo: {
+          channelType: string;
+          channelId: string;
+          replyTo?: string;
+          language?: string;
+        };
+      }>;
+      lastSent: number;
+      toolSteps: string[];
+      retryCount: number;
+    }
   >;
   sentMessageKeys: Map<string, Set<string>>;
   performResponseFlush(actualSessionId: string): Promise<boolean>;
@@ -262,12 +275,12 @@ describe('RemoteManager remote session lifecycle', () => {
     );
 
     expect(await internals.performResponseFlush('actual-session-1')).toBe(false);
-    expect(internals.responseBuffers.get('actual-session-1')?.texts).toEqual([
-      'important response',
-    ]);
+    expect(
+      internals.responseBuffers.get('actual-session-1')?.items.map((item) => item.text)
+    ).toEqual(['important response']);
 
     expect(await internals.performResponseFlush('actual-session-1')).toBe(true);
-    expect(internals.responseBuffers.get('actual-session-1')?.texts).toEqual([]);
+    expect(internals.responseBuffers.get('actual-session-1')?.items).toEqual([]);
 
     manager.clearRemoteSession('remote-session-1');
   });

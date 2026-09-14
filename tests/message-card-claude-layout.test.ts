@@ -13,17 +13,21 @@ function readAllMessageContent() {
   ].join('\n');
 }
 
-describe('MessageCard Claude-style layout', () => {
+describe('MessageCard layout', () => {
   it('uses a softer user bubble treatment', () => {
     const source = readAllMessageContent();
-    expect(source).toContain('message-user px-3.5 py-2.5 rounded-xl');
+    expect(source).toContain(
+      'message-user max-w-[min(44rem,88%)] min-w-0 space-y-2 break-words rounded-xl px-4 py-3'
+    );
     expect(source).not.toContain('rounded-[1.65rem]');
   });
 
   it('uses quieter rounded shells for tool and thinking cards', () => {
     const source = readAllMessageContent();
-    expect(source).toContain('rounded-xl border overflow-hidden');
-    expect(source).toContain('rounded-xl border border-border-subtle bg-background/45 overflow-hidden');
+    expect(source).toContain('overflow-hidden rounded-xl border shadow-card');
+    expect(source).toContain(
+      'overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card)] shadow-card'
+    );
     expect(source).not.toContain('rounded-2xl border overflow-hidden');
   });
 });

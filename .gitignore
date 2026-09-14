@@ -131,3 +131,7 @@ website/.vitepress/cache/
 !resources/social-preview.png
 !resources/icon.iconset/
 !resources/icon.iconset/*.png
+
+# Versioned UI governance and selected Product Design reference
+!AGENTS.md
+!design/ui/mint-workbench/reference-overview.png

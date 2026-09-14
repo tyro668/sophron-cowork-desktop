@@ -360,7 +360,7 @@ export function ContextPanel() {
                   ? 'bg-error'
                   : contextUsage.percentage > 80
                     ? 'bg-warning'
-                    : 'bg-gradient-to-r from-accent to-accent-hover'
+                    : 'bg-accent'
               }`}
               style={{ width: `${contextUsage.percentage}%` }}
             />

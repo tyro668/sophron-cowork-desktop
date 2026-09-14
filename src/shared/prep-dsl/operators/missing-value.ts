@@ -15,21 +15,8 @@ export const missingValueCodec: OperatorDslCodec = {
     if (body.startsWith('row ')) {
       return parseRowRule(command.text, body, command.line, diagnostics);
     }
-    const seenColumns = new Set<string>();
     const rules = splitTopLevel(body).flatMap((part) => {
       const rule = parseColumnRule(part, command.line, diagnostics);
-      const column = typeof rule?.column === 'string' ? rule.column.trim() : '';
-      if (column && seenColumns.has(column)) {
-        diagnostics.push({
-          ...createPrepDiagnostic(
-            'duplicateMissingValueField',
-            `Field "${column}" can only be configured once per missing-value operator`
-          ),
-          line: command.line,
-        });
-      } else if (column) {
-        seenColumns.add(column);
-      }
       return rule ? [rule] : [];
     });
     if (rules.length === 0) {
@@ -54,7 +41,7 @@ export const missingValueCodec: OperatorDslCodec = {
     const ruleConfigs = objectArray(config?.rules).filter(isCompleteMissingValueRule);
     if (ruleConfigs.length === 0) return null;
     const columns = ruleConfigs.map((rule) => String(rule.column ?? '').trim()).filter(Boolean);
-    if (columns.length !== ruleConfigs.length || new Set(columns).size !== columns.length) {
+    if (columns.length !== ruleConfigs.length) {
       return null;
     }
     const rules = ruleConfigs.map(formatRule);

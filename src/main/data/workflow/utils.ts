@@ -1,5 +1,8 @@
 import { DataCommandError } from '../data-command-types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import { unwrapFieldName } from '../../../shared/prep-dsl';
+import { tokenizeExpression } from '../../../shared/expression-tokenizer';
+import { extractJsonObjectText } from '../../../shared/structured-text';
 
 export function normalizeColumnType(type: string): string {
   return type.trim().toLowerCase();
@@ -14,17 +17,7 @@ export function normalizeRequiredName(name: string, message: string): string {
 }
 
 export function extractJsonObject(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) return trimmed;
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    const content = fenced[1].trim();
-    if (content.startsWith('{') && content.endsWith('}')) return content;
-  }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
-  throw new Error('No JSON object found in LLM response');
+  return extractJsonObjectText(text);
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,23 +64,25 @@ export function literalToDsl(value: unknown): string {
   return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
-const DSL_FIELD_REF_TOKEN_PATTERN = '\\[(?:`((?:[^`\\\\]|\\\\.)*)`|([\\p{L}_][\\p{L}\\p{N}_]*))\\]';
-const DSL_FIELD_REF_PATTERN = new RegExp(
-  `${DSL_FIELD_REF_TOKEN_PATTERN}(?:\\.${DSL_FIELD_REF_TOKEN_PATTERN})?`,
-  'gu'
-);
-const DSL_STRING_LITERAL_PATTERN = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g;
-
 export function extractFieldNamesFromExpression(expression: string): string[] {
-  const withoutStrings = expression.replace(DSL_STRING_LITERAL_PATTERN, '');
-  const names: string[] = [];
-  for (const match of withoutStrings.matchAll(DSL_FIELD_REF_PATTERN)) {
-    const first = match[1] ?? match[2] ?? '';
-    const second = match[3] ?? match[4] ?? '';
-    const name = unescapeDslBacktickField(second || first);
-    if (name) names.push(name);
+  try {
+    const tokens = tokenizeExpression(expression);
+    const names: string[] = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (token.type !== 'FieldRef') continue;
+      const qualifiedName =
+        tokens[index + 1]?.type === 'Dot' && tokens[index + 2]?.type === 'FieldRef'
+          ? tokens[index + 2].value
+          : token.value;
+      if (qualifiedName !== token.value) index += 2;
+      const name = unwrapFieldName(qualifiedName);
+      if (name) names.push(name);
+    }
+    return names;
+  } catch {
+    return [];
   }
-  return names;
 }
 
 export function unescapeDslBacktickField(name: string): string {
