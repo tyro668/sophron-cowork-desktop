@@ -83,7 +83,6 @@ export function WorkflowOutputConfig({
           mode: stringValue(config.mode, 'replace'),
           outputTableName: tableName,
         };
-        delete nextConfig.outputDatasetId;
         delete nextConfig.outputTableId;
         delete nextConfig.table;
         return nextConfig;

@@ -88,7 +88,7 @@ describe('operator UI foundations', () => {
     expect(html).toContain('flex-1 min-w-0 truncate');
   });
 
-  it.each(['FormAggregate.tsx', 'FormDeduplicate.tsx', 'FormUnpivot.tsx'])(
+  it.each(['FormAggregate.tsx', 'FormUnpivot.tsx'])(
     'keeps the %s split layout at a shrinkable 4:6 ratio',
     (fileName) => {
       const source = readFileSync(

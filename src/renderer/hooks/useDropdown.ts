@@ -41,12 +41,12 @@ export function computeDropdownPlacement(rect: DOMRect): DropdownPlacement {
   };
 }
 
-export function useDropdown() {
+export function useDropdown<T extends HTMLElement = HTMLButtonElement>() {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<DropdownPosition | null>(null);
   const [maxHeight, setMaxHeight] = useState(MAX_PANEL_HEIGHT);
 
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<T>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => {

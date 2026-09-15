@@ -745,14 +745,14 @@
           "sortIncompleteField": "请为每个排序项选择字段，或删除空白行"
         },
         "deduplicate": {
-          "first": "第一条",
-          "last": "最后一条",
           "dedupIncompleteField": "请至少选择一个去重字段，并删除未完成的排序行",
-          "dedupKeepStrategy": "保留策略",
-          "dedupDimensionsLabel": "去重字段",
-          "dedupDimensionsHint": "选择用于判断重复记录的字段",
-          "dedupConfigLabel": "保留与排序",
-          "dedupConfigHint": "选择保留哪条重复，并指定排序"
+          "dedupBasis": "去重依据",
+          "dedupByFields": "指定字段",
+          "dedupWholeRow": "整行",
+          "dedupDuplicates": "重复记录",
+          "dedupKeepOne": "每组保留一条",
+          "dedupKeepLastOne": "每组保留最后一条",
+          "dedupKeepWhich": "保留哪条"
         },
         "missingValue": {
           "rowProcess": "按行处理",

@@ -22,6 +22,7 @@ import { WorkflowInputSourceConfig } from './WorkflowInputSourceConfig';
 import { WorkflowOutputConfig } from './WorkflowOutputConfig';
 import { WorkflowNodeDataPreview, WorkflowSummaryPanel } from './WorkflowUi';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
+import { getWorkflowFieldSourceCandidates } from './workflow-field-candidates';
 import type { WorkflowInspectorTab } from './workflow-model';
 
 export function WorkflowInspector({
@@ -76,6 +77,10 @@ export function WorkflowInspector({
     () => getWorkflowRightSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
   );
+  const operatorFieldSourceCandidates = useMemo(
+    () => getWorkflowFieldSourceCandidates(operatorFieldSourceNode, workflowNodes, workflowEdges),
+    [operatorFieldSourceNode, workflowEdges, workflowNodes]
+  );
   const editorCompletionLabels = useMemo(
     () => ({
       keywords: t('data.workflow.completionGroups.keywords'),
@@ -111,27 +116,36 @@ export function WorkflowInspector({
     const requestSeq = operatorFieldsRequestSeq.current + 1;
     operatorFieldsRequestSeq.current = requestSeq;
 
-    if (!node || !usesOperatorDsl || !operatorFieldSourceNode) return;
-    if (!window.electronAPI?.data?.getWorkflowNodeColumns) return;
+    if (!node || !usesOperatorDsl || operatorFieldSourceCandidates.length === 0) {
+      setOperatorFieldCompletions([]);
+      return;
+    }
+    const getColumns = window.electronAPI?.data?.getWorkflowNodeColumns;
+    if (!getColumns) return;
 
-    void window.electronAPI.data
-      .getWorkflowNodeColumns({
-        taskId: operatorFieldSourceNode.taskId,
-        nodeId: operatorFieldSourceNode.id,
-        nodeType: operatorFieldSourceNode.type,
-        nodeConfig: operatorFieldSourceNode.config,
-      })
-      .then((columns) => {
-        if (requestSeq === operatorFieldsRequestSeq.current) {
-          setOperatorFieldCompletions(columns);
+    void (async () => {
+      for (const candidate of operatorFieldSourceCandidates) {
+        try {
+          const columns = await getColumns({
+            taskId: candidate.taskId,
+            nodeId: candidate.id,
+            nodeType: candidate.type,
+            nodeConfig: candidate.config,
+          });
+          if (requestSeq !== operatorFieldsRequestSeq.current) return;
+          if (columns.length > 0) {
+            setOperatorFieldCompletions(columns);
+            return;
+          }
+        } catch {
+          if (requestSeq !== operatorFieldsRequestSeq.current) return;
         }
-      })
-      .catch(() => {
-        if (requestSeq === operatorFieldsRequestSeq.current) {
-          setOperatorFieldCompletions([]);
-        }
-      });
-  }, [node, operatorFieldSourceNode, usesOperatorDsl]);
+      }
+      if (requestSeq === operatorFieldsRequestSeq.current) {
+        setOperatorFieldCompletions([]);
+      }
+    })();
+  }, [node, operatorFieldSourceCandidates, usesOperatorDsl]);
 
   useEffect(() => {
     if (!operatorDslStatus) return undefined;

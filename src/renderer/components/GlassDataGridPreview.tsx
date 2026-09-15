@@ -69,7 +69,7 @@ export function GlassDataGridPreview({
     () => buildGridColumns(columns, rows, columnTypeByName),
     [columns, rows, columnTypeByName]
   );
-  const hasData = columns.length > 0 && rows.length > 0;
+  const hasColumns = columns.length > 0;
   const getCellContent = useMemo(() => {
     return ([col, row]: Item): GridCell => {
       const column = columns[col];
@@ -88,7 +88,7 @@ export function GlassDataGridPreview({
           <PreviewState label={labels.loading} kind="loading" />
         ) : error ? (
           <PreviewState label={error} kind="error" />
-        ) : !hasData ? (
+        ) : !hasColumns ? (
           <PreviewState label={labels.empty} kind="empty" />
         ) : (
           <DataEditor

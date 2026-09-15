@@ -745,14 +745,14 @@
           "sortIncompleteField": "Select a field for every sort row or remove blank rows"
         },
         "deduplicate": {
-          "first": "First",
-          "last": "Last",
           "dedupIncompleteField": "Select at least one dedup field and remove incomplete sort rows",
-          "dedupKeepStrategy": "Keep strategy",
-          "dedupDimensionsLabel": "Deduplication fields",
-          "dedupDimensionsHint": "Select the fields used to identify duplicate rows",
-          "dedupConfigLabel": "Retention and sorting",
-          "dedupConfigHint": "Choose which duplicate to keep and how to sort"
+          "dedupBasis": "Deduplicate by",
+          "dedupByFields": "Selected fields",
+          "dedupWholeRow": "Entire row",
+          "dedupDuplicates": "Duplicates",
+          "dedupKeepOne": "Keep one per group",
+          "dedupKeepLastOne": "Keep last per group",
+          "dedupKeepWhich": "Which to keep"
         },
         "missingValue": {
           "rowProcess": "Row process",

@@ -92,4 +92,26 @@ describe('runPiAiOneShot', () => {
       maxTokens: 1234,
     });
   });
+
+  it('drops temperature for openai-codex models (ChatGPT backend rejects it)', async () => {
+    await runPiAiOneShot(
+      'hello',
+      'system',
+      {
+        ...makeConfig(),
+        provider: 'openai-codex',
+        customProtocol: undefined,
+        baseUrl: undefined,
+        model: 'gpt-5.1-codex',
+      },
+      { temperature: 0.2, maxTokens: 1234 }
+    );
+
+    expect(completeSimpleMock).toHaveBeenCalledTimes(1);
+    const passedModel = completeSimpleMock.mock.calls[0][0];
+    expect(passedModel.api).toBe('openai-codex-responses');
+    const passedOptions = completeSimpleMock.mock.calls[0][2];
+    expect(passedOptions).not.toHaveProperty('temperature');
+    expect(passedOptions).toMatchObject({ maxTokens: 1234 });
+  });
 });

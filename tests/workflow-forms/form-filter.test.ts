@@ -1448,11 +1448,8 @@ describe('GlassValueInput — single-value input survives remount', () => {
   });
 
   it('keeps multi-value tags on one line and collapses overflow into a circled count badge', () => {
-    expect(glassValueInputSource).toContain('OVERFLOW_BADGE_CLASSES');
-    expect(glassValueInputSource).toContain('rounded-full');
-    expect(glassValueInputSource).toContain('visibleTagCount');
-    expect(glassValueInputSource).toContain('ResizeObserver');
-    expect(glassValueInputSource).toContain('overflow-hidden');
+    expect(glassValueInputSource).toContain('GlassOverflowTagList');
+    expect(glassValueInputSource).toContain('trailingReserve={64}');
     expect(glassValueInputSource).not.toContain('flex-wrap');
   });
 

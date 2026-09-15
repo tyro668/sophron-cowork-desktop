@@ -18,6 +18,9 @@ export interface GlassFieldMultiSelectProps {
   variant?: 'flat' | 'glass';
   className?: string;
   searchBordered?: boolean;
+  /** Strip the outer rounded border/background so the list can sit inside an
+   *  already-framed container (e.g. a dropdown popup). */
+  borderless?: boolean;
   itemExtras?: (column: string) => ReactNode;
   columnLabel?: (column: string) => string;
 }
@@ -32,6 +35,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
   variant = 'flat',
   className = '',
   searchBordered = false,
+  borderless = false,
   itemExtras,
   columnLabel,
 }: GlassFieldMultiSelectProps) {
@@ -137,8 +141,14 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
 
   return (
     <div
-      className={`flex min-h-0 flex-col rounded-lg border ${
-        isGlass ? 'border-border-subtle bg-background/48' : 'border-border-muted bg-background/60'
+      className={`flex min-h-0 flex-col ${
+        borderless
+          ? ''
+          : `rounded-lg border ${
+              isGlass
+                ? 'border-border-subtle bg-background/48'
+                : 'border-border-muted bg-background/60'
+            }`
       } ${className}`}
     >
       <div

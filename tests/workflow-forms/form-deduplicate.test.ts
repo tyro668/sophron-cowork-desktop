@@ -212,69 +212,74 @@ describe('FormDeduplicate — 组件结构检查', () => {
     'utf-8'
   );
 
-  it('包含左右双栏布局', () => {
-    expect(src).toContain('flex-[4]');
-    expect(src).toContain('flex-[6]');
+  it('左侧标签式表单布局', () => {
+    expect(src).toContain('GlassFormLabel');
+    expect(src).toContain('flex-col');
   });
 
-  it('左栏使用简洁字段选择组件', () => {
-    expect(src).toContain('GlassFieldCompactSelect');
-    expect(src).not.toContain('GlassTagBar');
+  it('去重依据使用分段控件（指定字段/整行）', () => {
+    expect(src).toContain('GlassSegmentedControl');
+    expect(src).toContain("'by_columns'");
+    expect(src).toContain("'all_columns'");
   });
 
-  it('保留策略使用 GlassRadioSelect', () => {
-    expect(src).toContain('GlassRadioSelect');
-    expect(src).toContain('keep');
-  });
-
-  it('排序区域使用共享 SortKeysEditor（含拖拽、NULL 位置、行级增删）', () => {
-    expect(src).toContain('SortKeysEditor');
-    // 能力断言转移到共享组件源码
-    const editorSrc = readFileSync(
-      resolve(__dirname, '../../src/renderer/components/workflow-forms/shared/SortKeysEditor.tsx'),
-      'utf-8'
-    );
-    expect(editorSrc).toContain('draggable');
-    expect(editorSrc).toContain('GlassOptionSingleSelect');
-    expect(editorSrc).toContain("value: 'first'");
-    expect(editorSrc).toContain("value: 'last'");
-    expect(editorSrc).toContain('addKeyAfter');
-    expect(editorSrc).toContain('removeKey');
-    expect(editorSrc).toContain('GlassDirectionToggle');
-  });
-
-  it('字段列表支持搜索和类型显示', () => {
-    expect(src).toContain('GlassFieldCompactSelect');
+  it('去重字段使用下拉多选组件', () => {
+    expect(src).toContain('GlassFieldMultiDropdown');
     expect(src).toContain('columnTypes');
   });
 
-  it('字段选择支持全选/半选', () => {
-    expect(src).toContain('GlassFieldCompactSelect');
-    // 全选/半选由 GlassFieldCompactSelect 内部处理
-    const selectorSrc = readFileSync(
+  it('下拉触发框复用筛选值标签，超出一行时显示剩余数量', () => {
+    const dropdownSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldCompactSelect.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiDropdown.tsx'
       ),
       'utf-8'
     );
-    expect(selectorSrc).toContain('selectAll');
-    expect(selectorSrc).toContain('indeterminate');
+    expect(dropdownSrc).toContain('GlassOverflowTagList');
+    expect(dropdownSrc).toContain('values={selected}');
+    expect(dropdownSrc).toContain('variant="field"');
   });
 
-  it('保留策略使用 first/last 两个选项', () => {
+  it('去重字段标签的左侧、顶部和底部使用相同的留白', () => {
+    const dropdownSrc = readFileSync(
+      resolve(
+        __dirname,
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiDropdown.tsx'
+      ),
+      'utf-8'
+    );
+    expect(dropdownSrc).toContain('py-[5px] pl-[5px] pr-2');
+  });
+
+  it('字段选择支持全选/半选', () => {
+    expect(src).toContain('GlassFieldMultiDropdown');
+    // 全选/半选由下拉面板内的 GlassFieldMultiSelect 处理
+    const multiSrc = readFileSync(
+      resolve(
+        __dirname,
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiSelect.tsx'
+      ),
+      'utf-8'
+    );
+    expect(multiSrc).toContain('selectAll');
+    expect(multiSrc).toContain('indeterminate');
+  });
+
+  it('重复记录使用 first/last 两个选项', () => {
+    expect(src).toContain('GlassOptionSingleSelect');
     expect(src).toContain("'first'");
     expect(src).toContain("'last'");
   });
 
-  it('排序默认为升序', () => {
-    // GlassDirectionToggle 与升序默认值都在共享 SortKeysEditor 中
-    const editorSrc = readFileSync(
-      resolve(__dirname, '../../src/renderer/components/workflow-forms/shared/SortKeysEditor.tsx'),
-      'utf-8'
-    );
-    expect(editorSrc).toContain('GlassDirectionToggle');
-    expect(editorSrc).toContain("direction: 'asc'");
+  it('保留哪条使用字段下拉 + 方向下拉', () => {
+    expect(src).toContain('GlassFieldSingleSelect');
+    expect(src).toContain("'asc'");
+    expect(src).toContain("'desc'");
+  });
+
+  it('排序方向默认升序', () => {
+    expect(src).toContain("?? 'asc'");
   });
 
   it('默认保留策略为 first', () => {

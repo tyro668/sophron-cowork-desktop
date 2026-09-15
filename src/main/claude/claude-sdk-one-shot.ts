@@ -284,6 +284,10 @@ export async function runPiAiOneShot(
     resolvedModel.api
   );
   const { onTextDelta, onThinkingDelta, ...requestOptions } = options ?? {};
+  // The ChatGPT Codex backend rejects sampling params: {"detail":"Unsupported parameter: temperature"}.
+  if (resolvedModel.api === 'openai-codex-responses') {
+    delete requestOptions.temperature;
+  }
   const context = {
     systemPrompt,
     messages: [userMsg],

@@ -801,34 +801,54 @@ describe('DuckDB data task store', () => {
   it('creates an associated output table when saving an automatic output node', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
+    const sourcePath = path.join(tempRoot, 'sales.csv');
+    fs.writeFileSync(sourcePath, 'sale_id,amount\n1,20\n2,30\n', 'utf8');
     const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
       now: () => 1_780_000_000_000,
     });
     stores.push(store);
 
-    const task = await store.createTask({ name: 'Auto publish' });
+    const task = await store.createTask({ name: 'Auto publish', sourcePath });
+    const parsed = parsePrepDsl(`
+      input source task as sales
+
+      from sales
+        | output table "temporary_name" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     const saved = await store.saveTaskWorkflow(task.id, {
-      nodes: [
-        {
-          id: 'node_output',
-          type: 'output',
-          label: '输出',
-          x: 180,
-          y: 120,
-          config: {
-            outputStrategy: 'auto',
-            outputTableName: 'Sales curated output',
-          },
-        },
-      ],
-      edges: [],
+      nodes: compiled.nodes.map((node) =>
+        node.type === 'output'
+          ? {
+              ...node,
+              config: {
+                ...node.config,
+                outputStrategy: 'auto',
+                outputTableName: 'Sales curated output',
+              },
+            }
+          : node
+      ),
+      edges: compiled.edges,
     });
 
-    const outputNode = saved.nodes.find((node) => node.id.endsWith('__node_output'));
-    expect(outputNode?.config.outputStrategy).toBe('existing');
+    const outputNode = saved.nodes.find((node) => node.type === 'output');
+    expect(outputNode?.config.outputStrategy).toBe('auto');
     expect(outputNode?.config.outputTableName).toBe('Sales curated output');
     expect(outputNode?.config.outputDatasetId).toEqual(expect.any(String));
     expect(outputNode?.config.table).toEqual(expect.stringMatching(/^output_/));
+
+    const completed = await store.runTask(task.id);
+    expect(completed.status).toBe('completed');
+    expect(completed.outputTable).toBe(outputNode?.config.table);
+    expect(completed.rowCount).toBe(2);
+
+    const workflowAfterRun = await store.getTaskWorkflow(task.id);
+    const outputNodeAfterRun = workflowAfterRun.nodes.find((node) => node.type === 'output');
+    expect(outputNodeAfterRun?.config.outputStrategy).toBe('auto');
+    expect(outputNodeAfterRun?.config.outputTableName).toBe('Sales curated output');
+    expect(outputNodeAfterRun?.config.outputDatasetId).toBe(outputNode?.config.outputDatasetId);
 
     const dashboard = await store.getDashboard({
       includeTasks: false,
@@ -839,23 +859,36 @@ describe('DuckDB data task store', () => {
     expect(dashboard.outputTables[0]?.name).toBe('Sales curated output');
     expect(dashboard.outputTables[0]?.relatedTaskNames).toEqual(['Auto publish']);
 
-    await store.saveTaskWorkflow(task.id, {
-      nodes: saved.nodes.map((node) => ({
+    const renamedNodes = saved.nodes.map((node) => {
+      const config = { ...node.config };
+      if (node.type === 'output') {
+        config.outputTableName = 'Sales final output';
+        delete config.table;
+      }
+      return {
         id: node.id,
         type: node.type,
         label: node.label,
         x: node.x,
         y: node.y,
-        config: node.config,
-      })),
-      edges: [],
+        config,
+      };
     });
+    const resaved = await store.saveTaskWorkflow(task.id, {
+      nodes: renamedNodes,
+      edges: saved.edges,
+    });
+    const resavedOutputNode = resaved.nodes.find((node) => node.type === 'output');
+    expect(resavedOutputNode?.config.outputStrategy).toBe('auto');
+    expect(resavedOutputNode?.config.outputTableName).toBe('Sales final output');
+    expect(resavedOutputNode?.config.outputDatasetId).toBe(outputNode?.config.outputDatasetId);
     const dashboardAfterResave = await store.getDashboard({
       includeTasks: false,
       includeDatasets: false,
       includeOutputTables: true,
     });
     expect(dashboardAfterResave.outputTables).toHaveLength(1);
+    expect(dashboardAfterResave.outputTables[0]?.name).toBe('Sales final output');
   });
 
   it('runs a saved DSL workflow with a left join', async () => {

@@ -876,7 +876,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
           ...node,
           config: {
             ...config,
-            outputStrategy: 'existing',
+            outputStrategy: 'auto',
             outputTableName: outputTable.name,
             outputDatasetId: outputTable.id,
             table: outputTable.tableName,
