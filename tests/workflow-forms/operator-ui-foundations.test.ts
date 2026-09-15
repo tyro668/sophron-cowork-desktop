@@ -89,16 +89,18 @@ describe('operator UI foundations', () => {
   });
 
   it.each(['FormAggregate.tsx', 'FormUnpivot.tsx'])(
-    'keeps the %s split layout at a shrinkable 4:6 ratio',
+    'renders %s as compact label rows with a scrollable container',
     (fileName) => {
       const source = readFileSync(
         resolve(__dirname, '../../src/renderer/components/workflow-forms', fileName),
         'utf8'
       );
 
-      expect(source).toContain('flex-[4]');
-      expect(source).toContain('flex-[6]');
-      expect(source.match(/min-w-0 w-0/g)).toHaveLength(2);
+      expect(source).toContain('GlassFormLabel');
+      expect(source).toContain('GlassFieldMultiDropdown');
+      expect(source).toContain(
+        'scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3'
+      );
     }
   );
 });

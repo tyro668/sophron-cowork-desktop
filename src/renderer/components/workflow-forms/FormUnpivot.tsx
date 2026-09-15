@@ -1,7 +1,7 @@
-import { useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { OperatorFormProps } from './index';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
+import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -15,112 +15,90 @@ export default function FormUnpivot({
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('unpivot');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
+  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
 
-  const columns = useMemo(() => {
-    const raw = (node.config.columns as string[]) ?? [];
-    if (node.config?.mode === 'except') {
-      return fieldCompletions.filter((c) => !raw.includes(c));
-    }
-    return raw;
-  }, [node.config?.columns, node.config?.mode, fieldCompletions]);
-  const nameColumn = String(node.config.nameColumn ?? '');
-  const valueColumn = String(node.config.valueColumn ?? '');
-  const includeNulls = Boolean(node.config.includeNulls ?? false);
+  const mode = (node.config.mode as string) ?? 'include';
+  const nameColumn = (node.config.nameColumn as string) ?? '';
+  const valueColumn = (node.config.valueColumn as string) ?? '';
+  const includeNulls = !!node.config.includeNulls;
+  const rawColumns = useMemo(() => (node.config.columns as string[]) ?? [], [node.config.columns]);
 
-  const handleColumnsSelect = useCallback(
-    (next: string[]) => {
-      updateConfig((cfg) => ({
-        ...cfg,
-        mode: 'include',
-        columns: next.length > 0 ? next : undefined,
-      }));
-    },
-    [updateConfig]
+  const columns = useMemo(
+    () =>
+      mode === 'except'
+        ? fieldCompletions.filter((c) => !rawColumns.includes(c))
+        : rawColumns.filter((c) => fieldCompletions.includes(c)),
+    [mode, rawColumns, fieldCompletions]
   );
 
+  const [localNameCol, setLocalNameCol] = useState(nameColumn);
+  const [localValueCol, setLocalValueCol] = useState(valueColumn);
+
+  useEffect(() => {
+    setLocalNameCol(nameColumn);
+    setLocalValueCol(valueColumn);
+  }, [nameColumn, valueColumn]);
+
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 w-full flex-1 gap-2.5">
-        {/* ═══ 左列: 列展开 ═══ */}
-        <section className="operator-section flex-[4] content-start flex min-h-0 min-w-0 w-0 flex-col">
-          <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
-            <div className="mb-3 px-0.5 pt-1">
-              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-accent" />
-                {tr('unpivotDimensionsLabel')}
-              </div>
-              <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                {tr('unpivotDimensionsHint')}
-              </p>
-            </div>
-            <GlassFieldCompactSelect
-              columns={fieldCompletions}
-              selected={columns}
-              onChange={handleColumnsSelect}
-              columnTypes={columnTypes}
-              maxHeight="none"
-            />
-          </div>
-        </section>
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('unpivotDimensionsLabel')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          <GlassFieldMultiDropdown
+            columns={fieldCompletions}
+            selected={columns}
+            onChange={(selected) =>
+              updateConfig((cfg) => ({
+                ...cfg,
+                mode: 'include',
+                columns: selected,
+              }))
+            }
+            columnTypes={columnTypes}
+            placeholder={tr('common.selectColumns')}
+            maxHeight="300px"
+          />
+        </div>
+      </div>
 
-        {/* ═══ 右列: 输出配置 ═══ */}
-        <section className="operator-section flex-[6] content-start flex min-h-0 min-w-0 w-0 flex-col">
-          <div className="scrollbar-hover flex-1 min-h-0 overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 pb-3 grid content-start gap-3">
-            <div className="px-0.5 pt-1">
-              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-accent" />
-                {tr('unpivotOutputLabel')}
-              </div>
-              <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                {tr('unpivotOutputHint')}
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('unpivotNameCol')}</GlassFormLabel>
-                <GlassFormTextInput
-                  value={nameColumn}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, nameColumn: v || undefined }))}
-                  placeholder={tr('unpivotNameColPlaceholder')}
-                  className="h-8 w-60 shrink-0 text-[13px]"
-                />
-              </div>
-              <div className="flex items-center gap-4">
-                <GlassFormLabel>{tr('unpivotValueCol')}</GlassFormLabel>
-                <GlassFormTextInput
-                  value={valueColumn}
-                  onChange={(v) => updateConfig((cfg) => ({ ...cfg, valueColumn: v || undefined }))}
-                  placeholder={tr('unpivotValueColPlaceholder')}
-                  className="h-8 w-60 shrink-0 text-[13px]"
-                />
-              </div>
-            </div>
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('unpivotNameCol')}</GlassFormLabel>
+        <GlassFormTextInput
+          value={localNameCol}
+          onChange={(v) => {
+            setLocalNameCol(v);
+            updateConfig((cfg) => ({ ...cfg, nameColumn: v }));
+          }}
+          placeholder={tr('unpivotNameColPlaceholder')}
+          className="h-9 w-60 rounded-md px-2"
+        />
+      </div>
 
-            <div className="flex items-center gap-4">
-              <GlassFormLabel>{tr('unpivotNullsLabel')}</GlassFormLabel>
-              <label
-                className="flex cursor-pointer items-center gap-2 text-[13px] text-text-secondary"
-                title={tr('unpivotIncludeNullsTip')}
-              >
-                <input
-                  type="checkbox"
-                  checked={includeNulls}
-                  onChange={(e) => {
-                    const v = e.target.checked;
-                    updateConfig((cfg) => ({
-                      ...cfg,
-                      includeNulls: v || undefined,
-                    }));
-                  }}
-                  className="h-3.5 w-3.5 rounded border-border-muted accent-accent"
-                />
-                {tr('unpivotIncludeNulls')}
-              </label>
-            </div>
-          </div>
-        </section>
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('unpivotValueCol')}</GlassFormLabel>
+        <GlassFormTextInput
+          value={localValueCol}
+          onChange={(v) => {
+            setLocalValueCol(v);
+            updateConfig((cfg) => ({ ...cfg, valueColumn: v }));
+          }}
+          placeholder={tr('unpivotValueColPlaceholder')}
+          className="h-9 w-60 rounded-md px-2"
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('unpivotNullsLabel')}</GlassFormLabel>
+        <label className="flex h-9 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
+          <input
+            type="checkbox"
+            checked={includeNulls}
+            onChange={(e) => updateConfig((cfg) => ({ ...cfg, includeNulls: e.target.checked }))}
+            className="h-3.5 w-3.5 accent-accent"
+          />
+          {tr('unpivotIncludeNulls')}
+        </label>
       </div>
     </div>
   );

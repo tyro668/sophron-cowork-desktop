@@ -3,8 +3,10 @@ import type { OperatorFormProps } from './index';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
+import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -16,7 +18,7 @@ import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { ChevronDown, GripVertical, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   normalizePivotAxes,
   togglePivotAxisValue,
@@ -103,14 +105,7 @@ export default function FormPivot({
     [updateConfig]
   );
 
-  const removeGroupBy = useCallback(
-    (col: string) => handleGroupByChange(groupBy.filter((c) => c !== col)),
-    [handleGroupByChange, groupBy]
-  );
-
   const [expandedAxisIndex, setExpandedAxisIndex] = useState<number | null>(null);
-  const [groupByOpen, setGroupByOpen] = useState(false);
-  const clearGroupBy = useCallback(() => handleGroupByChange([]), [handleGroupByChange]);
 
   // ── 多指标管理 ──
 
@@ -137,6 +132,12 @@ export default function FormPivot({
     handleUsingChange(removeRowAt(using, index));
   }
 
+  function copyMetric(index: number) {
+    if (!canAppendRow(using.length, MAX_USING_COUNT)) return;
+    const source = using[index];
+    handleUsingChange(insertRowAfter(using, index, { ...source, id: createMetricId(), alias: '' }));
+  }
+
   const fnGroups = useMemo(
     () => [
       {
@@ -160,190 +161,132 @@ export default function FormPivot({
   } = useDragReorder(using, handleUsingChange);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 gap-2.5">
-        {/* ═══ 左块: 透视字段与分组字段 ═══ */}
-        <section className="operator-section scrollbar-hover flex min-h-0 min-w-0 flex-[4] content-start flex-col overflow-y-auto">
-          <div className="grid min-w-0 content-start gap-3 px-3 pb-3">
-            <div className="px-0.5 pt-1">
-              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-accent" />
-                {tr('pivotDimensionsLabel')}
-              </div>
-              <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                {tr('pivotDimensionsHint')}
-              </p>
-            </div>
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-start gap-2">
+        <GlassFormLabel>{tr('pivotFieldsLabel')}</GlassFormLabel>
+        <div className="grid min-w-0 flex-1 gap-2">
+          {axes.map((axis, index) => (
+            <PivotAxisCard
+              key={`${axis.field}-${index}`}
+              axis={axis}
+              expanded={expandedAxisIndex === index}
+              fieldCompletions={fieldCompletions}
+              columnTypes={columnTypes}
+              disabledFields={new Set([...usedFields].filter((field) => field !== axis.field))}
+              taskId={taskId}
+              sourceNode={sourceNode}
+              tr={tr}
+              onFieldChange={(field) => handleAxisFieldChange(index, field)}
+              onValuesChange={(values) => updateAxis(index, { values })}
+              onCustomValueAdd={(values, customValues) =>
+                updateAxis(index, { values, customValues })
+              }
+              onCustomValueRemove={(display) => {
+                const next = removePivotCustomValue(axis.values, axis.customValues, display);
+                updateAxis(index, next);
+              }}
+              onToggle={() => setExpandedAxisIndex((current) => (current === index ? null : index))}
+              onRemove={() => {
+                removeAxis(index);
+                setExpandedAxisIndex(null);
+              }}
+            />
+          ))}
+          <button
+            type="button"
+            disabled={!canAppendRow(axes.length, MAX_ON_COUNT)}
+            onClick={() => addAxisAfter(axes.length - 1)}
+            className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {tr('pivotAddAxis')}
+          </button>
+        </div>
+      </div>
 
-            <div className="min-w-0 rounded-lg border border-border-subtle/80 bg-surface-hover/45 p-2.5">
-              <div className="mb-2 text-[13px] font-medium text-text-primary">
-                {tr('pivotFieldsLabel')}
-              </div>
-              <div className="grid gap-2">
-                {axes.map((axis, index) => (
-                  <PivotAxisCard
-                    key={`${axis.field}-${index}`}
-                    axis={axis}
-                    expanded={expandedAxisIndex === index}
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('pivotGroupByLabel')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          <GlassFieldMultiDropdown
+            columns={fieldCompletions}
+            selected={groupBy}
+            onChange={handleGroupByChange}
+            columnTypes={columnTypes}
+            placeholder={tr('aggregateGroupByPlaceholder')}
+            maxHeight="300px"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2">
+        <GlassFormLabel>{tr('pivotMeasuresLabel')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          <GlassRowList
+            items={activeMetrics}
+            getKey={(metric, index) => metric.id ?? `metric-${index}`}
+            columns={[
+              {
+                flex: 'flex-[0.8]',
+                header: tr('aggregateFns.aggregateFunction'),
+                render: (metric: PivotMetric, index: number) => (
+                  <GlassOptionSingleSelect
+                    value={metric.function}
+                    groups={fnGroups}
+                    onChange={(value) =>
+                      updateMetric(index, { function: value as PivotMetric['function'] })
+                    }
+                    variant="highlight"
+                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[1.6]',
+                header: tr('expression.expressionLabel'),
+                render: (metric: PivotMetric, index: number) => (
+                  <GlassExpressionInput
+                    value={metric.expression}
+                    onChange={(value) => updateMetric(index, { expression: value })}
                     fieldCompletions={fieldCompletions}
                     columnTypes={columnTypes}
-                    disabledFields={
-                      new Set([...usedFields].filter((field) => field !== axis.field))
-                    }
-                    taskId={taskId}
-                    sourceNode={sourceNode}
-                    tr={tr}
-                    onFieldChange={(field) => handleAxisFieldChange(index, field)}
-                    onValuesChange={(values) => updateAxis(index, { values })}
-                    onCustomValueAdd={(values, customValues) =>
-                      updateAxis(index, { values, customValues })
-                    }
-                    onCustomValueRemove={(display) => {
-                      const next = removePivotCustomValue(axis.values, axis.customValues, display);
-                      updateAxis(index, next);
-                    }}
-                    onToggle={() =>
-                      setExpandedAxisIndex((current) => (current === index ? null : index))
-                    }
-                    onRemove={() => {
-                      removeAxis(index);
-                      setExpandedAxisIndex(null);
-                    }}
+                    placeholder={tr('pivotExpressionPlaceholder')}
                   />
-                ))}
-                <button
-                  type="button"
-                  disabled={!canAppendRow(axes.length, MAX_ON_COUNT)}
-                  onClick={() => addAxisAfter(axes.length - 1)}
-                  className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  {tr('pivotAddAxis')}
-                </button>
-              </div>
-            </div>
-
-            <div className="min-w-0 pt-1">
-              <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
-                {tr('pivotGroupByLabel')}
-                <span className="text-[11px] font-normal text-text-muted">{tr('optional')}</span>
-              </div>
-              <GlassFieldTagPicker
-                columns={fieldCompletions}
-                selected={groupBy}
-                onChange={handleGroupByChange}
-                onRemove={removeGroupBy}
-                onClear={clearGroupBy}
-                open={groupByOpen}
-                onToggle={() => setGroupByOpen((current) => !current)}
-                columnTypes={columnTypes}
-                maxHeight="180px"
-                variant="flat"
-                placeholder={tr('aggregateGroupByPlaceholder')}
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* ═══ 右块: 聚合指标 ═══ */}
-        <section className="operator-section flex flex-[6] min-h-0 flex-col content-start">
-          <div className="scrollbar-hover flex-1 min-h-0 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3 grid content-start gap-3">
-            <div className="flex items-start justify-between gap-3 pt-1">
-              <div>
-                <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                  <span className="h-2 w-2 rounded-full bg-accent" />
-                  {tr('pivotMeasuresLabel')}
-                </div>
-                <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                  {tr('pivotMeasuresHint')}
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={!canAppendRow(using.length, MAX_USING_COUNT)}
-                onClick={() => addMetricAfter(using.length - 1)}
-                className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {tr('pivotAddMetric')}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
-              <span />
-              <span>{tr('aggregateFns.aggregateFunction')}</span>
-              <span>{tr('expression.expressionLabel')}</span>
-              <span>{tr('pivotSuffixLabel')}</span>
-              <span />
-            </div>
-
-            <div className="grid gap-2">
-              {activeMetrics.map((metric, index) => {
-                const dragging = isMetricDragging && metricDragIndexRef.current === index;
-                return (
-                  <div
-                    key={metric.id ?? `metric-${index}`}
-                    onDragOver={(event) => handleMetricDragOver(event, index)}
-                    className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
-                      dragging ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      draggable
-                      onDragStart={() => handleMetricDragStart(index)}
-                      onDragEnd={handleMetricDragEnd}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-                        event.preventDefault();
-                        handleMetricKeyboardMove(index, event.key === 'ArrowUp' ? 'up' : 'down');
-                      }}
-                      className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('rowList.dragToReorder')}
-                      aria-label={tr('rowList.dragToReorder')}
-                      aria-keyshortcuts="ArrowUp ArrowDown"
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
-                    <GlassOptionSingleSelect
-                      value={metric.function}
-                      groups={fnGroups}
-                      onChange={(value) =>
-                        updateMetric(index, { function: value as PivotMetric['function'] })
-                      }
-                      variant="highlight"
-                      className="h-7 w-full text-[12px] [&>span]:text-left"
-                    />
-                    <GlassExpressionInput
-                      value={metric.expression}
-                      onChange={(value) => updateMetric(index, { expression: value })}
-                      fieldCompletions={fieldCompletions}
-                      columnTypes={columnTypes}
-                      placeholder={tr('pivotExpressionPlaceholder')}
-                    />
-                    <GlassFormTextInput
-                      value={metric.alias ?? ''}
-                      onChange={(value) => updateMetric(index, { alias: value })}
-                      placeholder={tr('pivotDefaultSuffix', {
-                        suffix: getPivotMetricDefaultSuffix(metric.function),
-                      })}
-                      className="h-7 w-full px-2 text-[12px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeMetric(index)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-                      title={tr('pivotRemoveMetric')}
-                      aria-label={tr('pivotRemoveMetric')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+                ),
+              },
+              {
+                flex: 'flex-[1]',
+                header: tr('pivotSuffixLabel'),
+                render: (metric: PivotMetric, index: number) => (
+                  <GlassFormTextInput
+                    value={metric.alias ?? ''}
+                    onChange={(value) => updateMetric(index, { alias: value })}
+                    placeholder={tr('pivotDefaultSuffix', {
+                      suffix: getPivotMetricDefaultSuffix(metric.function),
+                    })}
+                    className="h-7 w-full px-2 text-[12px]"
+                  />
+                ),
+              },
+            ]}
+            actions={['add', 'copy', 'remove']}
+            onAdd={addMetricAfter}
+            onCopy={copyMetric}
+            onRemove={removeMetric}
+            canAct={(action: RowAction) =>
+              action === 'remove' || canAppendRow(using.length, MAX_USING_COUNT)
+            }
+            addTitle={tr('pivotAddMetric')}
+            copyTitle={tr('rowList.copyRow')}
+            removeTitle={tr('pivotRemoveMetric')}
+            draggable
+            onDragStart={handleMetricDragStart}
+            onDragOver={handleMetricDragOver}
+            onDragEnd={handleMetricDragEnd}
+            onKeyboardMove={handleMetricKeyboardMove}
+            getRowOpacity={(i) => !!(isMetricDragging && metricDragIndexRef.current === i)}
+            dragTitle={tr('rowList.dragToReorder')}
+          />
+        </div>
       </div>
     </div>
   );

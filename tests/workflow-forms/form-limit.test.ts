@@ -195,17 +195,14 @@ const limitSource = readFileSync(
 );
 
 describe('FormLimit — UI source structure', () => {
-  it('no longer imports GlassSortKeyEditor', () => {
+  it('no longer imports GlassSortKeyEditor or the old radio sidebar', () => {
     expect(limitSource).not.toContain('GlassSortKeyEditor');
+    expect(limitSource).not.toContain('GlassRadioSelect');
+    expect(limitSource).not.toContain('w-[180px]');
   });
 
-  it('uses GlassRadioSelect for the mode sidebar', () => {
-    expect(limitSource).toContain('import { GlassRadioSelect }');
-    expect(limitSource).toContain('<GlassRadioSelect');
-    expect(limitSource).toContain('w-[180px]');
-  });
-
-  it('mode selection is separate from the detail controls', () => {
+  it('uses a segmented control for the mode row', () => {
+    expect(limitSource).toContain('GlassSegmentedControl');
     expect(limitSource).toContain("'limitMode'");
     expect(limitSource).toContain('onChange={setMode}');
   });
@@ -214,50 +211,16 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).toContain('updateConfig((cfg) => ({ ...cfg, limit: undefined }))');
   });
 
-  it('sort field tag-input has direction toggles (↑↓)', () => {
-    const sortTags = limitSource.match(/\{k\.direction\s*===\s*'asc'\s*\?\s*'↑'\s*:\s*'↓'\s*\}/);
-    expect(sortTags).not.toBeNull();
-  });
-
-  it('sort field input has stable key', () => {
-    expect(limitSource).toContain('key="sort-input"');
-  });
-
-  it('WITH TIES checkbox is inside sort row (not separate row)', () => {
-    const tiesLine = limitSource.indexOf('limitTies');
-    expect(tiesLine).not.toBe(-1);
-    const sortSection = limitSource.slice(
-      limitSource.indexOf('sortOpen ?'),
-      limitSource.indexOf('limitTies')
-    );
-    expect(sortSection.length).toBeGreaterThan(0);
-    expect(limitSource).not.toContain('{/* WITH TIES */}');
-  });
-
-  it('sort container width is fixed (w-72, not flex-1)', () => {
-    const sortContainer = limitSource.match(/className="w-72 min-w-0 relative"/g);
-    expect(sortContainer).not.toBeNull();
-    // Should not have flex-1 for sort container
-    expect(limitSource).not.toContain('className="flex-1 min-w-0 relative"');
-  });
-
-  it('all quantity/unit/offset/seed/method controls use the standard width w-60', () => {
-    const w60Controls = limitSource.match(/w-60/g);
-    expect(w60Controls!.length).toBe(5);
-    expect(limitSource).not.toMatch(/w-28/);
+  it('edits sort keys with the shared sort-keys editor', () => {
+    expect(limitSource).toContain('SortKeysEditor');
+    expect(limitSource).toContain('onChange={commitSortKeys}');
   });
 
   it('only shows system and bernoulli methods for percentage sampling', () => {
     expect(limitSource).toContain('{!isRows && (');
   });
 
-  it('sort tags use compact padding (px-1)', () => {
-    const sortTag = limitSource.match(/px-1 py-0\.5 text-\[12px\] font-medium text-accent/g);
-    expect(sortTag).not.toBeNull();
-    expect(limitSource).not.toContain('px-1.5 py-0.5 text-[12px] font-medium text-accent');
-  });
-
-  it('WITH TIES checkbox shows for both rows and percent (no isRows guard)', () => {
+  it('WITH TIES checkbox shows whenever sort keys exist (no isRows guard)', () => {
     // The checkbox condition should be just `hasSort`, not `isRows && hasSort`
     const tiesCheckbox = limitSource.match(/\{hasSort\s*&&\s*\(/);
     expect(tiesCheckbox).not.toBeNull();

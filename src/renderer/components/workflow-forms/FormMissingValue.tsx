@@ -4,8 +4,9 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import type { OperatorFormProps } from './index';
-import { GlassFieldTagPicker } from './shared/GlassFieldTagPicker';
-import { GlassRadioSelect } from './shared/GlassRadioSelect';
+import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
+import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
+import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassRowList } from './shared/GlassRowList';
 import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -97,7 +98,6 @@ export default function FormMissingValue({
   const rowCondition: string =
     strategy === 'drop_empty_rows' ? 'all_null' : ((node.config.condition as string) ?? 'any_null');
 
-  const [showFieldPicker, setShowFieldPicker] = useState(true);
   const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
   const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
   const handleRulesChange = useCallback(
@@ -180,34 +180,6 @@ export default function FormMissingValue({
     [updateConfig]
   );
 
-  const removeRowColumn = useCallback(
-    (col: string) => {
-      updateConfig((cfg) => {
-        const next = ((cfg.columns as string[]) ?? []).filter((c) => c !== col);
-        const condition =
-          cfg.strategy === 'drop_empty_rows'
-            ? 'all_null'
-            : ((cfg.condition as string | undefined) ?? 'any_null');
-        const isAllNull = condition === 'all_null';
-        if (isAllNull && next.length === 0) {
-          return {
-            ...cfg,
-            strategy: 'drop_empty_rows',
-            condition: 'all_null',
-            columns: undefined,
-          };
-        }
-        return {
-          ...cfg,
-          strategy: 'drop_rows_by_nulls',
-          condition,
-          columns: next.length > 0 ? next : undefined,
-        };
-      });
-    },
-    [updateConfig]
-  );
-
   const updateRule = useCallback(
     (index: number, patch: Partial<MissingValueRule>) => {
       handleRulesChange(
@@ -261,26 +233,11 @@ export default function FormMissingValue({
     [t]
   );
 
-  const description = useMemo(() => {
-    const cols = rowColumns;
-    const colList = cols.length > 0 ? cols.join(tr('missingColListSeparator')) : undefined;
-    if (rowCondition === 'all_null') {
-      if (colList) {
-        return tr('missingDescAllNullWithCols', { cols: colList });
-      }
-      return tr('missingDescAllNullNoCols');
-    }
-    if (colList) {
-      return tr('missingDescAnyNullWithCols', { cols: colList });
-    }
-    return tr('missingDescAnyNullNoCols');
-  }, [rowCondition, rowColumns, tr]);
-
   return (
-    <div className="flex h-full min-h-0 flex-1 gap-0 overflow-hidden">
-      {/* Left sidebar — global config */}
-      <div className="scrollbar-hover flex w-[180px] shrink-0 flex-col overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
-        <GlassRadioSelect
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('missingProcessMode')}</GlassFormLabel>
+        <GlassSegmentedControl
           value={tabMode}
           options={[
             { value: 'row', label: tr('rowProcess'), tip: tr('missingRowProcessTip') },
@@ -290,194 +247,183 @@ export default function FormMissingValue({
             if (v === 'row') setRowMode('any_null');
             else setColumnMode();
           }}
-          label={tr('missingProcessMode')}
+          ariaLabel={tr('missingProcessMode')}
         />
       </div>
 
-      {/* Right content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {tabMode === 'row' && (
-          <div className="scrollbar-hover flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-            <GlassRadioSelect
+      {tabMode === 'row' ? (
+        <>
+          <div className="flex items-center gap-2">
+            <GlassFormLabel>{tr('missingTriggerCondition')}</GlassFormLabel>
+            <GlassSegmentedControl
               value={rowCondition}
               options={[
-                { value: 'all_null', label: tr('allNull') },
                 { value: 'any_null', label: tr('anyNull') },
+                { value: 'all_null', label: tr('allNull') },
               ]}
               onChange={(v) => setRowMode(v as 'all_null' | 'any_null')}
-              label={tr('missingTriggerCondition')}
-              direction="horizontal"
-            />
-
-            {/* Description */}
-            <p className="text-[11px] leading-4 text-text-muted">{description}</p>
-
-            {/* Judge fields */}
-            <GlassFieldTagPicker
-              columns={fieldCompletions}
-              selected={rowColumns}
-              onChange={handleRowsColumnsChange}
-              onRemove={removeRowColumn}
-              onClear={() => handleRowsColumnsChange([])}
-              open={showFieldPicker}
-              onToggle={() => setShowFieldPicker((v) => !v)}
-              maxHeight="160px"
-              variant="glass"
-              placeholder={tr('missingEmptyMeansAllFields')}
+              ariaLabel={tr('missingTriggerCondition')}
             />
           </div>
-        )}
-
-        {tabMode === 'column' && (
-          <div className="flex flex-1 flex-col gap-2 overflow-hidden p-4">
-            <div className="scrollbar-hover flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
-              <GlassRowList
-                items={activeRules}
-                getKey={(item, index) => item.id ?? `rule-${index}`}
-                columns={[
-                  {
-                    flex: 'flex-[2]',
-                    header: tr('missingColumnHeader'),
-                    render: (item: MissingValueRule, i: number) => (
-                      <GlassFieldSingleSelect
-                        value={item.column}
-                        options={fieldCompletions}
-                        columnTypes={columnTypes}
-                        onChange={(col) => {
-                          const newType = columnTypes[col];
-                          const methods = methodsForType(newType);
-                          const methodOk = methods.some((m) => m.value === item.method);
-                          updateRule(i, {
-                            column: col,
-                            method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
-                          });
-                        }}
-                        placeholder={tr('fieldPicker.selectField')}
-                        className="h-7 w-full"
-                      />
-                    ),
-                  },
-                  {
-                    flex: 'flex-[1.5]',
-                    header: tr('missingMethodHeader'),
-                    render: (item: MissingValueRule, i: number) => {
-                      const colType = item.column ? columnTypes[item.column] : undefined;
-                      const availableMethods = methodsForType(colType);
-                      const validMethodValues = availableMethods.map((m) => m.value);
-                      const effectiveMethod = validMethodValues.includes(item.method)
-                        ? item.method
-                        : (availableMethods[0]?.value ?? 'skip');
-                      return (
-                        <GlassOptionSingleSelect
-                          value={effectiveMethod}
-                          onChange={(m) => {
-                            updateRule(i, {
-                              method: m as MissingValueMethod,
-                              values: m === 'nullify_values' ? (item.values ?? []) : undefined,
-                              value: m === 'literal_fill' ? (item.value ?? '') : undefined,
-                            });
-                          }}
-                          groups={[
-                            {
-                              key: 'methods',
-                              items: availableMethods.map((m) => ({
-                                value: m.value,
-                                label: methodLabel(m.value),
-                              })),
-                            },
-                          ]}
-                          variant="highlight"
-                          className="h-7 w-full text-[12px] [&>span]:text-left"
-                        />
-                      );
-                    },
-                  },
-                  {
-                    flex: 'flex-[3]',
-                    header: tr('missingValueHeader'),
-                    render: (item: MissingValueRule, i: number) => {
-                      const colType = item.column ? columnTypes[item.column] : undefined;
-                      const availableMethods = methodsForType(colType);
-                      const validMethodValues = availableMethods.map((m) => m.value);
-                      const effectiveMethod = validMethodValues.includes(item.method)
-                        ? item.method
-                        : (availableMethods[0]?.value ?? 'skip');
-                      const needsValue =
-                        effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
-                      if (!needsValue) {
-                        return <span className="w-full" />;
-                      }
-                      const draftKey = `${item.id ?? i}:${effectiveMethod}`;
-                      const formattedValue =
-                        effectiveMethod === 'nullify_values'
-                          ? formatMissingValueListInput(item.values ?? [])
-                          : String(item.value ?? '');
-                      const displayedValue = valueDrafts[draftKey] ?? formattedValue;
-                      const inputError =
-                        effectiveMethod === 'nullify_values'
-                          ? validateMissingValueListInput(displayedValue, colType)
-                          : validateMissingValueInput(displayedValue, colType);
-                      const errorMessage =
-                        inputError === 'required'
-                          ? tr('missingValueRequired')
-                          : inputError === 'number'
-                            ? tr('missingInvalidNumber')
-                            : inputError === 'boolean'
-                              ? tr('missingInvalidBoolean')
-                              : undefined;
-                      return (
-                        <GlassFormTextInput
-                          value={displayedValue}
-                          onChange={(raw) => {
-                            setValueDrafts((drafts) => ({ ...drafts, [draftKey]: raw }));
-                            if (effectiveMethod === 'nullify_values') {
-                              const vals = parseMissingValueListInput(raw, colType);
-                              updateRule(i, {
-                                values: vals.length > 0 ? vals : undefined,
-                              });
-                            } else {
-                              updateRule(i, {
-                                value: parseMissingValueInput(raw, colType),
-                              });
-                            }
-                          }}
-                          onBlur={() =>
-                            setValueDrafts((drafts) => {
-                              const next = { ...drafts };
-                              delete next[draftKey];
-                              return next;
-                            })
-                          }
-                          placeholder={
-                            errorMessage ??
-                            (effectiveMethod === 'nullify_values'
-                              ? tr('missingSpecialValuesPlaceholder')
-                              : tr('missingFillPlaceholder'))
-                          }
-                        />
-                      );
-                    },
-                  },
-                ]}
-                actions={['add', 'copy', 'remove']}
-                onAdd={(i) => insertRule(i)}
-                onCopy={(i) => copyRule(i)}
-                onRemove={(i) => removeRule(i)}
-                addTitle={tr('missingAddRow')}
-                copyTitle={tr('rowList.copyRow')}
-                removeTitle={tr('missingRemoveRow')}
-                draggable
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
-                onKeyboardMove={handleKeyboardMove}
-                getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-                dragTitle={tr('missingDragToReorder')}
+          <div className="flex items-center gap-2">
+            <GlassFormLabel>{tr('missingJudgeFields')}</GlassFormLabel>
+            <div className="min-w-0 flex-1">
+              <GlassFieldMultiDropdown
+                columns={fieldCompletions}
+                selected={rowColumns}
+                onChange={handleRowsColumnsChange}
+                columnTypes={columnTypes}
+                placeholder={tr('missingEmptyMeansAllFields')}
+                maxHeight="300px"
               />
             </div>
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <GlassRowList
+          items={activeRules}
+          getKey={(item, index) => item.id ?? `rule-${index}`}
+          columns={[
+            {
+              flex: 'flex-[2]',
+              header: tr('missingColumnHeader'),
+              render: (item: MissingValueRule, i: number) => (
+                <GlassFieldSingleSelect
+                  value={item.column}
+                  options={fieldCompletions}
+                  columnTypes={columnTypes}
+                  onChange={(col) => {
+                    const newType = columnTypes[col];
+                    const methods = methodsForType(newType);
+                    const methodOk = methods.some((m) => m.value === item.method);
+                    updateRule(i, {
+                      column: col,
+                      method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
+                    });
+                  }}
+                  placeholder={tr('fieldPicker.selectField')}
+                  className="h-7 w-full"
+                />
+              ),
+            },
+            {
+              flex: 'flex-[1.5]',
+              header: tr('missingMethodHeader'),
+              render: (item: MissingValueRule, i: number) => {
+                const colType = item.column ? columnTypes[item.column] : undefined;
+                const availableMethods = methodsForType(colType);
+                const validMethodValues = availableMethods.map((m) => m.value);
+                const effectiveMethod = validMethodValues.includes(item.method)
+                  ? item.method
+                  : (availableMethods[0]?.value ?? 'skip');
+                return (
+                  <GlassOptionSingleSelect
+                    value={effectiveMethod}
+                    onChange={(m) => {
+                      updateRule(i, {
+                        method: m as MissingValueMethod,
+                        values: m === 'nullify_values' ? (item.values ?? []) : undefined,
+                        value: m === 'literal_fill' ? (item.value ?? '') : undefined,
+                      });
+                    }}
+                    groups={[
+                      {
+                        key: 'methods',
+                        items: availableMethods.map((m) => ({
+                          value: m.value,
+                          label: methodLabel(m.value),
+                        })),
+                      },
+                    ]}
+                    variant="highlight"
+                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                  />
+                );
+              },
+            },
+            {
+              flex: 'flex-[3]',
+              header: tr('missingValueHeader'),
+              render: (item: MissingValueRule, i: number) => {
+                const colType = item.column ? columnTypes[item.column] : undefined;
+                const availableMethods = methodsForType(colType);
+                const validMethodValues = availableMethods.map((m) => m.value);
+                const effectiveMethod = validMethodValues.includes(item.method)
+                  ? item.method
+                  : (availableMethods[0]?.value ?? 'skip');
+                const needsValue =
+                  effectiveMethod === 'nullify_values' || effectiveMethod === 'literal_fill';
+                if (!needsValue) {
+                  return <span className="w-full" />;
+                }
+                const draftKey = `${item.id ?? i}:${effectiveMethod}`;
+                const formattedValue =
+                  effectiveMethod === 'nullify_values'
+                    ? formatMissingValueListInput(item.values ?? [])
+                    : String(item.value ?? '');
+                const displayedValue = valueDrafts[draftKey] ?? formattedValue;
+                const inputError =
+                  effectiveMethod === 'nullify_values'
+                    ? validateMissingValueListInput(displayedValue, colType)
+                    : validateMissingValueInput(displayedValue, colType);
+                const errorMessage =
+                  inputError === 'required'
+                    ? tr('missingValueRequired')
+                    : inputError === 'number'
+                      ? tr('missingInvalidNumber')
+                      : inputError === 'boolean'
+                        ? tr('missingInvalidBoolean')
+                        : undefined;
+                return (
+                  <GlassFormTextInput
+                    value={displayedValue}
+                    onChange={(raw) => {
+                      setValueDrafts((drafts) => ({ ...drafts, [draftKey]: raw }));
+                      if (effectiveMethod === 'nullify_values') {
+                        const vals = parseMissingValueListInput(raw, colType);
+                        updateRule(i, {
+                          values: vals.length > 0 ? vals : undefined,
+                        });
+                      } else {
+                        updateRule(i, {
+                          value: parseMissingValueInput(raw, colType),
+                        });
+                      }
+                    }}
+                    onBlur={() =>
+                      setValueDrafts((drafts) => {
+                        const next = { ...drafts };
+                        delete next[draftKey];
+                        return next;
+                      })
+                    }
+                    placeholder={
+                      errorMessage ??
+                      (effectiveMethod === 'nullify_values'
+                        ? tr('missingSpecialValuesPlaceholder')
+                        : tr('missingFillPlaceholder'))
+                    }
+                  />
+                );
+              },
+            },
+          ]}
+          actions={['add', 'copy', 'remove']}
+          onAdd={(i) => insertRule(i)}
+          onCopy={(i) => copyRule(i)}
+          onRemove={(i) => removeRule(i)}
+          addTitle={tr('missingAddRow')}
+          copyTitle={tr('rowList.copyRow')}
+          removeTitle={tr('missingRemoveRow')}
+          draggable
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onKeyboardMove={handleKeyboardMove}
+          getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+          dragTitle={tr('missingDragToReorder')}
+        />
+      )}
     </div>
   );
 }

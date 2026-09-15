@@ -115,10 +115,10 @@ export default function FormJoin({
 
   const joinTypes = useMemo<Array<{ value: JoinVennType; label: string; tip: string }>>(
     () => [
-      { value: 'left', label: tr('joinLeft'), tip: tr('joinLeftTip') },
       { value: 'inner', label: tr('joinInner'), tip: tr('joinInnerTip') },
-      { value: 'full', label: tr('joinFull'), tip: tr('joinFullTip') },
+      { value: 'left', label: tr('joinLeft'), tip: tr('joinLeftTip') },
       { value: 'right', label: tr('joinRight'), tip: tr('joinRightTip') },
+      { value: 'full', label: tr('joinFull'), tip: tr('joinFullTip') },
       { value: 'cross', label: tr('joinCross'), tip: tr('joinCrossTip') },
       { value: 'semi', label: tr('joinSemi'), tip: tr('joinSemiTip') },
       { value: 'anti', label: tr('joinAnti'), tip: tr('joinAntiTip') },
@@ -195,184 +195,165 @@ export default function FormJoin({
   };
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      {/* Fixed mode rail with a flexible configuration area. */}
-      <section className="flex h-full min-h-0 w-full overflow-hidden">
-        <div className="flex h-full min-h-0 w-full">
-          {/* Join mode rail */}
-          <div className="scrollbar-hover w-[180px] shrink-0 overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
-            {/* Data source section */}
-            <div className="grid gap-2.5">
-              <div className="grid gap-1">
-                <span className="mb-1 block text-[12px] font-medium text-text-secondary">
-                  {tr('joinType')}
-                </span>
-                <div className="grid grid-cols-1 gap-1">
-                  {joinTypes.map((jt) => (
-                    <button
-                      key={jt.value}
-                      type="button"
-                      onClick={() => handleJoinTypeChange(jt.value)}
-                      title={jt.tip}
-                      className={`flex min-h-8 items-center gap-2 rounded-md px-2 text-left transition-colors ${
-                        joinType === jt.value
-                          ? 'bg-accent/10 text-accent'
-                          : 'text-text-secondary hover:bg-surface-hover'
-                      }`}
-                    >
-                      <JoinVennSVG type={jt.value} selected={joinType === jt.value} />
-                      <span
-                        className={`text-[13px] leading-tight ${joinType === jt.value ? 'font-medium text-accent' : 'text-text-secondary'}`}
-                      >
-                        {jt.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Join configuration */}
-          <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            <div className="order-1 grid gap-2 p-4">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-                  <div className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                    <span className="truncate text-[12px] text-text-primary">
-                      {leftSourceLabel || tr('sources.noLeftSource')}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-                  <div className="flex h-7 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-                    <span className="truncate text-[12px] text-text-primary">
-                      {rightSourceLabel || tr('sources.noRightSource')}
-                    </span>
-                  </div>
-                </div>
-                {!isSemiAnti && (
-                  <button
-                    type="button"
-                    onClick={() => setKeepDialogOpen(true)}
-                    className="flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-accent-subtle hover:text-accent"
-                    title={tr('joinFieldSettingsTip')}
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                    <span>{tr('joinFieldSettings')}</span>
-                  </button>
-                )}
-              </div>
-              {isSemiAnti && (
-                <div className="text-[12px] text-text-muted">
-                  {tr('semiAntiConfigHint', {
-                    model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Conditions */}
-            <div className="order-2 mx-4 mb-4 grid gap-2 border-t border-border-muted/60 pt-3">
-              <div className="text-[13px] font-medium text-text-secondary">
-                {tr('joinConditionsHeader')}
-              </div>
-
-              {rightSourceLabel && rightColumnsError && (
-                <div className="text-[11px] text-warning px-0.5">{tr('rightColumnsFailed')}</div>
-              )}
-
-              {isAsof ? (
-                <JoinAsofSection
-                  asof={ui.asof}
-                  leftFields={fieldCompletions}
-                  rightFields={rightRawColumns}
-                  leftColumnTypes={leftColumnTypes}
-                  rightColumnTypes={rightColumnTypes}
-                  leftAlias={leftAlias}
-                  rightAlias={rightAlias}
-                  onAsofChange={handleAsofChange}
-                />
-              ) : needsConditions ? (
-                <div className="scrollbar-hover max-h-[280px] overflow-y-auto">
-                  <GlassRowList
-                    items={conditions}
-                    getKey={(condition, index) => condition.id ?? `condition-${index}`}
-                    columns={[
-                      {
-                        flex: 'flex-[1]',
-                        header: '',
-                        render: (cond: ConditionEntry, i: number) => (
-                          <GlassFieldSingleSelect
-                            value={cond.left}
-                            options={leftFieldCompletions}
-                            columnTypes={leftColumnTypesQualified}
-                            onChange={(v) =>
-                              handleConditionsChange(
-                                conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
-                              )
-                            }
-                            placeholder={tr('leftField')}
-                            className="h-7 w-full text-[12px]"
-                          />
-                        ),
-                      },
-                      {
-                        flex: 'flex-[0.6]',
-                        header: '',
-                        render: (cond: ConditionEntry, i: number) => (
-                          <GlassOptionSingleSelect
-                            value={cond.operator}
-                            groups={[{ key: 'op', items: conditionOperatorItems }]}
-                            onChange={(v) =>
-                              handleConditionsChange(
-                                conditions.map((c, j) =>
-                                  j === i ? { ...c, operator: v as JoinCondition['operator'] } : c
-                                )
-                              )
-                            }
-                            variant="highlight"
-                            className="h-7 w-full text-[12px] [&>span]:text-center"
-                          />
-                        ),
-                      },
-                      {
-                        flex: 'flex-[1]',
-                        header: '',
-                        render: (cond: ConditionEntry, i: number) => (
-                          <GlassFieldSingleSelect
-                            value={cond.right}
-                            options={rightFieldCompletions}
-                            columnTypes={rightColumnTypesQualified}
-                            onChange={(v) =>
-                              handleConditionsChange(
-                                conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
-                              )
-                            }
-                            placeholder={tr('rightField')}
-                            className="h-7 w-full text-[12px]"
-                          />
-                        ),
-                      },
-                    ]}
-                    onAdd={handleCondAdd}
-                    onRemove={handleCondRemove}
-                    addTitle={tr('addCondition')}
-                    canAct={(action) =>
-                      action !== 'add' || canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)
-                    }
-                    hideHeader
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('joinType')}</GlassFormLabel>
+        <GlassOptionSingleSelect
+          value={joinType}
+          groups={[
+            {
+              key: 'joinTypes',
+              items: joinTypes.map((jt) => ({
+                value: jt.value,
+                label: jt.label,
+                title: jt.tip,
+                icon: (
+                  <JoinVennSVG
+                    type={jt.value}
+                    selected={joinType === jt.value}
+                    className="h-4 w-6 shrink-0"
                   />
-                </div>
-              ) : (
-                <div className="px-0.5 text-[12px] text-text-muted">{tr('noConditionsNeeded')}</div>
-              )}
-            </div>
-          </div>
+                ),
+              })),
+            },
+          ]}
+          onChange={handleJoinTypeChange}
+          className="h-9 w-60"
+          aria-label={tr('joinType')}
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
+        <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+          <span className="truncate text-[13px] text-text-secondary">
+            {leftSourceLabel || tr('sources.noLeftSource')}
+          </span>
         </div>
-      </section>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
+        <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+          <span className="truncate text-[13px] text-text-secondary">
+            {rightSourceLabel || tr('sources.noRightSource')}
+          </span>
+        </div>
+        {!isSemiAnti && (
+          <button
+            type="button"
+            onClick={() => setKeepDialogOpen(true)}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            title={tr('joinFieldSettingsTip')}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            <span>{tr('joinFieldSettings')}</span>
+          </button>
+        )}
+      </div>
+
+      {isSemiAnti && (
+        <div className="pl-[88px] text-[12px] text-text-muted">
+          {tr('semiAntiConfigHint', {
+            model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
+          })}
+        </div>
+      )}
+
+      <div className="flex items-start gap-2">
+        <GlassFormLabel>{tr('joinConditionsHeader')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          {rightSourceLabel && rightColumnsError && (
+            <div className="pb-1 text-[12px] text-warning">{tr('rightColumnsFailed')}</div>
+          )}
+
+          {isAsof ? (
+            <JoinAsofSection
+              asof={ui.asof}
+              leftFields={fieldCompletions}
+              rightFields={rightRawColumns}
+              leftColumnTypes={leftColumnTypes}
+              rightColumnTypes={rightColumnTypes}
+              leftAlias={leftAlias}
+              rightAlias={rightAlias}
+              onAsofChange={handleAsofChange}
+            />
+          ) : needsConditions ? (
+            <GlassRowList
+              items={conditions}
+              getKey={(condition, index) => condition.id ?? `condition-${index}`}
+              columns={[
+                {
+                  flex: 'flex-[1]',
+                  header: '',
+                  render: (cond: ConditionEntry, i: number) => (
+                    <GlassFieldSingleSelect
+                      value={cond.left}
+                      options={leftFieldCompletions}
+                      columnTypes={leftColumnTypesQualified}
+                      onChange={(v) =>
+                        handleConditionsChange(
+                          conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
+                        )
+                      }
+                      placeholder={tr('leftField')}
+                      className="h-7 w-full text-[12px]"
+                    />
+                  ),
+                },
+                {
+                  flex: 'flex-[0.6]',
+                  header: '',
+                  render: (cond: ConditionEntry, i: number) => (
+                    <GlassOptionSingleSelect
+                      value={cond.operator}
+                      groups={[{ key: 'op', items: conditionOperatorItems }]}
+                      onChange={(v) =>
+                        handleConditionsChange(
+                          conditions.map((c, j) =>
+                            j === i ? { ...c, operator: v as JoinCondition['operator'] } : c
+                          )
+                        )
+                      }
+                      variant="highlight"
+                      className="h-7 w-full text-[12px] [&>span]:text-center"
+                    />
+                  ),
+                },
+                {
+                  flex: 'flex-[1]',
+                  header: '',
+                  render: (cond: ConditionEntry, i: number) => (
+                    <GlassFieldSingleSelect
+                      value={cond.right}
+                      options={rightFieldCompletions}
+                      columnTypes={rightColumnTypesQualified}
+                      onChange={(v) =>
+                        handleConditionsChange(
+                          conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
+                        )
+                      }
+                      placeholder={tr('rightField')}
+                      className="h-7 w-full text-[12px]"
+                    />
+                  ),
+                },
+              ]}
+              onAdd={handleCondAdd}
+              onRemove={handleCondRemove}
+              addTitle={tr('addCondition')}
+              canAct={(action) =>
+                action !== 'add' || canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)
+              }
+              hideHeader
+            />
+          ) : (
+            <div className="flex h-9 items-center text-[12px] text-text-muted">
+              {tr('noConditionsNeeded')}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Keep field dialog */}
       {keepDialogOpen && (

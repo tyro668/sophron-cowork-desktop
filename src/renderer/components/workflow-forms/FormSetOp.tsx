@@ -1,9 +1,9 @@
 import { useCallback, useMemo } from 'react';
 
 import type { OperatorFormProps } from './index';
-import { GlassRadioSelect } from './shared/GlassRadioSelect';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { VennDiagramIcon, type VennRegion } from './shared/VennDiagramIcon';
+import { GlassFormLabel } from './shared/GlassFormLabel';
+import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import {
@@ -64,95 +64,87 @@ export default function FormSetOp({
     [tr]
   );
 
+  function opBoxClass() {
+    return 'flex h-9 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3';
+  }
+
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <aside className="scrollbar-hover w-[180px] shrink-0 overflow-y-auto border-r border-border-muted bg-surface/40 p-3.5">
-        <div className="mb-2 text-[12px] font-medium text-text-secondary">
-          {tr('setOpConnection')}
-        </div>
-        <div className="grid gap-1">
-          {operationOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              title={option.tip}
-              aria-pressed={operation === option.value}
-              onClick={() =>
-                updateConfig((config) => ({
-                  ...config,
-                  operation: option.value,
-                  ...(option.value !== 'union' ? { match: undefined } : {}),
-                }))
-              }
-              className={`flex min-h-9 items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-                operation === option.value
-                  ? 'bg-accent/10 font-medium text-accent'
-                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-              }`}
-            >
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('setOpConnection')}</GlassFormLabel>
+        <GlassSegmentedControl
+          value={operation}
+          options={operationOptions.map((item) => ({
+            value: item.value,
+            label: item.label,
+            tip: item.tip,
+            icon: (
               <VennDiagramIcon
-                region={SET_OPERATION_REGIONS[option.value]}
+                region={SET_OPERATION_REGIONS[item.value]}
+                className="h-4 w-6 shrink-0"
+                fillOpacity={0.55}
                 outlineOpacity={0.35}
-                outlineWidth={1.5}
-                showOutlines={option.value !== 'union'}
+                outlineWidth={1.4}
+                showOutlines={item.value !== 'union'}
               />
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </aside>
+            ),
+          }))}
+          onChange={(value) =>
+            updateConfig((config) => ({
+              ...config,
+              operation: value,
+              ...(value !== 'union' ? { match: undefined } : {}),
+            }))
+          }
+          ariaLabel={tr('setOpConnection')}
+        />
+      </div>
 
-      <div className="scrollbar-hover flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto p-4">
-        <div className="flex items-center gap-4">
-          <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-          <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-            <span className="truncate text-[12px] text-text-primary">
-              {leftSourceLabel || tr('sources.noLeftSource')}
-            </span>
-          </div>
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
+        <div className={opBoxClass()}>
+          <span className="truncate text-[13px] text-text-secondary">
+            {leftSourceLabel || tr('sources.noLeftSource')}
+          </span>
         </div>
+      </div>
 
-        <div className="flex items-center gap-4">
-          <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-          <div className="flex h-7 w-72 min-w-0 items-center rounded-md border border-border-muted/70 bg-background/28 px-2">
-            <span className="truncate text-[12px] text-text-primary">
-              {rightSourceLabel || tr('sources.noRightSource')}
-            </span>
-          </div>
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
+        <div className={opBoxClass()}>
+          <span className="truncate text-[13px] text-text-secondary">
+            {rightSourceLabel || tr('sources.noRightSource')}
+          </span>
         </div>
+      </div>
 
-        <div className="flex items-center gap-4">
-          <GlassFormLabel>{tr('setOpDedupMode')}</GlassFormLabel>
-          <GlassRadioSelect
-            value={mode}
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('setOpDedupMode')}</GlassFormLabel>
+        <GlassSegmentedControl
+          value={mode}
+          options={[
+            { value: 'all', label: tr('setOpAll'), tip: tr('setOpAllTip') },
+            { value: 'distinct', label: tr('setOpDistinct'), tip: tr('setOpDistinctTip') },
+          ]}
+          onChange={(value) => updateConfig((config) => ({ ...config, mode: value }))}
+          ariaLabel={tr('setOpDedupMode')}
+        />
+      </div>
+
+      {operation === 'union' && (
+        <div className="flex items-center gap-2">
+          <GlassFormLabel>{tr('setOpMatchMode')}</GlassFormLabel>
+          <GlassSegmentedControl
+            value={match}
             options={[
-              { value: 'all', label: tr('setOpAll'), tip: tr('setOpAllTip') },
-              { value: 'distinct', label: tr('setOpDistinct'), tip: tr('setOpDistinctTip') },
+              { value: 'by_name', label: tr('setOpByName'), tip: tr('setOpByNameTip') },
+              { value: 'by_position', label: tr('setOpByPosition'), tip: tr('setOpByPositionTip') },
             ]}
-            onChange={(value) => updateConfig((config) => ({ ...config, mode: value }))}
-            direction="horizontal"
+            onChange={(value) => updateConfig((config) => ({ ...config, match: value }))}
+            ariaLabel={tr('setOpMatchMode')}
           />
         </div>
-
-        {operation === 'union' && (
-          <div className="flex items-center gap-4">
-            <GlassFormLabel>{tr('setOpMatchMode')}</GlassFormLabel>
-            <GlassRadioSelect
-              value={match}
-              options={[
-                { value: 'by_name', label: tr('setOpByName'), tip: tr('setOpByNameTip') },
-                {
-                  value: 'by_position',
-                  label: tr('setOpByPosition'),
-                  tip: tr('setOpByPositionTip'),
-                },
-              ]}
-              onChange={(value) => updateConfig((config) => ({ ...config, match: value }))}
-              direction="horizontal"
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

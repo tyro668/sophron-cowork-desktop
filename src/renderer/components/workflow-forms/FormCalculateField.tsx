@@ -192,32 +192,28 @@ export default function FormCalculateField({
   ];
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="scrollbar-hover flex-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
-          <GlassRowList
-            headerClassName=""
-            items={activeCalculations}
-            getKey={(calculation) => calculation.id}
-            columns={columns}
-            actions={['add', 'copy', 'remove']}
-            onAdd={addCalculation}
-            onCopy={copyCalculation}
-            onRemove={removeCalculation}
-            canAct={(action) =>
-              (action !== 'add' && action !== 'copy') ||
-              canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
-            }
-            draggable
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            onKeyboardMove={handleKeyboardMove}
-            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('rowList.dragToReorder')}
-          />
-        </div>
-      </div>
+    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
+      <GlassRowList
+        headerClassName=""
+        items={activeCalculations}
+        getKey={(calculation) => calculation.id}
+        columns={columns}
+        actions={['add', 'copy', 'remove']}
+        onAdd={addCalculation}
+        onCopy={copyCalculation}
+        onRemove={removeCalculation}
+        canAct={(action) =>
+          (action !== 'add' && action !== 'copy') ||
+          canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
+        }
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onKeyboardMove={handleKeyboardMove}
+        getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+        dragTitle={tr('rowList.dragToReorder')}
+      />
     </div>
   );
 }

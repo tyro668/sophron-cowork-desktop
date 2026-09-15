@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
@@ -24,6 +24,7 @@ interface GlassOptionItem {
   value: string;
   label: string;
   title?: string;
+  icon?: ReactNode;
 }
 
 interface GlassOptionSingleSelectProps {
@@ -60,14 +61,15 @@ export function GlassOptionSingleSelect({
 
   const flattenedItems = useMemo(() => flattenItems(groups), [groups]);
 
-  const selectedLabel = useMemo(() => {
+  const selectedItem = useMemo(() => {
     for (const g of groups) {
       for (const o of g.items) {
-        if (o.value === value) return o.label;
+        if (o.value === value) return o;
       }
     }
-    return value;
+    return undefined;
   }, [value, groups]);
+  const selectedLabel = selectedItem?.label ?? value;
 
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -182,9 +184,12 @@ export function GlassOptionSingleSelect({
               : 'border-border-muted bg-background/42 text-text-secondary'
         } ${className ?? ''}`}
       >
-        <span className="flex-1 truncate whitespace-nowrap px-2 text-left">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate whitespace-nowrap px-2 text-left">
           {value ? (
-            selectedLabel
+            <>
+              {selectedItem?.icon}
+              <span className="truncate">{selectedLabel}</span>
+            </>
           ) : placeholder ? (
             <span className="text-text-muted">{placeholder}</span>
           ) : (
@@ -249,6 +254,9 @@ export function GlassOptionSingleSelect({
                       }}
                       onMouseEnter={() => setHighlightedIndex(globalIdx)}
                     >
+                      {o.icon && (
+                        <span className="mr-2 inline-flex shrink-0 align-middle">{o.icon}</span>
+                      )}
                       {o.label}
                     </button>
                   );

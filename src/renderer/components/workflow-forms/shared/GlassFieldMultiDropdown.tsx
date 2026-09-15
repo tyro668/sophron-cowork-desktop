@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
@@ -15,6 +15,8 @@ interface GlassFieldMultiDropdownProps {
   disabled?: boolean;
   maxHeight?: string;
   className?: string;
+  itemExtras?: (column: string) => ReactNode;
+  columnLabel?: (column: string) => string;
 }
 
 /**
@@ -30,6 +32,8 @@ export function GlassFieldMultiDropdown({
   disabled = false,
   maxHeight = '220px',
   className = '',
+  itemExtras,
+  columnLabel,
 }: GlassFieldMultiDropdownProps) {
   const {
     open,
@@ -139,6 +143,8 @@ export function GlassFieldMultiDropdown({
               columnTypes={columnTypes}
               maxHeight={maxHeight}
               borderless
+              itemExtras={itemExtras}
+              columnLabel={columnLabel}
             />
           </div>,
           document.body

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { GripVertical, Plus, Settings, Trash2 } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './index';
-import { GlassFieldCompactSelect } from './shared/GlassFieldCompactSelect';
+import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { GlassFormLabel } from './shared/GlassFormLabel';
+import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -131,18 +133,12 @@ export default function FormAggregate({
     [updateConfig]
   );
 
-  function updateMetric(index: number, partial: Partial<MetricEntry>) {
-    handleMetricsChange(metrics.map((item, i) => (i === index ? { ...item, ...partial } : item)));
-  }
-
-  function addMetricAfter(index: number) {
-    if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
-    handleMetricsChange(insertRowAfter(activeMetrics, index, createEmptyMetric()));
-  }
-
-  function removeMetric(index: number) {
-    handleMetricsChange(removeRowAt(activeMetrics, index));
-  }
+  const updateMetric = useCallback(
+    (index: number, partial: Partial<MetricEntry>) => {
+      handleMetricsChange(metrics.map((item, i) => (i === index ? { ...item, ...partial } : item)));
+    },
+    [metrics, handleMetricsChange]
+  );
 
   const {
     activeItems: activeMetrics,
@@ -159,166 +155,156 @@ export default function FormAggregate({
     if (!isDragging) resetDrag();
   }, [metrics, isDragging, resetDrag]);
 
+  const addMetricAfter = useCallback(
+    (index: number) => {
+      if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
+      handleMetricsChange(insertRowAfter(activeMetrics, index, createEmptyMetric()));
+    },
+    [activeMetrics, handleMetricsChange]
+  );
+
+  const copyMetric = useCallback(
+    (index: number) => {
+      if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
+      const source = activeMetrics[index];
+      const clone: MetricEntry = {
+        ...source,
+        id: createMetricId(),
+        alias: '',
+      };
+      handleMetricsChange(insertRowAfter(activeMetrics, index, clone));
+    },
+    [activeMetrics, handleMetricsChange]
+  );
+
+  const removeMetric = useCallback(
+    (index: number) => {
+      handleMetricsChange(removeRowAt(activeMetrics, index));
+    },
+    [activeMetrics, handleMetricsChange]
+  );
+
   return (
-    <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 w-full flex-1 gap-2.5">
-        {/* Left: group-by fields */}
-        <section className="operator-section flex-[4] content-start flex min-h-0 min-w-0 w-0 flex-col">
-          <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col px-3 pb-3">
-            <div className="mb-3 px-0.5 pt-1">
-              <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                <span className="h-2 w-2 rounded-full bg-accent" />
-                {tr('aggregateDimensionsLabel')}
-              </div>
-              <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                {tr('aggregateDimensionsHint')}
-              </p>
-            </div>
-            <GlassFieldCompactSelect
-              columns={fieldCompletions}
-              selected={groupBy}
-              onChange={handleGroupByChange}
-              columnTypes={columnTypes}
-              maxHeight="none"
-              columnLabel={(col) => {
-                const gran = dateGranularity[col];
-                if (gran && isTemporalDataFieldType(columnTypes[col])) {
-                  const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
-                  const label = opt ? tr(opt.labelKey) : gran;
-                  return tr('aggregateFieldWithGranularity', { field: col, granularity: label });
-                }
-                return col;
-              }}
-              itemExtras={(col) => {
-                if (!isTemporalDataFieldType(columnTypes[col])) return null;
-                const gran = dateGranularity[col] || '';
-                return (
-                  <GlassDropdownMenu
-                    trigger={
-                      <button
-                        type="button"
-                        className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
-                        title={tr('granularitySelect')}
-                      >
-                        <Settings className="h-3 w-3" />
-                      </button>
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex items-center gap-2">
+        <GlassFormLabel>{tr('aggregateDimensionsLabel')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          <GlassFieldMultiDropdown
+            columns={fieldCompletions}
+            selected={groupBy}
+            onChange={handleGroupByChange}
+            columnTypes={columnTypes}
+            placeholder={tr('common.selectColumns')}
+            maxHeight="300px"
+            columnLabel={(col) => {
+              const gran = dateGranularity[col];
+              if (gran && isTemporalDataFieldType(columnTypes[col])) {
+                const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
+                const label = opt ? tr(opt.labelKey) : gran;
+                return tr('aggregateFieldWithGranularity', { field: col, granularity: label });
+              }
+              return col;
+            }}
+            itemExtras={(col) => {
+              if (!isTemporalDataFieldType(columnTypes[col])) return null;
+              const gran = dateGranularity[col] || '';
+              return (
+                <GlassDropdownMenu
+                  trigger={
+                    <button
+                      type="button"
+                      className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted/50 hover:text-accent transition-colors"
+                      title={tr('granularitySelect')}
+                    >
+                      <Settings className="h-3 w-3" />
+                    </button>
+                  }
+                  align="center"
+                  side="right"
+                >
+                  {GRANULARITY_OPTIONS.map((opt) => (
+                    <GlassMenuItem
+                      key={opt.value}
+                      selected={gran === opt.value}
+                      onSelect={() => handleGranularityChange(col, opt.value)}
+                    >
+                      {tr(opt.labelKey)}
+                    </GlassMenuItem>
+                  ))}
+                </GlassDropdownMenu>
+              );
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2">
+        <GlassFormLabel>{tr('aggregateMeasuresLabel')}</GlassFormLabel>
+        <div className="min-w-0 flex-1">
+          <GlassRowList
+            items={activeMetrics}
+            getKey={(metric, index) => metric.id ?? `metric-${index}`}
+            columns={[
+              {
+                flex: 'flex-[0.8]',
+                header: tr('aggregateFns.aggregateFunction'),
+                render: (metric: MetricEntry, index: number) => (
+                  <GlassOptionSingleSelect
+                    value={metric.function}
+                    groups={functionGroups}
+                    onChange={(value) =>
+                      updateMetric(index, { function: value as AggregateFunction })
                     }
-                    align="center"
-                    side="right"
-                  >
-                    {GRANULARITY_OPTIONS.map((opt) => (
-                      <GlassMenuItem
-                        key={opt.value}
-                        selected={gran === opt.value}
-                        onSelect={() => handleGranularityChange(col, opt.value)}
-                      >
-                        {tr(opt.labelKey)}
-                      </GlassMenuItem>
-                    ))}
-                  </GlassDropdownMenu>
-                );
-              }}
-            />
-          </div>
-        </section>
-
-        {/* Right: metrics */}
-        <section className="operator-section flex flex-[6] min-h-0 min-w-0 w-0 flex-col content-start">
-          <div className="scrollbar-hover grid min-h-0 min-w-0 flex-1 content-start gap-3 overflow-x-hidden overflow-y-auto border-l border-border-subtle/70 pl-3 pr-3">
-            <div className="flex min-w-0 items-start justify-between gap-3 pt-1">
-              <div>
-                <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
-                  <span className="h-2 w-2 rounded-full bg-accent" />
-                  {tr('aggregateMeasuresLabel')}
-                </div>
-                <p className="mt-1 text-[12px] leading-5 text-text-muted">
-                  {tr('aggregateMeasuresHint')}
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)}
-                onClick={() => addMetricAfter(activeMetrics.length - 1)}
-                className="flex h-9 flex-none items-center gap-1.5 rounded-lg border border-accent px-3 text-[12px] font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {tr('aggregateAddMetric')}
-              </button>
-            </div>
-
-            <div className="grid min-w-0 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 px-3 text-[12px] font-medium text-text-muted">
-              <span />
-              <span>{tr('aggregateFns.aggregateFunction')}</span>
-              <span>{tr('expression.expressionLabel')}</span>
-              <span>{tr('aggregateAlias')}</span>
-              <span />
-            </div>
-
-            <div className="grid min-w-0 gap-2">
-              {activeMetrics.map((metric, index) => {
-                const dragging = isDragging && dragIndexRef.current === index;
-                return (
-                  <div
-                    key={metric.id ?? `metric-${index}`}
-                    onDragOver={(event) => handleDragOver(event, index)}
-                    className={`grid min-h-10 grid-cols-[28px_minmax(88px,0.7fr)_minmax(0,1.5fr)_minmax(96px,0.9fr)_28px] items-center gap-2 rounded-lg border border-border-muted bg-background px-3 py-1.5 transition-opacity ${
-                      dragging ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      draggable
-                      onDragStart={() => handleDragStart(index)}
-                      onDragEnd={handleDragEnd}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-                        event.preventDefault();
-                        handleKeyboardMove(index, event.key === 'ArrowUp' ? 'up' : 'down');
-                      }}
-                      className="flex h-7 w-7 cursor-grab items-center justify-center text-text-muted transition-colors hover:text-text-secondary active:cursor-grabbing"
-                      title={tr('rowList.dragToReorder')}
-                      aria-label={tr('rowList.dragToReorder')}
-                      aria-keyshortcuts="ArrowUp ArrowDown"
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </button>
-                    <GlassOptionSingleSelect
-                      value={metric.function}
-                      groups={functionGroups}
-                      onChange={(value) =>
-                        updateMetric(index, { function: value as AggregateFunction })
-                      }
-                      variant="highlight"
-                      className="h-7 w-full text-[12px] [&>span]:text-left"
-                    />
-                    <GlassExpressionInput
-                      value={metric.expression}
-                      onChange={(value) => updateMetric(index, { expression: value })}
-                      fieldCompletions={fieldCompletions}
-                      columnTypes={columnTypes}
-                      placeholder={tr('aggregateExpressionPlaceholder')}
-                    />
-                    <GlassFormTextInput
-                      value={metric.alias ?? ''}
-                      onChange={(value) => updateMetric(index, { alias: value })}
-                      placeholder={tr('aggregateAliasPlaceholder')}
-                      className="h-7 w-full px-2 text-[12px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeMetric(index)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-                      title={tr('aggregateRemoveMetric')}
-                      aria-label={tr('aggregateRemoveMetric')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+                    variant="highlight"
+                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[1.6]',
+                header: tr('expression.expressionLabel'),
+                render: (metric: MetricEntry, index: number) => (
+                  <GlassExpressionInput
+                    value={metric.expression}
+                    onChange={(value) => updateMetric(index, { expression: value })}
+                    fieldCompletions={fieldCompletions}
+                    columnTypes={columnTypes}
+                    placeholder={tr('aggregateExpressionPlaceholder')}
+                  />
+                ),
+              },
+              {
+                flex: 'flex-[1]',
+                header: tr('aggregateAlias'),
+                render: (metric: MetricEntry, index: number) => (
+                  <GlassFormTextInput
+                    value={metric.alias ?? ''}
+                    onChange={(value) => updateMetric(index, { alias: value })}
+                    placeholder={tr('aggregateAliasPlaceholder')}
+                    className="h-7 w-full px-2 text-[12px]"
+                  />
+                ),
+              },
+            ]}
+            actions={['add', 'copy', 'remove']}
+            onAdd={addMetricAfter}
+            onCopy={copyMetric}
+            onRemove={removeMetric}
+            canAct={(action: RowAction) =>
+              action === 'remove' || canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)
+            }
+            addTitle={tr('aggregateAddMetric')}
+            copyTitle={tr('rowList.copyRow')}
+            removeTitle={tr('aggregateRemoveMetric')}
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onKeyboardMove={handleKeyboardMove}
+            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+            dragTitle={tr('rowList.dragToReorder')}
+          />
+        </div>
       </div>
     </div>
   );

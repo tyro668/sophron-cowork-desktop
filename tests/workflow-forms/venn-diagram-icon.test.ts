@@ -63,6 +63,6 @@ describe('VennDiagramIcon', () => {
     expect(html).toContain('data-venn-region="both"');
     expect(html).toContain('data-venn-region="overlap"');
     expect(html).toContain('data-venn-region="left-only"');
-    expect(html.match(/class="h-6 w-auto shrink-0"/g)).toHaveLength(3);
+    expect(html.match(/class="h-4 w-6 shrink-0"/g)).toHaveLength(3);
   });
 });

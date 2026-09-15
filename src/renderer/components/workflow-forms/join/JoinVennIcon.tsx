@@ -12,12 +12,20 @@ const JOIN_VENN_REGIONS: Record<Exclude<JoinVennType, 'cross' | 'asof'>, VennReg
 };
 
 // Shared geometry keeps the selected regions comparable across join types.
-export function JoinVennSVG({ type, selected }: { type: JoinVennType; selected: boolean }) {
+export function JoinVennSVG({
+  type,
+  selected,
+  className = 'h-6 w-auto shrink-0',
+}: {
+  type: JoinVennType;
+  selected: boolean;
+  className?: string;
+}) {
   const opacity = selected ? 0.55 : 0.2;
 
   if (type === 'cross') {
     return (
-      <svg viewBox="0 0 48 32" className="h-6 w-auto shrink-0">
+      <svg viewBox="0 0 48 32" className={className}>
         <line
           x1="14"
           y1="10"
@@ -41,7 +49,7 @@ export function JoinVennSVG({ type, selected }: { type: JoinVennType; selected: 
   }
   if (type === 'asof') {
     return (
-      <svg viewBox="0 0 48 32" className="h-6 w-auto shrink-0">
+      <svg viewBox="0 0 48 32" className={className}>
         <line x1="6" y1="16" x2="42" y2="16" stroke="currentColor" strokeWidth="1" opacity="0.4" />
         <circle cx="14" cy="16" r="2.5" fill="currentColor" opacity={opacity} />
         <circle cx="24" cy="16" r="2.5" fill="currentColor" opacity={opacity} />
@@ -62,6 +70,7 @@ export function JoinVennSVG({ type, selected }: { type: JoinVennType; selected: 
   return (
     <VennDiagramIcon
       region={JOIN_VENN_REGIONS[type]}
+      className={className}
       fillOpacity={opacity}
       {...semiOutlineOpacity}
     />

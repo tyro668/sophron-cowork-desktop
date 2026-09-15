@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DataOutputTable, DataWorkflowNode } from '../../../../types';
 import { GlassSelect } from '../../../GlassSelect';
+import { GlassSegmentedControl } from '../../../workflow-forms/shared/GlassSegmentedControl';
 import { stringValue } from './workflow-summary';
 
 export function WorkflowOutputConfig({
@@ -119,21 +120,20 @@ export function WorkflowOutputConfig({
 
   return (
     <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
-      <label className="block">
+      <div>
         <span className="mb-1.5 block text-xs font-medium text-text-secondary">
           {t('data.workflow.outputStrategy')}
         </span>
-        <GlassSelect
+        <GlassSegmentedControl
           value={strategy}
-          onValueChange={handleStrategyChange}
+          onChange={handleStrategyChange}
           options={[
             { value: 'auto', label: t('data.workflow.values.outputStrategies.auto') },
             { value: 'existing', label: t('data.workflow.values.outputStrategies.existing') },
           ]}
-          triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
-          contentClassName="w-[var(--radix-select-trigger-width)]"
+          ariaLabel={t('data.workflow.outputStrategy')}
         />
-      </label>
+      </div>
 
       {strategy === 'auto' ? (
         <label className="block">

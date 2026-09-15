@@ -136,170 +136,165 @@ export default function FormTypeConvert({
   );
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: conversion rules */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="scrollbar-hover flex-1 space-y-1 overflow-y-auto px-2 pr-3 pb-2 pt-1">
-          <GlassRowList
-            headerClassName=""
-            items={activeConversions}
-            getKey={(conversion, index) => conversion.id ?? `conversion-${index}`}
-            columns={[
-              {
-                flex: 'flex-[1]',
-                header: tr('typeConvertSourceField'),
-                render: (conv: TypeConversionEntry, i: number) => {
-                  const disabledFields = new Set(usedFields);
-                  if (conv.column) disabledFields.delete(conv.column);
-                  return (
-                    <GlassFieldSingleSelect
-                      value={conv.column}
-                      options={fieldCompletions}
-                      columnTypes={columnTypes}
-                      onChange={(value) => updateConversion(i, { column: value })}
-                      placeholder={tr('typeConvertSelectField')}
-                      searchPlaceholder={tr('fieldPicker.searchField')}
-                      emptyText={tr('fieldPicker.noMatch')}
-                      disabledOptions={disabledFields}
-                      className="flex-1 min-w-0 h-7"
-                    />
-                  );
-                },
-              },
-              {
-                flex: 'flex-[1]',
-                header: tr('typeConvertTargetType'),
-                render: (conv: TypeConversionEntry, i: number) => (
+    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
+      <GlassRowList
+        headerClassName=""
+        items={activeConversions}
+        getKey={(conversion, index) => conversion.id ?? `conversion-${index}`}
+        columns={[
+          {
+            flex: 'flex-[1]',
+            header: tr('typeConvertSourceField'),
+            render: (conv: TypeConversionEntry, i: number) => {
+              const disabledFields = new Set(usedFields);
+              if (conv.column) disabledFields.delete(conv.column);
+              return (
+                <GlassFieldSingleSelect
+                  value={conv.column}
+                  options={fieldCompletions}
+                  columnTypes={columnTypes}
+                  onChange={(value) => updateConversion(i, { column: value })}
+                  placeholder={tr('typeConvertSelectField')}
+                  searchPlaceholder={tr('fieldPicker.searchField')}
+                  emptyText={tr('fieldPicker.noMatch')}
+                  disabledOptions={disabledFields}
+                  className="flex-1 min-w-0 h-7"
+                />
+              );
+            },
+          },
+          {
+            flex: 'flex-[1]',
+            header: tr('typeConvertTargetType'),
+            render: (conv: TypeConversionEntry, i: number) => (
+              <GlassOptionSingleSelect
+                value={normalizeDataFieldType(conv.type)}
+                onChange={(v) => {
+                  const newType = v as DataFieldType;
+                  updateConversion(i, {
+                    ...prepareTypeConversion(newType),
+                  });
+                }}
+                groups={[
+                  {
+                    key: 'types',
+                    items: DATA_FIELD_TYPES.map((t) => ({
+                      value: t,
+                      label: dataTypeLabel(t),
+                    })),
+                  },
+                ]}
+                className="h-7 w-full text-[12px]"
+              />
+            ),
+          },
+          {
+            flex: 'flex-[1]',
+            header: tr('typeConvertTypeSettings'),
+            render: (conv: TypeConversionEntry, i: number) => {
+              const isDateType = conv.type === 'date' || conv.type === 'datetime';
+              if (isDateType) {
+                const formatOptions = [
+                  {
+                    value: '',
+                    label: tr('typeConvertAutoParse'),
+                    title: tr('typeConvertAutoParseHint'),
+                  },
+                  ...DATE_FORMAT_PRESETS.map((preset) => ({
+                    value: preset.value,
+                    label: preset.value,
+                    title: tr('typeConvertFormatExample', { example: preset.example }),
+                  })),
+                ];
+                return (
                   <GlassOptionSingleSelect
-                    value={normalizeDataFieldType(conv.type)}
-                    onChange={(v) => {
-                      const newType = v as DataFieldType;
-                      updateConversion(i, {
-                        ...prepareTypeConversion(newType),
-                      });
-                    }}
-                    groups={[
-                      {
-                        key: 'types',
-                        items: DATA_FIELD_TYPES.map((t) => ({
-                          value: t,
-                          label: dataTypeLabel(t),
-                        })),
-                      },
-                    ]}
-                    className="h-7 w-full text-[12px]"
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[1]',
-                header: tr('typeConvertTypeSettings'),
-                render: (conv: TypeConversionEntry, i: number) => {
-                  const isDateType = conv.type === 'date' || conv.type === 'datetime';
-                  if (isDateType) {
-                    const formatOptions = [
-                      {
-                        value: '',
-                        label: tr('typeConvertAutoParse'),
-                        title: tr('typeConvertAutoParseHint'),
-                      },
-                      ...DATE_FORMAT_PRESETS.map((preset) => ({
-                        value: preset.value,
-                        label: preset.value,
-                        title: tr('typeConvertFormatExample', { example: preset.example }),
-                      })),
-                    ];
-                    return (
-                      <GlassOptionSingleSelect
-                        value={conv.format ?? ''}
-                        groups={[{ key: 'formats', items: formatOptions }]}
-                        onChange={(v) =>
-                          updateConversion(i, {
-                            format: (v || undefined) as DateFormat | undefined,
-                          })
-                        }
-                        variant="highlight"
-                        className="h-7 w-full text-[12px]"
-                      />
-                    );
-                  }
-                  if (conv.type === 'decimal') {
-                    return (
-                      <GlassOptionSingleSelect
-                        value={conv.scale != null ? String(conv.scale) : String(SCALE_MIN)}
-                        groups={[
-                          {
-                            key: 'scale',
-                            items: Array.from({ length: SCALE_MAX - SCALE_MIN + 1 }, (_, k) => {
-                              const n = SCALE_MIN + k;
-                              return {
-                                value: String(n),
-                                label: tr('typeConvertScaleOption', { n }),
-                              };
-                            }),
-                          },
-                        ]}
-                        onChange={(v) =>
-                          updateConversion(i, {
-                            scale: parseTypeConversionScale(v),
-                          })
-                        }
-                        variant="highlight"
-                        className="h-7 w-full text-[12px]"
-                      />
-                    );
-                  }
-                  return (
-                    <span className="flex h-7 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
-                      {tr('typeConvertNoSettings')}
-                    </span>
-                  );
-                },
-              },
-              {
-                flex: 'flex-[1]',
-                header: tr('typeConvertErrorHandling'),
-                render: (conv: TypeConversionEntry, i: number) => (
-                  <GlassOptionSingleSelect
-                    value={conv.onError ?? 'null'}
+                    value={conv.format ?? ''}
+                    groups={[{ key: 'formats', items: formatOptions }]}
                     onChange={(v) =>
                       updateConversion(i, {
-                        onError: v !== 'null' ? (v as 'keep' | 'fail') : undefined,
+                        format: (v || undefined) as DateFormat | undefined,
                       })
                     }
-                    groups={[
-                      {
-                        key: 'errors',
-                        items: onErrorOptions.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        })),
-                      },
-                    ]}
+                    variant="highlight"
                     className="h-7 w-full text-[12px]"
                   />
-                ),
-              },
-            ]}
-            onAdd={(i) => addConversionAfter(i)}
-            onRemove={(i) => removeConversion(i)}
-            onCopy={copyConversion}
-            addTitle={tr('typeConvertAdd')}
-            removeTitle={tr('typeConvertRemove')}
-            actions={['add', 'copy', 'remove']}
-            canAct={(action: RowAction) =>
-              action === 'remove' ? true : activeConversions.length < fieldCompletions.length
-            }
-            draggable
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            onKeyboardMove={handleKeyboardMove}
-            getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-            dragTitle={tr('rowList.dragToReorder')}
-          />
-        </div>
-      </div>
+                );
+              }
+              if (conv.type === 'decimal') {
+                return (
+                  <GlassOptionSingleSelect
+                    value={conv.scale != null ? String(conv.scale) : String(SCALE_MIN)}
+                    groups={[
+                      {
+                        key: 'scale',
+                        items: Array.from({ length: SCALE_MAX - SCALE_MIN + 1 }, (_, k) => {
+                          const n = SCALE_MIN + k;
+                          return {
+                            value: String(n),
+                            label: tr('typeConvertScaleOption', { n }),
+                          };
+                        }),
+                      },
+                    ]}
+                    onChange={(v) =>
+                      updateConversion(i, {
+                        scale: parseTypeConversionScale(v),
+                      })
+                    }
+                    variant="highlight"
+                    className="h-7 w-full text-[12px]"
+                  />
+                );
+              }
+              return (
+                <span className="flex h-7 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
+                  {tr('typeConvertNoSettings')}
+                </span>
+              );
+            },
+          },
+          {
+            flex: 'flex-[1]',
+            header: tr('typeConvertErrorHandling'),
+            render: (conv: TypeConversionEntry, i: number) => (
+              <GlassOptionSingleSelect
+                value={conv.onError ?? 'null'}
+                onChange={(v) =>
+                  updateConversion(i, {
+                    onError: v !== 'null' ? (v as 'keep' | 'fail') : undefined,
+                  })
+                }
+                groups={[
+                  {
+                    key: 'errors',
+                    items: onErrorOptions.map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                    })),
+                  },
+                ]}
+                className="h-7 w-full text-[12px]"
+              />
+            ),
+          },
+        ]}
+        onAdd={(i) => addConversionAfter(i)}
+        onRemove={(i) => removeConversion(i)}
+        onCopy={copyConversion}
+        addTitle={tr('typeConvertAdd')}
+        removeTitle={tr('typeConvertRemove')}
+        actions={['add', 'copy', 'remove']}
+        canAct={(action: RowAction) =>
+          action === 'remove' ? true : activeConversions.length < fieldCompletions.length
+        }
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onKeyboardMove={handleKeyboardMove}
+        getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+        dragTitle={tr('rowList.dragToReorder')}
+      />
     </div>
   );
 }
