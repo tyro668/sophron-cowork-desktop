@@ -1,6 +1,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom/client';
+import { ReactFlow, ReactFlowProvider, Background } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import i18n from './i18n/config';
 import './styles/globals.css';
 
@@ -18,6 +20,11 @@ import FormMissingValue from './components/workflow-forms/FormMissingValue';
 import FormAggregate from './components/workflow-forms/FormAggregate';
 import FormJoin from './components/workflow-forms/FormJoin';
 import FormPivot from './components/workflow-forms/FormPivot';
+import {
+  WorkflowEdge,
+  WorkflowOperatorNode,
+} from './components/data-view/data-tasks/workflow/WorkflowUi';
+import type { WorkflowFlowNode } from './components/data-view/data-tasks/workflow/workflow-model';
 
 const COLUMNS = [
   'id',
@@ -292,9 +299,100 @@ function PreviewApp() {
     },
   ];
 
+  const flowNodes: WorkflowFlowNode[] = [
+    {
+      id: 'n-in',
+      type: 'operator',
+      position: { x: 40, y: 60 },
+      data: { workflowNode: makeNode('input_source', { tableName: 'orders' }) },
+    },
+    {
+      id: 'n-in2',
+      type: 'operator',
+      position: { x: 40, y: 140 },
+      data: { workflowNode: makeNode('input_source', { tableName: 'refunds' }) },
+    },
+    {
+      id: 'n-join',
+      type: 'operator',
+      position: { x: 260, y: 85 },
+      data: { workflowNode: makeNode('join', { joinType: 'inner' }) },
+    },
+    {
+      id: 'n-agg',
+      type: 'operator',
+      position: { x: 480, y: 85 },
+      data: { workflowNode: makeNode('aggregate', {}) },
+    },
+    {
+      id: 'n-out',
+      type: 'operator',
+      position: { x: 700, y: 85 },
+      data: { workflowNode: makeNode('output', {}) },
+    },
+  ];
+  const flowEdges = [
+    {
+      id: 'e1',
+      source: 'n-in',
+      target: 'n-join',
+      sourceHandle: 'output',
+      targetHandle: 'left',
+      type: 'workflow',
+      reconnectable: true,
+      interactionWidth: 18,
+    },
+    {
+      id: 'e2',
+      source: 'n-in2',
+      target: 'n-join',
+      sourceHandle: 'output',
+      targetHandle: 'right',
+      type: 'workflow',
+      reconnectable: true,
+      interactionWidth: 18,
+    },
+    {
+      id: 'e3',
+      source: 'n-join',
+      target: 'n-agg',
+      sourceHandle: 'output',
+      targetHandle: 'input',
+      type: 'workflow',
+      reconnectable: true,
+      interactionWidth: 18,
+    },
+    {
+      id: 'e4',
+      source: 'n-agg',
+      target: 'n-out',
+      sourceHandle: 'output',
+      targetHandle: 'input',
+      type: 'workflow',
+      reconnectable: true,
+      interactionWidth: 18,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="mx-auto grid max-w-[900px] gap-4">
+        <Panel title={t('data.workflow.operators.output') + ' — canvas'}>
+          <ReactFlowProvider>
+            <div className="workflow-react-flow h-full w-full">
+              <ReactFlow
+                nodes={flowNodes}
+                edges={flowEdges}
+                nodeTypes={{ operator: WorkflowOperatorNode }}
+                edgeTypes={{ workflow: WorkflowEdge }}
+                fitView
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />
+              </ReactFlow>
+            </div>
+          </ReactFlowProvider>
+        </Panel>
         {cases.map(({ op, variant, node, tall, C }) => (
           <Panel
             key={op + (variant ?? '')}

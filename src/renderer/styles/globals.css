@@ -624,12 +624,24 @@
   }
 
   .workflow-react-flow .react-flow__handle {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
   }
 
-  .workflow-react-flow .workflow-node-handle {
-    box-shadow: 0 0 0 2px var(--color-background);
+  /* Reconnect anchors: invisible grab dots become visible accent handles
+     once the edge is selected. */
+  .workflow-react-flow .react-flow__edgeupdater {
+    cursor: grab;
+  }
+
+  .workflow-react-flow .react-flow__edge.selected .react-flow__edgeupdater {
+    fill: var(--color-accent);
+    stroke: var(--color-background);
+    stroke-width: 2;
+  }
+
+  .workflow-react-flow .react-flow__edge.selected .react-flow__edgeupdater:active {
+    cursor: grabbing;
   }
 
   .workflow-react-flow .react-flow__controls,

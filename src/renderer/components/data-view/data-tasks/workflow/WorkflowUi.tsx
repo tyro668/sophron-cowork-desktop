@@ -1,6 +1,13 @@
 import { memo, useCallback, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import {
+  BaseEdge,
+  getSmoothStepPath,
+  Handle,
+  Position,
+  type EdgeProps,
+  type NodeProps,
+} from '@xyflow/react';
 import { AlertCircle, Copy, Upload, Workflow, X } from 'lucide-react';
 import type { DataInputTablePreview, DataWorkflowOperatorType } from '../../../../types';
 import { GlassDataGridPreview } from '../../../GlassDataGridPreview';
@@ -178,15 +185,15 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
             id="left"
             type="target"
             position={Position.Left}
-            style={{ top: '35%' }}
-            className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+            style={{ top: '30%' }}
+            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
           />
           <Handle
             id="right"
             type="target"
             position={Position.Left}
-            style={{ top: '65%' }}
-            className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+            style={{ top: '70%' }}
+            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
           />
         </>
       ) : (
@@ -194,7 +201,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
           id="input"
           type="target"
           position={Position.Left}
-          className="workflow-node-handle !left-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+          className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
         />
       )}
       {node.type === 'output' ? null : (
@@ -202,12 +209,56 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
           id="output"
           type="source"
           position={Position.Right}
-          className="workflow-node-handle !right-[-6px] !h-3 !w-3 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+          className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
         />
       )}
       <Icon className="h-3.5 w-3.5 flex-shrink-0" />
       <span className="min-w-0 truncate text-xs font-medium text-text-secondary">{node.label}</span>
     </div>
+  );
+});
+
+const EDGE_ARROW_ROTATION: Record<Position, number> = {
+  [Position.Left]: 0,
+  [Position.Top]: 90,
+  [Position.Right]: 180,
+  [Position.Bottom]: 270,
+};
+
+export const WorkflowEdge = memo(function WorkflowEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  selected,
+  interactionWidth,
+}: EdgeProps) {
+  const [path] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
+  const color = selected ? 'var(--color-accent)' : 'var(--workflow-edge)';
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={path}
+        interactionWidth={typeof interactionWidth === 'number' ? interactionWidth : 18}
+        style={{ stroke: color, strokeWidth: selected ? 2.2 : 1.8 }}
+      />
+      <path
+        d="M0,0 L-6,-3.5 L-6,3.5 Z"
+        fill={color}
+        transform={`translate(${targetX},${targetY}) rotate(${EDGE_ARROW_ROTATION[targetPosition] ?? 0})`}
+      />
+    </>
   );
 });
 

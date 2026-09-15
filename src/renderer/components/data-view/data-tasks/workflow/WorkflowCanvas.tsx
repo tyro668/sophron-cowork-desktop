@@ -12,7 +12,6 @@ import {
   Background,
   ConnectionMode,
   Controls,
-  MarkerType,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
@@ -41,7 +40,7 @@ import { DataToolbarButton } from '../../shared';
 import { getWorkflowAlignmentSnap, getWorkflowConnectionDropTarget } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
 import { canConnectWorkflowNodes } from './workflow-graph-operations';
-import { WorkflowAlignmentGuidesOverlay, WorkflowOperatorNode } from './WorkflowUi';
+import { WorkflowAlignmentGuidesOverlay, WorkflowEdge, WorkflowOperatorNode } from './WorkflowUi';
 import {
   EMPTY_WORKFLOW_ALIGNMENT_GUIDES,
   WORKFLOW_NODE_HEIGHT,
@@ -55,6 +54,9 @@ import {
 const WORKFLOW_NODE_TYPES = {
   operator: WorkflowOperatorNode,
 };
+const WORKFLOW_EDGE_TYPES = {
+  workflow: WorkflowEdge,
+};
 
 // Hoisted to module scope: passing new object/function identities to ReactFlow
 // on every render defeats the memoization of GraphView/NodeRenderer/NodeWrapper,
@@ -63,17 +65,7 @@ const WORKFLOW_DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
 const WORKFLOW_PRO_OPTIONS = { hideAttribution: true };
 const WORKFLOW_MINIMAP_STYLE = { width: 100, height: 75 };
 const WORKFLOW_DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
-  type: 'smoothstep',
-  markerEnd: {
-    type: MarkerType.ArrowClosed,
-    width: 16,
-    height: 16,
-    color: 'var(--workflow-edge)',
-  },
-  style: {
-    stroke: 'var(--workflow-edge)',
-    strokeWidth: 1.8,
-  },
+  type: 'workflow',
 };
 
 function getWorkflowMinimapNodeColor() {
@@ -201,19 +193,10 @@ function WorkflowCanvasContent({
         target: edge.targetNodeId,
         sourceHandle: edge.sourceHandle ?? 'output',
         targetHandle: edge.targetHandle ?? 'input',
-        type: 'smoothstep',
+        type: 'workflow',
+        selectable: true,
         reconnectable: true,
         interactionWidth: 18,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          width: 16,
-          height: 16,
-          color: 'rgba(100, 116, 139, 0.82)',
-        },
-        style: {
-          stroke: 'rgba(100, 116, 139, 0.68)',
-          strokeWidth: 1.8,
-        },
       })),
     [edges]
   );
@@ -486,6 +469,7 @@ function WorkflowCanvasContent({
           nodes={flowNodes}
           edges={flowEdges}
           nodeTypes={WORKFLOW_NODE_TYPES}
+          edgeTypes={WORKFLOW_EDGE_TYPES}
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onConnect={handleConnect}
@@ -502,7 +486,7 @@ function WorkflowCanvasContent({
           proOptions={WORKFLOW_PRO_OPTIONS}
           connectionMode={ConnectionMode.Loose}
           connectionRadius={48}
-          reconnectRadius={12}
+          reconnectRadius={6}
           isValidConnection={isValidWorkflowConnection}
           defaultEdgeOptions={WORKFLOW_DEFAULT_EDGE_OPTIONS}
           className="workflow-react-flow bg-transparent"
