@@ -72,14 +72,23 @@ describe('data task architecture regressions', () => {
     const task = await store.createTask({ name: 'Cache invalidation', sourcePath });
     const workflow: DataWorkflowSaveInput = {
       nodes: [
-        { id: 'source', type: 'input_source', label: 'Source', config: { source: 'task' } },
+        {
+          id: 'source',
+          type: 'input_source',
+          label: 'Source',
+          x: 0,
+          y: 0,
+          config: { source: 'task' },
+        },
         {
           id: 'select',
           type: 'field_select',
           label: 'Select',
+          x: 0,
+          y: 0,
           config: { columns: ['id'], mode: 'include' },
         },
-        { id: 'output', type: 'output', label: 'Output', config: {} },
+        { id: 'output', type: 'output', label: 'Output', x: 0, y: 0, config: {} },
       ],
       edges: [
         { id: 'source-select', sourceNodeId: 'source', targetNodeId: 'select' },

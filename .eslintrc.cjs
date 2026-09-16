@@ -24,6 +24,15 @@ module.exports = {
     'react-hooks/exhaustive-deps': 'warn',
   },
   overrides: [
+    // Test files get looser typing rules: mocks and partial fixtures legitimately
+    // use `any`/`Function`. Strict typing is enforced by tsconfig.tests.json.
+    {
+      files: ['tests/**/*.ts', 'tests/**/*.tsx', 'src/tests/**/*.ts', 'src/tests/**/*.tsx'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/ban-types': 'off',
+      },
+    },
     // Architectural boundaries: cross-process types live in src/shared/contracts.
     // See src/tests/contracts/architecture-boundaries.test.ts for the CI check.
     {

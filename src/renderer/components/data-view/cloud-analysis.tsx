@@ -34,6 +34,7 @@ import {
   getPersonalAnalysisErrorMessage,
 } from '../../../shared/personal-analysis';
 import { InputTablePreviewDialog } from './input-tables';
+import { dataClient } from '../../features/data/api/data-client';
 
 interface SelectedProject {
   spaceId: string;
@@ -369,12 +370,12 @@ export function CloudAnalysisPanel() {
   }, [setSettingsTab, setShowSettings]);
 
   const handleLogin = useCallback(async () => {
-    if (!window.electronAPI?.auth || loginBusy) return;
+    if (!dataClient.hasAuth() || loginBusy) return;
 
     setLoginBusy(true);
     setNotice(null);
     try {
-      const status = await window.electronAPI.auth.login();
+      const status = await dataClient.authLogin();
       setDesktopAuthStatus(status);
       if (!status.authenticated) {
         setNotice({
@@ -443,7 +444,7 @@ export function CloudAnalysisPanel() {
       onResourceNotFound,
     }: TableQueryInput) => {
       const keyword = options.keyword?.trim() ?? '';
-      if (!window.electronAPI?.data || (requireKeyword && !keyword)) return;
+      if (!dataClient.isAvailable() || (requireKeyword && !keyword)) return;
 
       const requestId = ++tableRequestSeq.current;
       const page = options.page ?? 1;
@@ -518,7 +519,7 @@ export function CloudAnalysisPanel() {
         options,
         requireKeyword: true,
         fetchTables: async ({ keyword: queryKeyword, page }) =>
-          window.electronAPI.data.searchCloudTables({
+          dataClient.searchCloudTables({
             ...connection,
             keyword: queryKeyword,
             page,
@@ -553,7 +554,7 @@ export function CloudAnalysisPanel() {
         cacheKey,
         options,
         fetchTables: async ({ keyword: queryKeyword, page }) =>
-          window.electronAPI.data.listCloudTables({
+          dataClient.listCloudTables({
             ...connection,
             spaceId: target.spaceId,
             projectId: target.projectId,
@@ -574,7 +575,7 @@ export function CloudAnalysisPanel() {
       connection: CloudConnection = connectionPayload,
       options: { forceRefresh?: boolean } = {}
     ) => {
-      if (!window.electronAPI?.data || !connection.apiOrigin) return;
+      if (!dataClient.isAvailable() || !connection.apiOrigin) return;
       if (!options.forceRefresh && projectsBySpace[spaceId]) return;
 
       const requestId = (projectRequestSeq.current[spaceId] ?? 0) + 1;
@@ -584,7 +585,7 @@ export function CloudAnalysisPanel() {
       };
       setLoadingProjectsBySpace((current) => ({ ...current, [spaceId]: true }));
       try {
-        const result = await window.electronAPI.data.listCloudProjects({
+        const result = await dataClient.listCloudProjects({
           ...connection,
           spaceId,
         });
@@ -630,7 +631,7 @@ export function CloudAnalysisPanel() {
       } = {}
     ) => {
       const connection = options.connection ?? connectionPayload;
-      if (!window.electronAPI?.data || !connection.apiOrigin) return;
+      if (!dataClient.isAvailable() || !connection.apiOrigin) return;
       const preserveView = Boolean(options.forceRefresh);
       const viewSnapshot = preserveView
         ? {
@@ -649,7 +650,7 @@ export function CloudAnalysisPanel() {
       setLoadingCatalog(true);
       setNotice(null);
       try {
-        const spaceResult = await window.electronAPI.data.listCloudSpaces(connection);
+        const spaceResult = await dataClient.listCloudSpaces(connection);
         const nextSpaces = spaceResult.spaces;
         if (requestId !== catalogRequestSeq.current) return;
         const nextSpaceIds = new Set(nextSpaces.map((space) => space.spaceId));
@@ -703,7 +704,7 @@ export function CloudAnalysisPanel() {
               [spaceId]: projectRequestId,
             };
             setLoadingProjectsBySpace((current) => ({ ...current, [spaceId]: true }));
-            void window.electronAPI.data
+            void dataClient
               .listCloudProjects({
                 ...connection,
                 spaceId,
@@ -871,12 +872,12 @@ export function CloudAnalysisPanel() {
 
   const previewTable = useCallback(
     async (table: PersonalAnalysisTable, page = 1) => {
-      if (!window.electronAPI?.data) return;
+      if (!dataClient.isAvailable()) return;
       const requestId = ++previewRequestSeq.current;
       setPreviewPage(page);
       setPreview({ table, loading: true, error: null, data: null });
       try {
-        const result = await window.electronAPI.data.previewCloudTable({
+        const result = await dataClient.previewCloudTable({
           ...connectionPayload,
           tableId: table.tableId,
           limit: CLOUD_PREVIEW_PAGE_SIZE,
@@ -899,14 +900,14 @@ export function CloudAnalysisPanel() {
 
   const importTable = useCallback(
     async (table: PersonalAnalysisTable) => {
-      if (!window.electronAPI?.data) return;
+      if (!dataClient.isAvailable()) return;
       const targetSpaceId = table.spaceId || selectedProject?.spaceId;
       const targetProjectId = table.projectId || selectedProject?.projectId;
       if (!targetProjectId) return;
       const requestId = ++importRequestSeq.current;
       setImportingTableId(table.tableId);
       try {
-        const result = await window.electronAPI.data.importCloudTable({
+        const result = await dataClient.importCloudTable({
           ...connectionPayload,
           tableId: table.tableId,
           spaceId: targetSpaceId,
@@ -978,7 +979,7 @@ export function CloudAnalysisPanel() {
   }, []);
 
   const addSelectedTablesToChat = useCallback(async () => {
-    if (!window.electronAPI?.data || selectedTables.length === 0) return;
+    if (!dataClient.isAvailable() || selectedTables.length === 0) return;
 
     setAddingToChat(true);
     setNotice(null);
@@ -988,7 +989,7 @@ export function CloudAnalysisPanel() {
           let sampleRows: Array<Record<string, unknown>> = [];
           let columns = table.columns ?? [];
           try {
-            const result = await window.electronAPI.data.previewCloudTable({
+            const result = await dataClient.previewCloudTable({
               ...connectionPayload,
               tableId: table.tableId,
               limit: 5,

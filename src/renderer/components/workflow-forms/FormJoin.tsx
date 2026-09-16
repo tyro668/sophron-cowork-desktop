@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
+import { dataClient } from '../../features/data/api/data-client';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -94,10 +95,9 @@ export default function FormJoin({
     setRightRawColumns([]);
     setRightColumnsError(false);
     if (!rightSourceNode || typeof taskId !== 'string') return;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-    if (!isElectron) return;
-    void window
-      .electronAPI!.data.getWorkflowNodeColumns({
+    if (!dataClient.isAvailable()) return;
+    void dataClient
+      .getWorkflowNodeColumns({
         taskId,
         nodeId: rightSourceNode.id,
         nodeType: rightSourceNode.type as never,

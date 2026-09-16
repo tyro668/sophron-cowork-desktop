@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applySessionUpdate } from '../src/renderer/utils/session-update';
+import type { Session } from '../src/renderer/types';
 
 describe('applySessionUpdate', () => {
   it('updates title in session list', () => {
@@ -10,7 +11,7 @@ describe('applySessionUpdate', () => {
 
   it('inserts session when missing and updates include full session fields', () => {
     const sessions: any[] = [];
-    const updates = {
+    const updates: Partial<Session> = {
       title: 'Remote Session',
       status: 'idle',
       createdAt: 1700000000000,

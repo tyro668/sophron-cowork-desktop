@@ -12,6 +12,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     title: 'Edge case task',
     prompt: 'run edge case',
     cwd: '/tmp/project',
+    automationConfig: null,
     runAt: now,
     nextRunAt: now,
     enabled: true,
@@ -36,6 +37,13 @@ function createStore(initialTasks: ScheduledTask[]): ScheduledTaskStore {
     create: (input) => {
       const createdAt = Date.now();
       const task: ScheduledTask = {
+        title: '',
+        automationConfig: null,
+        nextRunAt: input.runAt,
+        enabled: true,
+        scheduleConfig: null,
+        repeatEvery: null,
+        repeatUnit: null,
         ...input,
         id: `task-${tasks.size + 1}`,
         lastRunAt: null,
@@ -131,7 +139,11 @@ describe('ScheduledTaskManager – edge cases', () => {
     };
 
     const executeTask = vi.fn().mockResolvedValue({ sessionId: 'session-null' });
-    const manager = new ScheduledTaskManager({ store: innerStore, executeTask, now: () => Date.now() });
+    const manager = new ScheduledTaskManager({
+      store: innerStore,
+      executeTask,
+      now: () => Date.now(),
+    });
     manager.start();
 
     // Should not throw even though store.update returns null

@@ -10,6 +10,15 @@ import {
   resolveSyntheticPiModelFallback,
 } from '../src/main/claude/pi-model-resolution';
 import { API_PROVIDER_PRESETS } from '../src/shared/api-model-presets';
+import type { Api, Model, OpenAICompletionsCompat } from '@mariozechner/pi-ai';
+
+/**
+ * The models exercised here all resolve through the openai-completions api,
+ * so narrow the pi-ai compat union to the completions shape.
+ */
+function completionsCompat(model: Model<Api>): OpenAICompletionsCompat | undefined {
+  return model.compat as OpenAICompletionsCompat | undefined;
+}
 
 describe('pi model resolution helpers', () => {
   it('skips invalid custom raw provider lookups and deduplicates candidates', () => {
@@ -303,7 +312,7 @@ describe('pi model resolution helpers', () => {
     );
 
     expect(model.baseUrl).toBe('https://api.moonshot.cn/v1');
-    expect(model.compat?.supportsDeveloperRole).toBe(false);
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
   });
 
   it('keeps developer role enabled for first-party openai endpoints', () => {
@@ -327,7 +336,7 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect(model.compat?.supportsDeveloperRole).toBeUndefined();
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBeUndefined();
   });
 
   it('auto-detects reasoning models by model id pattern', () => {
@@ -521,7 +530,7 @@ describe('pi model resolution helpers', () => {
     );
 
     expect(model.baseUrl).toBe('http://localhost:11434/v1');
-    expect(model.compat?.supportsDeveloperRole).toBe(false);
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
   });
 
   it('maps ollama thinking off to reasoning_effort none for reasoning models', () => {
@@ -545,10 +554,10 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect(model.compat?.supportsReasoningEffort).toBe(true);
-    expect((model.compat?.reasoningEffortMap as Record<string, string> | undefined)?.off).toBe(
-      'none'
-    );
+    expect(completionsCompat(model)?.supportsReasoningEffort).toBe(true);
+    expect(
+      (completionsCompat(model)?.reasoningEffortMap as Record<string, string> | undefined)?.off
+    ).toBe('none');
   });
 
   it('disables developer role for openrouter with custom endpoint', () => {
@@ -572,7 +581,7 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect(model.compat?.supportsDeveloperRole).toBe(false);
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
   });
 
   it('disables supportsStore alongside developer role for non-standard endpoints', () => {
@@ -596,8 +605,8 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect(model.compat?.supportsDeveloperRole).toBe(false);
-    expect(model.compat?.supportsStore).toBe(false);
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
+    expect(completionsCompat(model)?.supportsStore).toBe(false);
   });
 
   it('preserves existing compat fields when disabling developer role', () => {
@@ -624,8 +633,8 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect(model.compat?.supportsDeveloperRole).toBe(false);
-    expect(model.compat?.supportsStore).toBe(false);
+    expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
+    expect(completionsCompat(model)?.supportsStore).toBe(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((model.compat as any)?.supportsStreaming).toBe(true);
   });
@@ -654,7 +663,9 @@ describe('pi model resolution helpers', () => {
     expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
       false
     );
-    expect(model.compat?.requiresThinkingInContent).toBe(false);
+    expect(
+      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
+    ).toBe(false);
   });
 
   it('uses top-level reasoning replay for provider-prefixed DeepSeek model ids', () => {
@@ -681,7 +692,9 @@ describe('pi model resolution helpers', () => {
     expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
       false
     );
-    expect(model.compat?.requiresThinkingInContent).toBe(false);
+    expect(
+      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
+    ).toBe(false);
   });
 
   it('does not drop thinking for unrelated custom endpoint model ids', () => {
@@ -708,6 +721,8 @@ describe('pi model resolution helpers', () => {
     expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
       undefined
     );
-    expect(model.compat?.requiresThinkingInContent).toBeUndefined();
+    expect(
+      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
+    ).toBeUndefined();
   });
 });

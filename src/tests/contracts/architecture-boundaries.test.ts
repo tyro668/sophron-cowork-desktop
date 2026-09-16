@@ -31,6 +31,106 @@ function importsOf(file: string): string[] {
   return [...src.matchAll(IMPORT_RE)].map((m) => m[1]);
 }
 
+/** One import edge: target specifier + whether the statement is type-only. */
+const IMPORT_STMT_RE =
+  /\b(?:import|export)\s+(type\s+)?[\s\S]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)|import\s*['"]([^'"]+)['"]/g;
+
+function runtimeImportsOf(file: string): string[] {
+  const src = fs.readFileSync(file, 'utf8');
+  const specs: string[] = [];
+  for (const m of src.matchAll(IMPORT_STMT_RE)) {
+    const spec = m[2] ?? m[3] ?? m[4];
+    if (!spec) continue;
+    let typeOnly = Boolean(m[1]);
+    if (!typeOnly && m[0].startsWith('import ') === false && m[0].startsWith('export ') === false) {
+      // dynamic import() — always a runtime edge
+    } else if (!typeOnly) {
+      const named = m[0].match(/\{([\s\S]*?)\}/);
+      const rest = m[0].replace(/\{[\s\S]*?\}/, '');
+      if (
+        named &&
+        /^[\s]*(import|export)[\s\S]*from/.test(rest) &&
+        !rest
+          .replace(/^\s*(import|export)\s*/, '')
+          .replace(/from\s*['"][^'"]+['"]\s*;?\s*$/, '')
+          .trim()
+      ) {
+        typeOnly = named[1].split(',').every((s) => /^\s*type\s/.test(s));
+      }
+    }
+    if (!typeOnly) specs.push(spec);
+  }
+  return specs;
+}
+
+const RESOLVE_EXTS = ['.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx'];
+
+function resolveImport(fromFile: string, spec: string): string | null {
+  if (!spec.startsWith('.')) {
+    if (spec.startsWith('@/')) spec = `./${spec.slice(2)}`;
+    else if (spec.startsWith('@main/')) spec = `./main/${spec.slice(6)}`;
+    else if (spec.startsWith('@renderer/')) spec = `./renderer/${spec.slice(10)}`;
+    else return null;
+  }
+  const base = path.resolve(path.dirname(fromFile), spec);
+  for (const ext of RESOLVE_EXTS) {
+    if (fs.existsSync(base + ext) && fs.statSync(base + ext).isFile()) return base + ext;
+  }
+  return null;
+}
+
+/**
+ * Runtime (non-`import type`) module cycles under src/. Type-only edges erase
+ * at compile time and are allowed; real cycles are not — they make module init
+ * order load-bearing and defeat layering. The two sandbox entries are an
+ * intentional lazy boundary: the bridges reach the bootstrap singleton via
+ * `await import()` so the edge never initializes eagerly.
+ */
+const ALLOWED_RUNTIME_CYCLE_EDGES = new Set([
+  'main/sandbox/wsl-bridge.ts -> main/sandbox/sandbox-bootstrap.ts',
+  'main/sandbox/lima-bridge.ts -> main/sandbox/sandbox-bootstrap.ts',
+]);
+
+function runtimeImportCycles(): string[] {
+  const files = walk(SRC).filter((f) => !f.endsWith('.d.ts'));
+  const graph = new Map<string, string[]>();
+  for (const file of files) {
+    graph.set(
+      file,
+      runtimeImportsOf(file)
+        .map((spec) => resolveImport(file, spec))
+        .filter((r): r is string => Boolean(r))
+        .filter(
+          (r) =>
+            !ALLOWED_RUNTIME_CYCLE_EDGES.has(
+              `${path.relative(SRC, file)} -> ${path.relative(SRC, r)}`
+            )
+        )
+    );
+  }
+  const color = new Map<string, 0 | 1 | 2>();
+  const cycles = new Set<string>();
+  const stack: string[] = [];
+  const dfs = (u: string): void => {
+    color.set(u, 1);
+    stack.push(u);
+    for (const v of graph.get(u) ?? []) {
+      const c = color.get(v) ?? 0;
+      if (c === 0) dfs(v);
+      else if (c === 1) {
+        const i = stack.indexOf(v);
+        cycles.add([...stack.slice(i), v].map((x) => path.relative(SRC, x)).join(' -> '));
+      }
+    }
+    stack.pop();
+    color.set(u, 2);
+  };
+  for (const file of files) {
+    if (!color.get(file)) dfs(file);
+  }
+  return [...cycles];
+}
+
 /** True when a specifier escapes the given tree: '../x' hops up to src/, or alias. */
 function referencesTopLevel(specifier: string, topDir: string): boolean {
   if (specifier.startsWith(`@/${topDir}/`) || specifier.startsWith(`@${topDir}/`)) return true;
@@ -96,8 +196,10 @@ describe('entrypoint shape', () => {
     expect(src).not.toMatch(/\binterface\s+Window\b|\bdeclare\s+global\b/);
   });
 
-  it('Window.electronAPI is declared once in preload/electron-api.d.ts', () => {
-    const dts = path.join(SRC, 'preload/electron-api.d.ts');
+  it('Window.electronAPI is declared once in shared/contracts/electron-api.d.ts', () => {
+    // The bridge global is a shared contract: preload implements it, renderer
+    // consumes it — so the declaration lives in contracts/, not in preload/.
+    const dts = path.join(SRC, 'shared/contracts/electron-api.d.ts');
     expect(fs.existsSync(dts)).toBe(true);
     expect(fs.readFileSync(dts, 'utf8')).toMatch(/electronAPI\s*:\s*ElectronApi/);
   });
@@ -133,6 +235,81 @@ describe('data store layering', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('metadata schema DDL lives only in the migration layer', () => {
+    // Repositories own row access; CREATE/ALTER/INDEX belong in
+    // store/migrations.ts so schema changes are versioned and auditable.
+    const offenders: string[] = [];
+    for (const file of walk(path.join(DATA_STORE, 'repositories'))) {
+      const src = fs.readFileSync(file, 'utf8');
+      if (/\bCREATE\s+(TABLE|INDEX)|\bALTER\s+TABLE/i.test(src)) {
+        offenders.push(path.relative(SRC, file));
+      }
+    }
+    // The context keeps only the physical-table helper (`CREATE TABLE ... AS
+    // SELECT`) and the `ensureMetadataColumn` primitive used by migrations —
+    // no metadata-table DDL.
+    const ctxSrc = fs.readFileSync(path.join(DATA_STORE, 'data-store-context.ts'), 'utf8');
+    if (/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS|CREATE\s+INDEX/i.test(ctxSrc)) {
+      offenders.push('main/data/store/data-store-context.ts');
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('module cycle detection', () => {
+  it('src/ has no runtime import cycles outside documented lazy boundaries', () => {
+    expect(runtimeImportCycles()).toEqual([]);
+  });
+});
+
+describe('renderer data feature layering', () => {
+  const DATA_FEATURE = path.join(SRC, 'renderer/features/data');
+  const ADAPTER = path.join(DATA_FEATURE, 'api/data-client.ts');
+
+  function stripComments(src: string): string {
+    return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  }
+
+  function electronApiTouches(dir: string, allowFile?: string): string[] {
+    const offenders: string[] = [];
+    for (const file of walk(dir)) {
+      if (allowFile && file === allowFile) continue;
+      if (/\belectronAPI\b/.test(stripComments(fs.readFileSync(file, 'utf8')))) {
+        offenders.push(path.relative(SRC, file));
+      }
+    }
+    return offenders;
+  }
+
+  it('features/data code never touches window.electronAPI outside api/data-client.ts', () => {
+    expect(electronApiTouches(DATA_FEATURE, ADAPTER)).toEqual([]);
+  });
+
+  it('data-view components go through the dataClient adapter, not the bridge', () => {
+    const offenders = electronApiTouches(path.join(SRC, 'renderer/components/data-view')).concat(
+      electronApiTouches(path.join(SRC, 'renderer/components/workflow-forms'))
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('features/data/model stays pure types (no component or IPC imports)', () => {
+    const offenders: string[] = [];
+    for (const file of walk(path.join(DATA_FEATURE, 'model'))) {
+      for (const spec of importsOf(file)) {
+        if (/components|api\/data-client|electron-api/.test(spec)) {
+          offenders.push(`${path.relative(SRC, file)} -> ${spec}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('DataView.tsx stays a thin re-export of the feature page', () => {
+    const src = fs.readFileSync(path.join(SRC, 'renderer/components/DataView.tsx'), 'utf8');
+    expect(src).not.toMatch(/\belectronAPI\b|\buseState\b|\buseEffect\b/);
+    expect(src).toMatch(/features\/data\/pages\/DataViewPage/);
   });
 });
 

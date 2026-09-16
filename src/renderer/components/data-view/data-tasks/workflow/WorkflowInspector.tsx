@@ -15,6 +15,7 @@ import {
   type PrepDiagnostic,
 } from '../../../../../shared/prep-dsl';
 import { INPUT_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
+import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowOperatorConfigPanel } from '../../WorkflowOperatorConfigPanel';
 import { getOperatorCatalog } from './operator-catalog';
 import { getWorkflowConfigSummary } from './workflow-summary';
@@ -120,13 +121,12 @@ export function WorkflowInspector({
       setOperatorFieldCompletions([]);
       return;
     }
-    const getColumns = window.electronAPI?.data?.getWorkflowNodeColumns;
-    if (!getColumns) return;
+    if (!dataClient.has('getWorkflowNodeColumns')) return;
 
     void (async () => {
       for (const candidate of operatorFieldSourceCandidates) {
         try {
-          const columns = await getColumns({
+          const columns = await dataClient.getWorkflowNodeColumns({
             taskId: candidate.taskId,
             nodeId: candidate.id,
             nodeType: candidate.type,
@@ -170,7 +170,7 @@ export function WorkflowInspector({
 
   useEffect(() => {
     if (activeTab !== 'data' || !node) return;
-    if (!window.electronAPI?.data?.previewWorkflowNode) {
+    if (!dataClient.has('previewWorkflowNode')) {
       setNodePreviewData(null);
       setNodePreviewError(t('data.workflow.nodeDataUnavailable'));
       return;
@@ -179,7 +179,7 @@ export function WorkflowInspector({
     nodePreviewRequestSeq.current = requestSeq;
     setNodePreviewLoading(true);
     setNodePreviewError(null);
-    void window.electronAPI.data
+    void dataClient
       .previewWorkflowNode({
         taskId: node.taskId,
         nodeId: node.id,

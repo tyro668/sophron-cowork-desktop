@@ -614,12 +614,14 @@ describe('ETL runtime contract — validation consistency', () => {
           | output table "other_out" mode replace`
       ).ast!
     );
-    const outA = compiled.nodes.find((n) => n.type === 'output' && n.config.table === 'task_out')!;
+    const outA = compiled.nodes.find((n) => n.type === 'output' && n.config?.table === 'task_out')!;
     // strip the name so sink A resolves to the task's bound output table...
     outA.config = { ...outA.config };
     delete outA.config.table;
     // ...and point sink B at the same physical table via outputDatasetId
-    const outB = compiled.nodes.find((n) => n.type === 'output' && n.config.table === 'other_out')!;
+    const outB = compiled.nodes.find(
+      (n) => n.type === 'output' && n.config?.table === 'other_out'
+    )!;
     outB.config = { ...outB.config, outputDatasetId: outputTable.id };
     delete outB.config.table;
     await expect(

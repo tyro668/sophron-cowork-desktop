@@ -4,6 +4,7 @@ import {
   type ScheduledTaskScheduleConfig,
   type ScheduledTask,
   type ScheduledTaskStore,
+  type ScheduledTaskWeekday,
 } from '../src/main/schedule/scheduled-task-manager';
 import { buildScheduledTaskTitle } from '../src/shared/schedule/task-title';
 
@@ -14,6 +15,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     title: 'Daily reminder',
     prompt: 'run reminder',
     cwd: '/tmp/project',
+    automationConfig: null,
     runAt: now,
     nextRunAt: now,
     enabled: true,
@@ -43,7 +45,10 @@ function createDailySchedule(times: string[]): ScheduledTaskScheduleConfig {
   return { kind: 'daily', times };
 }
 
-function createWeeklySchedule(weekdays: number[], times: string[]): ScheduledTaskScheduleConfig {
+function createWeeklySchedule(
+  weekdays: ScheduledTaskWeekday[],
+  times: string[]
+): ScheduledTaskScheduleConfig {
   return { kind: 'weekly', weekdays, times };
 }
 
@@ -64,6 +69,13 @@ function createStore(initialTasks: ScheduledTask[]): ScheduledTaskStore {
     create: (input) => {
       const createdAt = Date.now();
       const task: ScheduledTask = {
+        title: buildScheduledTaskTitle(input.prompt),
+        automationConfig: null,
+        nextRunAt: input.runAt,
+        enabled: true,
+        scheduleConfig: null,
+        repeatEvery: null,
+        repeatUnit: null,
         ...input,
         id: `task-${tasks.size + 1}`,
         lastRunAt: null,
@@ -154,7 +166,7 @@ describe('ScheduledTaskManager', () => {
       }),
     ]);
 
-    let resolveFirst: (() => void) | null = null;
+    let resolveFirst: () => void = () => undefined;
     const executeTask = vi
       .fn()
       .mockImplementationOnce(
@@ -176,7 +188,7 @@ describe('ScheduledTaskManager', () => {
     // While the first run is still pending the second trigger must be suppressed
     expect(executeTask).toHaveBeenCalledTimes(1);
 
-    resolveFirst?.();
+    resolveFirst();
     await Promise.resolve();
   });
 

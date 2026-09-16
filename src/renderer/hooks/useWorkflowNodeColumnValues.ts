@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { dataClient } from '../features/data/api/data-client';
 
 interface UseColumnValuesInput {
   taskId?: string;
@@ -65,8 +66,7 @@ export function useWorkflowNodeColumnValues({
       column: currentColumn,
     } = paramsRef.current;
     if (!currentTaskId || !currentSourceNode?.id || !currentColumn) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnValues) {
+    if (!dataClient.has('getWorkflowNodeColumnValues')) {
       setValues([]);
       setLoading(false);
       setLoaded(false);
@@ -78,7 +78,7 @@ export function useWorkflowNodeColumnValues({
     setLoading(true);
     setLoaded(false);
     setError(false);
-    api
+    dataClient
       .getWorkflowNodeColumnValues({
         taskId: currentTaskId,
         nodeId: currentSourceNode.id,

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "node_modules/.cache/tsbuild/main",
+    "tsBuildInfoFile": "node_modules/.cache/tsbuild/tsconfig.main.tsbuildinfo"
+  },
+  "include": ["src/main", "src/main/**/*.json", "src/shared/i18n/locales/*.json"],
+  "exclude": ["src/main/sandbox/wsl-agent", "src/main/sandbox/lima-agent"],
+  "references": [{ "path": "./tsconfig.shared.json" }]
+}

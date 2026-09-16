@@ -117,7 +117,7 @@ describe('SessionManager message cache', () => {
   it('populates cache when saveMessage is called for an uncached session', () => {
     const db = makeDb();
     // Override getBySessionId to return empty for 's2'
-    db.messages.getBySessionId = vi.fn((_id: string) => []);
+    db.messages.getBySessionId = vi.fn(() => []);
     const manager = new SessionManager(db as unknown as DatabaseInstance, vi.fn());
 
     // Save a message for session 's2' which is not yet cached

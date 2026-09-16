@@ -116,7 +116,9 @@ vi.mock('../src/main/claude/pi-model-resolution', () => ({
     const parts = resolved.split('/');
     const strippedModelId = parts.length >= 2 ? parts.slice(1).join('/') : resolved;
     const preserve =
-      ['openrouter', 'custom', 'deepseek', 'moonshot', 'aliyun', 'zai'].includes(rawProvider || '') &&
+      ['openrouter', 'custom', 'deepseek', 'moonshot', 'aliyun', 'zai'].includes(
+        rawProvider || ''
+      ) &&
       routeProtocol === 'openai' &&
       raw.includes('/');
     return {
@@ -150,7 +152,17 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: true,
+    theme: 'light',
     sandboxEnabled: false,
+    memoryEnabled: false,
+    memoryRuntime: {
+      llm: { inheritFromActive: true, timeoutMs: 180000 },
+      embedding: { inheritFromActive: true, timeoutMs: 180000 },
+      useEmbedding: false,
+      maxNavSteps: 2,
+      ingestionConcurrency: 4,
+    },
+    personalAnalysis: { apiOrigin: '', apiKey: '', updatedAt: 0 },
     enableThinking: false,
     isConfigured: true,
     ...overrides,

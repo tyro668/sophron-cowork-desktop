@@ -5,7 +5,14 @@ import path from 'node:path';
 const appPath = path.resolve(process.cwd(), 'src/renderer/App.tsx');
 const sidebarPath = path.resolve(process.cwd(), 'src/renderer/components/Sidebar.tsx');
 const storePath = path.resolve(process.cwd(), 'src/renderer/store/index.ts');
-const dataViewPath = path.resolve(process.cwd(), 'src/renderer/components/DataView.tsx');
+const dataViewPagePath = path.resolve(
+  process.cwd(),
+  'src/renderer/features/data/pages/DataViewPage.tsx'
+);
+const dataDashboardHookPath = path.resolve(
+  process.cwd(),
+  'src/renderer/features/data/hooks/use-data-dashboard.ts'
+);
 const tasksPanelPath = path.resolve(
   process.cwd(),
   'src/renderer/components/data-view/data-tasks/TasksPanel.tsx'
@@ -26,10 +33,11 @@ describe('main workspace navigation', () => {
   });
 
   it('shows a dedicated data placeholder instead of the new chat surface', () => {
-    const source = fs.readFileSync(dataViewPath, 'utf8');
+    const source = fs.readFileSync(dataViewPagePath, 'utf8');
+    const dashboardHook = fs.readFileSync(dataDashboardHookPath, 'utf8');
     const tasksPanel = fs.readFileSync(tasksPanelPath, 'utf8');
 
-    expect(source).toContain('window.electronAPI.data.getDashboard');
+    expect(dashboardHook).toContain('dataClient.getDashboard');
     expect(tasksPanel).toContain("t('data.newCleaningTask')");
     expect(source).toContain("t('data.tabs.tasks')");
     expect(source).not.toContain('WelcomeView');
@@ -57,18 +65,15 @@ describe('main workspace navigation', () => {
   });
 
   it('stores the selected top-level view and supports nav-server page aliases', () => {
+    // Behavioral coverage lives in tests/renderer/data-navigation-store.test.ts
+    // (setMainView, __navigate aliases, nonce-guarded clearing). Keep only a
+    // smoke check that the MainView union and nav-server bridge still exist.
     const source = fs.readFileSync(storePath, 'utf8');
 
     expect(source).toContain(
       "export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';"
     );
-    expect(source).toContain("mainView: 'chat'");
-    expect(source).toContain("...(sessionId ? { mainView: 'chat' as const } : {})");
-    expect(source).toContain("page === 'welcome'");
-    expect(source).toContain("page === 'data'");
-    expect(source).toContain("page === 'cloud-data'");
-    expect(source).toContain("page === 'skills'");
-    expect(source).toContain("page === 'automation'");
+    expect(source).toContain('__navigate');
   });
 
   it('defines localized main nav labels', () => {

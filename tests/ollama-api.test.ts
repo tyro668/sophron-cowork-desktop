@@ -154,10 +154,9 @@ describe('ollama api helpers', () => {
   it('maps fetch connection-refused causes to ollama_not_running', async () => {
     vi.mocked(global.fetch).mockRejectedValueOnce(
       new TypeError('fetch failed', {
-        cause: {
+        cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), {
           code: 'ECONNREFUSED',
-          message: 'connect ECONNREFUSED 127.0.0.1:11434',
-        } as Error,
+        }),
       })
     );
 
@@ -189,10 +188,9 @@ describe('ollama api helpers', () => {
 
     it('maps ECONNREFUSED to ollama_not_running (not ollama_loading)', () => {
       const err = new TypeError('fetch failed', {
-        cause: {
+        cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), {
           code: 'ECONNREFUSED',
-          message: 'connect ECONNREFUSED 127.0.0.1:11434',
-        } as Error,
+        }),
       });
       const result = normalizeError(err);
       expect(result.ok).toBe(false);

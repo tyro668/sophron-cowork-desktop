@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { dataClient } from '../features/data/api/data-client';
 
 interface UseColumnTypesInput {
   taskId?: string;
@@ -13,10 +14,9 @@ export function useWorkflowNodeColumnTypes({
 
   useEffect(() => {
     if (!taskId || !sourceNode?.id) return;
-    const api = window.electronAPI?.data;
-    if (!api?.getWorkflowNodeColumnTypes) return;
+    if (!dataClient.has('getWorkflowNodeColumnTypes')) return;
     let cancelled = false;
-    api
+    dataClient
       .getWorkflowNodeColumnTypes({
         taskId,
         nodeId: sourceNode.id,

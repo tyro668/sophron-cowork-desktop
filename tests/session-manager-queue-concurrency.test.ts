@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
+import type { ServerEvent } from '../src/shared/contracts';
 
 // --- Mocks (must be before SessionManager import) ---
 
@@ -86,11 +87,11 @@ function createMockDb() {
 
 describe('SessionManager processQueue concurrency', () => {
   let db: DatabaseInstance;
-  let sendToRenderer: ReturnType<typeof vi.fn>;
+  let sendToRenderer: Mock<(event: ServerEvent) => void>;
 
   beforeEach(() => {
     db = createMockDb();
-    sendToRenderer = vi.fn();
+    sendToRenderer = vi.fn<(event: ServerEvent) => void>();
   });
 
   it('activeSessions stays populated while pending items exist (no gap for duplicate queue)', async () => {
@@ -98,7 +99,7 @@ describe('SessionManager processQueue concurrency', () => {
 
     // Track activeSessions state via the public-facing status updates
     const statusUpdates: string[] = [];
-    sendToRenderer.mockImplementation((msg: { type: string; payload: { status?: string } }) => {
+    sendToRenderer.mockImplementation((msg: ServerEvent) => {
       if (msg.type === 'session.status' && msg.payload.status) {
         statusUpdates.push(msg.payload.status);
       }
@@ -108,8 +109,12 @@ describe('SessionManager processQueue concurrency', () => {
     // The first call resolves normally; we'll enqueue a second prompt during it.
     let resolveFirst!: () => void;
     let resolveSecond!: () => void;
-    const firstCall = new Promise<void>((r) => { resolveFirst = r; });
-    const secondCall = new Promise<void>((r) => { resolveSecond = r; });
+    const firstCall = new Promise<void>((r) => {
+      resolveFirst = r;
+    });
+    const secondCall = new Promise<void>((r) => {
+      resolveSecond = r;
+    });
 
     let callCount = 0;
     const processPromptSpy = vi.fn().mockImplementation(() => {
@@ -119,10 +124,13 @@ describe('SessionManager processQueue concurrency', () => {
     });
 
     // Replace the private processPrompt with our spy
-    (manager as unknown as { processPrompt: typeof processPromptSpy }).processPrompt = processPromptSpy;
+    (manager as unknown as { processPrompt: typeof processPromptSpy }).processPrompt =
+      processPromptSpy;
 
     // Also mock loadSession to return a session
-    (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = (id: string) => ({
+    (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = (
+      id: string
+    ) => ({
       id,
       title: 'Test',
       created_at: Date.now(),
@@ -133,15 +141,29 @@ describe('SessionManager processQueue concurrency', () => {
 
     // Enqueue first prompt — starts processQueue
     (manager as unknown as { enqueuePrompt: (s: unknown, p: string) => void }).enqueuePrompt(
-      { id: 's1', title: 'Test', created_at: Date.now(), updated_at: Date.now(), status: 'idle', cwd: '/tmp' },
-      'first prompt',
+      {
+        id: 's1',
+        title: 'Test',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        status: 'idle',
+        cwd: '/tmp',
+      },
+      'first prompt'
     );
 
     // processQueue is now running and awaiting firstCall.
     // Enqueue a second prompt while the first is still processing.
     (manager as unknown as { enqueuePrompt: (s: unknown, p: string) => void }).enqueuePrompt(
-      { id: 's1', title: 'Test', created_at: Date.now(), updated_at: Date.now(), status: 'idle', cwd: '/tmp' },
-      'second prompt',
+      {
+        id: 's1',
+        title: 'Test',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        status: 'idle',
+        cwd: '/tmp',
+      },
+      'second prompt'
     );
 
     // Resolve the first call — the inner loop should pick up the second item
@@ -168,15 +190,23 @@ describe('SessionManager processQueue concurrency', () => {
 
     // Track how many times processQueue is entered by spying on activeSessions.set
     let processQueueEntries = 0;
-    const origProcessQueue = (manager as unknown as { processQueue: (s: unknown) => Promise<void> }).processQueue.bind(manager);
-    (manager as unknown as { processQueue: (s: unknown) => Promise<void> }).processQueue = async (session: unknown) => {
+    const origProcessQueue = (
+      manager as unknown as { processQueue: (s: unknown) => Promise<void> }
+    ).processQueue.bind(manager);
+    (manager as unknown as { processQueue: (s: unknown) => Promise<void> }).processQueue = async (
+      session: unknown
+    ) => {
       processQueueEntries++;
       return origProcessQueue(session);
     };
 
     // Mock processPrompt to resolve immediately
-    (manager as unknown as { processPrompt: () => Promise<void> }).processPrompt = vi.fn().mockResolvedValue(undefined);
-    (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = (id: string) => ({
+    (manager as unknown as { processPrompt: () => Promise<void> }).processPrompt = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = (
+      id: string
+    ) => ({
       id,
       title: 'Test',
       created_at: Date.now(),
@@ -187,12 +217,26 @@ describe('SessionManager processQueue concurrency', () => {
 
     // Enqueue two prompts at once — both should be processed in a single processQueue call
     (manager as unknown as { enqueuePrompt: (s: unknown, p: string) => void }).enqueuePrompt(
-      { id: 's1', title: 'Test', created_at: Date.now(), updated_at: Date.now(), status: 'idle', cwd: '/tmp' },
-      'prompt 1',
+      {
+        id: 's1',
+        title: 'Test',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        status: 'idle',
+        cwd: '/tmp',
+      },
+      'prompt 1'
     );
     (manager as unknown as { enqueuePrompt: (s: unknown, p: string) => void }).enqueuePrompt(
-      { id: 's1', title: 'Test', created_at: Date.now(), updated_at: Date.now(), status: 'idle', cwd: '/tmp' },
-      'prompt 2',
+      {
+        id: 's1',
+        title: 'Test',
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        status: 'idle',
+        cwd: '/tmp',
+      },
+      'prompt 2'
     );
 
     await new Promise((r) => setTimeout(r, 50));

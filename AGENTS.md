@@ -26,13 +26,14 @@ All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ip
 
 `src/main/data/` uses composition, not inheritance — the old `DataStoreRuntime → … → DataTaskStore` chain is gone:
 
-- `src/main/data/store/data-store-context.ts` (`DataStoreContext`) is the infrastructure runtime: DuckDB instance/connection, optional SQLite metadata DB, the serialized `runExclusive` section, schema init, and generic query/physical-table helpers. Domain logic does not live here; `registerSchemaMaintenanceStep`/`registerPostReadyHook` are how upper layers plug into init.
-- `src/main/data/store/repositories/` owns row-level access per metadata table (`task`, `dataset`, `workflow`, `run-stats`, `cache`, `watermark`, `output-commit-journal`, `normalizer`). Repositories never execute workflows or compile operator SQL.
+- `src/main/data/store/data-store-context.ts` (`DataStoreContext`) is the infrastructure runtime: DuckDB instance/connection, optional SQLite metadata DB, the serialized `runExclusive` section, schema init, and generic query/physical-table helpers. Domain logic does not live here; `registerPostReadyHook` is how upper layers plug into post-init recovery (e.g. output-commit recovery — runtime recovery only, never schema work).
+- `src/main/data/store/migrations.ts` is the versioned metadata schema layer: `data_schema_migrations` ledger, `METADATA_MIGRATIONS` (ascending versions, each applied once inside its own transaction, rolled back + unrecorded on failure). Schema changes and one-time data normalization are new migrations appended here — never boot-time side effects in repositories/services/context, never renumber or edit an applied version.
+- `src/main/data/store/repositories/` owns row-level access per metadata table (`task`, `dataset`, `workflow`, `run-stats`, `cache`, `watermark`, `output-commit-journal`, `normalizer`). Repositories never execute workflows, compile operator SQL, or contain DDL/schema-upgrade logic (no `CREATE`/`ALTER`/`INDEX`); reads must not trigger cleanup or upgrades.
 - `src/main/data/store/services/` holds application services (`workflow-validator`, `workflow-executor`, `workflow-node-preview-service`, `output-commit-coordinator`, `task-service`, `input-table-service`, `normalizer-service`, `workflow-compiler`, `workflow-binding-resolver`, `input-source-summary-service`, `dashboard-service`). Services take narrow constructor deps (context + only the repositories/services they need).
 - `src/main/data/data-task-store.ts` (`DataTaskStore`) is the composition facade exposing the same public API; `createDataTaskStore(dbPath, options?)` is the entry point. It contains no SQL and no `extends`.
 - `store/workflow-model.ts` + `shared/workflow-plan/` stay the domain layer (pure workflow model/rules); `store/input-source.ts` + `store/data-store-records.ts` stay pure fs/record helpers.
 
-`architecture-boundaries.test.ts` fails on `extends` inside `store/repositories|services` or SQL inside the facade.
+`architecture-boundaries.test.ts` fails on `extends` inside `store/repositories|services`, SQL inside the facade, or metadata DDL outside `migrations.ts`. `tests/data-schema-migrations.test.ts` covers ledger creation, legacy-fixture upgrade, no-rerun on reopen, and rollback.
 
 ## Operator registry (enforced)
 
@@ -44,6 +45,18 @@ All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ip
 - Renderer UI facets live in `OPERATOR_UI` (`workflow/operator-catalog.ts`): labelKey, icon, colors, lazy `form` loader, `summarize`. `OperatorFormProps` lives in `workflow-forms/types.ts`; `workflow-forms/index.ts` is a barrel only.
 
 Adding an operator = schema file + codec file + SQL compile (when `compileKind: 'strategy'`) + one `OPERATOR_DEFINITIONS` entry + one `OPERATOR_UI` entry. `operator-registry.test.ts` fails on any drift between registries.
+
+## Renderer data feature layering (enforced)
+
+The data workspace is feature-sliced under `src/renderer/features/data/`:
+
+- `api/data-client.ts` is the typed IPC adapter — every `window.electronAPI` touch in the data domain funnels through it (`data.*` methods plus `selectFiles`/`selectInputTableSource`/`auth.login`, with `isAvailable()`/`has()`/`hasAuth()` for bridge guards). Components and hooks never reach for the bridge directly.
+- `model/types.ts` holds view-model types only (`DataTab`, `InputTableDraft`, `StoredPreviewTarget`, `EMPTY_DASHBOARD`) — no component or IPC imports.
+- `hooks/` splits state by kind: `use-data-view-ui` (UI state), `use-data-dashboard` + `use-input-tables` (server state), `use-data-view-editors` + `use-input-table-drafts` + `use-stored-preview` (editor/preview state), `use-data-actions` (commands), `use-data-navigation` (pending-navigation effects).
+- `pages/DataViewPage.tsx` is the composition layer; `src/renderer/components/DataView.tsx` is a thin re-export kept for compatibility.
+- Presentational components stay in `src/renderer/components/data-view/` and `workflow-forms/` and only receive state + action callbacks — they call `dataClient`, never `window.electronAPI`.
+
+`architecture-boundaries.test.ts` fails on `electronAPI` usage outside `api/data-client.ts` in the data feature and data-view/workflow-form components.
 
 ## UI work
 

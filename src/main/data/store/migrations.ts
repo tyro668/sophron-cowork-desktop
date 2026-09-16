@@ -16,23 +16,22 @@
  *   deadlock on the in-flight initialization promise.
  */
 import { log, logWarn } from '../../utils/logger';
-import { LEGACY_DEMO_TASK_NAMES } from './data-store-records';
+import {
+  LEGACY_DEMO_TASK_NAMES,
+  OUTPUT_TABLE_CONFIG_KIND,
+  isLegacyExplicitOutputTableRow,
+  outputTableConfigJson,
+  parseOutputTableConfig,
+  storedDatasetSourceKindSql,
+  type DataDatasetRow,
+} from './data-store-records';
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
-
-/**
- * Repo-owned cleanup sweeps the migration layer may invoke once per
- * database. These normalize data, not schema — schema changes always live
- * inside a migration body so they stay frozen and auditable.
- */
-export interface MetadataMigrationHooks {
-  cleanupOutputTableMetadata?: () => Promise<void>;
-}
 
 export interface MetadataMigration {
   readonly version: number;
   readonly name: string;
-  up(ctx: DataStoreContext, hooks: MetadataMigrationHooks): Promise<void>;
+  up(ctx: DataStoreContext): Promise<void>;
 }
 
 export const METADATA_MIGRATION_LEDGER = 'data_schema_migrations';
@@ -304,6 +303,50 @@ async function dropLegacyDefaultWorkflowGraphs(ctx: DataStoreContext): Promise<v
   );
 }
 
+/**
+ * Converts pre-`config_json` output-table dataset rows into the current
+ * output-table config shape and deletes rows that cannot be converted.
+ * Previously ran on every boot and on every output-table read; now runs
+ * exactly once per database, recorded in the migration ledger.
+ */
+async function normalizeOutputTableMetadata(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<DataDatasetRow>(
+    `
+      SELECT d.*
+      FROM data_datasets d
+      WHERE ${storedDatasetSourceKindSql('d')} = 'output'
+        OR d.table_name IN (
+          SELECT output_table
+          FROM data_cleaning_tasks
+          WHERE output_table IS NOT NULL
+        )
+    `
+  );
+  for (const row of rows) {
+    const id = String(row.id);
+    const config = parseOutputTableConfig(row.config_json);
+    if (config.kind === OUTPUT_TABLE_CONFIG_KIND) {
+      continue;
+    }
+    if (isLegacyExplicitOutputTableRow(row)) {
+      await ctx.metaRunSql(
+        `
+          UPDATE data_datasets
+          SET config_json = $configJson,
+              file_count = coalesce(file_count, 0)
+          WHERE id = $id
+        `,
+        {
+          id,
+          configJson: outputTableConfigJson(config.sourceDatasetId),
+        }
+      );
+      continue;
+    }
+    await ctx.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
+  }
+}
+
 export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
   {
     version: 1,
@@ -323,9 +366,7 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
   {
     version: 4,
     name: 'normalize_output_table_metadata',
-    up: async (_ctx, hooks) => {
-      await hooks.cleanupOutputTableMetadata?.();
-    },
+    up: (ctx) => normalizeOutputTableMetadata(ctx),
   },
 ];
 
@@ -336,10 +377,7 @@ export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.l
  * transaction. A failed migration is rolled back and never recorded in the
  * ledger, so the next launch retries it cleanly.
  */
-export async function migrateMetadataSchema(
-  ctx: DataStoreContext,
-  hooks: MetadataMigrationHooks = {}
-): Promise<void> {
+export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS ${METADATA_MIGRATION_LEDGER} (
       version INTEGER PRIMARY KEY,
@@ -365,7 +403,7 @@ export async function migrateMetadataSchema(
     }
     await ctx.metaRunSql('BEGIN TRANSACTION');
     try {
-      await migration.up(ctx, hooks);
+      await migration.up(ctx);
       await ctx.metaRunSql(
         `INSERT INTO ${METADATA_MIGRATION_LEDGER} (version, name, applied_at) VALUES ($version, $name, $appliedAt)`,
         { version: migration.version, name: migration.name, appliedAt: ctx.now() }

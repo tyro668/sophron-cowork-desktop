@@ -9,7 +9,7 @@ import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-an
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import type { InputTableNormalizerProjectGenerator } from '../src/main/data/input-table-normalizer-generator';
 import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
-import { runPiAiOneShot } from '../src/main/claude/claude-sdk-one-shot';
+import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/claude/claude-sdk-one-shot';
 import type { AgentRuntimeConfig, DataCleaningTask } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
@@ -52,8 +52,31 @@ vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
     }),
     hasThinking: false,
     durationMs: 1,
+    provider: 'test-provider',
+    model: 'test-model',
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
   })),
 }));
+
+const ONE_SHOT_RESULT_DEFAULTS = {
+  provider: 'test-provider',
+  model: 'test-model',
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+} satisfies Pick<PiAiOneShotResult, 'provider' | 'model' | 'usage'>;
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
@@ -61,6 +84,7 @@ const testRuntimeConfig: AgentRuntimeConfig = {
   provider: 'openai',
   apiKey: 'test-key',
   model: 'test-model',
+  enableThinking: false,
 };
 
 beforeEach(() => {
@@ -74,6 +98,7 @@ beforeEach(() => {
     }),
     hasThinking: false,
     durationMs: 1,
+    ...ONE_SHOT_RESULT_DEFAULTS,
   });
 });
 
@@ -106,6 +131,7 @@ describe('DataCommandService', () => {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'analysis-bound.csv');
@@ -160,6 +186,7 @@ describe('DataCommandService', () => {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'unsupported-capability.csv');
@@ -197,6 +224,7 @@ describe('DataCommandService', () => {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'capability-variant.csv');
@@ -222,6 +250,7 @@ describe('DataCommandService', () => {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -232,6 +261,7 @@ describe('DataCommandService', () => {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
 
     await service.generateTaskFromRequirement({
@@ -267,6 +297,7 @@ describe('DataCommandService', () => {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const requirementAnalysisReceipts = new RequirementAnalysisReceiptStore();
     const { service, tempRoot } = createService({ requirementAnalysisReceipts });
@@ -306,6 +337,7 @@ describe('DataCommandService', () => {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -316,6 +348,7 @@ describe('DataCommandService', () => {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
 
     await toolService.generateTaskFromAnalysis(
@@ -364,6 +397,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const usageEvents: WorkflowModelUsageEvent[] = [];
     const diagnostic: WorkflowFailureDiagnostic = {
@@ -519,10 +553,11 @@ function main() {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await service.listCloudSpaces({
+    const spacesInput: PersonalAnalysisConnectionInput = {
       connectionMode: 'account',
       apiOrigin: 'http://account.mock',
-    });
+    };
+    const result = await service.listCloudSpaces(spacesInput);
 
     expect(result.spaces[0]?.spaceName).toBe('Account Space');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -1426,6 +1461,7 @@ function main() {
       ].join('\n'),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'fenced-market.csv');
@@ -1463,6 +1499,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -1506,6 +1543,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -1567,6 +1605,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -1613,6 +1652,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'orders.csv');
@@ -1655,6 +1695,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'orders.csv');
@@ -1697,6 +1738,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profits.csv');
@@ -1745,6 +1787,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profits.csv');
@@ -1791,6 +1834,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'coffee.csv');
@@ -1845,6 +1889,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -1889,6 +1934,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -1933,6 +1979,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'orders.csv');
@@ -1989,6 +2036,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2058,6 +2106,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2118,6 +2167,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2169,6 +2219,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2217,6 +2268,7 @@ function main() {
       text: JSON.stringify({ javascriptSource: multiOperationSource }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'repair-dates.csv');
@@ -2263,6 +2315,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2306,6 +2359,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2347,6 +2401,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
@@ -2392,6 +2447,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2403,11 +2459,13 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: validSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'rank-sales.csv');
@@ -2463,6 +2521,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2475,6 +2534,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'syntax-repair.csv');
@@ -2552,6 +2612,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2559,11 +2620,13 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: validSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'syntax-patch-fallback.csv');
@@ -2621,6 +2684,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2628,11 +2692,13 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: semanticFailureSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2640,6 +2706,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'stage-repair-budget.csv');
@@ -2695,6 +2762,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: semanticFailureSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2702,11 +2770,13 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: validSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'semantic-repair-frontier.csv');
@@ -2754,16 +2824,19 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: validSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'duplicate-syntax-repair.csv');
@@ -2814,6 +2887,7 @@ function main() {
       text: JSON.stringify({ javascriptSource: invalidSource }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     };
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce(repeatedResponse)
@@ -2870,12 +2944,14 @@ function main() {
         text: '{"javascriptSource":"function step1(input) {',
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
         stopReason: 'length',
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ javascriptSource: validSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'truncated-generation.csv');
@@ -2950,6 +3026,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -2960,6 +3037,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profit-rate-classification.csv');
@@ -3078,6 +3156,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: invalidSource }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3088,6 +3167,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'country-sales-share.csv');
@@ -3185,6 +3265,7 @@ function main() {
         text: JSON.stringify({ javascriptSource: pivotSource(invalidOn) }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3195,6 +3276,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, `pivot-${_caseName.replaceAll(' ', '-')}.csv`);
@@ -3305,6 +3387,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     };
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce(badResponse)
@@ -3318,6 +3401,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3328,6 +3412,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -3385,6 +3470,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3396,6 +3482,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -3439,11 +3526,13 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({ steps: ['filter Market'] }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
@@ -3492,6 +3581,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3504,6 +3594,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
 
     await expect(
@@ -3539,6 +3630,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -3580,6 +3672,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3591,6 +3684,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       })
       .mockResolvedValueOnce({
         text: JSON.stringify({
@@ -3601,6 +3695,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -3649,6 +3744,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
@@ -4102,6 +4198,7 @@ function main() {
       }),
       hasThinking: false,
       durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
     };
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce(badResponse)
@@ -4115,6 +4212,7 @@ function main() {
         }),
         hasThinking: false,
         durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
       });
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');

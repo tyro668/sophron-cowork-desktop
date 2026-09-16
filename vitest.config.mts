@@ -15,7 +15,10 @@ export default defineConfig({
         inline: ['electron-store'],
       },
     },
-    include: ['src/**/*.{test,spec}.{js,ts}', 'tests/**/*.{test,spec}.{js,ts}'],
+    include: [
+      'src/**/*.{test,spec}.{js,ts,tsx}',
+      'tests/**/*.{test,spec}.{js,ts,tsx}',
+    ],
     exclude: ['node_modules', 'dist', 'dist-electron', '.claude'],
     coverage: {
       provider: 'v8',
@@ -25,7 +28,6 @@ export default defineConfig({
         'node_modules/',
         'dist/',
         'dist-electron/',
-        'src/renderer/',
         'src/tests/',
         'tests/',
         '**/*.d.ts',
@@ -33,6 +35,15 @@ export default defineConfig({
         '**/mockData',
       ],
       thresholds: {
+        // Renderer is measured now (previously excluded entirely). Its floor is
+        // intentionally low and should ratchet up as feature/hook tests grow;
+        // files matching a pattern are not counted toward the global numbers.
+        'src/renderer/**': {
+          lines: 8,
+          functions: 8,
+          branches: 5,
+          statements: 8,
+        },
         lines: 30,
         functions: 35,
         branches: 28,

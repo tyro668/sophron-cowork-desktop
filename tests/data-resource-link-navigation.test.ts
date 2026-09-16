@@ -1,27 +1,35 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { ipcRenderer } from 'electron';
 import {
   createDataResourceHref,
   normalizeDataResourceMarkdownLinks,
   parseDataResourceHref,
 } from '../src/shared/data-resource-link';
+import { IPC_INPUT_SCHEMAS } from '../src/shared/contracts/ipc/schemas';
+import { createDataApi } from '../src/preload/api/data';
 import { MessageMarkdown } from '../src/renderer/components/MessageMarkdown';
 
 const contentBlockViewPath = path.resolve(
   process.cwd(),
   'src/renderer/components/message/ContentBlockView.tsx'
 );
-const dataViewPath = path.resolve(process.cwd(), 'src/renderer/components/DataView.tsx');
+const dataViewPagePath = path.resolve(
+  process.cwd(),
+  'src/renderer/features/data/pages/DataViewPage.tsx'
+);
+const dataNavigationPath = path.resolve(
+  process.cwd(),
+  'src/renderer/features/data/hooks/use-data-navigation.ts'
+);
 const inputTablesPath = path.resolve(
   process.cwd(),
   'src/renderer/components/data-view/input-tables.tsx'
 );
 const markdownPath = path.resolve(process.cwd(), 'src/renderer/components/MessageMarkdown.tsx');
-const preloadPath = path.resolve(process.cwd(), 'src/preload/api/data.ts');
-const dataIpcDir = path.resolve(process.cwd(), 'src/main/data/ipc');
 
 describe('data resource chat links', () => {
   it('round-trips app data resource hrefs', () => {
@@ -66,36 +74,39 @@ describe('data resource chat links', () => {
   });
 
   it('lets DataView resolve and open each resource type by id', () => {
-    const source = fs.readFileSync(dataViewPath, 'utf8');
+    // The behavioral coverage for all three deep-link kinds now lives in
+    // tests/renderer/data-view-hooks.test.tsx (useDataNavigation suite). Keep a
+    // light wiring check that the page still mounts the navigation hook.
+    const source = fs.readFileSync(dataNavigationPath, 'utf8');
     expect(source).toContain('pendingDataNavigation');
-    expect(source).toContain('getTask(target.id)');
-    expect(source).toContain('getInputTable(target.id)');
-    expect(source).toContain('getOutputTable(target.id)');
-    expect(source).toContain('setEditingTaskId(task.id)');
-    expect(source).toContain('setEditingInputTableDatasetId(inputTable.id)');
-    expect(source).toContain('setEditingOutputTableId(outputTable.id)');
+    expect(source).toContain("target.kind === 'task'");
+    expect(source).toContain("target.kind === 'input_table'");
   });
 
   it('keeps output table preview mapped to output-table copy', () => {
-    const dataView = fs.readFileSync(dataViewPath, 'utf8');
+    const dataView = fs.readFileSync(dataViewPagePath, 'utf8');
     const inputTables = fs.readFileSync(inputTablesPath, 'utf8');
-    expect(dataView).toContain("tableKind={storedPreviewTarget?.kind ?? 'input'}");
+    expect(dataView).toContain("tableKind={preview.storedPreviewTarget?.kind ?? 'input'}");
     expect(inputTables).toContain("t('data.outputTables.previewTitle')");
     expect(inputTables).toContain("t('data.outputTables.previewEmpty')");
   });
 
-  it('exposes direct resource lookup IPC methods', () => {
-    const preload = fs.readFileSync(preloadPath, 'utf8');
-    const mainHandlers = fs
-      .readdirSync(dataIpcDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
-      .map((entry) => fs.readFileSync(path.join(dataIpcDir, entry.name), 'utf8'))
-      .join('\n');
-    expect(preload).toContain("ipcRenderer.invoke('data.getTask', id)");
-    expect(preload).toContain("ipcRenderer.invoke('data.getInputTable', id)");
-    expect(preload).toContain("ipcRenderer.invoke('data.getOutputTable', id)");
-    expect(mainHandlers).toContain("handleIpc('data.getTask'");
-    expect(mainHandlers).toContain("handleIpc('data.getInputTable'");
-    expect(mainHandlers).toContain("handleIpc('data.getOutputTable'");
+  it('exposes direct resource lookup IPC methods with input schemas', async () => {
+    const invoke = vi.spyOn(ipcRenderer, 'invoke').mockResolvedValue(null);
+    const api = createDataApi();
+
+    await api.getTask('task_1');
+    await api.getInputTable('ds_1');
+    await api.getOutputTable('out_1');
+
+    expect(invoke).toHaveBeenCalledWith('data.getTask', 'task_1');
+    expect(invoke).toHaveBeenCalledWith('data.getInputTable', 'ds_1');
+    expect(invoke).toHaveBeenCalledWith('data.getOutputTable', 'out_1');
+
+    // Every lookup channel must carry a positional input schema so main-side
+    // handlers validate IPC arguments.
+    for (const channel of ['data.getTask', 'data.getInputTable', 'data.getOutputTable']) {
+      expect(IPC_INPUT_SCHEMAS[channel]).toBeDefined();
+    }
   });
 });

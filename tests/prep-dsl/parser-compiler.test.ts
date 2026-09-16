@@ -194,7 +194,7 @@ keep left *, [customers].[name] as [customer_name]
       { field: 'Unit Price', direction: 'asc' },
       { field: 'Sales 总和', direction: 'desc', nulls: 'last' },
     ]);
-    expect(result.operator && exportPrepOperatorDsl(result.operator)).toBe(
+    expect(result.operator && exportPrepOperatorDsl({ id: 'op', ...result.operator })).toBe(
       'sort by [Unit Price] asc, [Sales 总和] desc nulls last'
     );
   });

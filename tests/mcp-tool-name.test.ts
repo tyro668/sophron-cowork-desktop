@@ -20,8 +20,8 @@ type TestManagerInternals = {
   reconnectServer: ReturnType<typeof vi.fn>;
 };
 
-function asTestManager(manager: MCPManager): MCPManager & TestManagerInternals {
-  return manager as MCPManager & TestManagerInternals;
+function asTestManager(manager: MCPManager): TestManagerInternals {
+  return manager as unknown as TestManagerInternals;
 }
 
 function createManagerWithTool(toolName: string) {

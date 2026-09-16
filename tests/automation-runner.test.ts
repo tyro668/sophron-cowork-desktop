@@ -100,6 +100,11 @@ function createStore(): AutomationStore & {
     }),
     listArtifacts: vi.fn(() => artifacts),
     migrateScheduledTasks: vi.fn(),
+    recoverInterruptedRuns: vi.fn(() => ({
+      failedRunningRuns: 0,
+      cancelledQueuedRuns: 0,
+      releasedAutomations: 0,
+    })),
   };
 }
 
@@ -116,7 +121,7 @@ describe('AutomationRunner', () => {
       version: 1,
       configSchema: objectSchema({}),
       defaultConfig: {},
-      execute: async (config, context) => {
+      execute: async (_config, context) => {
         calls.push('first');
         context.emitArtifact({ kind: 'text', title: 'first artifact' });
         return { ok: true };
@@ -130,7 +135,7 @@ describe('AutomationRunner', () => {
       version: 1,
       configSchema: objectSchema({}),
       defaultConfig: {},
-      execute: async (config, context) => {
+      execute: async (_config, context) => {
         calls.push('second');
         context.emitArtifact({ kind: 'text', title: 'second artifact' });
         return { ok: true };

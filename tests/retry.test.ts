@@ -31,9 +31,7 @@ describe('withRetry', () => {
   it('throws after exhausting all retries', async () => {
     const op = vi.fn().mockRejectedValue(new Error('always fails'));
 
-    await expect(
-      withRetry(op, { maxRetries: 2, delayMs: 1 })
-    ).rejects.toThrow('always fails');
+    await expect(withRetry(op, { maxRetries: 2, delayMs: 1 })).rejects.toThrow('always fails');
     expect(op).toHaveBeenCalledTimes(2);
   });
 
@@ -55,10 +53,7 @@ describe('withRetry', () => {
 
   it('calls onRetry callback with attempt number and error', async () => {
     const onRetry = vi.fn();
-    const op = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue('ok');
+    const op = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValue('ok');
 
     await withRetry(op, { maxRetries: 2, delayMs: 1, onRetry });
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -67,7 +62,6 @@ describe('withRetry', () => {
 
   it('applies exponential backoff', async () => {
     const delays: number[] = [];
-    const originalSetTimeout = globalThis.setTimeout;
     vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: Function, delay?: number) => {
       if (delay && delay > 0) delays.push(delay);
       // Execute immediately for test speed

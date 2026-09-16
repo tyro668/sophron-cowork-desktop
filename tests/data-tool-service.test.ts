@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { AgentToolResult, ExtensionContext } from '@mariozechner/pi-coding-agent';
+import type { DataToolDefinition } from '../src/main/data/data-tool-types';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
 import { DataToolService } from '../src/main/data/data-tool-service';
@@ -12,6 +14,30 @@ import type {
   DataInputTablePreview,
   DataOutputTable,
 } from '../src/renderer/types';
+
+// ToolDefinition.execute takes (toolCallId, params, signal, onUpdate, ctx).
+// These tests only exercise the first two parameters.
+function executeDataTool(
+  tool: Pick<DataToolDefinition, 'execute'> | undefined,
+  toolCallId: string,
+  params: unknown
+): Promise<AgentToolResult<unknown>> {
+  if (!tool) {
+    throw new Error('expected data tool to be defined');
+  }
+  return tool.execute(
+    toolCallId,
+    params,
+    undefined,
+    undefined,
+    undefined as unknown as ExtensionContext
+  );
+}
+
+function firstText(result: AgentToolResult<unknown> | undefined): string | undefined {
+  const item = result?.content[0];
+  return item?.type === 'text' ? item.text : undefined;
+}
 
 describe('DataToolService', () => {
   it('formats command results as short tool content with structured details', async () => {
@@ -73,7 +99,7 @@ describe('DataToolService', () => {
     };
     const preview: DataInputTablePreview = {
       columns: ['Customer'],
-      columnTypes: [{ name: 'Customer', type: 'text' }],
+      columnTypes: [{ name: 'Customer', type: 'text', storageType: 'VARCHAR' }],
       rows: [{ Customer: 'Alice' }, { Customer: 'Bob' }],
       fileCount: 1,
       limit: 2,
@@ -327,14 +353,14 @@ describe('DataToolService', () => {
       },
     }).find((item) => item.name === 'data_create_input_table_with_processing_strategy');
 
-    const result = await tool?.execute('call_1', {
+    const result = await executeDataTool(tool, 'call_1', {
       name: 'normalized excel',
       sourceKind: 'excel',
       filePath: '.tmp/source.xlsx',
       processingStrategy: '{"strategy":"customize","rulePrompt":"normalize"}',
     });
 
-    expect(result?.content[0]?.text).toContain('Created input table with customize processing');
+    expect(firstText(result)).toContain('Created input table with customize processing');
     expect(createInputTableWithProcessingStrategy).toHaveBeenCalledWith(
       expect.objectContaining({
         filePath: '/workspace/.tmp/source.xlsx',
@@ -450,7 +476,7 @@ describe('DataToolService', () => {
       runtimeConfig,
     });
 
-    const analysis = await analyzeTool!.execute('analysis_call_1', {
+    const analysis = await executeDataTool(analyzeTool, 'analysis_call_1', {
       inputTableId: 'input_1',
       processRequirement: '过滤 Sales 小于 100 的记录',
     });
@@ -476,7 +502,7 @@ describe('DataToolService', () => {
     ).rejects.toMatchObject({ code: 'ANALYSIS_REQUIRED' });
 
     await expect(
-      generateTool!.execute('generation_call_1', {
+      executeDataTool(generateTool, 'generation_call_1', {
         analysisId,
         confirmed: true,
         outputMode: 'create',
@@ -502,14 +528,14 @@ describe('DataToolService', () => {
       runtimeConfig,
     });
     await expect(
-      generateTool!.execute('generation_call_invalid_output', {
+      executeDataTool(generateTool, 'generation_call_invalid_output', {
         analysisId,
         confirmed: true,
         outputMode: 'replace',
       })
     ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
 
-    const generated = await generateTool!.execute('generation_call_2', {
+    const generated = await executeDataTool(generateTool, 'generation_call_2', {
       analysisId,
       confirmed: true,
       taskName: 'Sales task',
@@ -532,7 +558,7 @@ describe('DataToolService', () => {
         },
       })
     );
-    expect(generated.content[0]?.text).toContain('Temporary execution validation passed');
+    expect(firstText(generated)).toContain('Temporary execution validation passed');
     expect(JSON.stringify(generated)).not.toContain('must not reach the outer model');
 
     service.updateExecutionContext({
@@ -540,7 +566,7 @@ describe('DataToolService', () => {
       currentUserMessageId: 'user_message_3',
       runtimeConfig,
     });
-    const repeated = await generateTool!.execute('generation_call_3', {
+    const repeated = await executeDataTool(generateTool, 'generation_call_3', {
       analysisId,
       confirmed: true,
       outputMode: 'create',
@@ -549,7 +575,7 @@ describe('DataToolService', () => {
     expect((repeated.details as { task: { id: string } }).task.id).toBe('task_1');
     expect(generateTaskFromRequirement).toHaveBeenCalledTimes(1);
 
-    const replacementAnalysis = await analyzeTool!.execute('analysis_call_2', {
+    const replacementAnalysis = await executeDataTool(analyzeTool, 'analysis_call_2', {
       inputTableId: 'input_1',
       processRequirement: '过滤 Sales 小于 100 的记录',
     });
@@ -560,7 +586,7 @@ describe('DataToolService', () => {
       currentUserMessageId: 'user_message_4',
       runtimeConfig,
     });
-    await generateTool!.execute('generation_call_4', {
+    await executeDataTool(generateTool, 'generation_call_4', {
       analysisId: replacementAnalysisId,
       confirmed: true,
       taskName: 'Sales replacement task',

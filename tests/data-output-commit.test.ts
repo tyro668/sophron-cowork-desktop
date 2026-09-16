@@ -31,8 +31,22 @@ describe('validated task output commit', () => {
     const task = await store.createTask({ name: 'Atomic output', sourcePath: oldSource });
     const workflow: DataWorkflowSaveInput = {
       nodes: [
-        { id: 'source', type: 'input_source', label: 'source', config: { source: 'task' } },
-        { id: 'output', type: 'output', label: 'output', config: { table: 'atomic_output' } },
+        {
+          id: 'source',
+          type: 'input_source',
+          label: 'source',
+          x: 0,
+          y: 0,
+          config: { source: 'task' },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          label: 'output',
+          x: 0,
+          y: 0,
+          config: { table: 'atomic_output' },
+        },
       ],
       edges: [{ id: 'edge', sourceNodeId: 'source', targetNodeId: 'output' }],
     };

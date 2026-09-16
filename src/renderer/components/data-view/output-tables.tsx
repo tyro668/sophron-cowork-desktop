@@ -40,6 +40,7 @@ import {
   formatDateTime,
   formatOutputTableRelatedTaskNames,
 } from './shared';
+import { dataClient } from '../../features/data/api/data-client';
 
 export function OutputTablesPanel({
   outputTables,
@@ -333,13 +334,13 @@ export function UploadOutputTableToCloudDialog({
   }, [onClose, setSettingsTab, setShowSettings]);
 
   const handleLoginAndContinue = useCallback(async () => {
-    if (!window.electronAPI?.auth || loginBusy) return;
+    if (!dataClient.hasAuth() || loginBusy) return;
 
     setLoginBusy(true);
     setError(null);
     setSuccess(null);
     try {
-      const status = await window.electronAPI.auth.login();
+      const status = await dataClient.authLogin();
       setDesktopAuthStatus(status);
       if (!status.authenticated) {
         setError(t('data.outputTables.uploadToCloud.loginNotCompleted'));
@@ -361,7 +362,7 @@ export function UploadOutputTableToCloudDialog({
   useEffect(() => {
     const requestId = ++spaceRequestSeq.current;
     const loadSpaces = async () => {
-      if (!hasCloudConnection || !window.electronAPI?.data?.listCloudSpaces) {
+      if (!hasCloudConnection || !dataClient.has('listCloudSpaces')) {
         setSpaces([]);
         setSpaceId('');
         return;
@@ -369,7 +370,7 @@ export function UploadOutputTableToCloudDialog({
       setLoadingSpaces(true);
       setError(null);
       try {
-        const result = await window.electronAPI.data.listCloudSpaces({});
+        const result = await dataClient.listCloudSpaces({});
         if (requestId !== spaceRequestSeq.current) return;
         setSpaces(result.spaces);
         const firstSpace = result.spaces[0];
@@ -396,7 +397,7 @@ export function UploadOutputTableToCloudDialog({
   useEffect(() => {
     const requestId = ++projectRequestSeq.current;
     const loadProjects = async () => {
-      if (!spaceId || !window.electronAPI?.data?.listCloudProjects) {
+      if (!spaceId || !dataClient.has('listCloudProjects')) {
         setProjects([]);
         setProjectId('');
         return;
@@ -404,7 +405,7 @@ export function UploadOutputTableToCloudDialog({
       setLoadingProjects(true);
       setError(null);
       try {
-        const result = await window.electronAPI.data.listCloudProjects({ spaceId });
+        const result = await dataClient.listCloudProjects({ spaceId });
         if (requestId !== projectRequestSeq.current) return;
         setProjects(result.projects);
         setProjectId((current) =>
@@ -436,7 +437,7 @@ export function UploadOutputTableToCloudDialog({
   useEffect(() => {
     const requestId = ++tableRequestSeq.current;
     const loadTables = async () => {
-      if (!spaceId || !projectId || !window.electronAPI?.data?.listCloudTables) {
+      if (!spaceId || !projectId || !dataClient.has('listCloudTables')) {
         setCloudTables([]);
         setTargetTableId('');
         return;
@@ -446,7 +447,7 @@ export function UploadOutputTableToCloudDialog({
         setError(null);
       }
       try {
-        const result = await window.electronAPI.data.listCloudTables({
+        const result = await dataClient.listCloudTables({
           spaceId,
           projectId,
           page: 1,
@@ -505,12 +506,12 @@ export function UploadOutputTableToCloudDialog({
   );
 
   const handleUpload = async () => {
-    if (!window.electronAPI?.data?.uploadDataTableToCloud || !canUpload) return;
+    if (!dataClient.has('uploadDataTableToCloud') || !canUpload) return;
     setUploading(true);
     setError(null);
     setSuccess(null);
     try {
-      const result = await window.electronAPI.data.uploadDataTableToCloud({
+      const result = await dataClient.uploadDataTableToCloud({
         tableKind: 'output',
         id: outputTable.id,
         writeMode,

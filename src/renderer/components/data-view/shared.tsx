@@ -14,20 +14,11 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { DataOutputTable, DataTaskStatus } from '../../types';
+import type { InputTableSourceKind } from '../../features/data/model/types';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 
-export type DataTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
-export type InputTableSourceFilter = 'all' | 'excel' | 'csv' | 'folder';
-export type InputTableSourceKind = Exclude<InputTableSourceFilter, 'all'> | 'file' | 'draft';
 export type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
-
-export interface InputTableDraft {
-  id: string;
-  name: string;
-  createdAt: number;
-  updatedAt: number;
-}
 
 export const TABLE_PAGE_SIZE = 10;
 export const INPUT_TABLE_PREVIEW_PAGE_SIZE = 100;

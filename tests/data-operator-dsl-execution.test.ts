@@ -50,7 +50,7 @@ describe('operator DSL execution cases', () => {
     });
     const task = await store.createTask({
       name: 'AI compatible date range filter',
-      sourceInputTableId: input.id,
+      sourceDatasetId: input.id,
     });
     const generated = compileGeneratedJavaScriptWorkflow({
       javascriptSource: `function keepDateRange(input) {
@@ -385,7 +385,7 @@ function main() {
 
     const task = await store.createTask({
       name: 'Executable profit dataset filter sort',
-      sourceInputTableId: input.id,
+      sourceDatasetId: input.id,
     });
     await saveWorkflowDsl(
       store,

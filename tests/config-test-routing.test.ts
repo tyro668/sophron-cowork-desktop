@@ -27,7 +27,17 @@ function createConfig(): AppConfig {
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: true,
+    theme: 'light',
     sandboxEnabled: false,
+    memoryEnabled: false,
+    memoryRuntime: {
+      llm: { inheritFromActive: true, timeoutMs: 180000 },
+      embedding: { inheritFromActive: true, timeoutMs: 180000 },
+      useEmbedding: false,
+      maxNavSteps: 2,
+      ingestionConcurrency: 4,
+    },
+    personalAnalysis: { apiOrigin: '', apiKey: '', updatedAt: 0 },
     enableThinking: false,
     isConfigured: true,
   };

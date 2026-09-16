@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsbuild/tsconfig.tests.tsbuildinfo",
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["tests", "src/tests"],
+  "references": [
+    { "path": "./tsconfig.shared.json" },
+    { "path": "./tsconfig.main.json" },
+    { "path": "./tsconfig.preload.json" },
+    { "path": "./tsconfig.renderer.json" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "node_modules/.cache/tsbuild/renderer",
+    "tsBuildInfoFile": "node_modules/.cache/tsbuild/tsconfig.renderer.tsbuildinfo"
+  },
+  "include": [
+    "src/renderer",
+    "src/shared/i18n/locales/*.json",
+    "src/shared/contracts/electron-api.d.ts"
+  ],
+  "references": [{ "path": "./tsconfig.shared.json" }]
+}

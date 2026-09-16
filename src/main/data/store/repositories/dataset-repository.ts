@@ -8,9 +8,7 @@ import { DataStoreContext } from '../data-store-context';
 import {
   DataDatasetRow,
   OUTPUT_TABLE_CONFIG_KIND,
-  isLegacyExplicitOutputTableRow,
   outputTableConfigJson,
-  parseOutputTableConfig,
   storedDatasetSourceKindSql,
   tableNameFromId,
   mapDatasetRow,
@@ -21,43 +19,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 export class DatasetRepository {
   constructor(private readonly ctx: DataStoreContext) {}
-  async cleanupOutputTableMetadata(): Promise<void> {
-    const rows = await this.ctx.metaQueryRows<DataDatasetRow>(
-      `
-          SELECT d.*
-          FROM data_datasets d
-          WHERE ${storedDatasetSourceKindSql('d')} = 'output'
-            OR d.table_name IN (
-              SELECT output_table
-              FROM data_cleaning_tasks
-              WHERE output_table IS NOT NULL
-            )
-        `
-    );
-    for (const row of rows) {
-      const id = String(row.id);
-      const config = parseOutputTableConfig(row.config_json);
-      if (config.kind === OUTPUT_TABLE_CONFIG_KIND) {
-        continue;
-      }
-      if (isLegacyExplicitOutputTableRow(row)) {
-        await this.ctx.metaRunSql(
-          `
-              UPDATE data_datasets
-              SET config_json = $configJson,
-                  file_count = coalesce(file_count, 0)
-              WHERE id = $id
-            `,
-          {
-            id,
-            configJson: outputTableConfigJson(config.sourceDatasetId),
-          }
-        );
-        continue;
-      }
-      await this.ctx.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
-    }
-  }
   async createOutputTable(input: DataCreateOutputTableInput = {}): Promise<DataOutputTable> {
     await this.ctx.ensureMetadataReady();
     return this.createOutputTableMetadata(input.name?.trim() || 'Output table', this.ctx.now());
@@ -115,7 +76,6 @@ export class DatasetRepository {
   }
   async getOutputTableRecord(id: string): Promise<DataOutputTable | null> {
     await this.ctx.ensureMetadataReady();
-    await this.cleanupOutputTableMetadata();
     return this.getOutputTable(id);
   }
   async updateAutoOutputTableMetadata(

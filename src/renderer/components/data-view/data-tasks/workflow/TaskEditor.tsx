@@ -28,6 +28,7 @@ import {
   exportPrepWorkflowDsl,
   parsePrepDsl,
 } from '../../../../../shared/prep-dsl';
+import { dataClient } from '../../../../features/data/api/data-client';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
 import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
@@ -94,10 +95,10 @@ export function TaskEditor({
   const skipTaskTitleSaveRef = useRef(false);
 
   const loadWorkflow = useCallback(async () => {
-    if (!window.electronAPI?.data) return;
+    if (!dataClient.isAvailable()) return;
     setLocalError(null);
     try {
-      const nextWorkflow = await window.electronAPI.data.getTaskWorkflow(task.id);
+      const nextWorkflow = await dataClient.getTaskWorkflow(task.id);
       setWorkflow(nextWorkflow);
       setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
@@ -132,12 +133,12 @@ export function TaskEditor({
   }, [outputTables]);
 
   useEffect(() => {
-    if (!window.electronAPI?.data?.getDashboard) return undefined;
+    if (!dataClient.has('getDashboard')) return undefined;
     let cancelled = false;
     const loadInputTableChoices = async () => {
       setInputTableChoicesLoading(true);
       try {
-        const dashboard = await window.electronAPI.data.getDashboard({
+        const dashboard = await dataClient.getDashboard({
           includeSummary: false,
           includeTasks: false,
           includeDatasets: true,
@@ -160,7 +161,7 @@ export function TaskEditor({
     };
     const loadOutputTableChoices = async () => {
       try {
-        const dashboard = await window.electronAPI.data.getDashboard({
+        const dashboard = await dataClient.getDashboard({
           includeSummary: false,
           includeTasks: false,
           includeDatasets: false,
@@ -243,14 +244,14 @@ export function TaskEditor({
       setIsEditingTaskTitle(false);
       return;
     }
-    if (!window.electronAPI?.data?.updateTask) {
+    if (!dataClient.has('updateTask')) {
       setIsEditingTaskTitle(false);
       return;
     }
     setRenamingTask(true);
     setLocalError(null);
     try {
-      const updated = await window.electronAPI.data.updateTask({ id: task.id, name: nextTitle });
+      const updated = await dataClient.updateTask({ id: task.id, name: nextTitle });
       setTaskTitle(updated.name);
       setIsEditingTaskTitle(false);
       await onWorkflowSaved();
@@ -440,12 +441,9 @@ export function TaskEditor({
    */
   const flagPlanDiagnostics = useCallback(
     async (saveInput: DataWorkflowSaveInput): Promise<string | null> => {
-      if (!window.electronAPI?.data?.validateTaskWorkflowPlan) return null;
+      if (!dataClient.has('validateTaskWorkflowPlan')) return null;
       try {
-        const diagnostics = await window.electronAPI.data.validateTaskWorkflowPlan(
-          task.id,
-          saveInput
-        );
+        const diagnostics = await dataClient.validateTaskWorkflowPlan(task.id, saveInput);
         const errorNodeIds = new Set(
           diagnostics
             .filter((item) => item.severity === 'error' && item.nodeId)
@@ -475,15 +473,12 @@ export function TaskEditor({
   );
 
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
-    if (!workflow || !window.electronAPI?.data) return null;
+    if (!workflow || !dataClient.isAvailable()) return null;
     const submittedSignature = getWorkflowSaveInputSignature(workflow);
     setSaving(true);
     setLocalError(null);
     try {
-      const saved = await window.electronAPI.data.saveTaskWorkflow(
-        task.id,
-        toWorkflowSaveInput(workflow)
-      );
+      const saved = await dataClient.saveTaskWorkflow(task.id, toWorkflowSaveInput(workflow));
       const savedSignature = getWorkflowSaveInputSignature(saved);
       setWorkflow((current) =>
         current && getWorkflowSaveInputSignature(current) !== submittedSignature ? current : saved
@@ -510,12 +505,14 @@ export function TaskEditor({
   const [persistedNodeStats, setPersistedNodeStats] = useState<WorkflowNodeRunStat[]>([]);
   useEffect(() => {
     let cancelled = false;
-    void window.electronAPI?.data
-      .getTaskNodeStats(task.id)
-      .then((stats) => {
-        if (!cancelled) setPersistedNodeStats(stats);
-      })
-      .catch(() => undefined);
+    if (dataClient.has('getTaskNodeStats')) {
+      void dataClient
+        .getTaskNodeStats(task.id)
+        .then((stats) => {
+          if (!cancelled) setPersistedNodeStats(stats);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };

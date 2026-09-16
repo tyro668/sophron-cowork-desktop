@@ -16,7 +16,7 @@ import { log } from '../../utils/logger';
 import { compileTypedProjection, quoteIdentifier, toNumber } from '../operators';
 import { DataTaskStoreOptions, isDuckDbTransactionStateError } from './data-store-records';
 import { inferDataFieldTypeFromValues } from './input-source';
-import { migrateMetadataSchema, type MetadataMigrationHooks } from './migrations';
+import { migrateMetadataSchema } from './migrations';
 import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api';
 import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
@@ -33,7 +33,6 @@ export class DataStoreContext {
   duckInitPromise: Promise<void> | null = null;
   exclusiveQueue: Promise<void> = Promise.resolve();
   readonly exclusiveContext = new AsyncLocalStorage<boolean>();
-  private migrationHooks: MetadataMigrationHooks = {};
   private readonly postReadyHooks: Array<() => Promise<void>> = [];
   private postReadyPromise: Promise<void> | null = null;
 
@@ -105,15 +104,6 @@ export class DataStoreContext {
     await this.metadataInitPromise;
   }
   /**
-   * Supplies repo-owned data cleanup sweeps to the migration runner (e.g.
-   * output-table metadata normalization). Must be set before the first
-   * {@link ensureMetadataReady} call; the facade wires this at construction.
-   */
-  setMigrationHooks(hooks: MetadataMigrationHooks): void {
-    this.migrationHooks = hooks;
-  }
-
-  /**
    * Registers a hook that runs once after both the metadata store and DuckDB
    * are ready (e.g. pending output-commit recovery). The facade wires these.
    */
@@ -177,7 +167,7 @@ export class DataStoreContext {
     if (!this.metadataDb) {
       await this.ensureDuckDbReady();
     }
-    await migrateMetadataSchema(this, this.migrationHooks);
+    await migrateMetadataSchema(this);
   }
   async ensureMetadataColumn(
     tableName: string,

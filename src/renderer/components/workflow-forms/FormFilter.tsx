@@ -8,6 +8,7 @@ import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import { dataClient } from '../../features/data/api/data-client';
 import {
   filterOpGroupsForType,
   firstValidFilterOp,
@@ -466,10 +467,9 @@ export default function FormFilter({
     (colName: string) => {
       if (!taskId || !sourceNode?.id || !colName) return;
       if (columnValues[colName] || loadingValues[colName]) return;
-      const api = window.electronAPI?.data;
-      if (!api?.getWorkflowNodeColumnValues) return;
+      if (!dataClient.has('getWorkflowNodeColumnValues')) return;
       setLoadingValues((prev) => ({ ...prev, [colName]: true }));
-      api
+      dataClient
         .getWorkflowNodeColumnValues({
           taskId,
           nodeId: sourceNode.id,

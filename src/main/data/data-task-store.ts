@@ -132,9 +132,6 @@ export class DataTaskStore {
       binding
     );
 
-    this.ctx.setMigrationHooks({
-      cleanupOutputTableMetadata: () => datasets.cleanupOutputTableMetadata(),
-    });
     this.ctx.registerPostReadyHook(() => commitCoordinator.recoverPendingOutputCommits());
 
     this.tasks = tasks;
@@ -148,7 +145,7 @@ export class DataTaskStore {
     this.validator = validator;
     this.commitCoordinator = commitCoordinator;
     this.nodePreview = nodePreview;
-    this.dashboardService = new DashboardService(this.ctx, datasets);
+    this.dashboardService = new DashboardService(this.ctx);
   }
 
   close(): void {

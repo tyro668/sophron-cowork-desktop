@@ -605,6 +605,9 @@ describe('DuckDB data task store', () => {
           ('legacy-configured-output', 'Configured output', 'duckdb://outputs/output_legacy', 'output', '{}', 0, 'output_legacy', 0, 0, 1, 1),
           ('legacy-task-output', 'Task output dirty row', '/tmp/source.csv', 'output', '{}', 0, 'clean_task_legacy', 10, 2, 1, 1)
       `);
+      // Simulate a pre-ledger database: dropping the ledger makes the next
+      // open re-run the versioned migrations (including one-time cleanups).
+      await connection.run('DROP TABLE data_schema_migrations');
     } finally {
       connection.closeSync();
       instance.closeSync();
@@ -1672,6 +1675,8 @@ describe('DuckDB data task store', () => {
           ('legacy-node-6', 'legacy-default-task', 'mapping', '字段映射', 6, 'field_mapping', 474, 270, '{}', 1, 1),
           ('legacy-node-7', 'legacy-default-task', 'output', '输出', 7, 'output', 474, 412, '{}', 1, 1)
       `);
+      // Simulate a pre-ledger database so the next open re-runs migrations.
+      await connection.run('DROP TABLE data_schema_migrations');
     } finally {
       connection.closeSync();
       instance.closeSync();
@@ -1746,6 +1751,8 @@ describe('DuckDB data task store', () => {
         )
         VALUES ('legacy-dataset', '用户行为明细', 'local://samples/user_events.csv', 'demo_dataset_1', 10, 2, 1, 1)
       `);
+      // Simulate a pre-ledger database so the next open re-runs migrations.
+      await connection.run('DROP TABLE data_schema_migrations');
     } finally {
       connection.closeSync();
       instance.closeSync();

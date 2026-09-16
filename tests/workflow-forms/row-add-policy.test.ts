@@ -25,7 +25,10 @@ describe('row operator add policy', () => {
   });
 
   it('assigns a stable id before an existing row is edited', () => {
-    const initial = ensureStableRowIds([{ alias: '45' }], () => 'metric-1');
+    const initial = ensureStableRowIds<{ id?: string; alias: string }>(
+      [{ alias: '45' }],
+      () => 'metric-1'
+    );
     const edited = ensureStableRowIds(
       initial.map((metric) => ({ ...metric, alias: '4' })),
       () => 'metric-2'

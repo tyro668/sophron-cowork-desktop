@@ -48,14 +48,14 @@ import { MessageCard } from '../MessageCard';
 import { getAgentModelLabel } from '../AgentModelSelector';
 import { LlmPromptComposer } from '../LlmPromptComposer';
 import { useConfirmDialog } from '../ConfirmDialog';
+import type { InputTableDraft, InputTableSourceFilter } from '../../features/data/model/types';
+import { dataClient } from '../../features/data/api/data-client';
 import {
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
   INPUT_TABLE_PREVIEW_PAGE_SIZE,
-  InputTableDraft,
-  InputTableSourceFilter,
   InputTableStatusBadge,
   LoadingState,
   PaginationFooter,
@@ -694,7 +694,7 @@ function InputTableEditorWorkbench({
     dataset &&
     localSourceKind === dataset.sourceKind &&
     !isBusy &&
-    window.electronAPI?.data?.previewInputTable
+    dataClient.has('previewInputTable')
   );
   const canGenerateCustomizeDraft = Boolean(
     dataset &&
@@ -840,7 +840,7 @@ function InputTableEditorWorkbench({
     }
     setNormalizerVersionsLoading(true);
     try {
-      const result = await window.electronAPI.data.listInputTableNormalizerVersions({
+      const result = await dataClient.listInputTableNormalizerVersions({
         artifactId,
       });
       setNormalizerVersions(result.versions);
@@ -874,7 +874,7 @@ function InputTableEditorWorkbench({
     setCustomizeGenerating(true);
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
-    const unsubscribeProgress = window.electronAPI.data.onInputTableNormalizerDraftProgress?.(
+    const unsubscribeProgress = dataClient.onInputTableNormalizerDraftProgress(
       (event: DataInputTableNormalizerDraftProgressEvent) => {
         if (event.progressId !== progressId) return;
         if (typeof event.text !== 'string' || event.text.length === 0) return;
@@ -886,7 +886,7 @@ function InputTableEditorWorkbench({
       }
     );
     try {
-      const result = await window.electronAPI.data.generateInputTableNormalizerDraft({
+      const result = await dataClient.generateInputTableNormalizerDraft({
         artifactId: dataProcessing.artifactId,
         name: `${dataset.name} normalizer`,
         sourcePath: dataset.sourcePath,
@@ -950,13 +950,13 @@ function InputTableEditorWorkbench({
   };
 
   const loadPreviewPage = async (page: number) => {
-    if (!dataset || !window.electronAPI?.data?.previewInputTable) return;
+    if (!dataset || !dataClient.has('previewInputTable')) return;
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewPage(page);
     try {
-      const nextPreview = await window.electronAPI.data.previewInputTable({
+      const nextPreview = await dataClient.previewInputTable({
         filePath: dataset.sourcePath,
         sourceKind: localSourceKind,
         config: localConfig,
@@ -986,7 +986,7 @@ function InputTableEditorWorkbench({
     setPreviewData(null);
     setPreviewPage(1);
     try {
-      const result = await window.electronAPI.data.previewInputTableNormalizerVersion({
+      const result = await dataClient.previewInputTableNormalizerVersion({
         versionId: dataProcessing.artifactVersionId,
         sourcePath: dataset.sourcePath,
         sourceKind: localSourceKind,
@@ -1012,7 +1012,7 @@ function InputTableEditorWorkbench({
     setCustomizeVersionActionId(version.id);
     setCustomizeGenerationError(null);
     try {
-      const result = await window.electronAPI.data.publishInputTableNormalizerVersion({
+      const result = await dataClient.publishInputTableNormalizerVersion({
         versionId: version.id,
       });
       updateDataProcessing({
@@ -1055,7 +1055,7 @@ function InputTableEditorWorkbench({
     setDeletingNormalizerVersionId(version.id);
     setCustomizeGenerationError(null);
     try {
-      await window.electronAPI.data.deleteInputTableNormalizerVersion({
+      await dataClient.deleteInputTableNormalizerVersion({
         versionId: version.id,
       });
       if (dataProcessing.artifactVersionId === version.id) {

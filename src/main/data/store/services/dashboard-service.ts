@@ -17,18 +17,10 @@ import {
   DashboardSummaryRow,
   startOfToday,
 } from '../data-store-records';
-import { DatasetRepository } from '../repositories/dataset-repository';
-
 export class DashboardService {
-  constructor(
-    private readonly ctx: DataStoreContext,
-    private readonly datasets: DatasetRepository
-  ) {}
+  constructor(private readonly ctx: DataStoreContext) {}
   async getDashboard(query: DataDashboardQuery = {}): Promise<DataDashboard> {
     await this.ctx.ensureMetadataReady();
-    if (query.includeOutputTables === true) {
-      await this.datasets.cleanupOutputTableMetadata();
-    }
     const normalizedQuery = (query.query ?? '').trim().toLowerCase();
     const like = `%${normalizedQuery.replace(/[%_\\]/g, '\\$&')}%`;
     const includeSummary = query.includeSummary !== false;
