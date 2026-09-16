@@ -12,6 +12,7 @@ import {
   type AnalyzeTaskRequirementResult,
   type ApplyOperatorDslCommand,
   type ApplyWorkflowDslCommand,
+  type ApplyWorkflowPlanCommand,
   type ConfigureInputOperatorCommand,
   type ConfigureOutputOperatorCommand,
   type CreateInputTableCommand,
@@ -318,6 +319,16 @@ export class DataCommandService {
 
   async applyWorkflowDsl(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
     return this.workflowAuthoring.applyWorkflowDsl(input);
+  }
+
+  async applyWorkflowPlan(input: ApplyWorkflowPlanCommand): Promise<WorkflowResult> {
+    return this.workflowAuthoring.applyWorkflowPlan(input);
+  }
+
+  async getWorkflowCapabilityManifest(
+    input: { inputTableIds?: string[]; outputTableIds?: string[] } = {}
+  ) {
+    return this.workflowAuthoring.getWorkflowCapabilityManifest(input);
   }
 
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<TextResult> {

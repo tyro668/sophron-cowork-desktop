@@ -63,6 +63,8 @@ export {
 } from './join';
 export type { DurationParts, JoinCondition } from './join';
 export { FilterConfigSchema } from './filter';
+export { ExpectConfigSchema, EXPECT_KINDS, EXPECT_ROW_OPERATORS } from './expect';
+export { InputSourceConfigSchema, OutputConfigSchema } from './input-output';
 
 // Import schemas for local use (separate from exports for CJS bundler compatibility)
 import * as SortModule from './sort';
@@ -80,6 +82,8 @@ import * as LimitModule from './limit';
 import * as PivotModule from './pivot';
 import * as JoinModule from './join';
 import * as FilterModule from './filter';
+import * as ExpectModule from './expect';
+import * as InputOutputModule from './input-output';
 
 export function parseOperatorConfig<T>(schema: ZodType<T>, config: Record<string, unknown>): T {
   return schema.parse(withoutOperatorMetadata(config));
@@ -101,6 +105,9 @@ export const SCHEMA_MAP: Record<string, ZodType> = {
   pivot: PivotModule.PivotConfigSchema,
   join: JoinModule.JoinConfigSchema,
   filter: FilterModule.FilterConfigSchema,
+  expect: ExpectModule.ExpectConfigSchema,
+  input_source: InputOutputModule.InputSourceConfigSchema,
+  output: InputOutputModule.OutputConfigSchema,
 };
 
 export function getOperatorConfigValidation(
@@ -110,9 +117,6 @@ export function getOperatorConfigValidation(
   const schema = SCHEMA_MAP[type];
   if (schema) {
     return schema.safeParse(withoutOperatorMetadata(config));
-  }
-  if (type === 'input_source' || type === 'output') {
-    return z.record(z.string(), z.unknown()).safeParse(withoutOperatorMetadata(config));
   }
   return z
     .record(z.string(), z.unknown())
@@ -128,6 +132,8 @@ export function getOperatorConfigValidation(
 function withoutOperatorMetadata(config: Record<string, unknown>): Record<string, unknown> {
   const operatorConfig = { ...config };
   delete operatorConfig.generatedOrigin;
+  delete operatorConfig.stepName;
+  delete operatorConfig.dsl;
   return operatorConfig;
 }
 

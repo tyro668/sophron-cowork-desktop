@@ -1,321 +1,95 @@
-<p align="center">
-  <img src="resources/logo.png" alt="sophron cowork Logo" width="280" />
-</p>
+<p align="center"><img src="resources/logo.png" alt="sophron cowork logo" width="180" /></p>
 
-<h1 align="center">🚀 sophron cowork: Your Local Data Agent Desktop App</h1>
+<h1 align="center">sophron cowork</h1>
 
-<p align="center">
-  • Local data processing • One-click install • Sandboxed agent workspace
-</p>
+<p align="center">A local desktop agent with a built-in data workbench</p>
 
-<p align="center">
-  <a href="./README_zh.md">中文文档</a> •
-  <a href="#features">Features</a> •
-  <a href="#demo">Demo</a> •
-  <a href="#installation">Downloads</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#skills">Skills Library</a> •
-  <a href="#developer-onboarding">Developer Onboarding</a>
-</p>
+<p align="center"><a href="./README_zh.md">简体中文</a> · <a href="#what-you-can-do">Capabilities</a> · <a href="#architecture">Architecture</a> · <a href="#comparison">Comparison</a> · <a href="#getting-started">Get started</a></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-blue" alt="Platform" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
-  <img src="https://img.shields.io/badge/Node.js-18+-brightgreen" alt="Node.js" />
-</p>
+sophron cowork (九思助理 in the Chinese build) is an MIT-licensed Electron app for working with files and structured data on your computer. It combines a chat agent with a data workbench: import tables, preview them, build repeatable cleaning workflows, and produce output tables. The same workspace can use Skills, MCP tools, scheduled tasks, memory, and authorized remote messages. Model inference can come from your own API provider, a local Ollama server, a ChatGPT/Codex subscription login, or the app's account-backed model service where available.
 
----
+The app is local, but **“local app” does not mean “no network traffic.”** Model requests, MCP connectors, remote channels, optional cloud-table transfers, account login, and updates can contact external services. Review the [data and security boundaries](#data-and-security-boundaries) before using sensitive information.
 
-sophron cowork is a free, open-source local data-processing agent for Windows and macOS. It wraps Claude, OpenAI, Gemini, DeepSeek, and other AI models into a desktop workspace that can analyze, clean, transform, summarize, and organize files, spreadsheets, reports, and datasets on your machine. Key capabilities include VM-level sandbox isolation (WSL2 on Windows, Lima on macOS), a built-in Skills system for data reports and document outputs (PPTX, DOCX, XLSX, PDF), MCP integration for browsers, Notion, and other desktop apps, GUI automation via computer use, and remote control through Feishu (Lark) and Slack.
+## What you can do
 
----
+### Work with an agent
 
-## 📖 Introduction
+- Select a workspace and ask the agent to read, organize, or create files. Attach files and images to a conversation; inspect streamed responses, tool calls, and traces.
+- Choose from presets for DeepSeek, Moonshot, Alibaba Cloud/DashScope, Z.AI, Anthropic, OpenAI, OpenAI Codex subscription, OpenRouter, and Ollama. Provider availability, model capabilities, and charges depend on the service you select. The account-backed built-in model is a separate option where enabled.
+- Use the bundled `pptx`, `docx`, `pdf`, `xlsx`, and `skill-creator` Skills; add project or global Skills and manage them in the app.
+- Connect MCP servers over stdio, SSE, or Streamable HTTP. Presets include Chrome DevTools, Notion, software-development tools, and the bundled GUI-operation server. GUI actions need platform permissions and a suitable vision-capable model; they are not guaranteed to work in every app.
 
-**sophron cowork** is a local-first agent workspace for data-heavy work, with one-click installers for **Windows** and **macOS**—no coding required.
+### Prepare structured data
 
-It provides a sandboxed workspace where AI can process local data files, generate professional outputs (PPTX, DOCX, XLSX, etc.) through the built-in **Skills** system, and **connect to desktop apps via MCP** (browser, Notion, etc.) when a workflow needs external tools.
+- Import CSV/TSV and Excel files, or a folder of such files, as input tables. Configure source reading and preview rows and columns before processing.
+- Create data tasks and output tables with a visual workflow canvas or Prep DSL. Operators cover filtering, selecting and mapping fields, deduplication, missing values, conversions, sorting, joins, aggregation, calculated fields, pivot/unpivot, set operations, unnesting, limits, and output sinks.
+- Preview individual workflow nodes, run a task, and inspect the output table. GUI workflows, DSL, and generated plans converge on a versioned typed plan with graph and schema validation before saving or running.
+- Ask the agent to list, preview, import, and work with data resources through the same command services used by the UI. Requirement analysis can help generate a task for review; generated workflows are validated before execution.
+- Optionally connect a Personal Analysis/cloud-table API to browse or import remote tables and upload local tables. This is an explicit external-data path, not part of local-only processing.
 
-> [!WARNING]
-> **Disclaimer**: sophron cowork is an AI collaboration tool. Please exercise caution with its operations, especially when authorizing file modifications or deletions. We support VM-based sandbox isolation, but some operations may still carry risks.
+### Reuse and trigger work
 
----
+- Configure recurring or one-time scheduled tasks in the desktop app. They execute through the local session runtime, so the app and computer must be running when a task is due.
+- Enable memory to retrieve relevant context before a session and ingest useful context afterward; inspect and manage stored memory in settings.
+- With remote control enabled, route authorized messages from Feishu/Lark, DingTalk, WeCom, Slack, or the gateway WebSocket entry point into agent sessions. Channel setup, pairing/authentication, and a running desktop host are required.
 
-## 🧭 Data Closed-Loop Architecture
+## Architecture
 
-<p align="center">
-  <img src="resources/sophron-data-closed-loop-architecture.svg" alt="sophron cowork data closed-loop architecture" />
-</p>
+<p align="center"><img src="resources/sophron-architecture.png" alt="Raster product architecture and system-interaction diagram: an optional Personal Analysis cloud-table service on the left; the local Electron app, agent runtime, typed data workflow and DuckDB in the center; remote message platforms, model and MCP services, and local data sources on the right; local output tables, agent file deliverables and optional cloud-table writeback below" width="100%" /></p>
 
----
+The diagram keeps the historical image's cloud ↔ local product ↔ local data-source relationship, but updates the facts to the current code. FineBI Next is a historical deployment scenario, not a hard-coded endpoint in this repository. The implemented cloud connection is a configurable Personal Analysis API: it exports a cloud table as CSV for local import, and can upload a selected local table as CSV using CREATE or REPLACE. Cloud-side charts, dashboards, reports, and publishing belong to the connected external system, not this app's native data workbench.
 
-<a id="features"></a>
+The React workbench reaches Electron's main process through the preload IPC bridge. `SessionManager` handles session queues, traces and permissions; the agent runtime combines model routing, built-in tools, MCP, Skills, memory and data tools. The UI and agent data tools share `DataCommandService`. Local CSV/TSV or Excel files (including folders of them), and selected cloud tables, enter the input-table path. GUI workflows, Prep DSL and AI-generated plans converge on a typed plan that is graph- and schema-validated before DuckDB execution. SQLite keeps sessions, traces, schedules and data metadata; DuckDB keeps actual table data. A data task produces a previewable, reusable output table, while the agent can separately create document deliverables with tools and Skills. Model, MCP and remote-message connections are independent optional external boundaries; remote and scheduled tasks still enter the local session runtime.
 
-## ✨ Key Features
+For implementation details, start with the [developer documentation](docs/development/README.md), the [data-workspace guide](docs/development/data-workspace.md), and the [Prep DSL reference](docs/prep-dsl-reference.md).
 
-|                | MCP & Skills | Remote Control | GUI Operation |
-| -------------- | ------------ | -------------- | ------------- |
-| Claude Cowork  | ✓            | ✗              | ✗             |
-| OpenClaw       | ✓            | ✓              | ✗             |
-| sophron cowork | ✓            | ✓              | ✓             |
+## Comparison
 
-- **One-Click Install, Ready to Use**: Pre-built installers for Windows and macOS, no environment setup needed—just download and start using.
-- **Local Data Processing**: Analyze spreadsheets, clean messy datasets, summarize reports, extract structured information, and prepare deliverables from workspace files.
-- **Flexible Model Support**: Supports **DeepSeek**, **Moonshot**, **Z.AI**, **Anthropic**, **OpenAI**, **OpenRouter**, and **Ollama** through dedicated provider presets. Use local or cloud models with flexible configuration.
-- **Remote Control**: Connect to collaboration platforms like **Feishu (Lark)** and other remote services to automate workflows and cross-platform operations.
-- **GUI Operation**: Control and interact with various desktop GUI applications on your computer. **Recommended model: Gemini-3-Pro** for optimal GUI understanding and control.
-- **Smart File Management**: Read, write, and organize files within your workspace.
-- **Skills System**: Built-in workflows for PPTX, DOCX, PDF, XLSX generation and processing. **Supports custom skill creation and deletion.**
-- **MCP External Service Support**: Integrate browser, Notion, custom apps and more through **MCP Connectors** to extend AI capabilities.
-- **Multimodal Input**: Drag & drop files and images directly into the chat input for seamless multimodal interaction.
-- **Real-time Trace**: Watch AI reasoning and tool execution in the Trace Panel.
-- **Secure Workspace**: All operations confined to your chosen workspace folder.
-- **VM-Level Isolation**: WSL2 (Windows) and Lima (macOS) VM isolation—all commands execute in an isolated VM to protect your host system.
-- **UI Enhancements**: Beautiful and flexible UI design, system language switching, comprehensive MCP/Skills/Tools call display.
+The old yes/no table understated other products. All three can use tools and Skills, automate recurring work, and—under the right permissions and platform conditions—operate a browser or desktop. The useful distinction is **how the work is hosted and whether structured data preparation is a native product surface**.
 
-<a id="demo"></a>
+| Dimension                   | sophron cowork                                                                                        | Claude Cowork                                                                                                                                                      | OpenClaw                                                                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Primary surface             | Local Electron chat **and** table/task workbench                                                      | Claude task workspace across web, desktop, and mobile                                                                                                              | Self-hosted agent Gateway, channels, and tools                                                                                    |
+| Structured data preparation | Built-in input/output tables, visual workflow and Prep DSL, typed validation, DuckDB execution        | Works with spreadsheets and produces deliverables through tasks, plugins, and connected tools; official docs do not describe a comparable built-in Prep canvas/DSL | General agent tools/Skills/plugins; its official capability overview does not describe this project's table/task workflow surface |
+| Model choice                | Configured API providers, Ollama, Codex subscription login, or account-backed service where available | Claude via a paid Claude plan                                                                                                                                      | Configurable model providers and runtime policies                                                                                 |
+| Remote or scheduled entry   | Feishu, DingTalk, WeCom, Slack/WebSocket; **local** scheduled sessions                                | Cross-device sessions/Dispatch and scheduled tasks; cloud tasks can run while a device is off, local access needs Desktop online                                   | Gateway channels plus cron/tasks/heartbeat; can run on a host or eligible nodes                                                   |
+| Desktop interaction         | Bundled GUI-operation MCP, subject to OS permissions and model capability                             | Browser and computer use in supported Cowork plans/platforms                                                                                                       | Browser and computer tools on supported, enabled hosts/nodes                                                                      |
+| Execution boundary          | Workspace/path checks; optional WSL2 or Lima for command isolation, with native fallback              | Isolated cloud execution; desktop access to explicitly connected local resources                                                                                   | Configurable sandbox and tool policy; sandbox is not enabled by default for ordinary sessions                                     |
 
-## 🎬 Demo
+This is a comparison of **documented default/product surfaces**, not a claim that competitors cannot reproduce a workflow with custom code or plugins. The observations about what their native data surfaces do not document are **inferences from the cited guides, not proof of absence**. Capabilities and plan availability change; checked on **2026-09-16** against [Claude Cowork's getting-started guide](https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork), [Claude computer use](https://support.claude.com/en/articles/14128542-let-claude-use-your-computer-in-cowork), [Claude scheduling](https://support.claude.com/en/articles/13854387-schedule-recurring-tasks-in-claude-cowork), [Claude Dispatch](https://support.claude.com/en/articles/13947068-assign-tasks-from-anywhere-in-claude-cowork), [OpenClaw's capability overview](https://docs.openclaw.ai/tools), [OpenClaw channels](https://docs.openclaw.ai/channels), [OpenClaw model providers](https://docs.openclaw.ai/concepts/model-providers), [OpenClaw automation](https://docs.openclaw.ai/automation), [OpenClaw computer use](https://docs.openclaw.ai/nodes/computer-use), and [OpenClaw sandbox defaults](https://docs.openclaw.ai/gateway/sandboxing/modes-scope-and-backend). This repository's claims are based on its current source and tests.
 
-Demo media is distributed with release materials. Current workflows include:
+## Getting started
 
-- Folder organization and cleanup
-- Generate PPT from files
-- Generate XLSX spreadsheets
-- GUI operation
-- Remote control with Feishu (Lark)
+### Install
 
----
+The packaging configuration targets **Windows x64** (`.exe`) and **macOS Apple Silicon** (`.dmg` and `.zip`). Obtain a trusted installer from the project's release channel. A Linux AppImage target exists in the build configuration, but this README does not promise a published Linux release. Installer contents and signing depend on the release build.
 
-<a id="installation"></a>
-
-## 📦 Installation
-
-### Option 1: Download Installer
-
-Get the latest installer from the official sophron cowork release channel.
-
-| Platform                  | File Type |
-| ------------------------- | --------- |
-| **Windows**               | `.exe`    |
-| **macOS** (Apple Silicon) | `.dmg`    |
-
-### Option 2: Build from Source
-
-For source-based local builds:
+To run from a source checkout, use **Node.js 22 or newer** and npm:
 
 ```bash
-git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git sophron
-cd sophron
 npm install
-npm run rebuild
 npm run dev
 ```
 
-To build the installer locally: `npm run build`
+`npm install` runs the project's native-module rebuild and Node preparation. `npm run dev` also prepares the WSL/Lima agents and MCP bundle. For document workflows needing the bundled Python preparation, use `npm run dev:with-python`. Packaging commands are `npm run build:sophron`, `npm run build:sophron-cn`, or `npm run build` for both variants; they download/build additional resources and require platform build prerequisites. The repository URL in `package.json` is an SSH endpoint and may require access.
 
-### Security Configuration: 🔒 Sandbox Support
+### First task
 
-sophron cowork provides **multi-level sandbox protection** to keep your system safe:
+1. Open the app and select a workspace folder.
+2. In settings, choose a model route: add the provider's credentials, connect Ollama, sign in for a supported subscription route, or use the available built-in account route. Check the provider's own pricing and data policy.
+3. Try chat: “Summarize the CSV files in this folder and make a short report.”
+4. For repeatable table processing, open the data workbench, import an input table, build or describe a task, preview its nodes, and run it into an output table.
 
-| Level        | Platform | Technology | Description                                    |
-| ------------ | -------- | ---------- | ---------------------------------------------- |
-| **Basic**    | All      | Path Guard | File operations restricted to workspace folder |
-| **Enhanced** | Windows  | WSL2       | Commands execute in isolated Linux VM          |
-| **Enhanced** | macOS    | Lima       | Commands execute in isolated Linux VM          |
+## Data and security boundaries
 
-- **Windows (WSL2)**: When WSL2 is detected, all Bash commands are automatically routed to a Linux VM. The workspace is synced bidirectionally.
-- **macOS (Lima)**: When [Lima](https://lima-vm.io/) is installed (`brew install lima`), commands run in an Ubuntu VM with `/Users` mounted.
-- **Fallback**: If no VM is available, commands run natively with path-based restrictions.
+- The app stores workspace files locally. Session/metadata storage uses SQLite; table data uses DuckDB. Data remains local **until a selected capability sends it elsewhere**.
+- Model prompts and relevant file content can be sent to the configured cloud model or the account-backed model proxy. Ollama can keep inference local only when pointed at a genuinely local instance; other tools or connectors may still use the network.
+- MCP servers, GUI automation, remote channels, Personal Analysis/cloud-table import/export, authentication, and software updates each have their own access and network boundary. Enable only what you need and review their credentials and permissions.
+- WSL2 on Windows and Lima on macOS are **optional command-execution isolation**, not a blanket VM for every app action. If disabled or unavailable, the sandbox adapter can run natively. File path containment and permission policies provide additional checks, but neither makes destructive actions risk-free.
+- The strict `default` permission profile asks before writes, edits, and shell commands, but the app's initial profile is `auto_review`, which can allow these common actions automatically; `full_access` is broader still. Review your selected policy, confirm important changes, and keep backups of irreplaceable files.
 
-**Setup (Optional, Recommended)**
+## Development and license
 
-- **Windows**: WSL2 is auto-detected if installed. [Install WSL2](https://docs.microsoft.com/en-us/windows/wsl/install)
+Run `npm run typecheck`, `npm run test`, and `npm run lint` when changing code. Module maps and targeted tests are in [docs/development](docs/development/README.md). UI changes must follow [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md).
 
-- **macOS**:
-  Lima is auto-detected if installed. Install command:
-
-```bash
-brew install lima
-# sophron cowork will automatically create and manage a Lima VM (internal Lima name: 'claude-sandbox')
-```
-
----
-
-<a id="quick-start"></a>
-
-## 🚀 Quick Start Guide
-
-### 1. Get an API Key
-
-You need an API key to power cloud models, or a local Ollama server for local models. The provider list matches the app settings.
-
-| Provider       | Get Key / Setup                                     | Base URL                       | Recommended Models                                      |
-| -------------- | --------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
-| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`     | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
-| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/)  | `https://api.moonshot.ai/v1`   | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
-| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                     | `https://api.z.ai/api/paas/v4` | `glm-5.1`, `glm-5`, `glm-4.5`                           |
-| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`    | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
-| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)     | `https://api.openai.com/v1`    | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`               |
-| **OpenRouter** | [OpenRouter](https://openrouter.ai/)                | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
-| **Ollama**     | [Ollama](https://ollama.com/)                       | `http://localhost:11434/v1`    | Discovered from your local Ollama server                |
-
-### 2. Configure
-
-1. Open the app and click the ⚙️ **Settings** icon in the bottom left.
-2. Paste your **API Key**.
-3. **Crucial**: Set the **Base URL** according to the table above, or keep the preset value selected by the provider tab.
-4. Enter the **Model** name you want to use.
-
-### 3. Start Coworking
-
-1. **Select a Workspace**: Choose a folder where Claude is allowed to work.
-2. **Enter a Prompt**:
-   > "Read the financial_report.csv in this folder and create a PowerPoint summary with 5 slides."
-
-### 📝 Important Notes
-
-1.  **macOS Installation**: If you downloaded the DMG directly and see a security warning, go to **System Settings > Privacy & Security** and click **Open Anyway**.
-2.  **Network Access**: For tools like `WebSearch`, you may need to enable "Virtual Network Interface" (TUN Mode) in your proxy settings to ensure connectivity.
-3.  **Notion Connector**: Besides setting the integration token, you also need to add connections in a root page. See https://www.notion.com/help/add-and-manage-connections-with-the-api for more details.
-
----
-
-<a id="skills"></a>
-
-## 🧰 Skills Library
-
-sophron cowork ships with built-in skills under `.claude/skills/`, and supports user-added or custom skills, including:
-
-- `pptx` for PowerPoint generation
-- `docx` for Word document processing
-- `pdf` for PDF handling and forms
-- `xlsx` for Excel spreadsheet support
-- `skill-creator` for creating custom skills
-
----
-
-## 🏗️ Architecture
-
-```
-sophron/
-├── src/
-│   ├── main/                    # Electron Main Process (Node.js)
-│   │   ├── index.ts             # Main entry point
-│   │   ├── claude/              # Agent SDK & Runner
-│   │   │   └── agent-runner.ts  # AI agent execution logic
-│   │   ├── config/              # Configuration management
-│   │   │   └── config-store.ts  # Persistent settings storage
-│   │   ├── db/                  # Database layer
-│   │   │   └── database.ts      # SQLite/data persistence
-│   │   ├── ipc/                 # IPC handlers
-│   │   ├── memory/              # Memory management
-│   │   │   └── memory-manager.ts
-│   │   ├── sandbox/             # Security & Path Resolution
-│   │   │   └── path-resolver.ts # Sandboxed file access
-│   │   ├── session/             # Session management
-│   │   │   └── session-manager.ts
-│   │   ├── skills/              # Skill Loader & Manager
-│   │   │   └── skills-manager.ts
-│   │   └── tools/               # Tool execution
-│   │       └── tool-executor.ts # Tool call handling
-│   ├── preload/                 # Electron preload scripts
-│   │   └── index.ts             # Context bridge setup
-│   └── renderer/                # Frontend UI (React + Tailwind)
-│       ├── App.tsx              # Root component
-│       ├── main.tsx             # React entry point
-│       ├── components/          # UI Components
-│       │   ├── ChatView.tsx     # Main chat interface
-│       │   ├── ConfigModal.tsx  # Settings dialog
-│       │   ├── ContextPanel.tsx # File context display
-│       │   ├── MessageCard.tsx  # Chat message component
-│       │   ├── PermissionDialog.tsx
-│       │   ├── Sidebar.tsx      # Navigation sidebar
-│       │   ├── Titlebar.tsx     # Custom window titlebar
-│       │   ├── TracePanel.tsx   # AI reasoning trace
-│       │   └── WelcomeView.tsx  # Onboarding screen
-│       ├── hooks/               # Custom React hooks
-│       │   └── useIPC.ts        # IPC communication hook
-│       ├── store/               # State management
-│       │   └── index.ts
-│       ├── styles/              # CSS styles
-│       │   └── globals.css
-│       ├── types/               # TypeScript types
-│       │   └── index.ts
-│       └── utils/               # Utility functions
-├── .claude/
-│   └── skills/                  # Default Skill Definitions
-│       ├── pptx/                # PowerPoint generation
-│       ├── docx/                # Word document processing
-│       ├── pdf/                 # PDF handling & forms
-│       ├── xlsx/                # Excel spreadsheet support
-│       └── skill-creator/       # Skill development toolkit
-├── resources/                   # Static Assets (icons, images)
-├── electron-builder.yml         # Build configuration
-├── vite.config.ts               # Vite bundler config
-└── package.json                 # Dependencies & scripts
-```
-
----
-
-<a id="developer-onboarding"></a>
-
-## 🛠️ Developer Onboarding
-
-New contributors should start from the development documentation entry:
-[docs/development/README.md](docs/development/README.md).
-
-The onboarding docs link to the module-level guides under `docs/development/`, including:
-
-- [Overall architecture](docs/development/architecture-overview.md)
-- [Session and Agent runtime](docs/development/runtime-and-sessions.md)
-- [Renderer workspace UI](docs/development/renderer-ui.md)
-- [Data workspace](docs/development/data-workspace.md)
-- [Sandbox, MCP, Skills, and plugins](docs/development/capabilities-sandbox-mcp-skills.md)
-- [Remote control, scheduled tasks, and memory](docs/development/remote-schedule-memory.md)
-- [Config, storage, updates, and startup helpers](docs/development/config-storage-update.md)
-- [Testing and maintenance guide](docs/development/testing-maintenance.md)
-
----
-
-## ❓ FAQ
-
-**What is sophron cowork?**
-sophron cowork is a free, open-source desktop application that provides a local AI agent workspace for processing data. It helps analyze, clean, transform, summarize, and organize workspace files with one-click installers for Windows and macOS.
-
-**How is sophron cowork different from Claude Cowork?**
-sophron cowork is positioned around local data processing rather than general coding or chat. It adds multi-model support, GUI automation via computer use, remote control through Feishu/Slack, and VM-level sandbox isolation. See the [feature comparison table](#features) for details.
-
-**What AI models does sophron cowork support?**
-sophron cowork currently provides dedicated presets for DeepSeek, Moonshot, Z.AI, Anthropic, OpenAI, OpenRouter, and Ollama. OpenRouter can route to additional hosted models, and Ollama can run local models discovered from your machine.
-
-**Is sophron cowork free?**
-Yes. sophron cowork itself is completely free and open-source under the MIT license. You only need to pay for the AI model API usage from your chosen provider.
-
-**Does sophron cowork work on Linux?**
-Currently, sophron cowork provides pre-built installers for Windows and macOS only. Linux users can build from source — see the [Build from Source](#installation) section.
-
-**How does sandbox isolation work?**
-sophron cowork offers multi-level protection: basic path-based restrictions on all platforms, and enhanced VM-level isolation using WSL2 (Windows) or Lima (macOS). When a VM is available, all commands execute inside an isolated Linux environment, protecting your host system.
-
-**What are Skills and how do I create custom ones?**
-Skills are built-in workflows for specific tasks like generating PPTX, DOCX, PDF, or XLSX files. sophron cowork ships with default skills under `.claude/skills/` and includes a `skill-creator` tool to help you build your own custom skills.
-
-**What is MCP and how does it work?**
-MCP (Model Context Protocol) lets AI connect to external tools and services. sophron cowork supports MCP connectors for browsers, Notion, and other desktop apps — extending the AI's capabilities beyond just file management and code.
-
-**How do I set up remote control via Feishu or Slack?**
-sophron cowork supports remote control through Feishu (Lark), DingTalk, and Slack integration, allowing you to send commands and receive results from collaboration platforms. DingTalk in-app bots can use either Stream or Webhook (HTTP) delivery; Webhook mode requires a public HTTPS callback while Sophron remains running. Check the app settings for remote control configuration.
-
-**Is my data safe? Does sophron cowork send data to external servers?**
-sophron cowork runs locally on your machine. Your files stay in your workspace. The only external communication is with the AI model API you configure (e.g., Anthropic, OpenRouter). No data is sent to sophron cowork servers.
-
-## 📄 License
-
-MIT © sophron
-
----
-
-<p align="center">
-  Made with ❤️ by the sophron team with the help of opus4.5
-</p>
+Licensed under [MIT](LICENSE). The application is open source; provider subscriptions, API calls, and optional cloud services may have separate costs.

@@ -71,7 +71,7 @@ export default function FormUnpivot({
             updateConfig((cfg) => ({ ...cfg, nameColumn: v }));
           }}
           placeholder={tr('unpivotNameColPlaceholder')}
-          className="h-9 w-60 rounded-md px-2"
+          className="h-8 w-60 rounded-md px-2"
         />
       </div>
 
@@ -84,13 +84,13 @@ export default function FormUnpivot({
             updateConfig((cfg) => ({ ...cfg, valueColumn: v }));
           }}
           placeholder={tr('unpivotValueColPlaceholder')}
-          className="h-9 w-60 rounded-md px-2"
+          className="h-8 w-60 rounded-md px-2"
         />
       </div>
 
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('unpivotNullsLabel')}</GlassFormLabel>
-        <label className="flex h-9 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
+        <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
           <input
             type="checkbox"
             checked={includeNulls}

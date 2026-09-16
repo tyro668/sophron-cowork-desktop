@@ -2,6 +2,7 @@ export const PREP_DSL_KEYWORDS = [
   'input',
   'source',
   'from',
+  'step',
   'select',
   'map',
   'rename',
@@ -110,6 +111,14 @@ export const PREP_DSL_KEYWORDS = [
   'name',
   'append',
   'error_if_exists',
+  'merge',
+  'schema',
+  'strict',
+  'extend',
+  'ignore',
+  'incremental',
+  'reject',
+  'unique',
 ] as const;
 
 export interface OpenFieldReference {

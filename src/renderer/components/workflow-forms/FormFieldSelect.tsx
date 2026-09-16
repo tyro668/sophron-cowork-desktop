@@ -118,7 +118,7 @@ export default function FormFieldSelect({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-4">
-      <div className="flex min-h-9 shrink-0 items-center gap-2">
+      <div className="flex min-h-8 shrink-0 items-center gap-2">
         <GlassSegmentedControl
           value={mode}
           options={modeOptions}
@@ -131,14 +131,14 @@ export default function FormFieldSelect({
           ariaLabel={tr('fieldSelectMode')}
         />
 
-        <div className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+        <div className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
           <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           <input
             type="text"
             value={rightSearch}
             onChange={(event) => setRightSearch(event.target.value)}
             placeholder={tr('fieldPicker.searchField')}
-            className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
+            className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
           />
           <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
             <input
@@ -218,7 +218,7 @@ export default function FormFieldSelect({
                 render: (field: string) => {
                   const selected = columns.includes(field);
                   return (
-                    <label className="flex h-7 cursor-pointer items-center justify-center">
+                    <label className="flex h-8 cursor-pointer items-center justify-center">
                       <input
                         type="checkbox"
                         checked={selected}

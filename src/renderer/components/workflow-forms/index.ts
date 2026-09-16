@@ -39,6 +39,7 @@ const OPERATOR_FORM_LOADERS: FormRegistry = {
   aggregate: () => import('./FormAggregate'),
   join: () => import('./FormJoin'),
   pivot: () => import('./FormPivot'),
+  expect: () => import('./FormExpect'),
 };
 
 export function hasOperatorForm(type: DataWorkflowOperatorType): boolean {

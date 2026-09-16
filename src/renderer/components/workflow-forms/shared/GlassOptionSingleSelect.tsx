@@ -176,7 +176,7 @@ export function GlassOptionSingleSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
-        className={`flex min-h-7 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
+        className={`flex min-h-8 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
           variant === 'highlight'
             ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
             : variant === 'muted'
@@ -241,7 +241,7 @@ export function GlassOptionSingleSelect({
                       aria-selected={selected}
                       title={o.title}
                       data-index={globalIdx}
-                      className={`min-h-7 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+                      className={`min-h-8 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
                           ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'

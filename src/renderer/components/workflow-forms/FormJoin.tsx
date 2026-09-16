@@ -218,14 +218,14 @@ export default function FormJoin({
             },
           ]}
           onChange={handleJoinTypeChange}
-          className="h-9 w-60"
+          className="h-8 w-60"
           aria-label={tr('joinType')}
         />
       </div>
 
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-        <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
           <span className="truncate text-[13px] text-text-secondary">
             {leftSourceLabel || tr('sources.noLeftSource')}
           </span>
@@ -234,7 +234,7 @@ export default function FormJoin({
 
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-        <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
           <span className="truncate text-[13px] text-text-secondary">
             {rightSourceLabel || tr('sources.noRightSource')}
           </span>
@@ -243,7 +243,7 @@ export default function FormJoin({
           <button
             type="button"
             onClick={() => setKeepDialogOpen(true)}
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             title={tr('joinFieldSettingsTip')}
           >
             <Settings className="h-3.5 w-3.5" />
@@ -297,7 +297,7 @@ export default function FormJoin({
                         )
                       }
                       placeholder={tr('leftField')}
-                      className="h-7 w-full text-[12px]"
+                      className="h-8 w-full text-[12px]"
                     />
                   ),
                 },
@@ -316,7 +316,7 @@ export default function FormJoin({
                         )
                       }
                       variant="highlight"
-                      className="h-7 w-full text-[12px] [&>span]:text-center"
+                      className="h-8 w-full text-[12px] [&>span]:text-center"
                     />
                   ),
                 },
@@ -334,7 +334,7 @@ export default function FormJoin({
                         )
                       }
                       placeholder={tr('rightField')}
-                      className="h-7 w-full text-[12px]"
+                      className="h-8 w-full text-[12px]"
                     />
                   ),
                 },
@@ -348,7 +348,7 @@ export default function FormJoin({
               hideHeader
             />
           ) : (
-            <div className="flex h-9 items-center text-[12px] text-text-muted">
+            <div className="flex h-8 items-center text-[12px] text-text-muted">
               {tr('noConditionsNeeded')}
             </div>
           )}

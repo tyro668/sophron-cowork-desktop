@@ -262,7 +262,7 @@ export function CalculationFunctionWizard({
               role="tab"
               aria-selected={item === category}
               onClick={() => selectCategory(item)}
-              className={`h-9 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent/8 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+              className={`h-8 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent/8 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                 item === category
                   ? 'border-accent font-medium text-accent'
                   : 'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -290,7 +290,7 @@ export function CalculationFunctionWizard({
                     },
                   ]}
                   onChange={selectFunction}
-                  className="h-7 w-full text-[12px]"
+                  className="h-8 w-full text-[12px]"
                 />
               </WizardLabel>
 
@@ -302,7 +302,7 @@ export function CalculationFunctionWizard({
                     columnTypes={columnTypes}
                     onChange={setValue}
                     placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                    className="h-7 w-full"
+                    className="h-8 w-full"
                   />
                 </WizardLabel>
               )}
@@ -313,7 +313,7 @@ export function CalculationFunctionWizard({
                     inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
                     value={effectiveExtraParameter}
                     onChange={setExtraParameter}
-                    className="h-7 w-full rounded-md px-2 text-[12px]"
+                    className="h-8 w-full rounded-md px-2 text-[12px]"
                   />
                 </WizardLabel>
               )}
@@ -332,7 +332,7 @@ export function CalculationFunctionWizard({
                         }))
                       }
                       placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                      className="h-7 w-full"
+                      className="h-8 w-full"
                     />
                   ) : parameter.kind === 'option' ? (
                     <GlassOptionSingleSelect
@@ -352,7 +352,7 @@ export function CalculationFunctionWizard({
                           [parameter.key]: nextValue,
                         }))
                       }
-                      className="h-7 w-full text-[12px]"
+                      className="h-8 w-full text-[12px]"
                     />
                   ) : (
                     <GlassFormTextInput
@@ -364,7 +364,7 @@ export function CalculationFunctionWizard({
                           [parameter.key]: nextValue,
                         }))
                       }
-                      className="h-7 w-full rounded-md px-2 text-[12px]"
+                      className="h-8 w-full rounded-md px-2 text-[12px]"
                     />
                   )}
                 </WizardLabel>
@@ -515,7 +515,7 @@ export function CalculationFunctionWizard({
           type="button"
           disabled={!preview.expression}
           onClick={() => onInsert(preview.expression)}
-          className="h-7 shrink-0 rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {tr('calcFieldInsertExpression')}
         </button>
@@ -570,7 +570,7 @@ function FrameEditor(props: FrameEditorProps) {
           value={props.frameType}
           groups={[{ key: 'frameType', items: typeOptions }]}
           onChange={(value) => props.setFrameType(value as CalculationWindowFrame['type'])}
-          className="h-7 w-full text-[11px]"
+          className="h-8 w-full text-[11px]"
         />
       </WizardLabel>
       <BoundEditor
@@ -612,7 +612,7 @@ function FrameEditor(props: FrameEditorProps) {
             },
           ]}
           onChange={(value) => props.setExclude(value as CalculationWindowFrame['exclude'])}
-          className="h-7 w-full text-[11px]"
+          className="h-8 w-full text-[11px]"
         />
       </WizardLabel>
     </div>
@@ -650,14 +650,14 @@ function BoundEditor(props: BoundEditorProps) {
             },
           ]}
           onChange={(value) => props.setType(value as CalculationFrameBoundType)}
-          className="h-7 min-w-0 flex-1 text-[10px]"
+          className="h-8 min-w-0 flex-1 text-[10px]"
         />
         {needsOffset && (
           <GlassFormTextInput
             inputMode="numeric"
             value={props.offset}
             onChange={props.setOffset}
-            className="h-7 w-12 rounded-md px-1 text-center text-[11px]"
+            className="h-8 w-12 rounded-md px-1 text-center text-[11px]"
           />
         )}
         {needsOffset && props.usesTemporalRangeUnit && (
@@ -670,7 +670,7 @@ function BoundEditor(props: BoundEditorProps) {
               },
             ]}
             onChange={props.setUnit}
-            className="h-7 w-16 text-[10px]"
+            className="h-8 w-16 text-[10px]"
           />
         )}
       </div>

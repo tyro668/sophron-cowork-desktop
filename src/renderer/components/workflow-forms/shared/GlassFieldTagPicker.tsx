@@ -47,7 +47,7 @@ export function GlassFieldTagPicker({
   return (
     <div className={`grid min-w-0 gap-0 ${className}`}>
       <div
-        className={`flex h-9 min-h-9 w-full min-w-0 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-background/42 ${
+        className={`flex h-8 min-h-8 w-full min-w-0 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-background/42 ${
           open ? 'rounded-b-none' : ''
         } ${tagClassName}`}
       >
@@ -55,7 +55,7 @@ export function GlassFieldTagPicker({
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center self-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30"
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center self-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30"
             title={tr('clearAll')}
             aria-label={tr('clearAll')}
           >

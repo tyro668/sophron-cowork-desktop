@@ -525,9 +525,10 @@ function formatConflict(value: unknown): string | null {
     return `right_prefix ${quoteString(conflict.rightPrefix)}`;
   }
   if (conflict.strategy !== 'suffix') return null;
-  return `suffix ${String(conflict.leftSuffix ?? '_left')} ${String(
-    conflict.rightSuffix ?? '_right'
-  )}`;
+  const leftSuffix = String(conflict.leftSuffix ?? '_left');
+  const rightSuffix = String(conflict.rightSuffix ?? '_right');
+  if (leftSuffix === '_left' && rightSuffix === '_right') return null;
+  return `suffix ${leftSuffix} ${rightSuffix}`;
 }
 
 function formatConditions(value: unknown): string {

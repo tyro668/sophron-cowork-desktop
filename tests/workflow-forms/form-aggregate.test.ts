@@ -139,9 +139,7 @@ describe('FormAggregate — config ↔ DSL', () => {
       type: 'aggregate',
       config: stripped,
     });
-    expect(exported).toBe(
-      'aggregate by month([`created at`]), [region] metrics count(*) as [rows]'
-    );
+    expect(exported).toBe('aggregate by month([created at]), [region] metrics count(*) as [rows]');
     const reparsed = parsePrepOperatorDsl(exported, 'aggregate');
     expect(reparsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     expect(reparsed.operator?.config).toMatchObject({

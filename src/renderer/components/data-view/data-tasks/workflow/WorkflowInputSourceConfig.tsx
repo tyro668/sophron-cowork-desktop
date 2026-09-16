@@ -38,6 +38,26 @@ export function WorkflowInputSourceConfig({
     inputTables.find((inputTable) => inputTable.id === selectedInputTableId) ?? null;
   const hasSelectedInputTableInChoices = selectedDataset !== null;
   const SelectedSourceIcon = selectedDataset ? SOURCE_KIND_ICONS[selectedDataset.sourceKind] : null;
+  const incrementalBy = stringValue(node.config.incrementalBy);
+
+  const handleIncrementalChange = useCallback(
+    (raw: string) => {
+      onNodeChange((current) => {
+        const nextConfig: Record<string, unknown> = { ...current.config };
+        const cleaned = raw
+          .trim()
+          .replace(/^\[|\]$/g, '')
+          .replace(/^`|`$/g, '');
+        if (cleaned) {
+          nextConfig.incrementalBy = cleaned;
+        } else {
+          delete nextConfig.incrementalBy;
+        }
+        return { ...current, config: nextConfig, updatedAt: Date.now() };
+      });
+    },
+    [onNodeChange]
+  );
 
   const handleInputTableChange = useCallback(
     (inputTableId: string) => {
@@ -98,6 +118,17 @@ export function WorkflowInputSourceConfig({
           triggerIcon={<Database className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
           triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
           contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
+      </div>
+      <div className="w-56">
+        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+          {t('data.workflow.incrementalBy')}
+        </span>
+        <input
+          value={incrementalBy}
+          onChange={(event) => handleIncrementalChange(event.target.value)}
+          placeholder={t('data.workflow.incrementalByPlaceholder')}
+          className="h-8 w-full rounded-lg border border-border-muted bg-surface px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </div>
       {selectedDataset && SelectedSourceIcon && (

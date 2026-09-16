@@ -50,6 +50,7 @@ export type DataCommandErrorCode =
   | 'CONFIRMATION_REQUIRED'
   | 'REQUIREMENT_NOT_SUPPORTED'
   | 'DSL_PARSE_FAILED'
+  | 'PLAN_VALIDATION_FAILED'
   | 'VALIDATION_FAILED'
   | 'RUN_FAILED'
   | 'INTERNAL_ERROR';
@@ -359,6 +360,8 @@ export interface WorkflowResult {
   workflow: DataTaskWorkflow;
   diagnostics?: PrepDiagnostic[];
   dryRun?: boolean;
+  /** Canonical Prep DSL exported from the applied graph. */
+  dsl?: string;
 }
 
 export interface ApplyWorkflowDslCommand {
@@ -366,6 +369,17 @@ export interface ApplyWorkflowDslCommand {
   dsl: string;
   inputTableId?: string;
   inputAlias?: string;
+  /** Multi-source binding: `alias -> inputTableId` for each input_source node. */
+  inputResources?: Record<string, string>;
+  outputTableId?: string;
+  dryRun?: boolean;
+}
+
+export interface ApplyWorkflowPlanCommand {
+  taskId: string;
+  /** Constrained typed plan: `{ version: 'workflow-plan/v1', nodes, edges }`. */
+  plan: unknown;
+  inputResources?: Record<string, string>;
   outputTableId?: string;
   dryRun?: boolean;
 }
@@ -383,6 +397,7 @@ export interface ConfigureInputOperatorCommand {
   nodeId: string;
   inputTableId: string;
   alias?: string;
+  incrementalBy?: string;
   dryRun?: boolean;
 }
 
@@ -400,7 +415,9 @@ export interface ConfigureOutputOperatorCommand {
   outputTableId?: string;
   outputTableName?: string;
   outputStrategy?: 'existing' | 'auto';
-  mode?: 'replace' | 'append';
+  mode?: 'replace' | 'append' | 'error_if_exists' | 'merge';
+  mergeKeys?: string[];
+  schemaPolicy?: 'extend' | 'strict' | 'ignore';
   dryRun?: boolean;
 }
 
@@ -411,14 +428,31 @@ export interface RunTaskCommand {
   saveWorkflow?: boolean;
   inputTableId?: string;
   inputAlias?: string;
+  inputResources?: Record<string, string>;
   outputTableId?: string;
   previewRows?: number;
+}
+
+export interface WorkflowNodeRunStat {
+  nodeId: string;
+  nodeType: string;
+  /** Rows the node consumed; null when the input is not a materialized table. */
+  inputRows: number | null;
+  /** Rows the node produced on its main output. */
+  outputRows: number;
+  /** inputRows - outputRows for row-reducing operators (filter/dedup/limit/expect). */
+  droppedRows?: number;
+  /** Rows routed to an expect node's reject stream. */
+  rejectedRows?: number;
+  /** Up to 5 sample rows that were dropped or rejected. */
+  sample?: Record<string, unknown>[];
 }
 
 export interface RunTaskResult {
   task: DataCleaningTask;
   preview?: DataInputTablePreview;
   diagnostics?: PrepDiagnostic[];
+  nodeStats?: WorkflowNodeRunStat[];
 }
 
 export interface RunGeneratedTaskCommand {

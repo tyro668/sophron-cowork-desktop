@@ -59,9 +59,9 @@ export function functionToken(
 }
 
 const FN_CHIP =
-  'flex min-h-9 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const FN_CHIP_HOVERED =
-  'flex min-h-9 w-full cursor-pointer items-center bg-accent/10 px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center bg-accent/10 px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
 const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
 const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
@@ -770,7 +770,7 @@ function GlassFunctionHelper({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr('expressionFunctionSearchPlaceholder')}
-          className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          className="h-8 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
       <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
@@ -845,7 +845,7 @@ export function GlassExpressionInput({
     return (
       <div
         onClick={() => setOpen(true)}
-        className="relative h-7 w-full cursor-pointer rounded-md border border-border-muted bg-background/42 text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
+        className="relative h-8 w-full cursor-pointer rounded-md border border-border-muted bg-background/42 text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
       >
         <span className="block truncate px-1.5 leading-7">
           {value || (
@@ -1020,7 +1020,7 @@ function ExpressionEditorDialog({
               <button
                 type="button"
                 onClick={() => setShowAssistantPanel((current) => !current)}
-                className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
                   showAssistantPanel
                     ? 'border-accent/30 bg-accent/10 text-accent'
                     : 'border-border-muted bg-background/42 text-text-secondary hover:bg-surface-hover'
@@ -1034,7 +1034,7 @@ function ExpressionEditorDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-secondary transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-secondary transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1086,7 +1086,7 @@ function ExpressionEditorDialog({
                       value={fieldQuery}
                       onChange={(e) => setFieldQuery(e.target.value)}
                       placeholder={tr('expressionFieldSearchPlaceholder')}
-                      className="h-7 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      className="h-8 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
                   <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
@@ -1106,7 +1106,7 @@ function ExpressionEditorDialog({
                                 e.preventDefault();
                                 editAtCursor(`[${col}]`);
                               }}
-                              className="flex min-h-9 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                              className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
                             >
                               <span className="flex min-w-0 items-center gap-2">
                                 <DataTypeIcon type={colType} />
@@ -1148,14 +1148,14 @@ function ExpressionEditorDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 items-center rounded-md border border-border-muted bg-background/42 px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
+            className="flex h-8 items-center rounded-md border border-border-muted bg-background/42 px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
           >
             {tr('cancel')}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
-            className="flex h-7 items-center rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90"
+            className="flex h-8 items-center rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90"
           >
             {tr('confirm')}
           </button>

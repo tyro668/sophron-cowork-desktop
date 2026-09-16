@@ -80,6 +80,7 @@ export class TaskExecutionCommandService {
       compiled = await this.compiler.compileWorkflowDsl(input.workflowDsl, {
         inputTableId: input.inputTableId,
         inputAlias: input.inputAlias,
+        inputs: input.inputResources,
         outputTableId: input.outputTableId,
       });
       const errors = diagnosticsWithSeverity(compiled.diagnostics, 'error');
@@ -113,6 +114,7 @@ export class TaskExecutionCommandService {
           compiled?.workflow
         ),
         diagnostics: [...(compiled?.diagnostics ?? []), ...execution.diagnostics],
+        nodeStats: execution.nodeStats,
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -185,6 +187,7 @@ export class TaskExecutionCommandService {
         task: temporaryExecution.task,
         preview,
         diagnostics: [...candidate.diagnostics, ...temporaryExecution.diagnostics],
+        nodeStats: temporaryExecution.nodeStats,
       };
       let committedTask: DataCleaningTask | undefined;
       const outputSchemaErrors = validateGeneratedOutputPreviewSchema(
@@ -200,7 +203,10 @@ export class TaskExecutionCommandService {
         committedTask = await this.store.commitValidatedTaskOutput(
           input.taskId,
           temporaryExecution.task,
-          candidate.workflow
+          candidate.workflow,
+          temporaryExecution.watermarkUpdates,
+          temporaryExecution.nodeStats,
+          temporaryExecution.stagedSinks
         );
         result = { ...result, task: committedTask };
       }

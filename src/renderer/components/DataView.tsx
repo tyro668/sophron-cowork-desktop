@@ -10,6 +10,7 @@ import type {
   DataInputTableSourceKind,
   DataOutputTable,
   DataRunTaskInput,
+  WorkflowNodeRunStat,
 } from '../types';
 import { useAppStore } from '../store';
 import {
@@ -74,6 +75,7 @@ export function DataView() {
   const clearDataNavigation = useAppStore((state) => state.clearDataNavigation);
   const clearDataTabNavigation = useAppStore((state) => state.clearDataTabNavigation);
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
+  const [runNodeStats, setRunNodeStats] = useState<WorkflowNodeRunStat[]>([]);
   const [activeTab, setActiveTab] = useState<DataTab>('tasks');
   const [inputTableSourceFilter, setInputTableSourceFilter] =
     useState<InputTableSourceFilter>('all');
@@ -566,8 +568,9 @@ export function DataView() {
       setActionId(task.id);
       setError(null);
       try {
-        const updatedTask = await window.electronAPI.data.runTask(task.id, payload);
-        setFocusedTask((current) => (current?.id === updatedTask.id ? updatedTask : current));
+        const result = await window.electronAPI.data.runTaskWithDiagnostics(task.id, payload);
+        setFocusedTask((current) => (current?.id === result.task.id ? result.task : current));
+        setRunNodeStats(result.nodeStats ?? []);
         await loadDashboard();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -1108,6 +1111,7 @@ export function DataView() {
             task={editingTask}
             outputTables={dashboard.outputTables}
             actionId={actionId}
+            runNodeStats={runNodeStats}
             onBack={handleCloseTaskEditor}
             onRun={handleRunTask}
             onWorkflowSaved={() => loadDashboard({ preserveError: true })}

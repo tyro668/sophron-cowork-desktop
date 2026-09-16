@@ -302,7 +302,7 @@ export default function FormMissingValue({
                     });
                   }}
                   placeholder={tr('fieldPicker.selectField')}
-                  className="h-7 w-full"
+                  className="h-8 w-full"
                 />
               ),
             },
@@ -336,7 +336,7 @@ export default function FormMissingValue({
                       },
                     ]}
                     variant="highlight"
-                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                    className="h-8 w-full text-[12px] [&>span]:text-left"
                   />
                 );
               },

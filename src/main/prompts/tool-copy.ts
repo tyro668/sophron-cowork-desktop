@@ -116,6 +116,40 @@ export const DATA_TOOL_COPY = {
     label: 'Get task workflow',
     description: 'Read the saved workflow nodes and edges for a data task.',
   },
+  data_get_workflow_dsl_reference: {
+    label: 'Get workflow DSL reference',
+    description:
+      'Read the embedded Prep DSL reference (syntax, operators, examples, validation rules). Topics: overview, workflow, operators, derive_window, reshape, examples, all.',
+  },
+  data_get_workflow_capability_manifest: {
+    label: 'Get workflow capability manifest',
+    description:
+      'Versioned capability manifest for constrained workflow plans: plan JSON Schema, per-operator config schemas, resource binding contract, runtime semantics, stable diagnostic codes, and the apply->trial-run repair loop. Pass table ids to include real column snapshots.',
+  },
+  data_apply_workflow_plan: {
+    label: 'Apply workflow plan',
+    description:
+      'Apply a constrained workflow plan ({version, nodes, edges} matching the capability manifest). Binds input_source nodes by alias via inputResources, validates configs/graph/schema, exports canonical DSL, and saves unless dryRun.',
+  },
+  data_apply_workflow_dsl: {
+    label: 'Apply workflow DSL',
+    description:
+      'Apply Prep DSL text to a data task. inputResources maps each input alias to a real input table id; dryRun validates without saving. Returns diagnostics with stable codes and the canonical DSL.',
+  },
+  data_configure_input_operator: {
+    label: 'Configure input operator',
+    description:
+      'Bind an input_source node to a real input table (alias optional; incrementalBy sets the incremental watermark column).',
+  },
+  data_configure_output_operator: {
+    label: 'Configure output operator',
+    description:
+      'Configure an output node: output table binding, mode (replace/append/error_if_exists/merge), mergeKeys for merge, and schemaPolicy.',
+  },
+  data_apply_operator_dsl: {
+    label: 'Apply operator DSL',
+    description: 'Apply a single Prep DSL operator line to an existing workflow node.',
+  },
   data_export_workflow_dsl: {
     label: 'Export workflow DSL',
     description: 'Export a data task workflow back to DSL.',

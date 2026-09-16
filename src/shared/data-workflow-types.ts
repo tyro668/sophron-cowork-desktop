@@ -15,4 +15,5 @@ export type DataWorkflowOperatorType =
   | 'unpivot'
   | 'set_op'
   | 'unnest'
+  | 'expect'
   | 'output';

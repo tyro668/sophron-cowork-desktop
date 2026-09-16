@@ -18,7 +18,7 @@ describe('operator UI foundations', () => {
       })
     );
 
-    expect(html).toContain('min-h-7');
+    expect(html).toContain('min-h-8');
     expect(html).toContain('text-[13px]');
   });
 
@@ -34,7 +34,7 @@ describe('operator UI foundations', () => {
       })
     );
 
-    expect(html).toContain('min-h-7');
+    expect(html).toContain('min-h-8');
     expect(html).toContain('text-[13px]');
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('aria-pressed="false"');

@@ -137,7 +137,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
 
-    expect(dsl).toBe('pivot on [`月份`] in ("1月", "2月", "3月") using sum([金额]) as [sum]');
+    expect(dsl).toBe('pivot on [月份] in ("1月", "2月", "3月") using sum([金额]) as [sum]');
     expect(
       ok({
         on: [{ field: '月份', values }],

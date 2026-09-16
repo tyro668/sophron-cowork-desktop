@@ -281,7 +281,7 @@ export function JoinFieldSettingsDialog({
             value={draft.conflict.strategy}
             groups={conflictGroups}
             onChange={(v) => updateConflict({ strategy: v })}
-            className="h-7 w-40 text-[12px] [&>span]:text-left"
+            className="h-8 w-40 text-[12px] [&>span]:text-left"
           />
           {draft.conflict.strategy === 'suffix' ? (
             <>
@@ -291,7 +291,7 @@ export function JoinFieldSettingsDialog({
                   value={draft.conflict.leftSuffix}
                   onChange={(v) => updateConflict({ leftSuffix: v })}
                   placeholder={JOIN_CONFLICT_DEFAULTS.leftSuffix}
-                  className="h-7 w-24 text-[12px]"
+                  className="h-8 w-24 text-[12px]"
                 />
               </label>
               <label className="flex items-center gap-1 text-[12px] text-text-secondary">
@@ -300,7 +300,7 @@ export function JoinFieldSettingsDialog({
                   value={draft.conflict.rightSuffix}
                   onChange={(v) => updateConflict({ rightSuffix: v })}
                   placeholder={JOIN_CONFLICT_DEFAULTS.rightSuffix}
-                  className="h-7 w-24 text-[12px]"
+                  className="h-8 w-24 text-[12px]"
                 />
               </label>
             </>
@@ -311,7 +311,7 @@ export function JoinFieldSettingsDialog({
                 value={draft.conflict.rightPrefix}
                 onChange={(v) => updateConflict({ rightPrefix: v })}
                 placeholder={JOIN_CONFLICT_DEFAULTS.rightPrefix}
-                className="h-7 w-24 text-[12px]"
+                className="h-8 w-24 text-[12px]"
               />
             </label>
           )}

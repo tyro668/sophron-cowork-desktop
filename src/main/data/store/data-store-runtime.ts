@@ -265,6 +265,31 @@ export abstract class DataStoreRuntime {
         )
       `);
     await this.metaRunSql(`
+        CREATE TABLE IF NOT EXISTS data_task_watermarks (
+          task_id VARCHAR NOT NULL,
+          node_id VARCHAR NOT NULL,
+          column_name VARCHAR NOT NULL,
+          watermark_value VARCHAR,
+          updated_at BIGINT NOT NULL,
+          PRIMARY KEY (task_id, node_id)
+        )
+      `);
+    await this.metaRunSql(`
+        CREATE TABLE IF NOT EXISTS data_task_node_run_stats (
+          task_id VARCHAR NOT NULL,
+          run_id VARCHAR NOT NULL,
+          node_id VARCHAR NOT NULL,
+          node_type VARCHAR NOT NULL,
+          input_rows BIGINT,
+          output_rows BIGINT NOT NULL,
+          dropped_rows BIGINT NOT NULL,
+          rejected_rows BIGINT NOT NULL,
+          sample_json VARCHAR,
+          created_at BIGINT NOT NULL,
+          PRIMARY KEY (task_id, run_id, node_id)
+        )
+      `);
+    await this.metaRunSql(`
         CREATE TABLE IF NOT EXISTS data_workflow_node_caches (
           id VARCHAR PRIMARY KEY,
           task_id VARCHAR NOT NULL,
@@ -669,6 +694,13 @@ export abstract class DataStoreRuntime {
     taskId: string,
     nodeId: string
   ): Promise<string | null>;
+
+  /** Public column snapshot for a physical table (manifest/schema consumers). */
+  async getTableColumnSnapshot(tableName: string): Promise<DataColumnTypeInfo[]> {
+    await this.ensureReady();
+    if (!(await this.physicalTableExists(tableName))) return [];
+    return this.getTableColumnTypes(tableName);
+  }
 
   protected async getTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
     const rows = await this.queryRows<{ column_name: string; data_type: string }>(

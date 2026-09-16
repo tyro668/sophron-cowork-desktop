@@ -24,7 +24,8 @@ export type OperatorConfigIssueCode =
   | 'calculate_field_incomplete_field'
   | 'aggregate_incomplete_field'
   | 'set_op_incomplete_field'
-  | 'missing_value_incomplete_field';
+  | 'missing_value_incomplete_field'
+  | 'expect_incomplete_field';
 
 export interface OperatorConfigIssue {
   code: OperatorConfigIssueCode;
@@ -46,6 +47,7 @@ const OPERATOR_ISSUE_CODES: Partial<Record<DataWorkflowOperatorType, OperatorCon
   aggregate: 'aggregate_incomplete_field',
   set_op: 'set_op_incomplete_field',
   missing_value: 'missing_value_incomplete_field',
+  expect: 'expect_incomplete_field',
 };
 
 const ROW_COLLECTIONS: Partial<Record<DataWorkflowOperatorType, ReadonlySet<string>>> = {

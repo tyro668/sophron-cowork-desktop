@@ -140,7 +140,7 @@ export function SortKeysEditor({
               value={key.direction}
               onChange={(v) => updateKey(i, { direction: v })}
               variant="highlight"
-              className="h-7 w-full px-1.5 text-[12px]"
+              className="h-8 w-full px-1.5 text-[12px]"
             />
           ),
         },
@@ -163,7 +163,7 @@ export function SortKeysEditor({
               onChange={(v) =>
                 updateKey(i, { nulls: (v || undefined) as 'first' | 'last' | undefined })
               }
-              className="h-7 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
+              className="h-8 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
             />
           ),
         },

@@ -73,7 +73,7 @@ export default function FormUnnest({
           placeholder={tr('unnestSelectField')}
           searchPlaceholder={tr('fieldPicker.searchField')}
           emptyText={tr('fieldPicker.noMatch')}
-          className="h-9 flex-1"
+          className="h-8 flex-1"
         />
       </div>
 
@@ -90,7 +90,7 @@ export default function FormUnnest({
               }
             }}
             placeholder={tr('unnestAliasPlaceholder')}
-            className="h-9 w-60 rounded-md px-2"
+            className="h-8 w-60 rounded-md px-2"
           />
         </div>
       )}
@@ -104,14 +104,14 @@ export default function FormUnnest({
             updateConfig((cfg) => ({ ...cfg, path: v }));
           }}
           placeholder={tr('unnestPathPlaceholder')}
-          className="h-9 w-60 rounded-md px-2"
+          className="h-8 w-60 rounded-md px-2"
         />
       </div>
 
       {isListMode && (
         <div className="flex items-center gap-2">
           <GlassFormLabel>{tr('unnestIndexCol')}</GlassFormLabel>
-          <label className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
+          <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
             <input
               type="checkbox"
               checked={hasIndexColumn}
@@ -137,7 +137,7 @@ export default function FormUnnest({
                 }
               }}
               placeholder={tr('unnestIndexPlaceholder')}
-              className="h-9 w-40 rounded-md px-2"
+              className="h-8 w-40 rounded-md px-2"
             />
           )}
         </div>
@@ -147,7 +147,7 @@ export default function FormUnnest({
         <div className="flex items-center gap-2">
           <GlassFormLabel>{tr('unnestOutputHeader')}</GlassFormLabel>
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <label className="flex h-9 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
+            <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
               <input
                 type="checkbox"
                 checked={keepParentNames}
@@ -158,7 +158,7 @@ export default function FormUnnest({
               />
               {tr('unnestKeepParent')}
             </label>
-            <label className="flex h-9 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
+            <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
               <input
                 type="checkbox"
                 checked={preserveOrder}

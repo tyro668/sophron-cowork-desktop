@@ -449,6 +449,7 @@
       "input": "Input",
       "output": "Output",
       "outputStrategy": "Output strategy",
+      "outputMode": "Write mode",
       "inputTable": "Input table",
       "outputTable": "Output table",
       "outputTableName": "Output table name",
@@ -512,6 +513,7 @@
         "multiSourceMissingFrom": "Multi-source tasks must use from <alias> to choose the main source",
         "missingInputSource": "At least one input source is required",
         "unsupportedCommand": "Unsupported DSL command: {{value}}",
+        "unsupportedOutputDestination": "Output destination \"{{value}}\" is not supported in task workflows; use \"output table\" instead",
         "invalidInputSource": "Cannot parse input source: {{value}}",
         "invalidFieldMapping": "Cannot parse field mapping: {{value}}",
         "invalidJoin": "Cannot parse join: {{value}}",
@@ -523,9 +525,57 @@
         "asofMissingOn": "ASOF join must declare an on time-neighbor condition",
         "asofNearestMissingTolerance": "ASOF nearest must declare tolerance",
         "joinMissingOn": "Non-cross join must declare on conditions",
+        "planFieldNotFound": "Field {{field}} is not in the upstream columns",
+        "filterConditionInvalid": "Filter condition is not parseable",
+        "expressionSyntaxInvalid": "Expression is not parseable",
+        "aggregateGrainNotInGroup": "Aggregate granularity field {{field}} is not part of the group by fields",
+        "pivotDuplicateOutput": "Pivot produces duplicate output column {{field}}",
+        "joinConditionTypeMismatch": "Join condition field {{field}} compares incompatible types",
+        "asofTimeFieldNotTemporal": "ASOF time field {{field}} is not a temporal type",
+        "setOpColumnMissing": "Set operation right input is missing column {{field}}; it will be filled with null",
+        "setOpTypeMismatch": "Set operation column {{field}} has different types on each side",
+        "setOpColumnCountMismatch": "Set operation by position requires equal column counts",
+        "limitNondeterministic": "Limit without order by returns a nondeterministic row subset",
+        "limitSampleWithoutSeed": "Random sampling without a seed is not reproducible",
+        "deduplicateNondeterministic": "Deduplicate without order by keeps a nondeterministic row",
+        "PLAN_GRAPH_NO_INPUT": "Workflow has no input node",
+        "PLAN_GRAPH_NO_OUTPUT": "Workflow has no output node",
+        "NODE_ID_MISSING": "Workflow contains an unnamed node",
+        "NODE_ID_DUPLICATE": "Workflow contains a duplicate node id",
+        "NODE_TYPE_UNSUPPORTED": "Workflow uses an unsupported node type",
+        "NODE_GRAPH_DANGLING_EDGE": "Edge references an unknown node",
+        "NODE_GRAPH_SELF_CYCLE": "A node cannot connect to itself",
+        "NODE_GRAPH_SOURCE_HANDLE_INVALID": "Edge uses an invalid source handle",
+        "NODE_GRAPH_TARGET_HANDLE_INVALID": "Edge uses an invalid target handle",
+        "NODE_GRAPH_INPUT_HAS_INCOMING": "Input node must not have incoming edges",
+        "NODE_GRAPH_BINARY_INPUT_INVALID": "Binary operator requires exactly one left and one right input",
+        "NODE_GRAPH_INPUT_INVALID": "Operator requires exactly one input edge",
+        "NODE_GRAPH_OUTPUT_HAS_OUTGOING": "Output node must not have outgoing edges",
+        "NODE_GRAPH_DISCONNECTED": "Node does not lead to the output",
+        "NODE_GRAPH_CYCLE": "Workflow contains a cycle",
+        "NODE_GRAPH_UNREACHABLE": "Node is not reachable from the input",
+        "NODE_GRAPH_INPUT_COUNT": "Generated workflow must contain exactly one input node",
+        "NODE_GRAPH_OUTPUT_COUNT": "Generated workflow must contain exactly one output node",
         "operatorDslTypeMismatch": "This node expects {{expected}} DSL, but got {{actual}}",
         "operatorDslMultipleCommands": "A single operator config can contain only one DSL command",
-        "dismissDiagnostics": "Dismiss diagnostics"
+        "dismissDiagnostics": "Dismiss diagnostics",
+        "invalidStep": "Step must be written as: step <name> = <source-or-step>",
+        "duplicateStepName": "Duplicate step or source name: {{alias}}",
+        "stepInputNotFound": "Step \"{{name}}\" reads unknown stream: {{alias}}",
+        "outputNotTerminal": "Step \"{{name}}\" has operators after an output sink; outputs must end a chain",
+        "multiOutputPartial": "Multiple output sinks are kept in the graph, but task execution materializes only the first sink; the rest are exported for downstream execution",
+        "invalidExpect": "Cannot parse expect assertion",
+        "invalidExpectUnique": "expect unique requires at least one field",
+        "invalidExpectRows": "expect rows requires a comparison, e.g. rows >= 1",
+        "invalidExpectExpression": "expect requires an expression",
+        "invalidExpectReject": "expect ... reject must be \"reject to <stream>\"",
+        "unexpectedExpectToken": "Unrecognized tokens in expect assertion",
+        "invalidOutputMergeKeys": "mode merge requires by [key] business key columns",
+        "invalidOutputSchemaPolicy": "Invalid output schema policy",
+        "outputMergeKeysMissing": "output mode merge requires by [key] business key columns",
+        "expectExpressionInvalid": "expect expression is not parseable",
+        "NODE_GRAPH_REJECT_STREAM_UNCONSUMED": "expect node declares a reject stream but no edge consumes it",
+        "NODE_GRAPH_REJECT_STREAM_MISSING": "expect node has a reject edge but no reject stream configured"
       },
       "completionGroups": {
         "keywords": "Keywords",
@@ -1133,6 +1183,31 @@
           "leftInput": "Left table",
           "noLeftSource": "Upstream",
           "noRightSource": "No right table"
+        },
+        "expect": {
+          "kind": {
+            "label": "Assertion type",
+            "expression": "Expression",
+            "unique": "Unique",
+            "rowCount": "Row count"
+          },
+          "expression": {
+            "label": "Condition expression",
+            "placeholder": "e.g. [amount] > 0"
+          },
+          "unique": {
+            "label": "Unique key fields",
+            "placeholder": "Select business key fields"
+          },
+          "rows": {
+            "operatorLabel": "Comparison",
+            "valueLabel": "Row threshold"
+          },
+          "reject": {
+            "label": "Reject stream name",
+            "placeholder": "Optional: violating rows flow here"
+          },
+          "expectIncompleteField": "Please complete the assertion configuration"
         }
       },
       "operators": {
@@ -1152,7 +1227,8 @@
         "unpivot": "Unpivot",
         "set_op": "Set operation",
         "unnest": "Unnest",
-        "output": "Output"
+        "output": "Output",
+        "expect": "Expect"
       },
       "ruleMethods": {
         "skip": "Skip",
@@ -1254,13 +1330,26 @@
         "outputModes": {
           "replace": "Replace",
           "append": "Append",
-          "error_if_exists": "Error if exists"
+          "error_if_exists": "Error if exists",
+          "merge": "Merge by keys"
         },
         "outputStrategies": {
           "auto": "Auto",
           "existing": "Output to existing table"
+        },
+        "schemaPolicies": {
+          "extend": "Extend",
+          "strict": "Strict",
+          "ignore": "Ignore new"
         }
-      }
+      },
+      "mergeKeys": "Business key fields",
+      "mergeKeysPlaceholder": "e.g. order_id, sku (comma-separated)",
+      "schemaPolicy": "Schema drift policy",
+      "incrementalBy": "Incremental watermark field",
+      "incrementalByPlaceholder": "Optional, e.g. updated_at",
+      "assertion": "Assertion",
+      "rejectStream": "Reject stream"
     },
     "relative": {
       "today": "Today",

@@ -750,6 +750,22 @@ export interface DataRunTaskInput {
   outputMode?: 'persisted' | 'temporary';
 }
 
+export interface WorkflowNodeRunStat {
+  nodeId: string;
+  nodeType: string;
+  inputRows: number | null;
+  outputRows: number;
+  droppedRows?: number;
+  rejectedRows?: number;
+  sample?: Record<string, unknown>[];
+}
+
+export interface RunTaskResult {
+  task: DataCleaningTask;
+  diagnostics?: unknown[];
+  nodeStats?: WorkflowNodeRunStat[];
+}
+
 export type DataAutomationLocation = 'cloud' | 'local';
 
 export interface DataAutomationColumnSnapshot {

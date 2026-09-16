@@ -3,6 +3,7 @@ import type { DataCommandService } from './data-command-service';
 import type {
   ApplyOperatorDslCommand,
   ApplyWorkflowDslCommand,
+  ApplyWorkflowPlanCommand,
   AnalyzeTaskRequirementResult,
   ConfigureInputOperatorCommand,
   ConfigureOutputOperatorCommand,
@@ -31,6 +32,7 @@ import type {
   UpdateOutputTableCommand,
   UpdateTaskCommand,
   UploadDataTableToCloudCommand,
+  WorkflowNodeRunStat,
 } from './data-command-types';
 import type {
   AnalyzeDataTaskRequirementToolInput,
@@ -521,6 +523,36 @@ export class DataToolService {
     );
   }
 
+  async applyWorkflowPlan(input: ApplyWorkflowPlanCommand): Promise<DataToolResult> {
+    const result = await this.commandService.applyWorkflowPlan(input);
+    const hasErrors = result.diagnostics?.some((item) => item.severity === 'error') ?? false;
+    const prefix = hasErrors
+      ? 'Workflow plan is invalid'
+      : result.dryRun
+        ? 'Validated workflow plan'
+        : 'Applied workflow plan';
+    return toolResult(
+      [
+        formatWorkflow(prefix, result.workflow),
+        result.dsl ? `Canonical DSL:\n${result.dsl}` : null,
+        formatDiagnostics(result.diagnostics),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      result
+    );
+  }
+
+  async getWorkflowCapabilityManifest(
+    input: { inputTableIds?: string[]; outputTableIds?: string[] } = {}
+  ): Promise<DataToolResult> {
+    const manifest = await this.commandService.getWorkflowCapabilityManifest(input);
+    return toolResult(
+      `Workflow capability manifest ${manifest.manifestVersion} (plan ${manifest.planVersion}, dsl ${manifest.dslVersion})`,
+      manifest
+    );
+  }
+
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<DataToolResult> {
     const result = await this.commandService.exportWorkflowDsl(input);
     return toolResult(
@@ -563,6 +595,7 @@ export class DataToolService {
         `Ran data task: ${formatTask(result.task)}`,
         formatRunTaskSafetyNotes(input),
         formatPreview(result.preview),
+        formatNodeStats(result.nodeStats),
         formatDiagnostics(result.diagnostics),
       ]
         .filter(Boolean)
@@ -816,6 +849,22 @@ function withAgentResultPreviewLimit<T extends { previewRows?: number }>(input: 
     ...input,
     previewRows: Math.min(input.previewRows ?? 5, 5),
   };
+}
+
+function formatNodeStats(stats: WorkflowNodeRunStat[] | undefined): string {
+  if (!stats?.length) return '';
+  const lines = stats
+    .slice(0, 12)
+    .map((stat) => {
+      const parts = [
+        `${stat.nodeType}[${stat.nodeId}] ${stat.inputRows ?? '?'} -> ${stat.outputRows}`,
+      ];
+      if (stat.droppedRows) parts.push(`dropped ${stat.droppedRows}`);
+      if (stat.rejectedRows) parts.push(`rejected ${stat.rejectedRows}`);
+      return `- ${parts.join(', ')}`;
+    })
+    .join('\n');
+  return `Node stats (in -> out):\n${lines}`;
 }
 
 function formatDiagnostics(

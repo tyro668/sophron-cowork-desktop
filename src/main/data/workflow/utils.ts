@@ -1,7 +1,9 @@
 import { DataCommandError } from '../data-command-types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import { unwrapFieldName } from '../../../shared/prep-dsl';
-import { tokenizeExpression } from '../../../shared/expression-tokenizer';
+import {
+  extractExpressionFieldNames,
+  normalizePlanDslType,
+} from '../../../shared/workflow-plan/expression-fields';
 import { extractJsonObjectText } from '../../../shared/structured-text';
 
 export function normalizeColumnType(type: string): string {
@@ -52,9 +54,9 @@ export function escapeDslString(value: string): string {
 }
 
 export function formatDslField(name: string): string {
-  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)
-    ? `[${name}]`
-    : `[\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\`]`;
+  return /[`\]\\]/.test(name)
+    ? `[\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\`]`
+    : `[${name}]`;
 }
 
 export function literalToDsl(value: unknown): string {
@@ -65,24 +67,7 @@ export function literalToDsl(value: unknown): string {
 }
 
 export function extractFieldNamesFromExpression(expression: string): string[] {
-  try {
-    const tokens = tokenizeExpression(expression);
-    const names: string[] = [];
-    for (let index = 0; index < tokens.length; index += 1) {
-      const token = tokens[index];
-      if (token.type !== 'FieldRef') continue;
-      const qualifiedName =
-        tokens[index + 1]?.type === 'Dot' && tokens[index + 2]?.type === 'FieldRef'
-          ? tokens[index + 2].value
-          : token.value;
-      if (qualifiedName !== token.value) index += 2;
-      const name = unwrapFieldName(qualifiedName);
-      if (name) names.push(name);
-    }
-    return names;
-  } catch {
-    return [];
-  }
+  return extractExpressionFieldNames(expression);
 }
 
 export function unescapeDslBacktickField(name: string): string {
@@ -94,16 +79,7 @@ export function objectArray(value: unknown): Record<string, unknown>[] {
 }
 
 export function normalizeDslTypeName(type: string): string {
-  const normalized = normalizeColumnType(type);
-  if (['varchar', 'char', 'string', 'text'].includes(normalized)) return 'text';
-  if (['int', 'integer', 'bigint', 'smallint', 'tinyint'].includes(normalized)) return 'integer';
-  if (['double', 'float', 'real'].includes(normalized)) return 'float';
-  if (normalized === 'number') return 'decimal';
-  if (normalized.startsWith('decimal') || normalized.startsWith('numeric')) return 'decimal';
-  if (normalized.includes('timestamp') || normalized === 'datetime') return 'datetime';
-  if (normalized === 'date') return 'date';
-  if (['bool', 'boolean'].includes(normalized)) return 'boolean';
-  return normalized;
+  return normalizePlanDslType(type);
 }
 
 export function isNumericDslType(type: string): boolean {

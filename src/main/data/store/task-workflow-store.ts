@@ -15,8 +15,22 @@ import type {
   DataWorkflowSaveInput,
 } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
+import type { WorkflowNodeRunStat } from '../data-command-types';
 import { parseFieldRefExact } from '../../../shared/prep-dsl';
-import { isRecord, quoteIdentifier, toNumber } from '../operators';
+import {
+  buildWorkflowPlan,
+  validateWorkflowPlanGraph,
+  validateWorkflowPlanSchemas,
+  type PlanColumn,
+  type WorkflowPlanDiagnostic,
+} from '../../../shared/workflow-plan';
+import {
+  compileFilterConditionExpression,
+  isRecord,
+  literalToSql,
+  quoteIdentifier,
+  toNumber,
+} from '../operators';
 import {
   DataOutputCommitRow,
   DataTaskRow,
@@ -137,7 +151,11 @@ export class TaskWorkflowStore extends WorkflowCompiler {
   async runTaskWithDiagnostics(
     id: string,
     input: DataRunTaskInput = {}
-  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+  ): Promise<{
+    task: DataCleaningTask;
+    diagnostics: PrepDiagnostic[];
+    nodeStats?: WorkflowNodeRunStat[];
+  }> {
     return this.runExclusive(async () => {
       if (input.outputMode === 'temporary') {
         return this.runTaskToTemporaryOutputUnsafe(id, input);
@@ -169,11 +187,30 @@ export class TaskWorkflowStore extends WorkflowCompiler {
           workflow,
           outputMode: 'temporary',
         });
-        const committedTask = await this.commitValidatedTaskOutput(id, validated.task, workflow);
-        return { task: committedTask, diagnostics: validated.diagnostics };
+        const committedTask = await this.commitValidatedTaskOutput(
+          id,
+          validated.task,
+          workflow,
+          validated.watermarkUpdates,
+          validated.nodeStats,
+          validated.stagedSinks
+        );
+        return {
+          task: committedTask,
+          diagnostics: validated.diagnostics,
+          nodeStats: validated.nodeStats,
+        };
       } catch (error) {
         const failedAt = this.now();
         const message = error instanceof Error ? error.message : String(error);
+        // Per-node stats collected before the failure are persisted under a
+        // failed-run id so exception samples stay inspectable.
+        const failedStats = (error as { nodeStats?: WorkflowNodeRunStat[] }).nodeStats;
+        if (failedStats && failedStats.length > 0) {
+          await this.persistTaskNodeStats(id, `failed_${failedAt}`, failedStats).catch(
+            () => undefined
+          );
+        }
         await this.metaRunSql(
           `
             UPDATE data_cleaning_tasks
@@ -191,10 +228,88 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     }, `runTask:${id}`);
   }
 
+  /**
+   * Staged plan validation shared by save, trial-run and DSL apply: builds the
+   * typed workflow plan, runs the shared graph rules, resolves each input
+   * source's columns, then propagates schemas to check field existence, type
+   * compatibility, set-op alignment, pivot outputs and deterministic ordering.
+   */
+  async validateWorkflowPlanForTask(
+    id: string,
+    input: DataWorkflowSaveInput
+  ): Promise<WorkflowPlanDiagnostic[]> {
+    return this.runExclusive(async () => {
+      await this.ensureReady();
+      const task = await this.requireTask(id);
+      const { plan, diagnostics } = buildWorkflowPlan(
+        { nodes: input.nodes, edges: input.edges },
+        { includeConfigDiagnostics: true }
+      );
+      diagnostics.push(...validateWorkflowPlanGraph(plan, { profile: 'task' }));
+
+      // Multiple sinks may not resolve to the same target table — the second
+      // write would silently overwrite the first.
+      const claimedOutputTargets = new Map<string, string>();
+      for (const node of plan.nodes) {
+        if (node.type !== 'output' || node.config?.disabled === true) continue;
+        const config = (node.config ?? {}) as Record<string, unknown>;
+        const targetKey = (
+          stringConfigValue(config.outputDatasetId) ||
+          stringConfigValue(config.outputTableId) ||
+          stringConfigValue(config.outputTableName) ||
+          stringConfigValue(config.table)
+        ).toLowerCase();
+        if (!targetKey) continue;
+        const claimant = claimedOutputTargets.get(targetKey);
+        if (claimant) {
+          diagnostics.push({
+            severity: 'error',
+            code: 'outputTargetDuplicate',
+            message: `Output sinks ${claimant} and ${node.id} target the same table "${targetKey}"`,
+            nodeId: node.id,
+            nodeType: node.type,
+          });
+        } else {
+          claimedOutputTargets.set(targetKey, node.id);
+        }
+      }
+
+      const inputSchemas = new Map<string, PlanColumn[]>();
+      for (const node of plan.nodes) {
+        if (node.type !== 'input_source') continue;
+        const columns = await this.resolveInputSourceColumnTypes(
+          {
+            id: node.id,
+            taskId: task.id,
+            type: 'input_source',
+            label: node.label ?? '',
+            x: node.x ?? 0,
+            y: node.y ?? 0,
+            config: node.config,
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          task.sourcePath
+        );
+        if (columns) inputSchemas.set(node.id, columns);
+      }
+      diagnostics.push(
+        ...validateWorkflowPlanSchemas(plan, (node) => inputSchemas.get(node.id) ?? null)
+      );
+      return diagnostics;
+    }, `validateWorkflowPlan:${id}`);
+  }
+
   async validateTaskWorkflow(
     id: string,
     input: DataRunTaskInput
-  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+  ): Promise<{
+    task: DataCleaningTask;
+    diagnostics: PrepDiagnostic[];
+    nodeStats?: WorkflowNodeRunStat[];
+    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
+  }> {
     return this.runExclusive(
       () => this.runTaskToTemporaryOutputUnsafe(id, input),
       `validateTaskWorkflow:${id}`
@@ -204,7 +319,10 @@ export class TaskWorkflowStore extends WorkflowCompiler {
   async commitValidatedTaskOutput(
     id: string,
     temporaryTask: DataCleaningTask,
-    workflow: DataWorkflowSaveInput
+    workflow: DataWorkflowSaveInput,
+    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
+    nodeStats?: WorkflowNodeRunStat[],
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>
   ): Promise<DataCleaningTask> {
     return this.runExclusive(async () => {
       await this.ensureReady();
@@ -214,132 +332,588 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         throw new Error('Validated temporary task output is no longer available');
       }
       const runtimeWorkflow = normalizeRuntimeWorkflowInput(id, workflow, this.now());
-      const outputNode = runtimeWorkflow.nodes.find((node) => node.type === 'output');
-      const target = await this.resolveWorkflowOutputTarget(
-        outputNode,
-        task.outputTable || tableNameFromId('clean_task', task.id)
+      const nodeById = new Map(runtimeWorkflow.nodes.map((node) => [node.id, node]));
+      const outputNodes = runtimeWorkflow.nodes.filter(
+        (node) => node.type === 'output' && node.config.disabled !== true
       );
-      const rowCount = await this.countRows(temporaryTable);
-      const columnCount = (await this.getTableColumns(temporaryTable)).length;
-      const sourceDatasetId =
-        (await this.findWorkflowSourceDatasetId(runtimeWorkflow.nodes)) ?? task.sourceDatasetId;
+      // Every staged sink gets its own resolved target; the first sink keeps
+      // the task's primary output table for compatibility.
+      const sinkInputs =
+        stagedSinks && stagedSinks.length > 0
+          ? stagedSinks
+          : [{ nodeId: outputNodes[0]?.id ?? '', stagingTable: temporaryTable }];
+
+      interface ResolvedTarget {
+        tableName: string;
+        outputDatasetId?: string;
+        mode: 'replace' | 'append' | 'error_if_exists' | 'merge';
+        mergeKeys: string[];
+        schemaPolicy: 'extend' | 'strict' | 'ignore';
+      }
+      interface SinkPlan {
+        journalId: string;
+        stagingTable: string;
+        target: ResolvedTarget;
+        backupTable: string;
+        targetExisted: boolean;
+        appendToExisting: boolean;
+        tempReadSql: string;
+        mergeKeyPredicate: string;
+        finalRowCount: number;
+      }
+
       const completedAt = this.now();
       const commitId = uuidv4();
-      const backupTable = tableNameFromId('output_backup', commitId);
-      const targetExisted = await this.physicalTableExists(target.tableName);
-      await this.metaRunSql(
-        `INSERT INTO data_output_commits (
-           id, task_id, temporary_table, target_table, backup_table, target_existed,
-           state, intended_metadata_json, error, created_at, updated_at
-         ) VALUES (
-           $id, $taskId, $temporaryTable, $targetTable, $backupTable, $targetExisted,
-           'prepared', $intendedMetadataJson, NULL, $createdAt, $updatedAt
-         )`,
-        {
-          id: commitId,
-          taskId: id,
-          temporaryTable,
-          targetTable: target.tableName,
-          backupTable,
-          targetExisted: targetExisted ? 1 : 0,
-          intendedMetadataJson: JSON.stringify({
-            taskName: task.name,
-            sourcePath: temporaryTask.sourcePath,
-            sourceDatasetId,
-            outputDatasetId: target.outputDatasetId ?? null,
-            rowCount,
-            columnCount,
-            nodeCount: runtimeWorkflow.nodes.length,
-            completedAt,
-          }),
-          createdAt: completedAt,
-          updatedAt: completedAt,
+      const sourceDatasetId =
+        (await this.findWorkflowSourceDatasetId(runtimeWorkflow.nodes)) ?? task.sourceDatasetId;
+      const sinks: SinkPlan[] = [];
+      const claimedTargets = new Set<string>();
+      for (const [index, sink] of sinkInputs.entries()) {
+        const outputNode = sink.nodeId ? nodeById.get(sink.nodeId) : undefined;
+        const fallback =
+          index === 0
+            ? task.outputTable || tableNameFromId('clean_task', task.id)
+            : tableNameFromId('task_sink', `${task.id}_${sink.nodeId || index}`);
+        const target = await this.resolveWorkflowOutputTarget(outputNode, fallback);
+        const targetKey = target.tableName.toLowerCase();
+        if (claimedTargets.has(targetKey)) {
+          throw new Error(
+            `Output target "${target.tableName}" is claimed by more than one output sink`
+          );
         }
-      );
+        claimedTargets.add(targetKey);
+        if (!(await this.physicalTableExists(sink.stagingTable))) {
+          throw new Error(`Validated staging output ${sink.stagingTable} is no longer available`);
+        }
+        const rowCount = await this.countRows(sink.stagingTable);
+        const targetExisted = await this.physicalTableExists(target.tableName);
+        if (target.mode === 'error_if_exists' && targetExisted) {
+          throw new Error(
+            `Output table "${target.tableName}" already exists (mode error_if_exists)`
+          );
+        }
+        const appendToExisting =
+          (target.mode === 'append' || target.mode === 'merge') && targetExisted;
+
+        // A merge batch with duplicate business keys applies the last row per
+        // key (physical order via rowid) so rerunning a batch stays idempotent.
+        const incomingSource =
+          target.mode === 'merge' && target.mergeKeys.length > 0
+            ? `(
+                 SELECT * EXCLUDE (__merge_rank) FROM (
+                   SELECT *,
+                     row_number() OVER (
+                       PARTITION BY ${target.mergeKeys
+                         .map((key) => quoteIdentifier(key))
+                         .join(', ')}
+                       ORDER BY rowid DESC
+                     ) AS __merge_rank
+                   FROM ${quoteIdentifier(sink.stagingTable)}
+                 ) WHERE __merge_rank = 1
+               )`
+            : quoteIdentifier(sink.stagingTable);
+
+        // Schema drift policy only applies when writing into an existing table.
+        let tempReadSql = `SELECT * FROM ${incomingSource}`;
+        if (appendToExisting && target.schemaPolicy !== 'extend') {
+          const existingColumns = await this.getTableColumns(target.tableName);
+          const tempColumns = await this.getTableColumns(sink.stagingTable);
+          const existingNames = new Set(existingColumns);
+          const tempNames = new Set(tempColumns);
+          if (target.schemaPolicy === 'strict') {
+            const added = tempColumns.filter((column) => !existingNames.has(column));
+            const missing = existingColumns.filter((column) => !tempNames.has(column));
+            if (added.length > 0 || missing.length > 0) {
+              throw new Error(
+                `Output schema drift (strict): ${[
+                  added.length ? `new columns [${added.join(', ')}]` : '',
+                  missing.length ? `missing columns [${missing.join(', ')}]` : '',
+                ]
+                  .filter(Boolean)
+                  .join('; ')}`
+              );
+            }
+          } else {
+            // ignore: project the incoming rows onto the existing table's columns.
+            const projection = existingColumns
+              .map((column) =>
+                tempNames.has(column)
+                  ? quoteIdentifier(column)
+                  : `NULL AS ${quoteIdentifier(column)}`
+              )
+              .join(', ');
+            tempReadSql = `SELECT ${projection} FROM ${incomingSource}`;
+          }
+        }
+
+        const mergeKeyPredicate = target.mergeKeys
+          .map((key) => `b.${quoteIdentifier(key)} IS NOT DISTINCT FROM t.${quoteIdentifier(key)}`)
+          .join(' AND ');
+        const incomingCount =
+          target.mode === 'merge' && target.mergeKeys.length > 0
+            ? toNumber(
+                (
+                  await this.queryRows<{ count: number | string }>(
+                    `SELECT count(*) AS count FROM (${tempReadSql}) _dedup`
+                  )
+                )[0]?.count
+              )
+            : rowCount;
+        const finalRowCount = !appendToExisting
+          ? incomingCount
+          : target.mode === 'append'
+            ? rowCount + (await this.countRows(target.tableName))
+            : (await this.countMergeSurvivors(target.tableName, tempReadSql, mergeKeyPredicate)) +
+              incomingCount;
+        sinks.push({
+          journalId: index === 0 ? commitId : `${commitId}__${index}`,
+          stagingTable: sink.stagingTable,
+          target,
+          backupTable: tableNameFromId(
+            'output_backup',
+            index === 0 ? commitId : `${commitId}_${index}`
+          ),
+          targetExisted,
+          appendToExisting,
+          tempReadSql,
+          mergeKeyPredicate,
+          finalRowCount,
+        });
+      }
+
+      for (const sink of sinks) {
+        await this.metaRunSql(
+          `INSERT INTO data_output_commits (
+             id, task_id, temporary_table, target_table, backup_table, target_existed,
+             state, intended_metadata_json, error, created_at, updated_at
+           ) VALUES (
+             $id, $taskId, $temporaryTable, $targetTable, $backupTable, $targetExisted,
+             'prepared', $intendedMetadataJson, NULL, $createdAt, $updatedAt
+           )`,
+          {
+            id: sink.journalId,
+            taskId: id,
+            temporaryTable: sink.stagingTable,
+            targetTable: sink.target.tableName,
+            backupTable: sink.backupTable,
+            targetExisted: sink.targetExisted ? 1 : 0,
+            intendedMetadataJson: JSON.stringify({
+              taskName: task.name,
+              sourcePath: temporaryTask.sourcePath,
+              sourceDatasetId,
+              outputDatasetId: sink.target.outputDatasetId ?? null,
+              rowCount: sink.finalRowCount,
+              nodeCount: runtimeWorkflow.nodes.length,
+              completedAt,
+            }),
+            createdAt: completedAt,
+            updatedAt: completedAt,
+          }
+        );
+      }
 
       let physicalCommitted = false;
       let metadataTransactionStarted = false;
       try {
+        // One physical transaction covers every sink so partial writes roll back.
         await this.runSql('BEGIN TRANSACTION');
-        if (targetExisted) {
-          await this.dropTableIfExists(backupTable);
+        for (const sink of sinks) {
+          if (sink.targetExisted) {
+            await this.dropTableIfExists(sink.backupTable);
+            await this.runSql(
+              `ALTER TABLE ${quoteIdentifier(sink.target.tableName)} RENAME TO ${quoteIdentifier(sink.backupTable)}`
+            );
+          }
+          const survivingSql =
+            sink.target.mode === 'merge'
+              ? `SELECT * FROM ${quoteIdentifier(sink.backupTable)} b
+                 WHERE NOT EXISTS (SELECT 1 FROM (${sink.tempReadSql}) t
+                   WHERE ${sink.mergeKeyPredicate})`
+              : `SELECT * FROM ${quoteIdentifier(sink.backupTable)}`;
           await this.runSql(
-            `ALTER TABLE ${quoteIdentifier(target.tableName)} RENAME TO ${quoteIdentifier(backupTable)}`
+            sink.appendToExisting
+              ? `CREATE TABLE ${quoteIdentifier(sink.target.tableName)} AS ${survivingSql} UNION ALL BY NAME ${sink.tempReadSql}`
+              : `CREATE TABLE ${quoteIdentifier(sink.target.tableName)} AS ${sink.tempReadSql}`
           );
         }
-        await this.runSql(
-          `CREATE TABLE ${quoteIdentifier(target.tableName)} AS SELECT * FROM ${quoteIdentifier(temporaryTable)}`
-        );
         await this.runSql('COMMIT');
         physicalCommitted = true;
-        await this.updateOutputCommitState(commitId, 'data_committed');
+        for (const sink of sinks) {
+          await this.updateOutputCommitState(sink.journalId, 'data_committed');
+        }
 
         await this.metaRunSql('BEGIN TRANSACTION');
         metadataTransactionStarted = true;
-        await this.upsertDatasetForTaskOutput(
-          task.name,
-          temporaryTask.sourcePath,
-          target.tableName,
-          rowCount,
-          columnCount,
-          target.outputDatasetId
-        );
-        await this.metaRunSql(
-          `
-            UPDATE data_cleaning_tasks
-            SET status = 'completed',
-                node_count = $nodeCount,
-                source_path = $sourcePath,
-                source_dataset_id = $sourceDatasetId,
-                output_table = $outputTable,
-                row_count = $rowCount,
-                column_count = $columnCount,
-                last_run_at = $lastRunAt,
-                updated_at = $updatedAt,
-                error = NULL
-            WHERE id = $id
-          `,
-          {
-            id,
-            nodeCount: runtimeWorkflow.nodes.length,
-            sourcePath: temporaryTask.sourcePath,
-            sourceDatasetId,
-            outputTable: target.tableName,
-            rowCount,
-            columnCount,
-            lastRunAt: completedAt,
-            updatedAt: completedAt,
+        for (const [index, sink] of sinks.entries()) {
+          const finalColumnCount = sink.appendToExisting
+            ? (await this.getTableColumns(sink.target.tableName)).length
+            : (await this.getTableColumns(sink.stagingTable)).length;
+          await this.upsertDatasetForTaskOutput(
+            task.name,
+            temporaryTask.sourcePath,
+            sink.target.tableName,
+            sink.finalRowCount,
+            finalColumnCount,
+            sink.target.outputDatasetId
+          );
+          if (index === 0) {
+            await this.metaRunSql(
+              `
+                UPDATE data_cleaning_tasks
+                SET status = 'completed',
+                    node_count = $nodeCount,
+                    source_path = $sourcePath,
+                    source_dataset_id = $sourceDatasetId,
+                    output_table = $outputTable,
+                    row_count = $rowCount,
+                    column_count = $columnCount,
+                    last_run_at = $lastRunAt,
+                    updated_at = $updatedAt,
+                    error = NULL
+                WHERE id = $id
+              `,
+              {
+                id,
+                nodeCount: runtimeWorkflow.nodes.length,
+                sourcePath: temporaryTask.sourcePath,
+                sourceDatasetId,
+                outputTable: sink.target.tableName,
+                rowCount: sink.finalRowCount,
+                columnCount: finalColumnCount,
+                lastRunAt: completedAt,
+                updatedAt: completedAt,
+              }
+            );
           }
-        );
-        await this.updateOutputCommitState(commitId, 'metadata_committed');
+        }
+        if (watermarkUpdates && watermarkUpdates.length > 0) {
+          await this.upsertTaskWatermark(id, watermarkUpdates);
+        }
+        if (nodeStats && nodeStats.length > 0) {
+          await this.persistTaskNodeStats(id, commitId, nodeStats);
+        }
+        for (const sink of sinks) {
+          await this.updateOutputCommitState(sink.journalId, 'metadata_committed');
+        }
         await this.metaRunSql('COMMIT');
         metadataTransactionStarted = false;
       } catch (error) {
         if (metadataTransactionStarted) {
           await this.metaRunSql('ROLLBACK').catch(() => undefined);
         }
+        const message = error instanceof Error ? error.message : String(error);
+        const unrestoredSinks = new Set<string>();
         if (physicalCommitted) {
-          await this.restoreOutputCommit({
-            targetTable: target.tableName,
-            backupTable,
-            targetExisted,
-          }).catch(() => undefined);
+          for (const sink of sinks) {
+            try {
+              await this.restoreOutputCommit({
+                targetTable: sink.target.tableName,
+                backupTable: sink.backupTable,
+                targetExisted: sink.targetExisted,
+              });
+            } catch {
+              unrestoredSinks.add(sink.journalId);
+            }
+          }
         } else {
-          await this.runSql('ROLLBACK').catch(() => undefined);
+          // A failed rollback leaves physical state unknown — keep journals
+          // recoverable ('prepared') so startup recovery can sort it out.
+          try {
+            await this.runSql('ROLLBACK');
+          } catch {
+            for (const sink of sinks) unrestoredSinks.add(sink.journalId);
+          }
         }
-        await this.updateOutputCommitState(
-          commitId,
-          'failed',
-          error instanceof Error ? error.message : String(error)
-        ).catch(() => undefined);
+        for (const sink of sinks) {
+          if (unrestoredSinks.has(sink.journalId)) {
+            // Keep the journal recoverable: startup recovery retries the
+            // restore instead of trusting a 'failed' tombstone while the
+            // physical state is unknown.
+            await this.updateOutputCommitState(
+              sink.journalId,
+              physicalCommitted ? 'data_committed' : 'prepared',
+              `commit failed and restore also failed; pending recovery: ${message}`
+            ).catch(() => undefined);
+          } else {
+            await this.updateOutputCommitState(sink.journalId, 'failed', message).catch(
+              () => undefined
+            );
+          }
+        }
         throw error;
       }
 
-      await this.dropTableIfExists(backupTable).catch(() => undefined);
-      await this.dropTableIfExists(temporaryTable).catch(() => undefined);
-      await this.updateOutputCommitState(commitId, 'completed').catch(() => undefined);
+      for (const sink of sinks) {
+        await this.dropTableIfExists(sink.backupTable).catch(() => undefined);
+        await this.dropTableIfExists(sink.stagingTable).catch(() => undefined);
+        await this.updateOutputCommitState(sink.journalId, 'completed').catch(() => undefined);
+      }
       return this.requireTask(id);
     }, `commitValidatedTaskOutput:${id}`);
+  }
+
+  /**
+   * `expect` node: materializes the conforming main stream and the reject
+   * stream of violating rows. Without `rejectStream` any violation fails the
+   * run and reports sample rows.
+   */
+  private async materializeExpectNode(
+    node: DataWorkflowNode,
+    inputRelation: string,
+    outputRelation: string,
+    rejectRelation: string
+  ): Promise<{
+    rejectedRows: number;
+    sample: Record<string, unknown>[];
+    /** Set when the assertion fails the run — callers must record stats, then throw it. */
+    failure?: string;
+  }> {
+    const config = node.config;
+    const kind = typeof config.kind === 'string' ? config.kind : 'expression';
+    const input = quoteIdentifier(inputRelation);
+    await this.dropTableIfExists(outputRelation);
+    await this.dropTableIfExists(rejectRelation);
+
+    if (kind === 'row_count') {
+      const operator = typeof config.operator === 'string' ? config.operator : '>=';
+      const value = Number(config.value ?? 0);
+      const count = await this.countRows(inputRelation);
+      const ok =
+        operator === '>'
+          ? count > value
+          : operator === '>='
+            ? count >= value
+            : operator === '<'
+              ? count < value
+              : operator === '<='
+                ? count <= value
+                : operator === '!='
+                  ? count !== value
+                  : count === value;
+      if (!ok) {
+        return {
+          rejectedRows: 0,
+          sample: [],
+          failure: `Expect failed at node ${node.id}: row count ${count} does not satisfy rows ${operator} ${value}`,
+        };
+      }
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(outputRelation)} AS SELECT * FROM ${input}`
+      );
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(rejectRelation)} AS SELECT * FROM ${input} WHERE false`
+      );
+      return { rejectedRows: 0, sample: [] };
+    }
+
+    let violation: string;
+    if (kind === 'unique') {
+      const columns = (Array.isArray(config.columns) ? config.columns : []).map((column) =>
+        quoteIdentifier(String(column))
+      );
+      if (columns.length === 0) {
+        throw new Error(`Expect unique at node ${node.id} requires at least one field`);
+      }
+      const match = columns
+        .map((column) => `_d.${column} IS NOT DISTINCT FROM t.${column}`)
+        .join(' AND ');
+      violation = `EXISTS (
+        SELECT 1 FROM (
+          SELECT ${columns.join(', ')}, COUNT(*) AS _n
+          FROM ${input} GROUP BY ${columns.join(', ')} HAVING _n > 1
+        ) _d WHERE ${match}
+      )`;
+    } else {
+      const expression =
+        typeof config.expression === 'string' && config.expression.trim()
+          ? config.expression
+          : 'true';
+      // `IS NOT TRUE` treats NULL (unknown) results as violations so rejected
+      // rows never silently vanish from both streams.
+      violation = `(${compileFilterConditionExpression(expression)}) IS NOT TRUE`;
+    }
+
+    const sample = await this.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${input} t WHERE ${violation} LIMIT 5`
+    );
+    const rejectedRows = await this.countRejectRows(input, violation);
+    const rejectStream = typeof config.rejectStream === 'string' ? config.rejectStream.trim() : '';
+    if (rejectedRows > 0 && !rejectStream) {
+      return {
+        rejectedRows,
+        sample,
+        failure: `Expect failed at node ${node.id}: ${rejectedRows} row(s) violate the assertion; sample: ${JSON.stringify(sample)}`,
+      };
+    }
+    await this.runSql(
+      `CREATE TABLE ${quoteIdentifier(outputRelation)} AS SELECT * FROM ${input} t WHERE NOT (${violation})`
+    );
+    await this.runSql(
+      `CREATE TABLE ${quoteIdentifier(rejectRelation)} AS SELECT * FROM ${input} t WHERE ${violation}`
+    );
+    return { rejectedRows, sample };
+  }
+
+  private async countRejectRows(input: string, violation: string): Promise<number> {
+    const rows = await this.queryRows<{ count: number | string }>(
+      `SELECT count(*) AS count FROM ${input} t WHERE ${violation}`
+    );
+    return toNumber(rows[0]?.count);
+  }
+
+  /**
+   * `incremental by [col]` on an input source reads only rows newer than the
+   * stored watermark and records the new high-water mark for the next run.
+   */
+  private async materializeInputSourceWithContract(
+    task: DataCleaningTask,
+    node: DataWorkflowNode,
+    sourcePath: string | null,
+    outputRelation: string,
+    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>
+  ): Promise<string> {
+    const incrementalBy =
+      typeof node.config.incrementalBy === 'string' ? node.config.incrementalBy.trim() : '';
+    const relation = await this.materializeInputSource(node, sourcePath, outputRelation);
+    if (!incrementalBy) return relation;
+
+    const column = quoteIdentifier(incrementalBy);
+    const table = quoteIdentifier(relation);
+    const previous = await this.getTaskWatermark(task.id, node.id, incrementalBy);
+    if (previous !== null) {
+      const filtered = `${relation}_incr`;
+      await this.dropTableIfExists(filtered);
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(filtered)} AS SELECT * FROM ${table}
+         WHERE ${column} > ${literalToSql(previous)}`
+      );
+      await this.dropTableIfExists(relation);
+      const maxRow = await this.queryRows<{ value: unknown }>(
+        `SELECT CAST(MAX(${column}) AS VARCHAR) AS value FROM ${quoteIdentifier(filtered)}`
+      );
+      const value = maxRow[0]?.value;
+      if (value !== null && value !== undefined) {
+        watermarkUpdates.push({ nodeId: node.id, column: incrementalBy, value: String(value) });
+      }
+      return filtered;
+    }
+    const maxRow = await this.queryRows<{ value: unknown }>(
+      `SELECT CAST(MAX(${column}) AS VARCHAR) AS value FROM ${table}`
+    );
+    const value = maxRow[0]?.value;
+    if (value !== null && value !== undefined) {
+      watermarkUpdates.push({ nodeId: node.id, column: incrementalBy, value: String(value) });
+    }
+    return relation;
+  }
+
+  private async getTaskWatermark(
+    taskId: string,
+    nodeId: string,
+    column: string
+  ): Promise<string | null> {
+    const rows = await this.metaQueryRows<{ watermark_value: string | null }>(
+      `SELECT watermark_value FROM data_task_watermarks
+       WHERE task_id = $taskId AND node_id = $nodeId AND column_name = $column`,
+      { taskId, nodeId, column }
+    );
+    const value = rows[0]?.watermark_value;
+    return value === null || value === undefined ? null : String(value);
+  }
+
+  /** Keeps only the newest run's per-node stats per task; prior runs are pruned. */
+  private async persistTaskNodeStats(
+    taskId: string,
+    runId: string,
+    stats: WorkflowNodeRunStat[]
+  ): Promise<void> {
+    await this.metaRunSql(`DELETE FROM data_task_node_run_stats WHERE task_id = $taskId`, {
+      taskId,
+    });
+    for (const stat of stats) {
+      await this.metaRunSql(
+        `INSERT INTO data_task_node_run_stats
+           (task_id, run_id, node_id, node_type, input_rows, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
+         VALUES ($taskId, $runId, $nodeId, $nodeType, $inputRows, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
+        {
+          taskId,
+          runId,
+          nodeId: stat.nodeId,
+          nodeType: stat.nodeType,
+          inputRows: stat.inputRows,
+          outputRows: stat.outputRows,
+          droppedRows: stat.droppedRows ?? 0,
+          rejectedRows: stat.rejectedRows ?? 0,
+          sampleJson: stat.sample && stat.sample.length > 0 ? JSON.stringify(stat.sample) : null,
+          createdAt: this.now(),
+        }
+      );
+    }
+  }
+
+  /** Latest persisted run's per-node stats for a task (newest run only). */
+  async getTaskNodeStats(taskId: string): Promise<WorkflowNodeRunStat[]> {
+    await this.ensureMetadataReady();
+    const rows = await this.metaQueryRows<{
+      node_id: string;
+      node_type: string;
+      input_rows: number | null;
+      output_rows: number;
+      dropped_rows: number;
+      rejected_rows: number;
+      sample_json: string | null;
+    }>(
+      `SELECT node_id, node_type, input_rows, output_rows, dropped_rows, rejected_rows, sample_json
+       FROM data_task_node_run_stats WHERE task_id = $taskId ORDER BY node_id`,
+      { taskId }
+    );
+    return rows.map((row) => ({
+      nodeId: row.node_id,
+      nodeType: row.node_type,
+      inputRows: row.input_rows === null ? null : Number(row.input_rows),
+      outputRows: Number(row.output_rows),
+      droppedRows: Number(row.dropped_rows) || undefined,
+      rejectedRows: Number(row.rejected_rows) || undefined,
+      sample: row.sample_json
+        ? (JSON.parse(row.sample_json) as Record<string, unknown>[])
+        : undefined,
+    }));
+  }
+
+  private async upsertTaskWatermark(
+    taskId: string,
+    updates: Array<{ nodeId: string; column: string; value: string }>
+  ): Promise<void> {
+    for (const update of updates) {
+      await this.metaRunSql(
+        `DELETE FROM data_task_watermarks WHERE task_id = $taskId AND node_id = $nodeId`,
+        { taskId, nodeId: update.nodeId }
+      );
+      await this.metaRunSql(
+        `INSERT INTO data_task_watermarks (task_id, node_id, column_name, watermark_value, updated_at)
+         VALUES ($taskId, $nodeId, $column, $value, $updatedAt)`,
+        {
+          taskId,
+          nodeId: update.nodeId,
+          column: update.column,
+          value: update.value,
+          updatedAt: this.now(),
+        }
+      );
+    }
+  }
+
+  private async countMergeSurvivors(
+    targetTable: string,
+    temporaryTable: string,
+    mergeKeyPredicate: string
+  ): Promise<number> {
+    const rows = await this.queryRows<{ count: number | string }>(
+      `SELECT count(*) AS count FROM ${quoteIdentifier(targetTable)} b
+       WHERE NOT EXISTS (SELECT 1 FROM (${temporaryTable}) t
+         WHERE ${mergeKeyPredicate})`
+    );
+    return toNumber(rows[0]?.count);
   }
 
   private async updateOutputCommitState(id: string, state: string, error: string | null = null) {
@@ -433,7 +1007,13 @@ export class TaskWorkflowStore extends WorkflowCompiler {
   protected async runTaskToTemporaryOutputUnsafe(
     id: string,
     input: DataRunTaskInput
-  ): Promise<{ task: DataCleaningTask; diagnostics: PrepDiagnostic[] }> {
+  ): Promise<{
+    task: DataCleaningTask;
+    diagnostics: PrepDiagnostic[];
+    nodeStats?: WorkflowNodeRunStat[];
+    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
+  }> {
     const diagnostics: PrepDiagnostic[] = [];
     await this.ensureReady();
     await this.cleanupExpiredWorkflowNodeCaches();
@@ -446,6 +1026,21 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     if (!sourcePath && workflowRequiresTaskSource(runtimeWorkflow.nodes)) {
       throw new Error('Data source file is required before running a cleaning task');
     }
+
+    const planDiagnostics =
+      runtimeWorkflow.nodes.length > 0
+        ? await this.validateWorkflowPlanForTask(
+            task.id,
+            runtimeWorkflowToSaveInput(runtimeWorkflow)
+          )
+        : [];
+    const planErrors = planDiagnostics.filter((item) => item.severity === 'error');
+    if (planErrors.length > 0) {
+      throw new Error(
+        `Workflow plan validation failed: ${planErrors.map((item) => item.message).join('; ')}`
+      );
+    }
+    diagnostics.push(...planDiagnostics);
 
     try {
       const result = await this.cleanSourceIntoTaskOutput(
@@ -467,6 +1062,9 @@ export class TaskWorkflowStore extends WorkflowCompiler {
           error: null,
         },
         diagnostics,
+        nodeStats: result.nodeStats,
+        watermarkUpdates: result.watermarkUpdates,
+        stagedSinks: result.stagedSinks,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -741,6 +1339,15 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     let nodes = scopedWorkflow.nodes;
     const edges = scopedWorkflow.edges;
 
+    const planDiagnostics =
+      nodes.length > 0 ? await this.validateWorkflowPlanForTask(id, { nodes, edges }) : [];
+    const planErrors = planDiagnostics.filter((item) => item.severity === 'error');
+    if (planErrors.length > 0) {
+      throw new Error(
+        `Workflow plan validation failed: ${planErrors.map((item) => item.message).join('; ')}`
+      );
+    }
+
     await this.metaRunSql('BEGIN TRANSACTION');
     try {
       nodes = await this.prepareWorkflowOutputNodesForSave(nodes, updatedAt);
@@ -920,6 +1527,9 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     rowCount: number;
     columnCount: number;
     sourceDatasetId: string | null;
+    nodeStats?: WorkflowNodeRunStat[];
+    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     if (workflow.nodes.length > 0) {
       return this.runWorkflowIntoTaskOutput(
@@ -997,24 +1607,111 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     rowCount: number;
     columnCount: number;
     sourceDatasetId: string | null;
+    nodeStats: WorkflowNodeRunStat[];
+    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
+    stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const outputNode = nodes.find((node) => node.type === 'output');
+    const nodeStats: WorkflowNodeRunStat[] = [];
+    try {
+      return await this.runWorkflowIntoTaskOutputInner(
+        task,
+        sourcePath,
+        nodes,
+        edges,
+        outputMode,
+        diagnostics,
+        nodeById,
+        outputNode ?? null,
+        nodeStats
+      );
+    } catch (error) {
+      // Preserve partially collected stats so failed runs stay inspectable.
+      const holder = error as { nodeStats?: WorkflowNodeRunStat[] };
+      if (!holder.nodeStats) holder.nodeStats = nodeStats;
+      throw error;
+    }
+  }
+
+  private async runWorkflowIntoTaskOutputInner(
+    task: DataCleaningTask,
+    sourcePath: string | null,
+    nodes: DataWorkflowNode[],
+    edges: DataWorkflowEdge[],
+    outputMode: WorkflowOutputMode,
+    diagnostics: PrepDiagnostic[],
+    nodeById: Map<string, DataWorkflowNode>,
+    outputNode: DataWorkflowNode | null,
+    nodeStats: WorkflowNodeRunStat[]
+  ): Promise<{
+    outputTable: string;
+    rowCount: number;
+    columnCount: number;
+    sourceDatasetId: string | null;
+    nodeStats: WorkflowNodeRunStat[];
+    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
+    stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
+  }> {
     const outputTarget: { tableName: string; outputDatasetId?: string } =
       outputMode === 'temporary'
         ? { tableName: tableNameFromId('temp_task', `${task.id}_${uuidv4()}`) }
         : await this.resolveWorkflowOutputTarget(
-            outputNode,
+            outputNode ?? undefined,
             task.outputTable || tableNameFromId('clean_task', task.id)
           );
     const outputTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
     const visitingNodeIds = new Set<string>();
+    const watermarkUpdates: Array<{ nodeId: string; column: string; value: string }> = [];
     const cacheScope: WorkflowCacheScope = outputMode === 'temporary' ? 'temporary' : 'permanent';
     const cacheRunId = uuidv4();
     const cacheExpiresAt =
       cacheScope === 'temporary' ? this.now() + WORKFLOW_TEMP_CACHE_TTL_MS : null;
     await this.dropTableIfExists(outputTable);
+
+    const relationKeyOf = (nodeId: string, sourceHandle?: string | null) =>
+      sourceHandle === 'reject' ? `${nodeId}#reject` : nodeId;
+
+    const findIncomingEdge = (nodeId: string, targetHandle: string) =>
+      edges.find(
+        (edge) => edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === targetHandle
+      );
+
+    const materializeEdgeSource = async (edge: DataWorkflowEdge): Promise<string> => {
+      const relation = await materializeNode(edge.sourceNodeId);
+      const keyed = relationByNode.get(relationKeyOf(edge.sourceNodeId, edge.sourceHandle));
+      return keyed ?? relation;
+    };
+
+    const collectNodeStat = async (
+      node: DataWorkflowNode,
+      outputRelation: string,
+      inputRelations: string[]
+    ) => {
+      const outputRows = await this.countRows(outputRelation);
+      const inputRows =
+        inputRelations.length > 0
+          ? (await Promise.all(inputRelations.map((relation) => this.countRows(relation)))).reduce(
+              (total, count) => total + count,
+              0
+            )
+          : null;
+      const stat: WorkflowNodeRunStat = {
+        nodeId: node.id,
+        nodeType: node.type,
+        inputRows,
+        outputRows,
+      };
+      if (
+        inputRows !== null &&
+        ['filter', 'deduplicate', 'limit', 'expect'].includes(node.type) &&
+        outputRows < inputRows
+      ) {
+        stat.droppedRows = inputRows - outputRows;
+      }
+      nodeStats.push(stat);
+    };
 
     const materializeNode = async (nodeId: string): Promise<string> => {
       const existingRelation = relationByNode.get(nodeId);
@@ -1027,11 +1724,11 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         throw new Error(`Workflow node not found: ${nodeId}`);
       }
       if (node.type === 'output') {
-        const outputInputId = this.findIncomingNodeId(node.id, edges, 'input');
-        if (!outputInputId) {
+        const outputEdge = findIncomingEdge(node.id, 'input');
+        if (!outputEdge) {
           throw new Error(`Output node has no input: ${node.id}`);
         }
-        return materializeNode(outputInputId);
+        return materializeEdgeSource(outputEdge);
       }
       visitingNodeIds.add(nodeId);
       try {
@@ -1042,43 +1739,83 @@ export class TaskWorkflowStore extends WorkflowCompiler {
           cacheRunId
         );
         if (node.type === 'input_source') {
-          const relation = await this.materializeInputSource(node, sourcePath, outputRelation);
+          const relation = await this.materializeInputSourceWithContract(
+            task,
+            node,
+            sourcePath,
+            outputRelation,
+            watermarkUpdates
+          );
           relationByNode.set(node.id, relation);
           await this.registerWorkflowNodeCache(node, relation, cacheScope, cacheExpiresAt);
+          await collectNodeStat(node, relation, []);
           return relation;
         }
 
         if (node.config.disabled === true) {
-          const passthroughNodeId =
+          const passthroughEdge =
             node.type === 'join' || node.type === 'set_op'
-              ? (this.findIncomingNodeId(node.id, edges, 'left') ??
-                this.findIncomingNodeId(node.id, edges, 'input') ??
-                this.findIncomingNodeId(node.id, edges, 'right'))
-              : this.findIncomingNodeId(node.id, edges, 'input');
-          if (!passthroughNodeId) {
+              ? (findIncomingEdge(node.id, 'left') ??
+                findIncomingEdge(node.id, 'input') ??
+                findIncomingEdge(node.id, 'right'))
+              : findIncomingEdge(node.id, 'input');
+          if (!passthroughEdge) {
             throw new Error(`Disabled workflow node has no passthrough input: ${node.id}`);
           }
-          const relation = await materializeNode(passthroughNodeId);
+          const relation = await materializeEdgeSource(passthroughEdge);
           relationByNode.set(node.id, relation);
           return relation;
         }
 
         if (node.type === 'join' || node.type === 'set_op') {
-          const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
-          const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
-          if (!leftNodeId || !rightNodeId) {
+          const leftEdge = findIncomingEdge(node.id, 'left');
+          const rightEdge = findIncomingEdge(node.id, 'right');
+          if (!leftEdge || !rightEdge) {
             throw new Error(
               `${node.type === 'join' ? 'Join' : 'Set operation'} node requires left and right inputs: ${node.id}`
             );
           }
-          await materializeNode(leftNodeId);
-          await materializeNode(rightNodeId);
+          await materializeEdgeSource(leftEdge);
+          await materializeEdgeSource(rightEdge);
         } else {
-          const inputNodeId = this.findIncomingNodeId(node.id, edges, 'input');
-          if (!inputNodeId) {
+          const inputEdge = findIncomingEdge(node.id, 'input');
+          if (!inputEdge) {
             throw new Error(`Workflow node has no input: ${node.id}`);
           }
-          await materializeNode(inputNodeId);
+          await materializeEdgeSource(inputEdge);
+        }
+
+        if (node.type === 'expect') {
+          const inputEdge = findIncomingEdge(node.id, 'input')!;
+          const inputRelation = relationByNode.get(
+            relationKeyOf(inputEdge.sourceNodeId, inputEdge.sourceHandle)
+          )!;
+          const rejectRelation = `${outputRelation}_reject`;
+          const { rejectedRows, sample, failure } = await this.materializeExpectNode(
+            node,
+            inputRelation,
+            outputRelation,
+            rejectRelation
+          );
+          // Record the assertion's stats before failing the run so failed-run
+          // stats still carry rejectedRows and the violating sample.
+          const expectInputRows = await this.countRows(inputRelation);
+          const expectOutputRows = failure ? 0 : await this.countRows(outputRelation);
+          const expectStat: WorkflowNodeRunStat = {
+            nodeId: node.id,
+            nodeType: 'expect',
+            inputRows: expectInputRows,
+            outputRows: expectOutputRows,
+            droppedRows: Math.max(0, expectInputRows - expectOutputRows),
+            rejectedRows,
+            ...(sample.length > 0 ? { sample } : {}),
+          };
+          nodeStats.push(expectStat);
+          if (failure) throw new Error(failure);
+          relationByNode.set(node.id, outputRelation);
+          relationByNode.set(`${node.id}#reject`, rejectRelation);
+          await this.registerWorkflowNodeCache(node, outputRelation, cacheScope, cacheExpiresAt);
+          return outputRelation;
         }
 
         await this.dropTableIfExists(outputRelation);
@@ -1112,29 +1849,77 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         }
         relationByNode.set(node.id, outputRelation);
         await this.registerWorkflowNodeCache(node, outputRelation, cacheScope, cacheExpiresAt);
+        const inputRelations = edges
+          .filter((edge) => edge.targetNodeId === node.id)
+          .map((edge) => relationByNode.get(relationKeyOf(edge.sourceNodeId, edge.sourceHandle)))
+          .filter((relation): relation is string => Boolean(relation));
+        await collectNodeStat(node, outputRelation, inputRelations);
         return outputRelation;
       } finally {
         visitingNodeIds.delete(nodeId);
       }
     };
 
-    const finalInputId = outputNode
-      ? this.findIncomingNodeId(outputNode.id, edges, 'input')
-      : findWorkflowTerminalNodeId(nodes, edges);
-    if (!finalInputId) {
-      throw new Error('Workflow has no materialized output relation');
-    }
-    const finalRelation = await materializeNode(finalInputId);
-    await this.runSql(
-      `CREATE TABLE ${quoteIdentifier(outputTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
+    // Materialize every output sink into its own staging table; the first
+    // sink uses `outputTable` so task metadata/preview stay compatible.
+    const outputNodes = nodes.filter(
+      (node) => node.type === 'output' && node.config.disabled !== true
     );
-    const rowCount = await this.countRows(outputTable);
-    const columnCount = (await this.getTableColumns(outputTable)).length;
-    if (outputNode) {
-      await this.registerWorkflowNodeCache(outputNode, outputTable, cacheScope, cacheExpiresAt);
+    const stagedSinks: Array<{ nodeId: string; stagingTable: string }> = [];
+    let rowCount = 0;
+    let columnCount = 0;
+    if (outputNodes.length > 0) {
+      for (const [index, sinkNode] of outputNodes.entries()) {
+        const sinkEdge =
+          findIncomingEdge(sinkNode.id, 'input') ??
+          edges.find((edge) => edge.targetNodeId === sinkNode.id);
+        if (!sinkEdge) {
+          throw new Error(`Output node ${sinkNode.id} has no incoming edge`);
+        }
+        const sinkRelation = await materializeEdgeSource(sinkEdge);
+        const stagingTable = index === 0 ? outputTable : `${outputTable}__sink${index}`;
+        await this.dropTableIfExists(stagingTable);
+        await this.runSql(
+          `CREATE TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${quoteIdentifier(sinkRelation)}`
+        );
+        await this.registerWorkflowNodeCache(sinkNode, stagingTable, cacheScope, cacheExpiresAt);
+        nodeStats.push({
+          nodeId: sinkNode.id,
+          nodeType: 'output',
+          inputRows: await this.countRows(sinkRelation),
+          outputRows: await this.countRows(stagingTable),
+        });
+        stagedSinks.push({ nodeId: sinkNode.id, stagingTable });
+      }
+      rowCount = await this.countRows(outputTable);
+      columnCount = (await this.getTableColumns(outputTable)).length;
+    } else {
+      const finalInputId = findWorkflowTerminalNodeId(nodes, edges);
+      if (!finalInputId) {
+        throw new Error('Workflow has no materialized output relation');
+      }
+      const finalRelation = await materializeNode(finalInputId);
+      await this.runSql(
+        `CREATE TABLE ${quoteIdentifier(outputTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
+      );
+      rowCount = await this.countRows(outputTable);
+      columnCount = (await this.getTableColumns(outputTable)).length;
     }
     if (outputMode === 'temporary') {
-      return { outputTable, rowCount, columnCount, sourceDatasetId: null };
+      return {
+        outputTable,
+        rowCount,
+        columnCount,
+        sourceDatasetId: null,
+        nodeStats,
+        watermarkUpdates,
+        stagedSinks,
+      };
+    }
+    if (stagedSinks.length > 1) {
+      throw new Error(
+        'Direct persisted writes support a single output sink; run temporary + commit instead'
+      );
     }
     const sourceDatasetId = (await this.findWorkflowSourceDatasetId(nodes)) ?? task.sourceDatasetId;
     const dataset = await this.upsertDatasetForTaskOutput(
@@ -1146,7 +1931,15 @@ export class TaskWorkflowStore extends WorkflowCompiler {
       outputTarget.outputDatasetId
     );
     void dataset;
-    return { outputTable, rowCount, columnCount, sourceDatasetId };
+    return {
+      outputTable,
+      rowCount,
+      columnCount,
+      sourceDatasetId,
+      nodeStats,
+      watermarkUpdates,
+      stagedSinks,
+    };
   }
 
   protected async findWorkflowSourceDatasetId(nodes: DataWorkflowNode[]): Promise<string | null> {
@@ -1184,15 +1977,67 @@ export class TaskWorkflowStore extends WorkflowCompiler {
   protected async resolveWorkflowOutputTarget(
     node: DataWorkflowNode | undefined,
     fallback: string
-  ): Promise<{ tableName: string; outputDatasetId?: string }> {
+  ): Promise<{
+    tableName: string;
+    outputDatasetId?: string;
+    mode: 'replace' | 'append' | 'error_if_exists' | 'merge';
+    mergeKeys: string[];
+    schemaPolicy: 'extend' | 'strict' | 'ignore';
+  }> {
+    const destination = stringConfigValue(node?.config.destination);
+    if (destination === 'dataset' || destination === 'file') {
+      throw new Error(
+        `Output destination "${destination}" is not supported in task workflows; use "output table" instead`
+      );
+    }
+    const rawMode = stringConfigValue(node?.config.mode) || 'replace';
+    if (
+      rawMode !== 'replace' &&
+      rawMode !== 'append' &&
+      rawMode !== 'error_if_exists' &&
+      rawMode !== 'merge'
+    ) {
+      throw new Error(
+        `Unsupported output mode "${rawMode}"; expected replace, append, error_if_exists, or merge`
+      );
+    }
+    const mergeKeys = Array.isArray(node?.config.mergeKeys)
+      ? node!.config.mergeKeys
+          .map((key) => String(key ?? '').trim())
+          .filter((key) => key.length > 0)
+      : [];
+    if (rawMode === 'merge' && mergeKeys.length === 0) {
+      throw new Error('Output mode "merge" requires `by` business key columns');
+    }
+    if (rawMode !== 'merge' && mergeKeys.length > 0) {
+      throw new Error('Output `by` keys are only valid with mode merge');
+    }
+    const rawSchema = stringConfigValue(node?.config.schemaPolicy) || 'extend';
+    if (rawSchema !== 'extend' && rawSchema !== 'strict' && rawSchema !== 'ignore') {
+      throw new Error(
+        `Unsupported output schema policy "${rawSchema}"; expected extend, strict, or ignore`
+      );
+    }
+    const mode = rawMode;
     const outputDatasetId =
       stringConfigValue(node?.config.outputDatasetId) ||
       stringConfigValue(node?.config.outputTableId);
     if (outputDatasetId) {
       const outputTable = await this.requireOutputTable(outputDatasetId);
-      return { tableName: outputTable.tableName, outputDatasetId: outputTable.id };
+      return {
+        tableName: outputTable.tableName,
+        outputDatasetId: outputTable.id,
+        mode,
+        mergeKeys,
+        schemaPolicy: rawSchema,
+      };
     }
-    return { tableName: getOutputTableName(node, fallback) };
+    return {
+      tableName: getOutputTableName(node, fallback),
+      mode,
+      mergeKeys,
+      schemaPolicy: rawSchema,
+    };
   }
 
   protected async resolveWorkflowNodePreviewTable(

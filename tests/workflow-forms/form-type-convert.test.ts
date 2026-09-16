@@ -29,7 +29,8 @@ describe('FormTypeConvert — config ↔ DSL', () => {
       conversions: [{ column: 'revenue', type: 'float', onError: 'null' }],
     });
     expect(r.dsl).toContain('as float');
-    expect(r.dsl).toContain('on_error null');
+    // on_error null is the default and is omitted in canonical output
+    expect(r.dsl).not.toContain('on_error');
   });
 
   it('conversion to integer with on_error fail', () => {

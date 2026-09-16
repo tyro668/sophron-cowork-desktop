@@ -171,12 +171,18 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   const catalog = getOperatorCatalog(node.type);
   const Icon = catalog.Icon;
   const disabled = node.config.disabled === true;
+  const invalid = data.invalid === true;
+  const runStat = data.runStat;
   return (
     <div
       data-node-id={node.id}
       style={{ width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
       className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-[var(--glass-card-strong)] px-2.5 text-left shadow-soft backdrop-blur-xl transition-colors ${
-        selected ? 'border-accent text-accent ring-2 ring-accent/15' : catalog.nodeClassName
+        invalid
+          ? 'border-error/60 text-error ring-2 ring-error/15'
+          : selected
+            ? 'border-accent text-accent ring-2 ring-accent/15'
+            : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
       {node.type === 'input_source' ? null : node.type === 'join' || node.type === 'set_op' ? (
@@ -204,7 +210,24 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
           className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
         />
       )}
-      {node.type === 'output' ? null : (
+      {node.type === 'output' ? null : node.type === 'expect' ? (
+        <>
+          <Handle
+            id="output"
+            type="source"
+            position={Position.Right}
+            style={{ top: '30%' }}
+            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+          />
+          <Handle
+            id="reject"
+            type="source"
+            position={Position.Right}
+            style={{ top: '70%' }}
+            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-error !bg-background !opacity-100"
+          />
+        </>
+      ) : (
         <Handle
           id="output"
           type="source"
@@ -213,10 +236,37 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
         />
       )}
       <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-      <span className="min-w-0 truncate text-xs font-medium text-text-secondary">{node.label}</span>
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span
+          className={`truncate text-xs font-medium ${invalid ? 'text-error' : 'text-text-secondary'}`}
+        >
+          {node.label}
+        </span>
+        {runStat ? (
+          <span className="truncate text-[9px] leading-none text-text-muted">
+            {formatRunStat(runStat)}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 });
+
+function formatRunStat(stat: {
+  inputRows: number | null;
+  outputRows: number;
+  droppedRows?: number;
+  rejectedRows?: number;
+}): string {
+  const inRows = stat.inputRows === null ? '—' : String(stat.inputRows);
+  const extras = [
+    stat.droppedRows ? `-${stat.droppedRows}` : '',
+    stat.rejectedRows ? `✗${stat.rejectedRows}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return `${inRows}→${stat.outputRows}${extras ? ` ${extras}` : ''}`;
+}
 
 const EDGE_ARROW_ROTATION: Record<Position, number> = {
   [Position.Left]: 0,

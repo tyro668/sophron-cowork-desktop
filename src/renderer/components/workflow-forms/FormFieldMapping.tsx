@@ -142,7 +142,7 @@ export default function FormFieldMapping({
               searchPlaceholder={tr('fieldPicker.searchField')}
               emptyText={tr('fieldPicker.noMatch')}
               disabledOptions={disabledFields}
-              className="flex-1 min-w-0 h-7"
+              className="flex-1 min-w-0 h-8"
             />
           );
         },
@@ -156,7 +156,7 @@ export default function FormFieldMapping({
             onChange={(v) => updateMapping(i, { targetMode: v as FieldMappingEntry['targetMode'] })}
             groups={[{ key: 'mode', items: targetModeOptions }]}
             variant="highlight"
-            className="h-7 w-full text-[12px]"
+            className="h-8 w-full text-[12px]"
           />
         ),
       },
@@ -174,7 +174,7 @@ export default function FormFieldMapping({
                   ? tr('fieldMappingPrefixPlaceholder')
                   : tr('fieldMappingSuffixPlaceholder')
             }
-            className="h-7 px-1.5 text-[12px] w-full"
+            className="h-8 px-1.5 text-[12px] w-full"
           />
         ),
       },

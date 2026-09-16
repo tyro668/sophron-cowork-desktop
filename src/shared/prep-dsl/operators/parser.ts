@@ -4,6 +4,7 @@ import type {
   PrepOperatorParseResult,
   PrepOperatorType,
   PrepParseResult,
+  PrepStepAst,
   PrepWorkflowAst,
 } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
@@ -38,6 +39,7 @@ const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   unpivot: 'unpivot',
   set_op: 'set_op',
   unnest: 'unnest',
+  expect: 'expect',
   output: 'output',
 };
 
@@ -71,55 +73,72 @@ export function parsePrepDsl(input: string): PrepParseResult {
   }
 
   const sources: PrepOperatorAst[] = [];
-  const operators: PrepOperatorAst[] = [];
+  const steps: PrepStepAst[] = [];
+  const outputs: PrepOperatorAst[] = [];
   let mainSource = '';
-  let output: PrepOperatorAst | undefined;
-  let cursor = 0;
+  let stepSeq = 0;
+  let currentStep: PrepStepAst | null = null;
 
-  while (cursor < commands.length && isInputSource(commands[cursor].text)) {
-    const source = parseInputSource(commands[cursor], diagnostics);
-    if (source) sources.push(source);
-    cursor += 1;
-    if (cursor < commands.length && !isInputSource(commands[cursor].text)) {
-      break;
+  const startStep = (
+    input: string | undefined,
+    name: string | undefined,
+    line: number,
+    named = false
+  ) => {
+    stepSeq += 1;
+    currentStep = {
+      name: name ?? `step${stepSeq}`,
+      input,
+      line,
+      named,
+      operators: [],
+    };
+    steps.push(currentStep);
+  };
+  const ensureStep = (line: number) => {
+    if (!currentStep) {
+      // Implicit v1 chain: reads the main source (or the previous chain tail).
+      startStep(mainSource || undefined, steps.length === 0 ? 'main' : undefined, line);
     }
-  }
+    return currentStep;
+  };
 
-  if (cursor < commands.length && commands[cursor].text.startsWith('from ')) {
-    mainSource = commands[cursor].text.slice('from '.length).trim();
-    cursor += 1;
-  } else if (sources.length === 1) {
-    mainSource = sourceAlias(sources[0]) ?? 'source';
-  } else if (sources.length > 1) {
-    diagnostics.push({
-      ...createPrepDiagnostic(
-        'multiSourceMissingFrom',
-        'Multi-source tasks must use from <alias> to choose the main source'
-      ),
-      line: commands[cursor]?.line,
-    });
-  }
-
-  if (sources.length === 0 && cursor < commands.length && isInputSource(commands[cursor].text)) {
-    const source = parseInputSource(commands[cursor], diagnostics);
-    if (source) {
-      sources.push(source);
-      mainSource = sourceAlias(source) ?? 'source';
+  for (const command of commands) {
+    const text = command.text;
+    if (isInputSource(text)) {
+      const source = parseInputSource(command, diagnostics);
+      if (source) {
+        sources.push(source);
+        if (!mainSource) mainSource = sourceAlias(source) ?? 'source';
+      }
+      continue;
     }
-    cursor += 1;
-  }
-
-  for (; cursor < commands.length; cursor += 1) {
-    const command = commands[cursor];
+    if (text === 'from' || text.startsWith('from ')) {
+      const ref = text === 'from' ? '' : text.slice('from '.length).trim();
+      if (!ref) {
+        diagnostics.push({
+          ...createPrepDiagnostic('invalidStep', 'from must name a source alias or step name'),
+          line: command.line,
+        });
+      }
+      startStep(ref || undefined, undefined, command.line);
+      continue;
+    }
+    if (text.startsWith('step ')) {
+      parseStepHeader(command, diagnostics, (name, input) =>
+        startStep(input, name, command.line, true)
+      );
+      continue;
+    }
     const operator = parseOperator(command, diagnostics);
     if (!operator) continue;
-    if (operator.type === 'output') {
-      output = operator;
-    } else if (operator.type === 'input_source') {
+    if (operator.type === 'input_source') {
       sources.push(operator);
-    } else {
-      operators.push(operator);
+      if (!mainSource) mainSource = sourceAlias(operator) ?? 'source';
+      continue;
     }
+    ensureStep(command.line)?.operators.push(operator);
+    if (operator.type === 'output') outputs.push(operator);
   }
 
   if (sources.length === 0) {
@@ -130,15 +149,75 @@ export function parsePrepDsl(input: string): PrepParseResult {
   if (!mainSource && sources[0]) {
     mainSource = sourceAlias(sources[0]) ?? 'source';
   }
+  // A lone `input source` followed by operators chains implicitly; multi-source
+  // v1 documents still need `from <alias>` which maps to the first step's input.
+  if (steps.length > 0 && !steps[0].input && steps[0].name === 'main') {
+    steps[0].input = mainSource;
+  }
+  if (sources.length > 1 && steps.every((step) => !step.input)) {
+    diagnostics.push(
+      createPrepDiagnostic(
+        'multiSourceMissingFrom',
+        'Multi-source tasks must use from <alias> or step <name> = <ref> to choose a chain input'
+      )
+    );
+  }
 
+  // `operators` keeps the v1 meaning: the flat list of data operators (no
+  // output sinks — those live in `outputs`).
+  const operators = steps.flatMap((step) =>
+    step.operators.filter((operator) => operator.type !== 'output')
+  );
   const ast: PrepWorkflowAst = {
-    version: 'prep-dsl/v1',
+    version: 'prep-dsl/v2',
     sources,
     mainSource,
+    steps,
     operators,
-    output,
+    outputs,
+    output: outputs[outputs.length - 1],
   };
   return { ast, diagnostics };
+}
+
+/** Parses `step <name> = <ref>` chain headers. */
+function parseStepHeader(
+  command: CommandLine,
+  diagnostics: PrepDiagnostic[],
+  onStep: (name: string, input: string | undefined) => void
+): void {
+  const match = /^step\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\S+)\s*(.*)$/.exec(command.text);
+  if (!match) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidStep',
+        'Step must be written as: step <name> = <source-or-step>'
+      ),
+      line: command.line,
+    });
+    return;
+  }
+  const [, name, input, rest] = match;
+  if (rest.trim()) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'invalidStep',
+        `Unexpected text after step header: ${rest.trim()}; put operators on lines starting with |`
+      ),
+      line: command.line,
+    });
+    return;
+  }
+  if (['input', 'from', 'step', 'output'].includes(name.toLowerCase())) {
+    diagnostics.push({
+      ...createPrepDiagnostic('invalidStep', `Step name "${name}" conflicts with a DSL keyword`, {
+        value: name,
+      }),
+      line: command.line,
+    });
+    return;
+  }
+  onStep(name, input);
 }
 
 export function parsePrepOperatorDsl(
@@ -357,9 +436,43 @@ function parseInputSource(
         config.alias = alias.image;
         break;
       }
+      case 'incremental': {
+        advance();
+        const byKw = expectIdent('Expected "by" after "incremental"');
+        if (!byKw || byKw.image !== 'by') {
+          if (byKw) error('Expected "by" after "incremental"');
+          return null;
+        }
+        const fieldStart = peek()?.startOffset ?? 0;
+        if (peek()?.tokenType.name === 'LSquare') {
+          let closed = false;
+          while (!atEof()) {
+            const token = advance();
+            if (token?.tokenType.name === 'RSquare') {
+              closed = true;
+              break;
+            }
+          }
+          if (!closed) {
+            error('Expected "]" after incremental field');
+            return null;
+          }
+          const fieldEnd = tokens[pos - 1]?.endOffset ?? fieldStart;
+          config.incrementalBy = text
+            .slice(fieldStart, fieldEnd + 1)
+            .replace(/^\[\s*|\s*\]$/g, '')
+            .replace(/^`|`$/g, '')
+            .trim();
+        } else {
+          const ident = expectIdent('Expected a field reference after "incremental by"');
+          if (!ident) return null;
+          config.incrementalBy = ident.image;
+        }
+        break;
+      }
       default: {
         error(
-          `Unknown keyword "${kw.image}". Expected "format", "sheet", "header", "encoding", or "as"`
+          `Unknown keyword "${kw.image}". Expected "format", "sheet", "header", "encoding", "incremental by [field]", or "as"`
         );
         return null;
       }
@@ -460,7 +573,7 @@ function collectCommands(lines: NormalizedLine[]): CommandLine[] {
 }
 
 function isTopLevelLine(text: string): boolean {
-  return isInputSource(text) || text.startsWith('from ');
+  return isInputSource(text) || text.startsWith('from ') || /^step\s+\S/.test(text);
 }
 
 function isInputSource(text: string): boolean {

@@ -18,6 +18,7 @@ const currentOperatorCases: Array<{
   name: string;
   type: PrepOperatorType;
   dsl: string;
+  expectedDsl?: string;
   expectedConfig?: Record<string, unknown>;
 }> = [
   {
@@ -65,6 +66,7 @@ const currentOperatorCases: Array<{
     name: 'deduplicate fields containing clause keywords',
     type: 'deduplicate',
     dsl: 'deduplicate by [`order by`], [`keep status`] keep last order by [`by score`] desc',
+    expectedDsl: 'deduplicate by [order by], [keep status] keep last order by [by score] desc',
     expectedConfig: {
       strategy: 'by_columns',
       columns: ['order by', 'keep status'],
@@ -88,6 +90,7 @@ const currentOperatorCases: Array<{
     name: 'convert types',
     type: 'type_convert',
     dsl: 'cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error fail',
+    expectedDsl: 'cast [order_date] as date format "%Y-%m-%d", [revenue] as float on_error fail',
     expectedConfig: {
       conversions: [
         { column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
@@ -104,6 +107,7 @@ const currentOperatorCases: Array<{
     name: 'limit sorted rows with a clause keyword in the field name',
     type: 'limit',
     dsl: 'top 10 by [`with ties score`] desc with ties',
+    expectedDsl: 'top 10 by [with ties score] desc with ties',
     expectedConfig: {
       mode: 'fixed',
       limit: 10,
@@ -128,6 +132,7 @@ const currentOperatorCases: Array<{
     name: 'aggregate with mixed granularity and bare fields',
     type: 'aggregate',
     dsl: 'aggregate by year([Date]), [UUID] metrics sum([Price]) as [`合价`]',
+    expectedDsl: 'aggregate by year([Date]), [UUID] metrics sum([Price]) as [合价]',
     expectedConfig: {
       groupBy: ['Date', 'UUID'],
       dateGranularity: { Date: 'year' },
@@ -168,6 +173,7 @@ const currentOperatorCases: Array<{
     name: 'aggregate by field with a hash in its name',
     type: 'aggregate',
     dsl: 'aggregate by [`商品#编号`] metrics sum([amount]) as [total]',
+    expectedDsl: 'aggregate by [商品#编号] metrics sum([amount]) as [total]',
     expectedConfig: {
       groupBy: ['商品#编号'],
       metrics: [{ function: 'sum', expression: '[amount]', alias: 'total' }],
@@ -255,6 +261,72 @@ const currentOperatorCases: Array<{
     type: 'output',
     dsl: 'output table "clean_orders" mode replace',
     expectedConfig: { destination: 'duckdb_table', table: 'clean_orders', mode: 'replace' },
+  },
+  {
+    name: 'output table error_if_exists',
+    type: 'output',
+    dsl: 'output table "clean_orders" mode error_if_exists',
+    expectedConfig: {
+      destination: 'duckdb_table',
+      table: 'clean_orders',
+      mode: 'error_if_exists',
+    },
+  },
+  {
+    name: 'output table merge by business keys',
+    type: 'output',
+    dsl: 'output table "clean_orders" mode merge by [order_id], [sku] schema strict',
+    expectedConfig: {
+      destination: 'duckdb_table',
+      table: 'clean_orders',
+      mode: 'merge',
+      mergeKeys: ['order_id', 'sku'],
+      schemaPolicy: 'strict',
+    },
+  },
+  {
+    name: 'output table append with schema ignore',
+    type: 'output',
+    dsl: 'output table "clean_orders" mode append schema ignore',
+    expectedConfig: {
+      destination: 'duckdb_table',
+      table: 'clean_orders',
+      mode: 'append',
+      schemaPolicy: 'ignore',
+    },
+  },
+  {
+    name: 'input source incremental',
+    type: 'input_source',
+    dsl: 'input source dataset "orders_input" incremental by [updated_at] as orders',
+    expectedConfig: {
+      source: 'dataset',
+      datasetId: 'orders_input',
+      incrementalBy: 'updated_at',
+      alias: 'orders',
+    },
+  },
+  {
+    name: 'expect expression',
+    type: 'expect',
+    dsl: 'expect [amount] > 0',
+    expectedConfig: { kind: 'expression', expression: '[amount] > 0' },
+  },
+  {
+    name: 'expect unique with reject stream',
+    type: 'expect',
+    dsl: 'expect unique [order_id], [line_no] reject to bad_rows',
+    expectedConfig: {
+      kind: 'unique',
+      columns: ['order_id', 'line_no'],
+      rejectStream: 'bad_rows',
+    },
+  },
+  {
+    name: 'expect rows comparison',
+    type: 'expect',
+    dsl: 'expect rows >= 1',
+    expectedConfig: { kind: 'row_count', operator: '>=', value: 1 },
   },
 ];
 
@@ -1009,16 +1081,19 @@ describe('operator DSL executable cases', () => {
     ).toBe('deduplicate');
   });
 
-  it.each(currentOperatorCases)('parses and exports $name', ({ type, dsl, expectedConfig }) => {
-    const parsed = parsePrepOperatorDsl(dsl, type);
+  it.each(currentOperatorCases)(
+    'parses and exports $name',
+    ({ type, dsl, expectedDsl, expectedConfig }) => {
+      const parsed = parsePrepOperatorDsl(dsl, type);
 
-    expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
-    expect(parsed.operator?.type).toBe(type);
-    expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
-    expect(
-      exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
-    ).toBe(dsl);
-  });
+      expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
+      expect(parsed.operator?.type).toBe(type);
+      expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
+      expect(
+        exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
+      ).toBe(expectedDsl ?? dsl);
+    }
+  );
 
   it.each([
     {
@@ -1048,6 +1123,8 @@ describe('operator DSL executable cases', () => {
   it.each([
     {
       dsl: 'unnest [`keep parent names`] as [`with index`] with index [`keep parent names`] keep parent names true',
+      expectedDsl:
+        'unnest [keep parent names] as [with index] with index [keep parent names] keep parent names true',
       expectedConfig: {
         sourceKind: 'list',
         column: 'keep parent names',
@@ -1058,6 +1135,7 @@ describe('operator DSL executable cases', () => {
     },
     {
       dsl: 'explode json [`with index`] path "$.keep parent names"',
+      expectedDsl: 'explode json [with index] path "$.keep parent names"',
       expectedConfig: {
         sourceKind: 'json',
         column: 'with index',
@@ -1067,12 +1145,14 @@ describe('operator DSL executable cases', () => {
         preserveOrder: false,
       },
     },
-  ])('parses unnest keywords inside field names: $dsl', ({ dsl, expectedConfig }) => {
+  ])('parses unnest keywords inside field names: $dsl', ({ dsl, expectedDsl, expectedConfig }) => {
     const parsed = parsePrepOperatorDsl(dsl, 'unnest');
 
     expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
     expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
-    expect(exportPrepOperatorDsl({ id: 'unnest_keywords_case', ...parsed.operator! })).toBe(dsl);
+    expect(exportPrepOperatorDsl({ id: 'unnest_keywords_case', ...parsed.operator! })).toBe(
+      expectedDsl
+    );
   });
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
@@ -1155,9 +1235,9 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(join.diagnostics)).toHaveLength(0);
     expect(join.operator?.config.conditions).toEqual([
       {
-        left: '[orders].[`brand and model`]',
+        left: '[orders].[brand and model]',
         operator: '=',
-        right: '[products].[`brand and model`]',
+        right: '[products].[brand and model]',
       },
       { left: '[orders].[sku]', operator: '=', right: '[products].[sku]' },
     ]);
@@ -1172,14 +1252,14 @@ describe('operator DSL executable cases', () => {
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
     expect(parsed.operator?.config.conditions).toEqual([
       {
-        left: '[orders].[`keep suffix`]',
+        left: '[orders].[keep suffix]',
         operator: '=',
-        right: '[products].[`keep suffix`]',
+        right: '[products].[keep suffix]',
       },
     ]);
     expect(parsed.operator?.config.keep).toEqual([
       { side: 'left', wildcard: true },
-      { source: '[products].[`on value`]', alias: 'right_prefix value' },
+      { source: '[products].[on value]', alias: 'right_prefix value' },
     ]);
   });
 

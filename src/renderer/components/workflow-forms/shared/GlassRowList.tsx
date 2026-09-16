@@ -55,7 +55,6 @@ interface GlassRowListProps<T> {
   hideHeader?: boolean;
   headerClassName?: string;
   gapClassName?: string;
-  variant?: 'cards' | 'table';
 }
 
 const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>> = {
@@ -100,8 +99,7 @@ export function GlassRowList<T>({
   getKey,
   hideHeader,
   headerClassName,
-  gapClassName = 'gap-2.5',
-  variant = 'cards',
+  gapClassName = 'gap-1',
 }: GlassRowListProps<T>) {
   const tr = useFormTranslation('rowList');
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -125,22 +123,17 @@ export function GlassRowList<T>({
     }
   }
   const extraActionsWidth = renderExtraActions ? 32 : 0;
-  const actionsWidth = actions.length * 28 + (actions.length - 1) * 4 + extraActionsWidth;
+  const actionsWidth = actions.length * 32 + (actions.length - 1) * 4 + extraActionsWidth;
 
   return (
-    <div
-      ref={listRef}
-      className={`flex flex-col ${variant === 'table' ? 'overflow-hidden rounded-lg border border-border-muted' : gapClassName}`}
-    >
+    <div ref={listRef} className={`flex flex-col ${gapClassName}`}>
       {!hideHeader && (
         <div
-          className={`flex min-h-9 items-center gap-1 px-3 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${
-            variant === 'table' ? 'border-b border-border-muted bg-background/60' : '-mb-1.5 pb-0.5'
-          } ${headerClassName ?? ''}`}
+          className={`flex min-h-8 items-center gap-1 px-2 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
         >
           {draggable && (
             <span
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center"
               aria-hidden="true"
             />
           )}
@@ -159,19 +152,12 @@ export function GlassRowList<T>({
       )}
 
       {items.map((item, index) => {
-        const isLast = index === items.length - 1;
         return (
           <div
             key={getKey ? getKey(item, index) : index}
-            className={`flex min-h-10 items-center gap-1 px-3 py-1.5 ${
-              variant === 'table'
-                ? `border-border-muted ${isLast ? '' : 'border-b'} ${
-                    draggable ? 'transition-colors hover:bg-surface-hover/40' : ''
-                  }`
-                : `rounded-lg border border-border-muted bg-background ${
-                    draggable ? 'transition-colors hover:bg-surface-hover/40' : ''
-                  }`
-            } ${getRowOpacity?.(index) ? 'opacity-50' : ''}`}
+            className={`flex min-h-10 items-center gap-1 rounded-lg px-2 py-1 transition-colors hover:bg-surface-hover/40 ${
+              getRowOpacity?.(index) ? 'opacity-50' : ''
+            }`}
             onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
           >
             {draggable && (
@@ -195,7 +181,7 @@ export function GlassRowList<T>({
                     handles?.[targetIndex]?.focus();
                   });
                 }}
-                className="flex h-7 w-7 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
+                className="flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
                 title={dragTitle ?? tr('dragToReorder')}
                 aria-label={dragTitle ?? tr('dragToReorder')}
                 aria-keyshortcuts="ArrowUp ArrowDown"
@@ -246,7 +232,7 @@ export function GlassRowList<T>({
                     type="button"
                     onClick={handler}
                     disabled={disabled}
-                    className={`inline-flex h-7 w-7 flex-shrink-0 cursor-pointer items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                    className={`inline-flex h-8 w-8 flex-shrink-0 cursor-pointer items-center justify-center rounded outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
                       disabled
                         ? 'opacity-40 cursor-not-allowed'
                         : action === 'remove'

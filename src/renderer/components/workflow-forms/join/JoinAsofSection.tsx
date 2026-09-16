@@ -120,9 +120,9 @@ export function JoinAsofSection({
 
   return (
     <div className="grid gap-1.5">
-      {/* ASOF time settings card: the time trio and tolerance form their
-          own group; only the by rows below use the condition grid. */}
-      <div className="grid gap-2.5 rounded-lg border border-border-muted bg-background px-3 py-2.5">
+      {/* ASOF time settings: the time trio and tolerance form their own
+          group; only the by rows below use the condition grid. */}
+      <div className="grid gap-2.5">
         <div className="flex items-center gap-1">
           <div className="flex min-w-0 flex-[1] items-center">
             <div className="flex w-full">
@@ -132,7 +132,7 @@ export function JoinAsofSection({
                 columnTypes={leftColumnTypesQualified}
                 onChange={(v) => onAsofChange({ leftTime: v || undefined })}
                 placeholder={tr('leftTimeCol')}
-                className="h-7 w-full min-w-0 text-[12px]"
+                className="h-8 w-full min-w-0 text-[12px]"
               />
             </div>
           </div>
@@ -152,7 +152,7 @@ export function JoinAsofSection({
                 ]}
                 onChange={(v) => onAsofChange({ operator: v })}
                 variant="highlight"
-                className="h-7 w-full text-[12px] [&>span]:text-center"
+                className="h-8 w-full text-[12px] [&>span]:text-center"
               />
             </div>
           </div>
@@ -164,13 +164,13 @@ export function JoinAsofSection({
                 columnTypes={rightColumnTypesQualified}
                 onChange={(v) => onAsofChange({ rightTime: v || undefined })}
                 placeholder={tr('rightTimeCol')}
-                className="h-7 w-full min-w-0 text-[12px]"
+                className="h-8 w-full min-w-0 text-[12px]"
               />
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <GlassFormLabel className="!h-7">{tr('tolerance')}</GlassFormLabel>
+          <GlassFormLabel className="!h-8">{tr('tolerance')}</GlassFormLabel>
           {(
             [
               { key: 'd', label: tr('toleranceDay'), max: 365 },
@@ -192,7 +192,7 @@ export function JoinAsofSection({
                   handleDurationChange(key, Number.isNaN(parsed) ? 0 : Math.max(0, parsed));
                 }}
                 textCenter
-                className="h-7 w-[46px] !px-1.5 text-[12px]"
+                className="h-8 w-[46px] !px-1.5 text-[12px]"
               />
               <span className="w-[28px] text-[12px] text-text-muted">{label}</span>
             </div>
@@ -219,7 +219,7 @@ export function JoinAsofSection({
                     )
                   }
                   placeholder={tr('leftField')}
-                  className="h-7 w-full text-[12px]"
+                  className="h-8 w-full text-[12px]"
                 />
               ),
             },
@@ -246,7 +246,7 @@ export function JoinAsofSection({
                     )
                   }
                   placeholder={tr('rightField')}
-                  className="h-7 w-full text-[12px]"
+                  className="h-8 w-full text-[12px]"
                 />
               ),
             },

@@ -21,7 +21,7 @@ export function GlassDirectionToggle({
     <button
       type="button"
       onClick={() => onChange(value === 'asc' ? 'desc' : 'asc')}
-      className={`inline-flex min-h-7 items-center justify-center rounded border px-2 text-[12px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
+      className={`inline-flex min-h-8 items-center justify-center rounded border px-2 text-[12px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
         variant === 'highlight'
           ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
           : value === 'asc'

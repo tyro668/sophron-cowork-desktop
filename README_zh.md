@@ -1,296 +1,95 @@
-<p align="center">
-  <img src="resources/logo.png" alt="九思助理 Logo" width="280" />
-</p>
+<p align="center"><img src="resources/logo.png" alt="九思助理标志" width="180" /></p>
 
-<h1 align="center">🚀 九思助理: 专注数据处理的本地 Agent 桌面应用</h1>
+<h1 align="center">九思助理 · sophron cowork</h1>
 
-<p align="center">
-  • 本地数据处理 • 一键安装 • 沙盒化 Agent 工作区
-</p>
+<p align="center">带有结构化数据工作台的本地桌面 Agent</p>
 
-<p align="center">
-  <a href="./README.md">English Docs</a> •
-  <a href="#核心特性">核心特性</a> •
-  <a href="#演示">演示视频</a> •
-  <a href="#下载与安装">下载安装</a> •
-  <a href="#快速开始">快速开始</a> •
-  <a href="#技能库">技能库</a>
-</p>
+<p align="center"><a href="./readme.md">English</a> · <a href="#能做什么">项目能力</a> · <a href="#架构">架构</a> · <a href="#产品对比">产品对比</a> · <a href="#开始使用">开始使用</a></p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/平台-Windows%20%7C%20macOS-blue" alt="Platform" />
-  <img src="https://img.shields.io/badge/协议-MIT-green" alt="License" />
-  <img src="https://img.shields.io/badge/Node.js-18+-brightgreen" alt="Node.js" />
-</p>
+九思助理是采用 MIT 许可证的 Electron 桌面应用。它把文件协作 Agent 和数据工作台放在一起：在电脑上导入和预览表格，编排可重复执行的数据清洗流程，得到输出表；同一个工作区还可使用 Skills、MCP 工具、定时任务、记忆和经授权的远程消息。模型推理可以使用自行配置的 API 服务、本机 Ollama、ChatGPT/Codex 订阅登录，或在可用时使用应用账号支持的内置模型服务。
 
----
+应用运行在本地，**但“本地应用”不等于“完全不联网”**。模型调用、MCP 连接器、远程渠道、可选的云端表同步、账号登录和更新检查都可能访问外部服务。处理敏感数据前请阅读[数据与安全边界](#数据与安全边界)。
 
-九思助理 是一款免费开源、专注本地数据处理的 AI Agent 桌面应用，支持 Windows 和 macOS 一键安装，无需任何编程知识。它将 Claude、OpenAI、Gemini、DeepSeek 等多种 AI 模型封装为友好的桌面工作区，帮助你在本机分析、清洗、转换、总结和整理文件、表格、报告与数据集。核心能力包括虚拟机级别沙盒隔离（Windows 使用 WSL2，macOS 使用 Lima）、内置 Skills 技能系统（生成数据报告、PPTX、DOCX、XLSX、PDF）、MCP 协议集成（连接浏览器、Notion 等桌面应用）、GUI 自动化操作，以及通过飞书和 Slack 进行远程控制。
+## 能做什么
 
----
+### 用 Agent 处理工作区
 
-## 📖 简介
+- 选择工作区，让 Agent 读取、整理或创建文件；在会话中附加文件和图片，并查看流式回复、工具调用和 Trace。
+- 在 DeepSeek、Moonshot、阿里云百炼/DashScope、Z.AI、Anthropic、OpenAI、OpenAI Codex 订阅、OpenRouter 和 Ollama 等预设之间选择。模型是否可用、具体能力和费用由所选服务决定；账号支持的内置模型是另一个选项。
+- 使用随应用提供的 `pptx`、`docx`、`pdf`、`xlsx`、`skill-creator` Skills；添加项目级或全局 Skills，并在应用中管理。
+- 通过 stdio、SSE 或 Streamable HTTP 连接 MCP 服务。预设包括 Chrome DevTools、Notion、软件开发工具和内置 GUI 操作服务。GUI 自动化需要系统权限及具备视觉能力的模型，不保证适用于所有应用。
 
-**九思助理** 是一个面向数据密集型工作的本地 Agent 工作区，提供 **Windows** 和 **macOS** 一键安装包，无需任何编程知识。
+### 做可复用的数据准备
 
-它为 AI 提供了一个沙盒化的工作环境，可以处理本地数据文件、通过内置的 **Skills** 系统生成专业交付物（PPTX、DOCX、XLSX 等），并在需要外部工具时 **通过 MCP 连接桌面 APP**（浏览器、Notion 等）。
+- 将 CSV/TSV、Excel 文件或包含这类文件的文件夹导入为输入表，配置读取方式并预览行列。
+- 用可视化流程画布或 Prep DSL 创建数据任务和输出表。算子包括筛选、字段选择与映射、去重、缺失值处理、类型转换、排序、关联、聚合、计算字段、透视/逆透视、集合操作、数组展开、行数限制和输出节点。
+- 预览流程中的节点、运行任务并检查输出表。图形流程、DSL 和生成的计划都会归一化为带版本的类型化计划，保存或运行前检查图结构与字段规则。
+- 让 Agent 通过与 UI 共用的命令服务列出、预览、导入和处理数据资源。需求分析可帮助生成待审阅的数据任务；生成的流程须通过校验才能执行。
+- 按需连接 Personal Analysis/云端数据表 API，浏览或导入远程表，也可上传本地表。这是明确的外部数据通路，并非纯本地处理的一部分。
 
-> [!WARNING]
-> **免责声明**：九思助理 仅作为一个 AI 协作工具，请对它的操作保持谨慎。特别是在授权文件修改或删除等操作时，请务必自行审查风险，我们支持了基于VM的sandbox隔离，但是某些操作可能仍存风险。
+### 复用与触发任务
 
----
+- 在桌面应用中配置一次性或周期性定时任务。它们复用本地会话运行时，到点执行需要电脑与应用保持运行。
+- 启用记忆，在会话前检索相关上下文、会话后吸收有用信息，并在设置中查看和管理本地记忆。
+- 启用远程控制后，可将飞书、钉钉、企业微信、Slack 或 Gateway WebSocket 入口的已授权消息路由为 Agent 会话。需要配置渠道、配对/鉴权，并保持桌面端运行。
 
-## 🧭 数据闭环架构图
+## 架构
 
-<p align="center">
-  <img src="resources/sophron-data-closed-loop-architecture.svg" alt="九思助理数据闭环架构图" />
-</p>
+<p align="center"><img src="resources/sophron-architecture.png" alt="九思助理产品架构与系统交互 PNG 图：左侧为可选 Personal Analysis 云表服务，中间为 Electron 本地应用与 Agent、类型化数据工作流及 DuckDB，右侧为远程消息平台、模型与 MCP 服务、本地数据源；底部标示本地输出表、Agent 文件交付以及可选的云表回写闭环" width="100%" /></p>
 
----
+图的三栏沿用历史图“云端 ↔ 本地产品 ↔ 本地数据源”的关系，但内容以当前代码为准。历史图中的 FineBI Next 是场景参考，仓库并没有硬编码 FineBI Next 接口；目前实现的是按服务地址配置的 Personal Analysis API。云表可经 API 导出 CSV，再导入本地输入表；本地表可在明确选择后导出 CSV，以 CREATE 或 REPLACE 模式上传到云端。云侧图表、看板、报表和发布属于所连接的外部系统，不能算作本应用的内置数据工作台能力。
 
-<a id="核心特性"></a>
+桌面 React 工作台经 preload IPC 调用 Electron 主进程。`SessionManager` 管理会话队列、Trace 与权限；Agent 运行时组合模型路由、内置工具、MCP、Skills、记忆和数据工具。数据工作台与 Agent 数据工具共用 `DataCommandService`。本地 CSV/TSV、Excel 及文件夹，和选择导入的云表，都进入输入表通路；GUI、Prep DSL 与 AI 计划统一构建类型化工作流，先做图结构与字段规则校验，再由 DuckDB 执行。SQLite 存储会话、Trace、定时任务及数据元信息，DuckDB 存储实际表数据。数据任务生成可预览、可复用的输出表；Agent 还可通过工具与 Skills 交付文档类文件。模型、MCP 与远程消息是独立的按需外部边界，本机定时任务和远程消息最终仍进入本地会话运行时。
 
-## ✨ 核心特性
+实现细节可从[开发文档入口](docs/development/README.md)、[数据工作区说明](docs/development/data-workspace.md)和 [Prep DSL 参考](docs/prep-dsl-reference.md)开始阅读。
 
-|               | MCP & Skills | 远程控制 | 图形界面操作 |
-| ------------- | ------------ | -------- | ------------ |
-| Claude Cowork | ✓            | ✗        | ✗            |
-| OpenClaw      | ✓            | ✓        | ✗            |
-| 九思助理      | ✓            | ✓        | ✓            |
+## 产品对比
 
-- **一键安装，开箱即用**：提供 Windows 和 macOS 预构建安装包，无需配置环境，下载即可开始使用。。
-- **本地数据处理**：分析表格、清洗混乱数据集、总结报告、抽取结构化信息，并从工作区文件生成交付物。
-- **灵活模型支持**：内置 **DeepSeek**、**Moonshot**、**Z.AI**、**Anthropic**、**OpenAI**、**OpenRouter** 和 **Ollama** 提供商预设，可灵活使用云端模型或本地模型。
-- **远程控制**：可以接入**飞书**等协作平台和远程服务，实现工作流自动化和跨平台操作。
-- **图形界面操作**：可以控制和操作电脑上的各种桌面 GUI 应用程序。**推荐使用 Gemini-3-Pro 模型**以获得最佳的 GUI 理解和控制效果。
-- **智能文件管理**：可以在工作区内读取、写入和整理文件。
-- **Skills 系统**：内置 PPTX、DOCX、PDF、XLSX 生成和处理工作流。**支持自定义技能的添加与删除。**
-- **MCP外部服务支持**：通过 **MCP Connectors** 连接器集成浏览器、Notion、自定义等应用，扩展 AI 能力。
-- **多模态交互输入**：支持直接拖拽文件和图片到输入框，实现无缝的多模态交互。
-- **实时追踪**：在 Trace Panel 中观察 AI 推理和工具调用过程。
-- **安全可控的工作环境**：所有操作限制在你选择的工作区文件夹内。
-- **虚拟机级别安全隔离**：基于 WSL2 (Windows) 和 Lima (macOS) 的虚拟机隔离，所有命令在隔离的虚拟机中执行，保障宿主机安全。
-- **UI优化**：灵活优美的UI设计、切换系统语言、完善的MCP/Skills/Tools调用展示。
+旧的“有/没有”对比容易误导：这三个产品都能使用工具与 Skills、执行周期任务，并可在满足权限和平台条件时操作浏览器或桌面。更重要的区别是**任务在哪里执行，以及结构化数据准备是不是产品内置的工作界面**。
 
-<a id="演示"></a>
+| 维度           | 九思助理                                                          | Claude Cowork                                                                         | OpenClaw                                                                 |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 主要形态       | 本地 Electron 聊天 **加** 输入/输出表与任务工作台                 | 覆盖网页、桌面和移动端的 Claude 任务工作区                                            | 自托管 Agent Gateway、消息渠道与工具体系                                 |
+| 结构化数据准备 | 内置数据表、可视化流程与 Prep DSL、类型化校验、DuckDB 执行        | 可通过任务、插件和连接工具处理表格并交付文件；官方文档未介绍同类内置 Prep 画布/DSL    | 官方能力概览以通用工具/Skills/插件为主，未描述本项目这套表与任务流程界面 |
+| 模型选择       | 自配 API、Ollama、Codex 订阅登录，或可用时使用账号支持的模型服务  | 付费 Claude 套餐中的 Claude 模型                                                      | 可配置模型提供商及运行策略                                               |
+| 远程与定时入口 | 飞书、钉钉、企微、Slack/WebSocket；**本地**定时会话               | 跨设备会话/Dispatch 与定时任务；云端任务可在设备关机时运行，本地资源仍需 Desktop 在线 | Gateway 消息渠道及 cron/tasks/heartbeat；可在主机或符合条件的节点运行    |
+| 桌面交互       | 内置 GUI 操作 MCP，受系统权限和模型能力限制                       | 在支持的套餐/平台中使用浏览器和 computer use                                          | 在已启用且受支持的主机/节点上使用浏览器与 computer 工具                  |
+| 执行边界       | 工作区/路径检查；命令可选用 WSL2 或 Lima 隔离，失败时可能回退本机 | 云端隔离执行；经授权可访问桌面端连接的本地资源                                        | 可配置沙盒与工具策略；普通会话默认不开启沙盒                             |
 
-## 🎬 演示
+此表比较的是**官方文档中的产品默认界面和运行方式**，不表示其他产品无法通过插件或自定义代码实现类似流程。“未见同类原生数据界面”是**根据所引文档作出的推断，不等于证明其不存在**。竞品能力及套餐随时可能变化；截至 **2026-09-16** 核对了 [Claude Cowork 入门指南](https://support.claude.com/en/articles/13345190-get-started-with-claude-cowork)、[Claude 桌面操作](https://support.claude.com/en/articles/14128542-let-claude-use-your-computer-in-cowork)、[Claude 定时任务](https://support.claude.com/en/articles/13854387-schedule-recurring-tasks-in-claude-cowork)、[Claude Dispatch](https://support.claude.com/en/articles/13947068-assign-tasks-from-anywhere-in-claude-cowork)、[OpenClaw 能力概览](https://docs.openclaw.ai/tools)、[OpenClaw 渠道](https://docs.openclaw.ai/channels)、[OpenClaw 模型提供商](https://docs.openclaw.ai/concepts/model-providers)、[OpenClaw 自动化](https://docs.openclaw.ai/automation)、[OpenClaw computer use](https://docs.openclaw.ai/nodes/computer-use)及 [OpenClaw 沙盒默认设置](https://docs.openclaw.ai/gateway/sandboxing/modes-scope-and-backend)。九思助理的描述依据当前仓库代码与测试。
 
-演示素材随发布材料提供，当前工作流包括：
+## 开始使用
 
-- 文件夹收纳整理
-- 从文件生成 PPT
-- 从文件生成 XLSX 表格
+### 安装或从源码运行
 
----
+当前打包配置面向 **Windows x64**（`.exe`）和 **Apple Silicon macOS**（`.dmg`、`.zip`）。请从项目发布渠道取得可信安装包。配置中还有 Linux AppImage 构建目标，但这里不承诺已发布 Linux 安装包；安装包实际内容与签名以发布构建为准。
 
-<a id="下载与安装"></a>
-
-## 📦 下载与安装
-
-### 方式一：下载安装包
-
-请通过 九思助理 官方发布渠道下载最新版本。
-
-| 平台                      | 文件类型 |
-| ------------------------- | -------- |
-| **Windows**               | `.exe`   |
-| **macOS** (Apple Silicon) | `.dmg`   |
-
-### 方式二：源码编译
-
-适合需要从源码进行本地构建的场景：
+已有源码检出时，请使用 **Node.js 22 或更新版本**及 npm：
 
 ```bash
-git clone ssh://git@code.fineres.com:7999/res/metis-cowork.git sophron
-cd sophron
 npm install
-npm run rebuild
 npm run dev
 ```
 
-构建安装包：`npm run build`
+`npm install` 会执行原生模块重建及 Node 准备；`npm run dev` 还会构建 WSL/Lima agent 和 MCP bundle。需要准备内置 Python 的文档工作流可用 `npm run dev:with-python`。打包命令为 `npm run build:sophron`、`npm run build:sophron-cn`，或一次构建两个品牌的 `npm run build`；构建会准备更多资源，并要求相应的平台构建环境。`package.json` 中的仓库地址为 SSH 入口，可能需要访问权限。
 
-### 安全配置：🔒 沙盒支持
+### 第一次任务
 
-九思助理 提供**多级沙盒保护**，确保系统安全：
+1. 打开应用，选择一个工作区文件夹。
+2. 在设置中选择模型通路：填写服务商凭据、连接 Ollama、登录支持的订阅通路，或使用可用的内置账号通路。费用及数据政策请以模型服务商为准。
+3. 在聊天中试试：“总结这个文件夹里的 CSV，并生成一份简短报告。”
+4. 需要重复处理表格时，打开数据工作台，导入输入表、创建或描述任务、预览各节点，再运行得到输出表。
 
-| 级别     | 平台    | 技术     | 说明                            |
-| -------- | ------- | -------- | ------------------------------- |
-| **基础** | 全平台  | 路径守卫 | 文件操作限制在工作区文件夹内    |
-| **增强** | Windows | WSL2     | 命令在隔离的 Linux 虚拟机中执行 |
-| **增强** | macOS   | Lima     | 命令在隔离的 Linux 虚拟机中执行 |
+## 数据与安全边界
 
-- **Windows (WSL2)**：检测到 WSL2 后，所有 Bash 命令自动路由到 Linux 虚拟机，工作区双向同步。
-- **macOS (Lima)**：安装 [Lima](https://lima-vm.io/) (`brew install lima`) 后，命令在挂载了 `/Users` 的 Ubuntu 虚拟机中运行。
-- **回退模式**：如果没有可用的虚拟机，命令将在本机执行，受路径限制保护。
+- 工作区文件保存在本机；会话/元信息主要存于 SQLite，表数据存于 DuckDB。**只有在使用选定的外部能力时，数据才会跨出本地边界。**
+- 模型提示及相关文件内容可能发送给配置的云端模型或账号支持的模型代理。Ollama 只有在指向真正的本机实例时才可使模型推理留在本地；其他工具或连接器仍可能联网。
+- MCP 服务、GUI 自动化、远程渠道、Personal Analysis 云表导入/上传、账号认证、软件更新各有独立的访问或网络边界。只启用需要的能力，并审查凭据与权限。
+- Windows 的 WSL2 与 macOS 的 Lima 是**可选的命令执行隔离**，并非应用所有行为都运行在 VM 内。沙盒关闭或不可用时，执行器可能回退到本机。路径限制与权限策略提供额外检查，但不能消除误操作风险。
+- 较严格的 `default` 权限档会对写入、编辑和 shell 命令请求确认，但应用初始选择的是 `auto_review`，常见操作可能自动放行；`full_access` 更宽松。请检查当前所选权限档、核查重要改动，并备份不可替代的文件。
 
-**配置方法（可选、推荐）**
+## 开发与许可
 
-- **Windows**：如已安装 WSL2，会自动检测。[安装 WSL2](https://docs.microsoft.com/zh-cn/windows/wsl/install)
+修改代码时可运行 `npm run typecheck`、`npm run test`、`npm run lint`；模块索引与定向测试见[开发文档](docs/development/README.md)。界面修改须遵循 [UI_STYLE_GUIDE.md](UI_STYLE_GUIDE.md)。
 
-- **macOS**：
-  如已安装 lima，会自动检测。lima安装指令如下：
-
-```bash
-brew install lima
-# 九思助理 会自动创建和管理 Lima 虚拟机（内部 Lima 实例名：'claude-sandbox'）
-```
-
----
-
-<a id="快速开始"></a>
-
-## 🚀 快速开始
-
-### 1. 获取 API Key
-
-云端模型需要配置对应 API Key；本地模型可通过本机 Ollama 服务使用。下表与应用设置中的提供商顺序保持一致。
-
-| 服务商         | 获取 Key / 配置入口                                 | Base URL                       | 推荐模型 Model                                          |
-| -------------- | --------------------------------------------------- | ------------------------------ | ------------------------------------------------------- |
-| **DeepSeek**   | [DeepSeek Platform](https://platform.deepseek.com/) | `https://api.deepseek.com`     | `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat` |
-| **Moonshot**   | [Moonshot Platform](https://platform.moonshot.ai/)  | `https://api.moonshot.ai/v1`   | `kimi-k2.6`, `kimi-k2-thinking`, `moonshot-v1-128k`     |
-| **Z.AI**       | [Z.AI Docs](https://docs.z.ai/)                     | `https://api.z.ai/api/paas/v4` | `glm-5.1`, `glm-5`, `glm-4.5`                           |
-| **Anthropic**  | [Anthropic Console](https://console.anthropic.com/) | `https://api.anthropic.com`    | `claude-opus-4-6`, `claude-sonnet-4-6`                  |
-| **OpenAI**     | [OpenAI Platform](https://platform.openai.com/)     | `https://api.openai.com/v1`    | `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.3-codex`               |
-| **OpenRouter** | [OpenRouter](https://openrouter.ai/)                | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4-6`, `openai/gpt-5.4`         |
-| **Ollama**     | [Ollama](https://ollama.com/)                       | `http://localhost:11434/v1`    | 从本机 Ollama 服务自动发现                              |
-
-### 2. 配置应用
-
-1. 打开应用，点击左下角 ⚙️ **设置**。
-2. 填入你的 **API Key**。
-3. **关键步骤**：根据上表设置 **Base URL**，或直接使用提供商预设填入的默认值。
-4. 输入想要使用的 **Model** 名称。
-
-### 3. 开始协作
-
-1. **选择工作区**：选择一个文件夹，授权 Claude 在其中工作。
-2. **输入指令**：
-   > "读取当前文件夹下的 financial_report.csv，并帮我生成一份包含 5 页幻灯片的 PPT 总结报告。"
-
-### 📝 重要提示
-
-1.  **macOS 安装问题**：如果直接下载 DMG 安装后提示”无法验证开发者”，前往 **系统设置 > 隐私与安全性** 点击”仍要打开”。
-2.  **网络连接**：对于 `WebSearch` 等联网工具，可能需要开启代理软件的“虚拟网卡 (TUN模式)”功能才能正常访问。
-3.  **Notion连接器使用**: 除了设置Notion token之外，还需要在根页面添加连接。更多指引请看https://www.notion.com/help/add-and-manage-connections-with-the-api。
-
-<a id="技能库"></a>
-
-## 🧰 技能库
-
-九思助理 内置技能位于 `.claude/skills/`，并支持用户自行添加/自定义技能，包含：
-
-- `pptx`：PowerPoint 生成
-- `docx`：Word 文档处理
-- `pdf`：PDF 处理与表单
-- `xlsx`：Excel 电子表格支持
-- `skill-creator`：技能开发工具包
-
----
-
-## 🏗️ 架构概览
-
-```
-sophron/
-├── src/
-│   ├── main/                    # Electron 主进程 (Node.js)
-│   │   ├── index.ts             # 主入口文件
-│   │   ├── claude/              # Agent SDK 与运行器
-│   │   │   └── agent-runner.ts  # AI 代理执行逻辑
-│   │   ├── config/              # 配置管理
-│   │   │   └── config-store.ts  # 持久化设置存储
-│   │   ├── db/                  # 数据库层
-│   │   │   └── database.ts      # SQLite/数据持久化
-│   │   ├── ipc/                 # IPC 处理器
-│   │   ├── memory/              # 内存管理
-│   │   │   └── memory-manager.ts
-│   │   ├── sandbox/             # 安全与路径解析
-│   │   │   └── path-resolver.ts # 沙盒化文件访问
-│   │   ├── session/             # 会话管理
-│   │   │   └── session-manager.ts
-│   │   ├── skills/              # 技能加载与管理
-│   │   │   └── skills-manager.ts
-│   │   └── tools/               # 工具执行
-│   │       └── tool-executor.ts # 工具调用处理
-│   ├── preload/                 # Electron 预加载脚本
-│   │   └── index.ts             # 上下文桥接设置
-│   └── renderer/                # 前端 UI (React + Tailwind)
-│       ├── App.tsx              # 根组件
-│       ├── main.tsx             # React 入口
-│       ├── components/          # UI 组件
-│       │   ├── ChatView.tsx     # 主聊天界面
-│       │   ├── ConfigModal.tsx  # 设置对话框
-│       │   ├── ContextPanel.tsx # 文件上下文显示
-│       │   ├── MessageCard.tsx  # 聊天消息组件
-│       │   ├── PermissionDialog.tsx
-│       │   ├── Sidebar.tsx      # 导航侧边栏
-│       │   ├── Titlebar.tsx     # 自定义窗口标题栏
-│       │   ├── TracePanel.tsx   # AI 推理追踪
-│       │   └── WelcomeView.tsx  # 引导页面
-│       ├── hooks/               # 自定义 React Hooks
-│       │   └── useIPC.ts        # IPC 通信 Hook
-│       ├── store/               # 状态管理
-│       │   └── index.ts
-│       ├── styles/              # CSS 样式
-│       │   └── globals.css
-│       ├── types/               # TypeScript 类型
-│       │   └── index.ts
-│       └── utils/               # 工具函数
-├── .claude/
-│   └── skills/                  # 默认技能定义
-│       ├── pptx/                # PowerPoint 生成
-│       ├── docx/                # Word 文档处理
-│       ├── pdf/                 # PDF 处理与表单
-│       ├── xlsx/                # Excel 电子表格支持
-│       └── skill-creator/       # 技能开发工具包
-├── resources/                   # 静态资源 (图标、图片)
-├── electron-builder.yml         # 构建配置
-├── vite.config.ts               # Vite 打包配置
-└── package.json                 # 依赖与脚本
-```
-
----
-
-## ❓ 常见问题
-
-**九思助理 是什么？**
-九思助理 是一款免费开源的桌面应用，为用户提供专注数据处理的本地 AI Agent 工作空间。它可以帮助你分析、清洗、转换、总结和整理工作区内的文件与数据集，并提供 Windows 和 macOS 一键安装包。
-
-**九思助理 和 Claude Cowork 有什么区别？**
-九思助理 的定位更偏向本地数据处理，而不是通用编码或聊天。它支持多模型、GUI 自动化操作、飞书/Slack 远程控制，以及虚拟机级别的沙盒隔离。详见[功能对比表](#核心特性)。
-
-**支持哪些 AI 模型？**
-当前内置 DeepSeek、Moonshot、Z.AI、Anthropic、OpenAI、OpenRouter 和 Ollama 提供商预设。OpenRouter 可路由更多云端模型，Ollama 可使用本机已安装的本地模型。
-
-**九思助理 免费吗？**
-是的。九思助理 本身完全免费，采用 MIT 开源协议。你只需为所选 AI 模型服务商的 API 调用付费。
-
-**支持 Linux 吗？**
-目前提供 Windows 和 macOS 的预构建安装包。Linux 用户可以通过源码编译方式使用，详见[源码编译](#下载与安装)章节。
-
-**沙盒隔离是怎么工作的？**
-九思助理 提供多级安全保护：所有平台均有基础的路径限制，Windows 和 macOS 还支持虚拟机级别隔离（分别使用 WSL2 和 Lima）。启用虚拟机后，所有命令在隔离的 Linux 环境中执行，保护你的宿主机系统安全。
-
-**什么是 Skills？如何创建自定义技能？**
-Skills 是内置的工作流模板，用于完成特定任务，如生成 PPTX、DOCX、PDF 或 XLSX 文件。九思助理 在 `.claude/skills/` 目录下预置了默认技能，并提供 `skill-creator` 工具帮助你构建自定义技能。
-
-**什么是 MCP？怎么使用？**
-MCP（Model Context Protocol，模型上下文协议）让 AI 能连接外部工具和服务。九思助理 支持 MCP 连接器，可对接浏览器、Notion 等桌面应用，将 AI 的能力扩展到文件管理和编程之外。
-
-**如何设置飞书或 Slack 远程控制？**
-九思助理 支持通过飞书、钉钉和 Slack 进行远程控制，你可以在协作平台上发送指令并接收执行结果。钉钉应用内机器人可选择 Stream 长连接或 Webhook（HTTP）模式；Webhook 模式需要配置公网 HTTPS 回调地址，并保持九思助理运行。请在应用设置中查看远程控制配置选项。
-
-**数据安全吗？会不会把数据发送到外部服务器？**
-九思助理 完全在本地运行，你的文件保留在你的工作区内。唯一的外部通信是与你配置的 AI 模型 API（如 Anthropic、OpenRouter）之间的交互。没有任何数据被发送到 九思助理 的服务器。
-
-## 📄 许可证
-
-MIT © 九思助理
-
----
-
-<p align="center">
-  Made with ❤️ by the 九思助理 team with the help of opus4.5
-</p>
+项目采用 [MIT 许可证](LICENSE)。应用源码开放；模型订阅、API 调用及可选云服务可能另行收费。

@@ -198,7 +198,7 @@ export function GlassFieldSingleSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
+          'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
           'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
@@ -239,7 +239,7 @@ export function GlassFieldSingleSelect({
             }}
             className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
           >
-            <div className="flex min-h-9 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
+            <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
               <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
@@ -247,7 +247,7 @@ export function GlassFieldSingleSelect({
                 value={search}
                 onChange={handleSearchChange}
                 placeholder={searchPlaceholder}
-                className="h-7 flex-1 min-w-0 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+                className="h-8 flex-1 min-w-0 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
               />
             </div>
 
@@ -275,7 +275,7 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex min-h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
+                        'flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
                           ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',

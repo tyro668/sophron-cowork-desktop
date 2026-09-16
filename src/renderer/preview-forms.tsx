@@ -322,7 +322,7 @@ function PreviewApp() {
       id: 'n-agg',
       type: 'operator',
       position: { x: 480, y: 85 },
-      data: { workflowNode: makeNode('aggregate', {}) },
+      data: { workflowNode: makeNode('aggregate', {}), invalid: true },
     },
     {
       id: 'n-out',

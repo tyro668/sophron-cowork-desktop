@@ -196,7 +196,7 @@ export default function FormPivot({
             type="button"
             disabled={!canAppendRow(axes.length, MAX_ON_COUNT)}
             onClick={() => addAxisAfter(axes.length - 1)}
-            className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
             {tr('pivotAddAxis')}
@@ -236,7 +236,7 @@ export default function FormPivot({
                       updateMetric(index, { function: value as PivotMetric['function'] })
                     }
                     variant="highlight"
-                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                    className="h-8 w-full text-[12px] [&>span]:text-left"
                   />
                 ),
               },
@@ -263,7 +263,7 @@ export default function FormPivot({
                     placeholder={tr('pivotDefaultSuffix', {
                       suffix: getPivotMetricDefaultSuffix(metric.function),
                     })}
-                    className="h-7 w-full px-2 text-[12px]"
+                    className="h-8 w-full px-2 text-[12px]"
                   />
                 ),
               },
@@ -358,8 +358,8 @@ function PivotAxisCard({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-muted bg-background">
-      <div className="grid h-11 grid-cols-[minmax(0,1fr)_88px_32px] items-center gap-2 px-2">
+    <div>
+      <div className="grid h-11 grid-cols-[minmax(0,1fr)_88px_32px] items-center gap-2 rounded-lg px-2 transition-colors hover:bg-surface-hover/40">
         <GlassFieldSingleSelect
           value={axis.field}
           options={fieldCompletions}
@@ -368,13 +368,13 @@ function PivotAxisCard({
           disabledOptions={disabledFields}
           placeholder={tr('pivotAxisFieldPlaceholder')}
           searchPlaceholder={tr('fieldPicker.searchField')}
-          className="h-7 min-w-0"
+          className="h-8 min-w-0"
         />
         <button
           type="button"
           disabled={!axis.field}
           onClick={handleToggle}
-          className="flex h-7 items-center justify-center gap-1 rounded-md text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
+          className="flex h-8 items-center justify-center gap-1 rounded-md text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
           aria-expanded={expanded}
         >
           {tr('pivotSelectedValues', {
@@ -388,7 +388,7 @@ function PivotAxisCard({
         <button
           type="button"
           onClick={onRemove}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
           title={tr('pivotRemoveAxis')}
           aria-label={tr('pivotRemoveAxis')}
         >
@@ -541,13 +541,13 @@ function PivotValueList({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder={tr('pivotSearchValues')}
-          className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+          className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-[12px] text-text-primary outline-none placeholder:text-text-muted"
         />
         <button
           type="button"
           disabled={!canAddCustomValue}
           onClick={() => setAddingCustomValue((current) => !current)}
-          className="flex h-7 flex-none items-center gap-1 rounded-md px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
+          className="flex h-8 flex-none items-center gap-1 rounded-md px-1.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
           aria-expanded={addingCustomValue}
           title={
             configuredValueCount >= MAX_PIVOT_VALUES_PER_FIELD
@@ -561,7 +561,7 @@ function PivotValueList({
           {tr('pivotAddValue')}
         </button>
         <label
-          className="flex h-7 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary"
+          className="flex h-8 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary"
           title={search.trim() ? tr('pivotToggleSearchResults') : tr('pivotAllValues')}
         >
           <input
@@ -587,20 +587,20 @@ function PivotValueList({
               if (event.key === 'Escape') closeCustomValueInput();
             }}
             placeholder={tr('pivotCustomValuePlaceholder')}
-            className="h-7 min-w-0 flex-1 rounded-md border border-border-muted bg-background px-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+            className="h-8 min-w-0 flex-1 rounded-md border border-border-muted bg-background px-2 text-[12px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
           />
           <button
             type="button"
             disabled={!customValue.trim()}
             onClick={submitCustomValue}
-            className="h-7 flex-none rounded-md bg-accent px-2.5 text-[12px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-8 flex-none rounded-md bg-accent px-2.5 text-[12px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           >
             {tr('confirm')}
           </button>
           <button
             type="button"
             onClick={closeCustomValueInput}
-            className="h-7 flex-none rounded-md px-2 text-[12px] text-text-secondary hover:bg-surface-hover"
+            className="h-8 flex-none rounded-md px-2 text-[12px] text-text-secondary hover:bg-surface-hover"
           >
             {tr('cancel')}
           </button>
@@ -629,7 +629,7 @@ function PivotValueList({
             return (
               <div
                 key={value.display}
-                className="flex h-9 items-center gap-2 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
+                className="flex h-8 items-center gap-2 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
               >
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
                   <input
@@ -644,7 +644,7 @@ function PivotValueList({
                   <button
                     type="button"
                     onClick={() => onCustomValueRemove(value.display)}
-                    className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                    className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
                     title={tr('pivotRemoveCustomValue')}
                     aria-label={tr('pivotRemoveCustomValue')}
                   >

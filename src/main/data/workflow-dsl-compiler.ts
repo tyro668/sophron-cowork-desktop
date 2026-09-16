@@ -3,6 +3,7 @@ import {
   parsePrepDsl,
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
+import { formatFieldRef } from '../../shared/prep-dsl/syntax/fields';
 import { DataCommandError, type WorkflowSaveShape } from './data-command-types';
 import { DataCommandResources } from './data-command-resources';
 import {
@@ -18,8 +19,14 @@ import {
 const WORKFLOW_CANDIDATE_CACHE_LIMIT = 100;
 
 export interface WorkflowResourceBindings {
+  /** Legacy single-source binding: binds the first (or `inputAlias`-matching) input node. */
   inputTableId?: string;
   inputAlias?: string;
+  /**
+   * Multi-source binding: `alias -> inputTableId`. Binds every input_source
+   * node whose `config.alias` matches a key. Unknown aliases are rejected.
+   */
+  inputs?: Record<string, string>;
   outputTableId?: string;
 }
 
@@ -58,32 +65,74 @@ export class WorkflowDslCompiler {
     bindings: WorkflowResourceBindings
   ): Promise<WorkflowSaveShape> {
     let nodes = workflow.nodes.map((node) => ({ ...node, config: { ...(node.config ?? {}) } }));
+    const aliasBindings = new Map<string, string>();
+    if (bindings.inputs) {
+      for (const [alias, tableId] of Object.entries(bindings.inputs)) {
+        const normalized = sanitizeAlias(alias);
+        if (!normalized || typeof tableId !== 'string' || !tableId.trim()) {
+          throw new DataCommandError(
+            'VALIDATION_FAILED',
+            `Invalid input resource binding ${JSON.stringify(alias)} -> ${JSON.stringify(tableId)}`
+          );
+        }
+        aliasBindings.set(normalized, tableId.trim());
+      }
+    }
+    // Legacy inputTableId binds inputAlias (when given) or the first input node.
     if (bindings.inputTableId) {
-      const inputTable = await this.resources.requireInputTable(bindings.inputTableId);
-      const inputNode = nodes.find((node) => node.type === 'input_source');
-      if (!inputNode) {
+      const alias =
+        sanitizeAlias(bindings.inputAlias) ||
+        stringConfigValue(nodes.find((node) => node.type === 'input_source')?.config?.alias) ||
+        'src';
+      if (!aliasBindings.has(alias)) aliasBindings.set(alias, bindings.inputTableId);
+    }
+
+    if (aliasBindings.size > 0) {
+      const inputNodes = nodes.filter((node) => node.type === 'input_source');
+      if (inputNodes.length === 0) {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'Workflow has no input_source node to bind inputTableId'
+          'Workflow has no input_source node to bind input resources'
         );
       }
-      const alias =
-        sanitizeAlias(bindings.inputAlias) || stringConfigValue(inputNode.config?.alias) || 'src';
-      nodes = nodes.map((node) =>
-        node.id === inputNode.id
-          ? {
-              ...node,
-              config: {
-                ...(node.config ?? {}),
-                source: 'dataset',
-                datasetId: inputTable.id,
-                inputTableName: inputTable.name,
-                alias,
-                dsl: `input source dataset "${escapeDslString(inputTable.id)}" as ${alias}`,
-              },
-            }
-          : node
+      const knownAliases = new Set(
+        inputNodes.map((node) => stringConfigValue(node.config?.alias)).filter(Boolean)
       );
+      const unknown = [...aliasBindings.keys()].filter((alias) => !knownAliases.has(alias));
+      if (unknown.length > 0) {
+        throw new DataCommandError(
+          'VALIDATION_FAILED',
+          `Input resource aliases not found in workflow: ${unknown.join(', ')}. Available: ${[...knownAliases].join(', ') || '(none)'}`
+        );
+      }
+      const bound = new Map<
+        string,
+        Awaited<ReturnType<DataCommandResources['requireInputTable']>>
+      >();
+      for (const [alias, tableId] of aliasBindings) {
+        bound.set(alias, await this.resources.requireInputTable(tableId));
+      }
+      nodes = nodes.map((node) => {
+        if (node.type !== 'input_source') return node;
+        const alias = stringConfigValue(node.config?.alias);
+        const table = alias ? bound.get(alias) : undefined;
+        if (!table) return node;
+        const incrementalBy = stringConfigValue(node.config?.incrementalBy);
+        const incrementalClause = incrementalBy
+          ? ` incremental by ${formatFieldRef(incrementalBy)}`
+          : '';
+        return {
+          ...node,
+          config: {
+            ...(node.config ?? {}),
+            source: 'dataset',
+            datasetId: table.id,
+            inputTableName: table.name,
+            alias,
+            dsl: `input source dataset "${escapeDslString(table.id)}"${incrementalClause} as ${alias}`,
+          },
+        };
+      });
     }
 
     if (bindings.outputTableId) {
@@ -96,6 +145,16 @@ export class WorkflowDslCompiler {
         );
       }
       const mode = stringConfigValue(outputNode.config?.mode) || 'replace';
+      const mergeKeys = Array.isArray(outputNode.config?.mergeKeys)
+        ? outputNode.config.mergeKeys
+        : [];
+      const schemaPolicy = stringConfigValue(outputNode.config?.schemaPolicy);
+      const mergeClause =
+        mode === 'merge' && mergeKeys.length > 0
+          ? ` by ${mergeKeys.map((key) => formatFieldRef(String(key))).join(', ')}`
+          : '';
+      const schemaClause =
+        schemaPolicy && schemaPolicy !== 'extend' ? ` schema ${schemaPolicy}` : '';
       nodes = nodes.map((node) =>
         node.id === outputNode.id
           ? {
@@ -109,7 +168,7 @@ export class WorkflowDslCompiler {
                 table: outputTable.tableName,
                 destination: 'duckdb_table',
                 mode,
-                dsl: `output table "${escapeDslString(outputTable.name)}" mode ${mode}`,
+                dsl: `output table "${escapeDslString(outputTable.name)}" mode ${mode}${mergeClause}${schemaClause}`,
               },
             }
           : node

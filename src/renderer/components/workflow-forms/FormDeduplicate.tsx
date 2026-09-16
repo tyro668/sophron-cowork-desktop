@@ -115,7 +115,7 @@ export default function FormDeduplicate({
             },
           ]}
           onChange={(value) => updateConfig((cfg) => ({ ...cfg, keep: value }))}
-          className="h-9 w-[240px] max-w-full"
+          className="h-8 w-[240px] max-w-full"
         />
       </div>
 
@@ -129,13 +129,13 @@ export default function FormDeduplicate({
           placeholder={tr('sortKeys.sortSelectField')}
           searchPlaceholder={tr('fieldPicker.searchField')}
           emptyText={tr('fieldPicker.noMatch')}
-          className="h-9 flex-1"
+          className="h-8 flex-1"
         />
         <button
           type="button"
           onClick={() => commitOrderField('')}
           disabled={!orderField}
-          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 ${
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 ${
             orderField ? '' : 'invisible'
           }`}
           title={tr('fieldPicker.clearAll')}
@@ -156,7 +156,7 @@ export default function FormDeduplicate({
           ]}
           onChange={(value) => commitOrderDirection(value as 'asc' | 'desc')}
           disabled={!orderField}
-          className="h-9 flex-1"
+          className="h-8 flex-1"
         />
       </div>
     </div>

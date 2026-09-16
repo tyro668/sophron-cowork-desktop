@@ -193,7 +193,7 @@ function ConditionLeafRow({ leaf, ctx }: { leaf: FilterConditionLeaf; ctx: LeafR
             }}
             placeholder={ctx.tr('filterFieldPlaceholder')}
             emptyText={ctx.tr('fieldPicker.noMatch')}
-            className="h-7 w-full"
+            className="h-8 w-full"
           />
         </div>
 
@@ -203,7 +203,7 @@ function ConditionLeafRow({ leaf, ctx }: { leaf: FilterConditionLeaf; ctx: LeafR
           groups={opGroupsTranslated}
           onChange={(v) => ctx.updateLeaf(leaf.id, { op: v })}
           variant="highlight"
-          className="h-7 w-28 rounded-md text-[12px]"
+          className="h-8 w-28 rounded-md text-[12px]"
         />
 
         {/* Value(s) */}
@@ -267,7 +267,7 @@ function ConditionLeafRow({ leaf, ctx }: { leaf: FilterConditionLeaf; ctx: LeafR
             event.stopPropagation();
             ctx.removeNode(leaf.id);
           }}
-          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 ${ROW_ACTION_CLASSES}`}
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-text-muted/50 hover:text-error hover:bg-error/10 ${ROW_ACTION_CLASSES}`}
           title={ctx.tr('filterDeleteCondition')}
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -281,7 +281,7 @@ function ConditionLeafRow({ leaf, ctx }: { leaf: FilterConditionLeaf; ctx: LeafR
             event.stopPropagation();
             ctx.selectLeaf(leaf.id);
           }}
-          className="group/selector flex h-7 w-8 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30"
+          className="group/selector flex h-8 w-8 items-center justify-center rounded-md outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30"
           title={ctx.tr('filterSelectCondition')}
         >
           <span
@@ -350,7 +350,7 @@ function BranchGroupRenderer({
   // Nested groups: file-tree style header + indentation.
   return (
     <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] gap-x-3">
-      <div className="relative min-h-7 self-stretch">
+      <div className="relative min-h-8 self-stretch">
         <button
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
@@ -677,7 +677,7 @@ export default function FormFilter({
                 <button
                   type="button"
                   disabled={!selectedLeafLocation}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border-subtle bg-transparent px-2.5 text-[12px] font-medium text-text-muted opacity-75 outline-none transition-colors hover:border-border-muted hover:bg-surface-hover hover:text-text-secondary hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-border-subtle bg-transparent px-2.5 text-[12px] font-medium text-text-muted opacity-75 outline-none transition-colors hover:border-border-muted hover:bg-surface-hover hover:text-text-secondary hover:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Plus className="h-3 w-3" />
                   {tr('filterAddCondition')}

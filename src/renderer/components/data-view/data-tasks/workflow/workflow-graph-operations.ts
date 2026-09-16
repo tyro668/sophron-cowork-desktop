@@ -20,7 +20,11 @@ export function canConnectWorkflowNodes(
 
   const sourceHandle = connection.sourceHandle ?? 'output';
   const targetHandle = connection.targetHandle ?? 'input';
-  if (sourceHandle !== 'output') return false;
+  if (sourceHandle === 'reject') {
+    if (source.type !== 'expect') return false;
+  } else if (sourceHandle !== 'output') {
+    return false;
+  }
   if (target.type === 'join' || target.type === 'set_op') {
     if (targetHandle !== 'left' && targetHandle !== 'right') return false;
   } else if (targetHandle !== 'input') {
@@ -78,8 +82,22 @@ export function connectWorkflowNodes(
     sourceHandle: connection.sourceHandle ?? 'output',
     targetHandle: connection.targetHandle ?? 'input',
   };
+  // A reject edge names its stream on the expect node; auto-fill when unset.
+  let nodes = workflow.nodes;
+  if (nextEdge.sourceHandle === 'reject') {
+    const source = nodes.find((node) => node.id === nextEdge.sourceNodeId);
+    if (source?.type === 'expect' && !source.config.rejectStream) {
+      const rejectStream = `${(source.label || 'expect').replace(/[^A-Za-z0-9_]/g, '_')}_rejects`;
+      nodes = nodes.map((node) =>
+        node.id === source.id
+          ? { ...node, config: { ...node.config, rejectStream }, updatedAt: Date.now() }
+          : node
+      );
+    }
+  }
   return synchronizeRightInputConfigs({
     ...workflow,
+    nodes,
     edges: [...workflow.edges, nextEdge],
   });
 }

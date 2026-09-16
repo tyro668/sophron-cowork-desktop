@@ -440,6 +440,7 @@ export class GeneratedTaskCommandService {
           candidate.workflow
         ),
         diagnostics: temporaryExecution.diagnostics,
+        nodeStats: temporaryExecution.nodeStats,
       };
       const executionDiagnostics = normalizeWorkflowFailureDiagnostics(
         temporaryRun.diagnostics ?? [],

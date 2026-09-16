@@ -1,5 +1,10 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { DataTaskWorkflow, DataWorkflowNode, DataWorkflowSaveInput } from '../../../../types';
+import type {
+  DataTaskWorkflow,
+  DataWorkflowNode,
+  DataWorkflowSaveInput,
+  WorkflowNodeRunStat,
+} from '../../../../types';
 
 export const WORKFLOW_NODE_WIDTH = 116;
 export const WORKFLOW_NODE_HEIGHT = 36;
@@ -7,7 +12,10 @@ export const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
 export const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
 export const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
 
-export type WorkflowFlowNode = Node<{ workflowNode: DataWorkflowNode }, 'operator'>;
+export type WorkflowFlowNode = Node<
+  { workflowNode: DataWorkflowNode; invalid?: boolean; runStat?: WorkflowNodeRunStat },
+  'operator'
+>;
 export type WorkflowFlowEdge = Edge<Record<string, never>>;
 export type WorkflowInspectorTab = 'config' | 'dsl' | 'data' | 'logs';
 export type WorkflowAlignmentLine =

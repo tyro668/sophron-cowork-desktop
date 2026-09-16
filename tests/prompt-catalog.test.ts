@@ -71,7 +71,7 @@ describe('central prompt catalog', () => {
   });
 
   it('contains prompt copy for every app-owned custom data and automation tool', () => {
-    expect(Object.keys(DATA_TOOL_COPY)).toHaveLength(26);
+    expect(Object.keys(DATA_TOOL_COPY)).toHaveLength(33);
     expect(Object.keys(AUTOMATION_TOOL_COPY)).toHaveLength(6);
     for (const copy of [...Object.values(DATA_TOOL_COPY), ...Object.values(AUTOMATION_TOOL_COPY)]) {
       expect(copy.label.trim()).not.toBe('');

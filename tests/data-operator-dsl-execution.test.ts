@@ -563,12 +563,13 @@ function main() {
     `;
     const parsed = parsePrepDsl(dsl);
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
-    await store.saveTaskWorkflow(task.id, {
-      nodes: compiled.nodes,
-      edges: compiled.edges,
-    });
-
-    await expect(store.runTask(task.id)).rejects.toThrow(/scale|Too big/i);
+    // save-time plan validation rejects the out-of-range scale before any run
+    await expect(
+      store.saveTaskWorkflow(task.id, {
+        nodes: compiled.nodes,
+        edges: compiled.edges,
+      })
+    ).rejects.toThrow(/scale|Too big/i);
   });
 
   it('converts with on_error keep', async () => {
@@ -643,17 +644,73 @@ function main() {
       name: 'unnest json missing column',
       sourcePath: jsonPath,
     });
+    await expect(
+      saveWorkflowDsl(
+        store,
+        task.id,
+        `
+          input source task as json_src
+            | explode json [ghost_column] path "$"
+            | output table "operator_unnest_json_missing_output" mode replace
+        `
+      )
+    ).rejects.toThrow(/ghost_column|not in the upstream columns/i);
+  });
+
+  it('appends rows on re-run when the output mode is append', async () => {
+    const { dbPath, store, tempRoot } = createStore();
+    const sourcePath = path.join(tempRoot, 'append-source.csv');
+    fs.writeFileSync(sourcePath, ['id,name', '1,a', '2,b'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'append output mode',
+      sourcePath,
+    });
     await saveWorkflowDsl(
       store,
       task.id,
       `
-        input source task as json_src
-          | explode json [ghost_column] path "$"
-          | output table "operator_unnest_json_missing_output" mode replace
+        input source task as src
+          | output table "operator_append_output" mode append
       `
     );
 
-    await expect(store.runTask(task.id)).rejects.toThrow(/ghost_column|Binder|not found/i);
+    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
+    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
+
+    const rows = await queryRows(dbPath, 'SELECT id FROM operator_append_output ORDER BY id');
+    expect(rows.map((row) => String(row.id))).toEqual(['1', '1', '2', '2']);
+  });
+
+  it('fails on re-run when the output mode is error_if_exists', async () => {
+    const { store, tempRoot } = createStore();
+    const sourcePath = path.join(tempRoot, 'exists-source.csv');
+    fs.writeFileSync(sourcePath, ['id', '1'].join('\n') + '\n', 'utf8');
+
+    const task = await store.createTask({
+      name: 'error_if_exists output mode',
+      sourcePath,
+    });
+    await saveWorkflowDsl(
+      store,
+      task.id,
+      `
+        input source task as src
+          | output table "operator_exists_output" mode error_if_exists
+      `
+    );
+
+    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
+    await expect(store.runTask(task.id)).rejects.toThrow(/already exists|error_if_exists/i);
+  });
+
+  it('flags output dataset/file destinations as unsupported at compile time', () => {
+    const parsed = parsePrepDsl(
+      'input source task as src\n  | output dataset "results" mode replace'
+    );
+    expect(parsed.ast).not.toBeNull();
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.map((item) => item.code)).toContain('unsupportedOutputDestination');
   });
 });
 

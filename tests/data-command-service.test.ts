@@ -1592,7 +1592,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [`Unit Price`] asc');
+    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
     expect(generated.workflowDsl).not.toContain('order by');
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
@@ -1639,7 +1639,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "derive [`Customer ID Number`] = REGEXP_EXTRACT([`Customer ID`], '[0-9]+')"
+      "derive [Customer ID Number] = REGEXP_EXTRACT([Customer ID], '[0-9]+')"
     );
     expect(generated.workflowDsl).not.toContain('REGEXP_EXTRACT(`Customer ID`');
   });
@@ -1681,9 +1681,9 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "derive [`Customer ID Number`] = REGEXP_EXTRACT([`Customer ID`], '[0-9]+')"
+      "derive [Customer ID Number] = REGEXP_EXTRACT([Customer ID], '[0-9]+')"
     );
-    expect(generated.workflowDsl).not.toContain('[[`Customer ID`]]');
+    expect(generated.workflowDsl).not.toContain('[[Customer ID]]');
   });
 
   it('compiles native row field comparisons in generated filters', async () => {
@@ -1722,7 +1722,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('filter [Profit] < [`Target Profit`]');
+    expect(generated.workflowDsl).toContain('filter [Profit] < [Target Profit]');
     expect(generated.workflowDsl).not.toContain("'[Target Profit]'");
     expect(generated.requiredColumns).toEqual([
       { name: 'Profit', type: 'integer' },
@@ -1771,11 +1771,10 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('filter [Profit] < [`Target Profit`]');
+    expect(generated.workflowDsl).toContain('filter [Profit] < [Target Profit]');
     expect(generated.workflowDsl).toContain(
-      'derive [`Profit Shortfall`] = [`Target Profit`] - [Profit]'
+      'derive [Profit Shortfall] = [Target Profit] - [Profit]'
     );
-    expect(generated.workflowDsl).not.toContain('[Target Profit] - [Profit]');
   });
 
   it('allows sorting by aggregate metric aliases', async () => {
@@ -1823,9 +1822,9 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      'aggregate by [Market], [`Product Type`] metrics sum([Sales]) as [`Sales 总和`]'
+      'aggregate by [Market], [Product Type] metrics sum([Sales]) as [Sales 总和]'
     );
-    expect(generated.workflowDsl).toContain('sort by [`Sales 总和`] desc');
+    expect(generated.workflowDsl).toContain('sort by [Sales 总和] desc');
     expect(generated.requiredColumns).toEqual([
       { name: 'Market', type: 'text' },
       { name: 'Product Type', type: 'text' },
@@ -1871,8 +1870,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [`记录数`]');
-    expect(generated.workflowDsl).toContain('sort by [`Unit Price`] asc');
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Unit Price', type: 'integer' },
@@ -1915,8 +1914,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [`记录数`]');
-    expect(generated.workflowDsl).toContain('sort by [`Unit Price`] asc');
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Unit Price', type: 'integer' },
@@ -1967,7 +1966,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain('sort by [Sales] asc');
-    expect(generated.workflowDsl).toContain('drop [`记录数`]');
+    expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.workflowDsl).not.toContain('select [City]');
     expect(generated.requiredColumns).toEqual([
       { name: 'Sales', type: 'integer' },
@@ -2024,8 +2023,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [`记录数`]');
-    expect(generated.workflowDsl).toContain('map [`Adj Close`] to [adj_close]');
+    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('map [Adj Close] to [adj_close]');
     expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = TRY_CAST');
     expect(generated.workflowDsl).toContain("REPLACE(CAST([adj_close] AS VARCHAR), '$', '')");
     expect(generated.workflowDsl).toContain('drop [adj_close]');
@@ -2144,8 +2143,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("REPLACE(CAST([`Adj Close`] AS VARCHAR), '$', '')");
-    expect(generated.workflowDsl).toContain('drop [`记录数`]');
+    expect(generated.workflowDsl).toContain("REPLACE(CAST([Adj Close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
   });
 
@@ -3001,8 +3000,8 @@ function main() {
       expectedSignature: 'expr(row => expression)',
       repairHint: expect.stringContaining('nested condition ? whenTrue : whenFalse'),
     });
-    expect(generated.workflowDsl).toContain('derive [`利润率`]');
-    expect(generated.workflowDsl).toContain('derive [`经营等级`]');
+    expect(generated.workflowDsl).toContain('derive [利润率]');
+    expect(generated.workflowDsl).toContain('derive [经营等级]');
 
     const run = await service.runGeneratedTask({
       taskId: generated.taskId,
@@ -3250,7 +3249,7 @@ function main() {
       repairHint: expect.stringContaining('Never use a scalar string or expr(...)'),
     });
     expect(generated.workflowDsl).toContain('pivot on [Market]');
-    expect(generated.workflowDsl).toContain('group by [`Product Type`]');
+    expect(generated.workflowDsl).toContain('group by [Product Type]');
 
     const run = await service.runGeneratedTask({
       taskId: generated.taskId,
@@ -3565,7 +3564,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [`Unit Price`] asc');
+    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
 
@@ -3675,7 +3674,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [`Market Value`] asc');
+    expect(generated.workflowDsl).toContain('sort by [Market Value] asc');
     expect(generated.requiredColumns).toEqual([{ name: 'Market Value', type: 'integer' }]);
   });
 
@@ -4385,6 +4384,221 @@ function main() {
     ).rejects.toThrow('simulated cloud delivery failure');
 
     expect(onTaskCompleted).not.toHaveBeenCalled();
+  });
+});
+
+describe('constrained workflow plans and resource bindings', () => {
+  async function seedTables(service: DataCommandService, tempRoot: string) {
+    const ordersPath = path.join(tempRoot, 'orders.csv');
+    fs.writeFileSync(ordersPath, 'id,amount,customer_id\n1,10,c1\n2,-5,c2\n', 'utf8');
+    const orders = await service.createInputTable({
+      name: 'orders',
+      sourceKind: 'csv',
+      filePath: ordersPath,
+    });
+    const customersPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(customersPath, 'customer_id,name\nc1,Ann\nc2,Bob\n', 'utf8');
+    const customers = await service.createInputTable({
+      name: 'customers',
+      sourceKind: 'csv',
+      filePath: customersPath,
+    });
+    const output = await service.createOutputTable({ name: 'joined_output' });
+    return {
+      orders: orders.inputTable,
+      customers: customers.inputTable,
+      output: output.outputTable,
+    };
+  }
+
+  it('applies a constrained plan with alias-bound input resources and exports canonical DSL', async () => {
+    const { service, tempRoot } = createService();
+    const { orders, customers, output } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'plan task' });
+
+    const plan = {
+      version: 'workflow-plan/v1',
+      nodes: [
+        { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+        {
+          id: 'customers',
+          type: 'input_source',
+          config: { source: 'dataset', alias: 'customers' },
+        },
+        {
+          id: 'joined',
+          type: 'join',
+          config: {
+            joinType: 'left',
+            conditions: [
+              {
+                left: '[orders].[customer_id]',
+                operator: '=',
+                right: '[customers].[customer_id]',
+              },
+            ],
+          },
+        },
+        { id: 'sink', type: 'output', config: { table: 'joined_output', mode: 'replace' } },
+      ],
+      edges: [
+        { sourceNodeId: 'orders', targetNodeId: 'joined', targetHandle: 'left' },
+        { sourceNodeId: 'customers', targetNodeId: 'joined', targetHandle: 'right' },
+        { sourceNodeId: 'joined', targetNodeId: 'sink' },
+      ],
+    };
+    const dry = await service.applyWorkflowPlan({
+      taskId: task.task.id,
+      plan,
+      inputResources: { orders: orders.id, customers: customers.id },
+      outputTableId: output.id,
+      dryRun: true,
+    });
+    expect(dry.dryRun).toBe(true);
+    expect(dry.dsl).toContain(`input source dataset "${orders.id}" as orders`);
+    expect(dry.dsl).toContain(`input source dataset "${customers.id}" as customers`);
+    expect(dry.diagnostics?.filter((d) => d.severity === 'error')).toHaveLength(0);
+
+    const saved = await service.applyWorkflowPlan({
+      taskId: task.task.id,
+      plan,
+      inputResources: { orders: orders.id, customers: customers.id },
+      outputTableId: output.id,
+    });
+    const inputNodes = saved.workflow.nodes.filter((node) => node.type === 'input_source');
+    expect(inputNodes.map((node) => node.config.datasetId).sort()).toEqual(
+      [orders.id, customers.id].sort()
+    );
+    const run = await service.runTask({ taskId: task.task.id, mode: 'temporary' });
+    expect(run.task.status).toBe('completed');
+  });
+
+  it('rejects plan version mismatch, unknown node types, and unbound dataset sources', async () => {
+    const { service, tempRoot } = createService();
+    const { orders } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'bad plan task' });
+
+    await expect(
+      service.applyWorkflowPlan({
+        taskId: task.task.id,
+        plan: { version: 'workflow-plan/v0', nodes: [], edges: [] },
+      })
+    ).rejects.toThrow(/version/i);
+
+    await expect(
+      service.applyWorkflowPlan({
+        taskId: task.task.id,
+        plan: {
+          version: 'workflow-plan/v1',
+          nodes: [{ id: 'x', type: 'teleport', config: {} }],
+          edges: [],
+        },
+      })
+    ).rejects.toThrow(/unsupported/i);
+
+    await expect(
+      service.applyWorkflowPlan({
+        taskId: task.task.id,
+        plan: {
+          version: 'workflow-plan/v1',
+          nodes: [
+            { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+            { id: 'sink', type: 'output', config: { table: 't' } },
+          ],
+          edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
+        },
+      })
+    ).rejects.toThrow(/bind|dataset/i);
+    void orders;
+  });
+
+  it('rejects input resource aliases that do not exist in the plan', async () => {
+    const { service, tempRoot } = createService();
+    const { orders } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'alias task' });
+    await expect(
+      service.applyWorkflowPlan({
+        taskId: task.task.id,
+        plan: {
+          version: 'workflow-plan/v1',
+          nodes: [
+            { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+            { id: 'sink', type: 'output', config: { table: 't' } },
+          ],
+          edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
+        },
+        inputResources: { orders: orders.id, ghost: orders.id },
+      })
+    ).rejects.toThrow(/ghost|alias/i);
+  });
+
+  it('reports planFieldNotFound for field references missing from bound schemas', async () => {
+    const { service, tempRoot } = createService();
+    const { orders } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'schema task' });
+    const dry = await service.applyWorkflowPlan({
+      taskId: task.task.id,
+      plan: {
+        version: 'workflow-plan/v1',
+        nodes: [
+          { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+          { id: 'f', type: 'filter', config: { condition: '[bogus_col] > 0' } },
+          { id: 'sink', type: 'output', config: { table: 't' } },
+        ],
+        edges: [
+          { sourceNodeId: 'orders', targetNodeId: 'f' },
+          { sourceNodeId: 'f', targetNodeId: 'sink' },
+        ],
+      },
+      inputResources: { orders: orders.id },
+      dryRun: true,
+    });
+    expect(
+      dry.diagnostics?.some((d) => d.severity === 'error' && d.code === 'planFieldNotFound')
+    ).toBe(true);
+  });
+
+  it('binds multi-source DSL workflows via inputResources', async () => {
+    const { service, tempRoot } = createService();
+    const { orders, customers } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'multi dsl task' });
+    const dsl = [
+      'input source dataset "orders-placeholder" as orders',
+      'input source dataset "customers-placeholder" as customers',
+      '',
+      'from orders',
+      '  | join left customers on [orders].[customer_id] = [customers].[customer_id]',
+      '  | output table "joined" mode replace',
+    ].join('\n');
+    const result = await service.applyWorkflowDsl({
+      taskId: task.task.id,
+      dsl,
+      inputResources: { orders: orders.id, customers: customers.id },
+    });
+    const inputNodes = result.workflow.nodes.filter((node) => node.type === 'input_source');
+    expect(inputNodes.map((node) => node.config.datasetId).sort()).toEqual(
+      [orders.id, customers.id].sort()
+    );
+  });
+
+  it('returns a versioned capability manifest with operator schemas and table snapshots', async () => {
+    const { service, tempRoot } = createService();
+    const { orders, output } = await seedTables(service, tempRoot);
+    const manifest = await service.getWorkflowCapabilityManifest({
+      inputTableIds: [orders.id],
+      outputTableIds: [output.id],
+    });
+    expect(manifest.manifestVersion).toBe('workflow-capability-manifest/v1');
+    expect(manifest.planVersion).toBe('workflow-plan/v1');
+    expect(manifest.plan.schema.properties.version.const).toBe('workflow-plan/v1');
+    expect(manifest.plan.operatorConfigSchemas.expect).toBeTruthy();
+    expect(manifest.plan.operatorConfigSchemas.join).toBeTruthy();
+    const input = manifest.bindings?.inputs[0];
+    expect(input?.id).toBe(orders.id);
+    expect(input?.columns.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['id', 'amount', 'customer_id'])
+    );
+    expect(manifest.bindings?.outputs[0]?.id).toBe(output.id);
   });
 });
 

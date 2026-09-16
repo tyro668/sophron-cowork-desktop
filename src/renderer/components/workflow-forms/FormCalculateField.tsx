@@ -130,7 +130,7 @@ export default function FormCalculateField({
           groups={[{ key: 'action', items: actionOptions }]}
           onChange={(action) => updateCalculationAction(index, action as CalculationRow['action'])}
           variant="highlight"
-          className="h-7 w-full text-[12px] [&>span]:text-left"
+          className="h-8 w-full text-[12px] [&>span]:text-left"
         />
       ),
     },
@@ -152,7 +152,7 @@ export default function FormCalculateField({
                 showType
                 onChange={(field) => updateCalculation(index, { field })}
                 placeholder={tr('calcFieldSelectPlaceholder')}
-                className="h-7 w-full text-[12px]"
+                className="h-8 w-full text-[12px]"
               />
             ) : (
               <div className="relative w-full">
@@ -160,7 +160,7 @@ export default function FormCalculateField({
                   value={calculation.field}
                   onChange={(field) => updateCalculation(index, { field })}
                   placeholder={tr('calcFieldTargetPlaceholder')}
-                  className="!h-7 w-full rounded-md px-1.5 pr-6 text-[12px] shadow-none focus:ring-0"
+                  className="!h-8 w-full rounded-md px-1.5 pr-6 text-[12px] shadow-none focus:ring-0"
                 />
                 {hasAddConflict && (
                   <span className="group absolute right-1 top-1/2 inline-flex -translate-y-1/2">

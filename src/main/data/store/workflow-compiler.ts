@@ -27,6 +27,18 @@ export abstract class WorkflowCompiler extends DatasetStore {
     node: DataWorkflowNode,
     taskSourcePath: string | null
   ): Promise<string[] | null> {
+    const columns = await this.resolveInputSourceColumnTypes(node, taskSourcePath);
+    return columns ? columns.map((column) => column.name) : null;
+  }
+
+  /**
+   * Input columns with normalized types for plan-level schema validation.
+   * Returns null when the node is not an enabled input_source.
+   */
+  protected async resolveInputSourceColumnTypes(
+    node: DataWorkflowNode,
+    taskSourcePath: string | null
+  ): Promise<{ name: string; type?: string }[] | null> {
     if (node.type !== 'input_source' || node.config.disabled === true) {
       return null;
     }
@@ -39,7 +51,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
           : 'task';
     const cachedTable = await this.findWorkflowNodeCacheTable(node.taskId, node.id);
     if (cachedTable) {
-      return this.getTableColumns(cachedTable);
+      return this.getTableColumnTypes(cachedTable);
     }
 
     if (source === 'dataset') {
@@ -48,14 +60,14 @@ export abstract class WorkflowCompiler extends DatasetStore {
       );
       const dataset = await this.findDatasetByReference(datasetRef);
       if (!dataset || !(await this.physicalTableExists(dataset.tableName))) {
-        return [];
+        return null;
       }
-      return this.getTableColumns(dataset.tableName);
+      return this.getTableColumnTypes(dataset.tableName);
     }
 
     const cachedTableName = tableNameFromId('workflow_source', node.id);
     if (await this.physicalTableExists(cachedTableName)) {
-      return this.getTableColumns(cachedTableName);
+      return this.getTableColumnTypes(cachedTableName);
     }
 
     const filePath =
@@ -63,7 +75,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
         ? normalizeSourcePath(node.config.filePath)
         : taskSourcePath;
     if (!filePath) {
-      return [];
+      return null;
     }
 
     const schemaTableName = tableNameFromId('workflow_schema', node.id);
@@ -74,7 +86,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
         `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
         { sourcePath: filePath }
       );
-      return this.getTableColumns(schemaTableName);
+      return await this.getTableColumnTypes(schemaTableName);
     } finally {
       await this.dropTableIfExists(schemaTableName).catch(() => undefined);
     }
@@ -135,8 +147,8 @@ export abstract class WorkflowCompiler extends DatasetStore {
     if (node.type === 'set_op') {
       return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
     }
-    const inputId = this.findIncomingNodeId(node.id, edges, 'input');
-    const inputRelation = inputId ? relationByNode.get(inputId) : null;
+    const inputEdge = this.findIncomingEdge(node.id, edges, 'input');
+    const inputRelation = inputEdge ? relationByNode.get(relationKeyForEdge(inputEdge)) : null;
     if (!inputRelation) {
       throw new Error(`Workflow node has no input: ${node.id}`);
     }
@@ -213,10 +225,12 @@ export abstract class WorkflowCompiler extends DatasetStore {
     relationByNode: Map<string, string>,
     edges: DataWorkflowEdge[]
   ): Promise<string> {
-    const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
-    const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
-    const leftRelation = leftNodeId ? relationByNode.get(leftNodeId) : null;
-    const rightRelation = rightNodeId ? relationByNode.get(rightNodeId) : null;
+    const leftRelation = relationByNode.get(
+      relationKeyForEdge(this.findIncomingEdge(node.id, edges, 'left'))
+    );
+    const rightRelation = relationByNode.get(
+      relationKeyForEdge(this.findIncomingEdge(node.id, edges, 'right'))
+    );
     if (!leftRelation || !rightRelation) {
       throw new Error(`Set operation node requires left and right inputs: ${node.id}`);
     }
@@ -241,10 +255,12 @@ export abstract class WorkflowCompiler extends DatasetStore {
     edges: DataWorkflowEdge[],
     diagnostics: PrepDiagnostic[] = []
   ): Promise<string> {
-    const leftNodeId = this.findIncomingNodeId(node.id, edges, 'left');
-    const rightNodeId = this.findIncomingNodeId(node.id, edges, 'right');
-    const leftRelation = leftNodeId ? relationByNode.get(leftNodeId) : null;
-    const rightRelation = rightNodeId ? relationByNode.get(rightNodeId) : null;
+    const leftRelation = relationByNode.get(
+      relationKeyForEdge(this.findIncomingEdge(node.id, edges, 'left'))
+    );
+    const rightRelation = relationByNode.get(
+      relationKeyForEdge(this.findIncomingEdge(node.id, edges, 'right'))
+    );
     if (!leftRelation || !rightRelation) {
       throw new Error(`Join node requires left and right inputs: ${node.id}`);
     }
@@ -381,6 +397,22 @@ export abstract class WorkflowCompiler extends DatasetStore {
       )?.sourceNodeId ?? null
     );
   }
+
+  protected findIncomingEdge(
+    nodeId: string,
+    edges: DataWorkflowEdge[],
+    targetHandle: string
+  ): DataWorkflowEdge | undefined {
+    return edges.find(
+      (edge) => edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === targetHandle
+    );
+  }
+}
+
+function relationKeyForEdge(edge: DataWorkflowEdge | undefined | null): string {
+  return edge?.sourceHandle === 'reject'
+    ? `${edge.sourceNodeId}#reject`
+    : (edge?.sourceNodeId ?? '');
 }
 
 function fieldNameOf(value: string): string {

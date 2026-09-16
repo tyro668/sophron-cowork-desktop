@@ -601,7 +601,7 @@ function main() {
     expect(result.platformOperators[0]?.config).not.toHaveProperty('dsl');
     const compatibilityDsl = exportGeneratedWorkflowDsl(result);
     expect(compatibilityDsl).toContain('input source dataset "input-1" as src');
-    expect(compatibilityDsl).toContain('drop [`记录数`]');
+    expect(compatibilityDsl).toContain('drop [记录数]');
     expect(compatibilityDsl).toContain('output table "output-1" mode replace');
     expect(result.operationOrigins?.[0]).toMatchObject({
       operationId: 'remove-count',
@@ -684,7 +684,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [`Profit Margin`] = CAST([Profit] / NULLIF([Sales], 0) * 100 AS DECIMAL(18,2))'
+      'derive [Profit Margin] = CAST([Profit] / NULLIF([Sales], 0) * 100 AS DECIMAL(18,2))'
     );
     expect(result.expectedOutputSchema).toContainEqual({
       name: 'Profit Margin',
@@ -736,7 +736,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [`Upper Value`] = UPPER(CAST([Value] AS VARCHAR))'
+      'derive [Upper Value] = UPPER(CAST([Value] AS VARCHAR))'
     );
   });
 
@@ -866,9 +866,9 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [`Shipping Days`] = DATE_DIFF('day', [`Order Date`], [`Ship Date`])"
+    "derive [Shipping Days] = DATE_DIFF('day', [Order Date], [Ship Date])"
   );
-  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [`Shipping Days`] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
   expect(result.expectedOutputSchema).toContainEqual({
     name: 'Shipping Days',
     type: 'integer',
@@ -896,7 +896,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [`High Discount Flag`] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
+    "derive [High Discount Flag] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
   );
   expect(result.expectedOutputSchema).toContainEqual({
     name: 'High Discount Flag',
@@ -947,7 +947,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(nativeResult)).toContain(
-    "derive [`High Discount Flag`] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
+    "derive [High Discount Flag] = if [Discount] >= 0.08 then '高折扣' else '普通折扣' end"
   );
   expect(nativeResult.javascriptSource).toContain('expr(row =>');
   expect(nativeResult.expectedOutputSchema).toContainEqual({
@@ -1079,9 +1079,9 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "if [`Order Date`] IS NULL OR [`Ship Date`] IS NULL then NULL else CAST(DATE_DIFF('day', [`Order Date`], [`Ship Date`]) AS INTEGER) end"
+    "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else CAST(DATE_DIFF('day', [Order Date], [Ship Date]) AS INTEGER) end"
   );
-  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [`Shipping Days`] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
 });
 
 it('keeps authoring JavaScript separate from executable source and expression sidecars', () => {
@@ -1381,7 +1381,7 @@ function main() {
     'prepareSales',
   ]);
   expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Sales] desc');
-  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [`Row ID`]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [Row ID]');
 });
 
 it('enforces domain-function argument types after derived schema becomes known', () => {
@@ -1461,7 +1461,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain('map [Sales] to [Revenue]');
-  expect(exportGeneratedWorkflowDsl(result)).toContain('derive [`Double Revenue`] = [Revenue] * 2');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('derive [Double Revenue] = [Revenue] * 2');
 });
 
 it('patches a helper even when its original native expression cannot be lowered', () => {
@@ -1583,7 +1583,7 @@ function main() {
 
   expect(exportGeneratedWorkflowDsl(result)).toContain('CAST([Raw] AS DECIMAL(18,2)) * 2');
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [__sophron_ai_filter_predicate] = [`Created At`] >= CAST('2020-01-01 00:00:00' AS DATETIME)"
+    "derive [__sophron_ai_filter_predicate] = [Created At] >= CAST('2020-01-01 00:00:00' AS DATETIME)"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     'filter [__sophron_ai_filter_predicate] = true'
@@ -1621,7 +1621,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [`Elapsed Hours`] = DATE_DIFF('hour', [`Started At`], [`Finished At`])"
+    "derive [Elapsed Hours] = DATE_DIFF('hour', [Started At], [Finished At])"
   );
 });
 

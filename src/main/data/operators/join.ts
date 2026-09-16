@@ -1,13 +1,6 @@
-import {
-  quoteIdentifier,
-  objectArray,
-  isRecord,
-  getRightPrefix,
-  getConflictAlias,
-  lastQualifiedPart,
-  durationToMilliseconds,
-} from './utils';
+import { quoteIdentifier, objectArray, lastQualifiedPart, durationToMilliseconds } from './utils';
 import { parseFieldRefExact } from '../../../shared/prep-dsl/parser';
+import { planJoinProjectionColumns } from '../../../shared/prep-dsl/join-projection';
 import { JoinConfigSchema } from '../../../shared/operator-schemas';
 import { z } from 'zod';
 
@@ -42,12 +35,6 @@ export function compileJoinConditionList(value: unknown): string {
     .join(' AND ');
 }
 
-interface JoinProjectionEntry {
-  outputName: string;
-  sourceField: string;
-  sql: string;
-}
-
 export function compileJoinProjection(
   keep: unknown,
   leftColumns: string[],
@@ -55,94 +42,14 @@ export function compileJoinProjection(
   conflict: unknown,
   rightAlias?: string
 ): string {
-  const items = objectArray(keep);
-  const lowerRight = new Set(rightColumns.map((c) => c.toLowerCase()));
-  const conflictCols = new Set(
-    leftColumns.filter((c) => lowerRight.has(c.toLowerCase())).map((c) => c.toLowerCase())
-  );
-  const isSuffix = isRecord(conflict) && conflict.strategy === 'suffix';
-  const rightPrefix = getRightPrefix(conflict);
-  const isConflictColumn = (col: string) => conflictCols.has(col.toLowerCase());
-
-  const projections: JoinProjectionEntry[] = [];
-  const push = (side: 'l' | 'r', col: string, outputName: string, sourceField: string) => {
-    const sql =
-      col.toLowerCase() === outputName.toLowerCase()
-        ? `${side}.${quoteIdentifier(col)}`
-        : `${side}.${quoteIdentifier(col)} AS ${quoteIdentifier(outputName)}`;
-    projections.push({ outputName, sourceField, sql });
-  };
-
-  const pushLeftColumn = (col: string) =>
-    push(
-      'l',
-      col,
-      isConflictColumn(col) ? getConflictAlias(conflict, 'left', col) : col,
-      `left.${col}`
-    );
-  const pushRightColumn = (col: string) => {
-    const outputName = isConflictColumn(col)
-      ? isSuffix
-        ? getConflictAlias(conflict, 'right', col)
-        : `${rightPrefix}${col}`
-      : col;
-    push('r', col, outputName, `right.${col}`);
-  };
-
-  if (items.length === 0) {
-    leftColumns.forEach(pushLeftColumn);
-    rightColumns.forEach(pushRightColumn);
-  } else {
-    for (const item of items) {
-      if (item.side === 'left' && item.wildcard) {
-        leftColumns.forEach(pushLeftColumn);
-        continue;
-      }
-      if (item.side === 'right' && item.wildcard) {
-        rightColumns.forEach(pushRightColumn);
-        continue;
-      }
-      if (typeof item.source !== 'string') continue;
-      const ref = parseFieldRefExact(item.source);
-      const fieldName = ref?.name ?? lastQualifiedPart(item.source);
-      const side =
-        item.side === 'right'
-          ? 'r'
-          : item.side === 'left'
-            ? 'l'
-            : ref?.source && rightAlias && ref.source.toLowerCase() === rightAlias.toLowerCase()
-              ? 'r'
-              : ref?.source
-                ? 'l'
-                : leftColumns.some((c) => c.toLowerCase() === fieldName.toLowerCase())
-                  ? 'l'
-                  : 'r';
-      const conflictSide = side === 'r' ? 'right' : 'left';
-      const isConflict = isConflictColumn(fieldName);
-      const alias =
-        typeof item.alias === 'string'
-          ? (parseFieldRefExact(item.alias)?.name ?? item.alias)
-          : isConflict
-            ? getConflictAlias(conflict, conflictSide, fieldName)
-            : fieldName;
-      push(side, fieldName, alias, item.source);
-    }
-  }
-
-  const usedNames = new Map<string, JoinProjectionEntry>();
-  for (const entry of projections) {
-    const normalized = entry.outputName.toLowerCase();
-    const previous = usedNames.get(normalized);
-    if (previous) {
-      throw new Error(
-        `Join output field "${entry.outputName}" conflicts with ` +
-          `"${previous.sourceField}" after applying aliases`
-      );
-    }
-    usedNames.set(normalized, entry);
-  }
-
-  return projections.map((p) => p.sql).join(', ');
+  return planJoinProjectionColumns(keep, leftColumns, rightColumns, conflict, rightAlias)
+    .map((entry) => {
+      const side = entry.side === 'left' ? 'l' : 'r';
+      return entry.sourceColumn.toLowerCase() === entry.outputName.toLowerCase()
+        ? `${side}.${quoteIdentifier(entry.sourceColumn)}`
+        : `${side}.${quoteIdentifier(entry.sourceColumn)} AS ${quoteIdentifier(entry.outputName)}`;
+    })
+    .join(', ');
 }
 
 export function compileAsofJoinSql(

@@ -9,6 +9,7 @@ import {
   Filter,
   GitMerge,
   Repeat2,
+  ShieldCheck,
   Sigma,
   Table2,
   UploadCloud,
@@ -137,6 +138,13 @@ export const OPERATOR_CATALOG: WorkflowOperatorCatalogItem[] = [
     Icon: Workflow,
     colorClassName: 'text-teal-500 bg-teal-500/10',
     nodeClassName: 'border-teal-500/35 bg-teal-500/5 text-teal-500',
+  },
+  {
+    type: 'expect',
+    labelKey: 'data.workflow.operators.expect',
+    Icon: ShieldCheck,
+    colorClassName: 'text-rose-500 bg-rose-500/10',
+    nodeClassName: 'border-rose-500/35 bg-rose-500/5 text-rose-500',
   },
   {
     type: 'output',

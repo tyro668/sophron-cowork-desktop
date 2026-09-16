@@ -20,6 +20,8 @@ import type {
   DataWorkflowEdge,
   DataWorkflowNode,
   DataWorkflowOperatorType,
+  DataWorkflowSaveInput,
+  WorkflowNodeRunStat,
 } from '../../../../types';
 import {
   compilePrepWorkflowToFlow,
@@ -53,6 +55,7 @@ export function TaskEditor({
   task,
   outputTables,
   actionId,
+  runNodeStats,
   onBack,
   onRun,
   onWorkflowSaved,
@@ -60,6 +63,7 @@ export function TaskEditor({
   task: DataCleaningTask;
   outputTables: DataOutputTable[];
   actionId: string | null;
+  runNodeStats?: WorkflowNodeRunStat[];
   onBack: () => void;
   onRun: (task: DataCleaningTask, payload?: DataRunTaskInput) => void | Promise<void>;
   onWorkflowSaved: () => void | Promise<void>;
@@ -73,6 +77,8 @@ export function TaskEditor({
   const [saving, setSaving] = useState(false);
   const [renamingTask, setRenamingTask] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [configIssuesVisible, setConfigIssuesVisible] = useState(false);
+  const [planErrorNodeIds, setPlanErrorNodeIds] = useState<Set<string>>(new Set());
   const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
   const [dslText, setDslText] = useState('');
   const [dslError, setDslError] = useState<string | null>(null);
@@ -102,6 +108,12 @@ export function TaskEditor({
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
+
+  useEffect(() => {
+    if (!localError) return;
+    const timer = window.setTimeout(() => setLocalError(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [localError]);
 
   useEffect(() => {
     setTaskTitle(task.name);
@@ -420,6 +432,47 @@ export function TaskEditor({
     setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
   }, [confirmDelete, selectedNode, t]);
 
+  /**
+   * Runs the shared plan validation (graph + propagated schemas) and marks the
+   * offending nodes red on the canvas. Returns the first error message, or
+   * null when the plan is clean or validation itself could not run.
+   */
+  const flagPlanDiagnostics = useCallback(
+    async (saveInput: DataWorkflowSaveInput): Promise<string | null> => {
+      if (!window.electronAPI?.data?.validateTaskWorkflowPlan) return null;
+      try {
+        const diagnostics = await window.electronAPI.data.validateTaskWorkflowPlan(
+          task.id,
+          saveInput
+        );
+        const errorNodeIds = new Set(
+          diagnostics
+            .filter((item) => item.severity === 'error' && item.nodeId)
+            .map((item) => item.nodeId as string)
+        );
+        // Diagnostics carry scoped ids (<taskId>__<id>); match canvas ids both ways.
+        const canvasIds = new Set<string>();
+        for (const node of nodes) {
+          for (const id of errorNodeIds) {
+            if (node.id === id || node.id.endsWith(`__${id}`) || id.endsWith(`__${node.id}`)) {
+              canvasIds.add(node.id);
+              break;
+            }
+          }
+        }
+        setPlanErrorNodeIds(canvasIds);
+        const firstError = diagnostics.find((item) => item.severity === 'error');
+        if (firstError && canvasIds.size > 0) {
+          setSelectedNodeId([...canvasIds][0]);
+        }
+        return firstError?.message ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [nodes, task.id]
+  );
+
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
     if (!workflow || !window.electronAPI?.data) return null;
     const submittedSignature = getWorkflowSaveInputSignature(workflow);
@@ -446,31 +499,73 @@ export function TaskEditor({
       return saved;
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
+      void flagPlanDiagnostics(toWorkflowSaveInput(workflow));
       return null;
     } finally {
       setSaving(false);
     }
-  }, [onWorkflowSaved, task.id, workflow]);
+  }, [onWorkflowSaved, task.id, workflow, flagPlanDiagnostics]);
+
+  const [persistedNodeStats, setPersistedNodeStats] = useState<WorkflowNodeRunStat[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI?.data
+      .getTaskNodeStats(task.id)
+      .then((stats) => {
+        if (!cancelled) setPersistedNodeStats(stats);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [task.id]);
+
+  const runStatsByNode = useMemo(() => {
+    const map = new Map<string, WorkflowNodeRunStat>();
+    // In-session run stats take precedence over the persisted previous run.
+    for (const stat of persistedNodeStats) map.set(stat.nodeId, stat);
+    for (const stat of runNodeStats ?? []) map.set(stat.nodeId, stat);
+    return map;
+  }, [runNodeStats, persistedNodeStats]);
+
+  const invalidNodeIds = useMemo(() => {
+    const ids = new Set(planErrorNodeIds);
+    if (!configIssuesVisible) return ids;
+    nodes.filter((node) => incompleteConfigMessageKey(node)).forEach((n) => ids.add(n.id));
+    return ids;
+  }, [nodes, configIssuesVisible, planErrorNodeIds]);
+
+  const flagIncompleteNodes = useCallback((nodeList: DataWorkflowNode[]): string | null => {
+    const firstInvalid = nodeList.find((node) => incompleteConfigMessageKey(node));
+    setConfigIssuesVisible(Boolean(firstInvalid));
+    if (firstInvalid) setSelectedNodeId(firstInvalid.id);
+    return firstInvalid ? incompleteConfigMessageKey(firstInvalid) : null;
+  }, []);
 
   const validateWorkflowBeforeRun = useCallback(() => {
-    if (!workflowSaveInput) return;
-    const incompleteMessageKey = nodes.map(incompleteConfigMessageKey).find(Boolean);
+    if (!workflowSaveInput) return false;
+    const incompleteMessageKey = flagIncompleteNodes(nodes);
     if (incompleteMessageKey) {
       setLocalError(t(incompleteMessageKey));
       return false;
     }
     setLocalError(null);
     return true;
-  }, [nodes, t, workflowSaveInput]);
+  }, [nodes, t, workflowSaveInput, flagIncompleteNodes]);
 
   const handleTrialRun = useCallback(async () => {
     if (!workflowSaveInput || !validateWorkflowBeforeRun()) return;
+    const planError = await flagPlanDiagnostics(workflowSaveInput);
+    if (planError) {
+      setLocalError(planError);
+      return;
+    }
     await onRun(task, {
       workflow: workflowSaveInput,
       outputMode: 'temporary',
     });
     setNodeDataRefreshVersion((current) => current + 1);
-  }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput]);
+  }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput, flagPlanDiagnostics]);
 
   const handleSaveAndRun = useCallback(async () => {
     if (!validateWorkflowBeforeRun()) return;
@@ -499,7 +594,7 @@ export function TaskEditor({
             : node
         ),
       };
-      const incompleteMessageKey = nextWorkflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+      const incompleteMessageKey = flagIncompleteNodes(nextWorkflow.nodes);
       if (incompleteMessageKey) {
         setLocalError(t(incompleteMessageKey));
         return;
@@ -507,13 +602,18 @@ export function TaskEditor({
       setLocalError(null);
       setWorkflow(nextWorkflow);
       setSelectedNodeId(nodeId);
+      const planError = await flagPlanDiagnostics(toWorkflowSaveInput(nextWorkflow));
+      if (planError) {
+        setLocalError(planError);
+        return;
+      }
       await onRun(task, {
         workflow: toWorkflowSaveInput(nextWorkflow),
         outputMode: 'temporary',
       });
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, t, task, workflow]
+    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics]
   );
 
   const openImportDsl = useCallback(() => {
@@ -525,16 +625,20 @@ export function TaskEditor({
 
   const openExportDsl = useCallback(() => {
     if (!workflow) return;
-    const incompleteMessageKey = workflow.nodes.map(incompleteConfigMessageKey).find(Boolean);
+    const incompleteMessageKey = flagIncompleteNodes(workflow.nodes);
     if (incompleteMessageKey) {
       setLocalError(t(incompleteMessageKey));
       return;
     }
     setLocalError(null);
     setDslError(null);
-    setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
-    setDslMode('export');
-  }, [t, workflow]);
+    try {
+      setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+      setDslMode('export');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    }
+  }, [t, workflow, flagIncompleteNodes]);
 
   const closeDslDialog = useCallback(() => {
     setDslMode(null);
@@ -605,7 +709,7 @@ export function TaskEditor({
   }, [closeDslDialog, dslText, t, task.id, workflow]);
 
   return (
-    <section className="flex flex-1 min-h-0 flex-col">
+    <section className="relative flex flex-1 min-h-0 flex-col">
       <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <button
@@ -704,13 +808,6 @@ export function TaskEditor({
         </div>
       </div>
 
-      {localError && (
-        <div className="mb-3 flex shrink-0 items-start gap-2 whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <span>{localError}</span>
-        </div>
-      )}
-
       {!workflow ? (
         <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/42 text-xs text-text-muted shadow-card">
           {t('common.loading')}
@@ -722,6 +819,8 @@ export function TaskEditor({
             <WorkflowCanvas
               nodes={nodes}
               edges={edges}
+              invalidNodeIds={invalidNodeIds}
+              runStatsByNode={runStatsByNode}
               selectedNodeId={selectedNode?.id ?? null}
               onSelectNode={setSelectedNodeId}
               onDuplicateNode={duplicateSelectedNode}
@@ -760,6 +859,16 @@ export function TaskEditor({
           onCopy={copyDslText}
           onClose={closeDslDialog}
         />
+      )}
+      {localError && (
+        <div
+          role="alert"
+          onClick={() => setLocalError(null)}
+          className="absolute bottom-4 left-1/2 z-40 flex max-w-[min(90%,32rem)] -translate-x-1/2 cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-[var(--glass-card-strong)] px-3.5 py-2.5 text-[13px] text-error shadow-card backdrop-blur-xl"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>{localError}</span>
+        </div>
       )}
     </section>
   );

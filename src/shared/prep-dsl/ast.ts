@@ -27,11 +27,29 @@ export interface PrepOperatorAst {
   config: Record<string, unknown>;
 }
 
+/**
+ * A named dataflow chain: `step <name> = <ref>` followed by `| <op>` lines.
+ * `input` names the stream the chain reads — a source alias or an earlier step
+ * name. `output` operators inside a step terminate the chain into a sink.
+ */
+export interface PrepStepAst {
+  name: string;
+  input?: string;
+  line?: number;
+  /** True for `step <name> = ...`; false for `from`/implicit chains. */
+  named: boolean;
+  operators: PrepOperatorAst[];
+}
+
 export interface PrepWorkflowAst {
-  version: 'prep-dsl/v1';
+  version: 'prep-dsl/v2';
   sources: PrepOperatorAst[];
   mainSource: string;
+  /** Structured chains; `operators` is the flat view kept for compatibility. */
+  steps: PrepStepAst[];
   operators: PrepOperatorAst[];
+  /** All output sinks in document order. */
+  outputs: PrepOperatorAst[];
   output?: PrepOperatorAst;
 }
 
@@ -66,6 +84,8 @@ export interface PrepWorkflowCompileResult {
   nodes: PrepWorkflowNodeInput[];
   edges: PrepWorkflowEdgeInput[];
   diagnostics: PrepDiagnostic[];
+  /** Typed, versioned plan built from the compiled nodes (see shared/workflow-plan). */
+  plan?: import('../workflow-plan/model').WorkflowPlan;
 }
 
 export interface PrepJoinCondition {

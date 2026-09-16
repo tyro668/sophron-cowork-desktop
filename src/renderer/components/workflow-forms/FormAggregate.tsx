@@ -256,7 +256,7 @@ export default function FormAggregate({
                       updateMetric(index, { function: value as AggregateFunction })
                     }
                     variant="highlight"
-                    className="h-7 w-full text-[12px] [&>span]:text-left"
+                    className="h-8 w-full text-[12px] [&>span]:text-left"
                   />
                 ),
               },
@@ -281,7 +281,7 @@ export default function FormAggregate({
                     value={metric.alias ?? ''}
                     onChange={(value) => updateMetric(index, { alias: value })}
                     placeholder={tr('aggregateAliasPlaceholder')}
-                    className="h-7 w-full px-2 text-[12px]"
+                    className="h-8 w-full px-2 text-[12px]"
                   />
                 ),
               },

@@ -138,7 +138,7 @@ export default function FormLimit({
           onChange={(v) => pushLimit(v)}
           placeholder="10"
           textCenter
-          className="h-9 w-60 rounded-md px-2"
+          className="h-8 w-60 rounded-md px-2"
         />
         <GlassOptionSingleSelect
           value={unit}
@@ -161,7 +161,7 @@ export default function FormLimit({
             }));
             setErrors(runValidation(limit ?? 0, value));
           }}
-          className="h-9 w-32"
+          className="h-8 w-32"
           aria-label={tr('limitUnit')}
         />
       </div>
@@ -175,7 +175,7 @@ export default function FormLimit({
             onChange={(v) => pushOffset(v)}
             placeholder="0"
             textCenter
-            className="h-9 w-60 rounded-md px-2"
+            className="h-8 w-60 rounded-md px-2"
           />
         </div>
       )}
@@ -190,7 +190,7 @@ export default function FormLimit({
               onChange={(v) => pushSeed(v)}
               placeholder={tr('limitSampleSeedPlaceholder')}
               textCenter
-              className="h-9 w-60 rounded-md px-2"
+              className="h-8 w-60 rounded-md px-2"
             />
           </div>
           {!isRows && (
@@ -208,7 +208,7 @@ export default function FormLimit({
                   },
                 ]}
                 onChange={(value) => updateConfig((cfg) => ({ ...cfg, method: value }))}
-                className="h-9 w-60"
+                className="h-8 w-60"
               />
             </div>
           )}
@@ -232,7 +232,7 @@ export default function FormLimit({
               onChange={commitSortKeys}
             />
             {hasSort && (
-              <label className="mt-1 flex h-7 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary select-none">
+              <label className="mt-1 flex h-8 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary select-none">
                 <input
                   type="checkbox"
                   checked={ties}

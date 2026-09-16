@@ -1,5 +1,10 @@
 import type { DataWorkflowNodeInput, DataWorkflowSaveInput } from '../../../renderer/types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import {
+  buildWorkflowPlan,
+  validateWorkflowPlanGraph,
+  type WorkflowPlanDiagnostic,
+} from '../../../shared/workflow-plan';
 import { compileFilterConditionExpression } from '../operators/filter';
 import { validateGeneratedOperatorConfig } from './generated-operator-config-validator';
 import { AI_GENERATED_WORKFLOW_NODE_TYPE_SET } from './prep-dsl-capability-profile';
@@ -18,211 +23,36 @@ export interface GeneratedWorkflowDiagnostic extends PrepDiagnostic {
 /**
  * Validates the executable platform graph emitted by the AI compiler.
  *
- * This deliberately validates only the conservative single-input, linear/DAG
- * subset advertised to the generation model. The platform editor may support
- * richer graphs; generated workflows must not rely on those capabilities until
- * they are explicitly certified end to end.
+ * Structural graph rules (edges, handles, arity, cycles, reachability) are
+ * delegated to the shared workflow-plan validator so human-authored DSL
+ * workflows and generated plans are checked by one implementation. The
+ * generated profile additionally enforces the conservative single-input,
+ * allowlisted-node-type contract, and node configs go through the stricter
+ * generated-config validator.
  */
 export function validateGeneratedExecutableWorkflow(
   workflow: DataWorkflowSaveInput
 ): GeneratedWorkflowDiagnostic[] {
-  const diagnostics: GeneratedWorkflowDiagnostic[] = [];
-  const nodeById = new Map<string, DataWorkflowNodeInput>();
+  const { plan } = buildWorkflowPlan(workflow, { includeConfigDiagnostics: false });
+  const nodeById = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const diagnostics: GeneratedWorkflowDiagnostic[] = validateWorkflowPlanGraph(plan, {
+    profile: 'generated',
+    allowedNodeTypes: AI_GENERATED_WORKFLOW_NODE_TYPE_SET,
+  }).map((item) => attachNodeContext(item, nodeById));
 
   for (const node of workflow.nodes) {
-    if (!node.id.trim()) {
-      diagnostics.push(
-        diagnostic('NODE_ID_MISSING', 'Generated workflow contains an unnamed node')
-      );
-      continue;
-    }
-    if (nodeById.has(node.id)) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_ID_DUPLICATE',
-          `Generated workflow contains duplicate node id: ${node.id}`,
-          node
-        )
-      );
-      continue;
-    }
-    nodeById.set(node.id, node);
-    if (!AI_GENERATED_WORKFLOW_NODE_TYPE_SET.has(node.type)) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_TYPE_UNSUPPORTED',
-          `Generated workflow uses unsupported node type: ${node.type}`,
-          node
-        )
-      );
-      continue;
-    }
     diagnostics.push(...validateNodeConfig(node));
   }
 
-  const inputNodes = workflow.nodes.filter((node) => node.type === 'input_source');
-  const outputNodes = workflow.nodes.filter((node) => node.type === 'output');
-  if (inputNodes.length !== 1) {
-    diagnostics.push(
-      diagnostic(
-        'NODE_GRAPH_INPUT_COUNT',
-        `Generated workflow must contain exactly one input_source node; received ${inputNodes.length}`
-      )
-    );
-  }
-  if (outputNodes.length !== 1) {
-    diagnostics.push(
-      diagnostic(
-        'NODE_GRAPH_OUTPUT_COUNT',
-        `Generated workflow must contain exactly one output node; received ${outputNodes.length}`
-      )
-    );
-  }
-
-  const incoming = new Map<string, typeof workflow.edges>();
-  const outgoing = new Map<string, typeof workflow.edges>();
-  for (const edge of workflow.edges) {
-    const source = nodeById.get(edge.sourceNodeId);
-    const target = nodeById.get(edge.targetNodeId);
-    if (!source || !target) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_DANGLING_EDGE',
-          `Generated workflow edge ${edge.id} references an unknown node`
-        )
-      );
-      continue;
-    }
-    if (source.id === target.id) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_SELF_CYCLE',
-          `Generated workflow node ${source.id} connects to itself`,
-          source
-        )
-      );
-    }
-    const sourceHandle = edge.sourceHandle ?? 'output';
-    if (sourceHandle !== 'output') {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_SOURCE_HANDLE_INVALID',
-          `Generated workflow edge ${edge.id} uses invalid source handle: ${sourceHandle}`,
-          source
-        )
-      );
-    }
-    const targetHandle = edge.targetHandle ?? 'input';
-    const expectedHandles =
-      target.type === 'join' || target.type === 'set_op' ? ['left', 'right'] : ['input'];
-    if (!expectedHandles.includes(targetHandle)) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_TARGET_HANDLE_INVALID',
-          `Generated workflow edge ${edge.id} uses ${targetHandle}; ${target.type} expects ${expectedHandles.join(' or ')}`,
-          target
-        )
-      );
-    }
-    incoming.set(target.id, [...(incoming.get(target.id) ?? []), edge]);
-    outgoing.set(source.id, [...(outgoing.get(source.id) ?? []), edge]);
-  }
-
-  for (const node of workflow.nodes) {
-    const nodeIncoming = incoming.get(node.id) ?? [];
-    const nodeOutgoing = outgoing.get(node.id) ?? [];
-    if (node.type === 'input_source') {
-      if (nodeIncoming.length !== 0) {
-        diagnostics.push(
-          diagnostic(
-            'NODE_GRAPH_INPUT_HAS_INCOMING',
-            `Input node ${node.id} must not have incoming edges`,
-            node
-          )
-        );
-      }
-    } else if (node.type === 'join' || node.type === 'set_op') {
-      for (const handle of ['left', 'right']) {
-        const count = nodeIncoming.filter(
-          (edge) => (edge.targetHandle ?? 'input') === handle
-        ).length;
-        if (count !== 1) {
-          diagnostics.push(
-            diagnostic(
-              'NODE_GRAPH_BINARY_INPUT_INVALID',
-              `${node.type} node ${node.id} must have exactly one ${handle} input; received ${count}`,
-              node
-            )
-          );
-        }
-      }
-    } else if (nodeIncoming.length !== 1) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_INPUT_INVALID',
-          `Generated ${node.type} node ${node.id} must have exactly one input; received ${nodeIncoming.length}`,
-          node
-        )
-      );
-    }
-
-    if (node.type === 'output') {
-      if (nodeOutgoing.length !== 0) {
-        diagnostics.push(
-          diagnostic(
-            'NODE_GRAPH_OUTPUT_HAS_OUTGOING',
-            `Output node ${node.id} must not have outgoing edges`,
-            node
-          )
-        );
-      }
-    } else if (nodeOutgoing.length === 0) {
-      diagnostics.push(
-        diagnostic(
-          'NODE_GRAPH_DISCONNECTED',
-          `Generated node ${node.id} does not lead to the output`,
-          node
-        )
-      );
-    }
-  }
-
-  const input = inputNodes[0];
-  if (input) {
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-    const visit = (nodeId: string): void => {
-      if (visiting.has(nodeId)) {
-        diagnostics.push(
-          diagnostic(
-            'NODE_GRAPH_CYCLE',
-            `Generated workflow contains a cycle at node: ${nodeId}`,
-            nodeById.get(nodeId)
-          )
-        );
-        return;
-      }
-      if (visited.has(nodeId)) return;
-      visiting.add(nodeId);
-      for (const edge of outgoing.get(nodeId) ?? []) visit(edge.targetNodeId);
-      visiting.delete(nodeId);
-      visited.add(nodeId);
-    };
-    visit(input.id);
-    for (const node of workflow.nodes) {
-      if (!visited.has(node.id)) {
-        diagnostics.push(
-          diagnostic(
-            'NODE_GRAPH_UNREACHABLE',
-            `Generated node ${node.id} is not reachable from the input`,
-            node
-          )
-        );
-      }
-    }
-  }
-
   return diagnostics;
+}
+
+function attachNodeContext(
+  item: WorkflowPlanDiagnostic,
+  nodeById: Map<string, DataWorkflowNodeInput>
+): GeneratedWorkflowDiagnostic {
+  const node = item.nodeId ? nodeById.get(item.nodeId) : undefined;
+  return node ? withNodeContext(item, node) : item;
 }
 
 function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagnostic[] {
@@ -332,10 +162,10 @@ function diagnostic(
   return node ? withNodeContext(base, node) : base;
 }
 
-function withNodeContext(
-  diagnostic: PrepDiagnostic,
+function withNodeContext<T extends PrepDiagnostic>(
+  diagnostic: T,
   node: DataWorkflowNodeInput
-): GeneratedWorkflowDiagnostic {
+): T & GeneratedWorkflowDiagnostic {
   const origin = isRecord(node.config?.generatedOrigin) ? node.config.generatedOrigin : undefined;
   return {
     ...diagnostic,

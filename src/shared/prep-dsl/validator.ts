@@ -4,7 +4,9 @@ import { parseFieldRef } from './syntax/fields';
 
 export function validatePrepWorkflow(ast: PrepWorkflowAst): PrepDiagnostic[] {
   const diagnostics: PrepDiagnostic[] = [];
-  const aliases = new Set<string>();
+  const streamNames = new Set<string>();
+  const streamNamesLower = new Set<string>();
+
   for (const source of ast.sources) {
     const alias = getAlias(source);
     if (!alias) {
@@ -13,31 +15,101 @@ export function validatePrepWorkflow(ast: PrepWorkflowAst): PrepDiagnostic[] {
       );
       continue;
     }
-    if (aliases.has(alias)) {
+    if (streamNamesLower.has(alias.toLowerCase())) {
       diagnostics.push(
         createPrepDiagnostic('duplicateInputAlias', `Duplicate input source alias: ${alias}`, {
           alias,
         })
       );
+      continue;
     }
-    aliases.add(alias);
+    streamNames.add(alias);
+    streamNamesLower.add(alias.toLowerCase());
   }
-  if (ast.mainSource && !aliases.has(ast.mainSource)) {
-    diagnostics.push(
-      createPrepDiagnostic('mainSourceNotFound', `Main input source not found: ${ast.mainSource}`, {
-        alias: ast.mainSource,
-      })
-    );
-  }
-  const currentLeftSources = new Set<string>();
-  if (ast.mainSource) currentLeftSources.add(ast.mainSource.toLowerCase());
-  for (const operator of ast.operators) {
-    if (operator.type === 'join') {
-      validateJoin(operator, aliases, currentLeftSources, diagnostics);
-    } else if (operator.type === 'set_op') {
-      validateSetOp(operator, aliases, diagnostics);
+
+  // Stream names resolve against sources and earlier steps only — forward
+  // references would introduce cycles.
+  for (const step of ast.steps) {
+    if (streamNamesLower.has(step.name.toLowerCase())) {
+      diagnostics.push(
+        createPrepDiagnostic('duplicateStepName', `Duplicate step or source name: ${step.name}`, {
+          alias: step.name,
+        })
+      );
+    }
+    if (step.input && !streamNamesLower.has(step.input.toLowerCase())) {
+      diagnostics.push(
+        createPrepDiagnostic(
+          'stepInputNotFound',
+          `Step "${step.name}" reads unknown stream: ${step.input}`,
+          { alias: step.input, name: step.name }
+        )
+      );
+    }
+    let sawOutput = false;
+    for (const operator of step.operators) {
+      if (sawOutput) {
+        diagnostics.push(
+          createPrepDiagnostic(
+            'outputNotTerminal',
+            `Step "${step.name}" has operators after an output sink; outputs must end a chain`,
+            { name: step.name }
+          )
+        );
+      }
+      if (operator.type === 'output') sawOutput = true;
+      // `expect ... reject to <stream>` declares a named stream of violating
+      // rows that later steps (and join/set_op right inputs) may read.
+      if (operator.type === 'expect') {
+        const rejectStream =
+          typeof operator.config.rejectStream === 'string'
+            ? operator.config.rejectStream.trim()
+            : '';
+        if (rejectStream) {
+          if (streamNamesLower.has(rejectStream.toLowerCase())) {
+            diagnostics.push(
+              createPrepDiagnostic(
+                'duplicateStepName',
+                `Duplicate step or source name: ${rejectStream}`,
+                { alias: rejectStream }
+              )
+            );
+          } else {
+            streamNames.add(rejectStream);
+            streamNamesLower.add(rejectStream.toLowerCase());
+          }
+        }
+      }
+    }
+    // The step's stream name binds to its output; operators following an output
+    // already reported above. Name binds even when the step only holds sinks.
+    if (!streamNamesLower.has(step.name.toLowerCase())) {
+      streamNames.add(step.name);
+      streamNamesLower.add(step.name.toLowerCase());
+    }
+
+    const leftStreams = new Set<string>();
+    if (step.input) leftStreams.add(step.input.toLowerCase());
+    if (ast.mainSource) leftStreams.add(ast.mainSource.toLowerCase());
+    for (const operator of step.operators) {
+      if (operator.type === 'join') {
+        validateJoin(operator, streamNames, leftStreams, diagnostics);
+      } else if (operator.type === 'set_op') {
+        validateSetOp(operator, streamNames, diagnostics);
+      }
     }
   }
+
+  if (ast.outputs.length > 1) {
+    diagnostics.push({
+      ...createPrepDiagnostic(
+        'multiOutputPartial',
+        'Multiple output sinks are kept in the graph, but task execution materializes only the first sink; the rest are exported for downstream execution'
+      ),
+      severity: 'warning',
+    });
+  }
+
   return diagnostics;
 }
 

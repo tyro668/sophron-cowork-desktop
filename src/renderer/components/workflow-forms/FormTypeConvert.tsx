@@ -158,7 +158,7 @@ export default function FormTypeConvert({
                   searchPlaceholder={tr('fieldPicker.searchField')}
                   emptyText={tr('fieldPicker.noMatch')}
                   disabledOptions={disabledFields}
-                  className="flex-1 min-w-0 h-7"
+                  className="flex-1 min-w-0 h-8"
                 />
               );
             },
@@ -184,7 +184,7 @@ export default function FormTypeConvert({
                     })),
                   },
                 ]}
-                className="h-7 w-full text-[12px]"
+                className="h-8 w-full text-[12px]"
               />
             ),
           },
@@ -216,7 +216,7 @@ export default function FormTypeConvert({
                       })
                     }
                     variant="highlight"
-                    className="h-7 w-full text-[12px]"
+                    className="h-8 w-full text-[12px]"
                   />
                 );
               }
@@ -242,12 +242,12 @@ export default function FormTypeConvert({
                       })
                     }
                     variant="highlight"
-                    className="h-7 w-full text-[12px]"
+                    className="h-8 w-full text-[12px]"
                   />
                 );
               }
               return (
-                <span className="flex h-7 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
+                <span className="flex h-8 w-full items-center rounded border border-transparent bg-[rgb(var(--color-surface-active-rgb))] px-1.5 text-left text-[12px] text-accent-text">
                   {tr('typeConvertNoSettings')}
                 </span>
               );
@@ -273,7 +273,7 @@ export default function FormTypeConvert({
                     })),
                   },
                 ]}
-                className="h-7 w-full text-[12px]"
+                className="h-8 w-full text-[12px]"
               />
             ),
           },

@@ -65,7 +65,9 @@ export const deduplicateCodec: OperatorDslCodec = {
     if (!columns && config?.strategy !== 'all_columns') return null;
     const parts = ['deduplicate'];
     if (columns) parts.push(`by ${columns}`);
-    if (typeof config?.keep === 'string') parts.push(`keep ${config.keep}`);
+    if (typeof config?.keep === 'string' && config.keep !== 'first') {
+      parts.push(`keep ${config.keep}`);
+    }
     const orderBy = formatSortKeys(config?.orderBy);
     if (orderBy) parts.push(`order by ${orderBy}`);
     return parts.join(' ');

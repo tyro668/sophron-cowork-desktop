@@ -90,7 +90,11 @@ export function formatFieldRef(value: string): string {
 
 export function formatFieldName(value: string): string {
   const raw = unwrapFormattedFieldName(value);
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? `[${raw}]` : `[\`${raw.replace(/`/g, '\\`')}\`]`;
+  // Plain brackets hold the raw name; backtick-quoting inside brackets is
+  // only the escape hatch for names containing ], a backtick, or a backslash.
+  return /[`\]\\]/.test(raw)
+    ? `[\`${raw.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\`]`
+    : `[${raw}]`;
 }
 
 function unwrapFormattedFieldName(value: string): string {

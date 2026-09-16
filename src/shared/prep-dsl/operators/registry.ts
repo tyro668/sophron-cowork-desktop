@@ -3,6 +3,7 @@ import { aggregateCodec } from './aggregate';
 import { calculateFieldCodec } from './calculate-field';
 import type { OperatorCommand, OperatorDslCodec } from './codec';
 import { deduplicateCodec } from './deduplicate';
+import { expectCodec } from './expect';
 import { fieldMappingCodec } from './field-mapping';
 import { fieldSelectCodec } from './field-select';
 import { filterCodec } from './filter';
@@ -33,6 +34,7 @@ const codecs: readonly OperatorDslCodec[] = [
   unpivotCodec,
   setOpCodec,
   unnestCodec,
+  expectCodec,
   outputCodec,
 ];
 

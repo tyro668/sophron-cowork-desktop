@@ -449,6 +449,7 @@
       "input": "输入",
       "output": "输出",
       "outputStrategy": "输出策略",
+      "outputMode": "写入方式",
       "inputTable": "输入表",
       "outputTable": "输出表",
       "outputTableName": "输出表名称",
@@ -512,6 +513,7 @@
         "multiSourceMissingFrom": "多源任务必须使用 from <alias> 指定主输入源",
         "missingInputSource": "任务至少需要一个 input source",
         "unsupportedCommand": "不支持的 DSL 命令：{{value}}",
+        "unsupportedOutputDestination": "任务工作流不支持输出到 {{value}} 目标，请使用 output table",
         "invalidInputSource": "无法解析输入源：{{value}}",
         "invalidFieldMapping": "无法解析字段映射：{{value}}",
         "invalidJoin": "无法解析 join：{{value}}",
@@ -523,9 +525,57 @@
         "asofMissingOn": "asof join 必须声明 on 时间近邻条件",
         "asofNearestMissingTolerance": "asof nearest 必须声明 tolerance",
         "joinMissingOn": "非 cross join 必须声明 on 条件",
+        "planFieldNotFound": "字段 {{field}} 不在上游字段中",
+        "filterConditionInvalid": "筛选条件无法解析",
+        "expressionSyntaxInvalid": "表达式无法解析",
+        "aggregateGrainNotInGroup": "聚合粒度字段 {{field}} 不在分组字段中",
+        "pivotDuplicateOutput": "透视产出重复输出列 {{field}}",
+        "joinConditionTypeMismatch": "join 条件字段 {{field}} 两侧类型不兼容",
+        "asofTimeFieldNotTemporal": "ASOF 时间字段 {{field}} 不是时间类型",
+        "setOpColumnMissing": "集合操作右侧输入缺少列 {{field}}，将填充 NULL",
+        "setOpTypeMismatch": "集合操作列 {{field}} 两侧类型不一致",
+        "setOpColumnCountMismatch": "by position 集合操作要求两侧列数一致",
+        "limitNondeterministic": "限制行数未指定排序字段，返回的行子集不确定",
+        "limitSampleWithoutSeed": "随机抽样未指定 seed，结果不可复现",
+        "deduplicateNondeterministic": "去重未指定排序字段，保留的行不确定",
+        "PLAN_GRAPH_NO_INPUT": "工作流缺少输入节点",
+        "PLAN_GRAPH_NO_OUTPUT": "工作流缺少输出节点",
+        "NODE_ID_MISSING": "工作流存在未命名节点",
+        "NODE_ID_DUPLICATE": "工作流节点 id 重复",
+        "NODE_TYPE_UNSUPPORTED": "工作流使用了不支持的节点类型",
+        "NODE_GRAPH_DANGLING_EDGE": "连接线指向不存在的节点",
+        "NODE_GRAPH_SELF_CYCLE": "节点不能连接自身",
+        "NODE_GRAPH_SOURCE_HANDLE_INVALID": "连接线的输出锚点无效",
+        "NODE_GRAPH_TARGET_HANDLE_INVALID": "连接线的输入锚点无效",
+        "NODE_GRAPH_INPUT_HAS_INCOMING": "输入节点不能有输入连接",
+        "NODE_GRAPH_BINARY_INPUT_INVALID": "双输入算子需要左右各一条连接",
+        "NODE_GRAPH_INPUT_INVALID": "算子需要恰好一条输入连接",
+        "NODE_GRAPH_OUTPUT_HAS_OUTGOING": "输出节点不能有输出连接",
+        "NODE_GRAPH_DISCONNECTED": "节点未连接到输出",
+        "NODE_GRAPH_CYCLE": "工作流存在循环依赖",
+        "NODE_GRAPH_UNREACHABLE": "节点从输入不可达",
+        "NODE_GRAPH_INPUT_COUNT": "生成的工作流必须恰好有一个输入节点",
+        "NODE_GRAPH_OUTPUT_COUNT": "生成的工作流必须恰好有一个输出节点",
         "operatorDslTypeMismatch": "当前节点需要 {{expected}} DSL，但输入的是 {{actual}}",
         "operatorDslMultipleCommands": "单个算子配置只能包含一条 DSL 命令",
-        "dismissDiagnostics": "关闭诊断信息"
+        "dismissDiagnostics": "关闭诊断信息",
+        "invalidStep": "step 必须写成：step <名称> = <源或步骤>",
+        "duplicateStepName": "step 名称或与输入源重名：{{alias}}",
+        "stepInputNotFound": "step \"{{name}}\" 引用了不存在的数据流：{{alias}}",
+        "outputNotTerminal": "step \"{{name}}\" 在 output 之后还有算子；output 必须是链尾",
+        "multiOutputPartial": "图中保留多个 output 汇点，但任务执行只会物化第一个汇点；其余用于下游执行",
+        "invalidExpect": "expect 断言无法解析",
+        "invalidExpectUnique": "expect unique 需要至少一个字段",
+        "invalidExpectRows": "expect rows 需要比较表达式，例如 rows >= 1",
+        "invalidExpectExpression": "expect 需要一个表达式",
+        "invalidExpectReject": "expect ... reject 必须为 reject to <流名>",
+        "unexpectedExpectToken": "expect 断言中存在无法识别的内容",
+        "invalidOutputMergeKeys": "mode merge 需要 by [key] 业务键列",
+        "invalidOutputSchemaPolicy": "无效的输出 schema 策略",
+        "outputMergeKeysMissing": "output mode merge 需要 by [key] 业务键列",
+        "expectExpressionInvalid": "expect 表达式无法解析",
+        "NODE_GRAPH_REJECT_STREAM_UNCONSUMED": "expect 节点声明了 reject 流但没有连接消费它",
+        "NODE_GRAPH_REJECT_STREAM_MISSING": "expect 节点有 reject 连接但未配置 reject 流"
       },
       "completionGroups": {
         "keywords": "关键字",
@@ -1133,6 +1183,31 @@
           "leftInput": "左表",
           "noLeftSource": "上游节点",
           "noRightSource": "未连接右表"
+        },
+        "expect": {
+          "kind": {
+            "label": "断言类型",
+            "expression": "表达式",
+            "unique": "唯一性",
+            "rowCount": "行数"
+          },
+          "expression": {
+            "label": "条件表达式",
+            "placeholder": "例如 [amount] > 0"
+          },
+          "unique": {
+            "label": "唯一键字段",
+            "placeholder": "选择业务键字段"
+          },
+          "rows": {
+            "operatorLabel": "比较",
+            "valueLabel": "行数阈值"
+          },
+          "reject": {
+            "label": "Reject 流名称",
+            "placeholder": "可选：违规行流向此流名"
+          },
+          "expectIncompleteField": "请补齐断言配置"
         }
       },
       "operators": {
@@ -1152,7 +1227,8 @@
         "unpivot": "反透视",
         "set_op": "集合操作",
         "unnest": "嵌套展开",
-        "output": "输出"
+        "output": "输出",
+        "expect": "质量断言"
       },
       "ruleMethods": {
         "skip": "不处理",
@@ -1254,13 +1330,26 @@
         "outputModes": {
           "replace": "覆盖",
           "append": "追加",
-          "error_if_exists": "存在时报错"
+          "error_if_exists": "存在时报错",
+          "merge": "按键合并"
         },
         "outputStrategies": {
           "auto": "自动",
           "existing": "输出到已有表"
+        },
+        "schemaPolicies": {
+          "extend": "扩展",
+          "strict": "严格",
+          "ignore": "忽略新列"
         }
-      }
+      },
+      "mergeKeys": "业务键字段",
+      "mergeKeysPlaceholder": "例如 order_id, sku（逗号分隔）",
+      "schemaPolicy": "Schema 漂移策略",
+      "incrementalBy": "增量水位字段",
+      "incrementalByPlaceholder": "可选，例如 updated_at",
+      "assertion": "断言",
+      "rejectStream": "Reject 流"
     },
     "relative": {
       "today": "今天",

@@ -1,7 +1,11 @@
 import { createPrepDiagnostic } from '../diagnostics';
+import { formatFieldRef, toFieldName } from '../syntax/fields';
 import { quoteString, unquoteString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
+
+export const OUTPUT_MODES = ['replace', 'append', 'error_if_exists', 'merge'] as const;
+export const OUTPUT_SCHEMA_POLICIES = ['extend', 'strict', 'ignore'] as const;
 
 export const outputCodec: OperatorDslCodec = {
   type: 'output',
@@ -14,6 +18,8 @@ export const outputCodec: OperatorDslCodec = {
     const targetLiteral = cursor.expectStringLiteral('invalidOutputName');
     let format: string | undefined;
     let mode = 'replace';
+    const mergeKeys: string[] = [];
+    let schemaPolicy: string | undefined;
     let name: string | undefined;
     const seenOptions = new Set<string>();
     while (!cursor.eof) {
@@ -30,7 +36,24 @@ export const outputCodec: OperatorDslCodec = {
           break;
         }
         seenOptions.add('mode');
-        mode = cursor.expectOneOf(['replace', 'append'], 'invalidOutputMode') ?? mode;
+        mode = cursor.expectOneOf([...OUTPUT_MODES], 'invalidOutputMode') ?? mode;
+        if (mode === 'merge' && cursor.match('by')) {
+          while (!cursor.eof) {
+            const field = cursor.expectFieldRef('invalidOutputMergeKeys');
+            if (!field) break;
+            const key = toFieldName(field).trim();
+            if (key) mergeKeys.push(key);
+            if (!cursor.matchType('Comma')) break;
+          }
+        }
+      } else if (cursor.match('schema')) {
+        if (seenOptions.has('schema')) {
+          cursor.report('duplicateOutputOption', 'Duplicate output schema option');
+          break;
+        }
+        seenOptions.add('schema');
+        schemaPolicy =
+          cursor.expectOneOf([...OUTPUT_SCHEMA_POLICIES], 'invalidOutputSchemaPolicy') ?? undefined;
       } else if (cursor.match('name')) {
         if (seenOptions.has('name')) {
           cursor.report('duplicateOutputOption', 'Duplicate output name option');
@@ -50,6 +73,24 @@ export const outputCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
+    if (mode === 'merge' && mergeKeys.length === 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidOutputMergeKeys',
+          'mode merge requires by [key], [key], ... business key columns'
+        ),
+        line: command.line,
+      });
+    }
+    if (mode !== 'merge' && mergeKeys.length > 0) {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'invalidOutputMergeKeys',
+          'by <keys> is only valid with mode merge'
+        ),
+        line: command.line,
+      });
+    }
     const targetValue = unquoteString(targetLiteral ?? '""');
     return createOperator('output', text, {
       destination: target === 'table' ? 'duckdb_table' : target,
@@ -58,6 +99,8 @@ export const outputCodec: OperatorDslCodec = {
       filePath: target === 'file' ? targetValue : undefined,
       format,
       mode,
+      mergeKeys: mergeKeys.length > 0 ? mergeKeys : undefined,
+      schemaPolicy,
       name,
     });
   },
@@ -75,8 +118,24 @@ export const outputCodec: OperatorDslCodec = {
       destination === 'file' && typeof config?.format === 'string'
         ? ` format ${config.format}`
         : '';
-    const mode = typeof config?.mode === 'string' ? ` mode ${config.mode}` : '';
+    const modeValue = String(config?.mode ?? 'replace');
+    const mergeKeys =
+      modeValue === 'merge'
+        ? (config?.mergeKeys as unknown[] | undefined)
+            ?.map((key) => formatFieldRef(String(key)))
+            .filter(Boolean)
+        : undefined;
+    const mode =
+      modeValue === 'merge'
+        ? mergeKeys && mergeKeys.length > 0
+          ? ` mode merge by ${mergeKeys.join(', ')}`
+          : ' mode merge'
+        : ` mode ${modeValue}`;
+    const schema =
+      typeof config?.schemaPolicy === 'string' && config.schemaPolicy !== 'extend'
+        ? ` schema ${config.schemaPolicy}`
+        : '';
     const name = typeof config?.name === 'string' ? ` name ${quoteString(config.name)}` : '';
-    return `output ${target}${format}${mode}${name}`;
+    return `output ${target}${format}${mode}${schema}${name}`;
   },
 };

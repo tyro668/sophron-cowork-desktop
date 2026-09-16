@@ -121,6 +121,38 @@ export function registerDataTasksIpc({
     }
   });
 
+  ipcMain.handle(
+    'data.runTaskWithDiagnostics',
+    async (_event, id: string, payload?: DataRunTaskInput) => {
+      try {
+        const result = await requireDataTaskStore().runTaskWithDiagnostics(id, payload ?? {});
+        if (payload?.outputMode !== 'temporary') {
+          notifyDataTaskCompleted(result.task);
+        }
+        return result;
+      } catch (error) {
+        logError('[Data] Error running task:', error);
+        if (error instanceof ZodError) {
+          throw new Error(
+            error.issues
+              .map((issue) => `${issue.path.join('.') || 'config'}: ${issue.message}`)
+              .join('; ')
+          );
+        }
+        throw error;
+      }
+    }
+  );
+
+  ipcMain.handle('data.getTaskNodeStats', async (_event, id: string) => {
+    try {
+      return await requireDataTaskStore().getTaskNodeStats(id);
+    } catch (error) {
+      logError('[Data] Error getting task node stats:', error);
+      throw error;
+    }
+  });
+
   ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getTaskWorkflow(id);
@@ -137,6 +169,18 @@ export function registerDataTasksIpc({
         return await requireDataTaskStore().saveTaskWorkflow(id, payload);
       } catch (error) {
         logError('[Data] Error saving task workflow:', error);
+        throw error;
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'data.validateTaskWorkflowPlan',
+    async (_event, id: string, payload: DataWorkflowSaveInput) => {
+      try {
+        return await requireDataTaskStore().validateWorkflowPlanForTask(id, payload);
+      } catch (error) {
+        logError('[Data] Error validating task workflow plan:', error);
         throw error;
       }
     }

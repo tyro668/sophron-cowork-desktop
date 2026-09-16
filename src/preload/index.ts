@@ -93,8 +93,14 @@ import type {
   CodexAuthActionResult,
   CodexLoginPromptPayload,
 } from '../renderer/types';
-import type { DiagnosticInput, DiagnosticResult } from '../renderer/types';
+import type {
+  DiagnosticInput,
+  DiagnosticResult,
+  RunTaskResult,
+  WorkflowNodeRunStat,
+} from '../renderer/types';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
+import type { WorkflowPlanDiagnostic } from '../shared/workflow-plan';
 import type {
   McpServerConfig,
   McpTool,
@@ -275,10 +281,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('data.updateTask', payload),
     runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.runTask', id, payload),
+    runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput): Promise<RunTaskResult> =>
+      ipcRenderer.invoke('data.runTaskWithDiagnostics', id, payload),
     getTaskWorkflow: (id: string): Promise<DataTaskWorkflow> =>
       ipcRenderer.invoke('data.getTaskWorkflow', id),
+    getTaskNodeStats: (id: string): Promise<WorkflowNodeRunStat[]> =>
+      ipcRenderer.invoke('data.getTaskNodeStats', id),
     saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput): Promise<DataTaskWorkflow> =>
       ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
+    validateTaskWorkflowPlan: (
+      id: string,
+      payload: DataWorkflowSaveInput
+    ): Promise<WorkflowPlanDiagnostic[]> =>
+      ipcRenderer.invoke('data.validateTaskWorkflowPlan', id, payload),
     importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
       ipcRenderer.invoke('data.importDataset', payload),
     getInputTable: (id: string): Promise<DataDataset | null> =>
@@ -803,8 +818,14 @@ declare global {
         createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
         updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
         runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
+        runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput) => Promise<RunTaskResult>;
         getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
+        getTaskNodeStats: (id: string) => Promise<WorkflowNodeRunStat[]>;
         saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput) => Promise<DataTaskWorkflow>;
+        validateTaskWorkflowPlan: (
+          id: string,
+          payload: DataWorkflowSaveInput
+        ) => Promise<WorkflowPlanDiagnostic[]>;
         importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
         getInputTable: (id: string) => Promise<DataDataset | null>;
         updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;

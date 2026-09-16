@@ -447,6 +447,147 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.getTaskWorkflow(params as never),
     },
     {
+      name: 'data_get_workflow_dsl_reference',
+      ...DATA_TOOL_COPY.data_get_workflow_dsl_reference,
+      parameters: Type.Object({
+        topic: Type.Optional(
+          Type.Union([
+            Type.Literal('overview'),
+            Type.Literal('workflow'),
+            Type.Literal('operators'),
+            Type.Literal('derive_window'),
+            Type.Literal('reshape'),
+            Type.Literal('examples'),
+            Type.Literal('all'),
+          ])
+        ),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.getWorkflowDslReference(params as never),
+    },
+    {
+      name: 'data_get_workflow_capability_manifest',
+      ...DATA_TOOL_COPY.data_get_workflow_capability_manifest,
+      parameters: Type.Object({
+        inputTableIds: Type.Optional(
+          Type.Array(Type.String({ minLength: 1 }), {
+            description: 'Input table ids to include real column snapshots for',
+          })
+        ),
+        outputTableIds: Type.Optional(
+          Type.Array(Type.String({ minLength: 1 }), {
+            description: 'Output table ids to include real column snapshots for',
+          })
+        ),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.getWorkflowCapabilityManifest(params as never),
+    },
+    {
+      name: 'data_apply_workflow_plan',
+      ...DATA_TOOL_COPY.data_apply_workflow_plan,
+      parameters: Type.Object({
+        taskId: Type.String({ minLength: 1 }),
+        plan: Type.Unsafe<Record<string, unknown>>({
+          type: 'object',
+          description:
+            'Constrained plan {version: "workflow-plan/v1", nodes, edges}; node configs must satisfy the per-type schemas from data_get_workflow_capability_manifest',
+        }),
+        inputResources: Type.Optional(
+          Type.Unsafe<Record<string, string>>({
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'alias -> inputTableId binding for each input_source node',
+          })
+        ),
+        outputTableId: Type.Optional(
+          Type.String({ description: 'Real output table id binding the first output sink' })
+        ),
+        dryRun: Type.Optional(
+          Type.Boolean({ description: 'Validate only; do not save the workflow' })
+        ),
+      }),
+      execute: async (_toolCallId, params) => dataToolService.applyWorkflowPlan(params as never),
+    },
+    {
+      name: 'data_apply_workflow_dsl',
+      ...DATA_TOOL_COPY.data_apply_workflow_dsl,
+      parameters: Type.Object({
+        taskId: Type.String({ minLength: 1 }),
+        dsl: Type.String({ minLength: 1 }),
+        inputTableId: Type.Optional(
+          Type.String({ description: 'Single-source binding: first (or inputAlias) input node' })
+        ),
+        inputAlias: Type.Optional(Type.String()),
+        inputResources: Type.Optional(
+          Type.Unsafe<Record<string, string>>({
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'alias -> inputTableId binding for multi-source workflows',
+          })
+        ),
+        outputTableId: Type.Optional(
+          Type.String({ description: 'Real output table id binding the first output sink' })
+        ),
+        dryRun: Type.Optional(Type.Boolean()),
+      }),
+      execute: async (_toolCallId, params) => dataToolService.applyWorkflowDsl(params as never),
+    },
+    {
+      name: 'data_configure_input_operator',
+      ...DATA_TOOL_COPY.data_configure_input_operator,
+      parameters: Type.Object({
+        taskId: Type.String({ minLength: 1 }),
+        nodeId: Type.String({ minLength: 1 }),
+        inputTableId: Type.String({ minLength: 1 }),
+        alias: Type.Optional(Type.String()),
+        incrementalBy: Type.Optional(
+          Type.String({ description: 'Incremental watermark column name' })
+        ),
+        dryRun: Type.Optional(Type.Boolean()),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.configureInputOperator(params as never),
+    },
+    {
+      name: 'data_configure_output_operator',
+      ...DATA_TOOL_COPY.data_configure_output_operator,
+      parameters: Type.Object({
+        taskId: Type.String({ minLength: 1 }),
+        nodeId: Type.String({ minLength: 1 }),
+        outputTableId: Type.Optional(Type.String()),
+        outputTableName: Type.Optional(Type.String()),
+        outputStrategy: Type.Optional(Type.Union([Type.Literal('existing'), Type.Literal('auto')])),
+        mode: Type.Optional(
+          Type.Union([
+            Type.Literal('replace'),
+            Type.Literal('append'),
+            Type.Literal('error_if_exists'),
+            Type.Literal('merge'),
+          ])
+        ),
+        mergeKeys: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+        schemaPolicy: Type.Optional(
+          Type.Union([Type.Literal('extend'), Type.Literal('strict'), Type.Literal('ignore')])
+        ),
+        dryRun: Type.Optional(Type.Boolean()),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.configureOutputOperator(params as never),
+    },
+    {
+      name: 'data_apply_operator_dsl',
+      ...DATA_TOOL_COPY.data_apply_operator_dsl,
+      parameters: Type.Object({
+        taskId: Type.String({ minLength: 1 }),
+        nodeId: Type.String({ minLength: 1 }),
+        operatorType: Type.Optional(Type.String()),
+        dsl: Type.String({ minLength: 1 }),
+        dryRun: Type.Optional(Type.Boolean()),
+      }),
+      execute: async (_toolCallId, params) => dataToolService.applyOperatorDsl(params as never),
+    },
+    {
       name: 'data_export_workflow_dsl',
       ...DATA_TOOL_COPY.data_export_workflow_dsl,
       parameters: Type.Object({
@@ -460,6 +601,22 @@ export function createDataCustomTools(
       parameters: Type.Object({
         taskId: Type.String({ minLength: 1 }),
         mode: Type.Optional(Type.Union([Type.Literal('temporary'), Type.Literal('persisted')])),
+        workflowDsl: Type.Optional(
+          Type.String({ description: 'One-off DSL override for this run (not saved)' })
+        ),
+        saveWorkflow: Type.Optional(
+          Type.Boolean({ description: 'Persist the workflowDsl override after a successful run' })
+        ),
+        inputResources: Type.Optional(
+          Type.Unsafe<Record<string, string>>({
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'alias -> inputTableId binding applied to the workflowDsl override',
+          })
+        ),
+        inputTableId: Type.Optional(Type.String()),
+        inputAlias: Type.Optional(Type.String()),
+        outputTableId: Type.Optional(Type.String()),
         previewRows: AgentResultPreviewRowsSchema,
       }),
       execute: async (_toolCallId, params) => dataToolService.runTask(params as never),

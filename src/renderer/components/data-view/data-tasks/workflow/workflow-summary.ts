@@ -228,7 +228,52 @@ export function getWorkflowConfigSummary(
           ),
           summaryRow(t, 'outputTable', outputDisplayName, true),
         ],
-        details: [],
+        details: [
+          summaryRow(
+            t,
+            'outputMode',
+            translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))
+          ),
+          ...(stringValue(config.mode) === 'merge'
+            ? [
+                summaryRow(
+                  t,
+                  'mergeKeys',
+                  Array.isArray(config.mergeKeys) ? config.mergeKeys.join(', ') : '',
+                  true
+                ),
+              ]
+            : []),
+          ...(stringValue(config.mode) === 'append' || stringValue(config.mode) === 'merge'
+            ? [
+                summaryRow(
+                  t,
+                  'schemaPolicy',
+                  translateWorkflowValue(
+                    t,
+                    'schemaPolicies',
+                    stringValue(config.schemaPolicy, 'extend')
+                  )
+                ),
+              ]
+            : []),
+        ],
+      };
+      break;
+    }
+    case 'expect': {
+      const kind = stringValue(config.kind, 'expression');
+      const assertion =
+        kind === 'unique'
+          ? `unique ${(Array.isArray(config.columns) ? config.columns : []).join(', ')}`
+          : kind === 'row_count'
+            ? `rows ${stringValue(config.operator, '>=')} ${config.value ?? 0}`
+            : stringValue(config.expression);
+      summary = {
+        primary: [summaryRow(t, 'assertion', assertion, true)],
+        details: stringValue(config.rejectStream)
+          ? [summaryRow(t, 'rejectStream', stringValue(config.rejectStream))]
+          : [],
       };
       break;
     }

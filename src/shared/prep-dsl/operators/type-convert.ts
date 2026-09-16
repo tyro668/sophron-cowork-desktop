@@ -136,7 +136,9 @@ export const typeConvertCodec: OperatorDslCodec = {
         const options = [
           typeof conversion.format === 'string' ? `format ${quoteString(conversion.format)}` : '',
           typeof conversion.scale === 'number' ? `scale ${conversion.scale}` : '',
-          typeof conversion.onError === 'string' ? `on_error ${conversion.onError}` : '',
+          typeof conversion.onError === 'string' && conversion.onError !== 'null'
+            ? `on_error ${conversion.onError}`
+            : '',
         ].filter(Boolean);
         const suffix = options.length > 0 ? ` ${options.join(' ')}` : '';
         return `${formatFieldRef(String(conversion.column ?? 'field'))} as ${String(

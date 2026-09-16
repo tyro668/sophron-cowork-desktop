@@ -40,7 +40,9 @@ describe('data tool prompt', () => {
     expect(prompt).toContain('mode=persisted');
     expect(prompt).toContain('preserve those links in your user-facing response');
     expect(prompt).toContain('Do not author workflow DSL');
-    expect(prompt).not.toContain('data_apply_workflow_dsl');
+    expect(prompt).toContain('data_get_workflow_capability_manifest');
+    expect(prompt).toContain('data_apply_workflow_plan');
+    expect(prompt).toContain('inputResources');
     expect(prompt).not.toContain('Embedded workflow DSL quick reference');
   });
 

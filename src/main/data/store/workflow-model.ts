@@ -73,6 +73,7 @@ export const WORKFLOW_OPERATOR_TYPES: readonly DataWorkflowOperatorType[] = [
   'unpivot',
   'set_op',
   'unnest',
+  'expect',
   'output',
 ];
 
@@ -95,6 +96,7 @@ export const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> =
   unpivot: '反透视',
   set_op: '集合操作',
   unnest: '嵌套展开',
+  expect: '质量断言',
   output: '输出',
 };
 

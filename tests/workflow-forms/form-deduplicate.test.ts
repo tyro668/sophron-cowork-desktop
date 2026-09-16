@@ -310,7 +310,7 @@ describe('FormDeduplicate — 真实使用场景', () => {
     };
     const r = ok(config);
     expect(r.dsl).toContain('by [name], [phone]');
-    expect(r.dsl).toContain('keep first');
+    // keep first is the default and is omitted in canonical output
     expect(r.dsl).toContain('order by [created_at] asc');
   });
 
@@ -348,7 +348,8 @@ describe('FormDeduplicate — 真实使用场景', () => {
 
   it('切换保留策略：first 和 last 均在 DSL 中体现', () => {
     const first = ok({ strategy: 'by_columns', columns: ['id'], keep: 'first' });
-    expect(first.dsl).toContain('keep first');
+    // keep first is the default and is omitted in canonical output
+    expect(first.dsl).not.toContain('keep first');
 
     const last = ok({ strategy: 'by_columns', columns: ['id'], keep: 'last' });
     expect(last.dsl).toContain('keep last');

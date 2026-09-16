@@ -26,6 +26,11 @@ export function WorkflowOutputConfig({
         : 'auto';
   const autoOutputTableName =
     stringValue(node.config.outputTableName) || stringValue(node.config.table);
+  const mode = stringValue(node.config.mode, 'replace');
+  const schemaPolicy = stringValue(node.config.schemaPolicy, 'extend');
+  const mergeKeysText = Array.isArray(node.config.mergeKeys)
+    ? node.config.mergeKeys.map((key) => String(key)).join(', ')
+    : '';
   const availableOutputTables = outputTables.filter(
     (outputTable) =>
       outputTable.relatedTaskNames.length === 0 || outputTable.id === selectedOutputDatasetId
@@ -88,6 +93,45 @@ export function WorkflowOutputConfig({
         delete nextConfig.table;
         return nextConfig;
       });
+    },
+    [updateOutputConfig]
+  );
+
+  const handleModeChange = useCallback(
+    (nextMode: string) => {
+      updateOutputConfig((config) => {
+        const nextConfig: Record<string, unknown> = { ...config, mode: nextMode };
+        if (nextMode !== 'merge') delete nextConfig.mergeKeys;
+        return nextConfig;
+      });
+    },
+    [updateOutputConfig]
+  );
+
+  const handleMergeKeysChange = useCallback(
+    (raw: string) => {
+      updateOutputConfig((config) => ({
+        ...config,
+        mergeKeys: raw
+          .split(',')
+          .map((key) =>
+            key
+              .trim()
+              .replace(/^\[|\]$/g, '')
+              .replace(/^`|`$/g, '')
+          )
+          .filter((key) => key.length > 0),
+      }));
+    },
+    [updateOutputConfig]
+  );
+
+  const handleSchemaPolicyChange = useCallback(
+    (nextPolicy: string) => {
+      updateOutputConfig((config) => ({
+        ...config,
+        schemaPolicy: nextPolicy === 'extend' ? undefined : nextPolicy,
+      }));
     },
     [updateOutputConfig]
   );
@@ -173,6 +217,58 @@ export function WorkflowOutputConfig({
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
         </label>
+      )}
+
+      <div>
+        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+          {t('data.workflow.outputMode')}
+        </span>
+        <GlassSegmentedControl
+          value={mode}
+          onChange={handleModeChange}
+          options={[
+            { value: 'replace', label: t('data.workflow.values.outputModes.replace') },
+            { value: 'append', label: t('data.workflow.values.outputModes.append') },
+            {
+              value: 'error_if_exists',
+              label: t('data.workflow.values.outputModes.error_if_exists'),
+            },
+            { value: 'merge', label: t('data.workflow.values.outputModes.merge') },
+          ]}
+          ariaLabel={t('data.workflow.outputMode')}
+        />
+      </div>
+
+      {mode === 'merge' && (
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+            {t('data.workflow.mergeKeys')}
+          </span>
+          <input
+            value={mergeKeysText}
+            onChange={(event) => handleMergeKeysChange(event.target.value)}
+            placeholder={t('data.workflow.mergeKeysPlaceholder')}
+            className="h-8 w-full rounded-lg border border-border-muted bg-surface px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </label>
+      )}
+
+      {(mode === 'append' || mode === 'merge') && (
+        <div>
+          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
+            {t('data.workflow.schemaPolicy')}
+          </span>
+          <GlassSegmentedControl
+            value={schemaPolicy}
+            onChange={handleSchemaPolicyChange}
+            options={[
+              { value: 'extend', label: t('data.workflow.values.schemaPolicies.extend') },
+              { value: 'strict', label: t('data.workflow.values.schemaPolicies.strict') },
+              { value: 'ignore', label: t('data.workflow.values.schemaPolicies.ignore') },
+            ]}
+            ariaLabel={t('data.workflow.schemaPolicy')}
+          />
+        </div>
       )}
     </div>
   );

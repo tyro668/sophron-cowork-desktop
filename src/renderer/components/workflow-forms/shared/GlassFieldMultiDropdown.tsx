@@ -99,7 +99,7 @@ export function GlassFieldMultiDropdown({
           e.preventDefault();
           toggleOpen();
         }}
-        className={`relative flex h-9 min-w-0 items-center gap-1.5 rounded-md border border-border-muted bg-background/42 py-[5px] pl-[5px] pr-2 text-[13px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        className={`relative flex h-8 min-w-0 items-center gap-1.5 rounded-md border border-border-muted bg-background/42 py-[5px] pl-[5px] pr-2 text-[13px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
           disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-surface-hover'
         } ${className}`}
       >

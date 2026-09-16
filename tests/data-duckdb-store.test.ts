@@ -772,7 +772,7 @@ describe('DuckDB data task store', () => {
           label: '缺失值处理',
           x: 180,
           y: 120,
-          config: { strategy: 'by_column' },
+          config: { strategy: 'drop_rows_by_nulls', condition: 'any_null' },
         },
       ],
       edges: [

@@ -152,7 +152,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
       } ${className}`}
     >
       <div
-        className={`flex min-h-9 items-center px-2.5 py-1 ${
+        className={`flex min-h-8 items-center px-2.5 py-1 ${
           searchBordered
             ? 'mb-2 rounded-md border border-border-muted bg-background/60'
             : 'border-b border-border-subtle'
@@ -166,7 +166,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tr('searchField')}
-          className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+          className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
         />
         {selectionMode === 'multi' && (
           <label
@@ -209,7 +209,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             return (
               <label
                 key={col}
-                className={`flex min-h-7 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
+                className={`flex min-h-8 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
                   isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
                 } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
