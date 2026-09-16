@@ -81,3 +81,57 @@ describe('process boundaries', () => {
     }
   });
 });
+
+describe('entrypoint shape', () => {
+  it('main/index.ts stays a thin composition root (no IPC handlers)', () => {
+    const src = fs.readFileSync(path.join(SRC, 'main/index.ts'), 'utf8');
+    expect(src).not.toMatch(/\bipcMain\.(handle|on)\b/);
+    expect(src).not.toMatch(/\bhandleIpc\s*\(/);
+    expect(src).not.toMatch(/\bBrowserWindow\b/);
+  });
+
+  it('preload/index.ts is a thin composition layer checked against ElectronApi', () => {
+    const src = fs.readFileSync(path.join(SRC, 'preload/index.ts'), 'utf8');
+    expect(src).toMatch(/\bsatisfies\s+ElectronApi\b/);
+    expect(src).not.toMatch(/\binterface\s+Window\b|\bdeclare\s+global\b/);
+  });
+
+  it('Window.electronAPI is declared once in preload/electron-api.d.ts', () => {
+    const dts = path.join(SRC, 'preload/electron-api.d.ts');
+    expect(fs.existsSync(dts)).toBe(true);
+    expect(fs.readFileSync(dts, 'utf8')).toMatch(/electronAPI\s*:\s*ElectronApi/);
+  });
+});
+
+describe('data store layering', () => {
+  const DATA_STORE = path.join(SRC, 'main/data/store');
+
+  it('repositories and services never use class inheritance', () => {
+    const offenders: string[] = [];
+    for (const dir of ['repositories', 'services']) {
+      for (const file of walk(path.join(DATA_STORE, dir))) {
+        if (/class\s+\w+\s+extends\s+/.test(fs.readFileSync(file, 'utf8'))) {
+          offenders.push(path.relative(SRC, file));
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('data-task-store.ts is a composition facade (no extends, no SQL)', () => {
+    const src = fs.readFileSync(path.join(SRC, 'main/data/data-task-store.ts'), 'utf8');
+    expect(src).not.toMatch(/class\s+DataTaskStore\s+extends/);
+    expect(src).not.toMatch(/\bmetaRunSql|\bmetaQueryRows|\brunSql|\bqueryRows/);
+  });
+
+  it('repositories do not execute workflows or compile operator SQL', () => {
+    const offenders: string[] = [];
+    for (const file of walk(path.join(DATA_STORE, 'repositories'))) {
+      const src = fs.readFileSync(file, 'utf8');
+      if (/COMPILE_STRATEGIES|compileWorkflowNodeSql|runWorkflowIntoTaskOutput/.test(src)) {
+        offenders.push(path.relative(SRC, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});

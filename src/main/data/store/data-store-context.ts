@@ -1,13 +1,13 @@
-import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
-import { AsyncLocalStorage } from 'async_hooks';
-import type Database from 'better-sqlite3';
-import * as fs from 'fs';
-import { dirname } from 'path';
-import type {
-  DataColumnTypeInfo,
-  DataInputTableSourceSummary,
-  DataSummarizeInputTableSourceInput,
-} from '../../../shared/contracts';
+/**
+ * @module data/store/data-store-context
+ *
+ * Infrastructure runtime for the data workspace: owns the DuckDB instance and
+ * connection, the optional SQLite metadata database, the serialized
+ * "exclusive" section queue, schema initialization, and the generic
+ * query/physical-table helpers every repository and service builds on.
+ * Domain logic does not live here.
+ */
+import type { DataColumnTypeInfo } from '../../../shared/contracts';
 import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,
@@ -15,37 +15,31 @@ import {
 import { log } from '../../utils/logger';
 import { compileTypedProjection, quoteIdentifier, toNumber } from '../operators';
 import {
-  DataDatasetRow,
   DataTaskStoreOptions,
   LEGACY_DEMO_TASK_NAMES,
-  OUTPUT_TABLE_CONFIG_KIND,
   isDuckDbTransactionStateError,
-  isLegacyExplicitOutputTableRow,
-  outputTableConfigJson,
-  parseOutputTableConfig,
-  storedDatasetSourceKindSql,
 } from './data-store-records';
 import { inferDataFieldTypeFromValues } from './input-source';
 import { DataWorkflowNodeRow, isLegacyDefaultWorkflow } from './workflow-model';
+import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api';
+import { AsyncLocalStorage } from 'async_hooks';
+import type Database from 'better-sqlite3';
+import * as fs from 'fs';
+import { dirname } from 'path';
 
-export abstract class DataStoreRuntime {
-  protected readonly dbPath: string;
-
-  protected readonly now: () => number;
-
-  protected readonly metadataDb: Database.Database | null;
-
-  protected instance: DuckDBInstance | null = null;
-
-  protected connection: DuckDBConnection | null = null;
-
-  protected metadataInitPromise: Promise<void> | null = null;
-
-  protected duckInitPromise: Promise<void> | null = null;
-
-  protected exclusiveQueue: Promise<void> = Promise.resolve();
-
-  protected readonly exclusiveContext = new AsyncLocalStorage<boolean>();
+export class DataStoreContext {
+  readonly dbPath: string;
+  readonly now: () => number;
+  readonly metadataDb: Database.Database | null;
+  instance: DuckDBInstance | null = null;
+  connection: DuckDBConnection | null = null;
+  metadataInitPromise: Promise<void> | null = null;
+  duckInitPromise: Promise<void> | null = null;
+  exclusiveQueue: Promise<void> = Promise.resolve();
+  readonly exclusiveContext = new AsyncLocalStorage<boolean>();
+  private readonly schemaMaintenanceSteps: Array<() => Promise<void>> = [];
+  private readonly postReadyHooks: Array<() => Promise<void>> = [];
+  private postReadyPromise: Promise<void> | null = null;
 
   constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
     this.dbPath = dbPath;
@@ -56,7 +50,6 @@ export abstract class DataStoreRuntime {
       this.metadataDb = null;
     }
   }
-
   async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
     if (this.exclusiveContext.getStore()) {
       return work();
@@ -90,7 +83,6 @@ export abstract class DataStoreRuntime {
       release();
     }
   }
-
   close(): void {
     try {
       this.connection?.closeSync();
@@ -105,20 +97,42 @@ export abstract class DataStoreRuntime {
       }
     }
   }
-
-  protected async ensureMetadataReady(): Promise<void> {
+  async ensureMetadataReady(): Promise<void> {
     if (!this.metadataInitPromise) {
       this.metadataInitPromise = this.initializeMetadata();
     }
     await this.metadataInitPromise;
   }
-
-  protected async ensureReady(): Promise<void> {
-    await this.ensureMetadataReady();
-    await this.ensureDuckDbReady();
+  /**
+   * Registers a metadata-table maintenance step that runs at the end of
+   * {@link createSchema}. Repositories use this to keep schema init in the
+   * infrastructure layer while owning their own table hygiene.
+   */
+  registerSchemaMaintenanceStep(step: () => Promise<void>): void {
+    this.schemaMaintenanceSteps.push(step);
   }
 
-  protected async ensureDuckDbReady(): Promise<void> {
+  /**
+   * Registers a hook that runs once after both the metadata store and DuckDB
+   * are ready (e.g. pending output-commit recovery). The facade wires these.
+   */
+  registerPostReadyHook(hook: () => Promise<void>): void {
+    this.postReadyHooks.push(hook);
+  }
+
+  async ensureReady(): Promise<void> {
+    await this.ensureMetadataReady();
+    await this.ensureDuckDbReady();
+    if (!this.postReadyPromise) {
+      this.postReadyPromise = (async () => {
+        for (const hook of this.postReadyHooks) {
+          await hook();
+        }
+      })();
+    }
+    await this.postReadyPromise;
+  }
+  async ensureDuckDbReady(): Promise<void> {
     if (this.connection) {
       return;
     }
@@ -127,22 +141,19 @@ export abstract class DataStoreRuntime {
     }
     await this.duckInitPromise;
   }
-
-  protected async initializeDuckDb(): Promise<void> {
+  async initializeDuckDb(): Promise<void> {
     fs.mkdirSync(dirname(this.dbPath), { recursive: true });
     this.instance = await DuckDBInstance.create(this.dbPath);
     this.connection = await this.instance.connect();
   }
-
-  protected async recoverDuckDbTransactionState(): Promise<void> {
+  async recoverDuckDbTransactionState(): Promise<void> {
     try {
       await this.runSql('ROLLBACK');
     } catch {
       await this.resetDuckDbConnection();
     }
   }
-
-  protected async resetDuckDbConnection(): Promise<void> {
+  async resetDuckDbConnection(): Promise<void> {
     try {
       this.connection?.closeSync();
     } catch {
@@ -160,8 +171,7 @@ export abstract class DataStoreRuntime {
     }
     await this.ensureDuckDbReady();
   }
-
-  protected async initializeMetadata(): Promise<void> {
+  async initializeMetadata(): Promise<void> {
     fs.mkdirSync(dirname(this.dbPath), { recursive: true });
     if (!this.metadataDb) {
       await this.ensureDuckDbReady();
@@ -170,8 +180,7 @@ export abstract class DataStoreRuntime {
     await this.removeLegacyDemoRows();
     await this.removeLegacyDefaultWorkflowGraphs();
   }
-
-  protected async createSchema(): Promise<void> {
+  async createSchema(): Promise<void> {
     await this.metaRunSql(`
         CREATE TABLE IF NOT EXISTS data_cleaning_tasks (
           id VARCHAR PRIMARY KEY,
@@ -205,7 +214,9 @@ export abstract class DataStoreRuntime {
     await this.ensureMetadataColumn('data_datasets', 'source_kind', 'VARCHAR');
     await this.ensureMetadataColumn('data_datasets', 'config_json', 'VARCHAR');
     await this.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
-    await this.cleanupOutputTableMetadata();
+    for (const step of this.schemaMaintenanceSteps) {
+      await step();
+    }
     await this.metaRunSql(`
         CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifacts (
           id VARCHAR PRIMARY KEY,
@@ -327,46 +338,7 @@ export abstract class DataStoreRuntime {
             updated_at = coalesce(updated_at, created_at)
       `);
   }
-
-  protected async cleanupOutputTableMetadata(): Promise<void> {
-    const rows = await this.metaQueryRows<DataDatasetRow>(
-      `
-          SELECT d.*
-          FROM data_datasets d
-          WHERE ${storedDatasetSourceKindSql('d')} = 'output'
-            OR d.table_name IN (
-              SELECT output_table
-              FROM data_cleaning_tasks
-              WHERE output_table IS NOT NULL
-            )
-        `
-    );
-    for (const row of rows) {
-      const id = String(row.id);
-      const config = parseOutputTableConfig(row.config_json);
-      if (config.kind === OUTPUT_TABLE_CONFIG_KIND) {
-        continue;
-      }
-      if (isLegacyExplicitOutputTableRow(row)) {
-        await this.metaRunSql(
-          `
-              UPDATE data_datasets
-              SET config_json = $configJson,
-                  file_count = coalesce(file_count, 0)
-              WHERE id = $id
-            `,
-          {
-            id,
-            configJson: outputTableConfigJson(config.sourceDatasetId),
-          }
-        );
-        continue;
-      }
-      await this.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
-    }
-  }
-
-  protected async ensureMetadataColumn(
+  async ensureMetadataColumn(
     tableName: string,
     columnName: string,
     definition: string
@@ -399,8 +371,7 @@ export abstract class DataStoreRuntime {
       );
     }
   }
-
-  protected async createMetadataIndexes(): Promise<void> {
+  async createMetadataIndexes(): Promise<void> {
     const indexStatements = [
       'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_updated_at ON data_cleaning_tasks(updated_at, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_dataset_id ON data_cleaning_tasks(source_dataset_id)',
@@ -421,8 +392,7 @@ export abstract class DataStoreRuntime {
       await this.metaRunSql(statement);
     }
   }
-
-  protected async removeLegacyDemoRows(): Promise<void> {
+  async removeLegacyDemoRows(): Promise<void> {
     const placeholders = LEGACY_DEMO_TASK_NAMES.map((_, index) => `$name${index}`).join(', ');
     const values = Object.fromEntries(
       LEGACY_DEMO_TASK_NAMES.map((name, index) => [`name${index}`, name])
@@ -467,8 +437,7 @@ export abstract class DataStoreRuntime {
     }
     await this.metaRunSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
   }
-
-  protected async removeLegacyDefaultWorkflowGraphs(): Promise<void> {
+  async removeLegacyDefaultWorkflowGraphs(): Promise<void> {
     const workflowRows = await this.metaQueryRows<DataWorkflowNodeRow>(
       `
           SELECT *
@@ -512,8 +481,7 @@ export abstract class DataStoreRuntime {
       values
     );
   }
-
-  protected async getTableColumns(tableName: string): Promise<string[]> {
+  async getTableColumns(tableName: string): Promise<string[]> {
     const rows = await this.queryRows<{ column_name: string }>(
       `
           SELECT column_name
@@ -525,8 +493,7 @@ export abstract class DataStoreRuntime {
     );
     return rows.map((row) => String(row.column_name));
   }
-
-  protected async inferTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
+  async inferTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
     const physicalTypes = await this.getTableColumnTypes(tableName);
     const rows = await this.queryRows<Record<string, unknown>>(
       `SELECT * FROM ${quoteIdentifier(tableName)} LIMIT 1000`
@@ -543,11 +510,7 @@ export abstract class DataStoreRuntime {
       };
     });
   }
-
-  protected async createTypedTableFromRelation(
-    tableName: string,
-    relationTableName: string
-  ): Promise<void> {
+  async createTypedTableFromRelation(tableName: string, relationTableName: string): Promise<void> {
     const columnTypes = await this.inferTableColumnTypes(relationTableName);
     const projections =
       columnTypes.length > 0
@@ -561,19 +524,16 @@ export abstract class DataStoreRuntime {
       )}`
     );
   }
-
-  protected async countRows(tableName: string): Promise<number> {
+  async countRows(tableName: string): Promise<number> {
     const rows = await this.queryRows<{ count: number | string }>(
       `SELECT count(*) AS count FROM ${quoteIdentifier(tableName)}`
     );
     return toNumber(rows[0]?.count);
   }
-
-  protected async dropTableIfExists(tableName: string): Promise<void> {
+  async dropTableIfExists(tableName: string): Promise<void> {
     await this.runSql(`DROP TABLE IF EXISTS ${quoteIdentifier(tableName)}`);
   }
-
-  protected async physicalTableExists(tableName: string): Promise<boolean> {
+  async physicalTableExists(tableName: string): Promise<boolean> {
     const rows = await this.queryRows<{ table_name: string }>(
       `
           SELECT table_name
@@ -585,11 +545,7 @@ export abstract class DataStoreRuntime {
     );
     return rows.length > 0;
   }
-
-  protected async metaRunSql(
-    sql: string,
-    values?: Record<string, string | number | null>
-  ): Promise<void> {
+  async metaRunSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
     if (!this.metadataDb) {
       await this.runSql(sql, values);
       return;
@@ -600,8 +556,7 @@ export abstract class DataStoreRuntime {
     }
     this.metadataDb.exec(sql);
   }
-
-  protected async metaQueryRows<T extends object>(
+  async metaQueryRows<T extends object>(
     sql: string,
     values?: Record<string, string | number | null>
   ): Promise<T[]> {
@@ -610,12 +565,10 @@ export abstract class DataStoreRuntime {
     }
     return this.metadataDb.prepare(sql).all(values ?? {}) as T[];
   }
-
-  protected relatedTaskNamesSeparatorSql(): string {
+  relatedTaskNamesSeparatorSql(): string {
     return this.metadataDb ? 'char(31)' : 'chr(31)';
   }
-
-  protected inputTableRelatedTaskNamesSql(inputAlias: string): string {
+  inputTableRelatedTaskNamesSql(inputAlias: string): string {
     return `
         (
           SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
@@ -639,8 +592,7 @@ export abstract class DataStoreRuntime {
         )
       `;
   }
-
-  protected outputTableRelatedTaskNamesSql(outputAlias: string): string {
+  outputTableRelatedTaskNamesSql(outputAlias: string): string {
     return `
         (
           SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
@@ -661,16 +613,11 @@ export abstract class DataStoreRuntime {
         )
       `;
   }
-
-  protected async runSql(
-    sql: string,
-    values?: Record<string, string | number | null>
-  ): Promise<void> {
+  async runSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
     const connection = this.requireConnection();
     await connection.run(sql, values);
   }
-
-  protected async queryRows<T extends object>(
+  async queryRows<T extends object>(
     sql: string,
     values?: Record<string, string | number | null>
   ): Promise<T[]> {
@@ -678,31 +625,19 @@ export abstract class DataStoreRuntime {
     const reader = await connection.runAndReadAll(sql, values);
     return reader.getRowObjectsJson() as T[];
   }
-
-  protected requireConnection(): DuckDBConnection {
+  requireConnection(): DuckDBConnection {
     if (!this.connection) {
       throw new Error('DuckDB data store is not initialized');
     }
     return this.connection;
   }
-
-  abstract summarizeInputTableSource(
-    input: DataSummarizeInputTableSourceInput
-  ): Promise<DataInputTableSourceSummary>;
-
-  protected abstract findWorkflowNodeCacheTable(
-    taskId: string,
-    nodeId: string
-  ): Promise<string | null>;
-
   /** Public column snapshot for a physical table (manifest/schema consumers). */
   async getTableColumnSnapshot(tableName: string): Promise<DataColumnTypeInfo[]> {
     await this.ensureReady();
     if (!(await this.physicalTableExists(tableName))) return [];
     return this.getTableColumnTypes(tableName);
   }
-
-  protected async getTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
+  async getTableColumnTypes(tableName: string): Promise<DataColumnTypeInfo[]> {
     const rows = await this.queryRows<{ column_name: string; data_type: string }>(
       `
         SELECT column_name, data_type

@@ -570,7 +570,7 @@ describe('filter SQL compiler', () => {
       expect(storeSource).not.toContain('WHERE ${compileScalarExpression(');
 
       const compilerSource = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/main/data/store/workflow-compiler.ts'),
+        path.resolve(process.cwd(), 'src/main/data/store/services/workflow-compiler.ts'),
         'utf8'
       );
       expect(compilerSource).toContain('COMPILE_STRATEGIES');

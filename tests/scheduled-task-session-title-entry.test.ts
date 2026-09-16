@@ -4,11 +4,12 @@ import path from 'node:path';
 
 describe('scheduled task session title wiring', () => {
   it('routes schedule title generation through SessionManager flow', () => {
-    const indexPath = path.resolve(process.cwd(), 'src/main/index.ts');
-    const content = readFileSync(indexPath, 'utf8');
+    const servicePath = path.resolve(process.cwd(), 'src/main/features/schedule/service.ts');
+    const ipcPath = path.resolve(process.cwd(), 'src/main/features/schedule/ipc.ts');
+    const content = [servicePath, ipcPath].map((p) => readFileSync(p, 'utf8')).join('\n');
     expect(content).toContain('async function resolveScheduledTaskTitle(');
     expect(content).toContain('sessionManager.generateScheduledTaskTitle');
-    expect(content).toContain("ipcMain.handle('schedule.create', async");
-    expect(content).toContain("ipcMain.handle('schedule.update', async");
+    expect(content).toContain("handleIpc('schedule.create', async");
+    expect(content).toContain("handleIpc('schedule.update', async");
   });
 });

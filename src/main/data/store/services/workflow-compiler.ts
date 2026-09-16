@@ -1,41 +1,48 @@
-import type { DataWorkflowEdge, DataWorkflowNode } from '../../../shared/contracts';
-import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
-import { parseFieldRefExact } from '../../../shared/prep-dsl';
+/** Compiles workflow nodes to SQL and resolves input-source schemas. */
+import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../shared/contracts';
 import {
   JoinConfigSchema,
   MAX_PIVOT_VALUES_PER_FIELD,
   PivotConfigSchema,
   parseOperatorConfig,
-} from '../../../shared/operator-schemas';
+} from '../../../../shared/operator-schemas';
+import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
 import {
+  quoteIdentifier,
   compileAsofJoinSql,
   compileJoinConditionList,
   compileJoinProjection,
   compileSetOpSql,
   literalToSql,
-  quoteIdentifier,
   RESOLVED_DYNAMIC_PIVOT_VALUES,
-} from '../operators';
-import { COMPILE_STRATEGIES } from '../operators/strategy';
-import { tableNameFromId } from './data-store-records';
-import { DatasetStore } from './dataset-store';
-import { normalizeSourcePath, readRelationForPath } from './input-source';
-import { stringConfigValue } from './workflow-model';
+} from '../../operators';
+import { parseFieldRefExact } from '../../../../shared/prep-dsl';
+import { COMPILE_STRATEGIES } from '../../operators/strategy';
+import { DataStoreContext } from '../data-store-context';
+import { tableNameFromId } from '../data-store-records';
+import { normalizeSourcePath, readRelationForPath } from '../input-source';
+import { CacheRepository } from '../repositories/cache-repository';
+import { DatasetRepository } from '../repositories/dataset-repository';
+import { stringConfigValue } from '../workflow-model';
 
-export abstract class WorkflowCompiler extends DatasetStore {
-  protected async resolveInputSourceColumns(
+export class WorkflowCompiler {
+  constructor(
+    private readonly ctx: DataStoreContext,
+    private readonly datasets: DatasetRepository,
+    private readonly caches: CacheRepository
+  ) {}
+  async resolveInputSourceColumns(
     node: DataWorkflowNode,
     taskSourcePath: string | null
   ): Promise<string[] | null> {
     const columns = await this.resolveInputSourceColumnTypes(node, taskSourcePath);
     return columns ? columns.map((column) => column.name) : null;
   }
-
   /**
    * Input columns with normalized types for plan-level schema validation.
    * Returns null when the node is not an enabled input_source.
    */
-  protected async resolveInputSourceColumnTypes(
+  async resolveInputSourceColumnTypes(
     node: DataWorkflowNode,
     taskSourcePath: string | null
   ): Promise<{ name: string; type?: string }[] | null> {
@@ -49,25 +56,25 @@ export abstract class WorkflowCompiler extends DatasetStore {
         : stringConfigValue(node.config.datasetId)
           ? 'dataset'
           : 'task';
-    const cachedTable = await this.findWorkflowNodeCacheTable(node.taskId, node.id);
+    const cachedTable = await this.caches.findWorkflowNodeCacheTable(node.taskId, node.id);
     if (cachedTable) {
-      return this.getTableColumnTypes(cachedTable);
+      return this.ctx.getTableColumnTypes(cachedTable);
     }
 
     if (source === 'dataset') {
       const datasetRef = String(
         node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
       );
-      const dataset = await this.findDatasetByReference(datasetRef);
-      if (!dataset || !(await this.physicalTableExists(dataset.tableName))) {
+      const dataset = await this.datasets.findDatasetByReference(datasetRef);
+      if (!dataset || !(await this.ctx.physicalTableExists(dataset.tableName))) {
         return null;
       }
-      return this.getTableColumnTypes(dataset.tableName);
+      return this.ctx.getTableColumnTypes(dataset.tableName);
     }
 
     const cachedTableName = tableNameFromId('workflow_source', node.id);
-    if (await this.physicalTableExists(cachedTableName)) {
-      return this.getTableColumnTypes(cachedTableName);
+    if (await this.ctx.physicalTableExists(cachedTableName)) {
+      return this.ctx.getTableColumnTypes(cachedTableName);
     }
 
     const filePath =
@@ -79,20 +86,19 @@ export abstract class WorkflowCompiler extends DatasetStore {
     }
 
     const schemaTableName = tableNameFromId('workflow_schema', node.id);
-    await this.dropTableIfExists(schemaTableName);
+    await this.ctx.dropTableIfExists(schemaTableName);
     try {
       const relation = readRelationForPath(filePath, 'sourcePath');
-      await this.runSql(
+      await this.ctx.runSql(
         `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
         { sourcePath: filePath }
       );
-      return await this.getTableColumnTypes(schemaTableName);
+      return await this.ctx.getTableColumnTypes(schemaTableName);
     } finally {
-      await this.dropTableIfExists(schemaTableName).catch(() => undefined);
+      await this.ctx.dropTableIfExists(schemaTableName).catch(() => undefined);
     }
   }
-
-  protected async materializeInputSource(
+  async materializeInputSource(
     node: DataWorkflowNode,
     taskSourcePath: string | null,
     tableName: string
@@ -103,16 +109,16 @@ export abstract class WorkflowCompiler extends DatasetStore {
         : stringConfigValue(node.config.datasetId)
           ? 'dataset'
           : 'task';
-    await this.dropTableIfExists(tableName);
+    await this.ctx.dropTableIfExists(tableName);
     if (source === 'dataset') {
       const datasetRef = String(
         node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
       );
-      const dataset = await this.findDatasetByReference(datasetRef);
+      const dataset = await this.datasets.findDatasetByReference(datasetRef);
       if (!dataset) {
         throw new Error(`Dataset source not found: ${datasetRef}`);
       }
-      await this.runSql(
+      await this.ctx.runSql(
         `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(
           dataset.tableName
         )}`
@@ -128,13 +134,15 @@ export abstract class WorkflowCompiler extends DatasetStore {
       throw new Error('Data source file is required before running a cleaning task');
     }
     const relation = readRelationForPath(filePath, 'sourcePath');
-    await this.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
-      sourcePath: filePath,
-    });
+    await this.ctx.runSql(
+      `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
+      {
+        sourcePath: filePath,
+      }
+    );
     return tableName;
   }
-
-  protected async compileWorkflowNodeSql(
+  async compileWorkflowNodeSql(
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
@@ -155,8 +163,10 @@ export abstract class WorkflowCompiler extends DatasetStore {
     const strategy = COMPILE_STRATEGIES[node.type as string];
     const input = quoteIdentifier(inputRelation);
     const output = quoteIdentifier(outputRelation);
-    const columns = strategy?.needsColumns ? await this.getTableColumns(inputRelation) : [];
-    const columnTypes = strategy?.needsColumns ? await this.getTableColumnTypes(inputRelation) : [];
+    const columns = strategy?.needsColumns ? await this.ctx.getTableColumns(inputRelation) : [];
+    const columnTypes = strategy?.needsColumns
+      ? await this.ctx.getTableColumnTypes(inputRelation)
+      : [];
     const columnTypeMap = Object.fromEntries(
       columnTypes.map((column) => [column.name, column.type])
     );
@@ -173,7 +183,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
           continue;
         }
         const field = quoteIdentifier(axis.field);
-        const rows = await this.queryRows<{ value: string | null }>(
+        const rows = await this.ctx.queryRows<{ value: string | null }>(
           `SELECT DISTINCT CAST(${field} AS VARCHAR) AS value FROM ${input} ORDER BY value LIMIT ${MAX_PIVOT_VALUES_PER_FIELD + 1}`
         );
         if (rows.length > MAX_PIVOT_VALUES_PER_FIELD) {
@@ -193,7 +203,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
           jsonPath === '$'
             ? quoteIdentifier(columnName)
             : `json_extract(${quoteIdentifier(columnName)}, ${literalToSql(jsonPath)})`;
-        const invalidRows = await this.queryRows<{ bad: boolean }>(
+        const invalidRows = await this.ctx.queryRows<{ bad: boolean }>(
           `SELECT ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NULL AS bad FROM ${input} WHERE ${columnExpression} IS NOT NULL LIMIT 1`
         );
         if (invalidRows[0]?.bad) {
@@ -201,14 +211,14 @@ export abstract class WorkflowCompiler extends DatasetStore {
             `"${columnName}" is not valid JSON. Use standard JSON format: {"Key":"Value"} or {"Key":1}`
           );
         }
-        const typeRows = await this.queryRows<{ t: string }>(
+        const typeRows = await this.ctx.queryRows<{ t: string }>(
           `SELECT json_type(${columnExpression}) AS t FROM ${input} WHERE ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NOT NULL LIMIT 1`
         );
         const jsonType = typeRows[0]?.t ?? '';
         const jsonKeys =
           jsonType === 'OBJECT'
             ? ((
-                await this.queryRows<{ keys: string[] }>(
+                await this.ctx.queryRows<{ keys: string[] }>(
                   `SELECT json_keys(${columnExpression}) AS keys FROM ${input} WHERE ${columnExpression} IS NOT NULL AND TRY_CAST(${columnExpression} AS JSON) IS NOT NULL LIMIT 1`
                 )
               )[0]?.keys ?? [])
@@ -218,8 +228,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
     }
     return strategy.compile(output, input, columns, compileConfig, columnTypeMap);
   }
-
-  protected async compileSetOpSql(
+  private async compileSetOpSql(
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
@@ -234,8 +243,8 @@ export abstract class WorkflowCompiler extends DatasetStore {
     if (!leftRelation || !rightRelation) {
       throw new Error(`Set operation node requires left and right inputs: ${node.id}`);
     }
-    const leftColumns = await this.getTableColumns(leftRelation);
-    const rightColumns = await this.getTableColumns(rightRelation);
+    const leftColumns = await this.ctx.getTableColumns(leftRelation);
+    const rightColumns = await this.ctx.getTableColumns(rightRelation);
     const config = node.config;
 
     return compileSetOpSql(
@@ -247,8 +256,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
       rightColumns
     );
   }
-
-  protected async compileJoinSql(
+  private async compileJoinSql(
     node: DataWorkflowNode,
     outputRelation: string,
     relationByNode: Map<string, string>,
@@ -264,8 +272,8 @@ export abstract class WorkflowCompiler extends DatasetStore {
     if (!leftRelation || !rightRelation) {
       throw new Error(`Join node requires left and right inputs: ${node.id}`);
     }
-    const leftColumns = await this.getTableColumns(leftRelation);
-    const rightColumns = await this.getTableColumns(rightRelation);
+    const leftColumns = await this.ctx.getTableColumns(leftRelation);
+    const rightColumns = await this.ctx.getTableColumns(rightRelation);
     const output = quoteIdentifier(outputRelation);
     const left = quoteIdentifier(leftRelation);
     const right = quoteIdentifier(rightRelation);
@@ -310,7 +318,6 @@ export abstract class WorkflowCompiler extends DatasetStore {
         ${sqlJoinType} JOIN ${right} r${condition}
       `;
   }
-
   private async collectJoinCardinalityDiagnostics(
     node: DataWorkflowNode,
     config: ReturnType<typeof JoinConfigSchema.parse>,
@@ -363,17 +370,16 @@ export abstract class WorkflowCompiler extends DatasetStore {
       });
     }
   }
-
   private async relationHasDuplicateJoinKeys(relation: string, keys: string[]): Promise<boolean> {
     const normalizedKeys = [...new Set(keys.filter(Boolean))];
     if (normalizedKeys.length === 0) {
-      const rows = await this.queryRows<{ hasDuplicates: boolean }>(
+      const rows = await this.ctx.queryRows<{ hasDuplicates: boolean }>(
         `SELECT COUNT(*) > 1 AS "hasDuplicates" FROM ${quoteIdentifier(relation)}`
       );
       return Boolean(rows[0]?.hasDuplicates);
     }
     const fields = normalizedKeys.map(quoteIdentifier);
-    const rows = await this.queryRows<{ hasDuplicates: boolean }>(`
+    const rows = await this.ctx.queryRows<{ hasDuplicates: boolean }>(`
       SELECT EXISTS (
         SELECT 1
         FROM ${quoteIdentifier(relation)}
@@ -385,8 +391,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
     `);
     return Boolean(rows[0]?.hasDuplicates);
   }
-
-  protected findIncomingNodeId(
+  findIncomingNodeId(
     nodeId: string,
     edges: DataWorkflowEdge[],
     targetHandle: string
@@ -397,8 +402,7 @@ export abstract class WorkflowCompiler extends DatasetStore {
       )?.sourceNodeId ?? null
     );
   }
-
-  protected findIncomingEdge(
+  findIncomingEdge(
     nodeId: string,
     edges: DataWorkflowEdge[],
     targetHandle: string

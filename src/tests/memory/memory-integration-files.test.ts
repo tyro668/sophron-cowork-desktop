@@ -8,13 +8,14 @@ function readProjectFile(relativePath: string): string {
 
 describe('memory integration wiring', () => {
   it('registers the memory extension in the main process and exposes IPC handlers', () => {
-    const mainIndex = readProjectFile('src/main/index.ts');
-    expect(mainIndex).toContain('new MemoryExtension(memoryService)');
-    expect(mainIndex).toContain("ipcMain.handle('memory.getOverview'");
-    expect(mainIndex).toContain("'memory.search'");
-    expect(mainIndex).toContain("'memory.listFiles'");
-    expect(mainIndex).toContain("'memory.inspectSession'");
-    expect(mainIndex).toContain("ipcMain.handle('memory.setEnabled'");
+    const bootstrap = readProjectFile('src/main/app/bootstrap.ts');
+    const memoryIpc = readProjectFile('src/main/features/memory/ipc.ts');
+    expect(bootstrap).toContain('new MemoryExtension(appContext.memoryService)');
+    expect(memoryIpc).toContain("handleIpc('memory.getOverview'");
+    expect(memoryIpc).toContain("'memory.search'");
+    expect(memoryIpc).toContain("'memory.listFiles'");
+    expect(memoryIpc).toContain("'memory.inspectSession'");
+    expect(memoryIpc).toContain("handleIpc('memory.setEnabled'");
   });
 
   it('injects runtime plugin skill paths and extension hooks into the agent runner', () => {
@@ -30,13 +31,14 @@ describe('memory integration wiring', () => {
   it('adds a dedicated Memory settings tab and preload bridge', () => {
     const settingsPanel = readProjectFile('src/renderer/components/SettingsPanel.tsx');
     const preload = readProjectFile('src/preload/index.ts');
+    const memoryApi = readProjectFile('src/preload/api/memory.ts');
     const memorySettings = readProjectFile('src/renderer/components/settings/SettingsMemory.tsx');
 
     expect(settingsPanel).toContain("id: 'memory'");
     expect(settingsPanel).toContain('<SettingsMemory />');
-    expect(preload).toContain('memory: {');
-    expect(preload).toContain("ipcRenderer.invoke('memory.search'");
-    expect(preload).toContain("ipcRenderer.invoke('memory.listFiles')");
+    expect(preload).toContain('memory: createMemoryApi()');
+    expect(memoryApi).toContain("ipcRenderer.invoke('memory.search'");
+    expect(memoryApi).toContain("ipcRenderer.invoke('memory.listFiles')");
     expect(memorySettings).toContain('window.electronAPI.memory.listCoreEntries');
     expect(memorySettings).toContain('window.electronAPI.memory.listProjectEntries');
     expect(memorySettings).toContain('window.electronAPI.memory.deleteCoreEntry');

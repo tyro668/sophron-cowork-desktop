@@ -51,7 +51,7 @@ describe('RemoteControlPanel multi-channel UI', () => {
 
   it('keeps setup guide copy in both locales', () => {
     for (const locale of ['zh', 'en']) {
-      const localePath = path.resolve(process.cwd(), `src/renderer/i18n/locales/${locale}.json`);
+      const localePath = path.resolve(process.cwd(), `src/shared/i18n/locales/${locale}.json`);
       const messages = JSON.parse(readFileSync(localePath, 'utf8'));
 
       expect(messages.remote.setupGuide.steps.feishu.finish).toBeTruthy();
@@ -70,7 +70,7 @@ describe('RemoteControlPanel multi-channel UI', () => {
     };
 
     for (const locale of ['zh', 'en'] as const) {
-      const localePath = path.resolve(process.cwd(), `src/renderer/i18n/locales/${locale}.json`);
+      const localePath = path.resolve(process.cwd(), `src/shared/i18n/locales/${locale}.json`);
       const messages = JSON.parse(readFileSync(localePath, 'utf8'));
 
       expect(messages.remote.channelName).toEqual(expectedNames[locale]);

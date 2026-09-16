@@ -29,8 +29,8 @@ describe('application branding', () => {
   });
 
   it('uses localized app names in renderer surfaces', () => {
-    expect(read('src/renderer/i18n/locales/en.json')).toContain('"appName": "sophron cowork"');
-    expect(read('src/renderer/i18n/locales/zh.json')).toContain('"appName": "九思助理"');
+    expect(read('src/shared/i18n/locales/en.json')).toContain('"appName": "sophron cowork"');
+    expect(read('src/shared/i18n/locales/zh.json')).toContain('"appName": "九思助理"');
     expect(read('src/renderer/components/Sidebar.tsx')).toContain("t('common.appName')");
     expect(read('src/renderer/components/settings/SettingsGeneral.tsx')).toContain(
       "t('common.appName')"
@@ -38,9 +38,16 @@ describe('application branding', () => {
   });
 
   it('uses runtime product name in main-process user-facing messages', () => {
-    expect(read('src/main/index.ts')).toContain('function getRuntimeAppName()');
-    expect(read('src/main/index.ts')).toContain('tray.setToolTip(getRuntimeAppName())');
-    expect(read('src/main/index.ts')).toContain('getRuntimeAppName()} 启动失败');
+    const appSources = [
+      'src/main/app/notifications.ts',
+      'src/main/app/tray.ts',
+      'src/main/app/bootstrap.ts',
+    ]
+      .map(read)
+      .join('\n');
+    expect(appSources).toContain('function getRuntimeAppName()');
+    expect(appSources).toContain('tray.setToolTip(getRuntimeAppName())');
+    expect(appSources).toContain('getRuntimeAppName()} 启动失败');
     expect(read('src/main/prompts/main-agent-system.txt')).toContain(
       'You are sophron cowork (九思助理 in Chinese)'
     );

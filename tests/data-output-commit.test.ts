@@ -42,11 +42,18 @@ describe('validated task output commit', () => {
       sourcePath: newSource,
       workflow,
     });
-    const internals = store as unknown as {
-      metaRunSql: (sql: string, values?: Record<string, string | number | null>) => Promise<void>;
-    };
-    const originalMetaRunSql = internals.metaRunSql.bind(store);
-    internals.metaRunSql = async (sql, values) => {
+    const ctx = (
+      store as unknown as {
+        ctx: {
+          metaRunSql: (
+            sql: string,
+            values?: Record<string, string | number | null>
+          ) => Promise<void>;
+        };
+      }
+    ).ctx;
+    const originalMetaRunSql = ctx.metaRunSql.bind(ctx);
+    ctx.metaRunSql = async (sql, values) => {
       if (sql.includes('UPDATE data_cleaning_tasks') && sql.includes("status = 'completed'")) {
         throw new Error('forced metadata failure');
       }

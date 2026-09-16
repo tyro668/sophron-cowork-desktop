@@ -20,7 +20,7 @@ const inputTablesPath = path.resolve(
   'src/renderer/components/data-view/input-tables.tsx'
 );
 const markdownPath = path.resolve(process.cwd(), 'src/renderer/components/MessageMarkdown.tsx');
-const preloadPath = path.resolve(process.cwd(), 'src/preload/index.ts');
+const preloadPath = path.resolve(process.cwd(), 'src/preload/api/data.ts');
 const dataIpcDir = path.resolve(process.cwd(), 'src/main/data/ipc');
 
 describe('data resource chat links', () => {
@@ -94,8 +94,8 @@ describe('data resource chat links', () => {
     expect(preload).toContain("ipcRenderer.invoke('data.getTask', id)");
     expect(preload).toContain("ipcRenderer.invoke('data.getInputTable', id)");
     expect(preload).toContain("ipcRenderer.invoke('data.getOutputTable', id)");
-    expect(mainHandlers).toContain("ipcMain.handle('data.getTask'");
-    expect(mainHandlers).toContain("ipcMain.handle('data.getInputTable'");
-    expect(mainHandlers).toContain("ipcMain.handle('data.getOutputTable'");
+    expect(mainHandlers).toContain("handleIpc('data.getTask'");
+    expect(mainHandlers).toContain("handleIpc('data.getInputTable'");
+    expect(mainHandlers).toContain("handleIpc('data.getOutputTable'");
   });
 });

@@ -7,8 +7,8 @@ const permissionPolicySelectorPath = path.resolve(
   process.cwd(),
   'src/renderer/components/PermissionPolicySelector.tsx'
 );
-const zhLocalePath = path.resolve(process.cwd(), 'src/renderer/i18n/locales/zh.json');
-const enLocalePath = path.resolve(process.cwd(), 'src/renderer/i18n/locales/en.json');
+const zhLocalePath = path.resolve(process.cwd(), 'src/shared/i18n/locales/zh.json');
+const enLocalePath = path.resolve(process.cwd(), 'src/shared/i18n/locales/en.json');
 
 function readChatView() {
   return fs.readFileSync(chatViewPath, 'utf8');

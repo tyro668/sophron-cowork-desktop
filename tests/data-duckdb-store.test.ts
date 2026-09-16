@@ -241,25 +241,30 @@ describe('DuckDB data task store', () => {
     const firstTask = await store.createTask({ name: 'First queued task', sourcePath: csvPath });
     const secondTask = await store.createTask({ name: 'Second queued task', sourcePath: csvPath });
     const internals = store as unknown as {
-      cleanSourceIntoTaskOutput: (
-        task: { id: string },
-        sourcePath: string | null,
-        workflow: unknown,
-        outputMode: unknown
-      ) => Promise<{
-        outputTable: string;
-        rowCount: number;
-        columnCount: number;
-        sourceDatasetId: string | null;
-      }>;
-      runSql: (sql: string) => Promise<void>;
+      ctx: { runSql: (sql: string) => Promise<void> };
+      taskService: {
+        executor: {
+          cleanSourceIntoTaskOutput: (
+            task: { id: string },
+            sourcePath: string | null,
+            workflow: unknown,
+            outputMode: unknown
+          ) => Promise<{
+            outputTable: string;
+            rowCount: number;
+            columnCount: number;
+            sourceDatasetId: string | null;
+          }>;
+        };
+      };
     };
-    const originalCleanSourceIntoTaskOutput = internals.cleanSourceIntoTaskOutput.bind(store);
+    const executor = internals.taskService.executor;
+    const originalCleanSourceIntoTaskOutput = executor.cleanSourceIntoTaskOutput.bind(executor);
     let activeRuns = 0;
     let maxActiveRuns = 0;
     let callCount = 0;
     let releaseFirstRun!: () => void;
-    internals.cleanSourceIntoTaskOutput = async (task) => {
+    executor.cleanSourceIntoTaskOutput = async (task) => {
       callCount += 1;
       activeRuns += 1;
       maxActiveRuns = Math.max(maxActiveRuns, activeRuns);
@@ -270,7 +275,7 @@ describe('DuckDB data task store', () => {
       }
       activeRuns -= 1;
       const outputTable = `serialized_output_${task.id.replace(/[^A-Za-z0-9]/g, '_')}`;
-      await internals.runSql(`CREATE TABLE "${outputTable}" AS SELECT 1 AS value`);
+      await internals.ctx.runSql(`CREATE TABLE "${outputTable}" AS SELECT 1 AS value`);
       return {
         outputTable,
         rowCount: 1,
@@ -293,7 +298,7 @@ describe('DuckDB data task store', () => {
       expect(callCount).toBe(2);
       expect(maxActiveRuns).toBe(1);
     } finally {
-      internals.cleanSourceIntoTaskOutput = originalCleanSourceIntoTaskOutput;
+      executor.cleanSourceIntoTaskOutput = originalCleanSourceIntoTaskOutput;
     }
   });
 
@@ -1760,24 +1765,26 @@ describe('DuckDB data task store', () => {
     const dataIpc = ['data-tasks-ipc.ts', 'input-tables-ipc.ts', 'output-tables-ipc.ts']
       .map((file) => fs.readFileSync(path.join(root, 'src/main/data/ipc', file), 'utf8'))
       .join('\n');
-    const preload = fs.readFileSync(path.join(root, 'src/preload/index.ts'), 'utf8');
+    const preload = fs.readFileSync(path.join(root, 'src/preload/api/data.ts'), 'utf8');
     const vite = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf8');
     const builder = fs.readFileSync(path.join(root, 'electron-builder.config.cjs'), 'utf8');
 
-    expect(dataIpc).toContain("ipcMain.handle('data.getDashboard'");
-    expect(dataIpc).toContain("ipcMain.handle('data.runTask'");
-    expect(dataIpc).toContain("ipcMain.handle('data.updateTask'");
-    expect(dataIpc).toContain("ipcMain.handle('data.getTaskWorkflow'");
-    expect(dataIpc).toMatch(/ipcMain\.handle\(\s*['"]data\.saveTaskWorkflow['"]/);
-    expect(dataIpc).toContain("ipcMain.handle('data.importDataset'");
-    expect(dataIpc).toContain("ipcMain.handle('data.updateDataset'");
-    expect(dataIpc).toContain("ipcMain.handle('data.createOutputTable'");
-    expect(dataIpc).toContain("ipcMain.handle('data.updateOutputTable'");
-    expect(dataIpc).toContain("ipcMain.handle('data.previewDataset'");
+    expect(dataIpc).toContain("handleIpc('data.getDashboard'");
+    expect(dataIpc).toContain("handleIpc('data.runTask'");
+    expect(dataIpc).toContain("handleIpc('data.updateTask'");
+    expect(dataIpc).toContain("handleIpc('data.getTaskWorkflow'");
+    expect(dataIpc).toMatch(/handleIpc\(\s*['"]data\.saveTaskWorkflow['"]/);
+    expect(dataIpc).toContain("handleIpc('data.importDataset'");
+    expect(dataIpc).toContain("handleIpc('data.updateDataset'");
+    expect(dataIpc).toContain("handleIpc('data.createOutputTable'");
+    expect(dataIpc).toContain("handleIpc('data.updateOutputTable'");
+    expect(dataIpc).toContain("handleIpc('data.previewDataset'");
     expect(dataIpc).toContain("'data.getWorkflowNodeColumnTypes'");
-    expect(dataIpc).toContain("ipcMain.handle('data.deleteTask'");
-    expect(dataIpc).toContain("ipcMain.handle('data.deleteDataset'");
-    expect(preload).toContain('data: {');
+    expect(dataIpc).toContain("handleIpc('data.deleteTask'");
+    expect(dataIpc).toContain("handleIpc('data.deleteDataset'");
+    expect(fs.readFileSync(path.join(root, 'src/preload/index.ts'), 'utf8')).toContain(
+      'data: createDataApi()'
+    );
     expect(preload).toContain("ipcRenderer.invoke('data.updateTask'");
     expect(preload).toContain("ipcRenderer.invoke('data.importDataset'");
     expect(preload).toContain("ipcRenderer.invoke('data.updateDataset'");

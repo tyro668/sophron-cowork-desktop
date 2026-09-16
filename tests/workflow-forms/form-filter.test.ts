@@ -1500,7 +1500,7 @@ describe('FormFilter — empty-config run is blocked', () => {
 describe('Filter — null operator i18n keys', () => {
   it('defines 为空 / 不为空 in zh', () => {
     const zh = JSON.parse(
-      fs.readFileSync(path.resolve(process.cwd(), 'src/renderer/i18n/locales/zh.json'), 'utf8')
+      fs.readFileSync(path.resolve(process.cwd(), 'src/shared/i18n/locales/zh.json'), 'utf8')
     );
     const keys = Object.keys(zh).length ? zh : {};
     const flat = JSON.stringify(keys);
@@ -1516,7 +1516,7 @@ describe('Filter — null operator i18n keys', () => {
 
   it('defines 为空 / 不为空 in en', () => {
     const en = JSON.parse(
-      fs.readFileSync(path.resolve(process.cwd(), 'src/renderer/i18n/locales/en.json'), 'utf8')
+      fs.readFileSync(path.resolve(process.cwd(), 'src/shared/i18n/locales/en.json'), 'utf8')
     );
     const flat = JSON.stringify(en);
     expect(flat).toContain('filterOpIsNull');

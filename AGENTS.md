@@ -15,6 +15,25 @@ Enforcement: ESLint `no-restricted-imports` overrides in `.eslintrc.cjs`, plus `
 
 All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ipc-handle.ts` — never call `ipcMain.handle` directly in feature code. Every channel must have a positional argument schema entry in `IPC_INPUT_SCHEMAS` (`src/shared/contracts/ipc/schemas.ts`); `client-event`/`client-invoke` payloads are validated by `clientEventSchema`. `src/tests/contracts/ipc-boundary.test.ts` fails if a registered channel lacks a schema.
 
+## Entrypoint layout (enforced)
+
+- `src/main/index.ts` is a thin composition root: env bootstrap, single-instance lock, `registerAllIpc()`, `registerAppLifecycle()`, `whenReady().then(bootstrap)`. It must not register IPC handlers or create windows directly — `src/tests/contracts/architecture-boundaries.test.ts` fails otherwise.
+- `src/main/app/` holds app infrastructure: `context.ts` (shared runtime state `appContext`), `bootstrap.ts` (service assembly), `lifecycle.ts` (app events + shutdown cleanup), `window.ts`, `tray.ts`, `menu.ts`, `workdir.ts`, `theme.ts`, `notifications.ts`, `events.ts`, `file-open.ts`, `runtime-config.ts`, `sandbox-bootstrap.ts`.
+- `src/main/features/<domain>/ipc.ts` registers that domain's channels; `service.ts` holds domain state/logic. New channels belong in the matching domain module (or a new one), wired via `registerAllIpc()` in `src/main/features/index.ts`.
+- `src/preload/index.ts` composes `src/preload/api/<domain>.ts` factories into one object checked with `satisfies ElectronApi`. The bridge type lives in `src/shared/contracts/electron-api.ts`; the `Window` global is declared once in `src/preload/electron-api.d.ts`.
+
+## Data store layering (enforced)
+
+`src/main/data/` uses composition, not inheritance — the old `DataStoreRuntime → … → DataTaskStore` chain is gone:
+
+- `src/main/data/store/data-store-context.ts` (`DataStoreContext`) is the infrastructure runtime: DuckDB instance/connection, optional SQLite metadata DB, the serialized `runExclusive` section, schema init, and generic query/physical-table helpers. Domain logic does not live here; `registerSchemaMaintenanceStep`/`registerPostReadyHook` are how upper layers plug into init.
+- `src/main/data/store/repositories/` owns row-level access per metadata table (`task`, `dataset`, `workflow`, `run-stats`, `cache`, `watermark`, `output-commit-journal`, `normalizer`). Repositories never execute workflows or compile operator SQL.
+- `src/main/data/store/services/` holds application services (`workflow-validator`, `workflow-executor`, `workflow-node-preview-service`, `output-commit-coordinator`, `task-service`, `input-table-service`, `normalizer-service`, `workflow-compiler`, `workflow-binding-resolver`, `input-source-summary-service`, `dashboard-service`). Services take narrow constructor deps (context + only the repositories/services they need).
+- `src/main/data/data-task-store.ts` (`DataTaskStore`) is the composition facade exposing the same public API; `createDataTaskStore(dbPath, options?)` is the entry point. It contains no SQL and no `extends`.
+- `store/workflow-model.ts` + `shared/workflow-plan/` stay the domain layer (pure workflow model/rules); `store/input-source.ts` + `store/data-store-records.ts` stay pure fs/record helpers.
+
+`architecture-boundaries.test.ts` fails on `extends` inside `store/repositories|services` or SQL inside the facade.
+
 ## UI work
 
 All UI work under `src/renderer` must follow [`UI_STYLE_GUIDE.md`](UI_STYLE_GUIDE.md).

@@ -11,7 +11,7 @@ const tasksPanelPath = path.resolve(
   'src/renderer/components/data-view/data-tasks/TasksPanel.tsx'
 );
 const skillsViewPath = path.resolve(process.cwd(), 'src/renderer/components/SkillsView.tsx');
-const zhPath = path.resolve(process.cwd(), 'src/renderer/i18n/locales/zh.json');
+const zhPath = path.resolve(process.cwd(), 'src/shared/i18n/locales/zh.json');
 
 describe('main workspace navigation', () => {
   it('routes data and skills as independent main pages', () => {
