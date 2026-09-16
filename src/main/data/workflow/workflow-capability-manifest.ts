@@ -26,58 +26,6 @@ export interface ManifestOutputBindingSnapshot {
   columns: ManifestColumnSnapshot[];
 }
 
-const INPUT_SOURCE_SCHEMA = {
-  type: 'object',
-  description:
-    'Input node. `source: "dataset"` reads a bound input table (datasetId comes from resources.inputs[alias], not guessed); `source: "task"` reads the task source file; `source: "file"` reads a literal filePath.',
-  properties: {
-    source: { type: 'string', enum: ['dataset', 'task', 'file'] },
-    datasetId: {
-      type: 'string',
-      description: 'Bound input table id; usually set via resources.inputs[alias]',
-    },
-    filePath: { type: 'string', description: 'Literal file path for source=file' },
-    alias: {
-      type: 'string',
-      pattern: '^[A-Za-z_][A-Za-z0-9_]*$',
-      description: 'Stream name this source produces; required when bound via resources.inputs',
-    },
-    incrementalBy: {
-      type: 'string',
-      description: 'Watermark column; runs read only rows newer than the last committed watermark',
-    },
-  },
-  required: ['source', 'alias'],
-  additionalProperties: true,
-};
-
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  description:
-    'Sink node. `table` is the output table name; bind a real output table via resources.outputTableId (first sink) or config.outputDatasetId (additional sinks).',
-  properties: {
-    destination: {
-      type: 'string',
-      enum: ['duckdb_table'],
-      description: 'Only duckdb_table targets are executable',
-    },
-    table: { type: 'string' },
-    outputDatasetId: {
-      type: 'string',
-      description: 'Real output table id (from data_list_output_tables)',
-    },
-    mode: { type: 'string', enum: ['replace', 'append', 'error_if_exists', 'merge'] },
-    mergeKeys: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Business keys; required when mode=merge',
-    },
-    schemaPolicy: { type: 'string', enum: ['extend', 'strict', 'ignore'] },
-  },
-  required: ['table'],
-  additionalProperties: true,
-};
-
 const PLAN_NODE_SCHEMA = {
   type: 'object',
   properties: {
@@ -159,8 +107,8 @@ function operatorConfigJsonSchemas(): Record<string, unknown> {
       schemas[type] = { type: 'object', additionalProperties: true };
     }
   }
-  schemas.input_source = INPUT_SOURCE_SCHEMA;
-  schemas.output = OUTPUT_SCHEMA;
+  // input_source/output come from SCHEMA_MAP's real Zod schemas too — the
+  // manifest must describe exactly what validation accepts.
   return schemas;
 }
 

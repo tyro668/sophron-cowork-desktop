@@ -1,7 +1,7 @@
-// Collapsible "thinking" block for models that expose reasoning traces.
+// Collapsible "thinking" row for models that expose reasoning traces.
 import { Suspense, lazy, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
+import { ChevronRight, Brain } from 'lucide-react';
 import { PanelErrorBoundary } from '../PanelErrorBoundary';
 
 const MessageMarkdown = lazy(() =>
@@ -53,30 +53,32 @@ export const ThinkingBlock = memo(function ThinkingBlock({ block }: ThinkingBloc
   const previewNodes = renderThinkingPreview(preview);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card)] shadow-card">
+    <div className="-mx-2">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-hover/60"
       >
-        <Brain className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        <span className="text-xs font-medium text-text-muted flex-shrink-0">
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-text-muted">
+          <Brain className="h-3.5 w-3.5" />
+        </span>
+        <span className="flex-shrink-0 text-[12px] font-medium text-text-muted">
           {t('messageCard.thinking')}
         </span>
         {!expanded && (
-          <span className="text-[11px] text-text-muted/60 truncate flex-1 min-w-0 italic">
+          <span className="min-w-0 flex-1 truncate text-[12px] italic text-text-muted/70">
             {previewNodes}
           </span>
         )}
-        {expanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-text-muted flex-shrink-0 ml-auto" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-text-muted flex-shrink-0 ml-auto" />
-        )}
+        <ChevronRight
+          className={`ml-auto h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
+            expanded ? 'rotate-90' : ''
+          }`}
+        />
       </button>
 
       {expanded && (
-        <div className="border-t border-border/50 px-3 py-2.5 animate-fade-in">
-          <div className="text-sm text-text-secondary leading-relaxed prose-chat max-w-none">
+        <div className="mb-1 ml-4 mt-0.5 animate-fade-in border-l border-border-subtle pb-1 pl-3">
+          <div className="prose-chat max-w-none text-[13px] leading-relaxed text-text-secondary">
             <PanelErrorBoundary
               name="ThinkingMarkdown"
               fallback={<div className="whitespace-pre-wrap">{text}</div>}

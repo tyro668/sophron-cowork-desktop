@@ -19,18 +19,7 @@ import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
-import {
-  Send,
-  Square,
-  Plus,
-  Loader2,
-  Plug,
-  X,
-  Clock,
-  ArrowUp,
-  ArrowDown,
-  Table2,
-} from 'lucide-react';
+import { Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -900,14 +889,14 @@ export function ChatView() {
               aria-hidden="true"
               className="absolute left-0 top-0 -z-10 opacity-0 pointer-events-none"
             >
-              <div className="flex items-center gap-2 px-2 py-1 rounded-lg border border-mcp/20">
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full">
                 <Plug className="w-3.5 h-3.5" />
                 <span className="text-xs font-medium whitespace-nowrap">
                   {t('chat.connectorCount', { count: activeConnectors.length })}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mcp/10 border border-mcp/20 justify-self-end shadow-soft">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mcp/10 justify-self-end">
               <Plug className="w-3.5 h-3.5 text-mcp" />
               <span className="text-xs text-mcp font-medium">
                 {showConnectorLabel
@@ -926,7 +915,7 @@ export function ChatView() {
             onClick={scrollToConversationTop}
             aria-label={t('chat.backToTop')}
             title={t('chat.backToTop')}
-            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary shadow-soft transition-colors hover:border-border-muted hover:text-text-primary"
           >
             <ArrowUp className="h-4 w-4" />
           </button>
@@ -940,7 +929,7 @@ export function ChatView() {
             onClick={scrollToConversationBottom}
             aria-label={t('chat.scrollToBottom')}
             title={t('chat.scrollToBottom')}
-            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-[var(--glass-card-strong)] text-accent shadow-soft backdrop-blur-xl transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent-hover"
+            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary shadow-soft transition-colors hover:border-border-muted hover:text-text-primary"
           >
             <ArrowDown className="h-4 w-4" />
           </button>
@@ -965,9 +954,9 @@ export function ChatView() {
           {hasActiveTurn &&
             (!partialMessage || partialMessage.trim() === '') &&
             !partialThinking && (
-              <div className="glass-card flex items-center gap-2.5 px-3 py-2 rounded-xl max-w-fit">
-                <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                <span className="text-[13px] text-text-secondary">{t('chat.processing')}</span>
+              <div className="-mx-2 flex items-center gap-2 px-2 py-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                <span className="text-[12px] text-text-muted">{t('chat.processing')}</span>
               </div>
             )}
 
@@ -1025,15 +1014,15 @@ export function ChatView() {
                 {attachedFiles.map((file, index) => (
                   <div
                     key={file.path || `attached-file-${index}`}
-                    className="glass-card flex items-center gap-2 rounded-lg px-3 py-2 group"
+                    className="group flex items-center gap-2 rounded-lg bg-surface-muted px-3 py-2"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-text-primary truncate">{file.name}</p>
+                      <p className="text-[13px] text-text-primary truncate">{file.name}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeFile(index)}
-                      className="w-6 h-6 rounded-full bg-error/10 hover:bg-error/20 text-error flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="w-6 h-6 rounded-full hover:bg-error/10 text-text-muted hover:text-error flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1047,7 +1036,7 @@ export function ChatView() {
                 {attachedCloudTables.map((table, index) => (
                   <div
                     key={table.id}
-                    className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-3 py-2 text-[13px] text-accent-text shadow-soft"
+                    className="group inline-flex max-w-full items-center gap-2 rounded-lg bg-accent-muted px-3 py-1.5 text-[13px] text-accent-text"
                   >
                     <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="min-w-0 truncate font-medium">{table.tableName}</span>
@@ -1059,7 +1048,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={() => removeCloudTable(index)}
-                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-background/60 text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-error/10 hover:text-error"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1162,10 +1151,10 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={handleStop}
-                      className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-error hover:bg-error/10 hover:text-error"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-active text-text-primary transition-colors hover:bg-surface-hover"
                       title={t('chat.stop')}
                     >
-                      <Square className="h-4 w-4" />
+                      <Square className="h-3 w-3" fill="currentColor" />
                     </button>
                   )}
                   <button
@@ -1179,10 +1168,10 @@ export function ChatView() {
                       !hasSelectedModel ||
                       isSubmitting
                     }
-                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent disabled:cursor-not-allowed disabled:text-text-muted"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted"
                     title={t('chat.sendMessage')}
                   >
-                    <Send className="h-4 w-4" />
+                    <ArrowUp className="h-4 w-4" strokeWidth={2.25} />
                   </button>
                 </div>
               </div>

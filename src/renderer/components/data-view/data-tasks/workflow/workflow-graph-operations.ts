@@ -83,10 +83,15 @@ export function connectWorkflowNodes(
     targetHandle: connection.targetHandle ?? 'input',
   };
   // A reject edge names its stream on the expect node; auto-fill when unset.
+  // Row-count assertions cannot route rows — reject edges on them are invalid.
   let nodes = workflow.nodes;
   if (nextEdge.sourceHandle === 'reject') {
     const source = nodes.find((node) => node.id === nextEdge.sourceNodeId);
-    if (source?.type === 'expect' && !source.config.rejectStream) {
+    if (
+      source?.type === 'expect' &&
+      source.config.kind !== 'row_count' &&
+      !source.config.rejectStream
+    ) {
       const rejectStream = `${(source.label || 'expect').replace(/[^A-Za-z0-9_]/g, '_')}_rejects`;
       nodes = nodes.map((node) =>
         node.id === source.id

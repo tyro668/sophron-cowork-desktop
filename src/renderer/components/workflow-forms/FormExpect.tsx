@@ -38,7 +38,11 @@ export default function FormExpect({
 
   const setKind = useCallback(
     (next: ExpectKind) => {
-      updateConfig((cfg) => ({ ...cfg, kind: next }));
+      updateConfig((cfg) =>
+        next === 'row_count'
+          ? { ...cfg, kind: next, rejectStream: undefined }
+          : { ...cfg, kind: next }
+      );
     },
     [updateConfig]
   );
@@ -131,20 +135,22 @@ export default function FormExpect({
           </div>
         )}
 
-        <div>
-          <GlassFormLabel>{tr('reject.label')}</GlassFormLabel>
-          <GlassFormTextInput
-            value={rejectStream}
-            onChange={(raw) =>
-              updateConfig((cfg) => ({
-                ...cfg,
-                rejectStream: raw.trim() || undefined,
-              }))
-            }
-            placeholder={tr('reject.placeholder')}
-            className="w-full font-mono"
-          />
-        </div>
+        {kind !== 'row_count' && (
+          <div>
+            <GlassFormLabel>{tr('reject.label')}</GlassFormLabel>
+            <GlassFormTextInput
+              value={rejectStream}
+              onChange={(raw) =>
+                updateConfig((cfg) => ({
+                  ...cfg,
+                  rejectStream: raw.trim() || undefined,
+                }))
+              }
+              placeholder={tr('reject.placeholder')}
+              className="w-full font-mono"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

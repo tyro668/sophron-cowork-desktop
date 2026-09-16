@@ -16,52 +16,48 @@ export function AskUserQuestionBlock({ block }: AskUserQuestionBlockProps) {
 
   if (questions.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-4">
-        <span className="text-text-muted">{t('messageCard.noQuestions')}</span>
+      <div className="rounded-lg border border-border-subtle p-3.5">
+        <span className="text-[13px] text-text-muted">{t('messageCard.noQuestions')}</span>
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-accent/25 bg-surface">
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
       {/* Header */}
-      <div className="px-4 py-3 bg-accent/10 border-b border-accent/20 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-          <HelpCircle className="w-4 h-4 text-accent" />
-        </div>
-        <div>
-          <span className="font-medium text-sm text-text-primary">{t('messageCard.question')}</span>
-        </div>
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3.5 py-2.5">
+        <HelpCircle className="h-4 w-4 flex-shrink-0 text-accent" />
+        <span className="text-[13px] font-medium text-text-primary">
+          {t('messageCard.question')}
+        </span>
       </div>
 
       {/* Questions (read-only) */}
-      <div className="p-4 space-y-5">
+      <div className="space-y-4 p-3.5">
         {questions.map((q, qIdx) => (
           <div key={qIdx} className="space-y-2">
             {q.header && (
-              <span className="inline-block px-2 py-0.5 bg-accent/10 text-accent text-xs font-medium rounded uppercase tracking-wide">
+              <span className="inline-block rounded bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
                 {q.header}
               </span>
             )}
-            <p className="text-text-primary font-medium text-sm">{q.question}</p>
+            <p className="text-[13px] font-medium text-text-primary">{q.question}</p>
             {q.options && q.options.length > 0 && (
-              <div className="space-y-1.5 mt-2">
+              <div className="mt-2 space-y-1.5">
                 {q.options.map((option, optIdx) => (
                   <div
                     key={optIdx}
-                    className="w-full p-3 rounded-lg border border-border-subtle bg-surface-muted text-left"
+                    className="flex w-full items-start gap-2.5 rounded-lg border border-border-subtle/70 bg-surface-muted/50 p-2.5 text-left"
                   >
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0 text-xs font-medium bg-border-subtle text-text-secondary">
-                        {getOptionLetter(optIdx)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm text-text-primary">{option.label}</span>
-                        {option.description && (
-                          <p className="text-xs text-text-muted mt-0.5">{option.description}</p>
-                        )}
-                      </div>
-                    </div>
+                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-surface-active text-[11px] font-medium text-text-secondary">
+                      {getOptionLetter(optIdx)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="text-[13px] text-text-primary">{option.label}</span>
+                      {option.description && (
+                        <p className="mt-0.5 text-[12px] text-text-muted">{option.description}</p>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>

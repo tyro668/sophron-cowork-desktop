@@ -2338,7 +2338,15 @@
     "noQuestions": "No questions",
     "question": "Question",
     "thinking": "Thinking",
-    "executionTime": "Execution time: {{time}}"
+    "executionTime": "Execution time: {{time}}",
+    "input": "Input",
+    "output": "Output",
+    "copyCode": "Copy code",
+    "screenshotCaptured": "Screenshot captured",
+    "linesCount_one": "{{count}} line",
+    "linesCount_other": "{{count}} lines",
+    "imagesCount_one": "+{{count}} image",
+    "imagesCount_other": "+{{count}} images"
   },
   "schedule": {
     "summary": {

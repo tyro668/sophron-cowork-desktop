@@ -39,4 +39,14 @@ export const ExpectConfigSchema = z
         message: 'expect rows requires an operator and a count',
       });
     }
+    // A row-count violation is not a per-row rejection — there is nothing to
+    // route. Forbid the combination so `reject to` is never silently ignored.
+    if (config.kind === 'row_count' && config.rejectStream) {
+      context.addIssue({
+        code: 'custom',
+        path: ['rejectStream'],
+        message:
+          'expect rows assertions cannot use "reject to" — row counts have no violating rows to route',
+      });
+    }
   });

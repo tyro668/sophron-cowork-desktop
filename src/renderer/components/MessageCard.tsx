@@ -64,10 +64,10 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
   return (
     <div className="animate-fade-in">
       {isUser ? (
-        // User message - right-aligned prompt card in the conversation flow.
+        // User message - right-aligned flat tinted bubble in the conversation flow.
         <div className="group flex items-start justify-end gap-2">
           <div
-            className={`message-user max-w-[min(44rem,88%)] min-w-0 space-y-2 break-words rounded-xl px-4 py-3 ${
+            className={`message-user max-w-[min(44rem,88%)] min-w-0 space-y-2 break-words px-4 py-2.5 text-[14px] leading-6 ${
               isQueued ? 'opacity-70 border-dashed' : ''
             } ${isCancelled ? 'opacity-60' : ''}`}
           >
@@ -100,7 +100,7 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
           </div>
           <button
             onClick={handleCopy}
-            className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted opacity-0 transition-all hover:bg-surface-active group-hover:opacity-100"
+            className="mt-1.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-surface-hover hover:text-text-primary group-hover:opacity-100"
             title={t('messageCard.copyMessage')}
           >
             {copied ? (

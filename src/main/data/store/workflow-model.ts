@@ -420,9 +420,12 @@ export function normalizeOperatorType(value: string | null | undefined): DataWor
   }
 }
 
-export function getOutputTableName(node: DataWorkflowNode | undefined, fallback: string): string {
+export function getOutputTableName(
+  node: { config?: Record<string, unknown> } | undefined,
+  fallback: string
+): string {
   if (!node) return fallback;
-  const table = node.config.table;
+  const table = node.config?.table;
   return typeof table === 'string' && table.trim() ? table.trim() : fallback;
 }
 

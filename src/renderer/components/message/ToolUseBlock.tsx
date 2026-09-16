@@ -1,6 +1,7 @@
-// Tool use card — collapsible, merges matching tool_result from same/other messages
+// Tool use row — flat Codex-style activity line, expands to show input/output
 import { useState, memo } from 'react';
-import { ChevronDown, ChevronRight, Loader2, XCircle, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ChevronRight, Loader2, XCircle, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import {
   shouldPreferToolResultImages,
@@ -27,6 +28,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   allBlocks,
   message,
 }: ToolUseBlockProps) {
+  const { t } = useTranslation();
   const traceSteps = useAppStore((s) =>
     message?.sessionId ? (s.sessionStates[message.sessionId]?.traceSteps ?? []) : []
   );
@@ -82,10 +84,10 @@ export const ToolUseBlock = memo(function ToolUseBlock({
       const firstLine = content.split(/\r?\n/)[0];
       return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
     }
-    if (shouldUseScreenshotSummary(block.name, content)) return 'Screenshot captured';
+    if (shouldUseScreenshotSummary(block.name, content)) return t('messageCard.screenshotCaptured');
     if (content.length < 60) return content.trim();
     const lines = content.trim().split(/\r?\n/);
-    return `${lines.length} lines`;
+    return t('messageCard.linesCount', { count: lines.length });
   };
 
   const summary = getSummary();
@@ -118,97 +120,87 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   }
 
   return (
-    <div
-      className={`overflow-hidden rounded-xl border shadow-card transition-colors ${
-        isError
-          ? 'border-error/25 bg-error/5'
-          : isRunning
-            ? 'border-accent/15 bg-accent/5'
-            : 'border-border-subtle bg-[var(--glass-card)]'
-      }`}
-    >
-      {/* Header — always visible */}
+    <div className="-mx-2">
+      {/* Flat activity row — Codex-style, no card chrome */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex min-h-10 items-center gap-2 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-hover/60"
       >
         {/* Status icon */}
-        <div
-          className={`flex-shrink-0 ${
+        <span
+          className={`flex h-4 w-4 flex-shrink-0 items-center justify-center ${
             isError ? 'text-error' : isRunning ? 'text-accent' : 'text-text-muted'
           }`}
         >
           {isRunning ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : isError ? (
-            <XCircle className="w-3.5 h-3.5" />
+            <XCircle className="h-3.5 w-3.5" />
           ) : (
-            <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
           )}
-        </div>
+        </span>
 
         {/* Tool icon */}
-        <div className="flex-shrink-0 text-text-muted">{getToolIcon(block.name)}</div>
+        <span className="flex-shrink-0 text-text-muted">{getToolIcon(block.name)}</span>
 
         {/* Label */}
-        <span className="text-xs font-mono text-text-secondary truncate flex-1 min-w-0">
-          {label}
-        </span>
+        <span className="min-w-0 truncate font-mono text-[12px] text-text-secondary">{label}</span>
 
         {/* MCP badge */}
         {isMCPTool && mcpServerName && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-mcp/15 text-mcp flex-shrink-0 font-medium">
+          <span className="flex-shrink-0 rounded bg-mcp/10 px-1.5 py-px text-[10px] font-medium text-mcp">
             {mcpServerName}
           </span>
         )}
 
         {/* Summary / duration */}
         {isSuccess && summary && !expanded && (
-          <span className="text-[11px] text-text-muted truncate max-w-[180px] flex-shrink-0">
+          <span className="max-w-[220px] flex-shrink-0 truncate text-[11px] text-text-muted">
             {summary}
           </span>
         )}
         {validImages.length > 0 && (
-          <span className="text-[11px] text-text-muted flex-shrink-0">
-            +{validImages.length} img
+          <span className="flex-shrink-0 text-[11px] text-text-muted">
+            {t('messageCard.imagesCount', { count: validImages.length })}
           </span>
         )}
         {duration !== undefined && (
-          <span className="text-[10px] text-text-muted flex-shrink-0 tabular-nums">
+          <span className="flex-shrink-0 text-[10px] tabular-nums text-text-muted">
             {duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`}
           </span>
         )}
 
         {/* Chevron */}
-        {expanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        )}
+        <ChevronRight
+          className={`ml-auto h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
+            expanded ? 'rotate-90' : ''
+          }`}
+        />
       </button>
 
-      {/* Expanded content */}
+      {/* Expanded content — indented under a thin left rail */}
       {expanded && (
-        <div className="animate-fade-in border-t border-border/50 bg-background/20">
+        <div className="mb-1 ml-4 mt-0.5 animate-fade-in border-l border-border-subtle pb-1 pl-3">
           {/* Input section */}
-          <div className="px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-1">
-              Input
+          <div className="py-1">
+            <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+              {t('messageCard.input')}
             </div>
-            <pre className="rounded-lg border border-border-subtle bg-surface-muted/70 p-2 font-mono text-xs text-text-secondary whitespace-pre-wrap break-all">
+            <pre className="whitespace-pre-wrap break-all rounded-md bg-surface-muted/70 p-2 font-mono text-[11.5px] leading-5 text-text-secondary">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           </div>
 
           {/* Output section */}
           {toolResult && (
-            <div className="px-3 py-2 border-t border-border/50">
-              <div className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-1">
-                Output
+            <div className="py-1">
+              <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                {t('messageCard.output')}
               </div>
               {preferImageOutput &&
                 validImages.map((image, index) => (
-                  <div key={index} className="mt-2 border border-border rounded-lg overflow-hidden">
+                  <div key={index} className="mt-1.5 overflow-hidden rounded-md">
                     <img
                       src={`data:${image.mimeType};base64,${image.data}`}
                       alt={`Output ${index + 1}`}
@@ -219,16 +211,16 @@ export const ToolUseBlock = memo(function ToolUseBlock({
                 ))}
               {shouldShowOutputText && (
                 <div
-                  className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2 border border-border-subtle max-h-[300px] overflow-y-auto ${
-                    isError ? 'text-error bg-error/5' : 'text-text-secondary bg-surface-muted'
-                  } ${preferImageOutput ? 'mt-2' : ''}`}
+                  className={`max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[11.5px] leading-5 ${
+                    isError ? 'bg-error/5 text-error' : 'bg-surface-muted/70 text-text-secondary'
+                  } ${preferImageOutput ? 'mt-1.5' : ''}`}
                 >
                   <DataLinkedText text={toolResult.content} />
                 </div>
               )}
               {!preferImageOutput &&
                 validImages.map((image, index) => (
-                  <div key={index} className="mt-2 border border-border rounded-lg overflow-hidden">
+                  <div key={index} className="mt-1.5 overflow-hidden rounded-md">
                     <img
                       src={`data:${image.mimeType};base64,${image.data}`}
                       alt={`Output ${index + 1}`}

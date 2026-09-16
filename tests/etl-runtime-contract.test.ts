@@ -553,3 +553,77 @@ describe('ETL runtime contract — commit safety fixes', () => {
     expect(expectStat?.sample?.[0]).toMatchObject({ id: '2' });
   });
 });
+
+describe('ETL runtime contract — validation consistency', () => {
+  it('rejects expect rows ... reject to (row counts have no rows to route)', async () => {
+    const { store, tempRoot } = makeStore();
+    const csvPath = writeCsv(tempRoot, 'rows_reject.csv', 'id\n1\n');
+    const task = await store.createTask({ name: 'rows reject', sourcePath: csvPath });
+    const compiled = compilePrepWorkflowToFlow(
+      parsePrepDsl(
+        'input source task as src\n  | expect rows >= 1 reject to bad\n  | output table "x" mode replace'
+      ).ast!
+    );
+    const expectNode = compiled.nodes.find((node) => node.type === 'expect')!;
+    expectNode.config = {
+      ...expectNode.config,
+      kind: 'row_count',
+      operator: '>=',
+      value: 1,
+      rejectStream: 'bad',
+    };
+    await expect(
+      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+    ).rejects.toThrow(/reject/i);
+  });
+
+  it('rejects output dataset/file destinations and mergeKeys without merge at save', async () => {
+    const { store, tempRoot } = makeStore();
+    const csvPath = writeCsv(tempRoot, 'dest.csv', 'id\n1\n');
+    const task = await store.createTask({ name: 'bad dest', sourcePath: csvPath });
+    const compiled = compilePrepWorkflowToFlow(
+      parsePrepDsl('input source task as src\n  | output table "d_out" mode replace').ast!
+    );
+    const outputNode = compiled.nodes.find((node) => node.type === 'output')!;
+    outputNode.config = { ...outputNode.config, destination: 'dataset' };
+    await expect(
+      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+    ).rejects.toThrow(/destination/i);
+    outputNode.config = { table: 'd_out', mergeKeys: ['id'] };
+    await expect(
+      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+    ).rejects.toThrow(/merge/i);
+  });
+
+  it('catches duplicate targets across mixed binding styles (fallback vs datasetId)', async () => {
+    const { store, tempRoot } = makeStore();
+    const csvPath = writeCsv(tempRoot, 'mix.csv', 'id\n1\n');
+    const outputTable = await store.createOutputTable({ name: 'bound_out' });
+    // task bound to the output table: the unnamed first sink falls back to it
+    const task = await store.createTask({
+      name: 'mixed sinks',
+      sourcePath: csvPath,
+      outputTableId: outputTable.id,
+    });
+    const compiled = compilePrepWorkflowToFlow(
+      parsePrepDsl(
+        `input source task as src
+        step a = src
+          | output table "task_out" mode replace
+        step b = src
+          | output table "other_out" mode replace`
+      ).ast!
+    );
+    const outA = compiled.nodes.find((n) => n.type === 'output' && n.config.table === 'task_out')!;
+    // strip the name so sink A resolves to the task's bound output table...
+    outA.config = { ...outA.config };
+    delete outA.config.table;
+    // ...and point sink B at the same physical table via outputDatasetId
+    const outB = compiled.nodes.find((n) => n.type === 'output' && n.config.table === 'other_out')!;
+    outB.config = { ...outB.config, outputDatasetId: outputTable.id };
+    delete outB.config.table;
+    await expect(
+      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+    ).rejects.toThrow(/same target|duplicate/i);
+  });
+});

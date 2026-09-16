@@ -1,6 +1,7 @@
 // Fallback ToolResultBlock — only renders for truly orphan results (no matching tool_use anywhere)
 import { useState, memo, useMemo } from 'react';
-import { ChevronDown, ChevronRight, XCircle, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ChevronRight, XCircle, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import {
   shouldPreferToolResultImages,
@@ -25,6 +26,7 @@ export const ToolResultBlock = memo(function ToolResultBlock({
   allBlocks,
   message,
 }: ToolResultBlockProps) {
+  const { t } = useTranslation();
   const traceSteps = useAppStore((s) =>
     message?.sessionId ? (s.sessionStates[message.sessionId]?.traceSteps ?? []) : []
   );
@@ -76,10 +78,10 @@ export const ToolResultBlock = memo(function ToolResultBlock({
       const firstLine = content.split(/\r?\n/)[0];
       return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
     }
-    if (shouldUseScreenshotSummary(toolName, content)) return 'Screenshot captured';
+    if (shouldUseScreenshotSummary(toolName, content)) return t('messageCard.screenshotCaptured');
     if (content.length < 60) return content.trim();
     const lines = content.trim().split(/\r?\n/);
-    return `${lines.length} lines`;
+    return t('messageCard.linesCount', { count: lines.length });
   };
 
   const validImages =
@@ -101,44 +103,42 @@ export const ToolResultBlock = memo(function ToolResultBlock({
   );
 
   return (
-    <div
-      className={`overflow-hidden rounded-xl border shadow-card ${
-        block.isError ? 'border-error/25 bg-error/5' : 'border-border-subtle bg-[var(--glass-card)]'
-      }`}
-    >
+    <div className="-mx-2">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex min-h-10 items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover/50 transition-colors"
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-hover/60"
       >
-        {block.isError ? (
-          <XCircle className="w-3.5 h-3.5 text-error flex-shrink-0" />
-        ) : (
-          <CheckCircle2 className="w-3.5 h-3.5 text-success flex-shrink-0" />
-        )}
+        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+          {block.isError ? (
+            <XCircle className="h-3.5 w-3.5 text-error" />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+          )}
+        </span>
         <span
-          className={`text-xs font-mono flex-shrink-0 ${block.isError ? 'text-error' : 'text-text-muted'}`}
+          className={`flex-shrink-0 font-mono text-[12px] ${block.isError ? 'text-error' : 'text-text-secondary'}`}
         >
           {displayName}
         </span>
-        <span className="text-[11px] text-text-muted truncate flex-1">{getSummary()}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{getSummary()}</span>
         {hasImages && (
-          <span className="text-[11px] text-text-muted flex-shrink-0">
-            +{block.images?.length ?? 0} img
+          <span className="flex-shrink-0 text-[11px] text-text-muted">
+            {t('messageCard.imagesCount', { count: validImages.length })}
           </span>
         )}
-        {expanded ? (
-          <ChevronDown className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-        )}
+        <ChevronRight
+          className={`ml-auto h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${
+            expanded ? 'rotate-90' : ''
+          }`}
+        />
       </button>
 
       {expanded && (
-        <div className="border-t border-border/50 px-3 py-2 animate-fade-in">
+        <div className="mb-1 ml-4 mt-0.5 animate-fade-in border-l border-border-subtle pb-1 pl-3">
           {preferImageOutput && hasImages && (
-            <div className="space-y-2">
+            <div className="space-y-1.5 py-1">
               {validImages.map((image, index) => (
-                <div key={index} className="border border-border rounded-lg overflow-hidden">
+                <div key={index} className="overflow-hidden rounded-md">
                   <img
                     src={`data:${image.mimeType};base64,${image.data}`}
                     alt={`Screenshot ${index + 1}`}
@@ -151,17 +151,17 @@ export const ToolResultBlock = memo(function ToolResultBlock({
           )}
           {shouldShowOutputText && (
             <div
-              className={`text-xs font-mono whitespace-pre-wrap break-all rounded-lg p-2 border border-border-subtle max-h-[300px] overflow-y-auto ${
-                block.isError ? 'text-error bg-error/5' : 'text-text-secondary bg-surface-muted'
-              } ${preferImageOutput ? 'mt-2' : ''}`}
+              className={`max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[11.5px] leading-5 ${
+                block.isError ? 'bg-error/5 text-error' : 'bg-surface-muted/70 text-text-secondary'
+              } ${preferImageOutput ? 'mt-1.5' : ''}`}
             >
               <DataLinkedText text={block.content} />
             </div>
           )}
           {!preferImageOutput && hasImages && (
-            <div className="mt-2 space-y-2">
+            <div className="mt-1.5 space-y-1.5">
               {validImages.map((image, index) => (
-                <div key={index} className="border border-border rounded-lg overflow-hidden">
+                <div key={index} className="overflow-hidden rounded-md">
                   <img
                     src={`data:${image.mimeType};base64,${image.data}`}
                     alt={`Screenshot ${index + 1}`}

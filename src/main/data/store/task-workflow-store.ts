@@ -247,30 +247,46 @@ export class TaskWorkflowStore extends WorkflowCompiler {
       );
       diagnostics.push(...validateWorkflowPlanGraph(plan, { profile: 'task' }));
 
-      // Multiple sinks may not resolve to the same target table — the second
-      // write would silently overwrite the first.
+      // Multiple sinks may not resolve to the same physical target table —
+      // the second write would silently overwrite the first. Resolve via the
+      // same path the commit uses so outputDatasetId and table-name configs
+      // compare on equal terms; nodes whose config already failed validation
+      // (e.g. bad mode) are skipped to avoid duplicate noise.
       const claimedOutputTargets = new Map<string, string>();
-      for (const node of plan.nodes) {
-        if (node.type !== 'output' || node.config?.disabled === true) continue;
-        const config = (node.config ?? {}) as Record<string, unknown>;
-        const targetKey = (
-          stringConfigValue(config.outputDatasetId) ||
-          stringConfigValue(config.outputTableId) ||
-          stringConfigValue(config.outputTableName) ||
-          stringConfigValue(config.table)
-        ).toLowerCase();
-        if (!targetKey) continue;
-        const claimant = claimedOutputTargets.get(targetKey);
-        if (claimant) {
-          diagnostics.push({
-            severity: 'error',
-            code: 'outputTargetDuplicate',
-            message: `Output sinks ${claimant} and ${node.id} target the same table "${targetKey}"`,
-            nodeId: node.id,
-            nodeType: node.type,
-          });
-        } else {
-          claimedOutputTargets.set(targetKey, node.id);
+      const erroredNodeIds = new Set(
+        diagnostics
+          .filter((item) => item.severity === 'error' && item.nodeId)
+          .map((item) => item.nodeId as string)
+      );
+      const outputNodes = plan.nodes.filter(
+        (node) => node.type === 'output' && node.config?.disabled !== true
+      );
+      for (const [index, planNode] of outputNodes.entries()) {
+        if (erroredNodeIds.has(planNode.id)) continue;
+        const taskNode = input.nodes.find((node) => node.id === planNode.id);
+        if (!taskNode) continue;
+        try {
+          const target = await this.resolveWorkflowOutputTarget(
+            taskNode,
+            index === 0
+              ? task.outputTable || tableNameFromId('clean_task', task.id)
+              : tableNameFromId('task_sink', `${task.id}_${planNode.id}`)
+          );
+          const targetKey = target.tableName.toLowerCase();
+          const claimant = claimedOutputTargets.get(targetKey);
+          if (claimant) {
+            diagnostics.push({
+              severity: 'error',
+              code: 'outputTargetDuplicate',
+              message: `Output sinks ${claimant} and ${planNode.id} resolve to the same target table "${target.tableName}"`,
+              nodeId: planNode.id,
+              nodeType: planNode.type,
+            });
+          } else {
+            claimedOutputTargets.set(targetKey, planNode.id);
+          }
+        } catch {
+          // Resolution failures are already reported as config diagnostics.
         }
       }
 
@@ -1975,7 +1991,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
   }
 
   protected async resolveWorkflowOutputTarget(
-    node: DataWorkflowNode | undefined,
+    node: { config?: Record<string, unknown> } | undefined,
     fallback: string
   ): Promise<{
     tableName: string;
@@ -1984,13 +2000,13 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     mergeKeys: string[];
     schemaPolicy: 'extend' | 'strict' | 'ignore';
   }> {
-    const destination = stringConfigValue(node?.config.destination);
+    const destination = stringConfigValue(node?.config?.destination);
     if (destination === 'dataset' || destination === 'file') {
       throw new Error(
         `Output destination "${destination}" is not supported in task workflows; use "output table" instead`
       );
     }
-    const rawMode = stringConfigValue(node?.config.mode) || 'replace';
+    const rawMode = stringConfigValue(node?.config?.mode) || 'replace';
     if (
       rawMode !== 'replace' &&
       rawMode !== 'append' &&
@@ -2001,9 +2017,9 @@ export class TaskWorkflowStore extends WorkflowCompiler {
         `Unsupported output mode "${rawMode}"; expected replace, append, error_if_exists, or merge`
       );
     }
-    const mergeKeys = Array.isArray(node?.config.mergeKeys)
-      ? node!.config.mergeKeys
-          .map((key) => String(key ?? '').trim())
+    const mergeKeys = Array.isArray(node?.config?.mergeKeys)
+      ? node!
+          .config!.mergeKeys.map((key) => String(key ?? '').trim())
           .filter((key) => key.length > 0)
       : [];
     if (rawMode === 'merge' && mergeKeys.length === 0) {
@@ -2012,7 +2028,7 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     if (rawMode !== 'merge' && mergeKeys.length > 0) {
       throw new Error('Output `by` keys are only valid with mode merge');
     }
-    const rawSchema = stringConfigValue(node?.config.schemaPolicy) || 'extend';
+    const rawSchema = stringConfigValue(node?.config?.schemaPolicy) || 'extend';
     if (rawSchema !== 'extend' && rawSchema !== 'strict' && rawSchema !== 'ignore') {
       throw new Error(
         `Unsupported output schema policy "${rawSchema}"; expected extend, strict, or ignore`
@@ -2020,8 +2036,8 @@ export class TaskWorkflowStore extends WorkflowCompiler {
     }
     const mode = rawMode;
     const outputDatasetId =
-      stringConfigValue(node?.config.outputDatasetId) ||
-      stringConfigValue(node?.config.outputTableId);
+      stringConfigValue(node?.config?.outputDatasetId) ||
+      stringConfigValue(node?.config?.outputTableId);
     if (outputDatasetId) {
       const outputTable = await this.requireOutputTable(outputDatasetId);
       return {

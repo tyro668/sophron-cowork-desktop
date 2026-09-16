@@ -33,3 +33,7 @@ Output modes: `replace` (default), `append` (UNION ALL BY NAME into existing tar
 - Watermarks are keyed by (task, node, column); switching `incrementalBy` starts a fresh watermark instead of reusing a stale one.
 - `validateWorkflowPlanForTask` is the single save/run preflight — it includes operator config diagnostics; disabled nodes pass through (runtime semantics).
 - Join output schema inference shares `planJoinProjectionColumns` (src/shared/prep-dsl/join-projection.ts) with the SQL compiler — keep/conflict naming can never drift apart.
+- Output config is now typed (`OutputConfigSchema`/`InputSourceConfigSchema` in operator-schemas/input-output.ts): non-executable destinations, bad mode/schemaPolicy, mergeKeys without mode=merge, and unbound dataset/file sources are rejected at save/preflight — same rules the manifest advertises via z.toJSONSchema.
+- `expect rows` cannot take `reject to` (row-count violations have no rows to route); DSL/canvas/apply paths all reject the combination.
+- Duplicate-output detection compares RESOLVED physical targets (resolveWorkflowOutputTarget), not raw config fields — mixed binding styles (task fallback vs outputDatasetId) can't slip through.
+- Failed restores keep the output-commit journal recoverable ('data_committed'/'prepared', never 'failed') so startup recovery retries instead of trusting a tombstone.

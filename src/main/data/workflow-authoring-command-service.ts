@@ -205,7 +205,19 @@ export class WorkflowAuthoringCommandService {
       input.taskId,
       compiled.workflow
     );
-    const diagnostics = [...compiled.diagnostics, ...planDiagnostics];
+    // compileWorkflowDsl already ran buildWorkflowPlan + graph rules — drop
+    // exact repeats (same code/node/message) so repair loops see each issue once.
+    const dedupKey = (item: {
+      severity: string;
+      code?: string;
+      message: string;
+      nodeId?: string;
+    }) => `${item.severity}|${item.code ?? ''}|${item.nodeId ?? ''}|${item.message}`;
+    const seen = new Set(compiled.diagnostics.map(dedupKey));
+    const diagnostics = [
+      ...compiled.diagnostics,
+      ...planDiagnostics.filter((item) => !seen.has(dedupKey(item))),
+    ];
     const errors = diagnosticsWithSeverity(diagnostics, 'error');
     if (errors.length > 0 && !input.dryRun) {
       throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(errors), {

@@ -7,15 +7,31 @@ import { z } from 'zod';
  */
 export const InputSourceConfigSchema = z
   .looseObject({
-    source: z.enum(['dataset', 'task', 'file']).optional(),
-    datasetId: z.string().trim().min(1).optional(),
-    filePath: z.string().trim().optional(),
+    source: z
+      .enum(['dataset', 'task', 'file'])
+      .describe(
+        '"dataset" reads a bound input table, "task" the task source file, "file" a literal filePath'
+      )
+      .optional(),
+    datasetId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('Bound input table id; usually set via resources.inputs[alias]')
+      .optional(),
+    filePath: z.string().trim().describe('Literal file path for source=file').optional(),
     alias: z
       .string()
       .trim()
       .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'alias must be a simple identifier')
+      .describe('Stream name this source produces')
       .optional(),
-    incrementalBy: z.string().trim().min(1).optional(),
+    incrementalBy: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('Watermark column; reads only rows newer than the last committed watermark')
+      .optional(),
   })
   .superRefine((config, context) => {
     if (config.source === 'dataset' && !config.datasetId) {
@@ -36,12 +52,22 @@ export const InputSourceConfigSchema = z
 
 export const OutputConfigSchema = z
   .looseObject({
-    destination: z.enum(['duckdb_table', 'dataset', 'file']).optional(),
-    table: z.string().trim().optional(),
+    destination: z
+      .enum(['duckdb_table'])
+      .describe('Only "duckdb_table" (output table) is executable')
+      .optional(),
+    table: z.string().trim().describe('Output table name').optional(),
     mode: z.enum(['replace', 'append', 'error_if_exists', 'merge']).optional(),
-    mergeKeys: z.array(z.string().trim().min(1)).optional(),
+    mergeKeys: z
+      .array(z.string().trim().min(1))
+      .describe('Business keys; required when mode=merge')
+      .optional(),
     schemaPolicy: z.enum(['extend', 'strict', 'ignore']).optional(),
-    outputDatasetId: z.string().trim().optional(),
+    outputDatasetId: z
+      .string()
+      .trim()
+      .describe('Real output table id (from data_list_output_tables)')
+      .optional(),
     outputTableId: z.string().trim().optional(),
     outputStrategy: z.enum(['existing', 'auto']).optional(),
     outputTableName: z.string().trim().optional(),
@@ -54,7 +80,9 @@ export const OutputConfigSchema = z
         message: 'mode "merge" requires at least one mergeKeys business key',
       });
     }
-    if (config.mergeKeys && config.mergeKeys.length > 0 && config.mode && config.mode !== 'merge') {
+    // mergeKeys without mode fall back to mode "replace" at runtime and fail
+    // there — reject them at validation time instead.
+    if (config.mergeKeys && config.mergeKeys.length > 0 && config.mode !== 'merge') {
       context.addIssue({
         code: 'custom',
         path: ['mergeKeys'],
