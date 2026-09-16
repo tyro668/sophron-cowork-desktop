@@ -1,42 +1,13 @@
 import type { PrepDiagnostic, PrepOperatorAst, PrepOperatorType } from '../ast';
-import { aggregateCodec } from './aggregate';
-import { calculateFieldCodec } from './calculate-field';
+import { OPERATOR_DEFINITIONS, OPERATOR_TYPES } from '../../operators';
 import type { OperatorCommand, OperatorDslCodec } from './codec';
-import { deduplicateCodec } from './deduplicate';
-import { expectCodec } from './expect';
-import { fieldMappingCodec } from './field-mapping';
-import { fieldSelectCodec } from './field-select';
-import { filterCodec } from './filter';
-import { joinCodec } from './join';
-import { limitCodec } from './limit';
-import { missingValueCodec } from './missing-value';
-import { outputCodec } from './output';
-import { pivotCodec } from './pivot';
-import { setOpCodec } from './set-op';
-import { sortCodec } from './sort';
-import { typeConvertCodec } from './type-convert';
-import { unnestCodec } from './unnest';
-import { unpivotCodec } from './unpivot';
 
-const codecs: readonly OperatorDslCodec[] = [
-  fieldSelectCodec,
-  calculateFieldCodec,
-  fieldMappingCodec,
-  filterCodec,
-  joinCodec,
-  typeConvertCodec,
-  sortCodec,
-  deduplicateCodec,
-  aggregateCodec,
-  limitCodec,
-  missingValueCodec,
-  pivotCodec,
-  unpivotCodec,
-  setOpCodec,
-  unnestCodec,
-  expectCodec,
-  outputCodec,
-];
+// Codec coverage derives from the operator registry: `dsl` is absent only for
+// operators not expressible as DSL steps (input_source binds via `from <ref>`).
+const codecs: readonly OperatorDslCodec[] = OPERATOR_TYPES.flatMap((type) => {
+  const codec = OPERATOR_DEFINITIONS[type].dsl;
+  return codec ? [codec] : [];
+});
 
 export function parseRegisteredOperator(
   command: OperatorCommand,

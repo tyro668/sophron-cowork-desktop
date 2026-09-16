@@ -34,6 +34,17 @@ All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ip
 
 `architecture-boundaries.test.ts` fails on `extends` inside `store/repositories|services` or SQL inside the facade.
 
+## Operator registry (enforced)
+
+`src/shared/operators/` is the single operator registration point:
+
+- `OPERATOR_TYPES` (`definition.ts`) is the canonical operator-type list — `DataWorkflowOperatorType` derives from it (re-exported via `data-workflow-types.ts`).
+- `OPERATOR_DEFINITIONS` (`definitions.ts`) binds each type to its `OperatorDefinition<T>`: config `schema`, `createDefaultConfig()`, `ports` (edge handles), `dsl` codec, `compileKind`, and `validateConfig`. The `satisfies Record<DataWorkflowOperatorType, …>` makes missing/extra entries compile errors.
+- Derived facets: `SCHEMA_MAP` + `getOperatorConfigValidation`/`validateOperatorConfig` (re-exported via `operator-schemas`), DSL codec list (`prep-dsl/operators/registry.ts`), graph handle rules (`workflow-plan/graph.ts`), SQL dispatch (`compileKind` in `WorkflowCompiler`), capability-manifest enum + `ports`.
+- Renderer UI facets live in `OPERATOR_UI` (`workflow/operator-catalog.ts`): labelKey, icon, colors, lazy `form` loader, `summarize`. `OperatorFormProps` lives in `workflow-forms/types.ts`; `workflow-forms/index.ts` is a barrel only.
+
+Adding an operator = schema file + codec file + SQL compile (when `compileKind: 'strategy'`) + one `OPERATOR_DEFINITIONS` entry + one `OPERATOR_UI` entry. `operator-registry.test.ts` fails on any drift between registries.
+
 ## UI work
 
 All UI work under `src/renderer` must follow [`UI_STYLE_GUIDE.md`](UI_STYLE_GUIDE.md).

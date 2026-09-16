@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormLabel } from './shared/GlassFormLabel';

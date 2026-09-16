@@ -1,24 +1,6 @@
-import type { z } from 'zod';
 import type { DataWorkflowOperatorType } from '../data-workflow-types';
+import type { WorkflowOperatorConfigMap } from '../operators';
 import type { PrepDiagnostic } from '../prep-dsl/ast';
-import type {
-  AggregateConfigSchema,
-  CalculateFieldConfigSchema,
-  DeduplicateConfigSchema,
-  FieldMappingConfigSchema,
-  FieldSelectConfigSchema,
-  ExpectConfigSchema,
-  FilterConfigSchema,
-  JoinConfigSchema,
-  LimitConfigSchema,
-  MissingValueConfigSchema,
-  PivotConfigSchema,
-  SetOpConfigSchema,
-  SortConfigSchema,
-  TypeConvertConfigSchema,
-  UnnestConfigSchema,
-  UnpivotConfigSchema,
-} from '../operator-schemas';
 
 /**
  * Versioned, strongly-typed workflow plan shared by the human-written Prep DSL
@@ -29,25 +11,12 @@ import type {
  */
 export const WORKFLOW_PLAN_VERSION = 'workflow-plan/v1' as const;
 
-/** Operator config types inferred from the authoritative zod schemas. */
-export interface WorkflowOperatorConfigMap {
-  sort: z.infer<typeof SortConfigSchema>;
-  field_select: z.infer<typeof FieldSelectConfigSchema>;
-  field_mapping: z.infer<typeof FieldMappingConfigSchema>;
-  deduplicate: z.infer<typeof DeduplicateConfigSchema>;
-  type_convert: z.infer<typeof TypeConvertConfigSchema>;
-  unpivot: z.infer<typeof UnpivotConfigSchema>;
-  unnest: z.infer<typeof UnnestConfigSchema>;
-  set_op: z.infer<typeof SetOpConfigSchema>;
-  aggregate: z.infer<typeof AggregateConfigSchema>;
-  calculate_field: z.infer<typeof CalculateFieldConfigSchema>;
-  missing_value: z.infer<typeof MissingValueConfigSchema>;
-  limit: z.infer<typeof LimitConfigSchema>;
-  pivot: z.infer<typeof PivotConfigSchema>;
-  join: z.infer<typeof JoinConfigSchema>;
-  filter: z.infer<typeof FilterConfigSchema>;
-  expect: z.infer<typeof ExpectConfigSchema>;
-}
+/**
+ * Per-type config map inferred from the operator registry's zod schemas —
+ * covers every `DataWorkflowOperatorType`, including `input_source`/`output`,
+ * so the plan node config union never degrades to `Record<string, unknown>`.
+ */
+export type { WorkflowOperatorConfigMap } from '../operators';
 
 export type WorkflowSchemaOperatorType = keyof WorkflowOperatorConfigMap;
 
@@ -56,9 +25,7 @@ export type WorkflowPlanNode = {
     id: string;
     type: T;
     label?: string;
-    config: T extends WorkflowSchemaOperatorType
-      ? WorkflowOperatorConfigMap[T]
-      : Record<string, unknown>;
+    config: WorkflowOperatorConfigMap[T];
     x?: number;
     y?: number;
   };

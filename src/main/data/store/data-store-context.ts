@@ -14,13 +14,9 @@ import {
 } from '../../../shared/data-field-types';
 import { log } from '../../utils/logger';
 import { compileTypedProjection, quoteIdentifier, toNumber } from '../operators';
-import {
-  DataTaskStoreOptions,
-  LEGACY_DEMO_TASK_NAMES,
-  isDuckDbTransactionStateError,
-} from './data-store-records';
+import { DataTaskStoreOptions, isDuckDbTransactionStateError } from './data-store-records';
 import { inferDataFieldTypeFromValues } from './input-source';
-import { DataWorkflowNodeRow, isLegacyDefaultWorkflow } from './workflow-model';
+import { migrateMetadataSchema, type MetadataMigrationHooks } from './migrations';
 import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api';
 import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
@@ -37,7 +33,7 @@ export class DataStoreContext {
   duckInitPromise: Promise<void> | null = null;
   exclusiveQueue: Promise<void> = Promise.resolve();
   readonly exclusiveContext = new AsyncLocalStorage<boolean>();
-  private readonly schemaMaintenanceSteps: Array<() => Promise<void>> = [];
+  private migrationHooks: MetadataMigrationHooks = {};
   private readonly postReadyHooks: Array<() => Promise<void>> = [];
   private postReadyPromise: Promise<void> | null = null;
 
@@ -99,17 +95,22 @@ export class DataStoreContext {
   }
   async ensureMetadataReady(): Promise<void> {
     if (!this.metadataInitPromise) {
-      this.metadataInitPromise = this.initializeMetadata();
+      // Reset on failure so a transient migration error can be retried
+      // instead of pinning a rejected promise forever.
+      this.metadataInitPromise = this.initializeMetadata().catch((error) => {
+        this.metadataInitPromise = null;
+        throw error;
+      });
     }
     await this.metadataInitPromise;
   }
   /**
-   * Registers a metadata-table maintenance step that runs at the end of
-   * {@link createSchema}. Repositories use this to keep schema init in the
-   * infrastructure layer while owning their own table hygiene.
+   * Supplies repo-owned data cleanup sweeps to the migration runner (e.g.
+   * output-table metadata normalization). Must be set before the first
+   * {@link ensureMetadataReady} call; the facade wires this at construction.
    */
-  registerSchemaMaintenanceStep(step: () => Promise<void>): void {
-    this.schemaMaintenanceSteps.push(step);
+  setMigrationHooks(hooks: MetadataMigrationHooks): void {
+    this.migrationHooks = hooks;
   }
 
   /**
@@ -176,167 +177,7 @@ export class DataStoreContext {
     if (!this.metadataDb) {
       await this.ensureDuckDbReady();
     }
-    await this.createSchema();
-    await this.removeLegacyDemoRows();
-    await this.removeLegacyDefaultWorkflowGraphs();
-  }
-  async createSchema(): Promise<void> {
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_cleaning_tasks (
-          id VARCHAR PRIMARY KEY,
-          name VARCHAR NOT NULL,
-          status VARCHAR NOT NULL,
-          node_count INTEGER NOT NULL,
-          source_path VARCHAR,
-          source_dataset_id VARCHAR,
-          output_table VARCHAR,
-          row_count UBIGINT,
-          column_count INTEGER,
-          error VARCHAR,
-          scheduled_for BIGINT,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL,
-          last_run_at BIGINT
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_datasets (
-          id VARCHAR PRIMARY KEY,
-          name VARCHAR NOT NULL,
-          source_path VARCHAR NOT NULL,
-          table_name VARCHAR NOT NULL,
-          row_count UBIGINT NOT NULL,
-          column_count INTEGER NOT NULL,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL
-        )
-      `);
-    await this.ensureMetadataColumn('data_datasets', 'source_kind', 'VARCHAR');
-    await this.ensureMetadataColumn('data_datasets', 'config_json', 'VARCHAR');
-    await this.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
-    for (const step of this.schemaMaintenanceSteps) {
-      await step();
-    }
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifacts (
-          id VARCHAR PRIMARY KEY,
-          name VARCHAR NOT NULL,
-          description VARCHAR,
-          source_kind VARCHAR NOT NULL,
-          primary_language VARCHAR NOT NULL,
-          active_version_id VARCHAR,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifact_versions (
-          id VARCHAR PRIMARY KEY,
-          artifact_id VARCHAR NOT NULL,
-          version INTEGER NOT NULL,
-          status VARCHAR NOT NULL,
-          files_json VARCHAR NOT NULL,
-          file_tree_hash VARCHAR NOT NULL,
-          rule_prompt VARCHAR NOT NULL,
-          source_summary_hash VARCHAR,
-          entrypoint_json VARCHAR NOT NULL,
-          dependency_prepare_json VARCHAR,
-          runtime_json VARCHAR NOT NULL,
-          dependencies_json VARCHAR,
-          dependency_lock_hash VARCHAR,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL,
-          published_at BIGINT
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_workflow_nodes (
-          id VARCHAR PRIMARY KEY,
-          task_id VARCHAR NOT NULL,
-          node_key VARCHAR NOT NULL,
-          label VARCHAR NOT NULL,
-          ordinal INTEGER NOT NULL,
-          created_at BIGINT NOT NULL
-        )
-      `);
-    await this.ensureMetadataColumn('data_workflow_nodes', 'operator_type', 'VARCHAR');
-    await this.ensureMetadataColumn('data_workflow_nodes', 'x', 'DOUBLE');
-    await this.ensureMetadataColumn('data_workflow_nodes', 'y', 'DOUBLE');
-    await this.ensureMetadataColumn('data_workflow_nodes', 'config_json', 'VARCHAR');
-    await this.ensureMetadataColumn('data_workflow_nodes', 'updated_at', 'BIGINT');
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_workflow_edges (
-          id VARCHAR PRIMARY KEY,
-          task_id VARCHAR NOT NULL,
-          source_node_id VARCHAR NOT NULL,
-          target_node_id VARCHAR NOT NULL,
-          source_handle VARCHAR,
-          target_handle VARCHAR,
-          created_at BIGINT NOT NULL
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_task_watermarks (
-          task_id VARCHAR NOT NULL,
-          node_id VARCHAR NOT NULL,
-          column_name VARCHAR NOT NULL,
-          watermark_value VARCHAR,
-          updated_at BIGINT NOT NULL,
-          PRIMARY KEY (task_id, node_id)
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_task_node_run_stats (
-          task_id VARCHAR NOT NULL,
-          run_id VARCHAR NOT NULL,
-          node_id VARCHAR NOT NULL,
-          node_type VARCHAR NOT NULL,
-          input_rows BIGINT,
-          output_rows BIGINT NOT NULL,
-          dropped_rows BIGINT NOT NULL,
-          rejected_rows BIGINT NOT NULL,
-          sample_json VARCHAR,
-          created_at BIGINT NOT NULL,
-          PRIMARY KEY (task_id, run_id, node_id)
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_workflow_node_caches (
-          id VARCHAR PRIMARY KEY,
-          task_id VARCHAR NOT NULL,
-          node_id VARCHAR NOT NULL,
-          node_type VARCHAR NOT NULL,
-          table_name VARCHAR NOT NULL,
-          cache_scope VARCHAR NOT NULL,
-          expires_at BIGINT,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL
-        )
-      `);
-    await this.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_output_commits (
-          id VARCHAR PRIMARY KEY,
-          task_id VARCHAR NOT NULL,
-          temporary_table VARCHAR NOT NULL,
-          target_table VARCHAR NOT NULL,
-          backup_table VARCHAR NOT NULL,
-          target_existed INTEGER NOT NULL,
-          state VARCHAR NOT NULL,
-          intended_metadata_json VARCHAR NOT NULL,
-          error VARCHAR,
-          created_at BIGINT NOT NULL,
-          updated_at BIGINT NOT NULL
-        )
-      `);
-    await this.createMetadataIndexes();
-    await this.metaRunSql(`
-        UPDATE data_workflow_nodes
-        SET operator_type = coalesce(operator_type, node_key),
-            x = coalesce(x, 48 + (ordinal - 1) * 142),
-            y = coalesce(y, 128),
-            config_json = coalesce(config_json, '{}'),
-            updated_at = coalesce(updated_at, created_at)
-      `);
+    await migrateMetadataSchema(this, this.migrationHooks);
   }
   async ensureMetadataColumn(
     tableName: string,
@@ -370,116 +211,6 @@ export class DataStoreContext {
         `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(columnName)} ${definition}`
       );
     }
-  }
-  async createMetadataIndexes(): Promise<void> {
-    const indexStatements = [
-      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_updated_at ON data_cleaning_tasks(updated_at, created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_dataset_id ON data_cleaning_tasks(source_dataset_id)',
-      'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_path ON data_cleaning_tasks(source_path)',
-      'CREATE INDEX IF NOT EXISTS idx_data_datasets_updated_at ON data_datasets(updated_at, created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_data_datasets_source_kind ON data_datasets(source_kind)',
-      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_updated_at ON data_input_table_normalizer_artifacts(updated_at, created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_source_kind ON data_input_table_normalizer_artifacts(source_kind)',
-      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_artifact ON data_input_table_normalizer_artifact_versions(artifact_id, version)',
-      'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_status ON data_input_table_normalizer_artifact_versions(status, updated_at)',
-      'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_task_id ON data_workflow_nodes(task_id)',
-      'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
-      'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_task_node ON data_workflow_node_caches(task_id, node_id, updated_at)',
-      'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_expires_at ON data_workflow_node_caches(expires_at)',
-      'CREATE INDEX IF NOT EXISTS idx_data_output_commits_state ON data_output_commits(state, updated_at)',
-    ];
-    for (const statement of indexStatements) {
-      await this.metaRunSql(statement);
-    }
-  }
-  async removeLegacyDemoRows(): Promise<void> {
-    const placeholders = LEGACY_DEMO_TASK_NAMES.map((_, index) => `$name${index}`).join(', ');
-    const values = Object.fromEntries(
-      LEGACY_DEMO_TASK_NAMES.map((name, index) => [`name${index}`, name])
-    );
-    const demoTaskRows = await this.metaQueryRows<{ id: string }>(
-      `
-          SELECT id
-          FROM data_cleaning_tasks
-          WHERE name IN (${placeholders})
-            AND source_path IS NULL
-            AND source_dataset_id IS NULL
-            AND output_table IS NULL
-            AND row_count IS NULL
-            AND column_count IS NULL
-            AND error IS NULL
-            AND last_run_at IS NULL
-        `,
-      values
-    );
-    if (demoTaskRows.length > 0) {
-      await this.metaRunSql(
-        `
-            DELETE FROM data_workflow_edges
-            WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
-          `,
-        Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
-      );
-      await this.metaRunSql(
-        `
-            DELETE FROM data_workflow_nodes
-            WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
-          `,
-        Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
-      );
-      await this.metaRunSql(
-        `
-            DELETE FROM data_cleaning_tasks
-            WHERE id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
-          `,
-        Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
-      );
-    }
-    await this.metaRunSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
-  }
-  async removeLegacyDefaultWorkflowGraphs(): Promise<void> {
-    const workflowRows = await this.metaQueryRows<DataWorkflowNodeRow>(
-      `
-          SELECT *
-          FROM data_workflow_nodes
-          ORDER BY task_id ASC, ordinal ASC, created_at ASC
-        `
-    );
-    const rowsByTask = new Map<string, DataWorkflowNodeRow[]>();
-    for (const row of workflowRows) {
-      const taskId = String(row.task_id);
-      rowsByTask.set(taskId, [...(rowsByTask.get(taskId) ?? []), row]);
-    }
-    const taskIds = Array.from(rowsByTask.entries()).flatMap(([taskId, rows]) =>
-      isLegacyDefaultWorkflow(rows) ? [taskId] : []
-    );
-    if (taskIds.length === 0) {
-      return;
-    }
-    const placeholders = taskIds.map((_, index) => `$id${index}`).join(', ');
-    const values = Object.fromEntries(taskIds.map((taskId, index) => [`id${index}`, taskId]));
-    await this.metaRunSql(
-      `
-          DELETE FROM data_workflow_edges
-          WHERE task_id IN (${placeholders})
-        `,
-      values
-    );
-    await this.metaRunSql(
-      `
-          DELETE FROM data_workflow_nodes
-          WHERE task_id IN (${placeholders})
-        `,
-      values
-    );
-    await this.metaRunSql(
-      `
-          UPDATE data_cleaning_tasks
-          SET node_count = 0
-          WHERE id IN (${placeholders})
-        `,
-      values
-    );
   }
   async getTableColumns(tableName: string): Promise<string[]> {
     const rows = await this.queryRows<{ column_name: string }>(

@@ -132,7 +132,9 @@ export class DataTaskStore {
       binding
     );
 
-    this.ctx.registerSchemaMaintenanceStep(() => datasets.cleanupOutputTableMetadata());
+    this.ctx.setMigrationHooks({
+      cleanupOutputTableMetadata: () => datasets.cleanupOutputTableMetadata(),
+    });
     this.ctx.registerPostReadyHook(() => commitCoordinator.recoverPendingOutputCommits());
 
     this.tasks = tasks;

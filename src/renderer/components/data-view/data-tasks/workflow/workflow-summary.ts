@@ -1,4 +1,4 @@
-import type { DataWorkflowNode } from '../../../../types';
+import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../../../types';
 import { dataFieldTypeLabel } from '../../../../../shared/data-field-types';
 import { DEFAULT_MODE, DEFAULT_MATCH } from '../../../../../shared/operator-schemas/set-op';
 import type { TranslateFn } from '../../shared';
@@ -14,272 +14,274 @@ export interface WorkflowConfigSummary {
   details: WorkflowSummaryRow[];
 }
 
+/**
+ * Per-operator summary builder — one entry per operator type (compile-time
+ * exhaustive). Registered into `OPERATOR_UI[type].summarize` in
+ * `operator-catalog.ts`.
+ */
+export type WorkflowSummarizer = (
+  config: Record<string, unknown>,
+  t: TranslateFn
+) => WorkflowConfigSummary;
+
+const summarizeInputSource: WorkflowSummarizer = (config, t) => {
+  const inputTableName =
+    stringValue(config.inputTableName) || stringValue(config.name) || stringValue(config.datasetId);
+  return {
+    primary: [summaryRow(t, 'inputTable', inputTableName, true)],
+    details: [],
+  };
+};
+
+const summarizeFieldSelect: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', 'include')),
+    summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
+  ],
+  details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
+});
+
+const summarizeFieldMapping: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'mappings', formatCount(recordArray(config.mappings).length)),
+    summaryRow(t, 'mode', translateWorkflowValue(t, 'mappingModes', getMappingMode(config))),
+  ],
+  details: [summaryRow(t, 'fields', formatMappings(config.mappings, t), true)],
+});
+
+const summarizeFilter: WorkflowSummarizer = (config, t) => ({
+  primary: [summaryRow(t, 'condition', stringValue(config.condition), true)],
+  details: [],
+});
+
+const summarizeDeduplicate: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(
+      t,
+      'strategy',
+      translateWorkflowValue(
+        t,
+        'deduplicateStrategies',
+        stringValue(config.strategy, 'all_columns')
+      )
+    ),
+    summaryRow(
+      t,
+      'keep',
+      translateWorkflowValue(t, 'keepRules', stringValue(config.keep, 'first'))
+    ),
+  ],
+  details: [
+    summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
+    summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true),
+  ],
+});
+
+const summarizeMissingValue: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(
+      t,
+      'strategy',
+      translateWorkflowValue(t, 'missingStrategies', stringValue(config.strategy, 'by_column'))
+    ),
+    summaryRow(t, 'rules', formatCount(recordArray(config.rules).length)),
+  ],
+  details: [
+    summaryRow(t, 'condition', stringValue(config.condition)),
+    summaryRow(t, 'rules', formatMissingRules(config.rules, t), true),
+  ],
+});
+
+const summarizeTypeConvert: WorkflowSummarizer = (config, t) => ({
+  primary: [summaryRow(t, 'conversions', formatCount(recordArray(config.conversions).length))],
+  details: [summaryRow(t, 'fields', formatConversions(config.conversions, t), true)],
+});
+
+const summarizeSort: WorkflowSummarizer = (config, t) => ({
+  primary: [summaryRow(t, 'sortKeys', formatCount(recordArray(config.keys).length))],
+  details: [summaryRow(t, 'orderBy', formatSortKeys(config.keys, t), true)],
+});
+
+const summarizeCalculateField: WorkflowSummarizer = (config, t) => ({
+  primary: [summaryRow(t, 'calculations', formatCount(recordArray(config.calculations).length))],
+  details: [summaryRow(t, 'expression', formatCalculations(config.calculations, t), true)],
+});
+
+const summarizeAggregate: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true),
+    summaryRow(t, 'metrics', formatCount(recordArray(config.metrics).length)),
+  ],
+  details: [summaryRow(t, 'metrics', formatMetrics(config.metrics, t), true)],
+});
+
+const summarizeJoin: WorkflowSummarizer = (config, t) => getJoinConfigSummary(config, t);
+
+const summarizeLimit: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'mode', stringValue(config.mode, 'limit')),
+    summaryRow(t, 'limit', String(config.limit ?? '')),
+  ],
+  details: [summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true)],
+});
+
+const summarizePivot: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(
+      t,
+      'columns',
+      formatList(
+        recordArray(config.on)
+          .map((axis) => (typeof axis.field === 'string' ? axis.field : ''))
+          .filter(Boolean),
+        t
+      ),
+      true
+    ),
+    summaryRow(t, 'metrics', formatCount(recordArray(config.using).length)),
+  ],
+  details: [summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true)],
+});
+
+const summarizeUnpivot: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
+    summaryRow(t, 'mode', stringValue(config.mode, 'include')),
+  ],
+  details: [
+    summaryRow(t, 'name', stringValue(config.nameColumn)),
+    summaryRow(t, 'value', stringValue(config.valueColumn)),
+  ],
+});
+
+const summarizeSetOp: WorkflowSummarizer = (config, t) => {
+  const rawOperation = stringValue(config.operation, 'union');
+  const opValue = t(`data.workflow.summaryLabels.operation_${rawOperation}`);
+  const effectiveMatch =
+    rawOperation === 'union' ? stringValue(config.match, DEFAULT_MATCH) : 'by_position';
+  return {
+    primary: [
+      summaryRow(t, 'operation', opValue || rawOperation),
+      summaryRow(t, 'rightInput', stringValue(config.rightInput)),
+    ],
+    details: [
+      summaryRow(t, 'mode', stringValue(config.mode, DEFAULT_MODE)),
+      ...(rawOperation === 'union' ? [summaryRow(t, 'match', effectiveMatch)] : []),
+    ],
+  };
+};
+
+const summarizeUnnest: WorkflowSummarizer = (config, t) => ({
+  primary: [
+    summaryRow(t, 'source', stringValue(config.column), false),
+    summaryRow(t, 'alias', stringValue(config.alias, 'item'), false),
+  ],
+  details: [summaryRow(t, 'mode', stringValue(config.sourceKind, 'list'))],
+});
+
+const summarizeOutput: WorkflowSummarizer = (config, t) => {
+  const configuredStrategy = stringValue(config.outputStrategy);
+  const outputStrategy =
+    configuredStrategy === 'auto' || configuredStrategy === 'existing'
+      ? configuredStrategy
+      : stringValue(config.outputDatasetId) || stringValue(config.outputTableId)
+        ? 'existing'
+        : 'auto';
+  const outputDisplayName = stringValue(config.outputTableName) || stringValue(config.table);
+  return {
+    primary: [
+      summaryRow(
+        t,
+        'outputStrategy',
+        translateWorkflowValue(t, 'outputStrategies', outputStrategy)
+      ),
+      summaryRow(
+        t,
+        'destination',
+        translateWorkflowValue(t, 'destinations', stringValue(config.destination, 'duckdb_table'))
+      ),
+      summaryRow(t, 'outputTable', outputDisplayName, true),
+    ],
+    details: [
+      summaryRow(
+        t,
+        'outputMode',
+        translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))
+      ),
+      ...(stringValue(config.mode) === 'merge'
+        ? [
+            summaryRow(
+              t,
+              'mergeKeys',
+              Array.isArray(config.mergeKeys) ? config.mergeKeys.join(', ') : '',
+              true
+            ),
+          ]
+        : []),
+      ...(stringValue(config.mode) === 'append' || stringValue(config.mode) === 'merge'
+        ? [
+            summaryRow(
+              t,
+              'schemaPolicy',
+              translateWorkflowValue(
+                t,
+                'schemaPolicies',
+                stringValue(config.schemaPolicy, 'extend')
+              )
+            ),
+          ]
+        : []),
+    ],
+  };
+};
+
+const summarizeExpect: WorkflowSummarizer = (config, t) => {
+  const kind = stringValue(config.kind, 'expression');
+  const assertion =
+    kind === 'unique'
+      ? `unique ${(Array.isArray(config.columns) ? config.columns : []).join(', ')}`
+      : kind === 'row_count'
+        ? `rows ${stringValue(config.operator, '>=')} ${config.value ?? 0}`
+        : stringValue(config.expression);
+  return {
+    primary: [summaryRow(t, 'assertion', assertion, true)],
+    details: stringValue(config.rejectStream)
+      ? [summaryRow(t, 'rejectStream', stringValue(config.rejectStream))]
+      : [],
+  };
+};
+
+/** Exhaustive per-operator summarizers — keyed by the canonical type union. */
+export const WORKFLOW_SUMMARIZERS: Record<DataWorkflowOperatorType, WorkflowSummarizer> = {
+  input_source: summarizeInputSource,
+  filter: summarizeFilter,
+  field_select: summarizeFieldSelect,
+  deduplicate: summarizeDeduplicate,
+  missing_value: summarizeMissingValue,
+  type_convert: summarizeTypeConvert,
+  sort: summarizeSort,
+  join: summarizeJoin,
+  aggregate: summarizeAggregate,
+  calculate_field: summarizeCalculateField,
+  field_mapping: summarizeFieldMapping,
+  limit: summarizeLimit,
+  pivot: summarizePivot,
+  unpivot: summarizeUnpivot,
+  set_op: summarizeSetOp,
+  unnest: summarizeUnnest,
+  expect: summarizeExpect,
+  output: summarizeOutput,
+};
+
 export function getWorkflowConfigSummary(
   node: DataWorkflowNode,
   t: TranslateFn
 ): WorkflowConfigSummary {
   const config = node.config;
-  let summary: WorkflowConfigSummary;
-
-  switch (node.type) {
-    case 'input_source': {
-      const inputTableName =
-        stringValue(config.inputTableName) ||
-        stringValue(config.name) ||
-        stringValue(config.datasetId);
-      summary = {
-        primary: [summaryRow(t, 'inputTable', inputTableName, true)],
-        details: [],
-      };
-      break;
-    }
-    case 'field_select':
-      summary = {
-        primary: [
-          summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', 'include')),
-          summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
-        ],
-        details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
-      };
-      break;
-    case 'field_mapping':
-      summary = {
-        primary: [
-          summaryRow(t, 'mappings', formatCount(recordArray(config.mappings).length)),
-          summaryRow(t, 'mode', translateWorkflowValue(t, 'mappingModes', getMappingMode(config))),
-        ],
-        details: [summaryRow(t, 'fields', formatMappings(config.mappings, t), true)],
-      };
-      break;
-    case 'filter':
-      summary = {
-        primary: [summaryRow(t, 'condition', stringValue(config.condition), true)],
-        details: [],
-      };
-      break;
-    case 'deduplicate':
-      summary = {
-        primary: [
-          summaryRow(
-            t,
-            'strategy',
-            translateWorkflowValue(
-              t,
-              'deduplicateStrategies',
-              stringValue(config.strategy, 'all_columns')
-            )
-          ),
-          summaryRow(
-            t,
-            'keep',
-            translateWorkflowValue(t, 'keepRules', stringValue(config.keep, 'first'))
-          ),
-        ],
-        details: [
-          summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
-          summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true),
-        ],
-      };
-      break;
-    case 'missing_value':
-      summary = {
-        primary: [
-          summaryRow(
-            t,
-            'strategy',
-            translateWorkflowValue(
-              t,
-              'missingStrategies',
-              stringValue(config.strategy, 'by_column')
-            )
-          ),
-          summaryRow(t, 'rules', formatCount(recordArray(config.rules).length)),
-        ],
-        details: [
-          summaryRow(t, 'condition', stringValue(config.condition)),
-          summaryRow(t, 'rules', formatMissingRules(config.rules, t), true),
-        ],
-      };
-      break;
-    case 'type_convert':
-      summary = {
-        primary: [
-          summaryRow(t, 'conversions', formatCount(recordArray(config.conversions).length)),
-        ],
-        details: [summaryRow(t, 'fields', formatConversions(config.conversions, t), true)],
-      };
-      break;
-    case 'sort':
-      summary = {
-        primary: [summaryRow(t, 'sortKeys', formatCount(recordArray(config.keys).length))],
-        details: [summaryRow(t, 'orderBy', formatSortKeys(config.keys, t), true)],
-      };
-      break;
-    case 'calculate_field':
-      summary = {
-        primary: [
-          summaryRow(t, 'calculations', formatCount(recordArray(config.calculations).length)),
-        ],
-        details: [summaryRow(t, 'expression', formatCalculations(config.calculations, t), true)],
-      };
-      break;
-    case 'aggregate':
-      summary = {
-        primary: [
-          summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true),
-          summaryRow(t, 'metrics', formatCount(recordArray(config.metrics).length)),
-        ],
-        details: [summaryRow(t, 'metrics', formatMetrics(config.metrics, t), true)],
-      };
-      break;
-    case 'join':
-      summary = getJoinConfigSummary(config, t);
-      break;
-    case 'limit':
-      summary = {
-        primary: [
-          summaryRow(t, 'mode', stringValue(config.mode, 'limit')),
-          summaryRow(t, 'limit', String(config.limit ?? '')),
-        ],
-        details: [summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true)],
-      };
-      break;
-    case 'pivot':
-      summary = {
-        primary: [
-          summaryRow(
-            t,
-            'columns',
-            formatList(
-              recordArray(config.on)
-                .map((axis) => (typeof axis.field === 'string' ? axis.field : ''))
-                .filter(Boolean),
-              t
-            ),
-            true
-          ),
-          summaryRow(t, 'metrics', formatCount(recordArray(config.using).length)),
-        ],
-        details: [summaryRow(t, 'groupBy', formatList(stringArray(config.groupBy), t), true)],
-      };
-      break;
-    case 'unpivot':
-      summary = {
-        primary: [
-          summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
-          summaryRow(t, 'mode', stringValue(config.mode, 'include')),
-        ],
-        details: [
-          summaryRow(t, 'name', stringValue(config.nameColumn)),
-          summaryRow(t, 'value', stringValue(config.valueColumn)),
-        ],
-      };
-      break;
-    case 'set_op': {
-      const rawOperation = stringValue(config.operation, 'union');
-      const opValue = t(`data.workflow.summaryLabels.operation_${rawOperation}`);
-      const effectiveMatch =
-        rawOperation === 'union' ? stringValue(config.match, DEFAULT_MATCH) : 'by_position';
-      summary = {
-        primary: [
-          summaryRow(t, 'operation', opValue || rawOperation),
-          summaryRow(t, 'rightInput', stringValue(config.rightInput)),
-        ],
-        details: [
-          summaryRow(t, 'mode', stringValue(config.mode, DEFAULT_MODE)),
-          ...(rawOperation === 'union' ? [summaryRow(t, 'match', effectiveMatch)] : []),
-        ],
-      };
-      break;
-    }
-    case 'unnest':
-      summary = {
-        primary: [
-          summaryRow(t, 'source', stringValue(config.column), false),
-          summaryRow(t, 'alias', stringValue(config.alias, 'item'), false),
-        ],
-        details: [summaryRow(t, 'mode', stringValue(config.sourceKind, 'list'))],
-      };
-      break;
-    case 'output': {
-      const configuredStrategy = stringValue(config.outputStrategy);
-      const outputStrategy =
-        configuredStrategy === 'auto' || configuredStrategy === 'existing'
-          ? configuredStrategy
-          : stringValue(config.outputDatasetId) || stringValue(config.outputTableId)
-            ? 'existing'
-            : 'auto';
-      const outputDisplayName = stringValue(config.outputTableName) || stringValue(config.table);
-      summary = {
-        primary: [
-          summaryRow(
-            t,
-            'outputStrategy',
-            translateWorkflowValue(t, 'outputStrategies', outputStrategy)
-          ),
-          summaryRow(
-            t,
-            'destination',
-            translateWorkflowValue(
-              t,
-              'destinations',
-              stringValue(config.destination, 'duckdb_table')
-            )
-          ),
-          summaryRow(t, 'outputTable', outputDisplayName, true),
-        ],
-        details: [
-          summaryRow(
-            t,
-            'outputMode',
-            translateWorkflowValue(t, 'outputModes', stringValue(config.mode, 'replace'))
-          ),
-          ...(stringValue(config.mode) === 'merge'
-            ? [
-                summaryRow(
-                  t,
-                  'mergeKeys',
-                  Array.isArray(config.mergeKeys) ? config.mergeKeys.join(', ') : '',
-                  true
-                ),
-              ]
-            : []),
-          ...(stringValue(config.mode) === 'append' || stringValue(config.mode) === 'merge'
-            ? [
-                summaryRow(
-                  t,
-                  'schemaPolicy',
-                  translateWorkflowValue(
-                    t,
-                    'schemaPolicies',
-                    stringValue(config.schemaPolicy, 'extend')
-                  )
-                ),
-              ]
-            : []),
-        ],
-      };
-      break;
-    }
-    case 'expect': {
-      const kind = stringValue(config.kind, 'expression');
-      const assertion =
-        kind === 'unique'
-          ? `unique ${(Array.isArray(config.columns) ? config.columns : []).join(', ')}`
-          : kind === 'row_count'
-            ? `rows ${stringValue(config.operator, '>=')} ${config.value ?? 0}`
-            : stringValue(config.expression);
-      summary = {
-        primary: [summaryRow(t, 'assertion', assertion, true)],
-        details: stringValue(config.rejectStream)
-          ? [summaryRow(t, 'rejectStream', stringValue(config.rejectStream))]
-          : [],
-      };
-      break;
-    }
-    default:
-      summary = { primary: [], details: [] };
-  }
+  const summarize = WORKFLOW_SUMMARIZERS[node.type];
+  const summary: WorkflowConfigSummary = summarize
+    ? summarize(config, t)
+    : { primary: [], details: [] };
 
   const dsl = stringValue(config.dsl);
   return dsl

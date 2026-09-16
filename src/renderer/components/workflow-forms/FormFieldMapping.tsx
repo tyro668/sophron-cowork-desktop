@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';

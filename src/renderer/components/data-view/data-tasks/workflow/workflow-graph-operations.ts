@@ -1,4 +1,5 @@
 import type { DataTaskWorkflow, DataWorkflowEdge, DataWorkflowNode } from '../../../../types';
+import { getOperatorDefinition, hasBinaryInputs } from '../../../../../shared/operators';
 
 export interface WorkflowConnectionInput {
   sourceNodeId: string;
@@ -16,20 +17,14 @@ export function canConnectWorkflowNodes(
   const source = nodes.find((node) => node.id === connection.sourceNodeId);
   const target = nodes.find((node) => node.id === connection.targetNodeId);
   if (!source || !target || source.id === target.id) return false;
-  if (source.type === 'output' || target.type === 'input_source') return false;
 
+  // Edge endpoints come from the operator registry's declared ports.
+  const sourceOutputs = getOperatorDefinition(source.type)?.ports.outputs ?? ['output'];
+  const targetInputs = getOperatorDefinition(target.type)?.ports.inputs ?? ['input'];
   const sourceHandle = connection.sourceHandle ?? 'output';
   const targetHandle = connection.targetHandle ?? 'input';
-  if (sourceHandle === 'reject') {
-    if (source.type !== 'expect') return false;
-  } else if (sourceHandle !== 'output') {
-    return false;
-  }
-  if (target.type === 'join' || target.type === 'set_op') {
-    if (targetHandle !== 'left' && targetHandle !== 'right') return false;
-  } else if (targetHandle !== 'input') {
-    return false;
-  }
+  if (!(sourceOutputs as readonly string[]).includes(sourceHandle)) return false;
+  if (!(targetInputs as readonly string[]).includes(targetHandle)) return false;
 
   const remainingEdges = edges.filter((edge) => edge.id !== excludedEdgeId);
   if (
@@ -88,7 +83,10 @@ export function connectWorkflowNodes(
   if (nextEdge.sourceHandle === 'reject') {
     const source = nodes.find((node) => node.id === nextEdge.sourceNodeId);
     if (
-      source?.type === 'expect' &&
+      source &&
+      (
+        getOperatorDefinition(source.type)?.ports.outputs as readonly string[] | undefined
+      )?.includes('reject') &&
       source.config.kind !== 'row_count' &&
       !source.config.rejectStream
     ) {
@@ -153,7 +151,7 @@ export function synchronizeRightInputConfigs(workflow: DataTaskWorkflow): DataTa
   const nodeById = new Map(workflow.nodes.map((node) => [node.id, node]));
   let changed = false;
   const nodes = workflow.nodes.map((node) => {
-    if (node.type !== 'join' && node.type !== 'set_op') return node;
+    if (!hasBinaryInputs(node.type)) return node;
     const rightEdge = workflow.edges.find(
       (edge) => edge.targetNodeId === node.id && edge.targetHandle === 'right'
     );

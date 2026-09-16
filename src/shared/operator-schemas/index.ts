@@ -1,6 +1,3 @@
-import { z, type ZodType } from 'zod';
-import type { PrepDiagnostic } from '../prep-dsl/ast';
-
 // Re-export schemas for external consumers (must use export-from for CJS compatibility)
 export {
   SortKeySchema,
@@ -66,96 +63,11 @@ export { FilterConfigSchema } from './filter';
 export { ExpectConfigSchema, EXPECT_KINDS, EXPECT_ROW_OPERATORS } from './expect';
 export { InputSourceConfigSchema, OutputConfigSchema } from './input-output';
 
-// Import schemas for local use (separate from exports for CJS bundler compatibility)
-import * as SortModule from './sort';
-import * as FieldSelectModule from './field-select';
-import * as FieldMappingModule from './field-mapping';
-import * as DeduplicateModule from './deduplicate';
-import * as TypeConvertModule from './type-convert';
-import * as UnpivotModule from './unpivot';
-import * as UnnestModule from './unnest';
-import * as SetOpModule from './set-op';
-import * as AggregateModule from './aggregate';
-import * as CalculateFieldModule from './calculate-field';
-import * as MissingValueModule from './missing-value';
-import * as LimitModule from './limit';
-import * as PivotModule from './pivot';
-import * as JoinModule from './join';
-import * as FilterModule from './filter';
-import * as ExpectModule from './expect';
-import * as InputOutputModule from './input-output';
-
-export function parseOperatorConfig<T>(schema: ZodType<T>, config: Record<string, unknown>): T {
-  return schema.parse(withoutOperatorMetadata(config));
-}
-
-export const SCHEMA_MAP: Record<string, ZodType> = {
-  sort: SortModule.SortConfigSchema,
-  field_select: FieldSelectModule.FieldSelectConfigSchema,
-  field_mapping: FieldMappingModule.FieldMappingConfigSchema,
-  deduplicate: DeduplicateModule.DeduplicateConfigSchema,
-  type_convert: TypeConvertModule.TypeConvertConfigSchema,
-  unpivot: UnpivotModule.UnpivotConfigSchema,
-  unnest: UnnestModule.UnnestConfigSchema,
-  set_op: SetOpModule.SetOpConfigSchema,
-  aggregate: AggregateModule.AggregateConfigSchema,
-  calculate_field: CalculateFieldModule.CalculateFieldConfigSchema,
-  missing_value: MissingValueModule.MissingValueConfigSchema,
-  limit: LimitModule.LimitConfigSchema,
-  pivot: PivotModule.PivotConfigSchema,
-  join: JoinModule.JoinConfigSchema,
-  filter: FilterModule.FilterConfigSchema,
-  expect: ExpectModule.ExpectConfigSchema,
-  input_source: InputOutputModule.InputSourceConfigSchema,
-  output: InputOutputModule.OutputConfigSchema,
-};
-
-export function getOperatorConfigValidation(
-  type: string,
-  config: Record<string, unknown>
-): ReturnType<ZodType['safeParse']> {
-  const schema = SCHEMA_MAP[type];
-  if (schema) {
-    return schema.safeParse(withoutOperatorMetadata(config));
-  }
-  return z
-    .record(z.string(), z.unknown())
-    .superRefine((_value, context) => {
-      context.addIssue({
-        code: 'custom',
-        message: `Unsupported workflow operator type: ${type}`,
-      });
-    })
-    .safeParse(withoutOperatorMetadata(config));
-}
-
-function withoutOperatorMetadata(config: Record<string, unknown>): Record<string, unknown> {
-  const operatorConfig = { ...config };
-  delete operatorConfig.generatedOrigin;
-  delete operatorConfig.stepName;
-  delete operatorConfig.dsl;
-  return operatorConfig;
-}
-
-export function validateOperatorConfig(
-  type: string,
-  config: Record<string, unknown>
-): PrepDiagnostic[] {
-  const result = getOperatorConfigValidation(type, config);
-  if (result.success) return [];
-  return result.error.issues.flatMap((issue) => {
-    const parentPath = issue.path.join('.');
-    const paths =
-      issue.code === 'unrecognized_keys'
-        ? issue.keys.map((key) => (parentPath ? `${parentPath}.${key}` : key))
-        : [parentPath];
-    return paths.map((path) => ({
-      code: 'invalidConfig',
-      severity: 'error' as const,
-      message: `[${type}] ${path}: ${issue.message}`,
-      line: 0,
-      column: 0,
-      params: { path, message: issue.message },
-    }));
-  });
-}
+// The registry is the single source of truth: SCHEMA_MAP is derived from
+// OPERATOR_DEFINITIONS, and config validation lives next to it.
+export {
+  SCHEMA_MAP,
+  getOperatorConfigValidation,
+  parseOperatorConfig,
+  validateOperatorConfig,
+} from '../operators';

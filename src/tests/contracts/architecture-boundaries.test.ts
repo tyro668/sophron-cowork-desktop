@@ -135,3 +135,32 @@ describe('data store layering', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('operator registry shape', () => {
+  const FORMS_DIR = path.join(SRC, 'renderer/components/workflow-forms');
+
+  it('workflow form components import OperatorFormProps from ./types, not the barrel', () => {
+    const offenders: string[] = [];
+    for (const file of walk(FORMS_DIR)) {
+      const name = path.basename(file);
+      if (!/^Form.+\.tsx$/.test(name)) continue;
+      const src = fs.readFileSync(file, 'utf8');
+      if (/from\s+['"]\.\/index['"]/.test(src)) {
+        offenders.push(path.relative(SRC, file));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('workflow-forms/index.ts stays a barrel (no loader map, no interface Props)', () => {
+    const src = fs.readFileSync(path.join(FORMS_DIR, 'index.ts'), 'utf8');
+    expect(src).not.toMatch(/OPERATOR_FORM_LOADERS|import\('\.\/Form/);
+    expect(src).not.toMatch(/interface\s+OperatorFormProps/);
+  });
+
+  it('the operator union is derived from the registry (no duplicate literal union)', () => {
+    const src = fs.readFileSync(path.join(SRC, 'shared/data-workflow-types.ts'), 'utf8');
+    expect(src).not.toMatch(/'input_source'\s*\|/);
+    expect(src).toMatch(/operators\/definition/);
+  });
+});

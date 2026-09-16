@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
 import { GlassFormLabel } from './shared/GlassFormLabel';

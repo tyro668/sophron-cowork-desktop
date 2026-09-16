@@ -1,7 +1,7 @@
 import React, { Suspense, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { hasOperatorForm, getOperatorFormLoader } from './index';
 import type { DataWorkflowNode } from '../../types';
 

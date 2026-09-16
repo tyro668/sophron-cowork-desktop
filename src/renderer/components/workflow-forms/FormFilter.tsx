@@ -1,7 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';

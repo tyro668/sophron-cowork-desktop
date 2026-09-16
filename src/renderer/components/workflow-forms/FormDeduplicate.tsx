@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { X } from 'lucide-react';
 
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';

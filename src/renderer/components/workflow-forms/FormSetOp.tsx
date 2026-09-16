@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { VennDiagramIcon, type VennRegion } from './shared/VennDiagramIcon';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassSegmentedControl } from './shared/GlassSegmentedControl';

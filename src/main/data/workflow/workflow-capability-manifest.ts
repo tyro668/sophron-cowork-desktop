@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SCHEMA_MAP } from '../../../shared/operator-schemas';
+import { OPERATOR_TYPES, OPERATOR_DEFINITIONS, SCHEMA_MAP } from '../../../shared/operators';
 import { WORKFLOW_PLAN_VERSION } from '../../../shared/workflow-plan';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 
@@ -32,26 +32,7 @@ const PLAN_NODE_SCHEMA = {
     id: { type: 'string', pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
     type: {
       type: 'string',
-      enum: [
-        'input_source',
-        'filter',
-        'sort',
-        'field_select',
-        'field_mapping',
-        'deduplicate',
-        'missing_value',
-        'type_convert',
-        'calculate_field',
-        'aggregate',
-        'pivot',
-        'unpivot',
-        'unnest',
-        'join',
-        'set_op',
-        'limit',
-        'expect',
-        'output',
-      ],
+      enum: [...OPERATOR_TYPES],
     },
     label: { type: 'string' },
     x: { type: 'number' },
@@ -128,6 +109,10 @@ export function buildWorkflowCapabilityManifest(
         'Submit {version, nodes, edges} to data_apply_workflow_plan. Each node config must satisfy plan.operatorConfigSchemas[node.type]; field names in configs must exist on the upstream stream schema (validation runs against the real bound-table schemas).',
       schema: PLAN_ENVELOPE_SCHEMA,
       operatorConfigSchemas: operatorConfigJsonSchemas(),
+      // Edge endpoints per operator — the single source is the registry's ports.
+      ports: Object.fromEntries(
+        OPERATOR_TYPES.map((type) => [type, OPERATOR_DEFINITIONS[type].ports])
+      ),
       handles: {
         'join|set_op': { target: ['left', 'right'] },
         expect: { source: ['output', 'reject'], note: 'reject requires config.rejectStream' },

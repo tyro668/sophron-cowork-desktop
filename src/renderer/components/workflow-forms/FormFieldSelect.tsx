@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
 import { DataTypeIcon } from './shared/DataTypeIcon';

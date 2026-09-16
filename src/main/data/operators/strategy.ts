@@ -1,3 +1,4 @@
+import type { DataWorkflowOperatorType } from '../../../shared/operators';
 import { compileFieldSelectSql } from './field-select';
 import { compileFieldMappingSql } from './field-mapping';
 import { compileMissingValueSql } from './missing-value';
@@ -42,7 +43,12 @@ function wrapNoColumns(
   return (output, input, _columns, config) => fn(output, input, config);
 }
 
-export const COMPILE_STRATEGIES: Partial<Record<string, CompileStrategy>> = {
+/**
+ * SQL compile strategies for `compileKind: 'strategy'` operators — key set is
+ * enforced against the operator registry by operator-registry.test.ts, and the
+ * union key type rejects unknown keys at compile time.
+ */
+export const COMPILE_STRATEGIES: Partial<Record<DataWorkflowOperatorType, CompileStrategy>> = {
   field_select: { compile: compileFieldSelectSql, needsColumns: true },
   field_mapping: { compile: compileFieldMappingSql, needsColumns: true },
   missing_value: { compile: compileMissingValueSql, needsColumns: true },

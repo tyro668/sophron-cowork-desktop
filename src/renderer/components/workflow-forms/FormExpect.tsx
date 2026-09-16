@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';

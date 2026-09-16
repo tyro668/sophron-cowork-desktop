@@ -13,6 +13,7 @@ import type { DataInputTablePreview, DataWorkflowOperatorType } from '../../../.
 import { GlassDataGridPreview } from '../../../GlassDataGridPreview';
 import type { WorkflowOperatorCatalogItem } from './operator-catalog';
 import { getOperatorCatalog } from './operator-catalog';
+import { getOperatorDefinition } from '../../../../../shared/operators';
 import type { WorkflowSummaryRow } from './workflow-summary';
 import {
   WORKFLOW_NODE_HEIGHT,
@@ -169,6 +170,8 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
 }: NodeProps<WorkflowFlowNode>) {
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
+  // Edge endpoints declared by the operator registry (empty => no handles).
+  const ports = getOperatorDefinition(node.type)?.ports ?? { inputs: [], outputs: [] };
   const Icon = catalog.Icon;
   const disabled = node.config.disabled === true;
   const invalid = data.invalid === true;
@@ -185,56 +188,52 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
             : catalog.nodeClassName
       } ${disabled ? 'opacity-45 grayscale' : ''}`}
     >
-      {node.type === 'input_source' ? null : node.type === 'join' || node.type === 'set_op' ? (
-        <>
-          <Handle
-            id="left"
-            type="target"
-            position={Position.Left}
-            style={{ top: '30%' }}
-            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-          />
-          <Handle
-            id="right"
-            type="target"
-            position={Position.Left}
-            style={{ top: '70%' }}
-            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-          />
-        </>
-      ) : (
-        <Handle
-          id="input"
-          type="target"
-          position={Position.Left}
-          className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-        />
-      )}
-      {node.type === 'output' ? null : node.type === 'expect' ? (
-        <>
-          <Handle
-            id="output"
-            type="source"
-            position={Position.Right}
-            style={{ top: '30%' }}
-            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-          />
-          <Handle
-            id="reject"
-            type="source"
-            position={Position.Right}
-            style={{ top: '70%' }}
-            className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-error !bg-background !opacity-100"
-          />
-        </>
-      ) : (
-        <Handle
-          id="output"
-          type="source"
-          position={Position.Right}
-          className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
-        />
-      )}
+      {ports.inputs.length === 0
+        ? null
+        : ports.inputs.length > 1
+          ? ports.inputs.map((handle, index) => (
+              <Handle
+                key={handle}
+                id={handle}
+                type="target"
+                position={Position.Left}
+                style={{ top: index === 0 ? '30%' : '70%' }}
+                className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+              />
+            ))
+          : ports.inputs.map((handle) => (
+              <Handle
+                key={handle}
+                id={handle}
+                type="target"
+                position={Position.Left}
+                className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+              />
+            ))}
+      {ports.outputs.length === 0
+        ? null
+        : ports.outputs.length > 1
+          ? ports.outputs.map((handle, index) => (
+              <Handle
+                key={handle}
+                id={handle}
+                type="source"
+                position={Position.Right}
+                style={{ top: index === 0 ? '30%' : '70%' }}
+                className={`workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !bg-background !opacity-100 ${
+                  handle === 'reject' ? '!border-error' : '!border-current'
+                }`}
+              />
+            ))
+          : ports.outputs.map((handle) => (
+              <Handle
+                key={handle}
+                id={handle}
+                type="source"
+                position={Position.Right}
+                className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
+              />
+            ))}
       <Icon className="h-3.5 w-3.5 flex-shrink-0" />
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
         <span

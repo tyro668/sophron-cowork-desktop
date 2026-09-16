@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';

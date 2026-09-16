@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { SortKeysEditor } from './shared/SortKeysEditor';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';

@@ -1,3 +1,4 @@
+import { getOperatorDefinition, hasBinaryInputs } from '../operators';
 import type { WorkflowPlan, WorkflowPlanDiagnostic, WorkflowPlanNode } from './model';
 
 export type WorkflowPlanProfile = 'task' | 'generated';
@@ -13,7 +14,22 @@ export interface WorkflowPlanGraphOptions {
   allowedNodeTypes?: ReadonlySet<string>;
 }
 
-const BINARY_INPUT_TYPES = new Set(['join', 'set_op']);
+/**
+ * Handle allowlists come from the operator registry's declared ports. The
+ * `['input']`/`['output']` fallbacks keep diagnostics stable for edges touching
+ * port-less endpoints (source-only input_source / sink-only output): the
+ * dedicated INPUT_HAS_INCOMING / OUTPUT_HAS_OUTGOING codes fire instead of a
+ * generic handle error.
+ */
+function expectedTargetHandles(type: string): readonly string[] {
+  const inputs = getOperatorDefinition(type)?.ports.inputs;
+  return inputs && inputs.length > 0 ? inputs : ['input'];
+}
+
+function allowedSourceHandles(type: string): readonly string[] {
+  const outputs = getOperatorDefinition(type)?.ports.outputs;
+  return outputs && outputs.length > 0 ? outputs : ['output'];
+}
 
 /**
  * Structural graph validation shared by the Prep DSL compiler, the task
@@ -107,8 +123,7 @@ export function validateWorkflowPlanGraph(
       );
     }
     const sourceHandle = edge.sourceHandle ?? 'output';
-    const allowedSourceHandles = source.type === 'expect' ? ['output', 'reject'] : ['output'];
-    if (!allowedSourceHandles.includes(sourceHandle)) {
+    if (!allowedSourceHandles(source.type).includes(sourceHandle)) {
       diagnostics.push(
         diagnostic(
           'NODE_GRAPH_SOURCE_HANDLE_INVALID',
@@ -118,7 +133,7 @@ export function validateWorkflowPlanGraph(
       );
     }
     const targetHandle = edge.targetHandle ?? 'input';
-    const expectedHandles = BINARY_INPUT_TYPES.has(target.type) ? ['left', 'right'] : ['input'];
+    const expectedHandles = expectedTargetHandles(target.type);
     if (!expectedHandles.includes(targetHandle)) {
       diagnostics.push(
         diagnostic(
@@ -145,9 +160,9 @@ export function validateWorkflowPlanGraph(
           )
         );
       }
-    } else if (BINARY_INPUT_TYPES.has(node.type)) {
+    } else if (hasBinaryInputs(node.type)) {
       const isolated = nodeIncoming.length === 0 && nodeOutgoing.length === 0;
-      for (const handle of ['left', 'right']) {
+      for (const handle of getOperatorDefinition(node.type)?.ports.inputs ?? ['left', 'right']) {
         const count = nodeIncoming.filter(
           (edge) => (edge.targetHandle ?? 'input') === handle
         ).length;

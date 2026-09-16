@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Settings } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';

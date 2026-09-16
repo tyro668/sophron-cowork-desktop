@@ -1,19 +1,3 @@
-export type DataWorkflowOperatorType =
-  | 'input_source'
-  | 'filter'
-  | 'field_select'
-  | 'deduplicate'
-  | 'missing_value'
-  | 'type_convert'
-  | 'sort'
-  | 'join'
-  | 'aggregate'
-  | 'calculate_field'
-  | 'field_mapping'
-  | 'limit'
-  | 'pivot'
-  | 'unpivot'
-  | 'set_op'
-  | 'unnest'
-  | 'expect'
-  | 'output';
+// Canonical operator union lives in the operator registry; re-exported here so
+// existing `data-workflow-types` imports keep working.
+export type { DataWorkflowOperatorType } from './operators/definition';

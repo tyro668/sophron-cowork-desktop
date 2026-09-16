@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import {
   DATA_FIELD_TYPES,
   normalizeDataFieldType,

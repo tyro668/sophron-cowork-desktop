@@ -34,6 +34,7 @@ import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
 import { OPERATOR_CATALOG, getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
 import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
@@ -292,7 +293,7 @@ export function TaskEditor({
           label: t(catalog.labelKey),
           x,
           y,
-          config: {},
+          config: getOperatorDefinition(type)?.createDefaultConfig() ?? {},
           createdAt,
           updatedAt: createdAt,
         };

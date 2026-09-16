@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Settings } from 'lucide-react';
-import type { OperatorFormProps } from './index';
+import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';

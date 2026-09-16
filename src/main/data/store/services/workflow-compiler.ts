@@ -17,6 +17,7 @@ import {
   RESOLVED_DYNAMIC_PIVOT_VALUES,
 } from '../../operators';
 import { parseFieldRefExact } from '../../../../shared/prep-dsl';
+import { getOperatorDefinition } from '../../../../shared/operators';
 import { COMPILE_STRATEGIES } from '../../operators/strategy';
 import { DataStoreContext } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
@@ -149,10 +150,11 @@ export class WorkflowCompiler {
     edges: DataWorkflowEdge[],
     diagnostics: PrepDiagnostic[] = []
   ): Promise<string> {
-    if (node.type === 'join') {
+    const compileKind = getOperatorDefinition(node.type)?.compileKind;
+    if (compileKind === 'join') {
       return this.compileJoinSql(node, outputRelation, relationByNode, edges, diagnostics);
     }
-    if (node.type === 'set_op') {
+    if (compileKind === 'set_op') {
       return this.compileSetOpSql(node, outputRelation, relationByNode, edges);
     }
     const inputEdge = this.findIncomingEdge(node.id, edges, 'input');
@@ -160,19 +162,19 @@ export class WorkflowCompiler {
     if (!inputRelation) {
       throw new Error(`Workflow node has no input: ${node.id}`);
     }
-    const strategy = COMPILE_STRATEGIES[node.type as string];
+    const strategy = compileKind === 'strategy' ? COMPILE_STRATEGIES[node.type] : undefined;
+    if (!strategy) {
+      throw new Error(`Unsupported workflow operator type: ${node.type}`);
+    }
     const input = quoteIdentifier(inputRelation);
     const output = quoteIdentifier(outputRelation);
-    const columns = strategy?.needsColumns ? await this.ctx.getTableColumns(inputRelation) : [];
-    const columnTypes = strategy?.needsColumns
+    const columns = strategy.needsColumns ? await this.ctx.getTableColumns(inputRelation) : [];
+    const columnTypes = strategy.needsColumns
       ? await this.ctx.getTableColumnTypes(inputRelation)
       : [];
     const columnTypeMap = Object.fromEntries(
       columnTypes.map((column) => [column.name, column.type])
     );
-    if (!strategy) {
-      throw new Error(`Unsupported workflow operator type: ${node.type}`);
-    }
     let compileConfig = node.config;
     if (node.type === 'pivot') {
       const pivotConfig = parseOperatorConfig(PivotConfigSchema, node.config);
