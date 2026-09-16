@@ -53,6 +53,10 @@ function mockBetterSqlite(): void {
         };
       }
 
+      transaction(fn: () => void): () => void {
+        return () => fn();
+      }
+
       close(): void {}
     }
 

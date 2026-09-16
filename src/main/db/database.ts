@@ -343,15 +343,21 @@ function getDatabasePath(): string {
   return dbPath;
 }
 
-/**
- * Initialize the database schema
- */
-function initializeSchema(database: Database.Database): void {
-  try {
-    // Enable WAL mode for better performance
-    database.pragma('journal_mode = WAL');
+interface MainSchemaMigration {
+  readonly version: number;
+  readonly name: string;
+  up(database: Database.Database): void;
+}
 
-    database.exec(`
+const MAIN_SCHEMA_MIGRATION_LEDGER = 'app_schema_migrations';
+
+/**
+ * Baseline schema for the main database. Runs once (recorded in the
+ * `app_schema_migrations` ledger), not on every launch. All statements are
+ * idempotent so pre-ledger databases upgrade in place.
+ */
+function createBaselineMainSchema(database: Database.Database): void {
+  database.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT,
@@ -362,13 +368,13 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_projects_updated_at
     ON projects(updated_at DESC)
   `);
 
-    // Create sessions table
-    database.exec(`
+  // Create sessions table
+  database.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -386,13 +392,13 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    ensureColumn(database, 'sessions', 'openai_thread_id', 'openai_thread_id TEXT');
-    ensureColumn(database, 'sessions', 'model', 'model TEXT');
-    ensureColumn(database, 'sessions', 'project_id', 'project_id TEXT');
-    migrateLegacySessionProjects(database);
+  ensureColumn(database, 'sessions', 'openai_thread_id', 'openai_thread_id TEXT');
+  ensureColumn(database, 'sessions', 'model', 'model TEXT');
+  ensureColumn(database, 'sessions', 'project_id', 'project_id TEXT');
+  migrateLegacySessionProjects(database);
 
-    // Create messages table
-    database.exec(`
+  // Create messages table
+  database.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -404,12 +410,12 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    ensureColumn(database, 'messages', 'execution_time_ms', 'execution_time_ms INTEGER');
+  ensureColumn(database, 'messages', 'execution_time_ms', 'execution_time_ms INTEGER');
 
-    // One-shot model calls do not belong to an interactive chat session. Keep
-    // their usage in a dedicated audit table so data-task generation and repair
-    // costs can be queried without creating synthetic messages.
-    database.exec(`
+  // One-shot model calls do not belong to an interactive chat session. Keep
+  // their usage in a dedicated audit table so data-task generation and repair
+  // costs can be queried without creating synthetic messages.
+  database.exec(`
     CREATE TABLE IF NOT EXISTS llm_usage_events (
       id TEXT PRIMARY KEY,
       generation_id TEXT NOT NULL,
@@ -431,23 +437,23 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_llm_usage_events_generation
     ON llm_usage_events(generation_id, created_at)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_llm_usage_events_task
     ON llm_usage_events(task_id, created_at DESC)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_llm_usage_events_feature
     ON llm_usage_events(feature, created_at DESC)
   `);
 
-    // Create trace steps table
-    database.exec(`
+  // Create trace steps table
+  database.exec(`
     CREATE TABLE IF NOT EXISTS trace_steps (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -475,45 +481,45 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    ensureColumn(database, 'trace_steps', 'turn_id', 'turn_id TEXT');
-    ensureColumn(database, 'trace_steps', 'parent_id', 'parent_id TEXT');
-    ensureColumn(database, 'trace_steps', 'tool_output_truncated', 'tool_output_truncated INTEGER');
-    ensureColumn(database, 'trace_steps', 'tool_output_length', 'tool_output_length INTEGER');
-    ensureColumn(database, 'trace_steps', 'result_message_id', 'result_message_id TEXT');
-    ensureColumn(database, 'trace_steps', 'error_json', 'error_json TEXT');
-    ensureColumn(database, 'trace_steps', 'permission_json', 'permission_json TEXT');
-    ensureColumn(database, 'trace_steps', 'outcome', 'outcome TEXT');
-    ensureColumn(database, 'trace_steps', 'metrics_json', 'metrics_json TEXT');
-    ensureColumn(database, 'trace_steps', 'ended_at', 'ended_at INTEGER');
+  ensureColumn(database, 'trace_steps', 'turn_id', 'turn_id TEXT');
+  ensureColumn(database, 'trace_steps', 'parent_id', 'parent_id TEXT');
+  ensureColumn(database, 'trace_steps', 'tool_output_truncated', 'tool_output_truncated INTEGER');
+  ensureColumn(database, 'trace_steps', 'tool_output_length', 'tool_output_length INTEGER');
+  ensureColumn(database, 'trace_steps', 'result_message_id', 'result_message_id TEXT');
+  ensureColumn(database, 'trace_steps', 'error_json', 'error_json TEXT');
+  ensureColumn(database, 'trace_steps', 'permission_json', 'permission_json TEXT');
+  ensureColumn(database, 'trace_steps', 'outcome', 'outcome TEXT');
+  ensureColumn(database, 'trace_steps', 'metrics_json', 'metrics_json TEXT');
+  ensureColumn(database, 'trace_steps', 'ended_at', 'ended_at INTEGER');
 
-    // Create index for faster message queries
-    database.exec(`
+  // Create index for faster message queries
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_session_id 
     ON messages(session_id)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_timestamp 
     ON messages(session_id, timestamp)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_trace_steps_session_id
     ON trace_steps(session_id)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_trace_steps_timestamp
     ON trace_steps(session_id, timestamp)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_trace_steps_session_turn
     ON trace_steps(session_id, turn_id, timestamp)
   `);
 
-    // Create memory_entries table (for future use)
-    database.exec(`
+  // Create memory_entries table (for future use)
+  database.exec(`
     CREATE TABLE IF NOT EXISTS memory_entries (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -524,8 +530,8 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    // Create skills table (for future use)
-    database.exec(`
+  // Create skills table (for future use)
+  database.exec(`
     CREATE TABLE IF NOT EXISTS skills (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -537,7 +543,7 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS scheduled_tasks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -557,15 +563,15 @@ function initializeSchema(database: Database.Database): void {
       updated_at INTEGER NOT NULL
     )
   `);
-    ensureColumn(database, 'scheduled_tasks', 'schedule_config', 'schedule_config TEXT');
-    ensureColumn(database, 'scheduled_tasks', 'automation_config', 'automation_config TEXT');
+  ensureColumn(database, 'scheduled_tasks', 'schedule_config', 'schedule_config TEXT');
+  ensureColumn(database, 'scheduled_tasks', 'automation_config', 'automation_config TEXT');
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run
     ON scheduled_tasks(enabled, next_run_at)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS automations (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -589,12 +595,12 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_automations_next_run
     ON automations(enabled, next_run_at)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS automation_runs (
       id TEXT PRIMARY KEY,
       automation_id TEXT NOT NULL,
@@ -613,12 +619,12 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE INDEX IF NOT EXISTS idx_automation_runs_automation
     ON automation_runs(automation_id, started_at DESC)
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS automation_artifacts (
       id TEXT PRIMARY KEY,
       automation_run_id TEXT NOT NULL,
@@ -634,14 +640,95 @@ function initializeSchema(database: Database.Database): void {
     )
   `);
 
-    database.exec(`
+  database.exec(`
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )
   `);
+}
 
-    log('[Database] Schema initialized');
+/**
+ * Versioned main-database migrations. Each entry runs exactly once, inside a
+ * transaction, and is recorded in `app_schema_migrations`. Versions are
+ * permanent: append new migrations, never edit or renumber applied ones.
+ *
+ * When the on-disk schema is newer than this build, the connection is opened
+ * read-only (`PRAGMA query_only`) so an older binary cannot write into a
+ * schema it does not understand.
+ */
+export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
+  {
+    version: 1,
+    name: 'baseline_schema',
+    up: (database) => createBaselineMainSchema(database),
+  },
+];
+
+export const MAIN_SCHEMA_VERSION =
+  MAIN_SCHEMA_MIGRATIONS[MAIN_SCHEMA_MIGRATIONS.length - 1].version;
+
+export function migrateMainSchema(database: Database.Database): void {
+  try {
+    // Detect a newer-version database BEFORE writing anything: reading
+    // sqlite_master and the ledger are pure reads, so an older binary leaves
+    // a foreign-version file untouched.
+    const ledgerExists = database
+      .prepare(`SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+      .get(MAIN_SCHEMA_MIGRATION_LEDGER) as { found: number } | undefined;
+
+    if (ledgerExists) {
+      const rows = database
+        .prepare(`SELECT version FROM ${MAIN_SCHEMA_MIGRATION_LEDGER}`)
+        .all() as Array<{ version: number }>;
+      const maxApplied = Math.max(0, ...rows.map((row) => Number(row.version)));
+      if (maxApplied > MAIN_SCHEMA_VERSION) {
+        logWarn('[Database] Schema is newer than this build — opening read-only:', {
+          databaseVersion: maxApplied,
+          supportedVersion: MAIN_SCHEMA_VERSION,
+        });
+        database.pragma('query_only = ON');
+        return;
+      }
+    }
+
+    // Enable WAL mode for better performance (a write — only for schemas we own)
+    database.pragma('journal_mode = WAL');
+
+    database.exec(`
+    CREATE TABLE IF NOT EXISTS ${MAIN_SCHEMA_MIGRATION_LEDGER} (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at INTEGER NOT NULL
+    )
+  `);
+
+    const applied = new Set(
+      (
+        database
+          .prepare(`SELECT version FROM ${MAIN_SCHEMA_MIGRATION_LEDGER} ORDER BY version ASC`)
+          .all() as Array<{ version: number }>
+      ).map((row) => Number(row.version))
+    );
+
+    const recordMigration = database.prepare(
+      `INSERT INTO ${MAIN_SCHEMA_MIGRATION_LEDGER} (version, name, applied_at) VALUES (?, ?, ?)`
+    );
+
+    for (const migration of MAIN_SCHEMA_MIGRATIONS) {
+      if (applied.has(migration.version)) {
+        continue;
+      }
+      database.transaction(() => {
+        migration.up(database);
+        recordMigration.run(migration.version, migration.name, Date.now());
+      })();
+      applied.add(migration.version);
+      log('[Database] Applied schema migration:', {
+        version: migration.version,
+        name: migration.name,
+      });
+    }
   } catch (error) {
     logError('[Database] Schema initialization failed:', error);
     throw error;
@@ -720,8 +807,9 @@ export function initDatabase(): DatabaseInstance {
   // Enable foreign keys
   rawDb.pragma('foreign_keys = ON');
 
-  // Initialize schema
-  initializeSchema(rawDb);
+  // Apply versioned schema migrations (read-only open when the on-disk
+  // schema is newer than this build)
+  migrateMainSchema(rawDb);
 
   // Prepare statements for better performance
   const insertSession = rawDb.prepare(`

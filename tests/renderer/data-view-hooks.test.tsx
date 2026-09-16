@@ -279,6 +279,85 @@ describe('useDataNavigation', () => {
     expect(useAppStore.getState().pendingDataNavigation).toBeNull();
   });
 
+  it('does not restart an in-flight navigation when slice objects are recreated', async () => {
+    // DataViewPage rebuilds the ui/dashboard/inputTables/editors/preview
+    // objects on every render. If the effect depended on those identities, the
+    // setLoadingTab inside the run would re-render, re-run the effect, cancel
+    // the pending getTask, and loop forever without ever clearing the pending
+    // navigation. Deps must be the stable members instead.
+    const task = makeTask('task_stable', 'Stable deps');
+    let resolveGetTask!: (value: typeof task) => void;
+    const getTask = vi.fn(() => new Promise<typeof task>((resolve) => (resolveGetTask = resolve)));
+    setDataBridge({ getTask });
+
+    // Slice members keep stable identities (useState setters / useCallback
+    // actions); only the wrapper objects are recreated per render.
+    const members = {
+      ui: {
+        setError: vi.fn(),
+        setActiveTab: vi.fn(),
+        setPendingNavigationTab: vi.fn(),
+        setLoadingTab: vi.fn(),
+        setSearchQuery: vi.fn(),
+        setInputTableSourceFilter: vi.fn(),
+      },
+      dashboard: {
+        prependTask: vi.fn(),
+        setTaskPage: vi.fn(),
+        prependOutputTable: vi.fn(),
+        setOutputPage: vi.fn(),
+      },
+      inputTables: {
+        setInputTablesLoading: vi.fn(),
+        upsertDataset: vi.fn(),
+        setTotalInputTableDatasets: vi.fn(),
+        setDatasetPage: vi.fn(),
+      },
+      editors: {
+        resetWorkspace: vi.fn(),
+        setFocusedTask: vi.fn(),
+        setFocusedInputTable: vi.fn(),
+        setFocusedOutputTable: vi.fn(),
+        setEditingTaskId: vi.fn(),
+        setEditingInputTableDatasetId: vi.fn(),
+        setEditingOutputTableId: vi.fn(),
+      },
+      preview: { close: vi.fn() },
+    };
+    const boundT = i18n.t.bind(i18n) as never;
+    const makeDeps = () => ({
+      ui: { ...members.ui } as unknown as DataViewUi,
+      dashboard: { ...members.dashboard } as unknown as DataDashboardState,
+      inputTables: { ...members.inputTables } as unknown as InputTablesState,
+      editors: { ...members.editors } as unknown as DataViewEditors,
+      preview: { ...members.preview } as unknown as StoredPreviewState,
+      isDataApiAvailable: true,
+      t: boundT,
+    });
+
+    const { rerender } = renderHook(
+      (props: ReturnType<typeof makeDeps>) => useDataNavigation(props),
+      { initialProps: makeDeps() }
+    );
+
+    act(() => {
+      useAppStore.setState({
+        pendingDataNavigation: { kind: 'task', id: 'task_stable', nonce: 5 },
+      });
+    });
+    // The request is in flight; a parent re-render lands fresh slice objects.
+    rerender(makeDeps());
+    rerender(makeDeps());
+
+    await act(async () => {
+      resolveGetTask(task);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(getTask).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().pendingDataNavigation).toBeNull();
+  });
+
   it('surfaces a localized error when the deep-link target is gone', async () => {
     setDataBridge({ getTask: vi.fn(async () => null) });
     const { ui } = renderNavigation();

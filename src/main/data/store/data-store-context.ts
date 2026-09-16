@@ -29,6 +29,9 @@ export class DataStoreContext {
   readonly metadataDb: Database.Database | null;
   instance: DuckDBInstance | null = null;
   connection: DuckDBConnection | null = null;
+  /** Set by migrateMetadataSchema when the on-disk schema is newer than this build. */
+  metadataReadOnly = false;
+  metadataReadOnlyReason: string | null = null;
   metadataInitPromise: Promise<void> | null = null;
   duckInitPromise: Promise<void> | null = null;
   exclusiveQueue: Promise<void> = Promise.resolve();
@@ -267,6 +270,9 @@ export class DataStoreContext {
     return rows.length > 0;
   }
   async metaRunSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
+    if (this.metadataReadOnly) {
+      throw new Error(this.metadataReadOnlyReason ?? 'Data task metadata store is read-only');
+    }
     if (!this.metadataDb) {
       await this.runSql(sql, values);
       return;
@@ -335,6 +341,12 @@ export class DataStoreContext {
       `;
   }
   async runSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
+    // When the metadata schema is newer than this build the whole store is
+    // read-only — physical writes without matching metadata bookkeeping
+    // would only produce orphan tables.
+    if (this.metadataReadOnly) {
+      throw new Error(this.metadataReadOnlyReason ?? 'Data task store is read-only');
+    }
     const connection = this.requireConnection();
     await connection.run(sql, values);
   }

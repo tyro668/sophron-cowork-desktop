@@ -470,4 +470,39 @@ describe('metadata migrations', () => {
     expect(ledgerRows(raw)).toEqual([]);
     expect(columnNames(raw, 'data_workflow_nodes')).toEqual(['id']);
   });
+
+  it('opens a newer-version metadata store read-only and refuses writes', async () => {
+    const tempRoot = makeTempRoot();
+    const metaPath = path.join(tempRoot, 'meta.sqlite');
+    const raw = new Database(metaPath);
+    rawDbs.push(raw);
+    seedLegacyFixture(raw);
+
+    const store = openStore(path.join(tempRoot, 'workspace.duckdb'), raw);
+    await store.getDashboard({});
+
+    // Simulate a future build having stamped a higher schema version.
+    raw
+      .prepare(
+        `INSERT INTO ${METADATA_MIGRATION_LEDGER} (version, name, applied_at) VALUES (?, ?, ?)`
+      )
+      .run(METADATA_SCHEMA_VERSION + 100, 'future_migration', Date.now());
+    store.close();
+    stores.pop();
+
+    const reopened = openStore(path.join(tempRoot, 'workspace2.duckdb'), raw);
+    // Reads still work against a newer-version store.
+    await reopened.getDashboard({});
+
+    const internals = reopened as unknown as {
+      ctx: {
+        metadataReadOnly: boolean;
+        metaRunSql(sql: string): Promise<void>;
+      };
+    };
+    expect(internals.ctx.metadataReadOnly).toBe(true);
+    await expect(
+      internals.ctx.metaRunSql('INSERT INTO data_cleaning_tasks (id) VALUES (1)')
+    ).rejects.toThrow(/newer than this build/);
+  });
 });

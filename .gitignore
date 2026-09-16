@@ -136,3 +136,8 @@ website/.vitepress/cache/
 # Versioned UI governance and selected Product Design reference
 !AGENTS.md
 !design/ui/mint-workbench/reference-overview.png
+
+# tsc build artifacts — vite.config compiles into node_modules/.cache, never repo root
+/vite.config.js
+/vite.config.d.ts
+*.tsbuildinfo

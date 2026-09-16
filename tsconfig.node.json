@@ -8,8 +8,9 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "outDir": "node_modules/.cache/tsconfig.node",
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.node/tsconfig.node.tsbuildinfo"
   },
   "include": ["vite.config.ts"]
 }
-

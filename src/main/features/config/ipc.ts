@@ -27,6 +27,7 @@ import { listOllamaModels } from '../../config/ollama-api';
 import { createPersonalAnalysisClient } from '../../data/personal-analysis-client';
 import { handleIpc } from '../../ipc-handle';
 import { log, logError } from '../../utils/logger';
+import { summarizeConfigUpdate } from './log-summary';
 import { syncConfigAfterMutation } from './service';
 
 export function registerConfigIpc(): void {
@@ -50,33 +51,10 @@ export function registerConfigIpc(): void {
   });
 
   handleIpc('config.save', async (_event, newConfig: AppConfigUpdate) => {
-    log('[Config] Saving config:', {
-      ...newConfig,
-      apiKey: newConfig.apiKey ? '***' : '',
-      memoryRuntime: newConfig.memoryRuntime
-        ? {
-            ...newConfig.memoryRuntime,
-            llm: newConfig.memoryRuntime.llm
-              ? {
-                  ...newConfig.memoryRuntime.llm,
-                  apiKey: newConfig.memoryRuntime.llm.apiKey ? '***' : '',
-                }
-              : undefined,
-            embedding: newConfig.memoryRuntime.embedding
-              ? {
-                  ...newConfig.memoryRuntime.embedding,
-                  apiKey: newConfig.memoryRuntime.embedding.apiKey ? '***' : '',
-                }
-              : undefined,
-          }
-        : undefined,
-      personalAnalysis: newConfig.personalAnalysis
-        ? {
-            ...newConfig.personalAnalysis,
-            apiKey: newConfig.personalAnalysis.apiKey ? '***' : '',
-          }
-        : undefined,
-    });
+    // Allowlisted summary only — the payload contains apiKeys at multiple
+    // nesting levels (top-level, profiles, configSets, memoryRuntime,
+    // personalAnalysis) and log lines are persisted + exported.
+    log('[Config] Saving config:', summarizeConfigUpdate(newConfig));
 
     const previousConfig = configStore.getAll();
     // Update config

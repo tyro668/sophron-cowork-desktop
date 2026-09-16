@@ -46,7 +46,7 @@ run(npm, ['run', 'build:wsl-agent']);
 run(npm, ['run', 'build:lima-agent']);
 run(npm, ['run', 'build:mcp']);
 run(npx, ['tsc']);
-run(npx, ['vite', 'build']);
+run(npx, ['vite', 'build', '--config', 'vite.config.ts']);
 run('node', ['scripts/pre-build-check.js']);
 
 for (const brand of brands) {

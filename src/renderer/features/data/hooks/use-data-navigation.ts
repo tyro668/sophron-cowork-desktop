@@ -2,6 +2,12 @@
  * Deep-link navigation for the data workspace: reacts to the app store's
  * pending data navigation targets (task / input table / output table / tab)
  * and drives the editors + server-state hooks to focus the target.
+ *
+ * The effect bodies only consume the STABLE members of each slice (useState
+ * setters and `useCallback` actions). Depending on the slice objects
+ * themselves would re-run the effect on every render and cancel any
+ * in-flight navigation request — members are destructured up front so the
+ * dep arrays stay honest.
  */
 import { useEffect } from 'react';
 import type { TFunction } from 'i18next';
@@ -28,17 +34,49 @@ export function useDataNavigation(deps: {
   const clearDataNavigation = useAppStore((state) => state.clearDataNavigation);
   const clearDataTabNavigation = useAppStore((state) => state.clearDataTabNavigation);
 
+  // Stable members only — slice objects are recreated every render.
+  const {
+    setError,
+    setActiveTab,
+    setPendingNavigationTab,
+    setLoadingTab,
+    setSearchQuery,
+    setInputTableSourceFilter,
+  } = ui;
+  const { prependTask, prependOutputTable, setTaskPage, setOutputPage } = dashboard;
+  const { setInputTablesLoading, upsertDataset, setTotalInputTableDatasets, setDatasetPage } =
+    inputTables;
+  const {
+    resetWorkspace,
+    setFocusedTask,
+    setEditingTaskId,
+    setFocusedInputTable,
+    setEditingInputTableDatasetId,
+    setFocusedOutputTable,
+    setEditingOutputTableId,
+  } = editors;
+  const { close: closePreview } = preview;
+
   // Plain tab switches — just reset the workspace and activate the tab.
   useEffect(() => {
     if (!pendingDataTabNavigation) return;
-    preview.close();
-    editors.resetWorkspace();
-    ui.setPendingNavigationTab(pendingDataTabNavigation.tab);
-    ui.setLoadingTab(pendingDataTabNavigation.tab);
-    ui.setActiveTab(pendingDataTabNavigation.tab);
-    ui.setSearchQuery('');
+    closePreview();
+    resetWorkspace();
+    setPendingNavigationTab(pendingDataTabNavigation.tab);
+    setLoadingTab(pendingDataTabNavigation.tab);
+    setActiveTab(pendingDataTabNavigation.tab);
+    setSearchQuery('');
     clearDataTabNavigation(pendingDataTabNavigation.nonce);
-  }, [clearDataTabNavigation, editors, pendingDataTabNavigation, preview, ui]);
+  }, [
+    clearDataTabNavigation,
+    closePreview,
+    pendingDataTabNavigation,
+    resetWorkspace,
+    setActiveTab,
+    setLoadingTab,
+    setPendingNavigationTab,
+    setSearchQuery,
+  ]);
 
   // Deep links to a specific record — fetch it, focus it, open its editor.
   useEffect(() => {
@@ -50,74 +88,74 @@ export function useDataNavigation(deps: {
     let cancelled = false;
 
     const run = async () => {
-      ui.setError(null);
-      preview.close();
-      editors.resetWorkspace();
+      setError(null);
+      closePreview();
+      resetWorkspace();
 
       if (target.kind === 'task') {
-        ui.setActiveTab('tasks');
-        ui.setPendingNavigationTab('tasks');
-        ui.setLoadingTab('tasks');
+        setActiveTab('tasks');
+        setPendingNavigationTab('tasks');
+        setLoadingTab('tasks');
         const task = await dataClient.getTask(target.id);
         if (cancelled) return;
         if (!task) {
-          ui.setError(t('data.navigationNotFound'));
+          setError(t('data.navigationNotFound'));
           return;
         }
-        editors.setFocusedTask(task);
-        dashboard.prependTask(task);
-        ui.setSearchQuery('');
-        dashboard.setTaskPage(1);
-        editors.setEditingTaskId(task.id);
+        setFocusedTask(task);
+        prependTask(task);
+        setSearchQuery('');
+        setTaskPage(1);
+        setEditingTaskId(task.id);
         return;
       }
 
       if (target.kind === 'input_table') {
-        ui.setActiveTab('input_tables');
-        ui.setPendingNavigationTab('input_tables');
-        ui.setLoadingTab('input_tables');
-        inputTables.setInputTablesLoading(true);
+        setActiveTab('input_tables');
+        setPendingNavigationTab('input_tables');
+        setLoadingTab('input_tables');
+        setInputTablesLoading(true);
         const inputTable = await dataClient.getInputTable(target.id);
         if (cancelled) return;
         if (!inputTable) {
-          ui.setError(t('data.navigationNotFound'));
+          setError(t('data.navigationNotFound'));
           return;
         }
-        editors.setFocusedInputTable(inputTable);
-        ui.setInputTableSourceFilter('all');
-        inputTables.upsertDataset(inputTable, false);
-        inputTables.setTotalInputTableDatasets((current) => Math.max(current, 1));
-        inputTables.setDatasetPage(1);
-        editors.setEditingInputTableDatasetId(inputTable.id);
+        setFocusedInputTable(inputTable);
+        setInputTableSourceFilter('all');
+        upsertDataset(inputTable, false);
+        setTotalInputTableDatasets((current) => Math.max(current, 1));
+        setDatasetPage(1);
+        setEditingInputTableDatasetId(inputTable.id);
         return;
       }
 
-      ui.setActiveTab('output_tables');
-      ui.setPendingNavigationTab('output_tables');
-      ui.setLoadingTab('output_tables');
+      setActiveTab('output_tables');
+      setPendingNavigationTab('output_tables');
+      setLoadingTab('output_tables');
       const outputTable = await dataClient.getOutputTable(target.id);
       if (cancelled) return;
       if (!outputTable) {
-        ui.setError(t('data.navigationNotFound'));
+        setError(t('data.navigationNotFound'));
         return;
       }
-      editors.setFocusedOutputTable(outputTable);
-      dashboard.prependOutputTable(outputTable);
-      dashboard.setOutputPage(1);
-      editors.setEditingOutputTableId(outputTable.id);
+      setFocusedOutputTable(outputTable);
+      prependOutputTable(outputTable);
+      setOutputPage(1);
+      setEditingOutputTableId(outputTable.id);
     };
 
     void run()
       .catch((err) => {
         if (!cancelled) {
-          ui.setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err.message : String(err));
         }
       })
       .finally(() => {
         if (!cancelled) {
-          ui.setPendingNavigationTab(null);
-          ui.setLoadingTab(null);
-          inputTables.setInputTablesLoading(false);
+          setPendingNavigationTab(null);
+          setLoadingTab(null);
+          setInputTablesLoading(false);
           clearDataNavigation(target.nonce);
         }
       });
@@ -127,13 +165,30 @@ export function useDataNavigation(deps: {
     };
   }, [
     clearDataNavigation,
-    dashboard,
-    editors,
-    inputTables,
+    closePreview,
     isDataApiAvailable,
     pendingDataNavigation,
-    preview,
+    prependOutputTable,
+    prependTask,
+    resetWorkspace,
+    setActiveTab,
+    setDatasetPage,
+    setEditingInputTableDatasetId,
+    setEditingOutputTableId,
+    setEditingTaskId,
+    setError,
+    setFocusedInputTable,
+    setFocusedOutputTable,
+    setFocusedTask,
+    setInputTableSourceFilter,
+    setInputTablesLoading,
+    setLoadingTab,
+    setOutputPage,
+    setPendingNavigationTab,
+    setSearchQuery,
+    setTaskPage,
+    setTotalInputTableDatasets,
     t,
-    ui,
+    upsertDataset,
   ]);
 }

@@ -378,6 +378,37 @@ export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.l
  * ledger, so the next launch retries it cleanly.
  */
 export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void> {
+  // Detect a newer-version database before writing anything — even creating
+  // the ledger is a write, so the existence check must be a pure read.
+  const ledgerExists = ctx.metadataDb
+    ? (
+        await ctx.metaQueryRows<{ found: number }>(
+          `SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = $name LIMIT 1`,
+          { name: METADATA_MIGRATION_LEDGER }
+        )
+      ).length > 0
+    : (
+        await ctx.metaQueryRows<{ table_name: string }>(
+          `SELECT table_name FROM information_schema.tables WHERE table_name = $name LIMIT 1`,
+          { name: METADATA_MIGRATION_LEDGER }
+        )
+      ).length > 0;
+
+  if (ledgerExists) {
+    const appliedRows = await ctx.metaQueryRows<{ version: number | string }>(
+      `SELECT version FROM ${METADATA_MIGRATION_LEDGER} ORDER BY version ASC`
+    );
+    const maxApplied = Math.max(0, ...appliedRows.map((row) => Number(row.version)));
+    if (maxApplied > METADATA_SCHEMA_VERSION) {
+      ctx.metadataReadOnly = true;
+      ctx.metadataReadOnlyReason =
+        `Data task metadata schema v${maxApplied} is newer than this build ` +
+        `(supports v${METADATA_SCHEMA_VERSION}); writes are disabled`;
+      logWarn(`[DataTaskStore] ${ctx.metadataReadOnlyReason}`);
+      return;
+    }
+  }
+
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS ${METADATA_MIGRATION_LEDGER} (
       version INTEGER PRIMARY KEY,
@@ -389,13 +420,6 @@ export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void
     `SELECT version FROM ${METADATA_MIGRATION_LEDGER} ORDER BY version ASC`
   );
   const applied = new Set(appliedRows.map((row) => Number(row.version)));
-  const maxApplied = Math.max(0, ...applied);
-  if (maxApplied > METADATA_SCHEMA_VERSION) {
-    logWarn('[DataTaskStore] Metadata schema is newer than this build', {
-      databaseVersion: maxApplied,
-      supportedVersion: METADATA_SCHEMA_VERSION,
-    });
-  }
 
   for (const migration of METADATA_MIGRATIONS) {
     if (applied.has(migration.version)) {
