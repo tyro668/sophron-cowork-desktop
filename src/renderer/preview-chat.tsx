@@ -1,6 +1,6 @@
 // Renderer-only preview of the chat conversation UI (no Electron required).
 // Serves via: vite --config vite.preview.config.ts, then open /preview-chat.html
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import './i18n/config';
 import 'highlight.js/styles/github-dark-dimmed.min.css';
@@ -149,6 +149,19 @@ const appConfig: AppConfig = {
   profiles: {},
   activeConfigSetId: 'preview',
   configSets: [],
+  enableDevLogs: false,
+  theme: 'dark',
+  sandboxEnabled: false,
+  memoryEnabled: false,
+  memoryRuntime: {
+    llm: { inheritFromActive: true, timeoutMs: 30000 },
+    embedding: { inheritFromActive: true, timeoutMs: 30000 },
+    useEmbedding: false,
+    maxNavSteps: 4,
+    ingestionConcurrency: 2,
+  },
+  personalAnalysis: { apiOrigin: '', apiKey: '', updatedAt: 0 },
+  enableThinking: false,
   isConfigured: true,
 };
 

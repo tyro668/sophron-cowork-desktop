@@ -4,7 +4,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { glob } from 'glob';
 import { PathResolver } from '../sandbox/path-resolver';
-import type { ToolResult, ExecutionContext, MountedPath } from '../../renderer/types';
+import type { ToolResult, ExecutionContext, MountedPath } from '../../shared/contracts';
 import { isUncPath } from '../../shared/local-file-path';
 import { isPathWithinRoot } from './path-containment';
 

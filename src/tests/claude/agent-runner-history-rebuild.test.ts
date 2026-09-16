@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../renderer/types';
+import type { Message } from '../../shared/contracts';
 import {
   buildColdStartAgentHistory,
   containsPseudoToolCallMarkup,

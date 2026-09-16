@@ -1,6 +1,6 @@
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { TSchema } from '@sinclair/typebox';
-import type { AgentRuntimeConfig } from '../../renderer/types';
+import type { AgentRuntimeConfig } from '../../shared/contracts';
 
 export type DataToolDefinition = ToolDefinition<TSchema, unknown>;
 

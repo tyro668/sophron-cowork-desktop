@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import extract from 'extract-zip';
-import type { PluginCatalogItem, PluginComponentCounts } from '../../renderer/types';
+import type { PluginCatalogItem, PluginComponentCounts } from '../../shared/contracts';
 import { isPathWithinRoot } from '../tools/path-containment';
 
 interface SkillHubListResponse {

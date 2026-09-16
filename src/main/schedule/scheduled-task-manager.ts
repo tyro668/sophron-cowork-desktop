@@ -15,82 +15,28 @@ import {
   buildScheduledTaskFallbackTitle,
   buildScheduledTaskTitle,
 } from '../../shared/schedule/task-title';
-import type { ScheduleAutomationConfig } from '../../renderer/types';
+import type {
+  ScheduleConfig,
+  ScheduleRepeatUnit,
+  ScheduleTask,
+  ScheduleCreateInput,
+  ScheduleUpdateInput,
+  ScheduleWeekday,
+  DailyScheduleConfig,
+  WeeklyScheduleConfig,
+  MonthlyScheduleConfig,
+} from '../../shared/contracts';
 import { log, logError } from '../utils/logger';
 
-export type ScheduleRepeatUnit = 'minute' | 'hour' | 'day';
-export type ScheduledTaskWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-export interface ScheduledTaskDailyScheduleConfig {
-  kind: 'daily';
-  times: string[];
-}
-
-export interface ScheduledTaskWeeklyScheduleConfig {
-  kind: 'weekly';
-  weekdays: ScheduledTaskWeekday[];
-  times: string[];
-}
-
-export interface ScheduledTaskMonthlyScheduleConfig {
-  kind: 'monthly';
-  daysOfMonth: number[];
-  includeLastDay?: boolean;
-  times: string[];
-}
-
-export type ScheduledTaskScheduleConfig =
-  | ScheduledTaskDailyScheduleConfig
-  | ScheduledTaskWeeklyScheduleConfig
-  | ScheduledTaskMonthlyScheduleConfig;
-
-export interface ScheduledTask {
-  id: string;
-  title: string;
-  prompt: string;
-  cwd: string;
-  automationConfig: ScheduleAutomationConfig | null;
-  runAt: number;
-  nextRunAt: number | null;
-  scheduleConfig: ScheduledTaskScheduleConfig | null;
-  repeatEvery: number | null;
-  repeatUnit: ScheduleRepeatUnit | null;
-  enabled: boolean;
-  lastRunAt: number | null;
-  lastRunSessionId: string | null;
-  lastError: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface ScheduledTaskCreateInput {
-  title?: string;
-  prompt: string;
-  cwd: string;
-  automationConfig?: ScheduleAutomationConfig | null;
-  runAt: number;
-  nextRunAt?: number | null;
-  scheduleConfig?: ScheduledTaskScheduleConfig | null;
-  repeatEvery?: number | null;
-  repeatUnit?: ScheduleRepeatUnit | null;
-  enabled?: boolean;
-}
-
-export interface ScheduledTaskUpdateInput {
-  title?: string;
-  prompt?: string;
-  cwd?: string;
-  automationConfig?: ScheduleAutomationConfig | null;
-  runAt?: number;
-  nextRunAt?: number | null;
-  scheduleConfig?: ScheduledTaskScheduleConfig | null;
-  repeatEvery?: number | null;
-  repeatUnit?: ScheduleRepeatUnit | null;
-  enabled?: boolean;
-  lastRunAt?: number | null;
-  lastRunSessionId?: string | null;
-  lastError?: string | null;
-}
+export type { ScheduleRepeatUnit };
+export type ScheduledTaskWeekday = ScheduleWeekday;
+export type ScheduledTaskDailyScheduleConfig = DailyScheduleConfig;
+export type ScheduledTaskWeeklyScheduleConfig = WeeklyScheduleConfig;
+export type ScheduledTaskMonthlyScheduleConfig = MonthlyScheduleConfig;
+export type ScheduledTaskScheduleConfig = ScheduleConfig;
+export type ScheduledTask = ScheduleTask;
+export type ScheduledTaskCreateInput = ScheduleCreateInput;
+export type ScheduledTaskUpdateInput = ScheduleUpdateInput;
 
 export interface ScheduledTaskStore {
   list(): ScheduledTask[];

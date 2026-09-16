@@ -10,7 +10,7 @@ import type {
   DataInputTableSourceKind,
   DataPreviewInputTableNormalizerVersionInput,
   DataSaveInputTableNormalizerDraftInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { runInputTableNormalizerProject } from '../input-table-normalizer-runner';
 import { quoteIdentifier, toNumber } from '../operators';
 import {

@@ -5,7 +5,7 @@ import type {
   DataNormalizerLanguage,
   DataNormalizerProjectFile,
   DataNormalizerRuntime,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 
 export interface InputTableNormalizerProjectTemplate {
   primaryLanguage: DataNormalizerLanguage;
@@ -37,7 +37,9 @@ export function createNormalizerDependencyLockHash(files: DataNormalizerProjectF
       file.path.endsWith('/requirements.lock') ||
       file.path.endsWith('/package-lock.json')
   );
-  return createStableTextHash(lockFiles.map((file) => `${file.path}\n${file.content}`).join('\n\n'));
+  return createStableTextHash(
+    lockFiles.map((file) => `${file.path}\n${file.content}`).join('\n\n')
+  );
 }
 
 export function createStableTextHash(input: string): string {

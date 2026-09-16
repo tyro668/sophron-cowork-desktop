@@ -11,7 +11,7 @@ import { glob } from 'glob';
 import { SandboxAdapter, getSandboxAdapter } from '../sandbox/sandbox-adapter';
 import { PathResolver } from '../sandbox/path-resolver';
 // Logger imports removed - using sandbox adapter's internal logging
-import type { ToolResult, ExecutionContext, MountedPath } from '../../renderer/types';
+import type { ToolResult, ExecutionContext, MountedPath } from '../../shared/contracts';
 import { isUncPath } from '../../shared/local-file-path';
 import { isPathWithinRoot } from './path-containment';
 

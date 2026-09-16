@@ -1,4 +1,4 @@
-import type { DataWorkflowEdge, DataWorkflowNode } from '../../../renderer/types';
+import type { DataWorkflowEdge, DataWorkflowNode } from '../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
 import { parseFieldRefExact } from '../../../shared/prep-dsl';
 import {

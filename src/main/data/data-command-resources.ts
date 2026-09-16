@@ -1,5 +1,5 @@
 import type { DataTaskStore } from './data-task-store';
-import type { DataCleaningTask, DataDataset, DataOutputTable } from '../../renderer/types';
+import type { DataCleaningTask, DataDataset, DataOutputTable } from '../../shared/contracts';
 import { DataCommandError } from './data-command-types';
 import { MAX_LIST_LIMIT, normalizeRequiredName } from './data-command-utils';
 

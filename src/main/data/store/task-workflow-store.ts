@@ -13,7 +13,7 @@ import type {
   DataWorkflowNode,
   DataWorkflowNodeInput,
   DataWorkflowSaveInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl/ast';
 import type { WorkflowNodeRunStat } from '../data-command-types';
 import { parseFieldRefExact } from '../../../shared/prep-dsl';

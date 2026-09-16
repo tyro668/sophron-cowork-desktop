@@ -1,4 +1,4 @@
-import type { DataWorkflowOperatorType } from '../../../renderer/types';
+import type { DataWorkflowOperatorType } from '../../../shared/contracts';
 import type { WorkflowExpressionIr, WorkflowOperationIr } from './workflow-model';
 
 export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v3' as const;

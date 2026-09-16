@@ -1,15 +1,12 @@
 import type {
   DataCreateOutputTableInput,
   DataUpdateOutputTableInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
+import { handleIpc } from '../../ipc-handle';
 
-export function registerOutputTablesIpc({
-  ipcMain,
-  requireDataTaskStore,
-  logError,
-}: DataIpcContext): void {
-  ipcMain.handle('data.getOutputTable', async (_event, id: string) => {
+export function registerOutputTablesIpc({ requireDataTaskStore, logError }: DataIpcContext): void {
+  handleIpc('data.getOutputTable', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getOutputTableRecord(id);
     } catch (error) {
@@ -18,7 +15,7 @@ export function registerOutputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.createOutputTable', async (_event, payload?: DataCreateOutputTableInput) => {
+  handleIpc('data.createOutputTable', async (_event, payload?: DataCreateOutputTableInput) => {
     try {
       return await requireDataTaskStore().createOutputTable(payload ?? {});
     } catch (error) {
@@ -27,7 +24,7 @@ export function registerOutputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.updateOutputTable', async (_event, payload: DataUpdateOutputTableInput) => {
+  handleIpc('data.updateOutputTable', async (_event, payload: DataUpdateOutputTableInput) => {
     try {
       return await requireDataTaskStore().updateOutputTable(payload);
     } catch (error) {

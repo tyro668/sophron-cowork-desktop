@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContentBlock, Session } from '../../renderer/types/index';
+import type { ContentBlock, Session } from '../../shared/contracts';
 import type { AgentExecutor } from '../../main/remote/remote-manager';
 import type { MessageRouter } from '../../main/remote/message-router';
 import type { RemoteMessage, RemoteResponse } from '../../main/remote/types';

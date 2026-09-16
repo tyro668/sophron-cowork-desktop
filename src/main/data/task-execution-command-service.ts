@@ -1,4 +1,4 @@
-import type { DataCleaningTask, DataRunTaskInput } from '../../renderer/types';
+import type { DataCleaningTask, DataRunTaskInput } from '../../shared/contracts';
 import type { DataTaskStore } from './data-task-store';
 import {
   DataCommandError,

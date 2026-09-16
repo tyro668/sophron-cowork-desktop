@@ -1,4 +1,4 @@
-import type { AgentRuntimeConfig } from '../../../renderer/types';
+import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
 import {

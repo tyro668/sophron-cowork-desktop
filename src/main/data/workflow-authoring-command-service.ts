@@ -7,7 +7,7 @@ import { formatFieldRef } from '../../shared/prep-dsl/syntax/fields';
 import { WORKFLOW_PLAN_VERSION, type WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import { WORKFLOW_OPERATOR_TYPE_SET, WORKFLOW_OPERATOR_TYPES } from './store/workflow-model';
 import type { DataTaskStore } from './data-task-store';
-import type { DataWorkflowOperatorType } from '../../renderer/types';
+import type { DataWorkflowOperatorType } from '../../shared/contracts';
 import {
   DataCommandError,
   type ApplyOperatorDslCommand,

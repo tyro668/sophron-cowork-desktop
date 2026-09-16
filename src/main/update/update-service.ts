@@ -1,7 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import type { ProgressInfo, UpdateDownloadedEvent } from 'electron-updater';
-import type { AppUpdateState } from '../../renderer/types';
+import type { AppUpdateState } from '../../shared/contracts';
 
 interface UpdateServiceOptions {
   getWindow: () => BrowserWindow | null;
@@ -102,7 +102,11 @@ export class UpdateService {
       return this.getState();
     }
     this.initialize();
-    if (this.state.status === 'checking' || this.state.status === 'downloading' || this.installing) {
+    if (
+      this.state.status === 'checking' ||
+      this.state.status === 'downloading' ||
+      this.installing
+    ) {
       return this.getState();
     }
 
@@ -129,7 +133,11 @@ export class UpdateService {
       return this.getState();
     }
     this.initialize();
-    if (this.state.status === 'checking' || this.state.status === 'downloading' || this.installing) {
+    if (
+      this.state.status === 'checking' ||
+      this.state.status === 'downloading' ||
+      this.installing
+    ) {
       return this.getState();
     }
 

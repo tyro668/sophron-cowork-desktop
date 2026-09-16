@@ -1,4 +1,8 @@
-import type { DataDashboard, DataDashboardQuery, DataTaskStatusCounts } from '../../renderer/types';
+import type {
+  DataDashboard,
+  DataDashboardQuery,
+  DataTaskStatusCounts,
+} from '../../shared/contracts';
 import {
   DashboardSummaryRow,
   DataDatasetRow,

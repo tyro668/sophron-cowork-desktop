@@ -17,8 +17,8 @@ import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
 import { buildRemoteSessionTitle } from './remote-title';
-import enTranslations from '../../renderer/i18n/locales/en.json';
-import zhTranslations from '../../renderer/i18n/locales/zh.json';
+import enTranslations from '../../shared/i18n/locales/en.json';
+import zhTranslations from '../../shared/i18n/locales/zh.json';
 import type {
   GatewayStatus,
   GatewayConfig,
@@ -33,7 +33,7 @@ import type {
   PairingRequest,
   RemoteConfig,
 } from './types';
-import type { Message, ContentBlock, ServerEvent, Session } from '../../renderer/types/index';
+import type { Message, ContentBlock, ServerEvent, Session } from '../../shared/contracts';
 
 // Agent executor interface - exported for use in main process
 export interface AgentExecutor {

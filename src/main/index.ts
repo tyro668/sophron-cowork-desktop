@@ -82,11 +82,12 @@ import type {
   ApiTestInput,
   ApiTestResult,
   AgentRuntimeConfig,
+  AppConfigUpdate,
   DiagnosticInput,
   ProviderModelInfo,
   DataCleaningTask,
   DataInputTableSourceKind,
-} from '../renderer/types';
+} from '../shared/contracts';
 import { remoteManager, type AgentExecutor } from './remote/remote-manager';
 import { remoteConfigStore } from './remote/remote-config-store';
 import type {
@@ -97,7 +98,7 @@ import type {
   ChannelType,
   ControllableChannelType,
   ControllableChannelState,
-} from './remote/types';
+} from '../shared/contracts/remote';
 import { startNavServer, stopNavServer } from './nav-server';
 import {
   type ScheduledTask,
@@ -136,6 +137,8 @@ import {
   decodePathSafely,
 } from '../shared/local-file-path';
 import { eventRequiresSessionManager } from './client-event-utils';
+import { handleIpc } from './ipc-handle';
+import { parseClientEvent } from '../shared/contracts/ipc/validate';
 import { getUnsupportedWorkspacePathReason } from './workspace-path-constraints';
 import {
   log,
@@ -1508,7 +1511,18 @@ app.on('before-quit', async (event) => {
 });
 
 // IPC Handlers
-ipcMain.on('client-event', async (_event, data: ClientEvent) => {
+ipcMain.on('client-event', async (_event, raw: unknown) => {
+  let data: ClientEvent;
+  try {
+    data = parseClientEvent('client-event', raw);
+  } catch (error) {
+    logError('[IPC] Rejected malformed client-event:', error);
+    sendToRenderer({
+      type: 'error',
+      payload: { message: error instanceof Error ? error.message : 'Invalid client event' },
+    });
+    return;
+  }
   try {
     await handleClientEvent(data);
   } catch (error) {
@@ -1520,11 +1534,11 @@ ipcMain.on('client-event', async (_event, data: ClientEvent) => {
   }
 });
 
-ipcMain.handle('client-invoke', async (_event, data: ClientEvent) => {
+handleIpc('client-invoke', async (_event, data: ClientEvent) => {
   return handleClientEvent(data);
 });
 
-ipcMain.handle('get-version', () => {
+handleIpc('get-version', () => {
   try {
     return app.getVersion();
   } catch (error) {
@@ -1533,7 +1547,7 @@ ipcMain.handle('get-version', () => {
   }
 });
 
-ipcMain.handle('system.getTheme', () => {
+handleIpc('system.getTheme', () => {
   try {
     return { shouldUseDarkColors: nativeTheme.shouldUseDarkColors };
   } catch (error) {
@@ -1542,20 +1556,20 @@ ipcMain.handle('system.getTheme', () => {
   }
 });
 
-ipcMain.handle('update.getState', () => updateService?.getState() ?? null);
+handleIpc('update.getState', () => updateService?.getState() ?? null);
 
-ipcMain.handle('update.checkAndInstall', async () => {
+handleIpc('update.checkAndInstall', async () => {
   if (!updateService) {
     throw new Error('Update service is not initialized');
   }
   return updateService.checkAndInstall();
 });
 
-ipcMain.handle('auth.getStatus', async () => {
+handleIpc('auth.getStatus', async () => {
   return desktopAuthService.getStatus();
 });
 
-ipcMain.handle('auth.login', async () => {
+handleIpc('auth.login', async () => {
   try {
     return await desktopAuthService.login();
   } finally {
@@ -1567,15 +1581,15 @@ ipcMain.handle('auth.login', async () => {
   }
 });
 
-ipcMain.handle('auth.cancelLogin', async () => {
+handleIpc('auth.cancelLogin', async () => {
   return desktopAuthService.cancelLogin();
 });
 
-ipcMain.handle('auth.logout', async () => {
+handleIpc('auth.logout', async () => {
   return desktopAuthService.logout();
 });
 
-ipcMain.handle('shell.openExternal', async (_event, url: string) => {
+handleIpc('shell.openExternal', async (_event, url: string) => {
   if (!url) {
     return false;
   }
@@ -1847,15 +1861,15 @@ async function revealFileInFolder(filePath: string, cwd?: string): Promise<boole
   }
 }
 
-ipcMain.handle('shell.showItemInFolder', async (_event, filePath: string, cwd?: string) => {
+handleIpc('shell.showItemInFolder', async (_event, filePath: string, cwd?: string) => {
   return revealFileInFolder(filePath, cwd);
 });
 
-ipcMain.handle('reports.openGeneratedReport', async (_event, filePath: string, cwd?: string) => {
+handleIpc('reports.openGeneratedReport', async (_event, filePath: string, cwd?: string) => {
   return openGeneratedReport(filePath, cwd);
 });
 
-ipcMain.handle(
+handleIpc(
   'artifacts.listRecentFiles',
   async (_event, cwd: string, sinceMs: number, limit: number = 50) => {
     if (!cwd || !isAbsolute(cwd)) {
@@ -1865,7 +1879,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('dialog.selectFiles', async () => {
+handleIpc('dialog.selectFiles', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile', 'multiSelections'],
     title: 'Select Files',
@@ -1878,7 +1892,7 @@ ipcMain.handle('dialog.selectFiles', async () => {
   return result.filePaths;
 });
 
-ipcMain.handle('dialog.selectInputTableSource', async (_event, kind?: DataInputTableSourceKind) => {
+handleIpc('dialog.selectInputTableSource', async (_event, kind?: DataInputTableSourceKind) => {
   const dialogOptions: OpenDialogOptions =
     kind === 'folder'
       ? {
@@ -1977,7 +1991,7 @@ registerDataIpcHandlers({
 });
 
 // Config IPC handlers
-ipcMain.handle('config.get', () => {
+handleIpc('config.get', () => {
   try {
     return configStore.getAll();
   } catch (error) {
@@ -1986,7 +2000,7 @@ ipcMain.handle('config.get', () => {
   }
 });
 
-ipcMain.handle('config.getPresets', () => {
+handleIpc('config.getPresets', () => {
   try {
     return getPiAiModelPresets();
   } catch (error) {
@@ -2057,7 +2071,7 @@ const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
   return updatedConfig;
 };
 
-ipcMain.handle('config.save', async (_event, newConfig: Partial<AppConfig>) => {
+handleIpc('config.save', async (_event, newConfig: AppConfigUpdate) => {
   log('[Config] Saving config:', {
     ...newConfig,
     apiKey: newConfig.apiKey ? '***' : '',
@@ -2094,7 +2108,7 @@ ipcMain.handle('config.save', async (_event, newConfig: Partial<AppConfig>) => {
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle('config.createSet', async (_event, payload: CreateConfigSetPayload) => {
+handleIpc('config.createSet', async (_event, payload: CreateConfigSetPayload) => {
   log('[Config] Creating config set:', payload);
   const previousConfig = configStore.getAll();
   configStore.createSet(payload);
@@ -2102,7 +2116,7 @@ ipcMain.handle('config.createSet', async (_event, payload: CreateConfigSetPayloa
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle('config.renameSet', async (_event, payload: { id: string; name: string }) => {
+handleIpc('config.renameSet', async (_event, payload: { id: string; name: string }) => {
   log('[Config] Renaming config set:', payload);
   const previousConfig = configStore.getAll();
   configStore.renameSet(payload);
@@ -2110,7 +2124,7 @@ ipcMain.handle('config.renameSet', async (_event, payload: { id: string; name: s
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle('config.deleteSet', async (_event, payload: { id: string }) => {
+handleIpc('config.deleteSet', async (_event, payload: { id: string }) => {
   log('[Config] Deleting config set:', payload);
   const previousConfig = configStore.getAll();
   configStore.deleteSet(payload);
@@ -2118,7 +2132,7 @@ ipcMain.handle('config.deleteSet', async (_event, payload: { id: string }) => {
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle('config.switchSet', async (_event, payload: { id: string }) => {
+handleIpc('config.switchSet', async (_event, payload: { id: string }) => {
   log('[Config] Switching config set:', payload);
   const previousConfig = configStore.getAll();
   configStore.switchSet(payload);
@@ -2126,7 +2140,7 @@ ipcMain.handle('config.switchSet', async (_event, payload: { id: string }) => {
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle(
+handleIpc(
   'config.updateSet',
   async (_event, payload: { id: string; updates: Parameters<typeof configStore.update>[0] }) => {
     log('[Config] Updating config set:', { id: payload.id });
@@ -2137,7 +2151,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: string }) => {
+handleIpc('config.selectBuiltinModel', async (_event, payload: { model: string }) => {
   const model = typeof payload.model === 'string' ? payload.model.trim() : '';
   if (!model) {
     throw new Error('Model is required');
@@ -2157,7 +2171,7 @@ ipcMain.handle('config.selectBuiltinModel', async (_event, payload: { model: str
   return { success: true, config: updatedConfig };
 });
 
-ipcMain.handle('config.isConfigured', () => {
+handleIpc('config.isConfigured', () => {
   try {
     return configStore.isConfigured();
   } catch (error) {
@@ -2166,7 +2180,7 @@ ipcMain.handle('config.isConfigured', () => {
   }
 });
 
-ipcMain.handle('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
+handleIpc('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
   try {
     const resolvedPayload = resolveApiTestInputForAuth(payload);
     return await runConfigApiTest(resolvedPayload, resolveAppConfigForAuth(configStore.getAll()));
@@ -2180,7 +2194,7 @@ ipcMain.handle('config.test', async (_event, payload: ApiTestInput): Promise<Api
   }
 });
 
-ipcMain.handle(
+handleIpc(
   'config.listModels',
   async (
     _event,
@@ -2196,7 +2210,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('config.diagnose', async (_event, payload: DiagnosticInput) => {
+handleIpc('config.diagnose', async (_event, payload: DiagnosticInput) => {
   try {
     const { runDiagnostics } = await import('./config/api-diagnostics');
     return await runDiagnostics(resolveApiTestInputForAuth(payload));
@@ -2206,7 +2220,7 @@ ipcMain.handle('config.diagnose', async (_event, payload: DiagnosticInput) => {
   }
 });
 
-ipcMain.handle('config.discover-local', async (_event, payload?: { baseUrl?: string }) => {
+handleIpc('config.discover-local', async (_event, payload?: { baseUrl?: string }) => {
   try {
     const { discoverLocalOllama } = await import('./config/api-diagnostics');
     return await discoverLocalOllama(payload);
@@ -2216,7 +2230,7 @@ ipcMain.handle('config.discover-local', async (_event, payload?: { baseUrl?: str
   }
 });
 
-ipcMain.handle('config.codexAuthStatus', () => {
+handleIpc('config.codexAuthStatus', () => {
   try {
     return getCodexAuthStatus();
   } catch (error) {
@@ -2225,7 +2239,7 @@ ipcMain.handle('config.codexAuthStatus', () => {
   }
 });
 
-ipcMain.handle('config.codexImportCli', () => {
+handleIpc('config.codexImportCli', () => {
   try {
     const imported = ensureCodexCredentials({ forceImport: true });
     return { success: imported, status: getCodexAuthStatus() };
@@ -2241,7 +2255,7 @@ ipcMain.handle('config.codexImportCli', () => {
 
 const pendingCodexLoginPrompts = new Map<string, (code: string) => void>();
 
-ipcMain.handle('config.codexLogin', async (event) => {
+handleIpc('config.codexLogin', async (event) => {
   try {
     const status = await loginCodex({
       onAuthUrl: (url) => {
@@ -2265,21 +2279,18 @@ ipcMain.handle('config.codexLogin', async (event) => {
   }
 });
 
-ipcMain.handle(
-  'config.codexLoginCode',
-  (_event, payload: { requestId?: string; code?: string }) => {
-    const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
-    const resolve = pendingCodexLoginPrompts.get(requestId);
-    if (!resolve) {
-      return { success: false };
-    }
-    pendingCodexLoginPrompts.delete(requestId);
-    resolve(typeof payload?.code === 'string' ? payload.code : '');
-    return { success: true };
+handleIpc('config.codexLoginCode', (_event, payload: { requestId?: string; code?: string }) => {
+  const requestId = typeof payload?.requestId === 'string' ? payload.requestId : '';
+  const resolve = pendingCodexLoginPrompts.get(requestId);
+  if (!resolve) {
+    return { success: false };
   }
-);
+  pendingCodexLoginPrompts.delete(requestId);
+  resolve(typeof payload?.code === 'string' ? payload.code : '');
+  return { success: true };
+});
 
-ipcMain.handle('config.codexLogout', () => {
+handleIpc('config.codexLogout', () => {
   try {
     return { success: true, status: logoutCodex() };
   } catch (error) {
@@ -2292,7 +2303,7 @@ ipcMain.handle('config.codexLogout', () => {
   }
 });
 
-ipcMain.handle(
+handleIpc(
   'config.listPersonalAnalysisDatasources',
   async (_event, payload: { apiOrigin?: string; apiKey?: string; accessToken?: string }) => {
     try {
@@ -2305,7 +2316,7 @@ ipcMain.handle(
 );
 
 // MCP Server IPC handlers
-ipcMain.handle('mcp.getServers', () => {
+handleIpc('mcp.getServers', () => {
   try {
     return mcpConfigStore.getServers();
   } catch (error) {
@@ -2314,7 +2325,7 @@ ipcMain.handle('mcp.getServers', () => {
   }
 });
 
-ipcMain.handle('mcp.getServer', (_event, serverId: string) => {
+handleIpc('mcp.getServer', (_event, serverId: string) => {
   try {
     return mcpConfigStore.getServer(serverId);
   } catch (error) {
@@ -2323,7 +2334,7 @@ ipcMain.handle('mcp.getServer', (_event, serverId: string) => {
   }
 });
 
-ipcMain.handle('mcp.saveServer', async (_event, config: MCPServerConfig) => {
+handleIpc('mcp.saveServer', async (_event, config: MCPServerConfig) => {
   mcpConfigStore.saveServer(config);
   // Update only this specific server, not all servers
   if (sessionManager) {
@@ -2346,7 +2357,7 @@ ipcMain.handle('mcp.saveServer', async (_event, config: MCPServerConfig) => {
   return { success: true };
 });
 
-ipcMain.handle('mcp.deleteServer', async (_event, serverId: string) => {
+handleIpc('mcp.deleteServer', async (_event, serverId: string) => {
   mcpConfigStore.deleteServer(serverId);
   // Remove and disconnect only this specific server
   if (sessionManager) {
@@ -2362,7 +2373,7 @@ ipcMain.handle('mcp.deleteServer', async (_event, serverId: string) => {
   return { success: true };
 });
 
-ipcMain.handle('mcp.getTools', () => {
+handleIpc('mcp.getTools', () => {
   try {
     if (!sessionManager) {
       return [];
@@ -2375,7 +2386,7 @@ ipcMain.handle('mcp.getTools', () => {
   }
 });
 
-ipcMain.handle('mcp.getServerStatus', () => {
+handleIpc('mcp.getServerStatus', () => {
   try {
     if (!sessionManager) {
       return [];
@@ -2388,7 +2399,7 @@ ipcMain.handle('mcp.getServerStatus', () => {
   }
 });
 
-ipcMain.handle('mcp.getPresets', () => {
+handleIpc('mcp.getPresets', () => {
   try {
     return mcpConfigStore.getPresets();
   } catch (error) {
@@ -2398,7 +2409,7 @@ ipcMain.handle('mcp.getPresets', () => {
 });
 
 // Skills API handlers
-ipcMain.handle('skills.getAll', async () => {
+handleIpc('skills.getAll', async () => {
   try {
     if (!skillsManager) {
       throw new Error('Skills manager is still starting');
@@ -2410,7 +2421,7 @@ ipcMain.handle('skills.getAll', async () => {
   }
 });
 
-ipcMain.handle('skills.install', async (_event, skillPath: string) => {
+handleIpc('skills.install', async (_event, skillPath: string) => {
   try {
     if (!skillsManager) {
       throw new Error('SkillsManager not initialized');
@@ -2424,7 +2435,7 @@ ipcMain.handle('skills.install', async (_event, skillPath: string) => {
   }
 });
 
-ipcMain.handle('skills.installFromSkillHub', async (_event, slug: string) => {
+handleIpc('skills.installFromSkillHub', async (_event, slug: string) => {
   try {
     if (!skillsManager) {
       throw new Error('SkillsManager not initialized');
@@ -2438,7 +2449,7 @@ ipcMain.handle('skills.installFromSkillHub', async (_event, slug: string) => {
   }
 });
 
-ipcMain.handle('skills.delete', async (_event, skillId: string) => {
+handleIpc('skills.delete', async (_event, skillId: string) => {
   try {
     if (!skillsManager) {
       throw new Error('SkillsManager not initialized');
@@ -2452,7 +2463,7 @@ ipcMain.handle('skills.delete', async (_event, skillId: string) => {
   }
 });
 
-ipcMain.handle('skills.setEnabled', async (_event, skillId: string, enabled: boolean) => {
+handleIpc('skills.setEnabled', async (_event, skillId: string, enabled: boolean) => {
   try {
     if (!skillsManager) {
       throw new Error('SkillsManager not initialized');
@@ -2466,7 +2477,7 @@ ipcMain.handle('skills.setEnabled', async (_event, skillId: string, enabled: boo
   }
 });
 
-ipcMain.handle('skills.validate', async (_event, skillPath: string) => {
+handleIpc('skills.validate', async (_event, skillPath: string) => {
   try {
     if (!skillsManager) {
       return { valid: false, errors: ['SkillsManager not initialized'] };
@@ -2479,7 +2490,7 @@ ipcMain.handle('skills.validate', async (_event, skillPath: string) => {
   }
 });
 
-ipcMain.handle('skills.getStoragePath', async () => {
+handleIpc('skills.getStoragePath', async () => {
   try {
     if (!skillsManager) {
       return null;
@@ -2491,7 +2502,7 @@ ipcMain.handle('skills.getStoragePath', async () => {
   }
 });
 
-ipcMain.handle('skills.setStoragePath', async (_event, targetPath: string, migrate = true) => {
+handleIpc('skills.setStoragePath', async (_event, targetPath: string, migrate = true) => {
   if (!skillsManager) {
     throw new Error('SkillsManager not initialized');
   }
@@ -2506,7 +2517,7 @@ ipcMain.handle('skills.setStoragePath', async (_event, targetPath: string, migra
   return { success: true, ...result };
 });
 
-ipcMain.handle('skills.openStoragePath', async () => {
+handleIpc('skills.openStoragePath', async () => {
   if (!skillsManager) {
     throw new Error('SkillsManager not initialized');
   }
@@ -2518,7 +2529,7 @@ ipcMain.handle('skills.openStoragePath', async () => {
   return { success: true, path: storagePath };
 });
 
-ipcMain.handle('skills.openSkillPath', async (_event, skillId: string) => {
+handleIpc('skills.openSkillPath', async (_event, skillId: string) => {
   if (!skillsManager) {
     throw new Error('SkillsManager not initialized');
   }
@@ -2534,7 +2545,7 @@ ipcMain.handle('skills.openSkillPath', async (_event, skillId: string) => {
   return { success: true, path: skillPath };
 });
 
-ipcMain.handle(
+handleIpc(
   'plugins.listCatalog',
   async (
     _event,
@@ -2557,7 +2568,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('plugins.listInstalled', async () => {
+handleIpc('plugins.listInstalled', async () => {
   try {
     if (!pluginRuntimeService) {
       throw new Error('PluginRuntimeService not initialized');
@@ -2569,7 +2580,7 @@ ipcMain.handle('plugins.listInstalled', async () => {
   }
 });
 
-ipcMain.handle('plugins.install', async (_event, pluginName: string) => {
+handleIpc('plugins.install', async (_event, pluginName: string) => {
   try {
     if (!pluginRuntimeService) {
       throw new Error('PluginRuntimeService not initialized');
@@ -2583,7 +2594,7 @@ ipcMain.handle('plugins.install', async (_event, pluginName: string) => {
   }
 });
 
-ipcMain.handle('plugins.setEnabled', async (_event, pluginId: string, enabled: boolean) => {
+handleIpc('plugins.setEnabled', async (_event, pluginId: string, enabled: boolean) => {
   try {
     if (!pluginRuntimeService) {
       throw new Error('PluginRuntimeService not initialized');
@@ -2597,7 +2608,7 @@ ipcMain.handle('plugins.setEnabled', async (_event, pluginId: string, enabled: b
   }
 });
 
-ipcMain.handle(
+handleIpc(
   'plugins.setComponentEnabled',
   async (
     _event,
@@ -2621,7 +2632,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('plugins.uninstall', async (_event, pluginId: string) => {
+handleIpc('plugins.uninstall', async (_event, pluginId: string) => {
   try {
     if (!pluginRuntimeService) {
       throw new Error('PluginRuntimeService not initialized');
@@ -2665,7 +2676,7 @@ ipcMain.on('window.close', () => {
 });
 
 // Sandbox IPC handlers
-ipcMain.handle('sandbox.getStatus', async () => {
+handleIpc('sandbox.getStatus', async () => {
   try {
     const adapter = getSandboxAdapter();
     const platform = process.platform;
@@ -2709,7 +2720,7 @@ ipcMain.handle('sandbox.getStatus', async () => {
 });
 
 // WSL IPC handlers (Windows)
-ipcMain.handle('sandbox.checkWSL', async () => {
+handleIpc('sandbox.checkWSL', async () => {
   try {
     return await WSLBridge.checkWSLStatus();
   } catch (error) {
@@ -2718,7 +2729,7 @@ ipcMain.handle('sandbox.checkWSL', async () => {
   }
 });
 
-ipcMain.handle('sandbox.installNodeInWSL', async (_event, distro: string) => {
+handleIpc('sandbox.installNodeInWSL', async (_event, distro: string) => {
   try {
     return await WSLBridge.installNodeInWSL(distro);
   } catch (error) {
@@ -2727,7 +2738,7 @@ ipcMain.handle('sandbox.installNodeInWSL', async (_event, distro: string) => {
   }
 });
 
-ipcMain.handle('sandbox.installPythonInWSL', async (_event, distro: string) => {
+handleIpc('sandbox.installPythonInWSL', async (_event, distro: string) => {
   try {
     return await WSLBridge.installPythonInWSL(distro);
   } catch (error) {
@@ -2737,7 +2748,7 @@ ipcMain.handle('sandbox.installPythonInWSL', async (_event, distro: string) => {
 });
 
 // Lima IPC handlers (macOS)
-ipcMain.handle('sandbox.checkLima', async () => {
+handleIpc('sandbox.checkLima', async () => {
   try {
     return await LimaBridge.checkLimaStatus();
   } catch (error) {
@@ -2746,7 +2757,7 @@ ipcMain.handle('sandbox.checkLima', async () => {
   }
 });
 
-ipcMain.handle('sandbox.createLimaInstance', async () => {
+handleIpc('sandbox.createLimaInstance', async () => {
   try {
     return await LimaBridge.createLimaInstance();
   } catch (error) {
@@ -2755,7 +2766,7 @@ ipcMain.handle('sandbox.createLimaInstance', async () => {
   }
 });
 
-ipcMain.handle('sandbox.startLimaInstance', async () => {
+handleIpc('sandbox.startLimaInstance', async () => {
   try {
     return await LimaBridge.startLimaInstance();
   } catch (error) {
@@ -2764,7 +2775,7 @@ ipcMain.handle('sandbox.startLimaInstance', async () => {
   }
 });
 
-ipcMain.handle('sandbox.stopLimaInstance', async () => {
+handleIpc('sandbox.stopLimaInstance', async () => {
   try {
     return await LimaBridge.stopLimaInstance();
   } catch (error) {
@@ -2773,7 +2784,7 @@ ipcMain.handle('sandbox.stopLimaInstance', async () => {
   }
 });
 
-ipcMain.handle('sandbox.installNodeInLima', async () => {
+handleIpc('sandbox.installNodeInLima', async () => {
   try {
     return await LimaBridge.installNodeInLima();
   } catch (error) {
@@ -2782,7 +2793,7 @@ ipcMain.handle('sandbox.installNodeInLima', async () => {
   }
 });
 
-ipcMain.handle('sandbox.installPythonInLima', async () => {
+handleIpc('sandbox.installPythonInLima', async () => {
   try {
     return await LimaBridge.installPythonInLima();
   } catch (error) {
@@ -2792,7 +2803,7 @@ ipcMain.handle('sandbox.installPythonInLima', async () => {
 });
 
 // Logs IPC handlers
-ipcMain.handle('logs.getPath', () => {
+handleIpc('logs.getPath', () => {
   try {
     return getLogFilePath();
   } catch (error) {
@@ -2801,7 +2812,7 @@ ipcMain.handle('logs.getPath', () => {
   }
 });
 
-ipcMain.handle('logs.getDirectory', () => {
+handleIpc('logs.getDirectory', () => {
   try {
     return getLogsDirectory();
   } catch (error) {
@@ -2810,7 +2821,7 @@ ipcMain.handle('logs.getDirectory', () => {
   }
 });
 
-ipcMain.handle('logs.getAll', () => {
+handleIpc('logs.getAll', () => {
   try {
     return getAllLogFiles();
   } catch (error) {
@@ -2819,7 +2830,7 @@ ipcMain.handle('logs.getAll', () => {
   }
 });
 
-ipcMain.handle('logs.export', async () => {
+handleIpc('logs.export', async () => {
   try {
     const logFiles = getAllLogFiles();
     const diagnosticsSummary = buildDiagnosticsSummary({
@@ -2967,7 +2978,7 @@ ipcMain.handle('logs.export', async () => {
   }
 });
 
-ipcMain.handle('logs.open', async () => {
+handleIpc('logs.open', async () => {
   try {
     const logsDir = getLogsDirectory();
     await shell.openPath(logsDir);
@@ -2978,7 +2989,7 @@ ipcMain.handle('logs.open', async () => {
   }
 });
 
-ipcMain.handle('logs.clear', async () => {
+handleIpc('logs.clear', async () => {
   try {
     const logFiles = getAllLogFiles();
 
@@ -3005,7 +3016,7 @@ ipcMain.handle('logs.clear', async () => {
   }
 });
 
-ipcMain.handle('logs.setEnabled', async (_event, enabled: boolean) => {
+handleIpc('logs.setEnabled', async (_event, enabled: boolean) => {
   try {
     setDevLogsEnabled(enabled);
     configStore.set('enableDevLogs', enabled);
@@ -3017,7 +3028,7 @@ ipcMain.handle('logs.setEnabled', async (_event, enabled: boolean) => {
   }
 });
 
-ipcMain.handle('logs.isEnabled', () => {
+handleIpc('logs.isEnabled', () => {
   try {
     return { success: true, enabled: isDevLogsEnabled() };
   } catch (error) {
@@ -3030,7 +3041,7 @@ ipcMain.handle('logs.isEnabled', () => {
 // 远程控制 IPC 处理
 // ============================================================================
 
-ipcMain.handle('remote.getConfig', () => {
+handleIpc('remote.getConfig', () => {
   try {
     return remoteConfigStore.getAll();
   } catch (error) {
@@ -3039,7 +3050,7 @@ ipcMain.handle('remote.getConfig', () => {
   }
 });
 
-ipcMain.handle('remote.getStatus', () => {
+handleIpc('remote.getStatus', () => {
   try {
     return remoteManager.getStatus();
   } catch (error) {
@@ -3048,7 +3059,7 @@ ipcMain.handle('remote.getStatus', () => {
   }
 });
 
-ipcMain.handle('remote.setEnabled', async (_event, enabled: boolean) => {
+handleIpc('remote.setEnabled', async (_event, enabled: boolean) => {
   try {
     remoteConfigStore.setEnabled(enabled);
 
@@ -3065,7 +3076,7 @@ ipcMain.handle('remote.setEnabled', async (_event, enabled: boolean) => {
   }
 });
 
-ipcMain.handle('remote.setChannelEnabled', async (_event, type: unknown, enabled: unknown) => {
+handleIpc('remote.setChannelEnabled', async (_event, type: unknown, enabled: unknown) => {
   try {
     if (type !== 'feishu' && type !== 'dingtalk' && type !== 'wecom') {
       throw new Error('Unsupported remote channel type');
@@ -3093,7 +3104,7 @@ ipcMain.handle('remote.setChannelEnabled', async (_event, type: unknown, enabled
   }
 });
 
-ipcMain.handle('remote.updateGatewayConfig', async (_event, config: Partial<GatewayConfig>) => {
+handleIpc('remote.updateGatewayConfig', async (_event, config: Partial<GatewayConfig>) => {
   try {
     await remoteManager.updateGatewayConfig(config);
     return { success: true };
@@ -3103,7 +3114,7 @@ ipcMain.handle('remote.updateGatewayConfig', async (_event, config: Partial<Gate
   }
 });
 
-ipcMain.handle('remote.updateFeishuConfig', async (_event, config: FeishuChannelConfig) => {
+handleIpc('remote.updateFeishuConfig', async (_event, config: FeishuChannelConfig) => {
   try {
     await remoteManager.updateFeishuConfig(config);
     return { success: true };
@@ -3113,7 +3124,7 @@ ipcMain.handle('remote.updateFeishuConfig', async (_event, config: FeishuChannel
   }
 });
 
-ipcMain.handle(
+handleIpc(
   'remote.updateDingtalkConfig',
   async (_event, config: DingtalkChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
     try {
@@ -3126,7 +3137,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle(
+handleIpc(
   'remote.updateWecomConfig',
   async (_event, config: WecomChannelConfig, gatewayConfig?: Partial<GatewayConfig>) => {
     try {
@@ -3139,7 +3150,7 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('remote.getPairedUsers', () => {
+handleIpc('remote.getPairedUsers', () => {
   try {
     return remoteManager.getPairedUsers();
   } catch (error) {
@@ -3148,7 +3159,7 @@ ipcMain.handle('remote.getPairedUsers', () => {
   }
 });
 
-ipcMain.handle('remote.getPendingPairings', () => {
+handleIpc('remote.getPendingPairings', () => {
   try {
     return remoteManager.getPendingPairings();
   } catch (error) {
@@ -3157,7 +3168,7 @@ ipcMain.handle('remote.getPendingPairings', () => {
   }
 });
 
-ipcMain.handle('remote.approvePairing', (_event, channelType: ChannelType, userId: string) => {
+handleIpc('remote.approvePairing', (_event, channelType: ChannelType, userId: string) => {
   try {
     const success = remoteManager.approvePairing(channelType, userId);
     return { success };
@@ -3167,7 +3178,7 @@ ipcMain.handle('remote.approvePairing', (_event, channelType: ChannelType, userI
   }
 });
 
-ipcMain.handle('remote.revokePairing', (_event, channelType: ChannelType, userId: string) => {
+handleIpc('remote.revokePairing', (_event, channelType: ChannelType, userId: string) => {
   try {
     const success = remoteManager.revokePairing(channelType, userId);
     return { success };
@@ -3177,7 +3188,7 @@ ipcMain.handle('remote.revokePairing', (_event, channelType: ChannelType, userId
   }
 });
 
-ipcMain.handle('remote.rejectPairing', (_event, channelType: ChannelType, userId: string) => {
+handleIpc('remote.rejectPairing', (_event, channelType: ChannelType, userId: string) => {
   try {
     const success = remoteManager.rejectPairing(channelType, userId);
     return { success };
@@ -3187,7 +3198,7 @@ ipcMain.handle('remote.rejectPairing', (_event, channelType: ChannelType, userId
   }
 });
 
-ipcMain.handle('remote.getRemoteSessions', () => {
+handleIpc('remote.getRemoteSessions', () => {
   try {
     return remoteManager.getRemoteSessions();
   } catch (error) {
@@ -3196,7 +3207,7 @@ ipcMain.handle('remote.getRemoteSessions', () => {
   }
 });
 
-ipcMain.handle('remote.clearRemoteSession', (_event, sessionId: string) => {
+handleIpc('remote.clearRemoteSession', (_event, sessionId: string) => {
   try {
     const success = remoteManager.clearRemoteSession(sessionId);
     return { success };
@@ -3206,7 +3217,7 @@ ipcMain.handle('remote.clearRemoteSession', (_event, sessionId: string) => {
   }
 });
 
-ipcMain.handle('remote.getTunnelStatus', () => {
+handleIpc('remote.getTunnelStatus', () => {
   try {
     return remoteManager.getTunnelStatus();
   } catch (error) {
@@ -3215,7 +3226,7 @@ ipcMain.handle('remote.getTunnelStatus', () => {
   }
 });
 
-ipcMain.handle('remote.getWebhookUrl', (_event, channelType?: ChannelType) => {
+handleIpc('remote.getWebhookUrl', (_event, channelType?: ChannelType) => {
   try {
     return remoteManager.getWebhookUrl(channelType);
   } catch (error) {
@@ -3224,7 +3235,7 @@ ipcMain.handle('remote.getWebhookUrl', (_event, channelType?: ChannelType) => {
   }
 });
 
-ipcMain.handle('remote.restart', async () => {
+handleIpc('remote.restart', async () => {
   try {
     await remoteManager.restart();
     return { success: true };
@@ -3429,67 +3440,67 @@ function automationToScheduledTask(automation: Automation): ScheduledTask {
   };
 }
 
-ipcMain.handle('automation.list', (_event, query?: AutomationListQuery) => {
+handleIpc('automation.list', (_event, query?: AutomationListQuery) => {
   return requireAutomationService().list(query);
 });
 
-ipcMain.handle('automation.get', (_event, id: string) => {
+handleIpc('automation.get', (_event, id: string) => {
   return requireAutomationService().get(id);
 });
 
-ipcMain.handle('automation.create', (_event, payload: AutomationCreateInput) => {
+handleIpc('automation.create', (_event, payload: AutomationCreateInput) => {
   const created = requireAutomationService().create(payload);
   rescheduleAutomations();
   return created;
 });
 
-ipcMain.handle('automation.update', (_event, id: string, updates: AutomationUpdateInput) => {
+handleIpc('automation.update', (_event, id: string, updates: AutomationUpdateInput) => {
   const updated = requireAutomationService().update(id, updates);
   rescheduleAutomations();
   return updated;
 });
 
-ipcMain.handle('automation.delete', (_event, id: string) => {
+handleIpc('automation.delete', (_event, id: string) => {
   const result = requireAutomationService().delete(id);
   rescheduleAutomations();
   return result;
 });
 
-ipcMain.handle('automation.setEnabled', (_event, id: string, enabled: boolean) => {
+handleIpc('automation.setEnabled', (_event, id: string, enabled: boolean) => {
   const updated = requireAutomationService().setEnabled(id, enabled);
   rescheduleAutomations();
   return updated;
 });
 
-ipcMain.handle('automation.pause', (_event, id: string) => {
+handleIpc('automation.pause', (_event, id: string) => {
   const updated = requireAutomationService().pause(id);
   rescheduleAutomations();
   return updated;
 });
 
-ipcMain.handle('automation.resume', (_event, id: string) => {
+handleIpc('automation.resume', (_event, id: string) => {
   const updated = requireAutomationService().resume(id);
   rescheduleAutomations();
   return updated;
 });
 
-ipcMain.handle('automation.runNow', async (_event, id: string) => {
+handleIpc('automation.runNow', async (_event, id: string) => {
   return requireAutomationService().runNow(id);
 });
 
-ipcMain.handle('automation.runs.list', (_event, id: string, query?: AutomationRunQuery) => {
+handleIpc('automation.runs.list', (_event, id: string, query?: AutomationRunQuery) => {
   return requireAutomationService().listRuns(id, query);
 });
 
-ipcMain.handle('automation.artifacts.list', (_event, runId: string) => {
+handleIpc('automation.artifacts.list', (_event, runId: string) => {
   return requireAutomationService().listArtifacts(runId);
 });
 
-ipcMain.handle('automation.actions.listDefinitions', () => {
+handleIpc('automation.actions.listDefinitions', () => {
   return requireAutomationService().listActionDefinitions();
 });
 
-ipcMain.handle('schedule.list', () => {
+handleIpc('schedule.list', () => {
   try {
     return requireAutomationService().list().map(automationToScheduledTask);
   } catch (error) {
@@ -3498,7 +3509,7 @@ ipcMain.handle('schedule.list', () => {
   }
 });
 
-ipcMain.handle('schedule.create', async (_event, payload: ScheduledTaskCreateInput) => {
+handleIpc('schedule.create', async (_event, payload: ScheduledTaskCreateInput) => {
   const unsupportedReason = getWorkspacePathUnsupportedReason(payload.cwd);
   if (unsupportedReason) {
     throw new Error(unsupportedReason);
@@ -3520,7 +3531,7 @@ ipcMain.handle('schedule.create', async (_event, payload: ScheduledTaskCreateInp
   return automationToScheduledTask(created);
 });
 
-ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledTaskUpdateInput) => {
+handleIpc('schedule.update', async (_event, id: string, updates: ScheduledTaskUpdateInput) => {
   const existingAutomation = requireAutomationService().get(id);
   if (!existingAutomation) return null;
   const existing = automationToScheduledTask(existingAutomation);
@@ -3588,32 +3599,32 @@ ipcMain.handle('schedule.update', async (_event, id: string, updates: ScheduledT
   return updated ? automationToScheduledTask(updated) : null;
 });
 
-ipcMain.handle('schedule.delete', (_event, id: string) => {
+handleIpc('schedule.delete', (_event, id: string) => {
   const result = requireAutomationService().delete(id);
   rescheduleAutomations();
   return result;
 });
 
-ipcMain.handle('schedule.toggle', (_event, id: string, enabled: boolean) => {
+handleIpc('schedule.toggle', (_event, id: string, enabled: boolean) => {
   const updated = requireAutomationService().setEnabled(id, enabled);
   rescheduleAutomations();
   return updated ? automationToScheduledTask(updated) : null;
 });
 
-ipcMain.handle('schedule.runNow', async (_event, id: string) => {
+handleIpc('schedule.runNow', async (_event, id: string) => {
   await requireAutomationService().runNow(id);
   const updated = requireAutomationService().get(id);
   return updated ? automationToScheduledTask(updated) : null;
 });
 
-ipcMain.handle('memory.getOverview', (_event, cwd?: string) => {
+handleIpc('memory.getOverview', (_event, cwd?: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.getOverview(cwd);
 });
 
-ipcMain.handle(
+handleIpc(
   'memory.search',
   (
     _event,
@@ -3632,21 +3643,21 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('memory.read', (_event, id: string) => {
+handleIpc('memory.read', (_event, id: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.read(id);
 });
 
-ipcMain.handle('memory.listCoreEntries', () => {
+handleIpc('memory.listCoreEntries', () => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.listCoreEntries();
 });
 
-ipcMain.handle(
+handleIpc(
   'memory.updateCoreEntry',
   (
     _event,
@@ -3665,21 +3676,21 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('memory.deleteCoreEntry', (_event, combinedKey: string) => {
+handleIpc('memory.deleteCoreEntry', (_event, combinedKey: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.deleteCoreEntry(combinedKey);
 });
 
-ipcMain.handle('memory.listProjectEntries', (_event, workspaceKey?: string | null) => {
+handleIpc('memory.listProjectEntries', (_event, workspaceKey?: string | null) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.listProjectEntries(workspaceKey);
 });
 
-ipcMain.handle(
+handleIpc(
   'memory.updateProjectEntry',
   (
     _event,
@@ -3698,63 +3709,63 @@ ipcMain.handle(
   }
 );
 
-ipcMain.handle('memory.deleteProjectEntry', (_event, id: string) => {
+handleIpc('memory.deleteProjectEntry', (_event, id: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.deleteProjectEntry(id);
 });
 
-ipcMain.handle('memory.rebuildWorkspace', async (_event, cwd: string) => {
+handleIpc('memory.rebuildWorkspace', async (_event, cwd: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.rebuildWorkspace(cwd);
 });
 
-ipcMain.handle('memory.clearWorkspace', (_event, cwd: string) => {
+handleIpc('memory.clearWorkspace', (_event, cwd: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.clearWorkspace(cwd);
 });
 
-ipcMain.handle('memory.clearCoreMemory', () => {
+handleIpc('memory.clearCoreMemory', () => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.clearCoreMemory();
 });
 
-ipcMain.handle('memory.rebuildAll', async () => {
+handleIpc('memory.rebuildAll', async () => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.rebuildAll();
 });
 
-ipcMain.handle('memory.listFiles', () => {
+handleIpc('memory.listFiles', () => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.listFiles();
 });
 
-ipcMain.handle('memory.readFile', (_event, filePath: string) => {
+handleIpc('memory.readFile', (_event, filePath: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.readFile(filePath);
 });
 
-ipcMain.handle('memory.inspectSession', (_event, sessionId: string, workspaceKey?: string) => {
+handleIpc('memory.inspectSession', (_event, sessionId: string, workspaceKey?: string) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
   return memoryService.inspectSession(sessionId, workspaceKey);
 });
 
-ipcMain.handle('memory.setEnabled', (_event, enabled: boolean) => {
+handleIpc('memory.setEnabled', (_event, enabled: boolean) => {
   if (!memoryService) {
     throw new Error('Memory service not initialized');
   }
@@ -3773,7 +3784,7 @@ ipcMain.handle('memory.setEnabled', (_event, enabled: boolean) => {
 // The preload invokes this with spread args (`invoke('logs.write', level, ...args)`),
 // so collect them with a rest parameter here — a single `args: unknown[]` parameter
 // would silently drop every argument after the first.
-ipcMain.handle('logs.write', (_event, level: 'info' | 'warn' | 'error', ...args: unknown[]) => {
+handleIpc('logs.write', (_event, level: 'info' | 'warn' | 'error', ...args: unknown[]) => {
   try {
     if (level === 'warn') {
       logWarn(...args);
@@ -3789,7 +3800,7 @@ ipcMain.handle('logs.write', (_event, level: 'info' | 'warn' | 'error', ...args:
   }
 });
 
-ipcMain.handle('sandbox.retryLimaSetup', async () => {
+handleIpc('sandbox.retryLimaSetup', async () => {
   if (process.platform !== 'darwin') {
     return { success: false, error: 'Lima is only available on macOS' };
   }
@@ -3820,7 +3831,7 @@ ipcMain.handle('sandbox.retryLimaSetup', async () => {
 });
 
 // Generic retry setup for both WSL and Lima
-ipcMain.handle('sandbox.retrySetup', async () => {
+handleIpc('sandbox.retrySetup', async () => {
   try {
     const bootstrap = getSandboxBootstrap();
     bootstrap.setProgressCallback((progress) => {

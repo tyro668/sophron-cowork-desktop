@@ -6,7 +6,7 @@ import type {
   DataNormalizerArtifactVersionStatus,
   DataNormalizerLanguage,
   DataOutputTable,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { DatabaseInstance } from '../../db/database';
 import { normalizeStatus, toNumber } from '../operators';
 import {

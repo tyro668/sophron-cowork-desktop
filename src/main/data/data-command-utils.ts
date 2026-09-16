@@ -8,7 +8,7 @@ import type {
   DataWorkflowNode,
   DataWorkflowNodeInput,
   DataWorkflowSaveInput,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import { DataCommandError, type WorkflowSaveShape } from './data-command-types';
 import { log } from '../utils/logger';
 import { isRecord } from './workflow';

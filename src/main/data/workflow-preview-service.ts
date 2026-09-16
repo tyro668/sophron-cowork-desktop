@@ -5,7 +5,7 @@ import type {
   DataTaskWorkflow,
   DataWorkflowEdge,
   DataWorkflowNode,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import type { WorkflowSaveShape } from './data-command-types';
 import { DataCommandResources } from './data-command-resources';
 import { logDataCommandFallback, previewLimit, previewOffset } from './data-command-utils';

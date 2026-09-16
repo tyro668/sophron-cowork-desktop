@@ -32,7 +32,7 @@ import type {
   DataInputTablePreview,
   DataInputTableProcessingConfig,
   DataInputTableSourceKind,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;

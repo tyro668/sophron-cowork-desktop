@@ -27,7 +27,7 @@ import type {
   DataTaskWorkflow,
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
 import type {
   PersonalAnalysisProject,

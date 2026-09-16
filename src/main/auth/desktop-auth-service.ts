@@ -8,7 +8,7 @@ import type {
   DesktopAuthStatus,
   DesktopAuthUser,
   ProviderModelInfo,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import type { PersonalAnalysisConnectionInput } from '../../shared/personal-analysis-types';
 import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import { log, logWarn } from '../utils/logger';

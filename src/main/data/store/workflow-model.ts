@@ -6,7 +6,7 @@ import type {
   DataWorkflowNodeInput,
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { toFiniteNumber, toNumber } from '../operators';
 
 export const WORKFLOW_TEMP_CACHE_TTL_MS = 86_400_000;

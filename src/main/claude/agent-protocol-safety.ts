@@ -6,7 +6,7 @@ import type {
   ToolResultMessage as PiToolResultMessage,
   UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
-import type { ContentBlock, Message } from '../../renderer/types';
+import type { ContentBlock, Message } from '../../shared/contracts';
 
 const TOOL_PROTOCOL_OPENERS = [
   '<tool_use',

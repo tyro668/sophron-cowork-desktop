@@ -1,7 +1,7 @@
 import type { DataTaskStore } from '../data/data-task-store';
 import type { DataCommandService } from '../data/data-command-service';
 import type { SessionManager } from '../session/session-manager';
-import type { AgentRuntimeConfig } from '../../renderer/types';
+import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { buildScheduledTaskFallbackTitle } from '../../shared/schedule/task-title';
 import {
   getPermissionRulesForPolicy,

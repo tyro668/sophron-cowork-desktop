@@ -1,4 +1,4 @@
-import type { ClientEvent } from '../renderer/types';
+import type { ClientEvent } from '../shared/contracts';
 
 export function eventRequiresSessionManager(event: ClientEvent): boolean {
   switch (event.type) {

@@ -6,15 +6,15 @@ import type {
   PreviewCloudTableInput,
   SearchCloudTablesInput,
   UploadDataTableToCloudInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
+import { handleIpc } from '../../ipc-handle';
 
 export function registerCloudAnalysisIpc({
-  ipcMain,
   requireDataCommandService,
   logError,
 }: DataIpcContext): void {
-  ipcMain.handle('data.listCloudSpaces', async (_event, payload?: ListCloudSpacesInput) => {
+  handleIpc('data.listCloudSpaces', async (_event, payload?: ListCloudSpacesInput) => {
     try {
       return await requireDataCommandService().listCloudSpaces(payload ?? {});
     } catch (error) {
@@ -23,7 +23,7 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle('data.listCloudProjects', async (_event, payload: ListCloudProjectsInput) => {
+  handleIpc('data.listCloudProjects', async (_event, payload: ListCloudProjectsInput) => {
     try {
       return await requireDataCommandService().listCloudProjects(payload);
     } catch (error) {
@@ -32,7 +32,7 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle('data.listCloudTables', async (_event, payload: ListCloudTablesInput) => {
+  handleIpc('data.listCloudTables', async (_event, payload: ListCloudTablesInput) => {
     try {
       return await requireDataCommandService().listCloudTables(payload);
     } catch (error) {
@@ -41,7 +41,7 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle('data.searchCloudTables', async (_event, payload: SearchCloudTablesInput) => {
+  handleIpc('data.searchCloudTables', async (_event, payload: SearchCloudTablesInput) => {
     try {
       return await requireDataCommandService().searchCloudTables(payload);
     } catch (error) {
@@ -50,7 +50,7 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle('data.previewCloudTable', async (_event, payload: PreviewCloudTableInput) => {
+  handleIpc('data.previewCloudTable', async (_event, payload: PreviewCloudTableInput) => {
     try {
       return await requireDataCommandService().previewCloudTable(payload);
     } catch (error) {
@@ -59,7 +59,7 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
+  handleIpc('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
     try {
       return await requireDataCommandService().importCloudTable(payload);
     } catch (error) {
@@ -68,15 +68,12 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  ipcMain.handle(
-    'data.uploadDataTableToCloud',
-    async (_event, payload: UploadDataTableToCloudInput) => {
-      try {
-        return await requireDataCommandService().uploadDataTableToCloud(payload);
-      } catch (error) {
-        logError('[Data] Error uploading data table to cloud:', error);
-        throw error;
-      }
+  handleIpc('data.uploadDataTableToCloud', async (_event, payload: UploadDataTableToCloudInput) => {
+    try {
+      return await requireDataCommandService().uploadDataTableToCloud(payload);
+    } catch (error) {
+      logError('[Data] Error uploading data table to cloud:', error);
+      throw error;
     }
-  );
+  });
 }

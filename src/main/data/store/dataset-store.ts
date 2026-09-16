@@ -14,7 +14,7 @@ import type {
   DataSummarizeInputTableSourceInput,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { duckDbTypeForDataFieldType } from '../../../shared/data-field-types';
 import { quoteIdentifier, quoteValueIdentifier, toNumber } from '../operators';
 import {

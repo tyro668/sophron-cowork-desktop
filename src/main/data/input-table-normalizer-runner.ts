@@ -6,7 +6,7 @@ import type {
   DataInputTableNormalizerArtifactVersion,
   DataNormalizerDependencyPrepareConfig,
   DataNormalizerRuntime,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import {
   parseInputTableNormalizerManifest,
   type InputTableNormalizerManifest,

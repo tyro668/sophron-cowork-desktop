@@ -1,4 +1,4 @@
-import type { ClientEvent } from '../renderer/types';
+import type { ClientEvent } from '../shared/contracts';
 
 export const ALLOWED_CLIENT_EVENT_TYPES = [
   'session.start',

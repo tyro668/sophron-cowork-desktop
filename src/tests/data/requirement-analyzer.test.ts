@@ -6,7 +6,7 @@ vi.mock('../../main/claude/claude-sdk-one-shot', () => ({
   runPiAiOneShot: runPiAiOneShotMock,
 }));
 
-import type { AgentRuntimeConfig } from '../../renderer/types';
+import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { analyzeDataTaskRequirement } from '../../main/data/workflow/requirement-analyzer';
 
 const runtimeConfig = { model: 'test-model' } as AgentRuntimeConfig;

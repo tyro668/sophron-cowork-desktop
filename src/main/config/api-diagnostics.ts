@@ -30,7 +30,7 @@ import type {
   DiagnosticStepName,
   DiagnosticVerificationLevel,
   LocalOllamaDiscoveryResult,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import { log, logWarn } from '../utils/logger';
 import { probeWithClaudeSdk } from '../claude/claude-sdk-one-shot';
 import { getSharedAuthStorage } from '../claude/shared-auth';

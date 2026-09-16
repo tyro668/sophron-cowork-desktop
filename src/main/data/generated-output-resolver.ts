@@ -1,4 +1,4 @@
-import type { DataOutputTable } from '../../renderer/types';
+import type { DataOutputTable } from '../../shared/contracts';
 import type {
   CreateOutputTableCommand,
   GenerateTaskFromRequirementCommand,

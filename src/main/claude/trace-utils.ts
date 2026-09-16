@@ -1,4 +1,4 @@
-import type { TraceError } from '../../renderer/types';
+import type { TraceError } from '../../shared/contracts';
 
 const SENSITIVE_KEY =
   /(?:^|_)(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|password|passwd|cookie|secret|token)(?:$|_)/i;

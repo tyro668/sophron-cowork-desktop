@@ -13,7 +13,7 @@ import type {
   DataInputTableSourceKind,
   DataInputTableSourceSummary,
   DataSaveInputTableNormalizerDraftInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { type DataFieldType } from '../../../shared/data-field-types';
 import { isRecord, quoteIdentifier, stringArray } from '../operators';
 

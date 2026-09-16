@@ -2,7 +2,7 @@ import type {
   AgentRuntimeConfig,
   DataAnalyzeTaskRequirementResult,
   DataTaskRequirementAnalysisItem,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
 import {
   buildRequirementAnalysisSystemPrompt,

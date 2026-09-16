@@ -7,19 +7,19 @@ import type {
   DataRunTaskInput,
   DataUpdateTaskInput,
   DataWorkflowSaveInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
+import { handleIpc } from '../../ipc-handle';
 import { DataCommandError } from '../data-command-types';
 
 export function registerDataTasksIpc({
-  ipcMain,
   requireDataTaskStore,
   requireDataCommandService,
   resolveModelRuntimeConfig,
   notifyDataTaskCompleted,
   logError,
 }: DataIpcContext): void {
-  ipcMain.handle('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
+  handleIpc('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
     try {
       return await requireDataTaskStore().getDashboard(payload ?? {});
     } catch (error) {
@@ -28,7 +28,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle('data.getTask', async (_event, id: string) => {
+  handleIpc('data.getTask', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getTaskRecord(id);
     } catch (error) {
@@ -37,7 +37,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle('data.createTask', async (_event, payload: DataCreateTaskInput) => {
+  handleIpc('data.createTask', async (_event, payload: DataCreateTaskInput) => {
     try {
       return await requireDataTaskStore().createTask(payload);
     } catch (error) {
@@ -46,7 +46,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle(
+  handleIpc(
     'data.analyzeTaskRequirement',
     async (_event, payload: DataGenerateTaskFromRequirementInput) => {
       try {
@@ -66,7 +66,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.generateTaskFromRequirement',
     async (_event, payload: DataGenerateTaskFromRequirementInput) => {
       try {
@@ -92,7 +92,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle('data.updateTask', async (_event, payload: DataUpdateTaskInput) => {
+  handleIpc('data.updateTask', async (_event, payload: DataUpdateTaskInput) => {
     try {
       return await requireDataTaskStore().updateTask(payload);
     } catch (error) {
@@ -101,7 +101,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
+  handleIpc('data.runTask', async (_event, id: string, payload?: DataRunTaskInput) => {
     try {
       const task = await requireDataTaskStore().runTask(id, payload ?? {});
       if (payload?.outputMode !== 'temporary') {
@@ -121,7 +121,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle(
+  handleIpc(
     'data.runTaskWithDiagnostics',
     async (_event, id: string, payload?: DataRunTaskInput) => {
       try {
@@ -144,7 +144,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle('data.getTaskNodeStats', async (_event, id: string) => {
+  handleIpc('data.getTaskNodeStats', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getTaskNodeStats(id);
     } catch (error) {
@@ -153,7 +153,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle('data.getTaskWorkflow', async (_event, id: string) => {
+  handleIpc('data.getTaskWorkflow', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getTaskWorkflow(id);
     } catch (error) {
@@ -162,19 +162,16 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle(
-    'data.saveTaskWorkflow',
-    async (_event, id: string, payload: DataWorkflowSaveInput) => {
-      try {
-        return await requireDataTaskStore().saveTaskWorkflow(id, payload);
-      } catch (error) {
-        logError('[Data] Error saving task workflow:', error);
-        throw error;
-      }
+  handleIpc('data.saveTaskWorkflow', async (_event, id: string, payload: DataWorkflowSaveInput) => {
+    try {
+      return await requireDataTaskStore().saveTaskWorkflow(id, payload);
+    } catch (error) {
+      logError('[Data] Error saving task workflow:', error);
+      throw error;
     }
-  );
+  });
 
-  ipcMain.handle(
+  handleIpc(
     'data.validateTaskWorkflowPlan',
     async (_event, id: string, payload: DataWorkflowSaveInput) => {
       try {
@@ -186,19 +183,16 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle(
-    'data.previewWorkflowNode',
-    async (_event, payload: DataPreviewWorkflowNodeInput) => {
-      try {
-        return await requireDataTaskStore().previewWorkflowNode(payload);
-      } catch (error) {
-        logError('[Data] Error previewing workflow node cache:', error);
-        throw error;
-      }
+  handleIpc('data.previewWorkflowNode', async (_event, payload: DataPreviewWorkflowNodeInput) => {
+    try {
+      return await requireDataTaskStore().previewWorkflowNode(payload);
+    } catch (error) {
+      logError('[Data] Error previewing workflow node cache:', error);
+      throw error;
     }
-  );
+  });
 
-  ipcMain.handle(
+  handleIpc(
     'data.getWorkflowNodeColumns',
     async (_event, payload: DataPreviewWorkflowNodeInput) => {
       try {
@@ -210,7 +204,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle('data.deleteTask', async (_event, id: string) => {
+  handleIpc('data.deleteTask', async (_event, id: string) => {
     try {
       return { success: await requireDataTaskStore().deleteTask(id) };
     } catch (error) {
@@ -219,7 +213,7 @@ export function registerDataTasksIpc({
     }
   });
 
-  ipcMain.handle(
+  handleIpc(
     'data.getWorkflowNodeColumnTypes',
     async (_event, payload: DataPreviewWorkflowNodeInput) => {
       try {
@@ -231,7 +225,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.getWorkflowNodeColumnValues',
     async (_event, payload: DataPreviewWorkflowNodeInput & { column: string }) => {
       try {
@@ -243,7 +237,7 @@ export function registerDataTasksIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.getWorkflowNodeRowCount',
     async (_event, payload: DataPreviewWorkflowNodeInput) => {
       try {

@@ -8,7 +8,7 @@ import { log, logError } from '../utils/logger';
 import { isUncPath, isWindowsDrivePath } from '../../shared/local-file-path';
 import { resolvePathAgainstWorkspace } from '../../shared/workspace-path';
 import type { RemoteMessage, RemoteResponse, RemoteSessionMapping, ChannelType } from './types';
-import type { ContentBlock, TextContent } from '../../renderer/types/index';
+import type { ContentBlock, TextContent } from '../../shared/contracts';
 
 // Callback type for sending responses back to channels
 type ResponseCallback = (response: RemoteResponse) => Promise<void>;

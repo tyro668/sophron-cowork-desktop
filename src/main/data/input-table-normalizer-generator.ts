@@ -8,7 +8,7 @@ import type {
   DataInputTableSourceSummary,
   DataNormalizerLanguage,
   DataNormalizerProjectFile,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import {
   createInputTableNormalizerProjectTemplate,
   type InputTableNormalizerProjectTemplate,

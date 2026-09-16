@@ -7,7 +7,7 @@ import {
   type OutputTableResult,
   type UpdateOutputTableCommand,
 } from './data-command-types';
-import type { DataInputTablePreview } from '../../renderer/types';
+import type { DataInputTablePreview } from '../../shared/contracts';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;

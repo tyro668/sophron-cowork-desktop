@@ -1,5 +1,22 @@
 # Project instructions
 
+## Process boundaries (enforced)
+
+Cross-process contracts live in `src/shared/contracts/` (`config/`, `session/`, `data/`, `ipc/`, `remote/`, plus `mcp/`, `skills/`, `memory/`, `schedule/`, `update/`, `automation/`). Rules:
+
+- `src/main/**` and `src/preload/**` must never import from `src/renderer/**` — import contract types from `../shared/contracts` instead. `src/renderer/types/index.ts` is a compatibility re-export barrel plus renderer-local view types only.
+- `src/shared/**` must never import from `src/main/**`, `src/renderer/**`, or `src/preload/**`. Shared code is pure (no Electron/browser APIs).
+- `src/renderer/**` must never import from `src/main/**` or `src/preload/**` — use the `electronAPI` bridge.
+- Shared i18n locale resources live in `src/shared/i18n/locales/` (used by both renderer UI and main-process remote messages).
+
+Enforcement: ESLint `no-restricted-imports` overrides in `.eslintrc.cjs`, plus `src/tests/contracts/architecture-boundaries.test.ts` (vitest scan).
+
+## IPC input validation (enforced)
+
+All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ipc-handle.ts` — never call `ipcMain.handle` directly in feature code. Every channel must have a positional argument schema entry in `IPC_INPUT_SCHEMAS` (`src/shared/contracts/ipc/schemas.ts`); `client-event`/`client-invoke` payloads are validated by `clientEventSchema`. `src/tests/contracts/ipc-boundary.test.ts` fails if a registered channel lacks a schema.
+
+## UI work
+
 All UI work under `src/renderer` must follow [`UI_STYLE_GUIDE.md`](UI_STYLE_GUIDE.md).
 
 - Preserve the existing layout unless the task explicitly requests a layout change.

@@ -26,7 +26,7 @@ import type {
   FileAttachmentContent,
   CloudTableAttachmentContent,
   AgentRuntimeConfig,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
 import { PathResolver } from '../sandbox/path-resolver';
 import {

@@ -7,7 +7,7 @@ import type {
   DataColumnTypeInfo,
   DataInputTableSourceSummary,
   DataSummarizeInputTableSourceInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,

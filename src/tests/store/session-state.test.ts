@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAppStore } from '../../renderer/store';
-import type { MountedPath } from '../../renderer/types';
+import type { MountedPath } from '../../shared/contracts';
 
 // Reset store before each test
 beforeEach(() => {

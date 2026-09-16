@@ -37,7 +37,7 @@ import type {
   ContentBlock,
   AgentRuntimeConfig,
   TraceEvaluationMetrics,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import { v4 as uuidv4 } from 'uuid';
 import { decidePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
 import { PathResolver } from '../sandbox/path-resolver';

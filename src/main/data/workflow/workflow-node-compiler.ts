@@ -3,7 +3,7 @@ import type {
   DataAutomationLineageEntry,
   DataWorkflowEdgeInput,
   DataWorkflowNodeInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import { DataCommandError } from '../data-command-types';
 import { DEFAULT_OPERATOR_LABELS } from '../store/workflow-model';
 import { validateGeneratedOperatorConfig } from './generated-operator-config-validator';

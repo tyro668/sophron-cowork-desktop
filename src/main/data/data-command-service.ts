@@ -1,5 +1,5 @@
 import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
-import type { DataCleaningTask } from '../../renderer/types';
+import type { DataCleaningTask } from '../../shared/contracts';
 import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,

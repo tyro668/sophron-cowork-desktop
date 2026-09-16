@@ -57,7 +57,7 @@ import type {
   DataInputTablePreview,
   DataOutputTable,
   DataTaskWorkflow,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import type {
   PersonalAnalysisProject,
   PersonalAnalysisSpace,

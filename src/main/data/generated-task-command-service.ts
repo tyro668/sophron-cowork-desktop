@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { exportPrepWorkflowDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
-import type { DataAutomationColumnSnapshot, DataCleaningTask } from '../../renderer/types';
+import type { DataAutomationColumnSnapshot, DataCleaningTask } from '../../shared/contracts';
 import type { DataTaskStore } from './data-task-store';
 import type { DataTaskLlmUsageRecorder } from './data-task-llm-usage-recorder';
 import {

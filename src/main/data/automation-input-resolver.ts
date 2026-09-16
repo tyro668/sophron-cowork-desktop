@@ -1,4 +1,4 @@
-import type { DataDataset } from '../../renderer/types';
+import type { DataDataset } from '../../shared/contracts';
 import type {
   CreateInputTableCommand,
   GenerateTaskFromRequirementCommand,

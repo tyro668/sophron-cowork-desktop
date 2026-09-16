@@ -3,6 +3,7 @@ import type {
   ClientEvent,
   ServerEvent,
   AppConfig,
+  AppConfigUpdate,
   CreateSetPayload,
   ProviderPresets,
   Skill,
@@ -92,13 +93,13 @@ import type {
   CodexAuthStatus,
   CodexAuthActionResult,
   CodexLoginPromptPayload,
-} from '../renderer/types';
+} from '../shared/contracts';
 import type {
   DiagnosticInput,
   DiagnosticResult,
   RunTaskResult,
   WorkflowNodeRunStat,
-} from '../renderer/types';
+} from '../shared/contracts';
 import { isAllowedClientEventType } from '../shared/client-event-allowlist';
 import type { WorkflowPlanDiagnostic } from '../shared/workflow-plan';
 import type {
@@ -117,7 +118,7 @@ import type {
   PairedUser,
   PairingRequest,
   RemoteSessionMapping,
-} from '../shared/ipc-types';
+} from '../shared/contracts';
 
 interface DataCommandIpcError {
   __dataCommandError: true;
@@ -389,7 +390,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   config: {
     get: (): Promise<AppConfig> => ipcRenderer.invoke('config.get'),
     getPresets: (): Promise<ProviderPresets> => ipcRenderer.invoke('config.getPresets'),
-    save: (config: Partial<AppConfig>): Promise<{ success: boolean; config: AppConfig }> =>
+    save: (config: AppConfigUpdate): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.save', config),
     createSet: (payload: CreateSetPayload): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.createSet', payload),
@@ -404,7 +405,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('config.switchSet', payload),
     updateSet: (payload: {
       id: string;
-      updates: Partial<AppConfig>;
+      updates: AppConfigUpdate;
     }): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.updateSet', payload),
     selectBuiltinModel: (payload: {
@@ -886,7 +887,7 @@ declare global {
       config: {
         get: () => Promise<AppConfig>;
         getPresets: () => Promise<ProviderPresets>;
-        save: (config: Partial<AppConfig>) => Promise<{ success: boolean; config: AppConfig }>;
+        save: (config: AppConfigUpdate) => Promise<{ success: boolean; config: AppConfig }>;
         createSet: (payload: CreateSetPayload) => Promise<{ success: boolean; config: AppConfig }>;
         renameSet: (payload: {
           id: string;
@@ -896,7 +897,7 @@ declare global {
         switchSet: (payload: { id: string }) => Promise<{ success: boolean; config: AppConfig }>;
         updateSet: (payload: {
           id: string;
-          updates: Partial<AppConfig>;
+          updates: AppConfigUpdate;
         }) => Promise<{ success: boolean; config: AppConfig }>;
         selectBuiltinModel: (payload: {
           model: string;

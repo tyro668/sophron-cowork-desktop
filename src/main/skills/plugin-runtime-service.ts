@@ -12,7 +12,7 @@ import type {
   PluginComponentKind,
   PluginInstallResultV2,
   PluginToggleResult,
-} from '../../renderer/types';
+} from '../../shared/contracts';
 import { log, logError } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
 import { getDefaultShell } from '../utils/shell-resolver';

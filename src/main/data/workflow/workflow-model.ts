@@ -2,7 +2,7 @@ import type {
   DataAutomationColumnSnapshot,
   DataAutomationLineageEntry,
   DataWorkflowOperatorType,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 
 export type WorkflowLiteral = string | number | boolean | null;
 

@@ -5,7 +5,7 @@ import {
   type Usage,
   type UserMessage as PiUserMessage,
 } from '@mariozechner/pi-ai';
-import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../renderer/types';
+import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../shared/contracts';
 import { PROVIDER_PRESETS, type AppConfig, type CustomProtocolType } from '../config/config-store';
 import {
   normalizeAnthropicBaseUrl,

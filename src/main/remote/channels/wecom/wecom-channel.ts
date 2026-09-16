@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { ChannelBase, NonRetryableChannelError, withRetry } from '../channel-base';
 import { log, logError, logWarn } from '../../../utils/logger';
 import type { RemoteMessage, RemoteResponse, WecomChannelConfig } from '../../types';
-import enTranslations from '../../../../renderer/i18n/locales/en.json';
-import zhTranslations from '../../../../renderer/i18n/locales/zh.json';
+import enTranslations from '../../../../shared/i18n/locales/en.json';
+import zhTranslations from '../../../../shared/i18n/locales/zh.json';
 import { WecomWebhookCrypto, type WecomEncryptedEnvelope } from './wecom-webhook-crypto';
 import { WecomWsClient, type WecomTextFrame } from './wecom-ws-client';
 

@@ -17,7 +17,7 @@ import type { WorkflowExpressionArgumentType } from './workflow-expression-regis
 import type {
   DataAutomationColumnSnapshot,
   DataAutomationLineageEntry,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import {
   formatDslField,
   inferUnpivotValueType,

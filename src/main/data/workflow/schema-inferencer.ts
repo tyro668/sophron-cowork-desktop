@@ -1,5 +1,8 @@
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import type { DataAutomationColumnSnapshot, DataInputTablePreview } from '../../../renderer/types';
+import type {
+  DataAutomationColumnSnapshot,
+  DataInputTablePreview,
+} from '../../../shared/contracts';
 import { DataCommandError } from '../data-command-types';
 import {
   type GeneratedDataTaskWorkflow,

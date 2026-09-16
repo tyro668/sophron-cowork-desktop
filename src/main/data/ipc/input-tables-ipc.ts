@@ -9,17 +9,17 @@ import type {
   DataPublishInputTableNormalizerVersionInput,
   DataSummarizeInputTableSourceInput,
   DataUpdateDatasetInput,
-} from '../../../renderer/types';
+} from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
+import { handleIpc } from '../../ipc-handle';
 
 export function registerInputTablesIpc({
-  ipcMain,
   requireDataTaskStore,
   requireDataCommandService,
   resolveModelRuntimeConfig,
   logError,
 }: DataIpcContext): void {
-  ipcMain.handle('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
+  handleIpc('data.importDataset', async (_event, payload: DataImportDatasetInput) => {
     try {
       return await requireDataTaskStore().importDataset(payload);
     } catch (error) {
@@ -28,7 +28,7 @@ export function registerInputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.getInputTable', async (_event, id: string) => {
+  handleIpc('data.getInputTable', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getInputTableRecord(id);
     } catch (error) {
@@ -37,7 +37,7 @@ export function registerInputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.updateDataset', async (_event, payload: DataUpdateDatasetInput) => {
+  handleIpc('data.updateDataset', async (_event, payload: DataUpdateDatasetInput) => {
     try {
       return await requireDataTaskStore().updateDataset(payload);
     } catch (error) {
@@ -46,7 +46,7 @@ export function registerInputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.previewInputTable', async (_event, payload: DataPreviewInputTableInput) => {
+  handleIpc('data.previewInputTable', async (_event, payload: DataPreviewInputTableInput) => {
     try {
       return await requireDataTaskStore().previewInputTable(payload);
     } catch (error) {
@@ -55,7 +55,7 @@ export function registerInputTablesIpc({
     }
   });
 
-  ipcMain.handle(
+  handleIpc(
     'data.summarizeInputTableSource',
     async (_event, payload: DataSummarizeInputTableSourceInput) => {
       try {
@@ -67,7 +67,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.generateInputTableNormalizerDraft',
     async (event, payload: DataGenerateInputTableNormalizerDraftInput) => {
       try {
@@ -97,7 +97,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.previewInputTableNormalizerVersion',
     async (_event, payload: DataPreviewInputTableNormalizerVersionInput) => {
       try {
@@ -109,7 +109,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.publishInputTableNormalizerVersion',
     async (_event, payload: DataPublishInputTableNormalizerVersionInput) => {
       try {
@@ -121,7 +121,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.deleteInputTableNormalizerVersion',
     async (_event, payload: DataDeleteInputTableNormalizerVersionInput) => {
       try {
@@ -133,7 +133,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle(
+  handleIpc(
     'data.listInputTableNormalizerVersions',
     async (_event, payload: DataListInputTableNormalizerVersionsInput) => {
       try {
@@ -145,7 +145,7 @@ export function registerInputTablesIpc({
     }
   );
 
-  ipcMain.handle('data.previewDataset', async (_event, payload: DataPreviewDatasetInput) => {
+  handleIpc('data.previewDataset', async (_event, payload: DataPreviewDatasetInput) => {
     try {
       return await requireDataTaskStore().previewDataset(payload);
     } catch (error) {
@@ -154,7 +154,7 @@ export function registerInputTablesIpc({
     }
   });
 
-  ipcMain.handle('data.deleteDataset', async (_event, id: string) => {
+  handleIpc('data.deleteDataset', async (_event, id: string) => {
     try {
       return { success: await requireDataTaskStore().deleteDataset(id) };
     } catch (error) {

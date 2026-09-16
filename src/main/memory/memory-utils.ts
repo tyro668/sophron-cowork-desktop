@@ -1,7 +1,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ContentBlock, Message } from '../../renderer/types';
+import type { ContentBlock, Message } from '../../shared/contracts';
 import memorySearchLexicon from './memory-search-lexicon.json';
 import type {
   AppliedCoreMemoryAction,
@@ -420,8 +420,7 @@ function isStopToken(token: string, kind: SearchTokenKind): boolean {
 function getTokenWeight(token: string, kind: SearchTokenKind): number {
   const weights = SEARCH_LEXICON.weights;
   const base = weights[kind] ?? weights.default;
-  const domainBoost =
-    EN_DOMAIN_TERMS.has(token) || ZH_DOMAIN_TERMS.has(token) ? weights.domain : 1;
+  const domainBoost = EN_DOMAIN_TERMS.has(token) || ZH_DOMAIN_TERMS.has(token) ? weights.domain : 1;
   const lengthBoost =
     kind === 'number'
       ? 0
@@ -485,9 +484,7 @@ export function extractKeywords(text: string, limit = 8): string[] {
   return [...scores.entries()]
     .sort(
       (a, b) =>
-        b[1] - a[1] ||
-        Array.from(b[0]).length - Array.from(a[0]).length ||
-        a[0].localeCompare(b[0])
+        b[1] - a[1] || Array.from(b[0]).length - Array.from(a[0]).length || a[0].localeCompare(b[0])
     )
     .slice(0, limit)
     .map(([token]) => token);

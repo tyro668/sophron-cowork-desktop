@@ -31,162 +31,41 @@ import { hasCodexCredentials } from './codex-auth';
 import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
 import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
 
-/**
- * Application configuration schema
- */
-export type ProviderType =
-  | 'openrouter'
-  | 'anthropic'
-  | 'custom'
-  | 'openai'
-  | 'openai-codex'
-  | 'deepseek'
-  | 'moonshot'
-  | 'aliyun'
-  | 'zai'
-  | 'sophron'
-  | 'gemini'
-  | 'ollama';
-export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
-export type AppTheme = 'dark' | 'light' | 'system';
-export type ProviderProfileKey =
-  | 'openrouter'
-  | 'anthropic'
-  | 'openai'
-  | 'openai-codex'
-  | 'deepseek'
-  | 'moonshot'
-  | 'aliyun'
-  | 'zai'
-  | 'sophron'
-  | 'gemini'
-  | 'ollama'
-  | 'custom:anthropic'
-  | 'custom:openai'
-  | 'custom:gemini';
-export type ConfigSetId = string;
-export type CreateSetMode = 'blank' | 'clone';
-type ConfigurableProviderProfileKey = Exclude<ProviderProfileKey, 'sophron'>;
-
-export interface CreateConfigSetPayload {
-  name: string;
-  mode?: CreateSetMode;
-  fromSetId?: string;
-}
-
-export interface ProviderProfile {
-  apiKey: string;
-  baseUrl?: string;
-  model: string;
-  contextWindow?: number;
-  maxTokens?: number;
-}
-
-export interface ApiConfigSet {
-  id: ConfigSetId;
-  name: string;
-  isSystem?: boolean;
-  // Empty string means "no provider selected yet" (a freshly created blank set)
-  provider: ProviderType | '';
-  customProtocol: CustomProtocolType;
-  activeProfileKey: ProviderProfileKey;
-  profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;
-  enableThinking: boolean;
-  updatedAt: string;
-}
-
-export interface AppConfig {
-  // API Provider
-  provider: ProviderType;
-
-  // API credentials
-  apiKey: string;
-  baseUrl?: string;
-  customProtocol?: CustomProtocolType;
-
-  // Model selection
-  model: string;
-  builtinLlmModel?: string;
-  contextWindow?: number;
-  maxTokens?: number;
-
-  // Active profile
-  activeProfileKey: ProviderProfileKey;
-  profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;
-
-  // Active config set
-  activeConfigSetId: ConfigSetId;
-  configSets: ApiConfigSet[];
-
-  // Optional: Claude Code CLI path override
-  claudeCodePath?: string;
-
-  // Optional: Default working directory
-  defaultWorkdir?: string;
-
-  // Optional: Global skills storage directory
-  globalSkillsPath?: string;
-
-  // Developer logs
-  enableDevLogs: boolean;
-
-  // UI theme preference
-  theme: AppTheme;
-
-  // Sandbox mode (WSL/Lima isolation)
-  sandboxEnabled: boolean;
-
-  // Global memory toggle
-  memoryEnabled: boolean;
-
-  // Dedicated memory runtime config
-  memoryRuntime: MemoryRuntimeConfig;
-
-  // Personal Analysis / mock server connection
-  personalAnalysis: StoredPersonalAnalysisConfig;
-
-  // Enable thinking mode (show thinking steps)
-  enableThinking: boolean;
-
-  // First run flag
-  isConfigured: boolean;
-}
-
-export type AgentRuntimeConfig = Pick<
+// Canonical application configuration contracts live in shared/contracts/config.
+// Re-exported here so existing main-process imports keep working.
+export type {
+  ProviderType,
+  CustomProtocolType,
+  AppTheme,
+  ProviderProfileKey,
+  ConfigSetId,
+  CreateSetMode,
+  CreateSetPayload,
+  CreateConfigSetPayload,
+  ProviderProfile,
+  ApiConfigSet,
   AppConfig,
-  | 'provider'
-  | 'apiKey'
-  | 'baseUrl'
-  | 'customProtocol'
-  | 'model'
-  | 'contextWindow'
-  | 'maxTokens'
-  | 'enableThinking'
->;
+  AgentRuntimeConfig,
+  MemoryModelRuntimeConfig,
+  MemoryRuntimeConfig,
+} from '../../shared/contracts/config';
+import type {
+  ProviderType,
+  CustomProtocolType,
+  AppTheme,
+  ProviderProfileKey,
+  ConfigSetId,
+  CreateSetMode,
+  CreateConfigSetPayload,
+  ProviderProfile,
+  ApiConfigSet,
+  AppConfig,
+  AgentRuntimeConfig,
+  MemoryModelRuntimeConfig,
+  MemoryRuntimeConfig,
+} from '../../shared/contracts/config';
 
-export interface MemoryModelRuntimeConfig {
-  inheritFromActive: boolean;
-  provider?: ProviderType;
-  customProtocol?: CustomProtocolType;
-  apiKey?: string;
-  baseUrl?: string;
-  model?: string;
-  timeoutMs: number;
-}
-
-export interface MemoryRuntimeConfig {
-  llm: MemoryModelRuntimeConfig;
-  embedding: MemoryModelRuntimeConfig;
-  useEmbedding: boolean;
-  maxNavSteps: number;
-  ingestionConcurrency: number;
-  storageRoot?: string;
-  evalEnabled?: boolean;
-  evalWorkspaces?: string[];
-  evalMaxRounds?: number;
-  evalArtifactsRoot?: string;
-  promptIterationRounds?: number;
-}
+type ConfigurableProviderProfileKey = Exclude<ProviderProfileKey, 'sophron'>;
 
 type ConfigStoreUpdate = Partial<Omit<AppConfig, 'personalAnalysis'>> & {
   personalAnalysis?: Partial<StoredPersonalAnalysisConfig>;

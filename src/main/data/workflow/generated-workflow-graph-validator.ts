@@ -1,4 +1,4 @@
-import type { DataWorkflowNodeInput, DataWorkflowSaveInput } from '../../../renderer/types';
+import type { DataWorkflowNodeInput, DataWorkflowSaveInput } from '../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import {
   buildWorkflowPlan,

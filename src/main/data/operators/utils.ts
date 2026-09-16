@@ -1,5 +1,5 @@
 import { duckDbTypeForDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
-import type { DataColumnTypeInfo } from '../../../renderer/types';
+import type { DataColumnTypeInfo } from '../../../shared/contracts';
 import { parseDuration } from '../../../shared/operator-schemas/join';
 import { parseFieldRefExact } from '../../../shared/prep-dsl';
 
