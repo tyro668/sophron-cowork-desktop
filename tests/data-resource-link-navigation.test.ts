@@ -25,9 +25,9 @@ const dataNavigationPath = path.resolve(
   process.cwd(),
   'src/renderer/features/data/hooks/use-data-navigation.ts'
 );
-const inputTablesPath = path.resolve(
+const inputTablePreviewDialogPath = path.resolve(
   process.cwd(),
-  'src/renderer/components/data-view/input-tables.tsx'
+  'src/renderer/components/data-view/input-table-preview-dialog.tsx'
 );
 const markdownPath = path.resolve(process.cwd(), 'src/renderer/components/MessageMarkdown.tsx');
 
@@ -85,10 +85,10 @@ describe('data resource chat links', () => {
 
   it('keeps output table preview mapped to output-table copy', () => {
     const dataView = fs.readFileSync(dataViewPagePath, 'utf8');
-    const inputTables = fs.readFileSync(inputTablesPath, 'utf8');
+    const previewDialog = fs.readFileSync(inputTablePreviewDialogPath, 'utf8');
     expect(dataView).toContain("tableKind={preview.storedPreviewTarget?.kind ?? 'input'}");
-    expect(inputTables).toContain("t('data.outputTables.previewTitle')");
-    expect(inputTables).toContain("t('data.outputTables.previewEmpty')");
+    expect(previewDialog).toContain("t('data.outputTables.previewTitle')");
+    expect(previewDialog).toContain("t('data.outputTables.previewEmpty')");
   });
 
   it('exposes direct resource lookup IPC methods with input schemas', async () => {

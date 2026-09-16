@@ -203,6 +203,43 @@ describe('entrypoint shape', () => {
     expect(fs.existsSync(dts)).toBe(true);
     expect(fs.readFileSync(dts, 'utf8')).toMatch(/electronAPI\s*:\s*ElectronApi/);
   });
+
+  it('gui-operate-server.ts stays a thin MCP adapter over gui-operate/*', () => {
+    const src = fs.readFileSync(path.join(SRC, 'main/mcp/gui-operate-server.ts'), 'utf8');
+    // The entry owns tool schemas + request dispatch only; platform adapters,
+    // vision, planner, and click history live in mcp/gui-operate/*.
+    expect(src).toMatch(/from '\.\/gui-operate\//);
+    expect(src).not.toMatch(/\bwindowsPerform|\bcallVisionAPI|\bperformMacClickViaQuartz\b/);
+    expect(src).not.toMatch(/\bfunction\s+(performClick|takeScreenshot|planGUIActions)\b/);
+  });
+
+  it('gui-operate modules keep the one-directional layering', () => {
+    const dir = path.join(SRC, 'main/mcp/gui-operate');
+    const layerRank = (file: string): number => {
+      const name = path.basename(file, '.ts');
+      if (name === 'types' || name === 'app-aliases') return 0;
+      if (name === 'env') return 1;
+      if (name === 'windows') return 2;
+      if (name === 'display') return 3;
+      if (name === 'macos') return 4;
+      if (name === 'click-history') return 5;
+      if (name === 'actions') return 6;
+      if (name === 'vision') return 7;
+      if (name === 'planner') return 8;
+      return 8;
+    };
+    const offenders: string[] = [];
+    for (const file of walk(dir)) {
+      const rank = layerRank(file);
+      for (const match of fs.readFileSync(file, 'utf8').matchAll(/from '\.\/([a-z-]+)\.js'/g)) {
+        const dep = path.join(dir, `${match[1]}.ts`);
+        if (fs.existsSync(dep) && layerRank(dep) >= rank) {
+          offenders.push(`${path.relative(SRC, file)} -> ${match[1]}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('data store layering', () => {

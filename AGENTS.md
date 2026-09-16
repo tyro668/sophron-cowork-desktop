@@ -20,7 +20,9 @@ All `ipcMain.handle` registrations must go through `handleIpc()` in `src/main/ip
 - `src/main/index.ts` is a thin composition root: env bootstrap, single-instance lock, `registerAllIpc()`, `registerAppLifecycle()`, `whenReady().then(bootstrap)`. It must not register IPC handlers or create windows directly — `src/tests/contracts/architecture-boundaries.test.ts` fails otherwise.
 - `src/main/app/` holds app infrastructure: `context.ts` (shared runtime state `appContext`), `bootstrap.ts` (service assembly), `lifecycle.ts` (app events + shutdown cleanup), `window.ts`, `tray.ts`, `menu.ts`, `workdir.ts`, `theme.ts`, `notifications.ts`, `events.ts`, `file-open.ts`, `runtime-config.ts`, `sandbox-bootstrap.ts`.
 - `src/main/features/<domain>/ipc.ts` registers that domain's channels; `service.ts` holds domain state/logic. New channels belong in the matching domain module (or a new one), wired via `registerAllIpc()` in `src/main/features/index.ts`.
-- `src/preload/index.ts` composes `src/preload/api/<domain>.ts` factories into one object checked with `satisfies ElectronApi`. The bridge type lives in `src/shared/contracts/electron-api.ts`; the `Window` global is declared once in `src/preload/electron-api.d.ts`.
+- `src/preload/index.ts` composes `src/preload/api/<domain>.ts` factories into one object checked with `satisfies ElectronApi`. The bridge type lives in `src/shared/contracts/electron-api.ts`; the `Window` global is declared once in `src/shared/contracts/electron-api.d.ts`.
+- `src/main/mcp/gui-operate-server.ts` is a thin MCP adapter (tool schemas + request dispatch + `main()`); all capability logic lives in `src/main/mcp/gui-operate/` with one-directional layering: `types`/`app-aliases` ← `env` ← `windows` ← `display` ← `macos` ← `click-history` ← `actions` ← `vision` ← `planner`. The boundary test fails on upward imports.
+- `src/main/claude/agent-runner.ts` is the run orchestrator; extracted siblings hold stable responsibilities: `agent-runner-env` (bundled Node/skill paths + PATH enrichment), `agent-runner-log-utils` (safeStringify/message summaries/token normalization), `agent-runner-tools` (MCP→SDK tool bridge), `agent-runner-skills` (skill path resolution/sync, `AgentRunnerSkills`), `agent-runner-sandbox-sync` (WSL/Lima init + skill sync), `agent-runner-event-bridge` (per-run SDK→ServerEvent bridge owning all streaming state via `AgentRunBridgeDeps`). Shared per-run mutable state crosses through explicit deps (`modelClock` cell, `seenToolCallIds` set, abort callbacks) — never module-level globals.
 
 ## Data store layering (enforced)
 
@@ -57,6 +59,12 @@ The data workspace is feature-sliced under `src/renderer/features/data/`:
 - Presentational components stay in `src/renderer/components/data-view/` and `workflow-forms/` and only receive state + action callbacks — they call `dataClient`, never `window.electronAPI`.
 
 `architecture-boundaries.test.ts` fails on `electronAPI` usage outside `api/data-client.ts` in the data feature and data-view/workflow-form components.
+
+## Large renderer modules (split by responsibility)
+
+- `components/data-view/input-tables.tsx` is the entry (source filter bar + table list panel + editor wrapper); `input-table-editor-workbench.tsx` (editor surface), `input-table-version-history.tsx` (project tree + version diffing), `input-table-code-preview.tsx` (CodeMirror infra + file preview), `input-table-preview-dialog.tsx` (dataset preview dialog), `input-table-normalizer-utils.ts` (pure normalizer/config helpers). Dependency direction: utils → preview/tree/history → workbench → entry.
+- `components/settings/schedule/editorPanels.tsx` is the entry (header/status/project/trigger panels + schedule/file-change config cards); `editor-controls.tsx` (shared row/select/segmented primitives + automation prompt fields + data-process helpers), `schedule-time-pickers.tsx` (weekday/month-day/times pickers), `cloud-action-editors.tsx` (cloud table-process editor + source/target selectors), `action-config-editors.tsx` (action chain + per-type action editors + action catalog metadata).
+- `hooks/useApiConfigState.ts` is the React binding; `api-config-model.ts` (pure: profile keys, snapshots, config-set builders, labels) and `api-config-reducer.ts` (state + action union + reducer) hold everything testable without React. Public helpers stay re-exported from the hook for compatibility.
 
 ## UI work
 

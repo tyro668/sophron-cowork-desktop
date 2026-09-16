@@ -1,7 +1,7 @@
 /**
  * @module main/claude/agent-runner
  *
- * AI query execution engine (1514 lines).
+ * AI query execution engine.
  *
  * Responsibilities:
  * - Runs AI conversations via the sophron agent SDK (createAgentSession)
@@ -9,6 +9,11 @@
  * - Bridges MCP tools into SDK ToolDefinition format
  * - Streams responses back as ServerEvents (stream.message, stream.partial, trace.step)
  * - Skills injection, system prompt assembly, permission handling
+ *
+ * Extracted siblings: agent-runner-env (bundled paths), agent-runner-log-utils
+ * (serialization/usage), agent-runner-tools (MCP tool bridge), agent-runner-skills
+ * (skill path sync), agent-runner-sandbox-sync (WSL/Lima init),
+ * agent-runner-event-bridge (per-run SDK→ServerEvent streaming state).
  *
  * Dependencies: session-manager, mcp-manager, config-store, skills-manager
  */
@@ -27,14 +32,12 @@ import type {
   AssistantMessage as PiAssistantMessage,
   Message as PiMessage,
 } from '@mariozechner/pi-ai';
-import { Type, type TSchema } from '@sinclair/typebox';
 import { getSharedAuthStorage, ModelRegistry } from './shared-auth';
 import type {
   Session,
   Message,
   TraceStep,
   ServerEvent,
-  ContentBlock,
   AgentRuntimeConfig,
   TraceEvaluationMetrics,
 } from '../../shared/contracts';
@@ -54,21 +57,16 @@ import {
 } from '../utils/logger';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
-import { execFileSync, spawn } from 'child_process';
-import { app } from 'electron';
+import { spawn } from 'child_process';
 import { setMaxListeners } from 'node:events';
 import { getSandboxAdapter } from '../sandbox/sandbox-adapter';
-import { pathConverter } from '../sandbox/wsl-bridge';
 import { SandboxSync } from '../sandbox/sandbox-sync';
-import { extractArtifactsFromText, buildArtifactTraceSteps } from '../utils/artifact-parser';
-import { getDefaultShell } from '../utils/shell-resolver';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import type { SkillsAdapter } from '../skills/skills-adapter';
 import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extension-manager';
 import { configStore } from '../config/config-store';
 import { normalizeOpenAICompatibleBaseUrl } from '../config/auth-utils';
-import { resolveMessageEndPayload, toUserFacingErrorText } from './agent-runner-message-end';
+import { toUserFacingErrorText } from './agent-runner-message-end';
 import {
   applyPiModelRuntimeOverrides,
   buildSyntheticPiModel,
@@ -77,345 +75,26 @@ import {
   resolveSyntheticPiModelFallback,
 } from './pi-model-resolution';
 import { buildPiSessionRuntimeSignature } from './pi-session-runtime';
-import { ThinkTagStreamParser } from './think-tag-parser';
-import {
-  buildColdStartAgentHistory,
-  containsPseudoToolCallMarkup,
-  PseudoToolCallStreamGuard,
-} from './agent-protocol-safety';
-import {
-  LoopGuard,
-  buildAbortUserMessage,
-  buildHaltSteerMessage,
-  buildWarnSteerMessage,
-  type LoopGuardDecision,
-  type ToolCallDescriptor,
-} from './agent-runner-loop-guard';
-import {
-  normalizeMcpToolResultForModel,
-  normalizeToolExecutionResultForUi,
-} from './tool-result-utils';
+import { buildColdStartAgentHistory } from './agent-protocol-safety';
 import { fetchOllamaModelInfo } from '../config/ollama-api';
 import { ensureCodexCredentials } from '../config/codex-auth';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { createSandboxCodingTools } from './sandbox-tool-operations';
-import {
-  buildTraceError,
-  buildTraceOutputPreview,
-  normalizeTraceUsage,
-  sanitizeTraceInput,
-} from './trace-utils';
+import { buildTraceError, sanitizeTraceInput } from './trace-utils';
 import { buildMainAgentSystemPrompt } from '../prompts/main-agent';
+import {
+  VIRTUAL_WORKSPACE_PATH,
+  estimateCharsPerToken,
+  getBundledNodePaths,
+  enrichProcessPathForBuild,
+} from './agent-runner-env';
+import { initSandboxSyncForRun } from './agent-runner-sandbox-sync';
+import { AgentRunEventBridge } from './agent-runner-event-bridge';
+import { safeStringify, toErrorText } from './agent-runner-log-utils';
+import { buildMcpCustomTools } from './agent-runner-tools';
+import { AgentRunnerSkills } from './agent-runner-skills';
 
 // Virtual workspace path shown to the model (hides real sandbox path)
-const VIRTUAL_WORKSPACE_PATH = '/workspace';
-
-/**
- * Estimate chars-per-token ratio based on content language.
- * CJK characters tokenize at ~1.5 chars/token vs ~4 for English.
- */
-function estimateCharsPerToken(sampleText: string): number {
-  if (!sampleText || sampleText.length === 0) return 4;
-  const sample = sampleText.substring(0, 500);
-  const cjkCount = (sample.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || [])
-    .length;
-  const cjkRatio = cjkCount / sample.length;
-  return 4 - cjkRatio * 2.5; // Range: 1.5 (pure CJK) ~ 4 (pure English)
-}
-
-// Bundled node/npx paths never change at runtime — resolve once.
-let cachedBundledNodePaths: { node: string; npx: string } | null | undefined = undefined;
-
-function getBundledNodePaths(): { node: string; npx: string } | null {
-  if (cachedBundledNodePaths !== undefined) {
-    return cachedBundledNodePaths;
-  }
-  const platform = process.platform;
-  const arch = process.arch;
-  let resourcesPath: string;
-  if (!app.isPackaged) {
-    const projectRoot = path.join(__dirname, '..', '..');
-    resourcesPath = path.join(projectRoot, 'resources', 'node', `${platform}-${arch}`);
-  } else {
-    resourcesPath = path.join(process.resourcesPath, 'node');
-  }
-  const binDir = platform === 'win32' ? resourcesPath : path.join(resourcesPath, 'bin');
-  const nodePath = path.join(binDir, platform === 'win32' ? 'node.exe' : 'node');
-  const npxPath = path.join(binDir, platform === 'win32' ? 'npx.cmd' : 'npx');
-  cachedBundledNodePaths =
-    fs.existsSync(nodePath) && fs.existsSync(npxPath) ? { node: nodePath, npx: npxPath } : null;
-  return cachedBundledNodePaths;
-}
-
-/**
- * Resolve bundled Python bin directory path (if available).
- * Checks packaged and dev layouts, returns the bin dir containing python3.
- */
-function resolveBundledPythonBinDir(): string | null {
-  const platform = process.platform;
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-
-  const candidates: string[] = [];
-  if (!app.isPackaged) {
-    const projectRoot = path.join(__dirname, '..', '..');
-    if (platform === 'darwin') {
-      candidates.push(path.join(projectRoot, 'resources', 'python', `darwin-${arch}`, 'bin'));
-    }
-    candidates.push(path.join(projectRoot, 'resources', 'python', 'bin'));
-  } else {
-    // Packaged layout: Resources/python/bin/python3
-    candidates.push(path.join(process.resourcesPath, 'python', 'bin'));
-  }
-
-  const pythonExe = platform === 'win32' ? 'python.exe' : 'python3';
-  for (const binDir of candidates) {
-    if (fs.existsSync(path.join(binDir, pythonExe))) return binDir;
-  }
-  return null;
-}
-
-/**
- * Resolve bundled tools directory (cliclick etc., macOS only).
- */
-function resolveBundledToolsBinDir(): string | null {
-  if (process.platform !== 'darwin') return null;
-  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-
-  const candidates: string[] = [];
-  if (!app.isPackaged) {
-    const projectRoot = path.join(__dirname, '..', '..');
-    candidates.push(path.join(projectRoot, 'resources', 'tools', `darwin-${arch}`, 'bin'));
-    candidates.push(path.join(projectRoot, 'resources', 'tools', 'bin'));
-  } else {
-    candidates.push(path.join(process.resourcesPath, 'tools', `darwin-${arch}`, 'bin'));
-    candidates.push(path.join(process.resourcesPath, 'tools', 'bin'));
-  }
-
-  for (const binDir of candidates) {
-    if (fs.existsSync(binDir)) return binDir;
-  }
-  return null;
-}
-
-/**
- * One-time enrichment of process.env.PATH for build (production) mode.
- *
- * In dev mode, Electron inherits the user's full shell PATH, so Skill commands
- * like `python3` and `node` just work. In build mode, `process.env.PATH` is
- * minimal (often just `/usr/bin:/bin`).
- *
- * This function:
- * 1. Restores the user's login-shell PATH (safe: uses execFileSync, not execSync)
- * 2. Prepends bundled Node, Python, and tools bin dirs (highest priority)
- * 3. Deduplicates all entries
- * 4. Writes the result back to `process.env.PATH`
- *
- * Called once before the first `createCodingTools()` — subsequent calls are no-ops.
- */
-let pathEnriched = false;
-
-async function enrichProcessPathForBuild(): Promise<void> {
-  if (pathEnriched) return;
-  pathEnriched = true;
-
-  if (!app.isPackaged) {
-    log('[ClaudeAgentRunner] Dev mode — skipping PATH enrichment');
-    return;
-  }
-
-  const platform = process.platform;
-  const delimiter = platform === 'win32' ? ';' : ':';
-  const currentPaths = (process.env.PATH || '').split(delimiter).filter((p: string) => p.trim());
-
-  // 1. Restore user's login-shell PATH
-  let shellPaths: string[] = [];
-  if (platform === 'darwin' || platform === 'linux') {
-    try {
-      const shell = getDefaultShell();
-      const output = (
-        execFileSync(shell, ['-l', '-c', 'echo $PATH'], {
-          encoding: 'utf-8',
-          timeout: 5000,
-          env: { ...process.env, HOME: os.homedir() },
-        }) as string
-      ).trim();
-      if (output) {
-        shellPaths = output.split(':').filter((p: string) => p.trim());
-        log(`[ClaudeAgentRunner] Restored ${shellPaths.length} paths from login shell`);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logWarn(`[ClaudeAgentRunner] Could not restore shell PATH: ${message}`);
-    }
-  } else if (platform === 'win32') {
-    try {
-      const output = (
-        execFileSync(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-Command',
-            "[Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')",
-          ],
-          { encoding: 'utf-8', timeout: 5000 }
-        ) as string
-      ).trim();
-      if (output) {
-        shellPaths = output.split(';').filter((p: string) => p.trim());
-        log(`[ClaudeAgentRunner] Restored ${shellPaths.length} paths from Windows registry`);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      logWarn(`[ClaudeAgentRunner] Could not restore Windows PATH: ${message}`);
-    }
-  }
-
-  // 2. Collect bundled bin directories (highest priority)
-  const bundledDirs: string[] = [];
-
-  const nodePaths = getBundledNodePaths();
-  if (nodePaths) {
-    bundledDirs.push(path.dirname(nodePaths.node));
-  }
-
-  const pythonBinDir = resolveBundledPythonBinDir();
-  if (pythonBinDir) {
-    bundledDirs.push(pythonBinDir);
-  }
-
-  const toolsBinDir = resolveBundledToolsBinDir();
-  if (toolsBinDir) {
-    bundledDirs.push(toolsBinDir);
-  }
-
-  // 3. Merge: bundled (highest) → shell → current process, deduplicate
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const p of [...bundledDirs, ...shellPaths, ...currentPaths]) {
-    const normalized = platform === 'win32' ? p.toLowerCase() : p;
-    if (!seen.has(normalized)) {
-      seen.add(normalized);
-      merged.push(p);
-    }
-  }
-
-  process.env.PATH = merged.join(delimiter);
-  log(
-    `[ClaudeAgentRunner] Enriched process.env.PATH for build mode: ${bundledDirs.length} bundled + ${shellPaths.length} shell + ${currentPaths.length} process → ${merged.length} total`
-  );
-}
-
-// Shared pi-ai auth storage — created once, reused across sessions.
-
-/**
- * Bridge MCP tools from MCPManager into ToolDefinition[] format for the agent SDK.
- * Each MCP tool becomes a customTool whose execute() delegates to mcpManager.callTool().
- */
-function buildMcpCustomTools(mcpManager: MCPManager): ToolDefinition[] {
-  const mcpTools = mcpManager.getTools();
-  return mcpTools.map((mcpTool) => {
-    // Wrap the raw JSON Schema inputSchema as a TypeBox TSchema
-    const parameters = Type.Unsafe<Record<string, unknown>>(
-      mcpTool.inputSchema as Record<string, unknown>
-    );
-
-    const toolDef: ToolDefinition<TSchema, unknown> = {
-      name: mcpTool.name,
-      label: `${mcpTool.serverName} → ${mcpTool.originalName || mcpTool.name}`,
-      description: mcpTool.description || `MCP tool from ${mcpTool.serverName}`,
-      parameters,
-      async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-        try {
-          const result = await mcpManager.callTool(mcpTool.name, params as Record<string, unknown>);
-          const normalizedResult = normalizeMcpToolResultForModel(result);
-          return {
-            content: [{ type: 'text' as const, text: normalizedResult.text }],
-            details:
-              normalizedResult.images.length > 0
-                ? { sophronImages: normalizedResult.images }
-                : undefined,
-          };
-        } catch (err: unknown) {
-          logError(`[ClaudeAgentRunner] MCP tool ${mcpTool.name} failed:`, err);
-          throw err instanceof Error ? err : new Error(String(err));
-        }
-      },
-    };
-    return toolDef;
-  });
-}
-
-/**
- * Get shell environment with proper PATH (including node, npm, etc.)
- * GUI apps on macOS don't inherit shell PATH, so we need to extract it
- */
-
-function safeStringify(value: unknown, space = 0): string {
-  try {
-    return JSON.stringify(value, null, space);
-  } catch (error) {
-    const details = error instanceof Error ? error.message : String(error);
-    return `[Unserializable: ${details}]`;
-  }
-}
-
-function summarizeMessageForLog(message: unknown): Record<string, unknown> {
-  if (!message || typeof message !== 'object') {
-    return { present: false };
-  }
-
-  const typedMessage = message as {
-    role?: unknown;
-    stopReason?: unknown;
-    content?: unknown[];
-    usage?: unknown;
-  };
-  const content = Array.isArray(typedMessage.content) ? typedMessage.content : [];
-
-  return {
-    present: true,
-    role: typeof typedMessage.role === 'string' ? typedMessage.role : undefined,
-    stopReason: typedMessage.stopReason ?? undefined,
-    contentBlocks: content.length,
-    contentTypes: content.slice(0, 8).map((block) => {
-      if (!block || typeof block !== 'object') {
-        return typeof block;
-      }
-      const type = (block as { type?: unknown }).type;
-      return typeof type === 'string' ? type : 'unknown';
-    }),
-    usage: normalizeTokenUsage(typedMessage.usage),
-  };
-}
-
-function toErrorText(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
-  if (error && typeof error === 'object') {
-    const maybeMessage = (error as { message?: unknown }).message;
-    if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
-      return maybeMessage;
-    }
-  }
-  const serialized = safeStringify(error);
-  if (serialized.startsWith('[Unserializable:')) {
-    return String(error);
-  }
-  return serialized;
-}
-
-function normalizeTokenUsage(usage: unknown): Message['tokenUsage'] | undefined {
-  const normalized = normalizeTraceUsage(usage);
-  return normalized
-    ? { input: normalized.inputTokens, output: normalized.outputTokens }
-    : undefined;
-}
-
 interface AgentRunnerOptions {
   sendToRenderer: (event: ServerEvent) => void;
   saveMessage?: (message: Message) => void;
@@ -469,8 +148,6 @@ export class ClaudeAgentRunner {
   ) => Promise<'allow' | 'deny' | 'allow_always'>;
   private pathResolver: PathResolver;
   private mcpManager?: MCPManager;
-  private _pluginRuntimeService?: PluginRuntimeService;
-  private _skillsAdapter?: SkillsAdapter;
   private extensionManager?: AgentRuntimeExtensionManager;
   private activeControllers: Map<string, AbortController> = new Map();
   private activeTurnIds: Map<string, string> = new Map();
@@ -483,6 +160,7 @@ export class ClaudeAgentRunner {
   // Per-instance caches — invalidated when the underlying config changes.
   private _mcpServersCache: { fingerprint: string; servers: Record<string, unknown> } | null = null;
   private _skillsSetupDone = false;
+  private readonly skills: AgentRunnerSkills;
 
   /**
    * Clear SDK session cache for a session
@@ -529,261 +207,6 @@ export class ClaudeAgentRunner {
    * This is a defense-in-depth layer — even if PATH enrichment works, explicit
    * paths help the model avoid ambiguity when Skills reference bare commands.
    */
-  private getBundledPathHints(): string {
-    if (!app.isPackaged) return '';
-
-    const hints: string[] = [];
-
-    const nodePaths = getBundledNodePaths();
-    if (nodePaths) {
-      hints.push(`- node: ${nodePaths.node}`);
-      hints.push(`- npx: ${nodePaths.npx}`);
-    }
-
-    const pythonBinDir = resolveBundledPythonBinDir();
-    if (pythonBinDir) {
-      const pythonExe = process.platform === 'win32' ? 'python.exe' : 'python3';
-      const pipExe = process.platform === 'win32' ? 'pip.exe' : 'pip3';
-      hints.push(`- python3: ${path.join(pythonBinDir, pythonExe)}`);
-      if (fs.existsSync(path.join(pythonBinDir, pipExe))) {
-        hints.push(`- pip3: ${path.join(pythonBinDir, pipExe)}`);
-      }
-    }
-
-    if (hints.length === 0) return '';
-
-    return `<bundled_executables>
-This application bundles its own executables. When executing commands, prefer these absolute paths:
-${hints.join('\n')}
-</bundled_executables>`;
-  }
-
-  /** Fallback skill path resolution when SkillsAdapter is not provided. */
-  private legacySkillPaths(): string[] {
-    const paths: string[] = [];
-    const builtin = this.getBuiltinSkillsPath();
-    if (builtin && fs.existsSync(builtin)) paths.push(builtin);
-    const global = this.getConfiguredGlobalSkillsDir();
-    if (global && fs.existsSync(global)) paths.push(global);
-    return paths;
-  }
-
-  private async resolveSkillPaths(sessionId?: string): Promise<string[]> {
-    const basePaths = this._skillsAdapter
-      ? this._skillsAdapter.getSkillPaths()
-      : this.legacySkillPaths();
-    const mergedPaths = new Set(
-      basePaths.filter((item): item is string => Boolean(item && fs.existsSync(item)))
-    );
-    const appliedPlugins: Array<{ name: string; path: string }> = [];
-
-    if (this._pluginRuntimeService) {
-      try {
-        const runtimePlugins = await this._pluginRuntimeService.getEnabledRuntimePlugins();
-        for (const plugin of runtimePlugins) {
-          if (!plugin.componentsEnabled.skills || plugin.componentCounts.skills <= 0) {
-            continue;
-          }
-          const runtimeSkillsPath = path.join(plugin.runtimePath, 'skills');
-          if (!fs.existsSync(runtimeSkillsPath)) {
-            continue;
-          }
-          mergedPaths.add(runtimeSkillsPath);
-          appliedPlugins.push({ name: plugin.name, path: runtimeSkillsPath });
-        }
-      } catch (error) {
-        logWarn('[ClaudeAgentRunner] Failed to resolve runtime plugin skill paths:', error);
-      }
-    }
-
-    if (sessionId && appliedPlugins.length > 0) {
-      this.sendToRenderer({
-        type: 'plugins.runtimeApplied',
-        payload: { sessionId, plugins: appliedPlugins },
-      });
-    }
-
-    return Array.from(mergedPaths);
-  }
-
-  /**
-   * Get the built-in skills directory (shipped with the app)
-   */
-  private getBuiltinSkillsPath(): string {
-    // In development, skills are in the project's .claude/skills directory
-    // In production, they're extracted via extraResources to resources/skills
-    const appPath = app.getAppPath();
-    const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
-
-    const possiblePaths = [
-      // Development: relative to this file
-      path.join(__dirname, '..', '..', '..', '.claude', 'skills'),
-      // Production: extraResources extracts .claude/skills → resources/skills
-      // This is the preferred production path (real directory, no asar issues)
-      path.join(process.resourcesPath || '', 'skills'),
-      // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
-      ...(this.physicalDirExists(path.join(unpackedPath, '.claude', 'skills'))
-        ? [path.join(unpackedPath, '.claude', 'skills')]
-        : []),
-      // Last resort: read from inside the asar archive (Electron intercepts this)
-      path.join(appPath, '.claude', 'skills'),
-    ];
-
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        log('[ClaudeAgentRunner] Found built-in skills at:', p);
-        return p;
-      }
-    }
-
-    logWarn('[ClaudeAgentRunner] No built-in skills directory found');
-    return '';
-  }
-
-  /**
-   * Check if a directory physically exists on disk, bypassing Electron's
-   * asar interception.
-   */
-  private physicalDirExists(dirPath: string): boolean {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const originalFs = require('original-fs') as typeof import('fs');
-      return originalFs.existsSync(dirPath) && originalFs.statSync(dirPath).isDirectory();
-    } catch {
-      return false;
-    }
-  }
-
-  private getAppClaudeDir(): string {
-    return path.join(app.getPath('userData'), 'claude');
-  }
-
-  private getRuntimeSkillsDir(): string {
-    return path.join(this.getAppClaudeDir(), 'skills');
-  }
-
-  private getConfiguredGlobalSkillsDir(): string {
-    const configuredPath = (configStore.get('globalSkillsPath') || '').trim();
-    if (!configuredPath) {
-      return this.getRuntimeSkillsDir();
-    }
-
-    const resolvedPath = path.resolve(configuredPath);
-    try {
-      if (!fs.existsSync(resolvedPath)) {
-        fs.mkdirSync(resolvedPath, { recursive: true });
-      }
-      if (fs.statSync(resolvedPath).isDirectory()) {
-        return resolvedPath;
-      }
-      logWarn(
-        '[ClaudeAgentRunner] Configured skills path is not a directory, fallback to runtime path:',
-        resolvedPath
-      );
-    } catch (error) {
-      logWarn(
-        '[ClaudeAgentRunner] Configured skills path is unavailable, fallback to runtime path:',
-        resolvedPath,
-        error
-      );
-    }
-
-    return this.getRuntimeSkillsDir();
-  }
-
-  private getUserClaudeSkillsDir(): string {
-    return path.join(app.getPath('home'), '.claude', 'skills');
-  }
-
-  private syncUserSkillsToAppDir(appSkillsDir: string): void {
-    const userSkillsDir = this.getUserClaudeSkillsDir();
-    if (!fs.existsSync(userSkillsDir)) {
-      return;
-    }
-
-    const entries = fs.readdirSync(userSkillsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const sourcePath = path.join(userSkillsDir, entry.name);
-      const targetPath = path.join(appSkillsDir, entry.name);
-
-      if (fs.existsSync(targetPath)) {
-        try {
-          const stat = fs.lstatSync(targetPath);
-          if (!stat.isSymbolicLink()) {
-            continue;
-          }
-          fs.unlinkSync(targetPath);
-        } catch {
-          continue;
-        }
-      }
-
-      try {
-        fs.symlinkSync(sourcePath, targetPath, 'dir');
-      } catch (err) {
-        try {
-          this.copyDirectorySync(sourcePath, targetPath);
-        } catch (copyErr) {
-          logWarn('[ClaudeAgentRunner] Failed to import user skill:', entry.name, copyErr);
-        }
-      }
-    }
-  }
-
-  private syncConfiguredSkillsToRuntimeDir(runtimeSkillsDir: string): void {
-    const configuredSkillsDir = this.getConfiguredGlobalSkillsDir();
-    if (configuredSkillsDir === runtimeSkillsDir) {
-      return;
-    }
-    if (!fs.existsSync(configuredSkillsDir) || !fs.statSync(configuredSkillsDir).isDirectory()) {
-      return;
-    }
-
-    const entries = fs.readdirSync(configuredSkillsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const sourcePath = path.join(configuredSkillsDir, entry.name);
-      const targetPath = path.join(runtimeSkillsDir, entry.name);
-      try {
-        if (fs.existsSync(targetPath)) {
-          // Use lstatSync so we don't follow symlinks — check the entry itself
-          const stat = fs.lstatSync(targetPath);
-          if (stat.isSymbolicLink()) {
-            fs.unlinkSync(targetPath);
-          } else {
-            fs.rmSync(targetPath, { recursive: true, force: true });
-          }
-        }
-        fs.symlinkSync(sourcePath, targetPath, 'dir');
-      } catch (err) {
-        try {
-          this.copyDirectorySync(sourcePath, targetPath);
-        } catch (copyErr) {
-          logWarn('[ClaudeAgentRunner] Failed to sync configured skill:', entry.name, copyErr);
-        }
-      }
-    }
-  }
-
-  private copyDirectorySync(source: string, target: string): void {
-    if (!fs.existsSync(target)) {
-      fs.mkdirSync(target, { recursive: true });
-    }
-
-    const entries = fs.readdirSync(source);
-    for (const entry of entries) {
-      const sourcePath = path.join(source, entry);
-      const targetPath = path.join(target, entry);
-      const stat = fs.statSync(sourcePath);
-
-      if (stat.isDirectory()) {
-        this.copyDirectorySync(sourcePath, targetPath);
-      } else {
-        fs.copyFileSync(sourcePath, targetPath);
-      }
-    }
-  }
 
   constructor(
     options: AgentRunnerOptions,
@@ -799,9 +222,12 @@ ${hints.join('\n')}
     this.requestPermission = options.requestPermission;
     this.pathResolver = pathResolver;
     this.mcpManager = mcpManager;
-    this._pluginRuntimeService = pluginRuntimeService;
-    this._skillsAdapter = skillsAdapter;
     this.extensionManager = extensionManager;
+    this.skills = new AgentRunnerSkills({
+      skillsAdapter,
+      pluginRuntimeService,
+      sendToRenderer: this.sendToRenderer,
+    });
 
     log('[ClaudeAgentRunner] Initialized with sophron agent SDK');
     log('[ClaudeAgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
@@ -1199,7 +625,7 @@ ${hints.join('\n')}
   ): Promise<void> {
     const runStartTime = Date.now();
     const turnId = uuidv4();
-    let modelCallStartedAt: number | undefined;
+    const modelClock: { startedAt?: number } = {};
     const evaluationMetrics: TraceEvaluationMetrics = {
       inputTokens: 0,
       outputTokens: 0,
@@ -1221,7 +647,7 @@ ${hints.join('\n')}
       totalDurationMs: Date.now() - runStartTime,
       modelDurationMs:
         evaluationMetrics.modelDurationMs +
-        (modelCallStartedAt ? Date.now() - modelCallStartedAt : 0),
+        (modelClock.startedAt ? Date.now() - modelClock.startedAt : 0),
     });
     this.activeTurnIds.set(session.id, turnId);
     this.activeEvaluationMetrics.set(session.id, evaluationMetrics);
@@ -1253,14 +679,12 @@ ${hints.join('\n')}
     };
 
     const thinkingStepId = uuidv4();
-    let toolCallCount = 0;
-    let toolErrorCount = 0;
-    const seenToolCallIds = new Set<string>();
     let abortedByTimeout = false;
     // Set to true when the loop-guard unilaterally aborts (hash_abort / freq_abort).
     // The catch block consults this flag to avoid overwriting the 'error' trace
     // status that handleLoopGuardDecision has already published.
     let abortedByLoopGuard = false;
+    const seenToolCallIds = new Set<string>();
 
     try {
       this.pathResolver.registerSession(session.id, session.mountedPaths);
@@ -1284,329 +708,15 @@ ${hints.join('\n')}
       const workingDir = session.cwd || undefined;
       logCtx('[ClaudeAgentRunner] Working directory:', workingDir || '(none)');
 
-      // Initialize sandbox sync if WSL mode is active
-      const sandbox = getSandboxAdapter();
-
-      if (sandbox.isWSL && sandbox.wslStatus?.distro && workingDir) {
-        log('[ClaudeAgentRunner] WSL mode active, initializing sandbox sync...');
-
-        // Only show sync UI for new sessions (first message)
-        const isNewSession = !SandboxSync.hasSession(session.id);
-
-        if (isNewSession) {
-          // Notify UI: syncing files (only for new sessions)
-          this.sendToRenderer({
-            type: 'sandbox.sync',
-            payload: {
-              sessionId: session.id,
-              phase: 'syncing_files',
-              message: 'Syncing files to sandbox...',
-              detail: 'Copying project files to isolated WSL environment',
-            },
-          });
-        }
-
-        const syncResult = await SandboxSync.initSync(
-          workingDir,
-          session.id,
-          sandbox.wslStatus.distro
-        );
-
-        if (syncResult.success) {
-          sandboxPath = syncResult.sandboxPath;
-          useSandboxIsolation = true;
-          log(`[ClaudeAgentRunner] Sandbox initialized: ${sandboxPath}`);
-          log(
-            `[ClaudeAgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`
-          );
-
-          if (isNewSession) {
-            // Update UI with file count (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'syncing_skills',
-                message: 'Configuring skills...',
-                detail: 'Copying built-in skills to sandbox',
-                fileCount: syncResult.fileCount,
-                totalSize: syncResult.totalSize,
-              },
-            });
-          }
-
-          // Copy skills to sandbox ~/.claude/skills/
-          const builtinSkillsPath = this.getBuiltinSkillsPath();
-          try {
-            const distro = sandbox.wslStatus!.distro!;
-            const sandboxSkillsPath = `${sandboxPath}/.claude/skills`;
-
-            // Create .claude/skills directory in sandbox
-            execFileSync('wsl', ['-d', distro, '-e', 'mkdir', '-p', sandboxSkillsPath], {
-              encoding: 'utf-8',
-              timeout: 10000,
-            });
-
-            if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
-              // Use rsync via execFileSync with array args to avoid shell injection
-              const wslSourcePath = pathConverter.toWSL(builtinSkillsPath);
-              log(
-                `[ClaudeAgentRunner] Copying skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
-              );
-
-              execFileSync(
-                'wsl',
-                ['-d', distro, '-e', 'rsync', '-av', wslSourcePath + '/', sandboxSkillsPath + '/'],
-                {
-                  encoding: 'utf-8',
-                  timeout: 120000, // 2 min timeout for large skill directories
-                }
-              );
-            }
-
-            const appSkillsDir = this.getRuntimeSkillsDir();
-            if (!fs.existsSync(appSkillsDir)) {
-              fs.mkdirSync(appSkillsDir, { recursive: true });
-            }
-            this.syncUserSkillsToAppDir(appSkillsDir);
-            this.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
-
-            if (fs.existsSync(appSkillsDir)) {
-              const wslSourcePath = pathConverter.toWSL(appSkillsDir);
-              log(
-                `[ClaudeAgentRunner] Copying app skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
-              );
-
-              execFileSync(
-                'wsl',
-                ['-d', distro, '-e', 'rsync', '-avL', wslSourcePath + '/', sandboxSkillsPath + '/'],
-                {
-                  encoding: 'utf-8',
-                  timeout: 120000, // 2 min timeout for large skill directories
-                }
-              );
-            }
-
-            // List copied skills for verification
-            const copiedSkills = execFileSync(
-              'wsl',
-              ['-d', distro, '-e', 'ls', sandboxSkillsPath],
-              {
-                encoding: 'utf-8',
-                timeout: 10000,
-              }
-            )
-              .trim()
-              .split(/\r?\n/)
-              .filter(Boolean);
-
-            log(`[ClaudeAgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
-            log(`[ClaudeAgentRunner]   Skills: ${copiedSkills.join(', ')}`);
-          } catch (error) {
-            logError('[ClaudeAgentRunner] Failed to copy skills to sandbox:', error);
-          }
-
-          if (isNewSession) {
-            // Notify UI: sync complete (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'ready',
-                message: 'Sandbox ready',
-                detail: `Synced ${syncResult.fileCount} files`,
-                fileCount: syncResult.fileCount,
-                totalSize: syncResult.totalSize,
-              },
-            });
-          }
-        } else {
-          logError('[ClaudeAgentRunner] Sandbox sync failed:', syncResult.error);
-          log('[ClaudeAgentRunner] Falling back to /mnt/ access (less secure)');
-
-          if (isNewSession) {
-            // Notify UI: error (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'error',
-                message: 'Sandbox file sync failed, falling back to direct access mode',
-                detail: 'Falling back to direct access mode (less secure)',
-              },
-            });
-          }
-        }
-      }
-
-      // Initialize sandbox sync if Lima mode is active
-      if (sandbox.isLima && sandbox.limaStatus?.instanceRunning && workingDir) {
-        log('[ClaudeAgentRunner] Lima mode active, initializing sandbox sync...');
-
-        const { LimaSync } = await import('../sandbox/lima-sync');
-
-        // Only show sync UI for new sessions (first message)
-        const isNewLimaSession = !LimaSync.hasSession(session.id);
-
-        if (isNewLimaSession) {
-          // Notify UI: syncing files (only for new sessions)
-          this.sendToRenderer({
-            type: 'sandbox.sync',
-            payload: {
-              sessionId: session.id,
-              phase: 'syncing_files',
-              message: 'Syncing files to sandbox...',
-              detail: 'Copying project files to isolated Lima environment',
-            },
-          });
-        }
-
-        const syncResult = await LimaSync.initSync(workingDir, session.id);
-
-        if (syncResult.success) {
-          sandboxPath = syncResult.sandboxPath;
-          useSandboxIsolation = true;
-          log(`[ClaudeAgentRunner] Sandbox initialized: ${sandboxPath}`);
-          log(
-            `[ClaudeAgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`
-          );
-
-          if (isNewLimaSession) {
-            // Update UI with file count (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'syncing_skills',
-                message: 'Configuring skills...',
-                detail: 'Copying built-in skills to sandbox',
-                fileCount: syncResult.fileCount,
-                totalSize: syncResult.totalSize,
-              },
-            });
-          }
-
-          // Copy skills to sandbox ~/.claude/skills/
-          const builtinSkillsPath = this.getBuiltinSkillsPath();
-          try {
-            const sandboxSkillsPath = `${sandboxPath}/.claude/skills`;
-
-            // Create .claude/skills directory in sandbox
-            execFileSync(
-              'limactl',
-              ['shell', 'claude-sandbox', '--', 'mkdir', '-p', sandboxSkillsPath],
-              {
-                encoding: 'utf-8',
-                timeout: 10000,
-              }
-            );
-
-            if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
-              // Use rsync via execFileSync with array args to avoid shell injection
-              // Lima mounts /Users directly, so paths are the same
-              log(
-                `[ClaudeAgentRunner] Copying skills with rsync: ${builtinSkillsPath}/ -> ${sandboxSkillsPath}/`
-              );
-
-              execFileSync(
-                'limactl',
-                [
-                  'shell',
-                  'claude-sandbox',
-                  '--',
-                  'rsync',
-                  '-av',
-                  builtinSkillsPath + '/',
-                  sandboxSkillsPath + '/',
-                ],
-                {
-                  encoding: 'utf-8',
-                  timeout: 120000, // 2 min timeout for large skill directories
-                }
-              );
-            }
-
-            const appSkillsDir = this.getRuntimeSkillsDir();
-            if (!fs.existsSync(appSkillsDir)) {
-              fs.mkdirSync(appSkillsDir, { recursive: true });
-            }
-            this.syncUserSkillsToAppDir(appSkillsDir);
-            this.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
-
-            if (fs.existsSync(appSkillsDir)) {
-              log(
-                `[ClaudeAgentRunner] Copying app skills with rsync: ${appSkillsDir}/ -> ${sandboxSkillsPath}/`
-              );
-
-              execFileSync(
-                'limactl',
-                [
-                  'shell',
-                  'claude-sandbox',
-                  '--',
-                  'rsync',
-                  '-avL',
-                  appSkillsDir + '/',
-                  sandboxSkillsPath + '/',
-                ],
-                {
-                  encoding: 'utf-8',
-                  timeout: 120000, // 2 min timeout for large skill directories
-                }
-              );
-            }
-
-            // List copied skills for verification
-            const copiedSkills = execFileSync(
-              'limactl',
-              ['shell', 'claude-sandbox', '--', 'ls', sandboxSkillsPath],
-              {
-                encoding: 'utf-8',
-                timeout: 10000,
-              }
-            )
-              .trim()
-              .split(/\r?\n/)
-              .filter(Boolean);
-
-            log(`[ClaudeAgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
-            log(`[ClaudeAgentRunner]   Skills: ${copiedSkills.join(', ')}`);
-          } catch (error) {
-            logError('[ClaudeAgentRunner] Failed to copy skills to sandbox:', error);
-          }
-
-          if (isNewLimaSession) {
-            // Notify UI: sync complete (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'ready',
-                message: 'Sandbox ready',
-                detail: `Synced ${syncResult.fileCount} files`,
-                fileCount: syncResult.fileCount,
-                totalSize: syncResult.totalSize,
-              },
-            });
-          }
-        } else {
-          logError('[ClaudeAgentRunner] Sandbox sync failed:', syncResult.error);
-          log('[ClaudeAgentRunner] Falling back to direct access (less secure)');
-
-          if (isNewLimaSession) {
-            // Notify UI: error (only for new sessions)
-            this.sendToRenderer({
-              type: 'sandbox.sync',
-              payload: {
-                sessionId: session.id,
-                phase: 'error',
-                message: 'Sandbox file sync failed, falling back to direct access mode',
-                detail: 'Falling back to direct access mode (less secure)',
-              },
-            });
-          }
-        }
-      }
+      const syncState = await initSandboxSyncForRun({
+        session,
+        workingDir,
+        sendToRenderer: this.sendToRenderer,
+        skills: this.skills,
+      });
+      sandboxPath = syncState.sandboxPath;
+      useSandboxIsolation = syncState.useSandboxIsolation;
+      const sandbox = syncState.sandbox;
 
       // Check if current user message includes images
       const lastUserMessage =
@@ -1766,7 +876,7 @@ ${hints.join('\n')}
 
       // Use app-specific Claude config directory to avoid conflicts with user settings
       // SDK uses CLAUDE_CONFIG_DIR to locate skills
-      const userClaudeDir = this.getAppClaudeDir();
+      const userClaudeDir = this.skills.getAppClaudeDir();
 
       // Skills directory setup: only run on the first query per runner instance.
       // Symlinks and directories are stable across queries; re-running every time
@@ -1782,13 +892,13 @@ ${hints.join('\n')}
         }
 
         // Ensure app Claude skills directory exists
-        const appSkillsDir = this.getRuntimeSkillsDir();
+        const appSkillsDir = this.skills.getRuntimeSkillsDir();
         if (!fs.existsSync(appSkillsDir)) {
           fs.mkdirSync(appSkillsDir, { recursive: true });
         }
 
         // Copy built-in skills to app Claude skills directory if they don't exist
-        const builtinSkillsPath = this.getBuiltinSkillsPath();
+        const builtinSkillsPath = this.skills.getBuiltinSkillsPath();
         if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
           // Symlinks into .asar archives don't work at the OS level (ENOTDIR),
           // so always copy when the source is inside an asar archive.
@@ -1817,7 +927,7 @@ ${hints.join('\n')}
             if (fs.statSync(builtinSkillPath).isDirectory() && !fs.existsSync(userSkillPath)) {
               if (sourceInsideAsar) {
                 // Source is inside .asar — must copy (symlinks to asar paths fail at OS level)
-                this.copyDirectorySync(builtinSkillPath, userSkillPath);
+                this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
                 log(`[ClaudeAgentRunner] Copied built-in skill from asar: ${skillName}`);
               } else {
                 // Source is a real directory — symlink for space efficiency
@@ -1829,15 +939,15 @@ ${hints.join('\n')}
                     `[ClaudeAgentRunner] Failed to symlink ${skillName}, copying instead:`,
                     err
                   );
-                  this.copyDirectorySync(builtinSkillPath, userSkillPath);
+                  this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
                 }
               }
             }
           }
         }
 
-        this.syncUserSkillsToAppDir(appSkillsDir);
-        this.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
+        this.skills.syncUserSkillsToAppDir(appSkillsDir);
+        this.skills.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
       }
 
       // Build available skills section dynamically — now handled by pi's DefaultResourceLoader
@@ -1872,7 +982,7 @@ ${hints.join('\n')}
       const selectedSkillNameSet = new Set(
         selectedSkillNames.map((name) => name.toLocaleLowerCase())
       );
-      const skillPaths = await this.resolveSkillPaths(session.id);
+      const skillPaths = await this.skills.resolveSkillPaths(session.id);
       const skillsSignature = JSON.stringify({
         paths: skillPaths,
         selected: selectedSkillNames,
@@ -2135,7 +1245,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
       const coworkAppendPrompt = buildMainAgentSystemPrompt({
         workspaceInfo: workspaceInfoPrompt,
-        bundledPathHints: this.getBundledPathHints(),
+        bundledPathHints: this.skills.getBundledPathHints(),
       });
 
       logTiming('before agent session creation', runStartTime);
@@ -2392,705 +1502,41 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       evaluationMetrics.model = piModel.id;
 
       // Set up event handler to bridge agent SDK events → our ServerEvent protocol
-
-      // Accumulate streamed text deltas in case message_end.content is empty (pi SDK streaming behaviour)
-      let streamedText = '';
-      let compactionStepId: string | undefined;
-      let compactionStartedAt: number | undefined;
-      let hasEmittedError = false;
-      let terminalErrorText: string | undefined;
-      let terminalProtocolViolation = false;
-      let thinkParser = new ThinkTagStreamParser();
-      const protocolGuard = new PseudoToolCallStreamGuard();
-      let currentMessageProtocolViolation = false;
-      let retryableProtocolViolation = false;
-      let attemptToolCallIds = new Set<string>();
-      const promptStartedAt = Date.now();
-      const streamEventCounts = new Map<string, number>();
-
-      // ── Loop guard: protect against runaway tool-call loops ──
-      // (e.g. gemini-3.1-pro with thinking=off has been observed producing hundreds
-      //  of empty-text + single-tool-call responses in a single turn)
-      // Two layers: hash of whole tool-call group (window=20, warn=3/halt=5/abort=8)
-      //             + per-tool frequency (warn=30/halt=50/abort=80).
-      const loopGuard = new LoopGuard();
-      const handleLoopGuardDecision = (decision: LoopGuardDecision, context: string): void => {
-        if (decision.action === 'none' || controller.signal.aborted) return;
-        logWarn(`[LoopGuard] ${context}: action=${decision.action} reason=${decision.reason}`);
-
-        if (decision.action === 'hash_abort' || decision.action === 'freq_abort') {
-          // Always surface the loop-guard explanation, even if an earlier
-          // error already set hasEmittedError — the user must see why the
-          // session stopped. Mark the flag afterward to suppress duplicate
-          // generic-error chatter from later paths in this turn.
-          this.sendMessage(session.id, {
-            id: uuidv4(),
-            sessionId: session.id,
-            role: 'assistant',
-            content: [{ type: 'text', text: buildAbortUserMessage(decision) }],
-            timestamp: Date.now(),
-          });
-          hasEmittedError = true;
-          this.sendTraceUpdate(session.id, thinkingStepId, {
-            status: 'error',
-            title: 'Stopped: tool-call loop detected',
-            error: buildTraceError(decision.reason, 'loop_guard'),
-            outcome: 'loop_guard_stopped',
-            isError: true,
-            metrics: snapshotEvaluationMetrics(),
-            endedAt: Date.now(),
-            duration: Date.now() - runStartTime,
-          });
-          try {
-            // Mark BEFORE calling abort() so the AbortError handler in the
-            // outer catch can distinguish a loop-guard abort from a user
-            // cancel and skip the "Cancelled" trace overwrite.
-            abortedByLoopGuard = true;
-            controller.abort();
-          } catch (abortErr) {
-            logWarn('[LoopGuard] abort error:', abortErr);
-          }
-          return;
-        }
-
-        const steerText =
-          decision.action === 'hash_halt' || decision.action === 'freq_halt'
-            ? buildHaltSteerMessage(decision)
-            : buildWarnSteerMessage(decision);
-        // fire-and-forget: SDK queues the steering message for the next turn
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const sessionAny = piSession as any;
-          if (typeof sessionAny.sendUserMessage === 'function') {
-            Promise.resolve(sessionAny.sendUserMessage(steerText, { deliverAs: 'steer' })).catch(
-              (err: unknown) => {
-                logWarn('[LoopGuard] sendUserMessage(steer) failed:', err);
-              }
-            );
-          } else {
-            logWarn('[LoopGuard] piSession.sendUserMessage is not available; skipping steer');
-          }
-        } catch (steerErr) {
-          logWarn('[LoopGuard] sendUserMessage(steer) threw:', steerErr);
-        }
-      };
-
-      // Ollama cold-start feedback: if provider is 'ollama' and no stream event arrives
-      // within 10 seconds, show a "model loading" trace update so users know what's happening.
-      let ollamaColdStartTimerId: ReturnType<typeof setTimeout> | undefined;
-      let receivedFirstStreamEvent = false;
-      let firstStreamEventAt: number | undefined;
-      if (provider === 'ollama') {
-        ollamaColdStartTimerId = setTimeout(() => {
-          if (!receivedFirstStreamEvent && !controller.signal.aborted) {
-            this.sendTraceUpdate(session.id, thinkingStepId, {
-              title: 'Waiting for model to load into memory...',
-            });
-          }
-        }, 10000);
-      }
-
-      const markFirstStreamEvent = (eventType: string) => {
-        if (
-          evaluationMetrics.firstTokenLatencyMs === undefined &&
-          (eventType === 'text_delta' || eventType === 'thinking_delta')
-        ) {
-          evaluationMetrics.firstTokenLatencyMs = Date.now() - promptStartedAt;
-        }
-        if (receivedFirstStreamEvent) {
-          return;
-        }
-        receivedFirstStreamEvent = true;
-        firstStreamEventAt = Date.now();
-        evaluationMetrics.firstResponseLatencyMs = firstStreamEventAt - promptStartedAt;
-        if (ollamaColdStartTimerId) {
-          clearTimeout(ollamaColdStartTimerId);
-        }
-        this.sendTraceUpdate(session.id, thinkingStepId, {
-          title: 'Processing request...',
-        });
-        if (provider === 'ollama') {
-          log(
-            '[ClaudeAgentRunner] Ollama first stream event received',
-            safeStringify({
-              sessionId: session.id,
-              eventType,
-              modelId: piModel.id,
-              modelProvider: piModel.provider,
-              baseUrl: piModel.baseUrl || runtimeConfig.baseUrl || '',
-              latencyMs: firstStreamEventAt - promptStartedAt,
-            })
-          );
-        }
-      };
-
-      // Activity-based timeout: reset the 5-min timer whenever the SDK sends events
-      const PROMPT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-      let activityTimeoutId: ReturnType<typeof setTimeout> | undefined;
-      const resetActivityTimeout = () => {
-        if (activityTimeoutId) clearTimeout(activityTimeoutId);
-        activityTimeoutId = setTimeout(() => {
-          logWarn('[ClaudeAgentRunner] Prompt timed out (no activity for 5 min), aborting');
+      const eventBridge = new AgentRunEventBridge({
+        session,
+        piSession,
+        controller,
+        thinkingStepId,
+        turnId,
+        runStartTime,
+        provider,
+        piModel,
+        runtimeConfig,
+        evaluationMetrics,
+        snapshotEvaluationMetrics,
+        sendToRenderer: this.sendToRenderer,
+        sendMessage: this.sendMessage.bind(this),
+        sendPartial: this.sendPartial.bind(this),
+        sendTraceStep: this.sendTraceStep.bind(this),
+        sendTraceUpdate: this.sendTraceUpdate.bind(this),
+        getToolDisplayName: this.getToolDisplayName.bind(this),
+        toolStartedAt: this.toolStartedAt,
+        modelClock,
+        sanitizeOutputPaths,
+        seenToolCallIds,
+        usedSyntheticModel,
+        onLoopGuardAbort: () => {
+          abortedByLoopGuard = true;
+        },
+        onTimeoutAbort: () => {
           abortedByTimeout = true;
-          controller.abort();
-        }, PROMPT_TIMEOUT_MS);
-      };
-
-      const recordStreamEvent = (eventType: string) => {
-        streamEventCounts.set(eventType, (streamEventCounts.get(eventType) ?? 0) + 1);
-      };
-
-      const getStreamEventSummary = () =>
-        Object.fromEntries(
-          Array.from(streamEventCounts.entries()).sort(([left], [right]) =>
-            left.localeCompare(right)
-          )
-        );
-
-      const markProtocolViolation = (source: 'stream' | 'message_end'): void => {
-        if (!currentMessageProtocolViolation) {
-          logWarn(
-            '[ClaudeAgentRunner] Blocked pseudo tool-call markup from assistant text:',
-            source
-          );
-        }
-        currentMessageProtocolViolation = true;
-        this.sendToRenderer({
-          type: 'stream.reset',
-          payload: { sessionId: session.id },
-        });
-      };
-
-      const unsubscribe = piSession.subscribe((event) => {
-        try {
-          if (controller.signal.aborted) return;
-
-          // Reset activity timeout on meaningful events
-          resetActivityTimeout();
-
-          if (event.type === 'message_update') {
-            const updateType = event.assistantMessageEvent.type;
-            recordStreamEvent(updateType);
-            if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {
-              log(`[ClaudeAgentRunner] Event: ${event.type} → ${updateType}`);
-            }
-          } else if (event.type === 'message_start') {
-            if ((event.message as { role?: string }).role === 'assistant') {
-              streamedText = '';
-              thinkParser = new ThinkTagStreamParser();
-              protocolGuard.reset();
-              currentMessageProtocolViolation = false;
-              modelCallStartedAt = Date.now();
-              evaluationMetrics.modelCallCount += 1;
-            }
-            log(
-              '[ClaudeAgentRunner] Event: message_start',
-              safeStringify(summarizeMessageForLog(event.message), 2)
-            );
-          } else if (event.type === 'message_end') {
-            const modelCallEndedAt = Date.now();
-            const isAssistantMessage = (event.message as { role?: string }).role === 'assistant';
-            const usage = normalizeTraceUsage((event.message as { usage?: unknown }).usage);
-            if (isAssistantMessage) {
-              if (modelCallStartedAt) {
-                evaluationMetrics.modelDurationMs += modelCallEndedAt - modelCallStartedAt;
-              } else {
-                evaluationMetrics.modelCallCount += 1;
-              }
-              modelCallStartedAt = undefined;
-              if (usage) {
-                evaluationMetrics.inputTokens += usage.inputTokens;
-                evaluationMetrics.outputTokens += usage.outputTokens;
-                evaluationMetrics.cacheReadTokens += usage.cacheReadTokens;
-                evaluationMetrics.cacheWriteTokens += usage.cacheWriteTokens;
-                evaluationMetrics.totalTokens += usage.totalTokens;
-                evaluationMetrics.costTotal += usage.costTotal;
-              }
-            }
-            log(
-              '[ClaudeAgentRunner] Event: message_end',
-              safeStringify(
-                {
-                  message: summarizeMessageForLog(event.message),
-                  messageUpdateCounts: getStreamEventSummary(),
-                },
-                2
-              )
-            );
-          } else if (event.type === 'turn_end') {
-            log(`[ClaudeAgentRunner] Event: ${event.type}`);
-          } else {
-            log(`[ClaudeAgentRunner] Event: ${event.type}`);
-          }
-
-          switch (event.type) {
-            case 'message_update': {
-              if (controller.signal.aborted) break;
-              const ame = event.assistantMessageEvent;
-              if (ame.type === 'text_delta') {
-                markFirstStreamEvent(ame.type);
-                const parsed = thinkParser.push(ame.delta);
-                if (parsed.thinking) {
-                  this.sendToRenderer({
-                    type: 'stream.thinking',
-                    payload: { sessionId: session.id, delta: parsed.thinking },
-                  });
-                }
-                if (parsed.text) {
-                  const guarded = protocolGuard.push(parsed.text);
-                  if (guarded.violated) markProtocolViolation('stream');
-                  if (guarded.text && !currentMessageProtocolViolation) {
-                    streamedText += guarded.text;
-                    this.sendPartial(session.id, guarded.text);
-                  }
-                }
-              } else if (ame.type === 'thinking_delta') {
-                markFirstStreamEvent(ame.type);
-                // Forward thinking delta to renderer for real-time display
-                this.sendToRenderer({
-                  type: 'stream.thinking',
-                  payload: { sessionId: session.id, delta: ame.delta },
-                });
-              } else if (ame.type === 'toolcall_start') {
-                markFirstStreamEvent(ame.type);
-                const partial = ame.partial;
-                const toolContent = partial?.content?.[ame.contentIndex];
-                const toolName = toolContent?.type === 'toolCall' ? toolContent.name : 'unknown';
-                const toolCallId = toolContent?.type === 'toolCall' ? toolContent.id : uuidv4();
-                const toolDisplayName = this.getToolDisplayName(toolName);
-                if (!seenToolCallIds.has(toolCallId)) {
-                  seenToolCallIds.add(toolCallId);
-                  toolCallCount += 1;
-                  evaluationMetrics.toolCallCount += 1;
-                }
-                attemptToolCallIds.add(toolCallId);
-                this.sendTraceStep(session.id, {
-                  id: toolCallId,
-                  turnId,
-                  parentId: thinkingStepId,
-                  type: 'tool_call',
-                  status: 'running',
-                  title: toolDisplayName,
-                  toolName,
-                  toolInput:
-                    toolContent?.type === 'toolCall'
-                      ? sanitizeTraceInput(toolContent.arguments || {})
-                      : undefined,
-                  timestamp: Date.now(),
-                });
-              } else if (ame.type === 'done') {
-                // Some providers emit 'done' via message_update — we handle it
-                // in message_end below as a unified path for all providers.
-                log('[ClaudeAgentRunner] message_update done event (handled in message_end)');
-              } else if (ame.type === 'error') {
-                const errorDetail = JSON.stringify(ame.error?.content || 'no content');
-                logCtxError('[ClaudeAgentRunner] pi-ai stream error:', ame.reason, errorDetail);
-              }
-              break;
-            }
-
-            case 'message_end': {
-              // Unified handler: send the final assistant message to the renderer.
-              // Works for all providers (some emit 'done' via message_update, others don't).
-              if (controller.signal.aborted) break;
-
-              // Flush any buffered content from the think-tag parser
-              const flushed = thinkParser.flush();
-              if (flushed.thinking) {
-                this.sendToRenderer({
-                  type: 'stream.thinking',
-                  payload: { sessionId: session.id, delta: flushed.thinking },
-                });
-              }
-              if (flushed.text) {
-                const guarded = protocolGuard.push(flushed.text);
-                if (guarded.violated) markProtocolViolation('stream');
-                if (guarded.text && !currentMessageProtocolViolation) {
-                  streamedText += guarded.text;
-                  this.sendPartial(session.id, guarded.text);
-                }
-              }
-              const guardFlush = protocolGuard.flush();
-              if (guardFlush.violated) markProtocolViolation('stream');
-              if (guardFlush.text && !currentMessageProtocolViolation) {
-                streamedText += guardFlush.text;
-                this.sendPartial(session.id, guardFlush.text);
-              }
-
-              const msg = event.message;
-              if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
-                log('[ClaudeAgentRunner] message_end raw message:', safeStringify(msg, 2));
-              }
-              const resolvedPayload = resolveMessageEndPayload({
-                message: msg as Parameters<typeof resolveMessageEndPayload>[0]['message'],
-                streamedText,
-              });
-              const hasStructuredToolCall = resolvedPayload.effectiveContent.some(
-                (block) => block.type === 'toolCall'
-              );
-              const hasPseudoMarkup = resolvedPayload.effectiveContent.some(
-                (block) => block.type === 'text' && containsPseudoToolCallMarkup(block.text)
-              );
-              if (hasPseudoMarkup) {
-                markProtocolViolation('message_end');
-                // A provider may emit both a valid structured call and an invalid
-                // textual imitation. Keep only the structured blocks so tools still
-                // pass through the normal validation and permission path.
-                resolvedPayload.effectiveContent = resolvedPayload.effectiveContent.filter(
-                  (block) => block.type !== 'text' || !containsPseudoToolCallMarkup(block.text)
-                );
-                if (msg?.role === 'assistant') {
-                  msg.content = resolvedPayload.effectiveContent;
-                }
-              }
-              streamedText = resolvedPayload.nextStreamedText;
-              if (provider === 'ollama') {
-                log(
-                  '[ClaudeAgentRunner] Ollama message_end diagnostics',
-                  safeStringify({
-                    sessionId: session.id,
-                    modelId: piModel.id,
-                    modelProvider: piModel.provider,
-                    usedSyntheticModel,
-                    receivedFirstStreamEvent,
-                    firstStreamLatencyMs: firstStreamEventAt
-                      ? firstStreamEventAt - promptStartedAt
-                      : null,
-                    stopReason: (msg as { stopReason?: unknown })?.stopReason ?? null,
-                    contentBlocks: Array.isArray((msg as { content?: unknown[] })?.content)
-                      ? ((msg as { content?: unknown[] }).content?.length ?? 0)
-                      : 0,
-                    emittedError: Boolean(resolvedPayload.errorText),
-                  })
-                );
-              }
-              if (resolvedPayload.errorText) {
-                terminalErrorText = resolvedPayload.errorText;
-                if (!hasEmittedError) {
-                  hasEmittedError = true;
-                  this.sendMessage(session.id, {
-                    id: uuidv4(),
-                    sessionId: session.id,
-                    role: 'assistant',
-                    content: [
-                      {
-                        type: 'text',
-                        text: `**Error**: ${resolvedPayload.errorText}\n\n${
-                          /\b4\d{2}\b/.test(resolvedPayload.errorText)
-                            ? '_请检查配置后重试。_'
-                            : '_Agent 正在自动重试，请稍候..._'
-                        }`,
-                      },
-                    ],
-                    timestamp: Date.now(),
-                  });
-                }
-                break;
-              }
-              if (currentMessageProtocolViolation && !hasStructuredToolCall) {
-                // Do not persist or render the malformed assistant response. The
-                // prompt loop below removes it from SDK history and retries once.
-                retryableProtocolViolation = true;
-                break;
-              }
-              if (resolvedPayload.shouldEmitMessage) {
-                const contentBlocks: ContentBlock[] = [];
-                for (const block of resolvedPayload.effectiveContent) {
-                  if (block.type === 'text') {
-                    const { cleanText, artifacts } = extractArtifactsFromText(block.text);
-                    if (cleanText) {
-                      contentBlocks.push({ type: 'text', text: sanitizeOutputPaths(cleanText) });
-                    }
-                    if (artifacts.length > 0) {
-                      for (const step of buildArtifactTraceSteps(artifacts)) {
-                        this.sendTraceStep(session.id, {
-                          ...step,
-                          turnId,
-                          parentId: thinkingStepId,
-                        });
-                      }
-                    }
-                  } else if (block.type === 'toolCall') {
-                    const displayName = this.getToolDisplayName(block.name);
-                    contentBlocks.push({
-                      type: 'tool_use',
-                      id: block.id,
-                      name: block.name,
-                      displayName,
-                      input: block.arguments,
-                    });
-                  } else if (block.type === 'thinking') {
-                    // Include thinking blocks in the final message for UI display
-                    contentBlocks.push({
-                      type: 'thinking',
-                      thinking: block.thinking,
-                    });
-                  } else {
-                    // Unknown block type — pass through as text so content isn't silently lost
-                    const unknownBlock = block as { type?: string; text?: string };
-                    log(`[ClaudeAgentRunner] Unknown content block type: ${unknownBlock.type}`);
-                    const text = unknownBlock.text || JSON.stringify(block);
-                    if (text) contentBlocks.push({ type: 'text', text });
-                  }
-                }
-                // Always clear partial text; send message even if only artifacts were extracted
-                this.sendToRenderer({
-                  type: 'stream.partial',
-                  payload: { sessionId: session.id, delta: '' },
-                });
-
-                // ── Loop guard layer 1: hash of this message's tool-call group ──
-                const toolUseDescriptors: ToolCallDescriptor[] = [];
-                for (const block of resolvedPayload.effectiveContent) {
-                  if (block.type === 'toolCall') {
-                    toolUseDescriptors.push({
-                      name: block.name || '',
-                      input: (block.arguments as Record<string, unknown>) || undefined,
-                    });
-                  }
-                }
-                if (toolUseDescriptors.length > 0) {
-                  handleLoopGuardDecision(
-                    loopGuard.recordAssistantMessage(toolUseDescriptors),
-                    'message_end'
-                  );
-                  if (controller.signal.aborted) break;
-                }
-
-                if (contentBlocks.length > 0) {
-                  const msgWithUsage = msg as { usage?: unknown };
-                  const tokenUsage = normalizeTokenUsage(msgWithUsage.usage);
-                  if (msgWithUsage.usage) {
-                    log(
-                      '[ClaudeAgentRunner] normalized usage:',
-                      safeStringify(
-                        {
-                          raw: msgWithUsage.usage,
-                          normalized: tokenUsage,
-                        },
-                        2
-                      )
-                    );
-                  }
-                  const assistantMsg: Message = {
-                    id: uuidv4(),
-                    sessionId: session.id,
-                    role: 'assistant',
-                    content: contentBlocks,
-                    timestamp: Date.now(),
-                    api: piModel.api,
-                    provider: piModel.provider,
-                    model: piModel.id,
-                    tokenUsage,
-                  };
-                  this.sendMessage(session.id, assistantMsg);
-                }
-              }
-              break;
-            }
-
-            case 'tool_execution_start': {
-              logCtx(`[ClaudeAgentRunner] Tool execution start: ${event.toolName}`);
-              const toolCallId = event.toolCallId;
-              const startedAt = Date.now();
-              this.toolStartedAt.set(`${session.id}:${toolCallId}`, startedAt);
-              if (!seenToolCallIds.has(toolCallId)) {
-                seenToolCallIds.add(toolCallId);
-                toolCallCount += 1;
-                evaluationMetrics.toolCallCount += 1;
-              }
-              attemptToolCallIds.add(toolCallId);
-              this.sendTraceUpdate(session.id, toolCallId, {
-                turnId,
-                parentId: thinkingStepId,
-                type: 'tool_call',
-                status: 'running',
-                title: this.getToolDisplayName(event.toolName),
-                toolName: event.toolName,
-                toolInput: sanitizeTraceInput(event.args),
-              });
-              // ── Loop guard layer 2: per-tool cumulative frequency ──
-              handleLoopGuardDecision(
-                loopGuard.recordToolInvocation(event.toolName),
-                'tool_execution_start'
-              );
-              break;
-            }
-
-            case 'tool_execution_end': {
-              if (controller.signal.aborted) break;
-              const toolCallId = event.toolCallId;
-              const isError = event.isError;
-              const normalizedToolResult = normalizeToolExecutionResultForUi(event.result);
-              const outputText = sanitizeOutputPaths(normalizedToolResult.content);
-              const toolDisplayName = this.getToolDisplayName(event.toolName);
-              const endedAt = Date.now();
-              const startedAt = this.toolStartedAt.get(`${session.id}:${toolCallId}`) ?? endedAt;
-              this.toolStartedAt.delete(`${session.id}:${toolCallId}`);
-              const outputPreview = buildTraceOutputPreview(outputText);
-              const resultMessageId = uuidv4();
-              const toolDurationMs = endedAt - startedAt;
-              evaluationMetrics.toolDurationMs += toolDurationMs;
-              if (isError) {
-                toolErrorCount += 1;
-                evaluationMetrics.toolErrorCount += 1;
-              }
-              this.sendTraceUpdate(session.id, toolCallId, {
-                turnId,
-                parentId: thinkingStepId,
-                status: isError ? 'error' : 'completed',
-                title: toolDisplayName,
-                toolName: event.toolName,
-                toolOutput: outputPreview.preview,
-                toolOutputLength: outputPreview.length,
-                toolOutputTruncated: outputPreview.truncated,
-                resultMessageId,
-                isError,
-                error: isError ? buildTraceError(outputText) : undefined,
-                outcome: isError ? 'tool_failed' : 'tool_completed',
-                endedAt,
-                duration: toolDurationMs,
-              });
-
-              // Send tool result message
-              const toolResultMsg: Message = {
-                id: resultMessageId,
-                sessionId: session.id,
-                role: 'assistant',
-                content: [
-                  {
-                    type: 'tool_result',
-                    toolUseId: toolCallId,
-                    content: outputText,
-                    isError,
-                    ...(normalizedToolResult.images.length > 0
-                      ? { images: normalizedToolResult.images }
-                      : {}),
-                  },
-                ],
-                timestamp: Date.now(),
-              };
-              this.sendMessage(session.id, toolResultMsg);
-              break;
-            }
-
-            case 'agent_end': {
-              logCtx('[ClaudeAgentRunner] Agent finished');
-              break;
-            }
-
-            case 'auto_compaction_start': {
-              log('[ClaudeAgentRunner] Auto-compaction started, reason:', event.reason);
-              compactionStepId = `compaction-${Date.now()}`;
-              compactionStartedAt = Date.now();
-              this.sendTraceStep(session.id, {
-                id: compactionStepId,
-                turnId,
-                parentId: thinkingStepId,
-                type: 'thinking',
-                status: 'running',
-                title: `Compacting context (${event.reason})...`,
-                timestamp: compactionStartedAt,
-              });
-              break;
-            }
-
-            case 'auto_compaction_end': {
-              const status = event.aborted ? 'error' : event.errorMessage ? 'error' : 'completed';
-              const title = event.aborted
-                ? 'Context compaction aborted'
-                : event.errorMessage
-                  ? `Context compaction failed: ${event.errorMessage}`
-                  : 'Context compaction completed';
-              log(
-                '[ClaudeAgentRunner] Auto-compaction ended:',
-                title,
-                'willRetry:',
-                event.willRetry
-              );
-              if (compactionStepId) {
-                const endedAt = Date.now();
-                this.sendTraceUpdate(session.id, compactionStepId, {
-                  status,
-                  title,
-                  isError: status === 'error',
-                  error:
-                    status === 'error'
-                      ? buildTraceError(event.errorMessage || title, 'provider')
-                      : undefined,
-                  endedAt,
-                  duration: compactionStartedAt ? endedAt - compactionStartedAt : undefined,
-                });
-                compactionStepId = undefined;
-                compactionStartedAt = undefined;
-              } else {
-                // Fallback: no matching start event, send as new step
-                this.sendTraceStep(session.id, {
-                  id: `compaction-end-${Date.now()}`,
-                  turnId,
-                  parentId: thinkingStepId,
-                  type: 'thinking',
-                  status,
-                  title,
-                  timestamp: Date.now(),
-                });
-              }
-              break;
-            }
-          }
-        } catch (subscribeErr) {
-          logError('[ClaudeAgentRunner] Error in subscribe callback:', subscribeErr);
-          if (compactionStepId) {
-            this.sendTraceUpdate(session.id, compactionStepId, {
-              status: 'error',
-              title: 'Error during context compaction',
-            });
-            compactionStepId = undefined;
-          }
-          if (!hasEmittedError) {
-            hasEmittedError = true;
-            const errorText = toUserFacingErrorText(toErrorText(subscribeErr));
-            this.sendMessage(session.id, {
-              id: uuidv4(),
-              sessionId: session.id,
-              role: 'assistant',
-              content: [{ type: 'text', text: `**Error**: ${errorText}` }],
-              timestamp: Date.now(),
-            });
-          }
-        }
+        },
       });
-
-      const discardLastMalformedAssistant = (): void => {
-        const messages = [...piSession.agent.state.messages];
-        if (messages[messages.length - 1]?.role === 'assistant') {
-          messages.pop();
-          piSession.agent.replaceMessages(messages);
-
-          const leafId = piSession.sessionManager.getLeafId();
-          const leafEntry = leafId ? piSession.sessionManager.getEntry(leafId) : undefined;
-          if (leafEntry?.type === 'message' && leafEntry.message.role === 'assistant') {
-            if (leafEntry.parentId) {
-              piSession.sessionManager.branch(leafEntry.parentId);
-            } else {
-              piSession.sessionManager.resetLeaf();
-            }
-          }
-        }
-      };
-
-      const resetProtocolRetryState = (): void => {
-        streamedText = '';
-        thinkParser = new ThinkTagStreamParser();
-        protocolGuard.reset();
-        currentMessageProtocolViolation = false;
-        retryableProtocolViolation = false;
-        attemptToolCallIds = new Set<string>();
-      };
+      const unsubscribe = eventBridge.subscribe();
 
       // Execute the prompt — unsubscribe in finally to prevent event listener leak
       try {
-        resetActivityTimeout();
+        eventBridge.resetActivityTimeout();
         if (provider === 'ollama') {
           log(
             '[ClaudeAgentRunner] Starting Ollama prompt',
@@ -3112,31 +1558,31 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         );
 
         if (
-          retryableProtocolViolation &&
-          attemptToolCallIds.size === 0 &&
+          eventBridge.retryableProtocolViolation &&
+          eventBridge.attemptToolCallIds.size === 0 &&
           !controller.signal.aborted &&
-          !terminalErrorText
+          !eventBridge.terminalErrorText
         ) {
-          discardLastMalformedAssistant();
+          eventBridge.discardLastMalformedAssistant();
           logWarn('[ClaudeAgentRunner] Retrying once after pseudo tool-call protocol violation');
           this.sendTraceUpdate(session.id, thinkingStepId, {
             title: 'Retrying malformed tool call...',
           });
-          resetProtocolRetryState();
-          resetActivityTimeout();
+          eventBridge.resetProtocolRetryState();
+          eventBridge.resetActivityTimeout();
           await piSession.agent.continue();
         }
 
-        if (retryableProtocolViolation) {
-          discardLastMalformedAssistant();
-          terminalProtocolViolation = true;
-          terminalErrorText =
+        if (eventBridge.retryableProtocolViolation) {
+          eventBridge.discardLastMalformedAssistant();
+          eventBridge.terminalProtocolViolation = true;
+          eventBridge.terminalErrorText =
             '模型未通过结构化工具通道发起调用。系统已拦截协议文本并完成一次安全重试，请重试当前请求或切换模型。';
-          if (!hasEmittedError) {
-            hasEmittedError = true;
+          if (!eventBridge.hasEmittedError) {
+            eventBridge.hasEmittedError = true;
             const protocolErrorMessage: PiAssistantMessage = {
               role: 'assistant',
-              content: [{ type: 'text', text: terminalErrorText }],
+              content: [{ type: 'text', text: eventBridge.terminalErrorText }],
               api: piModel.api,
               provider: piModel.provider,
               model: piModel.id,
@@ -3149,7 +1595,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
               },
               stopReason: 'error',
-              errorMessage: terminalErrorText,
+              errorMessage: eventBridge.terminalErrorText,
               timestamp: Date.now(),
             };
             piSession.sessionManager.appendMessage(protocolErrorMessage);
@@ -3158,23 +1604,25 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               id: uuidv4(),
               sessionId: session.id,
               role: 'assistant',
-              content: [{ type: 'text', text: `**工具调用失败**：${terminalErrorText}` }],
+              content: [
+                { type: 'text', text: `**工具调用失败**：${eventBridge.terminalErrorText}` },
+              ],
               timestamp: Date.now(),
             });
           }
         }
       } finally {
-        if (modelCallStartedAt) {
-          evaluationMetrics.modelDurationMs += Date.now() - modelCallStartedAt;
-          modelCallStartedAt = undefined;
+        if (modelClock.startedAt) {
+          evaluationMetrics.modelDurationMs += Date.now() - modelClock.startedAt;
+          modelClock.startedAt = undefined;
         }
         try {
           unsubscribe();
         } catch (e) {
           logWarn('[ClaudeAgentRunner] unsubscribe error:', e);
         }
-        if (activityTimeoutId) clearTimeout(activityTimeoutId);
-        if (ollamaColdStartTimerId) clearTimeout(ollamaColdStartTimerId);
+        if (eventBridge.activityTimeoutId) clearTimeout(eventBridge.activityTimeoutId);
+        if (eventBridge.ollamaColdStartTimerId) clearTimeout(eventBridge.ollamaColdStartTimerId);
       }
 
       logTiming('agent prompt completed', runStartTime);
@@ -3203,7 +1651,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         return;
       }
       // If the SDK swallowed the AbortError after a loop-guard abort, preserve
-      // the 'error' trace status that handleLoopGuardDecision already published.
+      // the 'error' trace status that eventBridge.handleLoopGuardDecision already published.
       // The user-facing message and trace step are already set; do not overwrite
       // them with the default "Task completed" below.
       if (controller.signal.aborted && abortedByLoopGuard) {
@@ -3212,17 +1660,19 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       }
       // Complete - update the initial thinking step
       this.sendTraceUpdate(session.id, thinkingStepId, {
-        status: terminalErrorText ? 'error' : 'completed',
-        title: terminalErrorText ? 'Request failed' : 'Task completed',
-        error: terminalErrorText ? buildTraceError(terminalErrorText, 'provider') : undefined,
-        isError: Boolean(terminalErrorText),
-        outcome: terminalErrorText
-          ? terminalProtocolViolation
+        status: eventBridge.terminalErrorText ? 'error' : 'completed',
+        title: eventBridge.terminalErrorText ? 'Request failed' : 'Task completed',
+        error: eventBridge.terminalErrorText
+          ? buildTraceError(eventBridge.terminalErrorText, 'provider')
+          : undefined,
+        isError: Boolean(eventBridge.terminalErrorText),
+        outcome: eventBridge.terminalErrorText
+          ? eventBridge.terminalProtocolViolation
             ? 'protocol_violation'
             : 'provider_failed'
-          : toolErrorCount > 0
+          : eventBridge.toolErrorCount > 0
             ? 'tool_failed'
-            : toolCallCount > 0
+            : eventBridge.toolCallCount > 0
               ? 'tool_completed'
               : 'responded_without_tool',
         metrics: snapshotEvaluationMetrics(),

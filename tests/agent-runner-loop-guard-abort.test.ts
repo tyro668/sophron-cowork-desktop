@@ -4,6 +4,10 @@ import path from 'node:path';
 
 const agentRunnerPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner.ts');
 const agentRunnerContent = readFileSync(agentRunnerPath, 'utf8');
+// The event bridge owns the in-turn loop-guard decision path; the runner owns
+// the flag it sets and the post-rescue catch-block disposition.
+const bridgePath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-event-bridge.ts');
+const bridgeContent = readFileSync(bridgePath, 'utf8');
 
 /**
  * These tests pin the post-rescue catch-block disposition for loop-guard
@@ -20,15 +24,15 @@ describe('agent-runner loop-guard abort preserves error trace status', () => {
   it('sets the flag immediately before controller.abort() in handleLoopGuardDecision', () => {
     // The assignment must appear in the loop-guard block AND must precede the
     // controller.abort() call so the AbortError handler sees the flag.
-    const setIdx = agentRunnerContent.indexOf('abortedByLoopGuard = true;');
+    const setIdx = bridgeContent.indexOf('this.ctx.onLoopGuardAbort()');
     expect(setIdx).toBeGreaterThan(-1);
 
-    const abortIdx = agentRunnerContent.indexOf('controller.abort();', setIdx);
+    const abortIdx = bridgeContent.indexOf('controller.abort();', setIdx);
     expect(abortIdx).toBeGreaterThan(setIdx);
 
     // No other lines should sneak between the flag set and the abort call —
     // keep them adjacent so the intent is obvious.
-    const between = agentRunnerContent.slice(setIdx, abortIdx);
+    const between = bridgeContent.slice(setIdx, abortIdx);
     const nonTrivialLines = between
       .split('\n')
       .map((l) => l.trim())
@@ -84,10 +88,10 @@ describe('agent-runner loop-guard abort preserves error trace status', () => {
   it('the loop-guard decision handler still publishes the error trace step before aborting', () => {
     // The trace update with status:'error' and the loop-detected title must
     // stay in place so the catch branch has something to preserve.
-    expect(agentRunnerContent).toContain("title: 'Stopped: tool-call loop detected'");
-    const titleIdx = agentRunnerContent.indexOf("title: 'Stopped: tool-call loop detected'");
-    const localStart = agentRunnerContent.lastIndexOf('sendTraceUpdate', titleIdx);
-    const localBlock = agentRunnerContent.slice(localStart, titleIdx);
+    expect(bridgeContent).toContain("title: 'Stopped: tool-call loop detected'");
+    const titleIdx = bridgeContent.indexOf("title: 'Stopped: tool-call loop detected'");
+    const localStart = bridgeContent.lastIndexOf('sendTraceUpdate', titleIdx);
+    const localBlock = bridgeContent.slice(localStart, titleIdx);
     expect(localBlock).toContain("status: 'error'");
   });
 
@@ -102,17 +106,17 @@ describe('agent-runner loop-guard abort preserves error trace status', () => {
     // an `if (!hasEmittedError)` gate, and the assignment to hasEmittedError
     // should follow the sendMessage so the suppression intent is preserved for
     // later generic-error paths.
-    const sendIdx = agentRunnerContent.indexOf('text: buildAbortUserMessage(decision)');
+    const sendIdx = bridgeContent.indexOf('text: buildAbortUserMessage(decision)');
     expect(sendIdx).toBeGreaterThan(-1);
 
     // The 200 chars immediately before the sendMessage must not contain a
     // bare `if (!hasEmittedError) {` gate (i.e., the old suppression check).
-    const preamble = agentRunnerContent.slice(Math.max(0, sendIdx - 400), sendIdx);
-    expect(preamble).not.toMatch(/if\s*\(\s*!hasEmittedError\s*\)\s*\{/);
+    const preamble = bridgeContent.slice(Math.max(0, sendIdx - 400), sendIdx);
+    expect(preamble).not.toMatch(/if\s*\(\s*!(this\.)?hasEmittedError\s*\)\s*\{/);
 
     // hasEmittedError should be assigned AFTER the sendMessage to suppress
     // duplicate generic errors later in this turn, not before.
-    const trailing = agentRunnerContent.slice(sendIdx, sendIdx + 400);
+    const trailing = bridgeContent.slice(sendIdx, sendIdx + 400);
     expect(trailing).toContain('hasEmittedError = true');
   });
 });

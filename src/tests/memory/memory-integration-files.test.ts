@@ -20,9 +20,10 @@ describe('memory integration wiring', () => {
 
   it('injects runtime plugin skill paths and extension hooks into the agent runner', () => {
     const runner = readProjectFile('src/main/claude/agent-runner.ts');
+    const runnerSkills = readProjectFile('src/main/claude/agent-runner-skills.ts');
     const memoryExtension = readProjectFile('src/main/memory/memory-extension.ts');
     expect(runner).toContain('resolveSkillPaths(session.id)');
-    expect(runner).toContain("path.join(plugin.runtimePath, 'skills')");
+    expect(runnerSkills).toContain("path.join(plugin.runtimePath, 'skills')");
     expect(runner).toContain('this.extensionManager.beforeSessionRun');
     expect(runner).toContain('skillsSignature');
     expect(memoryExtension).not.toContain('customTools: this.memoryService.getTools()');

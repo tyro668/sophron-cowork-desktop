@@ -4,6 +4,12 @@ import path from 'node:path';
 
 const agentRunnerPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner.ts');
 const agentRunnerContent = readFileSync(agentRunnerPath, 'utf8');
+const bridgePath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-event-bridge.ts');
+const bridgeContent = readFileSync(bridgePath, 'utf8');
+const toolsPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-tools.ts');
+const toolsContent = readFileSync(toolsPath, 'utf8');
+const logUtilsPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-log-utils.ts');
+const logUtilsContent = readFileSync(logUtilsPath, 'utf8');
 const mainAgentPromptPath = path.resolve(process.cwd(), 'src/main/prompts/main-agent-system.txt');
 const mainAgentPromptContent = readFileSync(mainAgentPromptPath, 'utf8');
 
@@ -21,7 +27,7 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('keeps MCP config build resilient', () => {
-    expect(agentRunnerContent).toContain('function safeStringify');
+    expect(logUtilsContent).toContain('function safeStringify');
     expect(agentRunnerContent).toContain('Failed to prepare MCP server config, skipping server');
   });
 
@@ -48,18 +54,21 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('summarizes noisy SDK message updates instead of logging every text delta', () => {
-    expect(agentRunnerContent).toContain('const streamEventCounts = new Map<string, number>();');
-    expect(agentRunnerContent).toContain(
+    expect(bridgeContent).toContain('streamEventCounts = new Map<string, number>();');
+    expect(bridgeContent).toContain(
       "if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {"
     );
-    expect(agentRunnerContent).toContain("'[ClaudeAgentRunner] Event: message_end'");
-    expect(agentRunnerContent).toContain('messageUpdateCounts: getStreamEventSummary()');
-    expect(agentRunnerContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");
-    expect(agentRunnerContent).toContain("'[ClaudeAgentRunner] message_end raw message:'");
+    expect(bridgeContent).toContain("'[ClaudeAgentRunner] Event: message_end'");
+    expect(bridgeContent).toContain('messageUpdateCounts: this.getStreamEventSummary()');
+    expect(bridgeContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");
+    expect(bridgeContent).toContain("'[ClaudeAgentRunner] message_end raw message:'");
   });
 
   it('reuses the shared user-facing error helper', () => {
     expect(agentRunnerContent).toContain(
+      "import { toUserFacingErrorText } from './agent-runner-message-end'"
+    );
+    expect(bridgeContent).toContain(
       "import { resolveMessageEndPayload, toUserFacingErrorText } from './agent-runner-message-end'"
     );
     expect(agentRunnerContent).toContain(
@@ -100,17 +109,20 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('routes MCP image results through structured helpers instead of stringifying base64 into text', () => {
-    expect(agentRunnerContent).toContain(
-      "import {\n  normalizeMcpToolResultForModel,\n  normalizeToolExecutionResultForUi,\n} from './tool-result-utils'"
+    expect(toolsContent).toContain(
+      "import { normalizeMcpToolResultForModel } from './tool-result-utils'"
     );
-    expect(agentRunnerContent).toContain(
+    expect(bridgeContent).toContain('normalizeToolExecutionResultForUi');
+    expect(toolsContent).toContain(
       'const normalizedResult = normalizeMcpToolResultForModel(result);'
     );
-    expect(agentRunnerContent).toContain(
+    expect(bridgeContent).toContain(
       'const normalizedToolResult = normalizeToolExecutionResultForUi(event.result);'
     );
     expect(agentRunnerContent).not.toContain('else textParts.push(JSON.stringify(part));');
     expect(agentRunnerContent).not.toContain(": JSON.stringify(event.result || '');");
+    expect(bridgeContent).not.toContain('else textParts.push(JSON.stringify(part));');
+    expect(bridgeContent).not.toContain(": JSON.stringify(event.result || '');");
   });
 
   it('persists assistant model metadata for pi-ai thinking replay', () => {
