@@ -187,7 +187,7 @@ function createSchema(db: Database.Database): void {
     CREATE TABLE sessions (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
-      claude_session_id TEXT,
+      agent_session_id TEXT,
       openai_thread_id TEXT,
       status TEXT NOT NULL,
       cwd TEXT,
@@ -267,7 +267,7 @@ function insertSession(
   db.prepare(
     `
       INSERT INTO sessions (
-        id, title, claude_session_id, openai_thread_id, status, cwd, mounted_paths, allowed_tools,
+        id, title, agent_session_id, openai_thread_id, status, cwd, mounted_paths, allowed_tools,
         memory_enabled, model, created_at, updated_at
       ) VALUES (?, ?, NULL, NULL, 'idle', ?, '[]', '[]', ?, NULL, ?, ?)
     `

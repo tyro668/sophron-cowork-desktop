@@ -11,6 +11,7 @@ import type { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import type { SkillsAdapter } from '../skills/skills-adapter';
 import { configStore } from '../config/config-store';
 import { log, logWarn } from '../utils/logger';
+import { getAppStorageDir } from '../utils/app-storage';
 import { getBundledNodePaths, resolveBundledPythonBinDir } from './agent-runner-env';
 
 export interface AgentRunnerSkillsDeps {
@@ -103,15 +104,15 @@ ${hints.join('\n')}
    * Get the built-in skills directory (shipped with the app)
    */
   getBuiltinSkillsPath(): string {
-    // In development, skills are in the project's .claude/skills directory
+    // In development, skills are in the project's assets/skills directory
     // In production, they're extracted via extraResources to resources/skills
     const appPath = app.getAppPath();
     const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
 
     const possiblePaths = [
       // Development: relative to this file
-      path.join(__dirname, '..', '..', '..', '.claude', 'skills'),
-      // Production: extraResources extracts .claude/skills → resources/skills
+      path.join(__dirname, '..', '..', '..', 'assets', 'skills'),
+      // Production: extraResources extracts assets/skills → resources/skills
       // This is the preferred production path (real directory, no asar issues)
       path.join(process.resourcesPath || '', 'skills'),
       // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
@@ -148,7 +149,7 @@ ${hints.join('\n')}
   }
 
   getAppAgentDir(): string {
-    return path.join(app.getPath('userData'), 'claude');
+    return getAppStorageDir();
   }
 
   getRuntimeSkillsDir(): string {

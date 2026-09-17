@@ -27,6 +27,7 @@ import type {
   LimaStatus,
   PathConverter,
 } from './types';
+import { LIMA_INSTANCE_NAME } from './lima-instance-name';
 
 export type SandboxMode = 'wsl' | 'lima' | 'native' | 'none';
 
@@ -273,7 +274,7 @@ export class SandboxAdapter implements SandboxExecutor {
     }
 
     log('[SandboxAdapter] [OK] Lima detected');
-    log('[SandboxAdapter]   Instance:', limaStatus.instanceName || 'claude-sandbox');
+    log('[SandboxAdapter]   Instance:', limaStatus.instanceName || LIMA_INSTANCE_NAME);
     log('[SandboxAdapter]   Exists:', limaStatus.instanceExists ? '[OK]' : '[X] not created');
     log('[SandboxAdapter]   Running:', limaStatus.instanceRunning ? '[OK]' : '[X] not running');
     log(

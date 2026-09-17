@@ -22,8 +22,8 @@ export interface ValidationResult {
 // Forbidden path patterns for Linux/WSL - these should never be accessed
 const FORBIDDEN_PATTERNS_LINUX = [
   /^\/mnt\//, // Windows filesystem mounts
-  /^\/home\/(?!.*\/\.claude\/sandbox)/, // User home (except ~/.claude/sandbox)
-  /^\/root\/(?!\.claude\/sandbox|\.nvm)/, // Root directory (except .claude/sandbox and .nvm)
+  /^\/home\/(?!.*\/\.claude\/sandbox)(?!.*\/\.sophron\/sandbox)/, // User home (except sandbox dirs)
+  /^\/root\/(?!\.claude\/sandbox|\.sophron\/sandbox|\.nvm)/, // Root directory (except sandbox dirs and .nvm)
   /^\/etc\//, // System configuration
   /^\/var\//, // Variable data
   /^\/usr\//, // System binaries

@@ -66,8 +66,8 @@ function buildCheckList(platform, arch) {
       severity: 'fatal',
     },
     {
-      label: 'Built-in skills directory (.claude/skills/)',
-      relPath: '.claude/skills',
+      label: 'Built-in skills directory (assets/skills/)',
+      relPath: 'assets/skills',
       type: 'dir',
       severity: 'fatal',
     },

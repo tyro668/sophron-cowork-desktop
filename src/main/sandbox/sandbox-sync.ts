@@ -2,7 +2,7 @@
  * SandboxSync - Manages file synchronization between Windows and WSL sandbox
  *
  * This module provides complete isolation by:
- * 1. Copying files from Windows to an isolated WSL directory (~/.claude/sandbox/{sessionId})
+ * 1. Copying files from Windows to an isolated WSL directory (~/.sophron/sandbox/{sessionId})
  * 2. Running all operations within the isolated directory
  * 3. Syncing changes back to Windows when requested
  *
@@ -39,7 +39,7 @@ function validateDistroName(distro: string): void {
 export interface SyncSession {
   sessionId: string;
   windowsPath: string; // Original Windows path (e.g., D:\project)
-  sandboxPath: string; // WSL sandbox path (e.g., ~/.claude/sandbox/{sessionId})
+  sandboxPath: string; // WSL sandbox path (e.g., ~/.sophron/sandbox/{sessionId})
   distro: string; // WSL distro name
   initialized: boolean;
   fileCount?: number;
@@ -138,7 +138,7 @@ export class SandboxSync {
     // Get the actual home directory path from WSL (use cd ~ && pwd since $HOME won't expand in single quotes)
     const homeResult = await this.wslExec(distro, 'cd ~ && pwd');
     const homeDir = homeResult.stdout.trim() || '/root';
-    const sandboxPath = `${homeDir}/.claude/sandbox/${sessionId}`;
+    const sandboxPath = `${homeDir}/.sophron/sandbox/${sessionId}`;
     log(`[SandboxSync]   Sandbox path: ${sandboxPath}`);
 
     try {

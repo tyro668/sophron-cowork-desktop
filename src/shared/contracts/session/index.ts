@@ -25,7 +25,7 @@ export interface CloudTableChatAttachment {
 export interface Session {
   id: string;
   title: string;
-  claudeSessionId?: string;
+  agentSessionId?: string;
   openaiThreadId?: string;
   status: SessionStatus;
   projectId?: string;

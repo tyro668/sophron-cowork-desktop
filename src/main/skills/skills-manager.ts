@@ -19,6 +19,7 @@ import type { Skill, PluginInstallResult } from '../../shared/contracts';
 import type { DatabaseInstance } from '../db/database';
 import { log, logError, logWarn } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
+import { getAppStorageDir } from '../utils/app-storage';
 import { SkillHubService } from './skillhub-service';
 
 /**
@@ -234,7 +235,7 @@ function extractSupportFeaturesFromSkillReadme(content: string, description: str
  *
  * Skills loading priority:
  * 1. Project-level: <project>/.skills/ or <project>/skills/
- * 2. Global: <userData>/claude/skills/ (includes ~/.claude/skills read-only)
+ * 2. Global: <userData>/agent/skills/ (includes ~/.claude/skills read-only)
  * 3. Built-in skills
  */
 export class SkillsManager {
@@ -316,7 +317,7 @@ export class SkillsManager {
           log(`Loaded built-in skill: ${skill.name}`);
         }
       } catch (error) {
-        logError('Failed to load built-in skills from .claude/skills:', error);
+        logError('Failed to load built-in skills from assets/skills:', error);
       }
     }
   }
@@ -330,8 +331,8 @@ export class SkillsManager {
 
     const possiblePaths = [
       // Development
-      path.join(__dirname, '..', '..', '..', '.claude', 'skills'),
-      // Production: extraResources extracts .claude/skills → resources/skills
+      path.join(__dirname, '..', '..', '..', 'assets', 'skills'),
+      // Production: extraResources extracts assets/skills → resources/skills
       path.join(process.resourcesPath || '', 'skills'),
       // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
       ...(this.physicalDirExists(path.join(unpackedPath, '.claude', 'skills'))
@@ -365,7 +366,7 @@ export class SkillsManager {
   }
 
   private getDefaultGlobalSkillsPath(): string {
-    return path.join(app.getPath('userData'), 'claude', 'skills');
+    return path.join(getAppStorageDir(), 'skills');
   }
 
   getGlobalSkillsPath(): string {

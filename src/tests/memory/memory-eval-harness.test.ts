@@ -197,7 +197,7 @@ function createSchema(db: Database.Database): void {
     CREATE TABLE sessions (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
-      claude_session_id TEXT,
+      agent_session_id TEXT,
       openai_thread_id TEXT,
       status TEXT NOT NULL,
       cwd TEXT,

@@ -10,8 +10,8 @@ import {
   type ReadOperations,
   type WriteOperations,
 } from '@mariozechner/pi-coding-agent';
+import { getLimaInstanceName } from '../sandbox/lima-instance-name';
 
-const DEFAULT_LIMA_INSTANCE_NAME = 'claude-sandbox';
 const VIRTUAL_WORKSPACE_PATH = '/workspace';
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
@@ -65,14 +65,7 @@ function buildSandboxShellInvocation(
 
   return {
     command: 'limactl',
-    args: [
-      'shell',
-      mode.instanceName || DEFAULT_LIMA_INSTANCE_NAME,
-      '--',
-      '/bin/bash',
-      '-lc',
-      script,
-    ],
+    args: ['shell', mode.instanceName || getLimaInstanceName(), '--', '/bin/bash', '-lc', script],
   };
 }
 

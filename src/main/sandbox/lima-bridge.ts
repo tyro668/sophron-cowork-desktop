@@ -15,6 +15,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { app } from 'electron';
 import { log, logError } from '../utils/logger';
+import {
+  LIMA_INSTANCE_NAME,
+  LEGACY_LIMA_INSTANCE_NAME,
+  adoptLimaInstanceName,
+  getLimaInstanceName,
+} from './lima-instance-name';
 import type {
   LimaStatus,
   SandboxConfig,
@@ -39,7 +45,6 @@ async function loadBootstrap() {
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-const LIMA_INSTANCE_NAME = 'claude-sandbox';
 const LIMA_SHELL_RETRY_DELAY_MS = 1000;
 const LIMA_SHELL_RETRY_COUNT = 12;
 
@@ -72,7 +77,7 @@ const execLimaShellWithRetry = async (
     try {
       return await execFileAsync(
         'limactl',
-        ['shell', LIMA_INSTANCE_NAME, '--', 'bash', '-c', command],
+        ['shell', getLimaInstanceName(), '--', 'bash', '-c', command],
         { timeout, encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 }
       );
     } catch (error) {
@@ -156,15 +161,16 @@ export class LimaBridge implements SandboxExecutor {
           timeout: 10000,
         });
         log('[Lima] limactl list output:', stdout);
+        adoptLimaInstanceName(stdout);
 
         // Parse text output - format is: NAME STATUS SSH CPUS MEMORY DISK DIR
         const lines = stdout.trim().split(/\r?\n/);
         for (const line of lines) {
-          if (line.includes(LIMA_INSTANCE_NAME)) {
+          if (line.includes(getLimaInstanceName())) {
             instanceExists = true;
             // Check if status is Running
             instanceRunning = line.includes('Running');
-            log('[Lima] Instance found:', LIMA_INSTANCE_NAME, 'Running:', instanceRunning);
+            log('[Lima] Instance found:', getLimaInstanceName(), 'Running:', instanceRunning);
             break;
           }
         }
@@ -175,11 +181,18 @@ export class LimaBridge implements SandboxExecutor {
       } catch (error) {
         log('[Lima] Error checking instances:', error);
         // Try alternative check - see if instance directory exists
-        try {
-          await execAsync(`limactl info ${LIMA_INSTANCE_NAME}`, { timeout: 5000 });
-          instanceExists = true;
-          log('[Lima] Instance exists (found via limactl info)');
-        } catch {
+        for (const candidate of [LIMA_INSTANCE_NAME, LEGACY_LIMA_INSTANCE_NAME]) {
+          try {
+            await execAsync(`limactl info ${candidate}`, { timeout: 5000 });
+            adoptLimaInstanceName(candidate);
+            instanceExists = true;
+            log('[Lima] Instance exists (found via limactl info):', candidate);
+            break;
+          } catch {
+            // try next candidate
+          }
+        }
+        if (!instanceExists) {
           log('[Lima] Instance does not exist');
         }
       }
@@ -190,7 +203,7 @@ export class LimaBridge implements SandboxExecutor {
           available: true,
           instanceExists,
           instanceRunning: false,
-          instanceName: LIMA_INSTANCE_NAME,
+          instanceName: getLimaInstanceName(),
         };
       }
 
@@ -268,7 +281,7 @@ export class LimaBridge implements SandboxExecutor {
         available: true,
         instanceExists,
         instanceRunning,
-        instanceName: LIMA_INSTANCE_NAME,
+        instanceName: getLimaInstanceName(),
         nodeAvailable,
         pythonAvailable,
         pipAvailable,
@@ -291,7 +304,8 @@ export class LimaBridge implements SandboxExecutor {
     // First check if instance already exists
     try {
       const { stdout } = await execAsync('limactl list', { timeout: 5000 });
-      if (stdout.includes(LIMA_INSTANCE_NAME)) {
+      if (stdout.includes(LIMA_INSTANCE_NAME) || stdout.includes(LEGACY_LIMA_INSTANCE_NAME)) {
+        adoptLimaInstanceName(stdout);
         log('[Lima] Instance already exists, skipping creation');
         return true;
       }
@@ -299,7 +313,7 @@ export class LimaBridge implements SandboxExecutor {
       // Ignore error, proceed with creation
     }
 
-    log('[Lima] Creating instance:', LIMA_INSTANCE_NAME);
+    log('[Lima] Creating instance:', getLimaInstanceName());
     log('[Lima] This may take several minutes for initial image download...');
 
     return new Promise((resolve) => {
@@ -307,7 +321,7 @@ export class LimaBridge implements SandboxExecutor {
       // Note: template:ubuntu (not template://ubuntu) for Lima v2.0+
       const limaProcess = spawn(
         'limactl',
-        ['create', `--name=${LIMA_INSTANCE_NAME}`, '--mount-writable', 'template:ubuntu'],
+        ['create', `--name=${getLimaInstanceName()}`, '--mount-writable', 'template:ubuntu'],
         { stdio: ['ignore', 'pipe', 'pipe'] }
       );
 

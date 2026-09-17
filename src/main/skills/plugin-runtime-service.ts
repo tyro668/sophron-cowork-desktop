@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { app } from 'electron';
 import type {
   InstalledPlugin,
   PluginCatalogItemV2,
@@ -15,6 +14,7 @@ import type {
 } from '../../shared/contracts';
 import { log, logError } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
+import { getAppStorageDir } from '../utils/app-storage';
 import { getDefaultShell } from '../utils/shell-resolver';
 import { withRetry } from '../utils/retry';
 import { pluginRegistryStore } from './plugin-registry-store';
@@ -918,7 +918,7 @@ export class PluginRuntimeService {
   }
 
   private getPluginsRootPath(): string {
-    return path.join(app.getPath('userData'), 'claude', 'plugins');
+    return path.join(getAppStorageDir(), 'plugins');
   }
 
   private getSourcePath(pluginId: string): string {

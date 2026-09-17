@@ -67,7 +67,7 @@ export interface DatabaseInstance {
 export interface SessionRow {
   id: string;
   title: string;
-  claude_session_id: string | null;
+  agent_session_id: string | null;
   openai_thread_id: string | null;
   status: string;
   project_id?: string | null;
@@ -663,6 +663,19 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
     name: 'baseline_schema',
     up: (database) => createBaselineMainSchema(database),
   },
+  {
+    version: 2,
+    name: 'rename_session_agent_id',
+    up: (database) => {
+      const columns = database
+        .prepare("SELECT name FROM pragma_table_info('sessions')")
+        .all() as Array<{ name: string }>;
+      const names = new Set(columns.map((column) => column.name));
+      if (names.has('claude_session_id') && !names.has('agent_session_id')) {
+        database.exec('ALTER TABLE sessions RENAME COLUMN claude_session_id TO agent_session_id');
+      }
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =
@@ -814,7 +827,7 @@ export function initDatabase(): DatabaseInstance {
   // Prepare statements for better performance
   const insertSession = rawDb.prepare(`
     INSERT OR REPLACE INTO sessions
-    (id, title, claude_session_id, openai_thread_id, status, project_id, cwd, mounted_paths, allowed_tools, memory_enabled, model, created_at, updated_at)
+    (id, title, agent_session_id, openai_thread_id, status, project_id, cwd, mounted_paths, allowed_tools, memory_enabled, model, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
@@ -827,7 +840,7 @@ export function initDatabase(): DatabaseInstance {
     SELECT
       s.id,
       s.title,
-      s.claude_session_id,
+      s.agent_session_id,
       s.openai_thread_id,
       s.status,
       s.project_id,
@@ -848,7 +861,7 @@ export function initDatabase(): DatabaseInstance {
     SELECT
       s.id,
       s.title,
-      s.claude_session_id,
+      s.agent_session_id,
       s.openai_thread_id,
       s.status,
       s.project_id,
@@ -1019,7 +1032,7 @@ export function initDatabase(): DatabaseInstance {
         insertSession.run(
           session.id,
           session.title,
-          session.claude_session_id,
+          session.agent_session_id,
           session.openai_thread_id,
           session.status,
           session.project_id ?? null,

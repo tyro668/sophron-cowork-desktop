@@ -1050,7 +1050,11 @@ export class ConfigStore {
 
   private saveConfig(config: AppConfig): void {
     const normalized = this.normalizeConfig(config);
-    this.store.set(normalized);
+    // claudeCodePath is no longer used (the agent SDK handles model routing
+    // natively): keep reading it from legacy config files, but stop writing it.
+    const persisted = normalized as AppConfig & { claudeCodePath?: string };
+    delete persisted.claudeCodePath;
+    this.store.set(persisted);
   }
 
   private composeProjectedConfig(
@@ -1473,8 +1477,6 @@ export class ConfigStore {
 
     this.saveConfig({
       ...projectedConfig,
-      claudeCodePath:
-        updates.claudeCodePath !== undefined ? updates.claudeCodePath : current.claudeCodePath,
       defaultWorkdir:
         updates.defaultWorkdir !== undefined ? updates.defaultWorkdir : current.defaultWorkdir,
       globalSkillsPath:

@@ -2,7 +2,7 @@
  * LimaSync - Manages file synchronization between macOS and Lima sandbox
  *
  * This module provides complete isolation by:
- * 1. Copying files from macOS to an isolated Lima directory (~/.claude/sandbox/{sessionId})
+ * 1. Copying files from macOS to an isolated Lima directory (~/.sophron/sandbox/{sessionId})
  * 2. Running all operations within the isolated directory
  * 3. Syncing changes back to macOS when requested
  *
@@ -16,8 +16,7 @@
 
 import { log, logError } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
-
-const LIMA_INSTANCE_NAME = 'claude-sandbox';
+import { getLimaInstanceName } from './lima-instance-name';
 
 /** Validate sessionId to prevent command injection via path traversal */
 function validateSessionId(sessionId: string): void {
@@ -29,7 +28,7 @@ function validateSessionId(sessionId: string): void {
 export interface LimaSyncSession {
   sessionId: string;
   macPath: string; // Original macOS path (e.g., /Users/username/project)
-  sandboxPath: string; // Lima sandbox path (e.g., ~/.claude/sandbox/{sessionId})
+  sandboxPath: string; // Lima sandbox path (e.g., ~/.sophron/sandbox/{sessionId})
   initialized: boolean;
   fileCount?: number;
   totalSize?: number;
@@ -118,7 +117,7 @@ export class LimaSync {
     // Get the actual home directory path from Lima
     const homeResult = await this.limaExec('cd ~ && pwd');
     const homeDir = homeResult.stdout.trim() || '/home/user';
-    const sandboxPath = `${homeDir}/.claude/sandbox/${sessionId}`;
+    const sandboxPath = `${homeDir}/.sophron/sandbox/${sessionId}`;
     log(`[LimaSync]   Sandbox path: ${sandboxPath}`);
 
     try {
@@ -483,7 +482,7 @@ export class LimaSync {
     try {
       const result = await execFileAsync(
         'limactl',
-        ['shell', LIMA_INSTANCE_NAME, '--', 'bash', '-c', command],
+        ['shell', getLimaInstanceName(), '--', 'bash', '-c', command],
         {
           encoding: 'utf-8',
           timeout,

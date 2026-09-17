@@ -65,7 +65,7 @@ describe('main database migrations', () => {
     const db = openRawDb();
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1]);
+    expect(ledgerVersions(db)).toEqual([1, 2]);
     for (const table of [
       'projects',
       'sessions',
@@ -102,18 +102,30 @@ describe('main database migrations', () => {
       )
     `);
     db.prepare(
-      "INSERT INTO sessions (id, title, status, cwd, created_at, updated_at) VALUES ('s1', 't', 'idle', '/tmp/work', 1, 1)"
+      "INSERT INTO sessions (id, title, claude_session_id, status, cwd, created_at, updated_at) VALUES ('s1', 't', 'sdk-123', 'idle', '/tmp/work', 1, 1)"
     ).run();
 
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1]);
-    const session = db.prepare('SELECT project_id, cwd FROM sessions WHERE id = ?').get('s1') as {
+    expect(ledgerVersions(db)).toEqual([1, 2]);
+    const session = db
+      .prepare('SELECT project_id, cwd, agent_session_id FROM sessions WHERE id = ?')
+      .get('s1') as {
       project_id: string | null;
       cwd: string | null;
+      agent_session_id: string | null;
     };
     expect(session.project_id).toBeTruthy();
     expect(session.cwd).toBeNull();
+    // v2 renamed the legacy column without dropping its value.
+    expect(session.agent_session_id).toBe('sdk-123');
+    const columnNames = (
+      db.prepare("SELECT name FROM pragma_table_info('sessions')").all() as Array<{
+        name: string;
+      }>
+    ).map((column) => column.name);
+    expect(columnNames).toContain('agent_session_id');
+    expect(columnNames).not.toContain('claude_session_id');
     const project = db.prepare('SELECT cwd FROM projects WHERE id = ?').get(session.project_id) as {
       cwd: string;
     };
@@ -128,7 +140,7 @@ describe('main database migrations', () => {
     db.exec('DROP TABLE skills');
 
     migrateMainSchema(db);
-    expect(ledgerVersions(db)).toEqual([1]);
+    expect(ledgerVersions(db)).toEqual([1, 2]);
     expect(tableNames(db)).not.toContain('skills');
   });
 
@@ -146,6 +158,6 @@ describe('main database migrations', () => {
       /readonly/i
     );
     // Reads still work.
-    expect(ledgerVersions(db)).toEqual([1, MAIN_SCHEMA_VERSION + 100]);
+    expect(ledgerVersions(db)).toEqual([1, 2, MAIN_SCHEMA_VERSION + 100]);
   });
 });

@@ -50,6 +50,7 @@ This creates a `html2pptx/` directory with the library files and CLI binaries. T
 **CRITICAL: Every presentation must make at least ONE bold, unexpected design choice.** Safe, predictable designs are forgettable. Push boundaries.
 
 **Risk-taking examples** (every presentation should have something distinctive about it):
+
 - **Extreme typography**: 120pt headlines, rotated text at 90°, all-caps with 20px letter-spacing, mixing serif headers with sans-serif body
 - **Unexpected colors**: Burgundy and gold instead of blue, coral and teal, black backgrounds with bright accents, monochrome with single pop color
 - **Spatial surprises**: Asymmetric 30/70 splits, diagonal section dividers, overlapping shapes, text positioned at slide edges, breaking the grid
@@ -57,6 +58,7 @@ This creates a `html2pptx/` directory with the library files and CLI binaries. T
 - **Layout boldness**: Full-bleed color backgrounds, sidebar layouts, magazine-style multi-column, floating text boxes over shapes
 
 **What makes presentations forgettable** (NEVER do this):
+
 - Generic "AI slop" aesthetics: default gradients, centered everything, no distinctive choices
 - Timid, evenly-distributed color palettes with no hierarchy or dominance
 - Cookie-cutter designs that could work for any topic
@@ -77,6 +79,7 @@ This creates a `html2pptx/` directory with the library files and CLI binaries. T
 ##### The 4px Base Unit System
 
 Use multiples of 4px for all spacing decisions. This creates visual rhythm:
+
 - **4px** - Tight: between related lines of text
 - **8px** - Compact: between elements within a group
 - **12px** - Standard: between distinct content blocks
@@ -88,6 +91,7 @@ Use multiples of 4px for all spacing decisions. This creates visual rhythm:
 ##### Font Size Hierarchy for Dense Slides
 
 When packing information, use this aggressive scale:
+
 ```
 Title:           32-40px (one size, prominent)
 Section headers: 13-15px (small but bold)
@@ -101,6 +105,7 @@ Footnotes:       10px (minimal footprint)
 ##### Container Padding Rules
 
 Match padding to content density:
+
 ```
 Dense information boxes:  12-14px padding
 Standard content cards:   14-16px padding
@@ -108,11 +113,12 @@ Spacious hero sections:   20-24px padding
 ```
 
 **Internal margin pattern**: For text within containers:
+
 ```css
-margin: 0 0 4px 0;   /* Tight: lines within a paragraph */
-margin: 0 0 6px 0;   /* Compact: list items */
-margin: 0 0 8px 0;   /* Standard: between paragraphs */
-margin: 0 0 10px 0;  /* Separated: section header to content */
+margin: 0 0 4px 0; /* Tight: lines within a paragraph */
+margin: 0 0 6px 0; /* Compact: list items */
+margin: 0 0 8px 0; /* Standard: between paragraphs */
+margin: 0 0 10px 0; /* Separated: section header to content */
 ```
 
 ##### Gap vs Padding Decision Tree
@@ -153,14 +159,17 @@ Use percentage widths for columns, fixed widths for consistent elements:
 ##### Common Spacing Mistakes
 
 **Too much space**:
+
 - 24px+ gaps between every element (looks sparse, wastes real estate)
 - 20px+ padding in every container (content floats in empty space)
 
 **Too little space**:
+
 - 4px gaps between unrelated items (everything bleeds together)
 - 8px padding in complex containers (text touches edges)
 
 **Inconsistent**:
+
 - 12px gap here, 16px there, 10px elsewhere (looks unfinished)
 - Different padding on similar containers (breaks visual pattern)
 
@@ -171,6 +180,7 @@ Use percentage widths for columns, fixed widths for consistent elements:
 **IMPORTANT: Font constraints**: Use web-safe fonts only (see Critical Text Rules section for complete list). PowerPoint requires universally available fonts for reliable rendering.
 
 **Within this constraint, make distinctive choices**:
+
 - **Size contrast is your power tool**: Extreme size differences (72pt headers vs 14pt body) create hierarchy and impact
 - **Weight and spacing**: Use bold strategically. Add letter-spacing to all-caps headers for sophistication
 - **Serif vs sans-serif**: Mix thoughtfully - serif for warmth/tradition, sans-serif for modern clarity
@@ -178,11 +188,13 @@ Use percentage widths for columns, fixed widths for consistent elements:
 - **Consistency matters**: Pick 2-3 typefaces maximum and vary them through size, weight, and spacing
 
 **Content brevity - this is a presentation, not a report**:
+
 - Paragraphs should be 1 sentence, _maybe_ 2
 - Restrict yourself to 3-5 bullet points per list
 - Cards should support short statements/fragments, maybe one complete sentence if it's short
 
 **Visual hierarchy through typography**:
+
 - Generally no more than 2-3 text sizes per slide (complex slides with charts may use 4)
 - If you need additional distinction beyond size, use weight (bold) or opacity
 
@@ -224,6 +236,7 @@ The slide is divided into distinct zones with buffer spacing:
    - Keep footnotes brief
 
 **Example structure**:
+
 ```html
 <body class="col bg-surface" style="width: 960px; height: 540px; position: relative;">
   <!-- Title zone: use fit class to shrink to content height -->
@@ -246,6 +259,7 @@ The slide is divided into distinct zones with buffer spacing:
 ```
 
 **IMPORTANT**:
+
 - Use `class="col"` on body to enable flexbox layout
 - Use `class="fit"` on title container to shrink to content height
 - Use `class="fill-height"` on content to expand into remaining space
@@ -257,16 +271,19 @@ The slide is divided into distinct zones with buffer spacing:
 **Commit to a cohesive, bold aesthetic.** Dominant colors with sharp accents outperform timid, evenly-distributed palettes. Every presentation should have a distinct color personality.
 
 **Core principles**:
+
 - **Dominance over equality**: One color should clearly dominate (60-70% of visual weight), with 1-2 supporting tones and one sharp accent. Never give all colors equal weight.
 - **Create atmosphere**: Don't default to solid white backgrounds. Use color blocking, gradient backgrounds, tinted surfaces, or dramatic contrast (dark slides with bright text) to create depth and mood.
 - **Context-specific choices**: The palette should feel designed for THIS topic. If someone could swap your colors into a completely different presentation and it would still "work," you haven't made specific enough choices.
 
 **NEVER use generic AI aesthetics**:
+
 - Cliched color schemes (blue gradients on white, purple-to-pink gradients)
 - Safe corporate blues without intentional reasoning
 - Overused teals, greys, and muted "professional" tones
 
 **Create visual depth**:
+
 - **Gradient backgrounds**: Use `linear-gradient()` or `radial-gradient()` on slide backgrounds for atmosphere
 - **Color blocking**: 40-60% of a slide in solid color creates visual punctuation
 - **Layered transparencies**: Overlapping shapes with opacity create depth
@@ -293,6 +310,7 @@ The slide is divided into distinct zones with buffer spacing:
 ##### When to Use Visuals
 
 **Icons work best for**:
+
 - **Quick recognition**: Represent concepts at a glance (settings gear, user profile, warning triangle)
 - **List enhancement**: Add visual anchors to bullet points or feature lists (max 4-6 items)
 - **Navigation cues**: Guide attention to key sections or actions
@@ -300,6 +318,7 @@ The slide is divided into distinct zones with buffer spacing:
 - **Status indicators**: Show state (complete, in-progress, error)
 
 **Diagrams work best for**:
+
 - **Process flows**: Sequential steps, workflows, pipelines
 - **Relationships**: Hierarchies, networks, dependencies, comparisons
 - **Architecture**: System components, data flows, integrations
@@ -307,6 +326,7 @@ The slide is divided into distinct zones with buffer spacing:
 - **Comparisons**: Before/after, option A vs B, feature matrices
 
 **Illustrations/Images work best for**:
+
 - **Emotional impact**: When you need to evoke feeling, not just convey information
 - **Concrete examples**: Showing actual products, places, or people
 - **Complex concepts**: Abstract ideas that benefit from metaphorical visualization
@@ -315,6 +335,7 @@ The slide is divided into distinct zones with buffer spacing:
 ##### Icon Usage Patterns
 
 **DO**:
+
 - Use a **consistent icon set** throughout (don't mix styles - all outline OR all filled, all same weight)
 - Keep icons **small and supporting** (24-48px typical, 64px max for emphasis)
 - Choose icons that are **immediately recognizable** for your audience
@@ -323,6 +344,7 @@ The slide is divided into distinct zones with buffer spacing:
 - Use react-icons library for consistent, high-quality SVG icons
 
 **DON'T**:
+
 - Use icons as pure decoration without meaning
 - Mix icon styles (outline + filled, different weights, different visual languages)
 - Make icons compete with text for attention (keep them subordinate)
@@ -333,24 +355,28 @@ The slide is divided into distinct zones with buffer spacing:
 ##### Diagram Design Principles
 
 **Clarity over complexity**:
+
 - Each diagram should convey ONE main idea
 - Remove unnecessary elements (every line, box, arrow must earn its place)
 - Use visual hierarchy: primary elements larger/bolder, secondary elements subdued
 - Limit to 5-7 main elements per diagram (cognitive load limit)
 
 **Flow and direction**:
+
 - Left-to-right for sequential processes (Western reading pattern)
 - Top-to-bottom for hierarchies
 - Center-outward for radial/hub-spoke relationships
 - Use arrows sparingly - direction should be obvious from layout
 
 **Visual consistency**:
+
 - Same shape for same type of element (all rectangles for steps, all circles for milestones)
 - Consistent spacing between elements
 - Uniform line weights and colors
 - Clear grouping through proximity and enclosure
 
 **Common Diagram Types**:
+
 1. **Flowchart** - Decision trees, process steps
    - Rectangles for actions, diamonds for decisions
    - Arrows show direction, color-code paths
@@ -438,6 +464,7 @@ Create diagrams using positioned divs with borders, backgrounds, and text:
 ```
 
 **WARNING SIGNS your visual isn't working**:
+
 - You need to explain what the icon means
 - The diagram requires more than 5 seconds to parse
 - You're adding a visual because "the slide looks empty"
@@ -445,27 +472,32 @@ Create diagrams using positioned divs with borders, backgrounds, and text:
 - Elements overlap or crowd each other
 
 #### Anti-Patterns: What NEVER to Do
+
 Avoid these patterns that create forgettable presentations:
 
 **Typography failures**:
+
 - Using default type sizes with no distinctive scale, weight, or spacing choices
 - Multiple font families on one slide (mixing 3+ typefaces = chaos)
 - Centered body text (center headlines only; left-align paragraphs and lists)
 - Insufficient size contrast (18pt header with 16pt body is nearly invisible)
 
 **Color failures**:
+
 - Default gradients that appear in generic templates (particularly purple/blue)
 - Evenly distributing 5+ colors across slides with no hierarchy or dominance
 - Low contrast combinations (light gray text on white, dark blue on black)
 - Off-brand colors when brand identity is specified
 
 **Layout failures**:
+
 - Centered alignment for everything (static, boring, no flow)
 - Cramming too much content per slide (more than 5 bullets, paragraphs over 2 sentences)
 - Inconsistent spacing and alignment across slides (looks unfinished)
 - Using the same exact layout for every single slide (monotonous)
 
 **Visual detail failures**:
+
 - Generic clipart-style icons that could apply to anything
 - Decorative elements that don't serve the aesthetic direction
 - Half-committed design (one fancy slide, rest are defaults)
@@ -589,19 +621,19 @@ Icons can be included using either inline SVG or SVG files, which are automatica
 #### How to use react-icons
 
 ```javascript
-const React = require("react");
-const ReactDOMServer = require("react-dom/server");
-const { FaHome } = require("react-icons/fa");
+const React = require('react');
+const ReactDOMServer = require('react-dom/server');
+const { FaHome } = require('react-icons/fa');
 
 // Generate SVG string from react-icon
-function renderIconSvg(IconComponent, color, size = "48") {
+function renderIconSvg(IconComponent, color, size = '48') {
   return ReactDOMServer.renderToStaticMarkup(
     React.createElement(IconComponent, { color: color, size: size })
   );
 }
 
 // Get SVG markup
-const homeIconSvg = renderIconSvg(FaHome, "#4472c4", "48");
+const homeIconSvg = renderIconSvg(FaHome, '#4472c4', '48');
 
 // Use in HTML template (inline SVG)
 // <div style="width: 48px; height: 48px;">${homeIconSvg}</div>
@@ -667,22 +699,22 @@ These libraries have been globally installed and are available to use:
 **Your script MUST follow the following example.**
 
 ```javascript
-const pptxgen = require("pptxgenjs");
-const { html2pptx } = require("./html2pptx");
+const pptxgen = require('pptxgenjs');
+const { html2pptx } = require('./html2pptx');
 
 // Create a new pptx presentation
 const pptx = new pptxgen();
-pptx.layout = "LAYOUT_16x9"; // Must match HTML body dimensions
+pptx.layout = 'LAYOUT_16x9'; // Must match HTML body dimensions
 
 // Add an HTML-only slide
-await html2pptx("slide1.html", pptx);
+await html2pptx('slide1.html', pptx);
 
 // Add a slide with a chart placeholder
-const { slide, placeholders } = await html2pptx("slide2.html", pptx);
+const { slide, placeholders } = await html2pptx('slide2.html', pptx);
 slide.addChart(pptx.charts.LINE, chartData, placeholders[0]);
 
 // Save the presentation
-await pptx.writeFile("output.pptx");
+await pptx.writeFile('output.pptx');
 ```
 
 ### API Reference
@@ -725,41 +757,38 @@ The library automatically validates and collects all errors before throwing:
 ### Working with Placeholders
 
 ```javascript
-const { slide, placeholders } = await html2pptx("slide.html", pptx);
+const { slide, placeholders } = await html2pptx('slide.html', pptx);
 
 // Use first placeholder
 slide.addChart(pptx.charts.BAR, data, placeholders[0]);
 
 // Find by ID
-const chartArea = placeholders.find((p) => p.id === "chart-area");
+const chartArea = placeholders.find((p) => p.id === 'chart-area');
 slide.addChart(pptx.charts.LINE, data, chartArea);
 ```
 
 ### Complete Example
 
 ```javascript
-const pptxgen = require("pptxgenjs");
-const { html2pptx } = require("./html2pptx");
+const pptxgen = require('pptxgenjs');
+const { html2pptx } = require('./html2pptx');
 
 async function createPresentation() {
   const pptx = new pptxgen();
-  pptx.layout = "LAYOUT_16x9";
-  pptx.author = "Your Name";
-  pptx.title = "My Presentation";
+  pptx.layout = 'LAYOUT_16x9';
+  pptx.author = 'Your Name';
+  pptx.title = 'My Presentation';
 
   // Slide 1: Title
-  const { slide: slide1 } = await html2pptx("slides/title.html", pptx);
+  const { slide: slide1 } = await html2pptx('slides/title.html', pptx);
 
   // Slide 2: Content with chart
-  const { slide: slide2, placeholders } = await html2pptx(
-    "slides/data.html",
-    pptx
-  );
+  const { slide: slide2, placeholders } = await html2pptx('slides/data.html', pptx);
 
   const chartData = [
     {
-      name: "Sales",
-      labels: ["Q1", "Q2", "Q3", "Q4"],
+      name: 'Sales',
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
       values: [4500, 5500, 6200, 7100],
     },
   ];
@@ -767,16 +796,16 @@ async function createPresentation() {
   slide2.addChart(pptx.charts.BAR, chartData, {
     ...placeholders[0],
     showTitle: true,
-    title: "Quarterly Sales",
+    title: 'Quarterly Sales',
     showCatAxisTitle: true,
-    catAxisTitle: "Quarter",
+    catAxisTitle: 'Quarter',
     showValAxisTitle: true,
-    valAxisTitle: "Sales ($000s)",
+    valAxisTitle: 'Sales ($000s)',
   });
 
   // Save
-  await pptx.writeFile({ fileName: "presentation.pptx" });
-  console.log("Presentation created successfully!");
+  await pptx.writeFile({ fileName: 'presentation.pptx' });
+  console.log('Presentation created successfully!');
 }
 
 createPresentation().catch(console.error);
@@ -814,7 +843,7 @@ const h = 3; // Max height
 const w = h * aspectRatio;
 const x = (10 - w) / 2; // Center on 16:9 slide
 
-slide.addImage({ path: "chart.png", x, y: 1.5, w, h });
+slide.addImage({ path: 'chart.png', x, y: 1.5, w, h });
 ```
 
 ### Adding Text
@@ -823,9 +852,9 @@ slide.addImage({ path: "chart.png", x, y: 1.5, w, h });
 // Rich text with formatting
 slide.addText(
   [
-    { text: "Bold ", options: { bold: true } },
-    { text: "Italic ", options: { italic: true } },
-    { text: "Normal" },
+    { text: 'Bold ', options: { bold: true } },
+    { text: 'Italic ', options: { italic: true } },
+    { text: 'Normal' },
   ],
   {
     x: 1,
@@ -845,8 +874,8 @@ slide.addShape(pptx.shapes.RECTANGLE, {
   y: 1,
   w: 3,
   h: 2,
-  fill: { color: "4472C4" },
-  line: { color: "000000", width: 2 },
+  fill: { color: '4472C4' },
+  line: { color: '000000', width: 2 },
 });
 
 // Circle
@@ -855,7 +884,7 @@ slide.addShape(pptx.shapes.OVAL, {
   y: 1,
   w: 2,
   h: 2,
-  fill: { color: "ED7D31" },
+  fill: { color: 'ED7D31' },
 });
 
 // Rounded rectangle
@@ -864,7 +893,7 @@ slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
   y: 4,
   w: 3,
   h: 1.5,
-  fill: { color: "70AD47" },
+  fill: { color: '70AD47' },
   rectRadius: 0.2,
 });
 ```
@@ -887,38 +916,38 @@ slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
 - **Validate**: Charts with only 1 data point likely indicate incorrect aggregation for the time period
 
 ```javascript
-const { slide, placeholders } = await html2pptx("slide.html", pptx);
+const { slide, placeholders } = await html2pptx('slide.html', pptx);
 
 // CORRECT: Single series with all labels
 slide.addChart(
   pptx.charts.BAR,
   [
     {
-      name: "Sales 2024",
-      labels: ["Q1", "Q2", "Q3", "Q4"],
+      name: 'Sales 2024',
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
       values: [4500, 5500, 6200, 7100],
     },
   ],
   {
     ...placeholders[0], // Use placeholder position
-    barDir: "col", // 'col' = vertical bars, 'bar' = horizontal
+    barDir: 'col', // 'col' = vertical bars, 'bar' = horizontal
     showTitle: true,
-    title: "Quarterly Sales",
+    title: 'Quarterly Sales',
     showLegend: false, // No legend needed for single series
     // Required axis labels
     showCatAxisTitle: true,
-    catAxisTitle: "Quarter",
+    catAxisTitle: 'Quarter',
     showValAxisTitle: true,
-    valAxisTitle: "Sales ($000s)",
+    valAxisTitle: 'Sales ($000s)',
     // Optional: Control scaling (adjust min based on data range for better visualization)
     valAxisMaxVal: 8000,
     valAxisMinVal: 0, // Use 0 for counts/amounts; for clustered data (e.g., 4500-7100), consider starting closer to min value
     valAxisMajorUnit: 2000, // Control y-axis label spacing to prevent crowding
     catAxisLabelRotate: 45, // Rotate labels if crowded
-    dataLabelPosition: "outEnd",
-    dataLabelColor: "000000",
+    dataLabelPosition: 'outEnd',
+    dataLabelColor: '000000',
     // Use single color for single-series charts
-    chartColors: ["4472C4"], // All bars same color
+    chartColors: ['4472C4'], // All bars same color
   }
 );
 ```
@@ -944,9 +973,9 @@ const allXValues = [...data1.map((d) => d.x), ...data2.map((d) => d.x)];
 slide.addChart(
   pptx.charts.SCATTER,
   [
-    { name: "X-Axis", values: allXValues }, // First series = X values
-    { name: "Series 1", values: data1.map((d) => d.y) }, // Y values only
-    { name: "Series 2", values: data2.map((d) => d.y) }, // Y values only
+    { name: 'X-Axis', values: allXValues }, // First series = X values
+    { name: 'Series 1', values: data1.map((d) => d.y) }, // Y values only
+    { name: 'Series 2', values: data2.map((d) => d.y) }, // Y values only
   ],
   {
     x: 1,
@@ -954,13 +983,13 @@ slide.addChart(
     w: 8,
     h: 4,
     lineSize: 0, // 0 = no connecting lines
-    lineDataSymbol: "circle",
+    lineDataSymbol: 'circle',
     lineDataSymbolSize: 6,
     showCatAxisTitle: true,
-    catAxisTitle: "X Axis",
+    catAxisTitle: 'X Axis',
     showValAxisTitle: true,
-    valAxisTitle: "Y Axis",
-    chartColors: ["4472C4", "ED7D31"],
+    valAxisTitle: 'Y Axis',
+    chartColors: ['4472C4', 'ED7D31'],
   }
 );
 ```
@@ -972,8 +1001,8 @@ slide.addChart(
   pptx.charts.LINE,
   [
     {
-      name: "Temperature",
-      labels: ["Jan", "Feb", "Mar", "Apr"],
+      name: 'Temperature',
+      labels: ['Jan', 'Feb', 'Mar', 'Apr'],
       values: [32, 35, 42, 55],
     },
   ],
@@ -986,16 +1015,16 @@ slide.addChart(
     lineSmooth: true,
     // Required axis labels
     showCatAxisTitle: true,
-    catAxisTitle: "Month",
+    catAxisTitle: 'Month',
     showValAxisTitle: true,
-    valAxisTitle: "Temperature (°F)",
+    valAxisTitle: 'Temperature (°F)',
     // Optional: Y-axis range (set min based on data range for better visualization)
     valAxisMinVal: 0, // For ranges starting at 0 (counts, percentages, etc.)
     valAxisMaxVal: 60,
     valAxisMajorUnit: 20, // Control y-axis label spacing to prevent crowding (e.g., 10, 20, 25)
     // valAxisMinVal: 30,  // PREFERRED: For data clustered in a range (e.g., 32-55 or ratings 3-5), start axis closer to min value to show variation
     // Optional: Chart colors
-    chartColors: ["4472C4", "ED7D31", "A5A5A5"],
+    chartColors: ['4472C4', 'ED7D31', 'A5A5A5'],
   }
 );
 ```
@@ -1009,8 +1038,8 @@ slide.addChart(
   pptx.charts.PIE,
   [
     {
-      name: "Market Share",
-      labels: ["Product A", "Product B", "Other"], // All categories in one array
+      name: 'Market Share',
+      labels: ['Product A', 'Product B', 'Other'], // All categories in one array
       values: [35, 45, 20], // All values in one array
     },
   ],
@@ -1021,8 +1050,8 @@ slide.addChart(
     h: 4,
     showPercent: true,
     showLegend: true,
-    legendPos: "r", // right
-    chartColors: ["4472C4", "ED7D31", "A5A5A5"],
+    legendPos: 'r', // right
+    chartColors: ['4472C4', 'ED7D31', 'A5A5A5'],
   }
 );
 ```
@@ -1034,13 +1063,13 @@ slide.addChart(
   pptx.charts.LINE,
   [
     {
-      name: "Product A",
-      labels: ["Q1", "Q2", "Q3", "Q4"],
+      name: 'Product A',
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
       values: [10, 20, 30, 40],
     },
     {
-      name: "Product B",
-      labels: ["Q1", "Q2", "Q3", "Q4"],
+      name: 'Product B',
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
       values: [15, 25, 20, 35],
     },
   ],
@@ -1050,9 +1079,9 @@ slide.addChart(
     w: 8,
     h: 4,
     showCatAxisTitle: true,
-    catAxisTitle: "Quarter",
+    catAxisTitle: 'Quarter',
     showValAxisTitle: true,
-    valAxisTitle: "Revenue ($M)",
+    valAxisTitle: 'Revenue ($M)',
   }
 );
 ```
@@ -1069,21 +1098,21 @@ slide.addChart(
 
 ```javascript
 // Example: Ocean palette-inspired chart colors (adjusted for contrast)
-const chartColors = ["16A085", "FF6B9D", "2C3E50", "F39C12", "9B59B6"];
+const chartColors = ['16A085', 'FF6B9D', '2C3E50', 'F39C12', '9B59B6'];
 
 // Single-series chart: Use one color for all bars/points
 slide.addChart(
   pptx.charts.BAR,
   [
     {
-      name: "Sales",
-      labels: ["Q1", "Q2", "Q3", "Q4"],
+      name: 'Sales',
+      labels: ['Q1', 'Q2', 'Q3', 'Q4'],
       values: [4500, 5500, 6200, 7100],
     },
   ],
   {
     ...placeholders[0],
-    chartColors: ["16A085"], // All bars same color
+    chartColors: ['16A085'], // All bars same color
     showLegend: false,
   }
 );
@@ -1092,12 +1121,12 @@ slide.addChart(
 slide.addChart(
   pptx.charts.LINE,
   [
-    { name: "Product A", labels: ["Q1", "Q2", "Q3"], values: [10, 20, 30] },
-    { name: "Product B", labels: ["Q1", "Q2", "Q3"], values: [15, 25, 20] },
+    { name: 'Product A', labels: ['Q1', 'Q2', 'Q3'], values: [10, 20, 30] },
+    { name: 'Product B', labels: ['Q1', 'Q2', 'Q3'], values: [15, 25, 20] },
   ],
   {
     ...placeholders[0],
-    chartColors: ["16A085", "FF6B9D"], // One color per series
+    chartColors: ['16A085', 'FF6B9D'], // One color per series
   }
 );
 ```
@@ -1111,17 +1140,17 @@ Tables can be added with basic or advanced formatting:
 ```javascript
 slide.addTable(
   [
-    ["Header 1", "Header 2", "Header 3"],
-    ["Row 1, Col 1", "Row 1, Col 2", "Row 1, Col 3"],
-    ["Row 2, Col 1", "Row 2, Col 2", "Row 2, Col 3"],
+    ['Header 1', 'Header 2', 'Header 3'],
+    ['Row 1, Col 1', 'Row 1, Col 2', 'Row 1, Col 3'],
+    ['Row 2, Col 1', 'Row 2, Col 2', 'Row 2, Col 3'],
   ],
   {
     x: 0.5,
     y: 1,
     w: 9,
     h: 3,
-    border: { pt: 1, color: "999999" },
-    fill: { color: "F1F1F1" },
+    border: { pt: 1, color: '999999' },
+    fill: { color: 'F1F1F1' },
   }
 );
 ```
@@ -1133,22 +1162,22 @@ const tableData = [
   // Header row with custom styling
   [
     {
-      text: "Product",
-      options: { fill: { color: "4472C4" }, color: "FFFFFF", bold: true },
+      text: 'Product',
+      options: { fill: { color: '4472C4' }, color: 'FFFFFF', bold: true },
     },
     {
-      text: "Revenue",
-      options: { fill: { color: "4472C4" }, color: "FFFFFF", bold: true },
+      text: 'Revenue',
+      options: { fill: { color: '4472C4' }, color: 'FFFFFF', bold: true },
     },
     {
-      text: "Growth",
-      options: { fill: { color: "4472C4" }, color: "FFFFFF", bold: true },
+      text: 'Growth',
+      options: { fill: { color: '4472C4' }, color: 'FFFFFF', bold: true },
     },
   ],
   // Data rows
-  ["Product A", "$50M", "+15%"],
-  ["Product B", "$35M", "+22%"],
-  ["Product C", "$28M", "+8%"],
+  ['Product A', '$50M', '+15%'],
+  ['Product B', '$35M', '+22%'],
+  ['Product C', '$28M', '+8%'],
 ];
 
 slide.addTable(tableData, {
@@ -1158,9 +1187,9 @@ slide.addTable(tableData, {
   h: 3,
   colW: [3, 2.5, 2.5], // Column widths
   rowH: [0.5, 0.6, 0.6, 0.6], // Row heights
-  border: { pt: 1, color: "CCCCCC" },
-  align: "center",
-  valign: "middle",
+  border: { pt: 1, color: 'CCCCCC' },
+  align: 'center',
+  valign: 'middle',
   fontSize: 14,
 });
 ```
@@ -1171,18 +1200,18 @@ slide.addTable(tableData, {
 const mergedTableData = [
   [
     {
-      text: "Q1 Results",
+      text: 'Q1 Results',
       options: {
         colspan: 3,
-        fill: { color: "4472C4" },
-        color: "FFFFFF",
+        fill: { color: '4472C4' },
+        color: 'FFFFFF',
         bold: true,
       },
     },
   ],
-  ["Product", "Sales", "Market Share"],
-  ["Product A", "$25M", "35%"],
-  ["Product B", "$18M", "25%"],
+  ['Product', 'Sales', 'Market Share'],
+  ['Product A', '$25M', '35%'],
+  ['Product B', '$18M', '25%'],
 ];
 
 slide.addTable(mergedTableData, {
@@ -1191,7 +1220,7 @@ slide.addTable(mergedTableData, {
   w: 8,
   h: 2.5,
   colW: [3, 2.5, 2.5],
-  border: { pt: 1, color: "DDDDDD" },
+  border: { pt: 1, color: 'DDDDDD' },
 });
 ```
 

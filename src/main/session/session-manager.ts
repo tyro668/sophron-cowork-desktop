@@ -355,7 +355,7 @@ export class SessionManager {
     return {
       id: row.id,
       title: row.title,
-      claudeSessionId: row.claude_session_id || undefined,
+      agentSessionId: row.agent_session_id || undefined,
       openaiThreadId: row.openai_thread_id || undefined,
       status: row.status as Session['status'],
       projectId: row.project_id || undefined,
@@ -419,7 +419,7 @@ export class SessionManager {
     this.db.sessions.create({
       id: session.id,
       title: session.title,
-      claude_session_id: session.claudeSessionId || null,
+      agent_session_id: session.agentSessionId || null,
       openai_thread_id: session.openaiThreadId || null,
       status: session.status,
       project_id: session.projectId || null,
@@ -1204,13 +1204,13 @@ export class SessionManager {
     const project = this.ensureProject(cwd);
     const projectId = project?.id;
     const mountedPaths = this.buildMountedPaths(cwd);
-    // Clear claude_session_id in DB so next query creates a new SDK session
+    // Clear agent_session_id in DB so next query creates a new SDK session
     // (Claude SDK sessions cannot change cwd mid-session)
     this.db.sessions.update(sessionId, {
       project_id: projectId || null,
       cwd: projectId ? null : cwd,
       mounted_paths: JSON.stringify(mountedPaths),
-      claude_session_id: null,
+      agent_session_id: null,
       openai_thread_id: null,
       updated_at: Date.now(),
     });

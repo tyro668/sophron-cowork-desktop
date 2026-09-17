@@ -10,6 +10,7 @@ import { getSandboxAdapter } from '../sandbox/sandbox-adapter';
 import { pathConverter } from '../sandbox/wsl-bridge';
 import { SandboxSync } from '../sandbox/sandbox-sync';
 import * as fs from 'fs';
+import { getLimaInstanceName } from '../sandbox/lima-instance-name';
 import { log, logError } from '../utils/logger';
 
 export interface SandboxSyncResult {
@@ -225,7 +226,7 @@ export async function initSandboxSyncForRun(args: {
         // Create .claude/skills directory in sandbox
         execFileSync(
           'limactl',
-          ['shell', 'claude-sandbox', '--', 'mkdir', '-p', sandboxSkillsPath],
+          ['shell', getLimaInstanceName(), '--', 'mkdir', '-p', sandboxSkillsPath],
           {
             encoding: 'utf-8',
             timeout: 10000,
@@ -243,7 +244,7 @@ export async function initSandboxSyncForRun(args: {
             'limactl',
             [
               'shell',
-              'claude-sandbox',
+              getLimaInstanceName(),
               '--',
               'rsync',
               '-av',
@@ -273,7 +274,7 @@ export async function initSandboxSyncForRun(args: {
             'limactl',
             [
               'shell',
-              'claude-sandbox',
+              getLimaInstanceName(),
               '--',
               'rsync',
               '-avL',
@@ -290,7 +291,7 @@ export async function initSandboxSyncForRun(args: {
         // List copied skills for verification
         const copiedSkills = execFileSync(
           'limactl',
-          ['shell', 'claude-sandbox', '--', 'ls', sandboxSkillsPath],
+          ['shell', getLimaInstanceName(), '--', 'ls', sandboxSkillsPath],
           {
             encoding: 'utf-8',
             timeout: 10000,

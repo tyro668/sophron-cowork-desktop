@@ -115,7 +115,7 @@ describe('SessionManager.listSessions', () => {
     const row = {
       id: 's1',
       title: 'My Session',
-      claude_session_id: null,
+      agent_session_id: null,
       openai_thread_id: null,
       status: 'idle',
       cwd: '/tmp/workspace',
@@ -156,7 +156,7 @@ describe('SessionManager.listSessions', () => {
     const row = {
       id: 's2',
       title: 'Broken JSON',
-      claude_session_id: null,
+      agent_session_id: null,
       openai_thread_id: null,
       status: 'idle',
       cwd: null,
