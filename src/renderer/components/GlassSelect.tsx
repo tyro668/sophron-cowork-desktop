@@ -1,10 +1,7 @@
 import * as Select from '@radix-ui/react-select';
 import type { ReactNode } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(' ');
-}
+import { cn, selectContentClass, selectItemClass, selectTriggerClass } from './ui';
 
 const EMPTY_SELECT_VALUE = '__sophron_glass_select_empty_value__';
 
@@ -65,10 +62,7 @@ export function GlassSelect({
     >
       <Select.Trigger
         aria-label={ariaLabel}
-        className={cx(
-          'inline-flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-border-muted bg-background/62 px-2.5 text-[13px] font-medium text-text-secondary shadow-soft outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50',
-          triggerClassName
-        )}
+        className={cn(selectTriggerClass, 'min-w-0', triggerClassName)}
       >
         {triggerIcon}
         <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
@@ -83,8 +77,9 @@ export function GlassSelect({
           align={align}
           sideOffset={sideOffset}
           collisionPadding={12}
-          className={cx(
-            'z-50 max-h-64 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl',
+          className={cn(
+            selectContentClass,
+            'min-w-[var(--radix-select-trigger-width)] max-h-64',
             contentClassName
           )}
         >
@@ -94,13 +89,13 @@ export function GlassSelect({
                 key={option.value}
                 value={option.value}
                 disabled={option.disabled}
-                className="flex min-h-8 cursor-default select-none items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-text-secondary outline-none transition-colors hover:bg-background/58 hover:text-text-primary focus:bg-background/58 focus:text-text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[state=checked]:bg-accent/10 data-[state=checked]:text-text-primary data-[state=checked]:ring-1 data-[state=checked]:ring-inset data-[state=checked]:ring-accent/20"
+                className={cn(selectItemClass, 'min-h-8')}
               >
                 <Select.ItemText>
                   <span className="truncate">{option.label}</span>
                 </Select.ItemText>
-                <Select.ItemIndicator className="ml-auto">
-                  <Check className="h-4 w-4 text-accent" />
+                <Select.ItemIndicator className="absolute right-1.5 flex items-center text-accent-text">
+                  <Check className="h-3.5 w-3.5" />
                 </Select.ItemIndicator>
               </Select.Item>
             ))}

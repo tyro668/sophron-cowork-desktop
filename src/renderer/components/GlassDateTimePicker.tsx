@@ -275,7 +275,7 @@ export function GlassDateTimePicker({
                 updatePickerSide();
                 setTimeOpen((next) => !next);
               }}
-              className="inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="inline-flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:bg-surface-hover hover:text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/25"
             >
               <span className="inline-flex min-w-0 items-center gap-2">
                 <Clock className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -284,7 +284,7 @@ export function GlassDateTimePicker({
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             </button>
             {timeOpen && (
-              <div className="absolute left-0 top-full z-10 mt-1 w-32 rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] p-2 shadow-elevated backdrop-blur-xl">
+              <div className="absolute left-0 top-full z-10 mt-1 w-32 rounded-xl border border-border-subtle bg-surface p-2 shadow-elevated">
                 <GlassTimePickerColumns
                   value={getTimeValue(selectedDate)}
                   onChange={(time) =>

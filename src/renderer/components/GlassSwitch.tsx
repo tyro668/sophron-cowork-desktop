@@ -1,4 +1,4 @@
-import * as Switch from '@radix-ui/react-switch';
+import { Switch } from './ui';
 
 interface GlassSwitchProps {
   checked: boolean;
@@ -16,20 +16,12 @@ export function GlassSwitch({
   className,
 }: GlassSwitchProps) {
   return (
-    <Switch.Root
+    <Switch
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
-      className={`relative inline-flex h-7 w-[52px] flex-shrink-0 items-center rounded-full border p-[3px] outline-none transition-colors duration-150 ease-out focus-visible:ring-2 focus-visible:ring-accent/25 disabled:cursor-not-allowed disabled:opacity-55 ${
-        checked ? 'border-accent bg-accent' : 'border-border bg-surface-active'
-      } ${className ?? ''}`}
+      className={className}
       aria-label={ariaLabel}
-    >
-      <Switch.Thumb
-        className={`block h-[22px] w-[22px] transform-gpu rounded-full bg-white shadow-soft ring-1 transition-transform duration-150 ease-out will-change-transform ${
-          checked ? 'translate-x-6 ring-white/70' : 'translate-x-0 ring-border-muted'
-        }`}
-      />
-    </Switch.Root>
+    />
   );
 }

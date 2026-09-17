@@ -32,6 +32,7 @@ module.exports = {
             hover: colorVar('--color-accent-text-hover-rgb'),
             muted: colorVar('--color-accent-text-muted-rgb'),
           },
+          foreground: colorVar('--color-accent-foreground-rgb'),
         },
         mcp: {
           DEFAULT: colorVar('--color-mcp-rgb'),

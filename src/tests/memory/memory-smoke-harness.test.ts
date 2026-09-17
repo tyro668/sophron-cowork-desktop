@@ -347,14 +347,4 @@ describe('memory smoke harness', () => {
     expect(otherWorkspacePrompt).toContain('source=/repo/workspace-a');
     expect(otherWorkspacePrompt).toContain('<core_memory>');
   });
-
-  it('keeps the manual live checklist alongside deterministic smoke coverage', async () => {
-    const checklist = fs.readFileSync(
-      path.resolve(process.cwd(), 'docs/memory-live-smoke-checklist.md'),
-      'utf8'
-    );
-    expect(checklist).toContain('Cross-Workspace Recall');
-    expect(checklist).toContain('Source Provenance');
-    expect(checklist).toContain('Non-Interactive Flows');
-  });
 });

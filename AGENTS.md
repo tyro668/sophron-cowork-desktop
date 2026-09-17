@@ -73,6 +73,7 @@ The data workspace is feature-sliced under `src/renderer/features/data/`:
 All UI work under `src/renderer` must follow [`UI_STYLE_GUIDE.md`](UI_STYLE_GUIDE.md).
 
 - Preserve the existing layout unless the task explicitly requests a layout change.
+- Base controls come from `src/renderer/components/ui/` (Button/Input/Select/DropdownMenu/Switch/Dialog/Badge/Tabs + canonical class strings — see its README); `components/Glass*` are compatibility facades. Compose primitives instead of pasting new control class strings; `ui/` code must not touch `electronAPI` or business models.
 - Use semantic theme tokens; do not hard-code accent colors in components.
 - Keep configuration screens compact and omit helper descriptions below fields.
 - Do not introduce gradients, glass blur, glow effects, or heavy shadows.

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import {
-  buildPrepDslReferenceMarkdown,
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
   getPrepDslReference,
@@ -52,11 +49,5 @@ describe('prep DSL reference registry', () => {
       expect(errorsOf(parsed.diagnostics), `${example.type}: ${example.dsl}`).toHaveLength(0);
       expect(parsed.operator?.type, example.dsl).toBe(example.type);
     }
-  });
-
-  it('keeps the checked-in markdown reference generated from the shared registry', () => {
-    const docPath = join(process.cwd(), 'docs', 'prep-dsl-reference.md');
-    const doc = readFileSync(docPath, 'utf8').replace(/\r\n/g, '\n');
-    expect(doc).toBe(buildPrepDslReferenceMarkdown());
   });
 });

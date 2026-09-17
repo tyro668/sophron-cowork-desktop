@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { Button } from './ui';
 import {
   buildSessionProjectGroups,
   buildProjectNameLookup,
@@ -1019,20 +1020,22 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                         })}
                       </p>
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex-1"
                           onClick={() => setRemovingProjectKey(null)}
-                          className="flex-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover"
                         >
                           {t('sidebar.cancel')}
-                        </button>
-                        <button
-                          type="button"
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="flex-1"
                           onClick={() => handleRemoveProject(group)}
-                          className="flex-1 rounded-lg bg-error px-2 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-error/90"
                         >
                           {t('sidebar.confirmRemoveProject')}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1114,18 +1117,17 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 {t('sidebar.batchDeleteConfirm', { count: selectedIds.size })}
               </p>
               <div className="flex items-center gap-2">
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-3 py-1.5 rounded-lg text-[13px] font-medium text-text-secondary hover:bg-surface-hover transition-colors"
                 >
                   {t('sidebar.cancel')}
-                </button>
-                <button
-                  onClick={handleBatchDelete}
-                  className="flex-1 px-3 py-1.5 rounded-lg text-[13px] font-medium bg-error text-white hover:bg-error/90 transition-colors"
-                >
+                </Button>
+                <Button variant="danger" size="sm" className="flex-1" onClick={handleBatchDelete}>
                   {t('sidebar.confirmDelete')}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (

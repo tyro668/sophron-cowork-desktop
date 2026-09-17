@@ -18,6 +18,7 @@ import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
+import { Button } from './ui';
 import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
 import { Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
 
@@ -910,29 +911,31 @@ export function ChatView() {
 
       {showBackToTop && (
         <div className="pointer-events-none absolute left-0 right-0 top-12 z-20 flex justify-center px-4">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="icon"
             onClick={scrollToConversationTop}
             aria-label={t('chat.backToTop')}
             title={t('chat.backToTop')}
-            className="pointer-events-auto mt-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary shadow-soft transition-colors hover:border-border-muted hover:text-text-primary"
+            className="pointer-events-auto mt-3 h-9 w-9 rounded-full border-border-subtle text-text-secondary shadow-soft hover:text-text-primary"
           >
             <ArrowUp className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       )}
 
       {showScrollToBottom && (
         <div className="pointer-events-none absolute bottom-[9.5rem] left-0 right-0 z-20 flex justify-center px-4">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="icon"
             onClick={scrollToConversationBottom}
             aria-label={t('chat.scrollToBottom')}
             title={t('chat.scrollToBottom')}
-            className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary shadow-soft transition-colors hover:border-border-muted hover:text-text-primary"
+            className="pointer-events-auto h-9 w-9 rounded-full border-border-subtle text-text-secondary shadow-soft hover:text-text-primary"
           >
             <ArrowDown className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       )}
 

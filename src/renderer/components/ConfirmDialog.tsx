@@ -2,16 +2,15 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
+import { Button, Dialog, DialogDescription, DialogFooter, DialogTitle } from './ui';
 
 type ConfirmTone = 'default' | 'danger';
 
@@ -73,7 +72,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   return (
     <ConfirmDialogContext.Provider value={value}>
       {children}
-      {activeDialog ? <ConfirmDialogOverlay dialog={activeDialog} onClose={close} /> : null}
+      <ConfirmDialogOverlay dialog={activeDialog} onClose={close} />
     </ConfirmDialogContext.Provider>
   );
 }
@@ -90,95 +89,72 @@ function ConfirmDialogOverlay({
   dialog,
   onClose,
 }: {
-  dialog: ActiveConfirmDialog;
+  dialog: ActiveConfirmDialog | null;
   onClose: (confirmed: boolean) => void;
 }) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
-  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-  const isDanger = dialog.tone === 'danger';
+  const isDanger = dialog?.tone === 'danger';
   const Icon = isDanger ? Trash2 : AlertTriangle;
 
-  useEffect(() => {
-    cancelButtonRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/24 px-4 backdrop-blur-[2px]"
-      onMouseDown={() => onClose(false)}
+  return (
+    <Dialog
+      open={dialog !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose(false);
+      }}
+      closeOnOverlayClick
+      overlayClassName="px-4"
+      className="max-w-[24rem] rounded-xl p-4"
+      ariaLabelledBy={dialog ? titleId : undefined}
+      ariaDescribedBy={dialog ? descriptionId : undefined}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="glass-card w-full max-w-[24rem] rounded-xl border border-border-muted bg-background/95 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.22)]"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-              isDanger ? 'bg-error/10 text-error' : 'bg-accent/10 text-accent'
-            }`}
-          >
-            <Icon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <h2 id={titleId} className="text-[15px] font-semibold leading-6 text-text-primary">
-                {dialog.title ?? t('common.confirmTitle', '确认操作？')}
-              </h2>
-              <button
-                type="button"
-                onClick={() => onClose(false)}
-                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-                aria-label={t('common.close')}
-              >
-                <X className="h-4 w-4" />
-              </button>
+      {dialog ? (
+        <>
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                isDanger ? 'bg-error/10 text-error' : 'bg-accent/10 text-accent'
+              }`}
+            >
+              <Icon className="h-5 w-5" />
             </div>
-            <div id={descriptionId} className="mt-1.5 text-[13px] leading-5 text-text-secondary">
-              {dialog.message}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <DialogTitle id={titleId} className="leading-6">
+                  {dialog.title ?? t('common.confirmTitle', '确认操作？')}
+                </DialogTitle>
+                <button
+                  type="button"
+                  onClick={() => onClose(false)}
+                  className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  aria-label={t('common.close')}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <DialogDescription id={descriptionId} className="mt-1.5 leading-5">
+                {dialog.message}
+              </DialogDescription>
             </div>
           </div>
-        </div>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            ref={cancelButtonRef}
-            type="button"
-            onClick={() => onClose(false)}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-background/70 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
-          >
-            {dialog.cancelLabel ?? t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => onClose(true)}
-            className={`inline-flex h-8 items-center justify-center rounded-lg px-3 text-xs font-semibold text-white shadow-soft transition-colors focus:outline-none focus-visible:ring-2 ${
-              isDanger
-                ? 'bg-error hover:bg-error/90 focus-visible:ring-error/25'
-                : 'bg-accent hover:bg-accent-hover focus-visible:ring-accent/25'
-            }`}
-          >
-            {dialog.confirmLabel ?? t('common.yes')}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+          <DialogFooter className="mt-4 pt-0">
+            <Button size="sm" data-autofocus onClick={() => onClose(false)}>
+              {dialog.cancelLabel ?? t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              variant={isDanger ? 'danger' : 'primary'}
+              className="font-semibold"
+              onClick={() => onClose(true)}
+            >
+              {dialog.confirmLabel ?? t('common.yes')}
+            </Button>
+          </DialogFooter>
+        </>
+      ) : null}
+    </Dialog>
   );
 }
