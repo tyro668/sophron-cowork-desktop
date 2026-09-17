@@ -1051,16 +1051,6 @@ export class ConfigStore {
     this.store.set(normalized);
   }
 
-  /**
-   * Legacy `claudeCodePath` is no longer part of AppConfig (the agent SDK
-   * handles model routing natively), but old config files may still carry a
-   * value — read it directly from the store for diagnostics.
-   */
-  getLegacyClaudeCodePath(): string {
-    const raw = this.store.get('claudeCodePath');
-    return typeof raw === 'string' ? raw : '';
-  }
-
   private composeProjectedConfig(
     base: AppConfig,
     nextConfigSets: ApiConfigSet[],

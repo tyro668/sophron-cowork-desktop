@@ -76,7 +76,7 @@ export function registerLogsIpc(): void {
           sandboxEnabled: !!configStore.get('sandboxEnabled'),
           thinkingEnabled: !!configStore.get('enableThinking'),
           apiKeyConfigured: !!configStore.get('apiKey'),
-          claudeCodePathConfigured: !!configStore.getLegacyClaudeCodePath(),
+
           defaultWorkdir: configStore.get('defaultWorkdir') || null,
           globalSkillsPathConfigured: !!configStore.get('globalSkillsPath'),
         },

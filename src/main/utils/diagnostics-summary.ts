@@ -77,7 +77,6 @@ export interface DiagnosticsSummary {
     sandboxEnabled: boolean;
     thinkingEnabled: boolean;
     apiKeyConfigured: boolean;
-    claudeCodePathConfigured: boolean;
     defaultWorkdir: string | null;
     globalSkillsPathConfigured: boolean;
   };

@@ -4,7 +4,7 @@
  * Skill discovery and lifecycle (999 lines).
  *
  * Responsibilities:
- * - Discovers built-in skills from .claude/skills/ directories
+ * - Discovers built-in skills from assets/skills/ directories
  * - Parses SKILL.md front-matter for metadata (name, description, triggers)
  * - Hot-reload via chokidar file watcher
  * - Plugin install/uninstall from npm-style package specs

@@ -66,11 +66,10 @@ import { configStore } from '../src/main/config/config-store';
 import { SessionManager } from '../src/main/session/session-manager';
 import { generateTitleWithPiAi } from '../src/main/agent/pi-ai-one-shot';
 
-const mockedGenerateTitleWithClaudeSdk = vi.mocked(generateTitleWithPiAi);
+const mockedGenerateTitleWithPiAi = vi.mocked(generateTitleWithPiAi);
 
 describe('SessionManager unified title generation', () => {
   const previous = {
-    disableClaudeUnified: process.env.COWORK_DISABLE_CLAUDE_UNIFIED,
     provider: configStore.get('provider'),
     customProtocol: configStore.get('customProtocol'),
     apiKey: configStore.get('apiKey'),
@@ -79,20 +78,14 @@ describe('SessionManager unified title generation', () => {
   };
 
   beforeEach(() => {
-    delete process.env.COWORK_DISABLE_CLAUDE_UNIFIED;
     configStore.set('provider', 'openai');
     configStore.set('customProtocol', 'openai');
     configStore.set('apiKey', 'sk-test');
     configStore.set('model', 'gpt-4.1');
-    mockedGenerateTitleWithClaudeSdk.mockClear();
+    mockedGenerateTitleWithPiAi.mockClear();
   });
 
   afterEach(() => {
-    if (previous.disableClaudeUnified === undefined) {
-      delete process.env.COWORK_DISABLE_CLAUDE_UNIFIED;
-    } else {
-      process.env.COWORK_DISABLE_CLAUDE_UNIFIED = previous.disableClaudeUnified;
-    }
     configStore.set('provider', previous.provider);
     configStore.set('customProtocol', previous.customProtocol);
     configStore.set('apiKey', previous.apiKey);
@@ -109,8 +102,8 @@ describe('SessionManager unified title generation', () => {
     const title = await proto.generateTitleWithConfig.call({}, 'Please generate title');
 
     expect(title).toBe('Unified Title');
-    expect(mockedGenerateTitleWithClaudeSdk).toHaveBeenCalledTimes(1);
-    expect(mockedGenerateTitleWithClaudeSdk).toHaveBeenCalledWith(
+    expect(mockedGenerateTitleWithPiAi).toHaveBeenCalledTimes(1);
+    expect(mockedGenerateTitleWithPiAi).toHaveBeenCalledWith(
       'Please generate title',
       expect.objectContaining({
         provider: 'openai',
@@ -119,8 +112,7 @@ describe('SessionManager unified title generation', () => {
     );
   });
 
-  it('routes gemini title generation through the agent SDK even when unified mode flag is disabled', async () => {
-    process.env.COWORK_DISABLE_CLAUDE_UNIFIED = '1';
+  it('routes gemini title generation through the agent SDK', async () => {
     configStore.set('provider', 'gemini');
     configStore.set('customProtocol', 'gemini');
     configStore.set('apiKey', 'AIza-test');
@@ -134,8 +126,8 @@ describe('SessionManager unified title generation', () => {
     const title = await proto.generateTitleWithConfig.call({}, 'Please generate title');
 
     expect(title).toBe('Unified Title');
-    expect(mockedGenerateTitleWithClaudeSdk).toHaveBeenCalledTimes(1);
-    expect(mockedGenerateTitleWithClaudeSdk).toHaveBeenCalledWith(
+    expect(mockedGenerateTitleWithPiAi).toHaveBeenCalledTimes(1);
+    expect(mockedGenerateTitleWithPiAi).toHaveBeenCalledWith(
       'Please generate title',
       expect.objectContaining({
         provider: 'gemini',

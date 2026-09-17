@@ -42,6 +42,10 @@ const BANNED: Array<{ pattern: RegExp; label: string }> = [
     pattern: /\bClaude[A-Z][A-Za-z]*\b/,
     label: 'no new Claude* PascalCase identifiers (third-party types are allowlisted)',
   },
+  {
+    pattern: /\bclaude[A-Z][A-Za-z]*\b/,
+    label: 'no new claude* camelCase identifiers (third-party fields are allowlisted)',
+  },
   { pattern: /from:\s*\.claude\//, label: 'packaging sources must not live under .claude/' },
   { pattern: /relPath:\s*'\.claude\//, label: 'build checks must not reference .claude/' },
   { pattern: /getAppClaudeDir|userClaudeDir/, label: 'app storage is not Claude-named' },
@@ -66,6 +70,25 @@ const ALLOWED_OCCURRENCES: Array<{ file: string; pattern: RegExp }> = [
   // plugin-runtime-service types mirror the external `claude plugin` CLI's
   // JSON output shapes — the Claude* names are accurate third-party naming.
   { file: 'src/main/skills/plugin-runtime-service.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
+  // software-dev-server-example wraps the external claude-code CLI and reads
+  // the CLAUDE_CODE_PATH env var.
+  { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\bclaude[A-Z][A-Za-z]*\b/ },
+  // `claudeCodeAvailable` reports whether the external claude CLI is installed
+  // in the sandbox — accurate third-party naming, shared across the bridge.
+  ...[
+    'src/main/sandbox/types.ts',
+    'src/main/sandbox/lima-bridge.ts',
+    'src/main/sandbox/wsl-bridge.ts',
+    'src/main/sandbox/sandbox-adapter.ts',
+    'src/preload/api/sandbox.ts',
+    'src/renderer/components/settings/SettingsSandbox.tsx',
+    'src/shared/contracts/electron-api.ts',
+  ].map((file) => ({ file, pattern: /\bclaude[A-Z][A-Za-z]*\b/ })),
+  // `claudeMarketplaceSource` labels the external plugin marketplace.
+  ...['src/shared/i18n/locales/en.json', 'src/shared/i18n/locales/zh.json'].map((file) => ({
+    file,
+    pattern: /\bclaude[A-Z][A-Za-z]*\b/,
+  })),
 ];
 
 function* iterFiles(dir: string): Generator<string> {
