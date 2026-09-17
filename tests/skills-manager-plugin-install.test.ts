@@ -120,7 +120,7 @@ describe('SkillsManager installPluginFromDirectory', () => {
     const installedSkillPath = path.join(
       testRoot,
       'userData',
-      'claude',
+      'agent',
       'skills',
       'alpha',
       'SKILL.md'
