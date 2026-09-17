@@ -449,7 +449,7 @@ export function ChatView() {
 
   // Resize and compress image if needed to stay under 5MB base64 limit
   const resizeImageIfNeeded = async (blob: Blob): Promise<Blob> => {
-    // Claude API limit is 5MB for base64 encoded images
+    // Model API limit is 5MB for base64 encoded images
     // Base64 encoding increases size by ~33%, so we target 3.75MB for the blob
     const MAX_BLOB_SIZE = 3.75 * 1024 * 1024; // 3.75MB
 

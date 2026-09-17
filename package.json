@@ -4,8 +4,6 @@
   "description": "Local data-processing AI agent desktop app for Windows & macOS with sandbox isolation, multi-model support, MCP tools, and Skills",
   "keywords": [
     "ai-agent",
-    "claude",
-    "claude-code",
     "electron",
     "desktop-app",
     "mcp",

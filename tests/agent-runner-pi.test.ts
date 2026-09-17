@@ -33,7 +33,7 @@ describe('AgentRunner sophron SDK integration', () => {
 
   it('uses standard markdown link guidance for sources citations', () => {
     expect(mainAgentPromptContent).toContain(
-      'otherwise use standard Markdown links: [Title](https://claude.ai/chat/URL)'
+      'otherwise use standard Markdown links: [Title](https://example.com/page)'
     );
   });
 

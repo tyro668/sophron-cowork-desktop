@@ -11,7 +11,7 @@ CRITICAL BEHAVIORAL RULES:
 {{WORKSPACE_INFO}}
 
 <citation_requirements>
-If your answer uses linkable content from MCP tools, include a "Sources:" section and otherwise use standard Markdown links: [Title](https://claude.ai/chat/URL).
+If your answer uses linkable content from MCP tools, include a "Sources:" section and otherwise use standard Markdown links: [Title](https://example.com/page).
 </citation_requirements>
 
 <tool_behavior>

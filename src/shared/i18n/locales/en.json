@@ -1735,7 +1735,7 @@
     "codexLoginFailed": "Login failed, please try again",
     "codexCliNotFound": "No local codex CLI login found (~/.codex/auth.json). Sign in with codex first, or use browser login instead.",
     "enableThinking": "Enable Thinking Mode",
-    "enableThinkingHint": "Show Claude's thinking process step by step. This provides more transparency but may increase token usage.",
+    "enableThinkingHint": "Show the model's thinking process step by step. This provides more transparency but may increase token usage.",
     "enableThinkingOllamaHint": "Most Ollama models do not support thinking mode. Enable only if your model explicitly supports it.",
     "testSuccess": "Connection successful ({{ms}}ms)",
     "testSuccessNeedSave": "Connection test passed. Save settings before starting a session.",
