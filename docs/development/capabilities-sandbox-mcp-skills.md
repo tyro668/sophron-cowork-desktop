@@ -131,7 +131,7 @@ MCP 代码在 [`src/main/mcp`](../../src/main/mcp)。
 MCP 工具进入 Agent 的两条路径：
 
 1. `MCPManager` 连接 server，发现工具，保存到 `tools` map。
-2. `ClaudeAgentRunner` 每轮读取 `MCPManager.getTools()`，用 `buildMcpCustomTools` 转成 pi-coding-agent custom tools。
+2. `AgentRunner` 每轮读取 `MCPManager.getTools()`，用 `buildMcpCustomTools` 转成 pi-coding-agent custom tools。
 
 工具名规则：
 

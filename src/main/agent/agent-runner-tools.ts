@@ -34,7 +34,7 @@ export function buildMcpCustomTools(mcpManager: MCPManager): ToolDefinition[] {
                 : undefined,
           };
         } catch (err: unknown) {
-          logError(`[ClaudeAgentRunner] MCP tool ${mcpTool.name} failed:`, err);
+          logError(`[AgentRunner] MCP tool ${mcpTool.name} failed:`, err);
           throw err instanceof Error ? err : new Error(String(err));
         }
       },

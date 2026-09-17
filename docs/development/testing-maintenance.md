@@ -42,7 +42,7 @@ npm run dev:with-python
 - [`tests/agent-runner-loop-guard.test.ts`](../../tests/agent-runner-loop-guard.test.ts)
 - [`tests/agent-runner-loop-guard-abort.test.ts`](../../tests/agent-runner-loop-guard-abort.test.ts)
 - [`tests/agent-runner-message-end.test.ts`](../../tests/agent-runner-message-end.test.ts)
-- [`src/tests/claude/agent-runner-history-rebuild.test.ts`](../../src/tests/claude/agent-runner-history-rebuild.test.ts)
+- [`src/tests/agent/agent-runner-history-rebuild.test.ts`](../../src/tests/agent/agent-runner-history-rebuild.test.ts)
 - [`tests/pi-model-resolution.test.ts`](../../tests/pi-model-resolution.test.ts)
 - [`tests/pi-session-runtime.test.ts`](../../tests/pi-session-runtime.test.ts)
 - [`tests/think-tag-parser.test.ts`](../../tests/think-tag-parser.test.ts)

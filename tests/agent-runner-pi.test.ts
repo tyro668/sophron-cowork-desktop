@@ -2,18 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-const agentRunnerPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner.ts');
+const agentRunnerPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner.ts');
 const agentRunnerContent = readFileSync(agentRunnerPath, 'utf8');
-const bridgePath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-event-bridge.ts');
+const bridgePath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-event-bridge.ts');
 const bridgeContent = readFileSync(bridgePath, 'utf8');
-const toolsPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-tools.ts');
+const toolsPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-tools.ts');
 const toolsContent = readFileSync(toolsPath, 'utf8');
-const logUtilsPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-log-utils.ts');
+const logUtilsPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-log-utils.ts');
 const logUtilsContent = readFileSync(logUtilsPath, 'utf8');
 const mainAgentPromptPath = path.resolve(process.cwd(), 'src/main/prompts/main-agent-system.txt');
 const mainAgentPromptContent = readFileSync(mainAgentPromptPath, 'utf8');
 
-describe('ClaudeAgentRunner sophron SDK integration', () => {
+describe('AgentRunner sophron SDK integration', () => {
   it('avoids dynamic re-import shadowing for config store singletons', () => {
     expect(agentRunnerContent).toContain(
       "import { mcpConfigStore } from '../mcp/mcp-config-store'"
@@ -48,9 +48,9 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
   });
 
   it('keeps MCP server logging compact unless full debug logging is enabled', () => {
-    expect(agentRunnerContent).toContain("log('[ClaudeAgentRunner] Final mcpServers summary:'");
+    expect(agentRunnerContent).toContain("log('[AgentRunner] Final mcpServers summary:'");
     expect(agentRunnerContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");
-    expect(agentRunnerContent).toContain("log('[ClaudeAgentRunner] Final mcpServers config:'");
+    expect(agentRunnerContent).toContain("log('[AgentRunner] Final mcpServers config:'");
   });
 
   it('summarizes noisy SDK message updates instead of logging every text delta', () => {
@@ -58,10 +58,10 @@ describe('ClaudeAgentRunner sophron SDK integration', () => {
     expect(bridgeContent).toContain(
       "if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {"
     );
-    expect(bridgeContent).toContain("'[ClaudeAgentRunner] Event: message_end'");
+    expect(bridgeContent).toContain("'[AgentRunner] Event: message_end'");
     expect(bridgeContent).toContain('messageUpdateCounts: this.getStreamEventSummary()');
     expect(bridgeContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");
-    expect(bridgeContent).toContain("'[ClaudeAgentRunner] message_end raw message:'");
+    expect(bridgeContent).toContain("'[AgentRunner] message_end raw message:'");
   });
 
   it('reuses the shared user-facing error helper', () => {

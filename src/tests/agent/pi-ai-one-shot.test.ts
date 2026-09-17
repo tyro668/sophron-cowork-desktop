@@ -7,7 +7,7 @@ vi.mock('@mariozechner/pi-ai', () => ({
   getModel: vi.fn(() => undefined),
 }));
 
-vi.mock('../../main/claude/shared-auth', () => ({
+vi.mock('../../main/agent/shared-auth', () => ({
   getSharedAuthStorage: () => ({
     setRuntimeApiKey: vi.fn(),
   }),
@@ -15,7 +15,7 @@ vi.mock('../../main/claude/shared-auth', () => ({
 }));
 
 import type { AppConfig } from '../../main/config/config-store';
-import { runPiAiOneShot } from '../../main/claude/claude-sdk-one-shot';
+import { runPiAiOneShot } from '../../main/agent/pi-ai-one-shot';
 
 function makeConfig(): AppConfig {
   return {

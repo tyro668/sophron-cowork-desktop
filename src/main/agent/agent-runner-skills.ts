@@ -1,7 +1,7 @@
 /**
  * Skills resolution and sync for the agent runner: builtin/user/configured
  * skills directories, runtime-plugin skill paths, and bundled-executable
- * prompt hints. Extracted from ClaudeAgentRunner — runner delegates here.
+ * prompt hints. Extracted from AgentRunner — runner delegates here.
  */
 import { app } from 'electron';
 import * as path from 'path';
@@ -85,7 +85,7 @@ ${hints.join('\n')}
           appliedPlugins.push({ name: plugin.name, path: runtimeSkillsPath });
         }
       } catch (error) {
-        logWarn('[ClaudeAgentRunner] Failed to resolve runtime plugin skill paths:', error);
+        logWarn('[AgentRunner] Failed to resolve runtime plugin skill paths:', error);
       }
     }
 
@@ -124,12 +124,12 @@ ${hints.join('\n')}
 
     for (const p of possiblePaths) {
       if (fs.existsSync(p)) {
-        log('[ClaudeAgentRunner] Found built-in skills at:', p);
+        log('[AgentRunner] Found built-in skills at:', p);
         return p;
       }
     }
 
-    logWarn('[ClaudeAgentRunner] No built-in skills directory found');
+    logWarn('[AgentRunner] No built-in skills directory found');
     return '';
   }
 
@@ -147,12 +147,12 @@ ${hints.join('\n')}
     }
   }
 
-  getAppClaudeDir(): string {
+  getAppAgentDir(): string {
     return path.join(app.getPath('userData'), 'claude');
   }
 
   getRuntimeSkillsDir(): string {
-    return path.join(this.getAppClaudeDir(), 'skills');
+    return path.join(this.getAppAgentDir(), 'skills');
   }
 
   private getConfiguredGlobalSkillsDir(): string {
@@ -170,12 +170,12 @@ ${hints.join('\n')}
         return resolvedPath;
       }
       logWarn(
-        '[ClaudeAgentRunner] Configured skills path is not a directory, fallback to runtime path:',
+        '[AgentRunner] Configured skills path is not a directory, fallback to runtime path:',
         resolvedPath
       );
     } catch (error) {
       logWarn(
-        '[ClaudeAgentRunner] Configured skills path is unavailable, fallback to runtime path:',
+        '[AgentRunner] Configured skills path is unavailable, fallback to runtime path:',
         resolvedPath,
         error
       );
@@ -184,12 +184,12 @@ ${hints.join('\n')}
     return this.getRuntimeSkillsDir();
   }
 
-  private getUserClaudeSkillsDir(): string {
+  private getExternalClaudeSkillsDir(): string {
     return path.join(app.getPath('home'), '.claude', 'skills');
   }
 
   syncUserSkillsToAppDir(appSkillsDir: string): void {
-    const userSkillsDir = this.getUserClaudeSkillsDir();
+    const userSkillsDir = this.getExternalClaudeSkillsDir();
     if (!fs.existsSync(userSkillsDir)) {
       return;
     }
@@ -218,7 +218,7 @@ ${hints.join('\n')}
         try {
           this.copyDirectorySync(sourcePath, targetPath);
         } catch (copyErr) {
-          logWarn('[ClaudeAgentRunner] Failed to import user skill:', entry.name, copyErr);
+          logWarn('[AgentRunner] Failed to import user skill:', entry.name, copyErr);
         }
       }
     }
@@ -253,7 +253,7 @@ ${hints.join('\n')}
         try {
           this.copyDirectorySync(sourcePath, targetPath);
         } catch (copyErr) {
-          logWarn('[ClaudeAgentRunner] Failed to sync configured skill:', entry.name, copyErr);
+          logWarn('[AgentRunner] Failed to sync configured skill:', entry.name, copyErr);
         }
       }
     }

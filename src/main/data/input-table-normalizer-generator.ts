@@ -2,7 +2,7 @@ import { basename } from 'path';
 import { parse } from 'acorn';
 import { spawnSync } from 'node:child_process';
 import type { AppConfig } from '../config/config-store';
-import { runPiAiOneShot } from '../claude/claude-sdk-one-shot';
+import { runPiAiOneShot } from '../agent/pi-ai-one-shot';
 import type {
   AgentRuntimeConfig,
   DataInputTableSourceSummary,

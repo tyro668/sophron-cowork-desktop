@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeMcpToolResultForModel,
   normalizeToolExecutionResultForUi,
-} from '../src/main/claude/tool-result-utils';
+} from '../src/main/agent/tool-result-utils';
 
 describe('tool result utils', () => {
   it('keeps screenshot metadata text while omitting image base64 from model context', () => {

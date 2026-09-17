@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => {
   const tlsConnect = vi.fn();
   const openaiModelsList = vi.fn();
   const fetch = vi.fn();
-  const probeWithClaudeSdk = vi.fn();
+  const probeWithPiAi = vi.fn();
   const ensureCodexCredentials = vi.fn();
   const codexGetApiKey = vi.fn();
 
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
     tlsConnect,
     openaiModelsList,
     fetch,
-    probeWithClaudeSdk,
+    probeWithPiAi,
     ensureCodexCredentials,
     codexGetApiKey,
   };
@@ -74,11 +74,11 @@ vi.mock('../src/main/config/config-store', () => ({
   },
 }));
 
-vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
-  probeWithClaudeSdk: mocks.probeWithClaudeSdk,
+vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
+  probeWithPiAi: mocks.probeWithPiAi,
 }));
 
-vi.mock('../src/main/claude/shared-auth', () => ({
+vi.mock('../src/main/agent/shared-auth', () => ({
   getSharedAuthStorage: () => ({ getApiKey: mocks.codexGetApiKey }),
 }));
 
@@ -105,14 +105,14 @@ describe('runDiagnostics TLS step', () => {
     mocks.tlsConnect.mockReset();
     mocks.openaiModelsList.mockReset();
     mocks.fetch.mockReset();
-    mocks.probeWithClaudeSdk.mockReset();
+    mocks.probeWithPiAi.mockReset();
     mocks.ensureCodexCredentials.mockReset();
     mocks.codexGetApiKey.mockReset();
     global.fetch = mocks.fetch;
 
     mocks.dnsLookup.mockResolvedValue({ address: '127.0.0.1', family: 4 });
     mocks.openaiModelsList.mockResolvedValue({});
-    mocks.probeWithClaudeSdk.mockResolvedValue({ ok: true, latencyMs: 10 });
+    mocks.probeWithPiAi.mockResolvedValue({ ok: true, latencyMs: 10 });
     mocks.ensureCodexCredentials.mockReturnValue(true);
     mocks.codexGetApiKey.mockResolvedValue('codex-access-token');
 
@@ -240,8 +240,8 @@ describe('runDiagnostics TLS step', () => {
     });
   });
 
-  it('model step uses probeWithClaudeSdk', async () => {
-    mocks.probeWithClaudeSdk.mockResolvedValue({ ok: true, latencyMs: 15 });
+  it('model step uses probeWithPiAi', async () => {
+    mocks.probeWithPiAi.mockResolvedValue({ ok: true, latencyMs: 15 });
 
     const result = await runDiagnostics({
       provider: 'openai',
@@ -251,7 +251,7 @@ describe('runDiagnostics TLS step', () => {
     });
 
     expect(result.overallOk).toBe(true);
-    expect(mocks.probeWithClaudeSdk).toHaveBeenCalledWith(
+    expect(mocks.probeWithPiAi).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: 'openai',
         apiKey: 'sk-test',
@@ -261,8 +261,8 @@ describe('runDiagnostics TLS step', () => {
     );
   });
 
-  it('model step reports failure from probeWithClaudeSdk', async () => {
-    mocks.probeWithClaudeSdk.mockResolvedValue({
+  it('model step reports failure from probeWithPiAi', async () => {
+    mocks.probeWithPiAi.mockResolvedValue({
       ok: false,
       errorType: 'unauthorized',
       details: '401 Unauthorized',
@@ -290,7 +290,7 @@ describe('runDiagnostics TLS step', () => {
   ] as const)(
     'maps %s probe failures to a specific diagnostic fix instead of model_unavailable',
     async (errorType, details, expectedFix) => {
-      mocks.probeWithClaudeSdk.mockResolvedValue({
+      mocks.probeWithPiAi.mockResolvedValue({
         ok: false,
         errorType,
         details,
@@ -433,12 +433,12 @@ describe('runDiagnostics codex auth step', () => {
     mocks.dnsLookup.mockReset();
     mocks.tcpConnect.mockReset();
     mocks.tlsConnect.mockReset();
-    mocks.probeWithClaudeSdk.mockReset();
+    mocks.probeWithPiAi.mockReset();
     mocks.ensureCodexCredentials.mockReset();
     mocks.codexGetApiKey.mockReset();
 
     mocks.dnsLookup.mockResolvedValue({ address: '93.184.216.34', family: 4 });
-    mocks.probeWithClaudeSdk.mockResolvedValue({ ok: true, latencyMs: 10 });
+    mocks.probeWithPiAi.mockResolvedValue({ ok: true, latencyMs: 10 });
 
     mocks.tcpConnect.mockImplementation(() => {
       const handlers: Record<string, () => void> = {};

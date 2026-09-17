@@ -384,7 +384,7 @@ function normalizeProbeAck(raw: string): string {
     .toLowerCase();
 }
 
-export async function probeWithClaudeSdk(
+export async function probeWithPiAi(
   input: ApiTestInput,
   config: AppConfig
 ): Promise<ApiTestResult> {
@@ -446,7 +446,7 @@ export async function probeWithClaudeSdk(
   }
 }
 
-export async function generateTitleWithClaudeSdk(
+export async function generateTitleWithPiAi(
   titlePrompt: string,
   config: AppConfig
 ): Promise<string | null> {

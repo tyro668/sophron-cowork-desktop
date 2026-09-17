@@ -7,7 +7,7 @@
  * - Session CRUD: create, continue, stop, delete, list
  * - Chat history persistence to SQLite via DatabaseInstance
  * - Workspace-scoped sessions with sandbox integration
- * - Delegates AI execution to ClaudeAgentRunner
+ * - Delegates AI execution to AgentRunner
  *
  * Dependencies: database, agent-runner, config-store, mcp-manager, sandbox-adapter
  */
@@ -36,7 +36,7 @@ import {
   reinitializeSandbox,
 } from '../sandbox/sandbox-adapter';
 import { SandboxSync } from '../sandbox/sandbox-sync';
-import { ClaudeAgentRunner } from '../claude/agent-runner';
+import { AgentRunner } from '../agent/agent-runner';
 import { configStore } from '../config/config-store';
 import { MCPManager } from '../mcp/mcp-manager';
 import { mcpConfigStore } from '../mcp/mcp-config-store';
@@ -66,10 +66,10 @@ import {
   getDefaultTitleFromPrompt,
   normalizeGeneratedTitle,
 } from './session-title-utils';
-import { generateTitleWithClaudeSdk } from '../claude/claude-sdk-one-shot';
+import { generateTitleWithPiAi } from '../agent/pi-ai-one-shot';
 import { buildScheduledTaskTitle } from '../../shared/schedule/task-title';
 
-interface AgentRunner {
+interface AgentRunnerLike {
   run(
     session: Session,
     prompt: string,
@@ -80,6 +80,8 @@ interface AgentRunner {
   cancel(sessionId: string): void;
   clearSdkSession?(sessionId: string): void;
   clearAllSdkSessions?(): void;
+  invalidateMcpServersCache?(): void;
+  invalidateSkillsSetup?(): void;
 }
 
 interface SessionStartOptions {
@@ -101,7 +103,7 @@ export class SessionManager {
   private sendToRenderer: (event: ServerEvent) => void;
   private pathResolver: PathResolver;
   private sandboxAdapter: SandboxAdapter;
-  private agentRunner!: AgentRunner;
+  private agentRunner!: AgentRunnerLike;
   private mcpManager: MCPManager;
   private pluginRuntimeService?: PluginRuntimeService;
   private extensionManager?: AgentRuntimeExtensionManager;
@@ -166,12 +168,7 @@ export class SessionManager {
    * Can be called to recreate runner when config changes
    */
   private createAgentRunner(): void {
-    this.agentRunner = this.createClaudeAgentRunner();
-    log('[SessionManager] Using sophron agent runner');
-  }
-
-  private createClaudeAgentRunner(): ClaudeAgentRunner {
-    return new ClaudeAgentRunner(
+    this.agentRunner = new AgentRunner(
       {
         sendToRenderer: this.sendToRenderer,
         saveMessage: (message: Message) => this.saveMessage(message),
@@ -190,6 +187,7 @@ export class SessionManager {
       undefined,
       this.extensionManager
     );
+    log('[SessionManager] Using sophron agent runner');
   }
 
   /**
@@ -214,9 +212,7 @@ export class SessionManager {
    * Call after MCP server add/update/delete.
    */
   invalidateMcpServersCache(): void {
-    if (this.agentRunner && 'invalidateMcpServersCache' in this.agentRunner) {
-      (this.agentRunner as ClaudeAgentRunner).invalidateMcpServersCache();
-    }
+    this.agentRunner?.invalidateMcpServersCache?.();
   }
 
   /**
@@ -224,9 +220,7 @@ export class SessionManager {
    * Call after skill install/uninstall/toggle.
    */
   invalidateSkillsSetup(): void {
-    if (this.agentRunner && 'invalidateSkillsSetup' in this.agentRunner) {
-      (this.agentRunner as ClaudeAgentRunner).invalidateSkillsSetup();
-    }
+    this.agentRunner?.invalidateSkillsSetup?.();
   }
 
   /**
@@ -701,7 +695,7 @@ export class SessionManager {
     return buildCloudTableAttachmentPrompt(payload);
   }
 
-  // Process a prompt using ClaudeAgentRunner
+  // Process a prompt using AgentRunner
   private async processPrompt(
     session: Session,
     prompt: string,
@@ -955,7 +949,7 @@ export class SessionManager {
     const baseConfig = configStore.getAll();
     const runtimeConfig = this.resolveRuntimeConfig?.(null);
     return normalizeGeneratedTitle(
-      await generateTitleWithClaudeSdk(
+      await generateTitleWithPiAi(
         titlePrompt,
         runtimeConfig ? { ...baseConfig, ...runtimeConfig } : baseConfig
       )

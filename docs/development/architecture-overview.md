@@ -10,7 +10,7 @@
   -> Preload 安全桥 window.electronAPI
   -> Electron Main IPC handlers
   -> 主进程服务层
-       SessionManager / ClaudeAgentRunner
+       SessionManager / AgentRunner
        ConfigStore / MCPManager / SkillsManager
        DataCommandService / DataTaskStore
        SandboxAdapter / RemoteManager / ScheduledTaskManager / MemoryService
@@ -76,7 +76,7 @@ ChatView / WelcomeView
   -> preload allowlist
   -> main handleClientEvent
   -> SessionManager
-  -> ClaudeAgentRunner
+  -> AgentRunner
   -> pi-coding-agent + MCP + custom tools + sandbox
   -> stream/trace ServerEvent
   -> useIPC RAF batch
@@ -122,13 +122,13 @@ SettingsSchedule
 ### 记忆注入
 
 ```text
-ClaudeAgentRunner.beforeSessionRun
+AgentRunner.beforeSessionRun
   -> AgentRuntimeExtensionManager
   -> MemoryExtension.beforeSessionRun
   -> MemoryService.buildPromptPrefix
   -> promptPrefix 注入主模型
 
-ClaudeAgentRunner after run
+AgentRunner after run
   -> MemoryExtension.afterSessionRun
   -> MemoryService.enqueueIngestion
   -> Core/Experience extraction and stores
@@ -165,5 +165,5 @@ ClaudeAgentRunner after run
 - 主进程能力优先封装成 service，`main/index.ts` 只做装配和 IPC 转发。
 - 渲染端不要直接拼接文件系统路径执行敏感操作，应交给 preload + main 做校验。
 - 类型契约优先放在 `renderer/types` 或 `shared`，不要让主进程和渲染端各写一份不同结构。
-- Agent 运行时扩展优先走 `AgentRuntimeExtension`，避免硬改 `ClaudeAgentRunner.run`。
+- Agent 运行时扩展优先走 `AgentRuntimeExtension`，避免硬改 `AgentRunner.run`。
 - 新 UI 必须遵循 [`UI_STYLE_GUIDE.md`](../../UI_STYLE_GUIDE.md)，保持紧凑操作台样式。

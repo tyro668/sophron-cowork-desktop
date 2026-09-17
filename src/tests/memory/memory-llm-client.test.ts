@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const runPiAiOneShotMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../main/claude/claude-sdk-one-shot', () => ({
+vi.mock('../../main/agent/pi-ai-one-shot', () => ({
   runPiAiOneShot: runPiAiOneShotMock,
 }));
 

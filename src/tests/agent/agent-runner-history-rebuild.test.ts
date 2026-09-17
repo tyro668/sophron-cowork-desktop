@@ -4,7 +4,7 @@ import {
   buildColdStartAgentHistory,
   containsPseudoToolCallMarkup,
   PseudoToolCallStreamGuard,
-} from '../../main/claude/agent-protocol-safety';
+} from '../../main/agent/agent-protocol-safety';
 
 const HISTORY_OPTIONS = {
   api: 'openai-completions',

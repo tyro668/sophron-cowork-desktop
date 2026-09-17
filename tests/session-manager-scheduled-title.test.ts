@@ -22,8 +22,8 @@ vi.mock('../src/main/config/config-store', () => ({
   },
 }));
 
-vi.mock('../src/main/claude/agent-runner', () => ({
-  ClaudeAgentRunner: class {
+vi.mock('../src/main/agent/agent-runner', () => ({
+  AgentRunner: class {
     run = vi.fn();
     cancel = vi.fn();
     handleQuestionResponse = vi.fn();

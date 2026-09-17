@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { log, logWarn } from '../utils/logger';
-import { getSharedAuthStorage } from '../claude/shared-auth';
+import { getSharedAuthStorage } from '../agent/shared-auth';
 
 export const OPENAI_CODEX_PROVIDER = 'openai-codex';
 

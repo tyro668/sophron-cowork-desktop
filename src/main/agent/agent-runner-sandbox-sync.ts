@@ -31,7 +31,7 @@ export async function initSandboxSyncForRun(args: {
   const sandbox = getSandboxAdapter();
 
   if (sandbox.isWSL && sandbox.wslStatus?.distro && workingDir) {
-    log('[ClaudeAgentRunner] WSL mode active, initializing sandbox sync...');
+    log('[AgentRunner] WSL mode active, initializing sandbox sync...');
 
     // Only show sync UI for new sessions (first message)
     const isNewSession = !SandboxSync.hasSession(session.id);
@@ -54,10 +54,8 @@ export async function initSandboxSyncForRun(args: {
     if (syncResult.success) {
       sandboxPath = syncResult.sandboxPath;
       useSandboxIsolation = true;
-      log(`[ClaudeAgentRunner] Sandbox initialized: ${sandboxPath}`);
-      log(
-        `[ClaudeAgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`
-      );
+      log(`[AgentRunner] Sandbox initialized: ${sandboxPath}`);
+      log(`[AgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`);
 
       if (isNewSession) {
         // Update UI with file count (only for new sessions)
@@ -90,7 +88,7 @@ export async function initSandboxSyncForRun(args: {
           // Use rsync via execFileSync with array args to avoid shell injection
           const wslSourcePath = pathConverter.toWSL(builtinSkillsPath);
           log(
-            `[ClaudeAgentRunner] Copying skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
+            `[AgentRunner] Copying skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
           );
 
           execFileSync(
@@ -113,7 +111,7 @@ export async function initSandboxSyncForRun(args: {
         if (fs.existsSync(appSkillsDir)) {
           const wslSourcePath = pathConverter.toWSL(appSkillsDir);
           log(
-            `[ClaudeAgentRunner] Copying app skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
+            `[AgentRunner] Copying app skills with rsync: ${wslSourcePath}/ -> ${sandboxSkillsPath}/`
           );
 
           execFileSync(
@@ -135,10 +133,10 @@ export async function initSandboxSyncForRun(args: {
           .split(/\r?\n/)
           .filter(Boolean);
 
-        log(`[ClaudeAgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
-        log(`[ClaudeAgentRunner]   Skills: ${copiedSkills.join(', ')}`);
+        log(`[AgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
+        log(`[AgentRunner]   Skills: ${copiedSkills.join(', ')}`);
       } catch (error) {
-        logError('[ClaudeAgentRunner] Failed to copy skills to sandbox:', error);
+        logError('[AgentRunner] Failed to copy skills to sandbox:', error);
       }
 
       if (isNewSession) {
@@ -156,8 +154,8 @@ export async function initSandboxSyncForRun(args: {
         });
       }
     } else {
-      logError('[ClaudeAgentRunner] Sandbox sync failed:', syncResult.error);
-      log('[ClaudeAgentRunner] Falling back to /mnt/ access (less secure)');
+      logError('[AgentRunner] Sandbox sync failed:', syncResult.error);
+      log('[AgentRunner] Falling back to /mnt/ access (less secure)');
 
       if (isNewSession) {
         // Notify UI: error (only for new sessions)
@@ -176,7 +174,7 @@ export async function initSandboxSyncForRun(args: {
 
   // Initialize sandbox sync if Lima mode is active
   if (sandbox.isLima && sandbox.limaStatus?.instanceRunning && workingDir) {
-    log('[ClaudeAgentRunner] Lima mode active, initializing sandbox sync...');
+    log('[AgentRunner] Lima mode active, initializing sandbox sync...');
 
     const { LimaSync } = await import('../sandbox/lima-sync');
 
@@ -201,10 +199,8 @@ export async function initSandboxSyncForRun(args: {
     if (syncResult.success) {
       sandboxPath = syncResult.sandboxPath;
       useSandboxIsolation = true;
-      log(`[ClaudeAgentRunner] Sandbox initialized: ${sandboxPath}`);
-      log(
-        `[ClaudeAgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`
-      );
+      log(`[AgentRunner] Sandbox initialized: ${sandboxPath}`);
+      log(`[AgentRunner]   Files: ${syncResult.fileCount}, Size: ${syncResult.totalSize} bytes`);
 
       if (isNewLimaSession) {
         // Update UI with file count (only for new sessions)
@@ -240,7 +236,7 @@ export async function initSandboxSyncForRun(args: {
           // Use rsync via execFileSync with array args to avoid shell injection
           // Lima mounts /Users directly, so paths are the same
           log(
-            `[ClaudeAgentRunner] Copying skills with rsync: ${builtinSkillsPath}/ -> ${sandboxSkillsPath}/`
+            `[AgentRunner] Copying skills with rsync: ${builtinSkillsPath}/ -> ${sandboxSkillsPath}/`
           );
 
           execFileSync(
@@ -270,7 +266,7 @@ export async function initSandboxSyncForRun(args: {
 
         if (fs.existsSync(appSkillsDir)) {
           log(
-            `[ClaudeAgentRunner] Copying app skills with rsync: ${appSkillsDir}/ -> ${sandboxSkillsPath}/`
+            `[AgentRunner] Copying app skills with rsync: ${appSkillsDir}/ -> ${sandboxSkillsPath}/`
           );
 
           execFileSync(
@@ -304,10 +300,10 @@ export async function initSandboxSyncForRun(args: {
           .split(/\r?\n/)
           .filter(Boolean);
 
-        log(`[ClaudeAgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
-        log(`[ClaudeAgentRunner]   Skills: ${copiedSkills.join(', ')}`);
+        log(`[AgentRunner] Skills copied to sandbox: ${sandboxSkillsPath}`);
+        log(`[AgentRunner]   Skills: ${copiedSkills.join(', ')}`);
       } catch (error) {
-        logError('[ClaudeAgentRunner] Failed to copy skills to sandbox:', error);
+        logError('[AgentRunner] Failed to copy skills to sandbox:', error);
       }
 
       if (isNewLimaSession) {
@@ -325,8 +321,8 @@ export async function initSandboxSyncForRun(args: {
         });
       }
     } else {
-      logError('[ClaudeAgentRunner] Sandbox sync failed:', syncResult.error);
-      log('[ClaudeAgentRunner] Falling back to direct access (less secure)');
+      logError('[AgentRunner] Sandbox sync failed:', syncResult.error);
+      log('[AgentRunner] Falling back to direct access (less secure)');
 
       if (isNewLimaSession) {
         // Notify UI: error (only for new sessions)

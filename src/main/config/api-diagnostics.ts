@@ -32,8 +32,8 @@ import type {
   LocalOllamaDiscoveryResult,
 } from '../../shared/contracts';
 import { log, logWarn } from '../utils/logger';
-import { probeWithClaudeSdk } from '../claude/claude-sdk-one-shot';
-import { getSharedAuthStorage } from '../claude/shared-auth';
+import { probeWithPiAi } from '../agent/pi-ai-one-shot';
+import { getSharedAuthStorage } from '../agent/shared-auth';
 import { ensureCodexCredentials, OPENAI_CODEX_PROVIDER } from './codex-auth';
 import { fetchOllamaModelIndex } from './ollama-api';
 
@@ -174,7 +174,7 @@ export function shouldContinueAfterGeminiAuthProbeError(error: {
 }
 
 function getModelDiagnosticFix(
-  errorType: Awaited<ReturnType<typeof probeWithClaudeSdk>>['errorType'],
+  errorType: Awaited<ReturnType<typeof probeWithPiAi>>['errorType'],
   model: string
 ): string {
   switch (errorType) {
@@ -557,7 +557,7 @@ async function stepModel(input: DiagnosticInput, step: DiagnosticStep): Promise<
     }
 
     const config = configStore.getAll();
-    const result = await probeWithClaudeSdk(
+    const result = await probeWithPiAi(
       {
         provider: input.provider,
         apiKey: input.apiKey,

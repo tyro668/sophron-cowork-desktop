@@ -9,7 +9,7 @@ import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-an
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import type { InputTableNormalizerProjectGenerator } from '../src/main/data/input-table-normalizer-generator';
 import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
-import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/claude/claude-sdk-one-shot';
+import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/agent/pi-ai-one-shot';
 import type { AgentRuntimeConfig, DataCleaningTask } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
@@ -41,7 +41,7 @@ function asFunctionWorkflow(...operations: WorkflowStepFixture[]): string {
   return [...helpers, body.join('\n')].join('\n\n');
 }
 
-vi.mock('../src/main/claude/claude-sdk-one-shot', () => ({
+vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
   runPiAiOneShot: vi.fn(async () => ({
     text: JSON.stringify({
       javascriptSource: asFunctionWorkflow([

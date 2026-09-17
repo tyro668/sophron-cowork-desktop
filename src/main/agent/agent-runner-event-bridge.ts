@@ -1,6 +1,6 @@
 /**
  * AgentRunEventBridge — bridges sophron agent SDK session events into the
- * application's ServerEvent protocol during a single ClaudeAgentRunner.run()
+ * application's ServerEvent protocol during a single AgentRunner.run()
  * turn.
  *
  * Extracted from agent-runner.ts: the bridge owns all per-turn streaming state
@@ -201,7 +201,7 @@ export class AgentRunEventBridge {
     });
     if (this.ctx.provider === 'ollama') {
       log(
-        '[ClaudeAgentRunner] Ollama first stream event received',
+        '[AgentRunner] Ollama first stream event received',
         safeStringify({
           sessionId: this.ctx.session.id,
           eventType,
@@ -220,7 +220,7 @@ export class AgentRunEventBridge {
   resetActivityTimeout = () => {
     if (this.activityTimeoutId) clearTimeout(this.activityTimeoutId);
     this.activityTimeoutId = setTimeout(() => {
-      logWarn('[ClaudeAgentRunner] Prompt timed out (no activity for 5 min), aborting');
+      logWarn('[AgentRunner] Prompt timed out (no activity for 5 min), aborting');
       this.ctx.onTimeoutAbort();
       this.ctx.controller.abort();
     }, this.PROMPT_TIMEOUT_MS);
@@ -239,7 +239,7 @@ export class AgentRunEventBridge {
 
   markProtocolViolation = (source: 'stream' | 'message_end'): void => {
     if (!this.currentMessageProtocolViolation) {
-      logWarn('[ClaudeAgentRunner] Blocked pseudo tool-call markup from assistant text:', source);
+      logWarn('[AgentRunner] Blocked pseudo tool-call markup from assistant text:', source);
     }
     this.currentMessageProtocolViolation = true;
     this.ctx.sendToRenderer({
@@ -263,7 +263,7 @@ export class AgentRunEventBridge {
         const updateType = event.assistantMessageEvent.type;
         this.recordStreamEvent(updateType);
         if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {
-          log(`[ClaudeAgentRunner] Event: ${event.type} → ${updateType}`);
+          log(`[AgentRunner] Event: ${event.type} → ${updateType}`);
         }
       } else if (event.type === 'message_start') {
         if ((event.message as { role?: string }).role === 'assistant') {
@@ -275,7 +275,7 @@ export class AgentRunEventBridge {
           this.ctx.evaluationMetrics.modelCallCount += 1;
         }
         log(
-          '[ClaudeAgentRunner] Event: message_start',
+          '[AgentRunner] Event: message_start',
           safeStringify(summarizeMessageForLog(event.message), 2)
         );
       } else if (event.type === 'message_end') {
@@ -300,7 +300,7 @@ export class AgentRunEventBridge {
           }
         }
         log(
-          '[ClaudeAgentRunner] Event: message_end',
+          '[AgentRunner] Event: message_end',
           safeStringify(
             {
               message: summarizeMessageForLog(event.message),
@@ -310,9 +310,9 @@ export class AgentRunEventBridge {
           )
         );
       } else if (event.type === 'turn_end') {
-        log(`[ClaudeAgentRunner] Event: ${event.type}`);
+        log(`[AgentRunner] Event: ${event.type}`);
       } else {
-        log(`[ClaudeAgentRunner] Event: ${event.type}`);
+        log(`[AgentRunner] Event: ${event.type}`);
       }
 
       switch (event.type) {
@@ -373,10 +373,10 @@ export class AgentRunEventBridge {
           } else if (ame.type === 'done') {
             // Some providers emit 'done' via message_update — we handle it
             // in message_end below as a unified path for all providers.
-            log('[ClaudeAgentRunner] message_update done event (handled in message_end)');
+            log('[AgentRunner] message_update done event (handled in message_end)');
           } else if (ame.type === 'error') {
             const errorDetail = JSON.stringify(ame.error?.content || 'no content');
-            logCtxError('[ClaudeAgentRunner] pi-ai stream error:', ame.reason, errorDetail);
+            logCtxError('[AgentRunner] pi-ai stream error:', ame.reason, errorDetail);
           }
           break;
         }
@@ -411,7 +411,7 @@ export class AgentRunEventBridge {
 
           const msg = event.message;
           if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
-            log('[ClaudeAgentRunner] message_end raw message:', safeStringify(msg, 2));
+            log('[AgentRunner] message_end raw message:', safeStringify(msg, 2));
           }
           const resolvedPayload = resolveMessageEndPayload({
             message: msg as Parameters<typeof resolveMessageEndPayload>[0]['message'],
@@ -438,7 +438,7 @@ export class AgentRunEventBridge {
           this.streamedText = resolvedPayload.nextStreamedText;
           if (this.ctx.provider === 'ollama') {
             log(
-              '[ClaudeAgentRunner] Ollama message_end diagnostics',
+              '[AgentRunner] Ollama message_end diagnostics',
               safeStringify({
                 sessionId: this.ctx.session.id,
                 modelId: this.ctx.piModel.id,
@@ -523,7 +523,7 @@ export class AgentRunEventBridge {
               } else {
                 // Unknown block type — pass through as text so content isn't silently lost
                 const unknownBlock = block as { type?: string; text?: string };
-                log(`[ClaudeAgentRunner] Unknown content block type: ${unknownBlock.type}`);
+                log(`[AgentRunner] Unknown content block type: ${unknownBlock.type}`);
                 const text = unknownBlock.text || JSON.stringify(block);
                 if (text) contentBlocks.push({ type: 'text', text });
               }
@@ -557,7 +557,7 @@ export class AgentRunEventBridge {
               const tokenUsage = normalizeTokenUsage(msgWithUsage.usage);
               if (msgWithUsage.usage) {
                 log(
-                  '[ClaudeAgentRunner] normalized usage:',
+                  '[AgentRunner] normalized usage:',
                   safeStringify(
                     {
                       raw: msgWithUsage.usage,
@@ -585,7 +585,7 @@ export class AgentRunEventBridge {
         }
 
         case 'tool_execution_start': {
-          logCtx(`[ClaudeAgentRunner] Tool execution start: ${event.toolName}`);
+          logCtx(`[AgentRunner] Tool execution start: ${event.toolName}`);
           const toolCallId = event.toolCallId;
           const startedAt = Date.now();
           this.ctx.toolStartedAt.set(`${this.ctx.session.id}:${toolCallId}`, startedAt);
@@ -671,12 +671,12 @@ export class AgentRunEventBridge {
         }
 
         case 'agent_end': {
-          logCtx('[ClaudeAgentRunner] Agent finished');
+          logCtx('[AgentRunner] Agent finished');
           break;
         }
 
         case 'auto_compaction_start': {
-          log('[ClaudeAgentRunner] Auto-compaction started, reason:', event.reason);
+          log('[AgentRunner] Auto-compaction started, reason:', event.reason);
           this.compactionStepId = `compaction-${Date.now()}`;
           this.compactionStartedAt = Date.now();
           this.ctx.sendTraceStep(this.ctx.session.id, {
@@ -698,7 +698,7 @@ export class AgentRunEventBridge {
             : event.errorMessage
               ? `Context compaction failed: ${event.errorMessage}`
               : 'Context compaction completed';
-          log('[ClaudeAgentRunner] Auto-compaction ended:', title, 'willRetry:', event.willRetry);
+          log('[AgentRunner] Auto-compaction ended:', title, 'willRetry:', event.willRetry);
           if (this.compactionStepId) {
             const endedAt = Date.now();
             this.ctx.sendTraceUpdate(this.ctx.session.id, this.compactionStepId, {
@@ -730,7 +730,7 @@ export class AgentRunEventBridge {
         }
       }
     } catch (subscribeErr) {
-      logError('[ClaudeAgentRunner] Error in subscribe callback:', subscribeErr);
+      logError('[AgentRunner] Error in subscribe callback:', subscribeErr);
       if (this.compactionStepId) {
         this.ctx.sendTraceUpdate(this.ctx.session.id, this.compactionStepId, {
           status: 'error',

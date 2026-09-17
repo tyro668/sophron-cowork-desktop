@@ -4,7 +4,7 @@ import {
   buildTraceOutputPreview,
   normalizeTraceUsage,
   sanitizeTraceInput,
-} from '../src/main/claude/trace-utils';
+} from '../src/main/agent/trace-utils';
 
 describe('trace utils', () => {
   it('redacts credentials and bounds large values before persistence', () => {

@@ -122,7 +122,7 @@ export async function enrichProcessPathForBuild(): Promise<void> {
   pathEnriched = true;
 
   if (!app.isPackaged) {
-    log('[ClaudeAgentRunner] Dev mode — skipping PATH enrichment');
+    log('[AgentRunner] Dev mode — skipping PATH enrichment');
     return;
   }
 
@@ -144,11 +144,11 @@ export async function enrichProcessPathForBuild(): Promise<void> {
       ).trim();
       if (output) {
         shellPaths = output.split(':').filter((p: string) => p.trim());
-        log(`[ClaudeAgentRunner] Restored ${shellPaths.length} paths from login shell`);
+        log(`[AgentRunner] Restored ${shellPaths.length} paths from login shell`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logWarn(`[ClaudeAgentRunner] Could not restore shell PATH: ${message}`);
+      logWarn(`[AgentRunner] Could not restore shell PATH: ${message}`);
     }
   } else if (platform === 'win32') {
     try {
@@ -165,11 +165,11 @@ export async function enrichProcessPathForBuild(): Promise<void> {
       ).trim();
       if (output) {
         shellPaths = output.split(';').filter((p: string) => p.trim());
-        log(`[ClaudeAgentRunner] Restored ${shellPaths.length} paths from Windows registry`);
+        log(`[AgentRunner] Restored ${shellPaths.length} paths from Windows registry`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      logWarn(`[ClaudeAgentRunner] Could not restore Windows PATH: ${message}`);
+      logWarn(`[AgentRunner] Could not restore Windows PATH: ${message}`);
     }
   }
 
@@ -205,6 +205,6 @@ export async function enrichProcessPathForBuild(): Promise<void> {
 
   process.env.PATH = merged.join(delimiter);
   log(
-    `[ClaudeAgentRunner] Enriched process.env.PATH for build mode: ${bundledDirs.length} bundled + ${shellPaths.length} shell + ${currentPaths.length} process → ${merged.length} total`
+    `[AgentRunner] Enriched process.env.PATH for build mode: ${bundledDirs.length} bundled + ${shellPaths.length} shell + ${currentPaths.length} process → ${merged.length} total`
   );
 }

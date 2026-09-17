@@ -1,22 +1,22 @@
 # 会话与 Agent 运行时
 
-会话模块是项目的核心。普通聊天、远程控制和定时任务最终都会走 [`SessionManager`](../../src/main/session/session-manager.ts) 和 [`ClaudeAgentRunner`](../../src/main/claude/agent-runner.ts)。维护时要把“会话生命周期”和“单次模型执行”分开看。
+会话模块是项目的核心。普通聊天、远程控制和定时任务最终都会走 [`SessionManager`](../../src/main/session/session-manager.ts) 和 [`AgentRunner`](../../src/main/agent/agent-runner.ts)。维护时要把“会话生命周期”和“单次模型执行”分开看。
 
 ## 核心职责划分
 
 | 文件                                                                                                                     | 职责                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | [`src/main/session/session-manager.ts`](../../src/main/session/session-manager.ts)                                       | 会话 CRUD、消息/Trace 持久化、提示队列、权限/密码回调、沙盒初始化、附件处理    |
-| [`src/main/claude/agent-runner.ts`](../../src/main/claude/agent-runner.ts)                                               | 创建 pi-coding-agent session、模型路由、工具组装、MCP/扩展工具桥接、流事件转换 |
+| [`src/main/agent/agent-runner.ts`](../../src/main/agent/agent-runner.ts)                                                 | 创建 pi-coding-agent session、模型路由、工具组装、MCP/扩展工具桥接、流事件转换 |
 | [`src/main/extensions/agent-runtime-extension.ts`](../../src/main/extensions/agent-runtime-extension.ts)                 | Agent 运行时扩展接口                                                           |
 | [`src/main/extensions/agent-runtime-extension-manager.ts`](../../src/main/extensions/agent-runtime-extension-manager.ts) | 合并扩展 promptPrefix 和 customTools，隔离扩展异常                             |
 | [`src/main/session/session-title-flow.ts`](../../src/main/session/session-title-flow.ts)                                 | 会话标题生成流程                                                               |
 | [`src/main/session/session-title-utils.ts`](../../src/main/session/session-title-utils.ts)                               | 标题 prompt、默认标题和归一化                                                  |
-| [`src/main/claude/pi-model-resolution.ts`](../../src/main/claude/pi-model-resolution.ts)                                 | provider/model 到 pi-ai runtime 的解析和 fallback                              |
-| [`src/main/claude/pi-session-runtime.ts`](../../src/main/claude/pi-session-runtime.ts)                                   | 运行时签名，用于判断 SDK session 是否要重建                                    |
-| [`src/main/claude/think-tag-parser.ts`](../../src/main/claude/think-tag-parser.ts)                                       | Thinking 标签流式解析                                                          |
-| [`src/main/claude/agent-runner-loop-guard.ts`](../../src/main/claude/agent-runner-loop-guard.ts)                         | 工具调用循环保护                                                               |
-| [`src/main/claude/tool-result-utils.ts`](../../src/main/claude/tool-result-utils.ts)                                     | 工具结果给模型和 UI 的归一化                                                   |
+| [`src/main/agent/pi-model-resolution.ts`](../../src/main/agent/pi-model-resolution.ts)                                   | provider/model 到 pi-ai runtime 的解析和 fallback                              |
+| [`src/main/agent/pi-session-runtime.ts`](../../src/main/agent/pi-session-runtime.ts)                                     | 运行时签名，用于判断 SDK session 是否要重建                                    |
+| [`src/main/agent/think-tag-parser.ts`](../../src/main/agent/think-tag-parser.ts)                                         | Thinking 标签流式解析                                                          |
+| [`src/main/agent/agent-runner-loop-guard.ts`](../../src/main/agent/agent-runner-loop-guard.ts)                           | 工具调用循环保护                                                               |
+| [`src/main/agent/tool-result-utils.ts`](../../src/main/agent/tool-result-utils.ts)                                       | 工具结果给模型和 UI 的归一化                                                   |
 
 ## SessionManager
 
@@ -53,9 +53,9 @@
 - 附件路径必须经过 basename 处理，避免把用户本地绝对路径暴露给模型。
 - 修改会话状态时要同时考虑 SQLite、前端 `session.update`、前端 optimistic message 三者的一致性。
 
-## ClaudeAgentRunner
+## AgentRunner
 
-`ClaudeAgentRunner` 负责“单次 turn 的执行”。它把项目内部概念转换为 pi-coding-agent SDK 能理解的会话、工具和流事件。
+`AgentRunner` 负责“单次 turn 的执行”。它把项目内部概念转换为 pi-coding-agent SDK 能理解的会话、工具和流事件。
 
 主要步骤：
 
@@ -85,7 +85,7 @@
 
 维护注意：
 
-- 新增会话级能力，优先写 `AgentRuntimeExtension`，不要直接把逻辑塞进 `ClaudeAgentRunner.run`。
+- 新增会话级能力，优先写 `AgentRuntimeExtension`，不要直接把逻辑塞进 `AgentRunner.run`。
 - 新增 provider 时要同时检查 `config-store`、`api-model-presets`、`pi-model-resolution`、`useApiConfigState` 和设置 UI。
 - 修改工具名时要考虑权限规则、UI label、MCP tool display name、历史消息兼容。
 - `LoopGuard` 是防止模型无限工具调用的重要保护，不要绕过。
@@ -144,7 +144,7 @@ UI 渲染路径：
 
 sudo 密码流程：
 
-1. `ClaudeAgentRunner` 包装 bash tool。
+1. `AgentRunner` 包装 bash tool。
 2. 发现 sudo 命令时调用 `SessionManager.requestSudoPassword`。
 3. 主进程发送 `sudo.password.request`。
 4. UI 弹出 [`SudoPasswordDialog`](../../src/renderer/components/SudoPasswordDialog.tsx)。

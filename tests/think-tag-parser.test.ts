@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ThinkTagStreamParser, splitThinkTagBlocks } from '../src/main/claude/think-tag-parser';
+import { ThinkTagStreamParser, splitThinkTagBlocks } from '../src/main/agent/think-tag-parser';
 
 describe('ThinkTagStreamParser', () => {
   it('should separate thinking from text in a single chunk', () => {

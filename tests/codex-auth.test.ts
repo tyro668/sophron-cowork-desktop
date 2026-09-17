@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../src/main/claude/shared-auth', () => ({
+vi.mock('../src/main/agent/shared-auth', () => ({
   getSharedAuthStorage: () => ({
     get: mocks.get,
     set: mocks.set,

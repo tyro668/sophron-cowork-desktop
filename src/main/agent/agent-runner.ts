@@ -1,5 +1,5 @@
 /**
- * @module main/claude/agent-runner
+ * @module main/agent/agent-runner
  *
  * AI query execution engine.
  *
@@ -125,14 +125,14 @@ interface AgentRunOptions {
 }
 
 /**
- * ClaudeAgentRunner - Uses @mariozechner/pi-coding-agent SDK
+ * AgentRunner - Uses @mariozechner/pi-coding-agent SDK
  *
  * Environment variables should be set before running:
  *   ANTHROPIC_BASE_URL=https://openrouter.ai/api
  *   ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key
  *   ANTHROPIC_API_KEY="" (must be empty)
  */
-export class ClaudeAgentRunner {
+export class AgentRunner {
   private sendToRenderer: (event: ServerEvent) => void;
   private saveMessage?: (message: Message) => void;
   private requestSudoPassword?: (
@@ -172,10 +172,10 @@ export class ClaudeAgentRunner {
       try {
         cached.session.dispose();
       } catch (e) {
-        logWarn('[ClaudeAgentRunner] dispose error:', e);
+        logWarn('[AgentRunner] dispose error:', e);
       }
       this.piSessions.delete(sessionId);
-      log('[ClaudeAgentRunner] Disposed pi session for:', sessionId);
+      log('[AgentRunner] Disposed pi session for:', sessionId);
     }
   }
 
@@ -194,7 +194,7 @@ export class ClaudeAgentRunner {
   invalidateMcpServersCache(): void {
     this._mcpServersCache = null;
     // Sessions stay alive — MCP tools are rebuilt each query via buildMcpCustomTools()
-    log('[ClaudeAgentRunner] MCP servers cache invalidated — tools will rebuild on next query');
+    log('[AgentRunner] MCP servers cache invalidated — tools will rebuild on next query');
   }
 
   // TODO: Credentials should be served via a secure MCP tool or IPC channel,
@@ -229,10 +229,10 @@ export class ClaudeAgentRunner {
       sendToRenderer: this.sendToRenderer,
     });
 
-    log('[ClaudeAgentRunner] Initialized with sophron agent SDK');
-    log('[ClaudeAgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
+    log('[AgentRunner] Initialized with sophron agent SDK');
+    log('[AgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
     if (mcpManager) {
-      log('[ClaudeAgentRunner] MCP support enabled');
+      log('[AgentRunner] MCP support enabled');
     }
   }
 
@@ -254,7 +254,7 @@ export class ClaudeAgentRunner {
    */
   private installPermissionHook(piSession: PiAgentSession, sessionId: string): void {
     if (!this.requestPermission) {
-      log('[ClaudeAgentRunner] No requestPermission callback — skipping permission hook');
+      log('[AgentRunner] No requestPermission callback — skipping permission hook');
       return;
     }
 
@@ -267,9 +267,7 @@ export class ClaudeAgentRunner {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const agent = (piSession as any).agent;
     if (!agent || typeof agent.setBeforeToolCall !== 'function') {
-      logWarn(
-        '[ClaudeAgentRunner] Cannot access agent.setBeforeToolCall — skipping permission hook'
-      );
+      logWarn('[AgentRunner] Cannot access agent.setBeforeToolCall — skipping permission hook');
       return;
     }
 
@@ -299,7 +297,7 @@ export class ClaudeAgentRunner {
         const sanitizedInput = sanitizeTraceInput(input);
 
         if (decision === 'deny') {
-          log(`[ClaudeAgentRunner] Tool '${toolName}' denied by rule`);
+          log(`[AgentRunner] Tool '${toolName}' denied by rule`);
           const now = Date.now();
           this.sendTraceStep(sessionId, {
             id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
@@ -367,7 +365,7 @@ export class ClaudeAgentRunner {
               duration: endedAt - permissionStartedAt,
             });
             logError(
-              `[ClaudeAgentRunner] Permission request failed for '${toolName}' — failing closed`,
+              `[AgentRunner] Permission request failed for '${toolName}' — failing closed`,
               permErr
             );
             return {
@@ -392,7 +390,7 @@ export class ClaudeAgentRunner {
               endedAt,
               duration: endedAt - permissionStartedAt,
             });
-            log(`[ClaudeAgentRunner] Tool '${toolName}' denied by user`);
+            log(`[AgentRunner] Tool '${toolName}' denied by user`);
             return { block: true, reason: `User denied permission for '${displayName}'.` };
           }
 
@@ -435,7 +433,7 @@ export class ClaudeAgentRunner {
     );
 
     log(
-      `[ClaudeAgentRunner] Permission hook installed on session ${sessionId} via agent.setBeforeToolCall`
+      `[AgentRunner] Permission hook installed on session ${sessionId} via agent.setBeforeToolCall`
     );
   }
 
@@ -500,12 +498,12 @@ export class ClaudeAgentRunner {
         ) => {
           const command = params.command;
 
-          if (ClaudeAgentRunner.isSudoCommand(command)) {
-            log('[ClaudeAgentRunner] Sudo command detected, requesting password');
+          if (AgentRunner.isSudoCommand(command)) {
+            log('[AgentRunner] Sudo command detected, requesting password');
             const password = await requestSudoPassword(sessionId, toolCallId, command);
 
             if (!password) {
-              log('[ClaudeAgentRunner] Sudo password cancelled by user');
+              log('[AgentRunner] Sudo password cancelled by user');
               return {
                 content: [
                   { type: 'text' as const, text: 'Command cancelled: user denied sudo password.' },
@@ -519,9 +517,7 @@ export class ClaudeAgentRunner {
 
             // Pass password via stdin pipe so it never appears in process args
             // or environment variables. Uses async spawn with stdio: 'pipe'.
-            log(
-              '[ClaudeAgentRunner] Executing sudo command with password injection (via stdin pipe)'
-            );
+            log('[AgentRunner] Executing sudo command with password injection (via stdin pipe)');
             try {
               const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
               const shellArgs =
@@ -560,7 +556,7 @@ export class ClaudeAgentRunner {
                 details: undefined as unknown,
               };
             } catch (sudoErr) {
-              logError('[ClaudeAgentRunner] Sudo command failed:', sudoErr);
+              logError('[AgentRunner] Sudo command failed:', sudoErr);
               throw sudoErr instanceof Error ? sudoErr : new Error(String(sudoErr));
             }
           }
@@ -608,9 +604,9 @@ export class ClaudeAgentRunner {
     const routeModel = preferredModel?.trim();
     const configuredModel = configStore.get('model')?.trim();
     const model = routeModel || configuredModel || 'anthropic/claude-sonnet-4-6';
-    logCtx('[ClaudeAgentRunner] Current model:', model);
+    logCtx('[AgentRunner] Current model:', model);
     logCtx(
-      '[ClaudeAgentRunner] Model source:',
+      '[AgentRunner] Model source:',
       routeModel ? 'runtimeRoute.model' : configuredModel ? 'configStore.model' : 'default'
     );
     return model;
@@ -651,7 +647,7 @@ export class ClaudeAgentRunner {
     });
     this.activeTurnIds.set(session.id, turnId);
     this.activeEvaluationMetrics.set(session.id, evaluationMetrics);
-    logCtx('[ClaudeAgentRunner] run() started');
+    logCtx('[AgentRunner] run() started');
 
     const controller = new AbortController();
     try {
@@ -706,7 +702,7 @@ export class ClaudeAgentRunner {
 
       // Use session's cwd - each session has its own working directory
       const workingDir = session.cwd || undefined;
-      logCtx('[ClaudeAgentRunner] Working directory:', workingDir || '(none)');
+      logCtx('[AgentRunner] Working directory:', workingDir || '(none)');
 
       const syncState = await initSandboxSyncForRun({
         session,
@@ -722,12 +718,12 @@ export class ClaudeAgentRunner {
       const lastUserMessage =
         existingMessages.length > 0 ? existingMessages[existingMessages.length - 1] : null;
 
-      logCtx('[ClaudeAgentRunner] Total messages:', existingMessages.length);
+      logCtx('[AgentRunner] Total messages:', existingMessages.length);
 
       const hasImages =
         lastUserMessage?.content.some((c) => (c as { type?: string }).type === 'image') || false;
       if (hasImages) {
-        log('[ClaudeAgentRunner] User message contains images');
+        log('[AgentRunner] User message contains images');
       }
 
       logTiming('before pi-ai model resolution', runStartTime);
@@ -784,13 +780,13 @@ export class ClaudeAgentRunner {
           customProtocol: runtimeConfig.customProtocol,
         });
         logCtxWarn(
-          '[ClaudeAgentRunner] Model not in pi-ai registry, using synthetic model:',
+          '[AgentRunner] Model not in pi-ai registry, using synthetic model:',
           modelString,
           '→',
           piModel.api
         );
       }
-      logCtx('[ClaudeAgentRunner] Resolved pi-ai model:', piModel.provider, piModel.id);
+      logCtx('[AgentRunner] Resolved pi-ai model:', piModel.provider, piModel.id);
 
       // For Ollama: query actual context window from /api/show if user hasn't configured one
       const provider = runtimeConfig.provider || 'anthropic';
@@ -804,7 +800,7 @@ export class ClaudeAgentRunner {
         });
         if (ollamaInfo.contextWindow) {
           log(
-            '[ClaudeAgentRunner] Ollama /api/show reported contextWindow:',
+            '[AgentRunner] Ollama /api/show reported contextWindow:',
             ollamaInfo.contextWindow,
             '(was:',
             piModel.contextWindow,
@@ -835,7 +831,7 @@ export class ClaudeAgentRunner {
             'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex，连接本地 codex CLI 登录态或完成浏览器登录。'
           );
         }
-        log('[ClaudeAgentRunner] Using OAuth credentials for openai-codex');
+        log('[AgentRunner] Using OAuth credentials for openai-codex');
       } else if (apiKey) {
         // Map our config provider to pi-ai provider name
         const piProvider =
@@ -845,13 +841,13 @@ export class ClaudeAgentRunner {
         // google/gemini via openrouter, pi-ai looks up "google" not "openrouter")
         if (piModel.provider !== piProvider) {
           authStorage.setRuntimeApiKey(piModel.provider, apiKey);
-          log('[ClaudeAgentRunner] Set runtime API key for model provider:', piModel.provider);
+          log('[AgentRunner] Set runtime API key for model provider:', piModel.provider);
         }
-        log('[ClaudeAgentRunner] Set runtime API key for config provider:', piProvider);
+        log('[AgentRunner] Set runtime API key for config provider:', piProvider);
       } else {
         if (provider === 'ollama') {
           log(
-            '[ClaudeAgentRunner] Ollama configured without explicit API key; relying on OpenAI-compatible placeholder/env auth path',
+            '[AgentRunner] Ollama configured without explicit API key; relying on OpenAI-compatible placeholder/env auth path',
             safeStringify({
               provider,
               modelProvider: piModel.provider,
@@ -860,12 +856,12 @@ export class ClaudeAgentRunner {
             })
           );
         } else {
-          logWarn('[ClaudeAgentRunner] No API key configured for provider:', provider);
+          logWarn('[AgentRunner] No API key configured for provider:', provider);
         }
       }
 
       // baseUrl is now embedded in the model object via resolvePiModel()
-      logCtx('[ClaudeAgentRunner] Model baseUrl:', piModel.baseUrl, 'api:', piModel.api);
+      logCtx('[AgentRunner] Model baseUrl:', piModel.baseUrl, 'api:', piModel.api);
 
       logTiming('after pi-ai model resolution', runStartTime);
 
@@ -874,9 +870,9 @@ export class ClaudeAgentRunner {
       const effectiveCwd =
         useSandboxIsolation && sandboxPath ? sandboxPath : workingDir || process.cwd();
 
-      // Use app-specific Claude config directory to avoid conflicts with user settings
+      // Use app-specific agent config directory to avoid conflicts with user settings
       // SDK uses CLAUDE_CONFIG_DIR to locate skills
-      const userClaudeDir = this.skills.getAppClaudeDir();
+      const appAgentDir = this.skills.getAppAgentDir();
 
       // Skills directory setup: only run on the first query per runner instance.
       // Symlinks and directories are stable across queries; re-running every time
@@ -886,18 +882,18 @@ export class ClaudeAgentRunner {
         // Set flag at start to prevent re-entrant calls from concurrent queries
         this._skillsSetupDone = true;
 
-        // Ensure app Claude config directory exists
-        if (!fs.existsSync(userClaudeDir)) {
-          fs.mkdirSync(userClaudeDir, { recursive: true });
+        // Ensure app agent config directory exists
+        if (!fs.existsSync(appAgentDir)) {
+          fs.mkdirSync(appAgentDir, { recursive: true });
         }
 
-        // Ensure app Claude skills directory exists
+        // Ensure app agent skills directory exists
         const appSkillsDir = this.skills.getRuntimeSkillsDir();
         if (!fs.existsSync(appSkillsDir)) {
           fs.mkdirSync(appSkillsDir, { recursive: true });
         }
 
-        // Copy built-in skills to app Claude skills directory if they don't exist
+        // Copy built-in skills to app agent skills directory if they don't exist
         const builtinSkillsPath = this.skills.getBuiltinSkillsPath();
         if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
           // Symlinks into .asar archives don't work at the OS level (ENOTDIR),
@@ -916,7 +912,7 @@ export class ClaudeAgentRunner {
                 const linkTarget = fs.readlinkSync(userSkillPath);
                 if (/\.asar[/\\]/.test(linkTarget)) {
                   fs.unlinkSync(userSkillPath);
-                  log(`[ClaudeAgentRunner] Removed broken asar symlink: ${userSkillPath}`);
+                  log(`[AgentRunner] Removed broken asar symlink: ${userSkillPath}`);
                 }
               }
             } catch {
@@ -928,17 +924,14 @@ export class ClaudeAgentRunner {
               if (sourceInsideAsar) {
                 // Source is inside .asar — must copy (symlinks to asar paths fail at OS level)
                 this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
-                log(`[ClaudeAgentRunner] Copied built-in skill from asar: ${skillName}`);
+                log(`[AgentRunner] Copied built-in skill from asar: ${skillName}`);
               } else {
                 // Source is a real directory — symlink for space efficiency
                 try {
                   fs.symlinkSync(builtinSkillPath, userSkillPath, 'dir');
-                  log(`[ClaudeAgentRunner] Linked built-in skill: ${skillName}`);
+                  log(`[AgentRunner] Linked built-in skill: ${skillName}`);
                 } catch (err) {
-                  logWarn(
-                    `[ClaudeAgentRunner] Failed to symlink ${skillName}, copying instead:`,
-                    err
-                  );
+                  logWarn(`[AgentRunner] Failed to symlink ${skillName}, copying instead:`, err);
                   this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
                 }
               }
@@ -953,18 +946,18 @@ export class ClaudeAgentRunner {
       // Build available skills section dynamically — now handled by pi's DefaultResourceLoader
       // via additionalSkillPaths. No custom prompt building needed.
 
-      log('[ClaudeAgentRunner] App claude dir:', userClaudeDir);
-      log('[ClaudeAgentRunner] User working directory:', workingDir);
+      log('[AgentRunner] App agent dir:', appAgentDir);
+      log('[AgentRunner] User working directory:', workingDir);
 
       logTiming('before building conversation context', runStartTime);
 
       // pi-ai handles auth and model routing natively — no proxy, no env overrides needed.
-      logCtx('[ClaudeAgentRunner] Using pi-ai native routing for:', piModel.provider, piModel.id);
+      logCtx('[AgentRunner] Using pi-ai native routing for:', piModel.provider, piModel.id);
 
       // Resolve thinking level early — needed for session reuse check below
       const enableThinking =
         runtimeConfigOverride?.enableThinking ?? configStore.get('enableThinking') ?? false;
-      logCtx('[ClaudeAgentRunner] Enable thinking mode:', enableThinking);
+      logCtx('[AgentRunner] Enable thinking mode:', enableThinking);
       type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
       const thinkingLevel: PiThinkingLevel = enableThinking ? 'medium' : 'off';
       const sessionRuntimeSignature = buildPiSessionRuntimeSignature({
@@ -987,7 +980,7 @@ export class ClaudeAgentRunner {
         paths: skillPaths,
         selected: selectedSkillNames,
       });
-      log('[ClaudeAgentRunner] Skill paths for pi ResourceLoader:', skillPaths);
+      log('[AgentRunner] Skill paths for pi ResourceLoader:', skillPaths);
 
       // Build contextual prompt — if reusing an existing SDK session, the SDK
       // already has conversation history so we only pass the new prompt.
@@ -995,22 +988,22 @@ export class ClaudeAgentRunner {
       // a token-budgeted summary of recent history as a preamble.
       let cachedSession = this.piSessions.get(session.id);
       if (cachedSession && cachedSession.runtimeSignature !== sessionRuntimeSignature) {
-        logCtx('[ClaudeAgentRunner] Runtime changed, recreating cached pi session:', session.id);
+        logCtx('[AgentRunner] Runtime changed, recreating cached pi session:', session.id);
         try {
           cachedSession.session.dispose();
         } catch (disposeError) {
-          logWarn('[ClaudeAgentRunner] dispose error while recreating pi session:', disposeError);
+          logWarn('[AgentRunner] dispose error while recreating pi session:', disposeError);
         }
         this.piSessions.delete(session.id);
         cachedSession = undefined;
       }
       if (cachedSession && cachedSession.skillsSignature !== skillsSignature) {
-        logCtx('[ClaudeAgentRunner] Skills changed, recreating cached pi session:', session.id);
+        logCtx('[AgentRunner] Skills changed, recreating cached pi session:', session.id);
         try {
           cachedSession.session.dispose();
         } catch (disposeError) {
           logWarn(
-            '[ClaudeAgentRunner] dispose error while recreating pi session for skills:',
+            '[AgentRunner] dispose error while recreating pi session for skills:',
             disposeError
           );
         }
@@ -1065,7 +1058,7 @@ export class ClaudeAgentRunner {
 
           if (coldStartHistory.length > 0) {
             log(
-              '[ClaudeAgentRunner] Cold start: restoring',
+              '[AgentRunner] Cold start: restoring',
               coldStartHistory.length,
               'structured SDK messages from',
               historyMessages.length,
@@ -1079,7 +1072,7 @@ export class ClaudeAgentRunner {
         }
       } else {
         // Reusing session — SDK already has the full conversation context
-        logCtx('[ClaudeAgentRunner] Reusing existing SDK session for:', session.id);
+        logCtx('[AgentRunner] Reusing existing SDK session for:', session.id);
       }
       if (extensionResult.promptPrefix?.trim()) {
         contextualPrompt = `${extensionResult.promptPrefix.trim()}\n\n${contextualPrompt}`;
@@ -1093,19 +1086,19 @@ export class ClaudeAgentRunner {
       if (this.mcpManager) {
         const serverStatuses = this.mcpManager.getServerStatus();
         const connectedServers = serverStatuses.filter((s) => s.connected);
-        log('[ClaudeAgentRunner] MCP server statuses:', safeStringify(serverStatuses));
-        log('[ClaudeAgentRunner] Connected MCP servers:', connectedServers.length);
+        log('[AgentRunner] MCP server statuses:', safeStringify(serverStatuses));
+        log('[AgentRunner] Connected MCP servers:', connectedServers.length);
 
         let allConfigs: ReturnType<typeof mcpConfigStore.getEnabledServers> = [];
         try {
           allConfigs = mcpConfigStore.getEnabledServers();
           log(
-            '[ClaudeAgentRunner] Enabled MCP configs:',
+            '[AgentRunner] Enabled MCP configs:',
             allConfigs.map((c) => c.name)
           );
         } catch (error) {
           logWarn(
-            '[ClaudeAgentRunner] Failed to read enabled MCP configs; MCP tools will be unavailable this query',
+            '[AgentRunner] Failed to read enabled MCP configs; MCP tools will be unavailable this query',
             error
           );
           allConfigs = [];
@@ -1117,7 +1110,7 @@ export class ClaudeAgentRunner {
         const mcpFingerprint = JSON.stringify(allConfigs) + String(imageCapable);
         if (this._mcpServersCache?.fingerprint === mcpFingerprint) {
           Object.assign(mcpServers, this._mcpServersCache.servers);
-          log('[ClaudeAgentRunner] MCP servers config reused from cache');
+          log('[AgentRunner] MCP servers config reused from cache');
         } else {
           // Use the module-level memoized helper — no more per-query fs.existsSync calls.
           const bundledNodePaths = getBundledNodePaths();
@@ -1144,7 +1137,7 @@ export class ClaudeAgentRunner {
                   const currentPath = process.env.PATH || '';
                   // Prepend bundled node bin to PATH so npx can find node
                   serverEnv.PATH = `${nodeBinDir}${path.delimiter}${currentPath}`;
-                  log(`[ClaudeAgentRunner]   Added bundled node bin to PATH: ${nodeBinDir}`);
+                  log(`[AgentRunner]   Added bundled node bin to PATH: ${nodeBinDir}`);
                 }
 
                 if (!imageCapable) {
@@ -1187,19 +1180,19 @@ export class ClaudeAgentRunner {
                   args: resolvedArgs,
                   env: serverEnv,
                 };
-                log(`[ClaudeAgentRunner] Added STDIO MCP server: ${serverKey}`);
-                log(`[ClaudeAgentRunner]   Command: ${command} ${resolvedArgs.join(' ')}`);
-                log(`[ClaudeAgentRunner]   Tools will be named: mcp__${serverKey}__<toolName>`);
+                log(`[AgentRunner] Added STDIO MCP server: ${serverKey}`);
+                log(`[AgentRunner]   Command: ${command} ${resolvedArgs.join(' ')}`);
+                log(`[AgentRunner]   Tools will be named: mcp__${serverKey}__<toolName>`);
               } else if (config.type === 'sse') {
                 mcpServers[serverKey] = {
                   type: 'sse',
                   url: config.url,
                   headers: config.headers || {},
                 };
-                log(`[ClaudeAgentRunner] Added SSE MCP server: ${serverKey}`);
+                log(`[AgentRunner] Added SSE MCP server: ${serverKey}`);
               }
             } catch (error) {
-              logError('[ClaudeAgentRunner] Failed to prepare MCP server config, skipping server', {
+              logError('[AgentRunner] Failed to prepare MCP server config, skipping server', {
                 serverId: config.id,
                 serverName: config.name,
                 error: toErrorText(error),
@@ -1226,9 +1219,9 @@ export class ClaudeAgentRunner {
             envKeys: typedServerConfig.env ? Object.keys(typedServerConfig.env).length : 0,
           };
         });
-        log('[ClaudeAgentRunner] Final mcpServers summary:', safeStringify(mcpServersSummary, 2));
+        log('[AgentRunner] Final mcpServers summary:', safeStringify(mcpServersSummary, 2));
         if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
-          log('[ClaudeAgentRunner] Final mcpServers config:', safeStringify(mcpServers, 2));
+          log('[AgentRunner] Final mcpServers config:', safeStringify(mcpServers, 2));
         }
       }
       logTiming('after building MCP servers config', runStartTime);
@@ -1258,13 +1251,13 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       const customTools = [...mcpCustomTools, ...extensionCustomTools];
       if (mcpCustomTools.length > 0) {
         log(
-          `[ClaudeAgentRunner] Registered ${mcpCustomTools.length} MCP tools as customTools:`,
+          `[AgentRunner] Registered ${mcpCustomTools.length} MCP tools as customTools:`,
           mcpCustomTools.map((t) => t.name).join(', ')
         );
       }
       if (extensionCustomTools.length > 0) {
         log(
-          `[ClaudeAgentRunner] Registered ${extensionCustomTools.length} extension tools as customTools:`,
+          `[AgentRunner] Registered ${extensionCustomTools.length} extension tools as customTools:`,
           extensionCustomTools.map((t) => t.name).join(', ')
         );
       }
@@ -1294,7 +1287,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       }
 
       // Inject a default 120s timeout for bash commands when the model omits one
-      const withTimeout = ClaudeAgentRunner.wrapBashToolWithDefaultTimeout(
+      const withTimeout = AgentRunner.wrapBashToolWithDefaultTimeout(
         codingTools as ToolDefinition[]
       );
 
@@ -1305,13 +1298,13 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       const wrappedTools = this.wrapBashToolForSudo(withTimeout, session.id, effectiveCwd);
 
       // Diagnostic: log tools being passed to SDK (helps debug Ollama tool use)
-      logCtx(`[ClaudeAgentRunner] Session reuse check: cached=${!!cachedSession}`);
-      logCtx(`[ClaudeAgentRunner] Model=${piModel.id}, thinkingLevel=${thinkingLevel}`);
+      logCtx(`[AgentRunner] Session reuse check: cached=${!!cachedSession}`);
+      logCtx(`[AgentRunner] Model=${piModel.id}, thinkingLevel=${thinkingLevel}`);
       log(
-        `[ClaudeAgentRunner] Built-in tools (${wrappedTools.length}): ${wrappedTools.map((t: { name?: string; type?: string }) => t.name || t.type).join(', ')}`
+        `[AgentRunner] Built-in tools (${wrappedTools.length}): ${wrappedTools.map((t: { name?: string; type?: string }) => t.name || t.type).join(', ')}`
       );
       log(
-        `[ClaudeAgentRunner] Custom tools (${customTools.length}): ${customTools.map((t) => t.name).join(', ')}`
+        `[AgentRunner] Custom tools (${customTools.length}): ${customTools.map((t) => t.name).join(', ')}`
       );
 
       let piSession: PiAgentSession;
@@ -1322,7 +1315,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         // Hot-swap model/thinking if changed — SDK supports this natively
         if (cachedSession.modelId !== piModel.id) {
           logCtx(
-            '[ClaudeAgentRunner] Model changed, hot-swapping:',
+            '[AgentRunner] Model changed, hot-swapping:',
             cachedSession.modelId,
             '→',
             piModel.id
@@ -1333,14 +1326,14 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           if (cachedSession.ollamaNumCtx) {
             cachedSession.ollamaNumCtx.value = piModel.contextWindow || 128000;
             log(
-              '[ClaudeAgentRunner] Updated Ollama num_ctx on hot-swap:',
+              '[AgentRunner] Updated Ollama num_ctx on hot-swap:',
               cachedSession.ollamaNumCtx.value
             );
           }
         }
         if (cachedSession.thinkingLevel !== thinkingLevel) {
           logCtx(
-            '[ClaudeAgentRunner] Thinking level changed, hot-swapping:',
+            '[AgentRunner] Thinking level changed, hot-swapping:',
             cachedSession.thinkingLevel,
             '→',
             thinkingLevel
@@ -1349,7 +1342,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           cachedSession.thinkingLevel = thinkingLevel;
         }
 
-        logCtx('[ClaudeAgentRunner] Reusing cached pi session for:', session.id);
+        logCtx('[AgentRunner] Reusing cached pi session for:', session.id);
         logTiming('agent session reused', runStartTime);
       } else {
         // First query in this session — create new agent session
@@ -1384,7 +1377,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           // Very small context: disable compaction (weak models produce unreliable summaries)
           compactionSettings = { enabled: false };
           log(
-            '[ClaudeAgentRunner] Ollama small context model, disabling auto-compaction (contextWindow:',
+            '[AgentRunner] Ollama small context model, disabling auto-compaction (contextWindow:',
             contextWindow,
             ')'
           );
@@ -1396,7 +1389,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             keepRecentTokens: Math.floor(contextWindow * 0.25),
           };
           log(
-            '[ClaudeAgentRunner] Ollama medium context, scaled compaction:',
+            '[AgentRunner] Ollama medium context, scaled compaction:',
             JSON.stringify(compactionSettings)
           );
         } else {
@@ -1427,7 +1420,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
         if (coldStartHistory.length > 0) {
           log(
-            '[ClaudeAgentRunner] Seeded structured cold-start history into SDK session:',
+            '[AgentRunner] Seeded structured cold-start history into SDK session:',
             coldStartHistory.length,
             'messages'
           );
@@ -1438,7 +1431,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         this.installPermissionHook(piSession, session.id);
 
         // Store session for reuse — evict oldest if cache is full
-        if (this.piSessions.size >= ClaudeAgentRunner.MAX_CACHED_SESSIONS) {
+        if (this.piSessions.size >= AgentRunner.MAX_CACHED_SESSIONS) {
           const oldestKey = this.piSessions.keys().next().value;
           if (oldestKey) {
             const oldest = this.piSessions.get(oldestKey);
@@ -1446,11 +1439,11 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               try {
                 oldest.session.dispose();
               } catch (e) {
-                logWarn('[ClaudeAgentRunner] dispose error on eviction:', e);
+                logWarn('[AgentRunner] dispose error on eviction:', e);
               }
             }
             this.piSessions.delete(oldestKey);
-            log('[ClaudeAgentRunner] Evicted oldest cached session:', oldestKey);
+            log('[AgentRunner] Evicted oldest cached session:', oldestKey);
           }
         }
         this.piSessions.set(session.id, {
@@ -1468,7 +1461,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           // Guard: only patch if the SDK exposes _onPayload (private API)
           if (!('_onPayload' in agent)) {
             logWarn(
-              '[ClaudeAgentRunner] SDK agent does not expose _onPayload — skipping Ollama num_ctx patch'
+              '[AgentRunner] SDK agent does not expose _onPayload — skipping Ollama num_ctx patch'
             );
           } else {
             const originalOnPayload = agent._onPayload as
@@ -1488,10 +1481,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               return { ...result, num_ctx: ollamaNumCtx.value };
             };
             this.piSessions.get(session.id)!.ollamaNumCtx = ollamaNumCtx;
-            log(
-              '[ClaudeAgentRunner] Ollama _onPayload wrapper installed, num_ctx:',
-              ollamaNumCtx.value
-            );
+            log('[AgentRunner] Ollama _onPayload wrapper installed, num_ctx:', ollamaNumCtx.value);
           } // end else (_onPayload exists)
         }
 
@@ -1539,7 +1529,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         eventBridge.resetActivityTimeout();
         if (provider === 'ollama') {
           log(
-            '[ClaudeAgentRunner] Starting Ollama prompt',
+            '[AgentRunner] Starting Ollama prompt',
             safeStringify({
               sessionId: session.id,
               modelId: piModel.id,
@@ -1553,7 +1543,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         }
         const promptResult = await piSession.prompt(contextualPrompt);
         log(
-          '[ClaudeAgentRunner] prompt() returned:',
+          '[AgentRunner] prompt() returned:',
           JSON.stringify(promptResult ?? 'void').substring(0, 1000)
         );
 
@@ -1564,7 +1554,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           !eventBridge.terminalErrorText
         ) {
           eventBridge.discardLastMalformedAssistant();
-          logWarn('[ClaudeAgentRunner] Retrying once after pseudo tool-call protocol violation');
+          logWarn('[AgentRunner] Retrying once after pseudo tool-call protocol violation');
           this.sendTraceUpdate(session.id, thinkingStepId, {
             title: 'Retrying malformed tool call...',
           });
@@ -1619,7 +1609,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         try {
           unsubscribe();
         } catch (e) {
-          logWarn('[ClaudeAgentRunner] unsubscribe error:', e);
+          logWarn('[AgentRunner] unsubscribe error:', e);
         }
         if (eventBridge.activityTimeoutId) clearTimeout(eventBridge.activityTimeoutId);
         if (eventBridge.ollamaColdStartTimerId) clearTimeout(eventBridge.ollamaColdStartTimerId);
@@ -1629,7 +1619,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
       // If the SDK swallowed the AbortError and returned void, detect timeout here
       if (controller.signal.aborted && abortedByTimeout) {
-        logCtx('[ClaudeAgentRunner] Aborted due to timeout (detected after prompt returned)');
+        logCtx('[AgentRunner] Aborted due to timeout (detected after prompt returned)');
         const errorMsg: Message = {
           id: uuidv4(),
           sessionId: session.id,
@@ -1655,7 +1645,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // The user-facing message and trace step are already set; do not overwrite
       // them with the default "Task completed" below.
       if (controller.signal.aborted && abortedByLoopGuard) {
-        logCtx('[ClaudeAgentRunner] Aborted by loop guard (detected after prompt returned)');
+        logCtx('[AgentRunner] Aborted by loop guard (detected after prompt returned)');
         return;
       }
       // Complete - update the initial thinking step
@@ -1682,7 +1672,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         if (abortedByTimeout) {
-          logCtx('[ClaudeAgentRunner] Aborted due to timeout');
+          logCtx('[AgentRunner] Aborted due to timeout');
           const errorMsg: Message = {
             id: uuidv4(),
             sessionId: session.id,
@@ -1708,9 +1698,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           // Loop guard already published the user-facing assistant message and
           // an 'error' trace step with the loop-detected title. Do NOT overwrite
           // them here with a 'completed/Cancelled' state.
-          logCtx('[ClaudeAgentRunner] Aborted by loop guard');
+          logCtx('[AgentRunner] Aborted by loop guard');
         } else {
-          logCtx('[ClaudeAgentRunner] Aborted by user');
+          logCtx('[AgentRunner] Aborted by user');
           this.sendTraceUpdate(session.id, thinkingStepId, {
             status: 'completed',
             title: 'Cancelled',
@@ -1721,7 +1711,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           });
         }
       } else {
-        logCtxError('[ClaudeAgentRunner] Error:', error);
+        logCtxError('[AgentRunner] Error:', error);
 
         const errorText = toUserFacingErrorText(toErrorText(error));
         const errorMsg: Message = {
@@ -1776,27 +1766,27 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           const sandbox = getSandboxAdapter();
 
           if (sandbox.isWSL) {
-            log('[ClaudeAgentRunner] Syncing sandbox changes to Windows...');
+            log('[AgentRunner] Syncing sandbox changes to Windows...');
             const syncResult = await SandboxSync.syncToWindows(session.id);
             if (syncResult.success) {
-              log('[ClaudeAgentRunner] Sync completed successfully');
+              log('[AgentRunner] Sync completed successfully');
             } else {
-              logError('[ClaudeAgentRunner] Sync failed:', syncResult.error);
+              logError('[AgentRunner] Sync failed:', syncResult.error);
               recordSandboxSyncFailure(syncResult.error || 'Windows sandbox sync failed.');
             }
           } else if (sandbox.isLima) {
-            log('[ClaudeAgentRunner] Syncing sandbox changes to macOS...');
+            log('[AgentRunner] Syncing sandbox changes to macOS...');
             const { LimaSync } = await import('../sandbox/lima-sync');
             const syncResult = await LimaSync.syncToMac(session.id);
             if (syncResult.success) {
-              log('[ClaudeAgentRunner] Sync completed successfully');
+              log('[AgentRunner] Sync completed successfully');
             } else {
-              logError('[ClaudeAgentRunner] Sync failed:', syncResult.error);
+              logError('[AgentRunner] Sync failed:', syncResult.error);
               recordSandboxSyncFailure(syncResult.error || 'macOS sandbox sync failed.');
             }
           }
         } catch (syncErr) {
-          logError('[ClaudeAgentRunner] Sandbox sync error:', syncErr);
+          logError('[AgentRunner] Sandbox sync error:', syncErr);
           const errorText = toErrorText(syncErr);
           recordSandboxSyncFailure(errorText);
           this.sendMessage(session.id, {

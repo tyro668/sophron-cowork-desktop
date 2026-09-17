@@ -8,7 +8,7 @@ import {
   resolvePiRegistryModel,
   resolvePiRouteProtocol,
   resolveSyntheticPiModelFallback,
-} from '../src/main/claude/pi-model-resolution';
+} from '../src/main/agent/pi-model-resolution';
 import { API_PROVIDER_PRESETS } from '../src/shared/api-model-presets';
 import type { Api, Model, OpenAICompletionsCompat } from '@mariozechner/pi-ai';
 

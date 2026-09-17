@@ -3,7 +3,7 @@ import type {
   DataAnalyzeTaskRequirementResult,
   DataTaskRequirementAnalysisItem,
 } from '../../../shared/contracts';
-import { runPiAiOneShot, type PiAiOneShotResult } from '../../claude/claude-sdk-one-shot';
+import { runPiAiOneShot, type PiAiOneShotResult } from '../../agent/pi-ai-one-shot';
 import {
   buildRequirementAnalysisSystemPrompt,
   buildRequirementAnalysisUserPrompt,

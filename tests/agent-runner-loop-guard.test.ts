@@ -9,7 +9,7 @@ import {
   messageCallsHash,
   stableToolKey,
   type ToolCallDescriptor,
-} from '../src/main/claude/agent-runner-loop-guard';
+} from '../src/main/agent/agent-runner-loop-guard';
 
 describe('stableToolKey', () => {
   it('buckets adjacent read_file line ranges into the same key', () => {

@@ -54,7 +54,7 @@ AgentExecutor 接口：
 - `stopSession(sessionId)`
 - `validateWorkingDirectory(cwd)`
 
-注意：远程控制不应该直接调用 `ClaudeAgentRunner`。
+注意：远程控制不应该直接调用 `AgentRunner`。
 
 ### RemoteGateway
 

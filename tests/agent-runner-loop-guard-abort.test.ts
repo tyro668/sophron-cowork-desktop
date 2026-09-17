@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-const agentRunnerPath = path.resolve(process.cwd(), 'src/main/claude/agent-runner.ts');
+const agentRunnerPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner.ts');
 const agentRunnerContent = readFileSync(agentRunnerPath, 'utf8');
 // The event bridge owns the in-turn loop-guard decision path; the runner owns
 // the flag it sets and the post-rescue catch-block disposition.
-const bridgePath = path.resolve(process.cwd(), 'src/main/claude/agent-runner-event-bridge.ts');
+const bridgePath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-event-bridge.ts');
 const bridgeContent = readFileSync(bridgePath, 'utf8');
 
 /**

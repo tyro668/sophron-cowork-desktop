@@ -1,10 +1,10 @@
 import type { ApiTestInput, ApiTestResult } from '../../shared/contracts';
 import type { AppConfig } from './config-store';
-import { probeWithClaudeSdk } from '../claude/claude-sdk-one-shot';
+import { probeWithPiAi } from '../agent/pi-ai-one-shot';
 
 export async function runConfigApiTest(
   payload: ApiTestInput,
   config: AppConfig
 ): Promise<ApiTestResult> {
-  return probeWithClaudeSdk(payload, config);
+  return probeWithPiAi(payload, config);
 }

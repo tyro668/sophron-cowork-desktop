@@ -22,9 +22,7 @@ function fingerprintSecret(value: string | undefined): string {
   return createHash('sha256').update(normalized).digest('hex');
 }
 
-export function buildPiSessionRuntimeSignature(
-  input: PiSessionRuntimeSignatureInput,
-): string {
+export function buildPiSessionRuntimeSignature(input: PiSessionRuntimeSignatureInput): string {
   return JSON.stringify({
     configProvider: normalizeText(input.configProvider),
     customProtocol: normalizeText(input.customProtocol),
