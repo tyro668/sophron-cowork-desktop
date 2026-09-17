@@ -42,7 +42,7 @@ import type {
   TraceEvaluationMetrics,
 } from '../../shared/contracts';
 import { v4 as uuidv4 } from 'uuid';
-import { decidePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
+import { evaluatePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
 import { PathResolver } from '../sandbox/path-resolver';
 import { MCPManager } from '../mcp/mcp-manager';
 import { mcpConfigStore } from '../mcp/mcp-config-store';
@@ -254,8 +254,7 @@ export class AgentRunner {
    */
   private installPermissionHook(piSession: PiAgentSession, sessionId: string): void {
     if (!this.requestPermission) {
-      log('[AgentRunner] No requestPermission callback — skipping permission hook');
-      return;
+      throw new Error('Permission hook unavailable: no requestPermission callback');
     }
 
     // Access the Agent instance (public readonly property on AgentSession)
@@ -267,8 +266,7 @@ export class AgentRunner {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const agent = (piSession as any).agent;
     if (!agent || typeof agent.setBeforeToolCall !== 'function') {
-      logWarn('[AgentRunner] Cannot access agent.setBeforeToolCall — skipping permission hook');
-      return;
+      throw new Error('Permission hook unavailable: agent.setBeforeToolCall is missing');
     }
 
     // Capture the SDK's hook before we overwrite it
@@ -286,7 +284,9 @@ export class AgentRunner {
         const toolName: string = ctx.toolCall?.name ?? '';
         const input: Record<string, unknown> = ctx.args ?? {};
 
-        const decision = decidePermission(sessionId, toolName, input);
+        const evaluation = evaluatePermission(sessionId, toolName, input);
+        const { decision } = evaluation;
+        const reviewReason = evaluation.source === 'auto_review' ? evaluation.reason : undefined;
         // Human-readable name for prompts/messages (e.g. MCP sanitized
         // 'mcp__chrome__chrome_screenshot__ab12' → 'chrome_screenshot').
         // Rule matching and rememberAlwaysAllow still use the canonical
@@ -340,6 +340,9 @@ export class AgentRunner {
             title: `Permission requested: ${displayName}`,
             toolName,
             toolInput: sanitizedInput,
+            permission: reviewReason
+              ? { decision: 'auto_review_ask', source: 'auto_review', reason: reviewReason }
+              : undefined,
             timestamp: permissionStartedAt,
           });
           let result: 'allow' | 'deny' | 'allow_always';
@@ -357,7 +360,7 @@ export class AgentRunner {
             this.sendTraceUpdate(sessionId, permissionStepId, {
               status: 'error',
               title: `Permission request failed: ${displayName}`,
-              permission: { decision: 'request_failed', source: 'system' },
+              permission: { decision: 'request_failed', source: 'system', reason: reviewReason },
               error: buildTraceError(errorText, 'permission'),
               outcome: 'permission_denied',
               isError: true,
@@ -383,7 +386,7 @@ export class AgentRunner {
             this.sendTraceUpdate(sessionId, permissionStepId, {
               status: 'error',
               title: `Permission denied: ${displayName}`,
-              permission: { decision: 'user_deny', source: 'user' },
+              permission: { decision: 'user_deny', source: 'user', reason: reviewReason },
               error: buildTraceError(`User denied permission for '${displayName}'.`, 'permission'),
               outcome: 'permission_denied',
               isError: true,
@@ -405,6 +408,7 @@ export class AgentRunner {
               decision: result === 'allow_always' ? 'allow_always' : 'user_allow',
               source: 'user',
               remembered: result === 'allow_always',
+              reason: reviewReason,
             },
             endedAt,
             duration: endedAt - permissionStartedAt,
@@ -417,10 +421,18 @@ export class AgentRunner {
             parentId,
             type: 'permission',
             status: 'completed',
-            title: `Permission allowed by rule: ${displayName}`,
+            title:
+              evaluation.source === 'auto_review'
+                ? `Permission auto-reviewed: ${displayName}`
+                : `Permission allowed by rule: ${displayName}`,
             toolName,
             toolInput: sanitizedInput,
-            permission: { decision: 'rule_allow', source: 'rule' },
+            permission:
+              evaluation.source === 'auto_review'
+                ? { decision: 'auto_review_allow', source: 'auto_review', reason: reviewReason }
+                : evaluation.source === 'remembered'
+                  ? { decision: 'allow_always', source: 'user', remembered: true }
+                  : { decision: 'rule_allow', source: 'rule' },
             timestamp: now,
             endedAt: now,
             duration: 0,

@@ -27,6 +27,7 @@ import type {
   CloudTableAttachmentContent,
   AgentRuntimeConfig,
 } from '../../shared/contracts';
+import type { PermissionPolicyId } from '../../shared/permission-policies';
 import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
 import { PathResolver } from '../sandbox/path-resolver';
 import {
@@ -68,6 +69,7 @@ import {
 } from './session-title-utils';
 import { generateTitleWithPiAi } from '../agent/pi-ai-one-shot';
 import { buildScheduledTaskTitle } from '../../shared/schedule/task-title';
+import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 
 interface AgentRunnerLike {
   run(
@@ -91,6 +93,7 @@ interface SessionStartOptions {
 interface SessionRunOptions {
   selectedSkillNames?: string[];
   permissionRules?: PermissionRule[];
+  permissionPolicy?: PermissionPolicyId;
 }
 
 type RuntimeConfigResolver = (config?: AgentRuntimeConfig | null) => AgentRuntimeConfig | undefined;
@@ -795,10 +798,10 @@ export class SessionManager {
           });
         }
 
-        const hasScopedPermissionRules = Array.isArray(options?.permissionRules);
-        if (hasScopedPermissionRules) {
-          setSessionPermissionRules(session.id, options.permissionRules);
-        }
+        // Every queued turn carries a rule snapshot, including remote turns that
+        // do not provide explicit options. Never consult mutable global rules
+        // while the agent is running.
+        setSessionPermissionRules(session.id, options?.permissionRules, options?.permissionPolicy);
         try {
           // Run the agent
           await this.agentRunner.run(
@@ -809,9 +812,7 @@ export class SessionManager {
             options
           );
         } finally {
-          if (hasScopedPermissionRules) {
-            clearSessionPermissionRules(session.id);
-          }
+          clearSessionPermissionRules(session.id);
         }
 
         if (this.extensionManager) {
@@ -963,7 +964,18 @@ export class SessionManager {
     options?: SessionRunOptions
   ): void {
     const queue = this.promptQueues.get(session.id) || [];
-    queue.push({ prompt, content, options });
+    const permissionPolicy =
+      options?.permissionPolicy ??
+      (options?.permissionRules ? 'default' : configStore.get('permissionPolicy'));
+    queue.push({
+      prompt,
+      content,
+      options: {
+        ...options,
+        permissionPolicy,
+        permissionRules: options?.permissionRules ?? getPermissionRulesForPolicy(permissionPolicy),
+      },
+    });
     this.promptQueues.set(session.id, queue);
 
     if (!this.activeSessions.has(session.id)) {

@@ -1,8 +1,5 @@
 import { create } from 'zustand';
-import {
-  DEFAULT_PERMISSION_POLICY,
-  getPermissionRulesForPolicy,
-} from '../../shared/permission-policies';
+import { DEFAULT_PERMISSION_POLICY } from '../../shared/permission-policies';
 import type { DataResourceTarget } from '../../shared/data-resource-link';
 import type {
   Session,
@@ -255,7 +252,6 @@ const defaultSettings: Settings = {
     'grep',
   ],
   permissionPolicy: DEFAULT_PERMISSION_POLICY,
-  permissionRules: getPermissionRulesForPolicy(DEFAULT_PERMISSION_POLICY),
   globalSkillsPath: '',
   memoryStrategy: 'auto',
   maxContextTokens: 180000,

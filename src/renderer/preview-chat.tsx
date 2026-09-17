@@ -151,6 +151,7 @@ const appConfig: AppConfig = {
   configSets: [],
   enableDevLogs: false,
   theme: 'dark',
+  permissionPolicy: 'auto_review',
   sandboxEnabled: false,
   memoryEnabled: false,
   memoryRuntime: {

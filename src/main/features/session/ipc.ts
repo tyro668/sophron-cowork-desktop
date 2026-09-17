@@ -2,6 +2,10 @@ import { ipcMain, dialog } from 'electron';
 import { isAbsolute } from 'path';
 import type { ClientEvent } from '../../../shared/contracts';
 import { parseClientEvent } from '../../../shared/contracts/ipc/validate';
+import {
+  getPermissionRulesForPolicy,
+  isPermissionPolicy,
+} from '../../../shared/permission-policies';
 import { appContext } from '../../app/context';
 import { sendToRenderer } from '../../app/events';
 import { mapProjectRow, listProjectsForRenderer } from '../../app/projects';
@@ -79,9 +83,6 @@ export function registerSessionIpc(): void {
           });
           return null;
         }
-        if (Array.isArray(event.payload.permissionRules)) {
-          setPermissionRules(event.payload.permissionRules);
-        }
         return sm.startSession(
           event.payload.title,
           event.payload.prompt,
@@ -90,18 +91,27 @@ export function registerSessionIpc(): void {
           event.payload.content,
           event.payload.memoryEnabled,
           undefined,
-          { selectedSkillNames: event.payload.selectedSkillNames }
+          {
+            selectedSkillNames: event.payload.selectedSkillNames,
+            permissionPolicy: event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
+            permissionRules: getPermissionRulesForPolicy(
+              event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
+            ),
+          }
         );
 
       case 'session.continue':
-        if (Array.isArray(event.payload.permissionRules)) {
-          setPermissionRules(event.payload.permissionRules);
-        }
         return sm.continueSession(
           event.payload.sessionId,
           event.payload.prompt,
           event.payload.content,
-          { selectedSkillNames: event.payload.selectedSkillNames }
+          {
+            selectedSkillNames: event.payload.selectedSkillNames,
+            permissionPolicy: event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
+            permissionRules: getPermissionRulesForPolicy(
+              event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
+            ),
+          }
         );
 
       case 'session.stop':
@@ -214,20 +224,30 @@ export function registerSessionIpc(): void {
         return { success: false, path: '', error: 'User cancelled' };
       }
 
-      case 'settings.update':
-        if (
+      case 'settings.update': {
+        const nextTheme =
           event.payload.theme === 'dark' ||
           event.payload.theme === 'light' ||
           event.payload.theme === 'system'
-        ) {
-          const nextTheme = event.payload.theme as AppTheme;
-          configStore.update({ theme: nextTheme });
-          applyNativeThemePreference(nextTheme);
-          if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {
-            const effectiveTheme = resolveEffectiveTheme(nextTheme);
-            appContext.mainWindow.setBackgroundColor(
-              effectiveTheme === 'dark' ? DARK_BG : LIGHT_BG
-            );
+            ? (event.payload.theme as AppTheme)
+            : undefined;
+        const nextPolicy = isPermissionPolicy(event.payload.permissionPolicy)
+          ? event.payload.permissionPolicy
+          : undefined;
+
+        if (nextTheme || nextPolicy) {
+          configStore.update({ theme: nextTheme, permissionPolicy: nextPolicy });
+          if (nextTheme) {
+            applyNativeThemePreference(nextTheme);
+            if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {
+              const effectiveTheme = resolveEffectiveTheme(nextTheme);
+              appContext.mainWindow.setBackgroundColor(
+                effectiveTheme === 'dark' ? DARK_BG : LIGHT_BG
+              );
+            }
+          }
+          if (nextPolicy) {
+            setPermissionRules(getPermissionRulesForPolicy(nextPolicy), nextPolicy);
           }
           sendToRenderer({
             type: 'config.status',
@@ -237,11 +257,8 @@ export function registerSessionIpc(): void {
             },
           });
         }
-
-        if (Array.isArray((event.payload as { permissionRules?: unknown }).permissionRules)) {
-          setPermissionRules((event.payload as { permissionRules: unknown[] }).permissionRules);
-        }
         return null;
+      }
 
       default:
         logWarn('Unknown event type:', event);

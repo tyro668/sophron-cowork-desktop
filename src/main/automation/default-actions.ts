@@ -109,6 +109,7 @@ export function createDefaultAutomationActionRegistry(
         {
           suppressCompletionNotification: true,
           selectedSkillNames,
+          permissionPolicy,
           permissionRules: getPermissionRulesForPolicy(permissionPolicy),
         }
       );

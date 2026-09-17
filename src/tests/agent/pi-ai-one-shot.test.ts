@@ -32,6 +32,7 @@ function makeConfig(): AppConfig {
     globalSkillsPath: '',
     enableDevLogs: false,
     theme: 'light',
+    permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: true,
     memoryRuntime: {

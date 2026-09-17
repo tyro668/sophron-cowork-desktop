@@ -47,12 +47,6 @@ const controllableChannelType = z.enum(['feishu', 'dingtalk', 'wecom']);
 const inputTableSourceKind = z.enum(['excel', 'csv', 'folder']);
 const memoryItemStatus = z.enum(['active', 'pending', 'rejected', 'archived']);
 
-const permissionRule = z.looseObject({
-  tool: str,
-  pattern: strOpt,
-  action: z.enum(['allow', 'deny', 'ask']),
-});
-
 const contentBlock = z.looseObject({ type: str });
 
 // ---------------------------------------------------------------------------
@@ -63,7 +57,7 @@ const sessionStartPayload = z.looseObject({
   prompt: str,
   cwd: strOpt,
   allowedTools: z.array(str).optional(),
-  permissionRules: z.array(permissionRule).optional(),
+  permissionPolicy: z.enum(['default', 'auto_review', 'full_access']).optional(),
   content: z.array(contentBlock).optional(),
   memoryEnabled: boolOpt,
   selectedSkillNames: z.array(str).optional(),
@@ -71,7 +65,7 @@ const sessionStartPayload = z.looseObject({
 const sessionContinuePayload = z.looseObject({
   sessionId: str,
   prompt: str,
-  permissionRules: z.array(permissionRule).optional(),
+  permissionPolicy: z.enum(['default', 'auto_review', 'full_access']).optional(),
   content: z.array(contentBlock).optional(),
   selectedSkillNames: z.array(str).optional(),
 });
@@ -153,6 +147,7 @@ const appConfigUpdate = z.looseObject({
   globalSkillsPath: strOpt,
   enableDevLogs: boolOpt,
   theme: z.enum(['dark', 'light', 'system']).optional(),
+  permissionPolicy: z.enum(['default', 'auto_review', 'full_access']).optional(),
   sandboxEnabled: boolOpt,
   memoryEnabled: boolOpt,
   memoryRuntime: objOpt,

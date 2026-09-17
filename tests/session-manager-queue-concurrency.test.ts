@@ -52,6 +52,8 @@ vi.mock('../src/main/mcp/mcp-config-store', () => ({
 }));
 
 import { SessionManager } from '../src/main/session/session-manager';
+import { configStore } from '../src/main/config/config-store';
+import { getPermissionRulesForPolicy } from '../src/shared/permission-policies';
 
 // Helper: create a minimal mock DB
 function createMockDb() {
@@ -92,6 +94,58 @@ describe('SessionManager processQueue concurrency', () => {
   beforeEach(() => {
     db = createMockDb();
     sendToRenderer = vi.fn<(event: ServerEvent) => void>();
+  });
+
+  it('captures the current policy for each queued turn before another mode is selected', async () => {
+    const manager = new SessionManager(db, sendToRenderer);
+    const originalPolicy = configStore.get('permissionPolicy');
+    const session = {
+      id: 's1',
+      title: 'Test',
+      created_at: Date.now(),
+      updated_at: Date.now(),
+      status: 'idle',
+      cwd: '/tmp',
+    };
+    let finishFirst!: () => void;
+    const firstRun = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const processPrompt = vi
+      .fn()
+      .mockImplementationOnce(() => firstRun)
+      .mockResolvedValue(undefined);
+    (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
+    (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = () => session;
+    const enqueuePrompt = (
+      manager as unknown as {
+        enqueuePrompt: (session: unknown, prompt: string) => void;
+      }
+    ).enqueuePrompt.bind(manager);
+
+    try {
+      configStore.set('permissionPolicy', 'default');
+      enqueuePrompt(session, 'first');
+      await vi.waitFor(() => expect(processPrompt).toHaveBeenCalledTimes(1));
+
+      configStore.set('permissionPolicy', 'full_access');
+      enqueuePrompt(session, 'second');
+      finishFirst();
+      await vi.waitFor(() => expect(processPrompt).toHaveBeenCalledTimes(2));
+
+      expect(processPrompt.mock.calls[0][3].permissionRules).toEqual(
+        getPermissionRulesForPolicy('default')
+      );
+      expect(processPrompt.mock.calls[0][3].permissionPolicy).toBe('default');
+      expect(processPrompt.mock.calls[1][3].permissionRules).toEqual(
+        getPermissionRulesForPolicy('full_access')
+      );
+      expect(processPrompt.mock.calls[1][3].permissionPolicy).toBe('full_access');
+    } finally {
+      finishFirst();
+      configStore.set('permissionPolicy', originalPolicy);
+      await manager.waitForSessionIdle('s1');
+    }
   });
 
   it('activeSessions stays populated while pending items exist (no gap for duplicate queue)', async () => {

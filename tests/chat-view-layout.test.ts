@@ -77,6 +77,6 @@ describe('ChatView layout', () => {
     expect(source).toContain("t('chat.permissionPolicyDefault')");
     expect(source).toContain("t('chat.permissionPolicyAutoReview')");
     expect(source).toContain("t('chat.permissionPolicyFullAccess')");
-    expect(source).toContain('getPermissionRulesForPolicy(policy)');
+    expect(source).toContain('permissionPolicy: policy');
   });
 });

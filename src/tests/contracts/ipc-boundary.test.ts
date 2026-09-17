@@ -40,13 +40,17 @@ describe('clientEventSchema', () => {
           prompt: 'p',
           cwd: '/tmp',
           allowedTools: ['read'],
-          permissionRules: [{ tool: 'bash', action: 'allow' }],
+          permissionPolicy: 'full_access',
           content: [{ type: 'text', text: 'hi' }],
           memoryEnabled: true,
           selectedSkillNames: ['x'],
         },
       },
       { type: 'session.continue', payload: { sessionId: 's', prompt: 'p' } },
+      {
+        type: 'session.continue',
+        payload: { sessionId: 's', prompt: 'p', permissionPolicy: 'default' },
+      },
       { type: 'session.stop', payload: { sessionId: 's' } },
       { type: 'session.delete', payload: { sessionId: 's' } },
       { type: 'session.batchDelete', payload: { sessionIds: ['a', 'b'] } },
@@ -79,6 +83,7 @@ describe('clientEventSchema', () => {
       { type: 'session.start' }, // missing payload
       { type: 'session.start', payload: { title: 't' } }, // missing prompt
       { type: 'session.start', payload: { title: 't', prompt: 42 } },
+      { type: 'session.start', payload: { title: 't', prompt: 'p', permissionPolicy: 'invalid' } },
       { type: 'session.stop', payload: {} }, // missing sessionId
       { type: 'permission.response', payload: { toolUseId: 't', result: 'maybe' } },
       { type: 'no.such.event', payload: {} },

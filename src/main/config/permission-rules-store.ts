@@ -1,28 +1,37 @@
 /**
  * @module main/config/permission-rules-store
  *
- * Main-process cache of Settings.permissionRules.
+ * Main-process permission rule cache and per-run rule snapshots.
  *
- * The renderer owns the source of truth (Zustand store), but the agent
- * runner needs synchronous access in the main process when wrapping tool
- * `execute()` calls. The renderer mirrors changes via the `settings.update`
- * IPC event; see `src/main/index.ts`.
+ * The persisted permission policy is owned by ConfigStore. The active run's
+ * rules are scoped to its session, so a policy change elsewhere cannot alter
+ * the authorizations of an in-flight tool call.
  *
- * Security note: renderer-originated settings are treated as untrusted at
- * this boundary. All rules are validated and coerced before being cached —
- * unknown / malformed values fall back to `'ask'` so the worst-case is a
- * harmless extra prompt, never an unintended auto-allow.
+ * Security note: callers may pass untrusted rules at this boundary. Invalid
+ * actions become `ask`; malformed or empty rule sets fall back to the
+ * conservative default rules rather than silently allowing every tool.
  */
-import { DEFAULT_PERMISSION_RULES } from '../../shared/permission-policies';
-import type { PermissionRule } from '../../shared/permission-policies';
+import { DEFAULT_PERMISSION_RULES, isPermissionPolicy } from '../../shared/permission-policies';
+import type { PermissionPolicyId, PermissionRule } from '../../shared/permission-policies';
+import { reviewAutoPermission } from './permission-auto-review';
+import type { AutoReviewReason } from './permission-auto-review';
 
 const VALID_ACTIONS: ReadonlySet<PermissionRule['action']> = new Set(['allow', 'deny', 'ask']);
 
 let rules: PermissionRule[] = [...DEFAULT_PERMISSION_RULES];
+let activePolicy: PermissionPolicyId = 'default';
 
 /** Session-scoped "always allow" decisions, keyed by sessionId → set of lowercase tool names. */
 const alwaysAllowBySession = new Map<string, Set<string>>();
 const scopedRulesBySession = new Map<string, PermissionRule[]>();
+const scopedPolicyBySession = new Map<string, PermissionPolicyId>();
+const lastRunRulesBySession = new Map<string, string>();
+
+export interface PermissionEvaluation {
+  decision: PermissionRule['action'];
+  source: 'rule' | 'remembered' | 'auto_review';
+  reason?: AutoReviewReason;
+}
 
 /**
  * Sanitize an untrusted rules payload from IPC. Drops entries with empty
@@ -51,9 +60,17 @@ function sanitizeRules(input: unknown): PermissionRule[] | null {
   return out;
 }
 
-export function setPermissionRules(next: unknown): void {
+export function setPermissionRules(next: unknown, policy: unknown = 'default'): void {
   const sanitized = sanitizeRules(next);
-  rules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
+  const nextRules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
+  const nextPolicy = isPermissionPolicy(policy) && sanitized?.length ? policy : 'default';
+  if (JSON.stringify(nextRules) !== JSON.stringify(rules) || nextPolicy !== activePolicy) {
+    // A policy change revokes grants from earlier, potentially less restrictive
+    // modes. Per-run snapshots remain intact until their run completes.
+    alwaysAllowBySession.clear();
+  }
+  rules = nextRules;
+  activePolicy = nextPolicy;
 }
 
 export function getPermissionRules(): PermissionRule[] {
@@ -61,30 +78,39 @@ export function getPermissionRules(): PermissionRule[] {
   return rules.map((r) => ({ ...r }));
 }
 
-export function setSessionPermissionRules(sessionId: string, next: unknown): void {
+export function setSessionPermissionRules(
+  sessionId: string,
+  next: unknown,
+  policy: unknown = 'default'
+): void {
   const sanitized = sanitizeRules(next);
-  if (sanitized && sanitized.length > 0) {
-    scopedRulesBySession.set(
-      sessionId,
-      sanitized.map((rule) => ({ ...rule }))
-    );
-  } else {
-    scopedRulesBySession.delete(sessionId);
+  const nextRules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
+  const nextPolicy = isPermissionPolicy(policy) && sanitized?.length ? policy : 'default';
+  const signature = JSON.stringify([nextPolicy, nextRules]);
+  if (lastRunRulesBySession.get(sessionId) !== signature) {
+    alwaysAllowBySession.delete(sessionId);
+    lastRunRulesBySession.set(sessionId, signature);
   }
+  scopedRulesBySession.set(
+    sessionId,
+    nextRules.map((rule) => ({ ...rule }))
+  );
+  scopedPolicyBySession.set(sessionId, nextPolicy);
 }
 
 export function clearSessionPermissionRules(sessionId: string): void {
   scopedRulesBySession.delete(sessionId);
+  scopedPolicyBySession.delete(sessionId);
 }
 
 /**
  * Decide how a given tool call should be handled.
  *
  * Matching order:
- *   1. Session-scoped "always allow" memory
- *   2. First rule whose `tool` matches (case-insensitive, or `*`) AND
+ *   1. First rule whose `tool` matches (case-insensitive, or `*`) AND
  *      whose optional `pattern` (glob-ish: `*` = any substring) matches
  *      the stringified input
+ *   2. A matching deny rule always wins; "always allow" only bypasses ask
  *   3. Default: 'ask' for unknown tools (conservative)
  *
  * Defence-in-depth: even though `setPermissionRules` sanitizes input, we
@@ -97,21 +123,43 @@ export function decidePermission(
   toolName: string,
   input: Record<string, unknown>
 ): 'allow' | 'deny' | 'ask' {
-  const lowered = toolName.toLowerCase();
+  return evaluatePermission(sessionId, toolName, input).decision;
+}
 
-  const session = alwaysAllowBySession.get(sessionId);
-  if (session?.has(lowered)) return 'allow';
+export function evaluatePermission(
+  sessionId: string,
+  toolName: string,
+  input: Record<string, unknown>
+): PermissionEvaluation {
+  const lowered = toolName.toLowerCase();
 
   const inputStr = safeStringify(input);
   const activeRules = scopedRulesBySession.get(sessionId) ?? rules;
+  const policy = scopedPolicyBySession.get(sessionId) ?? activePolicy;
 
   for (const rule of activeRules) {
     const tool = rule.tool.toLowerCase();
     if (tool !== '*' && tool !== lowered) continue;
     if (rule.pattern && !matchesPattern(rule.pattern, inputStr)) continue;
-    return VALID_ACTIONS.has(rule.action) ? rule.action : 'ask';
+    const decision = VALID_ACTIONS.has(rule.action) ? rule.action : 'ask';
+    if (decision === 'ask' && alwaysAllowBySession.get(sessionId)?.has(lowered)) {
+      return { decision: 'allow', source: 'remembered' };
+    }
+    // An explicit per-tool ask is never silently promoted. Only the final
+    // auto-review wildcard delegates to the structured per-call reviewer.
+    if (decision === 'ask' && rule.tool === '*' && policy === 'auto_review') {
+      try {
+        const reviewed = reviewAutoPermission(lowered, input);
+        return { ...reviewed, source: 'auto_review' };
+      } catch {
+        return { decision: 'ask', source: 'auto_review', reason: 'arguments_need_confirmation' };
+      }
+    }
+    return { decision, source: 'rule' };
   }
-  return 'ask';
+  return alwaysAllowBySession.get(sessionId)?.has(lowered)
+    ? { decision: 'allow', source: 'remembered' }
+    : { decision: 'ask', source: 'rule' };
 }
 
 export function rememberAlwaysAllow(sessionId: string, toolName: string): void {
@@ -123,6 +171,8 @@ export function rememberAlwaysAllow(sessionId: string, toolName: string): void {
 export function forgetSessionPermissions(sessionId: string): void {
   alwaysAllowBySession.delete(sessionId);
   scopedRulesBySession.delete(sessionId);
+  scopedPolicyBySession.delete(sessionId);
+  lastRunRulesBySession.delete(sessionId);
 }
 
 function safeStringify(v: unknown): string {

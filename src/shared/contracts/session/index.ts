@@ -185,12 +185,15 @@ export interface TracePermission {
   decision:
     | 'rule_allow'
     | 'rule_deny'
+    | 'auto_review_allow'
+    | 'auto_review_ask'
     | 'user_allow'
     | 'user_deny'
     | 'allow_always'
     | 'request_failed';
-  source: 'rule' | 'user' | 'system';
+  source: 'rule' | 'user' | 'system' | 'auto_review';
   remembered?: boolean;
+  reason?: string;
 }
 
 export interface TraceEvaluationMetrics {

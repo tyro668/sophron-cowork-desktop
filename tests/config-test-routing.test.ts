@@ -27,6 +27,7 @@ function createConfig(): AppConfig {
     globalSkillsPath: '',
     enableDevLogs: true,
     theme: 'light',
+    permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: false,
     memoryRuntime: {

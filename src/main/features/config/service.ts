@@ -2,6 +2,8 @@ import { appContext } from '../../app/context';
 import { sendToRenderer } from '../../app/events';
 import { startSandboxBootstrap } from '../../app/sandbox-bootstrap';
 import { configStore, type AppConfig } from '../../config/config-store';
+import { setPermissionRules } from '../../config/permission-rules-store';
+import { getPermissionRulesForPolicy } from '../../../shared/permission-policies';
 import { getSandboxBootstrap } from '../../sandbox/sandbox-bootstrap';
 import { log, logError } from '../../utils/logger';
 
@@ -25,6 +27,12 @@ export const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
   configStore.applyToEnv();
 
   const updatedConfig = configStore.getAll();
+  if (previousConfig.permissionPolicy !== updatedConfig.permissionPolicy) {
+    setPermissionRules(
+      getPermissionRulesForPolicy(updatedConfig.permissionPolicy),
+      updatedConfig.permissionPolicy
+    );
+  }
   const shouldReloadRunner =
     buildAgentRuntimeSignature(previousConfig) !== buildAgentRuntimeSignature(updatedConfig);
   const shouldReloadSandbox = previousConfig.sandboxEnabled !== updatedConfig.sandboxEnabled;

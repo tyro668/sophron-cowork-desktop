@@ -10,6 +10,8 @@ import { createDefaultAutomationActionRegistry } from '../automation/default-act
 import { createAutomationAgentRuntimeExtension } from '../automation/tools';
 import { AutomationToolService } from '../automation/tools/service';
 import { configStore } from '../config/config-store';
+import { setPermissionRules } from '../config/permission-rules-store';
+import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 import { createDataAgentRuntimeExtension } from '../data/data-agent-extension';
 import { DataCommandService } from '../data/data-command-service';
 import { createDataTaskLlmUsageRecorder } from '../data/data-task-llm-usage-recorder';
@@ -89,6 +91,10 @@ export async function bootstrap(): Promise<void> {
   // Apply dev logs setting from config
   const enableDevLogs = configStore.get('enableDevLogs');
   setDevLogsEnabled(enableDevLogs);
+  setPermissionRules(
+    getPermissionRulesForPolicy(configStore.get('permissionPolicy')),
+    configStore.get('permissionPolicy')
+  );
 
   // Log environment variables for debugging
   log(`=== ${APP_INTERNAL_NAME} Starting ===`);

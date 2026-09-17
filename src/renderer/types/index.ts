@@ -6,7 +6,7 @@
 export * from '../../shared/contracts';
 
 import type { AppTheme } from '../../shared/contracts';
-import type { PermissionPolicyId, PermissionRule } from '../../shared/permission-policies';
+import type { PermissionPolicyId } from '../../shared/permission-policies';
 
 // Settings types
 export interface Settings {
@@ -14,7 +14,6 @@ export interface Settings {
   apiKey?: string;
   defaultTools: string[];
   permissionPolicy: PermissionPolicyId;
-  permissionRules: PermissionRule[];
   globalSkillsPath: string;
   memoryStrategy: 'auto' | 'manual' | 'rolling';
   maxContextTokens: number;

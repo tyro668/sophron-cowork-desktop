@@ -12,6 +12,7 @@ import type {
   ContentBlock,
 } from '../types';
 import i18n from '../i18n/config';
+import { normalizePermissionPolicy } from '../../shared/permission-policies';
 
 // Check if running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -132,7 +133,10 @@ export function useIPC() {
       const isInitialConfigStatus = !store.hasSeenInitialConfigStatus;
       store.setIsConfigured(isConfigured);
       store.setAppConfig(config);
-      store.setSettings({ theme: config.theme || 'light' });
+      store.setSettings({
+        theme: config.theme || 'light',
+        permissionPolicy: normalizePermissionPolicy(config.permissionPolicy),
+      });
       if (isInitialConfigStatus) {
         store.markInitialConfigStatusSeen();
       }
@@ -373,23 +377,6 @@ export function useIPC() {
         const store = useAppStore.getState();
         store.setSystemDarkMode(Boolean(systemTheme?.shouldUseDarkColors));
         applyConfigSnapshot(config, Boolean(isConfigured));
-
-        // Hydrate main-process permission rules from the renderer's (possibly
-        // persisted) settings so the agent has them before the first tool call.
-        // Re-read the store after applyConfigSnapshot so we send the latest
-        // persisted rules, not a stale pre-hydration snapshot.
-        try {
-          const latest = useAppStore.getState();
-          window.electronAPI.send({
-            type: 'settings.update',
-            payload: { permissionRules: latest.settings.permissionRules } as Record<
-              string,
-              unknown
-            >,
-          });
-        } catch (syncErr) {
-          console.warn('[useIPC] Failed to sync permissionRules to main:', syncErr);
-        }
       } catch (error) {
         console.error('[useIPC] Failed to bootstrap config/theme state:', error);
       }
@@ -539,7 +526,7 @@ export function useIPC() {
             title,
             prompt,
             cwd,
-            permissionRules: useAppStore.getState().settings.permissionRules,
+            permissionPolicy: useAppStore.getState().settings.permissionPolicy,
             content, // Send full content blocks including images
             selectedSkillNames: options?.selectedSkillNames,
           },
@@ -664,7 +651,7 @@ export function useIPC() {
           payload: {
             sessionId,
             prompt,
-            permissionRules: store.settings.permissionRules,
+            permissionPolicy: store.settings.permissionPolicy,
             content, // Send full content blocks including images
             selectedSkillNames: options?.selectedSkillNames,
           },

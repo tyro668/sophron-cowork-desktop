@@ -303,4 +303,17 @@ describe('ConfigStore config sets', () => {
     const invalidStore = new ConfigStore();
     expect(invalidStore.get('theme')).toBe('light');
   });
+
+  it('persists the selected permission policy across reopen and config-set changes', () => {
+    const store = new ConfigStore();
+    expect(store.get('permissionPolicy')).toBe('auto_review');
+
+    store.update({ permissionPolicy: 'default' });
+    const created = store.createSet({ name: 'Policy Carry', mode: 'clone' });
+    expect(created.permissionPolicy).toBe('default');
+
+    mocks.seed = { ...store.getAll() };
+    const reopened = new ConfigStore();
+    expect(reopened.get('permissionPolicy')).toBe('default');
+  });
 });

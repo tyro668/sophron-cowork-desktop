@@ -31,6 +31,11 @@ import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-mo
 import { hasCodexCredentials } from './codex-auth';
 import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
 import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
+import {
+  DEFAULT_PERMISSION_POLICY,
+  isPermissionPolicy,
+  normalizePermissionPolicy,
+} from '../../shared/permission-policies';
 
 // Canonical application configuration contracts live in shared/contracts/config.
 // Re-exported here so existing main-process imports keep working.
@@ -87,6 +92,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'globalSkillsPath',
   'enableDevLogs',
   'theme',
+  'permissionPolicy',
   'sandboxEnabled',
   'memoryEnabled',
   'enableThinking',
@@ -189,6 +195,7 @@ const defaultConfig: AppConfig = {
   globalSkillsPath: '',
   enableDevLogs: false,
   theme: 'light',
+  permissionPolicy: DEFAULT_PERMISSION_POLICY,
   sandboxEnabled: false,
   memoryEnabled: true,
   memoryRuntime: {
@@ -1027,6 +1034,7 @@ export class ConfigStore {
           : defaultConfig.globalSkillsPath,
       enableDevLogs: toBoolean(raw.enableDevLogs, defaultConfig.enableDevLogs),
       theme: isAppTheme(raw.theme) ? raw.theme : defaultConfig.theme,
+      permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy),
       sandboxEnabled: toBoolean(raw.sandboxEnabled, defaultConfig.sandboxEnabled),
       memoryEnabled: toBoolean(raw.memoryEnabled, defaultConfig.memoryEnabled),
       memoryRuntime: normalizeMemoryRuntimeConfig(raw.memoryRuntime),
@@ -1153,6 +1161,9 @@ export class ConfigStore {
           return defaultConfig[key];
         }
         if (key === 'theme' && !isAppTheme(rawValue)) {
+          return defaultConfig[key];
+        }
+        if (key === 'permissionPolicy' && !isPermissionPolicy(rawValue)) {
           return defaultConfig[key];
         }
         if (
@@ -1480,6 +1491,10 @@ export class ConfigStore {
       enableDevLogs:
         updates.enableDevLogs !== undefined ? updates.enableDevLogs : current.enableDevLogs,
       theme: updates.theme !== undefined ? updates.theme : current.theme,
+      permissionPolicy:
+        updates.permissionPolicy !== undefined
+          ? normalizePermissionPolicy(updates.permissionPolicy)
+          : current.permissionPolicy,
       sandboxEnabled:
         updates.sandboxEnabled !== undefined ? updates.sandboxEnabled : current.sandboxEnabled,
       memoryEnabled:

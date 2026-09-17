@@ -14,6 +14,7 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import {
   decidePermission,
+  evaluatePermission,
   clearSessionPermissionRules,
   forgetSessionPermissions,
   getPermissionRules,
@@ -91,13 +92,120 @@ describe('permission-rules-store', () => {
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('allow');
     });
 
-    it('allows built-in write/edit/bash tools in auto-review mode but still asks for unknown tools', () => {
-      setPermissionRules(getPermissionRulesForPolicy('auto_review'));
+    it('asks before high-risk tools in auto-review mode and allows known read-only tools', () => {
+      setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
 
-      expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('allow');
-      expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('allow');
-      expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'read', { path: '/tmp/in.txt' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'data_list_tasks', {})).toBe('allow');
+      expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('ask');
+      expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('ask');
+      expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('ask');
+      expect(decidePermission(SESSION_A, 'automation_create', {})).toBe('ask');
+      expect(decidePermission(SESSION_A, 'automation_update_schedule', {})).toBe('ask');
+      expect(decidePermission(SESSION_A, 'data_generate_task_from_requirement', {})).toBe('ask');
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
+    });
+
+    it('makes default and auto-review different only for validated read-only calls', () => {
+      const manifestArgs = { inputTableIds: ['table-1'] };
+      const versionArgs = { artifactId: 'artifact-1' };
+      setPermissionRules(getPermissionRulesForPolicy('default'), 'default');
+      expect(
+        decidePermission(SESSION_A, 'data_get_workflow_capability_manifest', manifestArgs)
+      ).toBe('ask');
+      expect(
+        decidePermission(SESSION_A, 'data_list_input_table_normalizer_versions', versionArgs)
+      ).toBe('ask');
+
+      setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
+      expect(
+        evaluatePermission(SESSION_A, 'data_get_workflow_capability_manifest', manifestArgs)
+      ).toEqual({
+        decision: 'allow',
+        source: 'auto_review',
+        reason: 'read_only_manifest',
+      });
+      expect(
+        evaluatePermission(SESSION_A, 'data_list_input_table_normalizer_versions', versionArgs)
+      ).toEqual({
+        decision: 'allow',
+        source: 'auto_review',
+        reason: 'read_only_normalizer_versions',
+      });
+    });
+
+    it('asks when reviewed arguments are malformed, oversized, or have extra fields', () => {
+      setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
+      const manifest = 'data_get_workflow_capability_manifest';
+      expect(
+        evaluatePermission(SESSION_A, manifest, { inputTableIds: Array(9).fill('a') })
+      ).toMatchObject({
+        decision: 'ask',
+        reason: 'arguments_need_confirmation',
+      });
+      expect(
+        evaluatePermission(SESSION_A, manifest, { outputTableIds: ['  bad  '] })
+      ).toMatchObject({
+        decision: 'ask',
+        reason: 'arguments_need_confirmation',
+      });
+      expect(
+        evaluatePermission(SESSION_A, manifest, { inputTableIds: [], command: 'rm -rf /' })
+      ).toMatchObject({
+        decision: 'ask',
+        reason: 'arguments_need_confirmation',
+      });
+      expect(
+        decidePermission(SESSION_A, 'data_list_input_table_normalizer_versions', {
+          artifactId: 'artifact-1',
+          prepareDependencies: true,
+        })
+      ).toBe('ask');
+    });
+
+    it('never approves shell, writes, code execution, unknown tools, or explicit asks', () => {
+      setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
+      for (const tool of [
+        'bash',
+        'write',
+        'edit',
+        'data_preview_input_table_normalizer_version',
+        'unknown_tool',
+      ]) {
+        expect(decidePermission(SESSION_A, tool, { command: 'ls' })).toBe('ask');
+      }
+      setSessionPermissionRules(
+        SESSION_A,
+        [
+          { tool: 'data_get_workflow_capability_manifest', action: 'ask' },
+          { tool: '*', action: 'ask' },
+        ],
+        'auto_review'
+      );
+      expect(decidePermission(SESSION_A, 'data_get_workflow_capability_manifest', {})).toBe('ask');
+    });
+
+    it('keeps a deny above auto-review and isolates concurrent policy snapshots', () => {
+      setSessionPermissionRules(
+        SESSION_A,
+        getPermissionRulesForPolicy('auto_review'),
+        'auto_review'
+      );
+      setSessionPermissionRules(SESSION_B, getPermissionRulesForPolicy('default'), 'default');
+      expect(decidePermission(SESSION_A, 'data_get_workflow_capability_manifest', {})).toBe(
+        'allow'
+      );
+      expect(decidePermission(SESSION_B, 'data_get_workflow_capability_manifest', {})).toBe('ask');
+
+      setSessionPermissionRules(
+        SESSION_A,
+        [
+          { tool: 'data_get_workflow_capability_manifest', action: 'deny' },
+          ...getPermissionRulesForPolicy('auto_review'),
+        ],
+        'auto_review'
+      );
+      expect(decidePermission(SESSION_A, 'data_get_workflow_capability_manifest', {})).toBe('deny');
     });
 
     it('uses session-scoped rules without mutating the global policy', () => {
@@ -109,6 +217,14 @@ describe('permission-rules-store', () => {
 
       clearSessionPermissionRules(SESSION_A);
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
+    });
+
+    it('falls back to conservative rules for an empty per-run snapshot', () => {
+      setPermissionRules(getPermissionRulesForPolicy('full_access'));
+      setSessionPermissionRules(SESSION_A, []);
+
+      expect(decidePermission(SESSION_A, 'bash', { command: 'rm -rf /tmp/x' })).toBe('ask');
+      expect(decidePermission(SESSION_B, 'bash', { command: 'rm -rf /tmp/x' })).toBe('allow');
     });
   });
 
@@ -193,14 +309,42 @@ describe('permission-rules-store', () => {
       expect(decidePermission(SESSION_A, 'Bash', {})).toBe('allow');
     });
 
-    it('always-allow takes precedence over a configured deny rule', () => {
-      // Security note: this matches the documented matching order (session
-      // memory first, then rules). If this behaviour ever needs to change
-      // for security reasons, this test should fail loudly.
+    it('a deny rule takes precedence over earlier always-allow memory', () => {
       setPermissionRules([{ tool: 'bash', action: 'deny' }]);
       rememberAlwaysAllow(SESSION_A, 'bash');
-      expect(decidePermission(SESSION_A, 'bash', {})).toBe('allow');
+      expect(decidePermission(SESSION_A, 'bash', {})).toBe('deny');
     });
+
+    it('revokes always-allow grants when the global policy changes', () => {
+      setPermissionRules(getPermissionRulesForPolicy('default'));
+      rememberAlwaysAllow(SESSION_A, 'bash');
+      expect(decidePermission(SESSION_A, 'bash', {})).toBe('allow');
+
+      setPermissionRules(getPermissionRulesForPolicy('full_access'));
+      setPermissionRules(getPermissionRulesForPolicy('default'));
+      expect(decidePermission(SESSION_A, 'bash', {})).toBe('ask');
+    });
+
+    it('revokes always-allow grants when the session changes policy between turns', () => {
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'));
+      rememberAlwaysAllow(SESSION_A, 'bash');
+      clearSessionPermissionRules(SESSION_A);
+
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('full_access'));
+      clearSessionPermissionRules(SESSION_A);
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'));
+      expect(decidePermission(SESSION_A, 'bash', {})).toBe('ask');
+    });
+  });
+
+  it('keeps simultaneous sessions on their own policy after the global policy changes', () => {
+    setPermissionRules(getPermissionRulesForPolicy('default'));
+    setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'));
+    setSessionPermissionRules(SESSION_B, getPermissionRulesForPolicy('full_access'));
+
+    setPermissionRules(getPermissionRulesForPolicy('full_access'));
+    expect(decidePermission(SESSION_A, 'bash', { command: 'rm -rf /tmp/x' })).toBe('ask');
+    expect(decidePermission(SESSION_B, 'bash', { command: 'rm -rf /tmp/x' })).toBe('allow');
   });
 
   describe('fail-safe input sanitation', () => {

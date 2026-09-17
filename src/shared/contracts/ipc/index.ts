@@ -3,12 +3,12 @@
  * Must not import from main/, renderer/, or preload/.
  */
 import type { AppConfig } from '../config';
+import type { PermissionPolicyId } from '../../permission-policies';
 import type {
   ContentBlock,
   Message,
   PermissionRequest,
   PermissionResult,
-  PermissionRule,
   Project,
   Session,
   SessionStatus,
@@ -26,7 +26,7 @@ export type ClientEvent =
         prompt: string;
         cwd?: string;
         allowedTools?: string[];
-        permissionRules?: PermissionRule[];
+        permissionPolicy?: PermissionPolicyId;
         content?: ContentBlock[];
         memoryEnabled?: boolean;
         selectedSkillNames?: string[];
@@ -37,7 +37,7 @@ export type ClientEvent =
       payload: {
         sessionId: string;
         prompt: string;
-        permissionRules?: PermissionRule[];
+        permissionPolicy?: PermissionPolicyId;
         content?: ContentBlock[];
         selectedSkillNames?: string[];
       };

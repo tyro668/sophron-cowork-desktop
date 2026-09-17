@@ -11,6 +11,10 @@ export type PermissionPolicyId = (typeof PERMISSION_POLICY_IDS)[number];
 
 export const DEFAULT_PERMISSION_POLICY: PermissionPolicyId = 'auto_review';
 
+export function isPermissionPolicy(value: unknown): value is PermissionPolicyId {
+  return PERMISSION_POLICY_IDS.some((policy) => policy === value);
+}
+
 export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
   { tool: 'askuserquestion', action: 'allow' },
   { tool: 'todoread', action: 'allow' },
@@ -47,18 +51,17 @@ export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
 ];
 
 export const AUTO_REVIEW_PERMISSION_RULES: PermissionRule[] = [
-  ...DEFAULT_PERMISSION_RULES.map((rule) =>
-    rule.action === 'ask' ? { ...rule, action: 'allow' as const } : rule
-  ),
+  // Static allows stay identical to default permissions. The final ask rule
+  // invokes a narrow, structured per-call reviewer in the main process;
+  // it never promotes shell, write/edit, or other mutating calls.
+  ...DEFAULT_PERMISSION_RULES.map((rule) => ({ ...rule })),
   { tool: '*', action: 'ask' },
 ];
 
 export const FULL_ACCESS_PERMISSION_RULES: PermissionRule[] = [{ tool: '*', action: 'allow' }];
 
 export function normalizePermissionPolicy(value: unknown): PermissionPolicyId {
-  return PERMISSION_POLICY_IDS.includes(value as PermissionPolicyId)
-    ? (value as PermissionPolicyId)
-    : DEFAULT_PERMISSION_POLICY;
+  return isPermissionPolicy(value) ? value : DEFAULT_PERMISSION_POLICY;
 }
 
 export function getPermissionRulesForPolicy(policy: PermissionPolicyId): PermissionRule[] {

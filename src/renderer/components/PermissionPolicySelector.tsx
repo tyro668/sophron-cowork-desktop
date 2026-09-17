@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { ShieldCheck } from 'lucide-react';
 import {
-  getPermissionRulesForPolicy,
   normalizePermissionPolicy,
   type PermissionPolicyId,
 } from '../../shared/permission-policies';
@@ -40,7 +39,6 @@ export function PermissionPolicySelector({
     if (policy === activePolicy) return;
     updateSettings({
       permissionPolicy: policy,
-      permissionRules: getPermissionRulesForPolicy(policy),
     });
   };
 

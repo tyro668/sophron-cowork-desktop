@@ -6,6 +6,7 @@ import type {
   PersonalAnalysisConfig,
   StoredPersonalAnalysisConfig,
 } from '../../personal-analysis-types';
+import type { PermissionPolicyId } from '../../permission-policies';
 
 // App Config types
 export type ProviderType =
@@ -117,6 +118,7 @@ export interface AppConfig {
   globalSkillsPath?: string;
   enableDevLogs: boolean;
   theme: AppTheme;
+  permissionPolicy: PermissionPolicyId;
   sandboxEnabled: boolean;
   memoryEnabled: boolean;
   memoryRuntime: MemoryRuntimeConfig;
