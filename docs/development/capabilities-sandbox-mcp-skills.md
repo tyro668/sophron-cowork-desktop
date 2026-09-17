@@ -196,7 +196,7 @@ Skills 管理在 [`src/main/skills/skills-manager.ts`](../../src/main/skills/ski
 加载优先级：
 
 1. 项目级 `.skills/` 或 `skills/`。
-2. 全局 `<userData>/claude/skills/`，也兼容 `~/.claude/skills`。
+2. 全局 `<userData>/agent/skills/`（旧版 `<userData>/claude/` 会自动导入），也兼容 `~/.claude/skills`。
 3. 内置 skills。
 
 安全规则：

@@ -11,7 +11,6 @@ const mockConfigState = vi.hoisted(() => ({
     profiles: {},
     activeConfigSetId: 'default',
     configSets: [],
-    claudeCodePath: '',
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: false,

@@ -113,7 +113,6 @@ export interface AppConfig {
   profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;
   activeConfigSetId: ConfigSetId;
   configSets: ApiConfigSet[];
-  claudeCodePath?: string;
   defaultWorkdir?: string;
   globalSkillsPath?: string;
   enableDevLogs: boolean;

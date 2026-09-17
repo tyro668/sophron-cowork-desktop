@@ -23,7 +23,6 @@ function createConfig(): AppConfig {
     profiles: {},
     activeConfigSetId: 'default',
     configSets: [],
-    claudeCodePath: '',
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: true,

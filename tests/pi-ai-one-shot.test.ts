@@ -148,7 +148,6 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     profiles: {},
     activeConfigSetId: 'default',
     configSets: [],
-    claudeCodePath: '',
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: true,

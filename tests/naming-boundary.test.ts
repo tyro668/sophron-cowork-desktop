@@ -19,7 +19,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const ROOT = process.cwd();
-const SCAN_DIRS = ['src', 'tests', 'scripts', 'docs'];
+const SCAN_DIRS = ['src', 'tests', 'scripts', 'docs', 'design'];
+const ROOT_FILES = ['.gitignore', 'AGENTS.md', 'package.json', 'electron-builder.yml'];
 const SCAN_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.yml', '.yaml', '.md']);
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'dist-electron', '.git', 'assets']);
 
@@ -37,6 +38,10 @@ const BANNED: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /main\/claude\//, label: 'src/main/claude -> src/main/agent' },
   { pattern: /tests\/claude\//, label: 'src/tests/claude -> src/tests/agent' },
   { pattern: /\[Claude[A-Za-z]*\]/, label: 'log prefixes must not be [Claude*]' },
+  {
+    pattern: /\bClaude[A-Z][A-Za-z]*\b/,
+    label: 'no new Claude* PascalCase identifiers (third-party types are allowlisted)',
+  },
   { pattern: /from:\s*\.claude\//, label: 'packaging sources must not live under .claude/' },
   { pattern: /relPath:\s*'\.claude\//, label: 'build checks must not reference .claude/' },
   { pattern: /getAppClaudeDir|userClaudeDir/, label: 'app storage is not Claude-named' },
@@ -57,6 +62,10 @@ const ALLOWED_OCCURRENCES: Array<{ file: string; pattern: RegExp }> = [
   // software-dev-server-example spawns the external claude-code CLI; its log
   // prefix names the third-party tool it wraps.
   { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\[Claude[A-Za-z]*\]/ },
+  { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
+  // plugin-runtime-service types mirror the external `claude plugin` CLI's
+  // JSON output shapes — the Claude* names are accurate third-party naming.
+  { file: 'src/main/skills/plugin-runtime-service.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
 ];
 
 function* iterFiles(dir: string): Generator<string> {
@@ -82,17 +91,17 @@ describe('project-owned naming boundary', () => {
 
   it('no source file reintroduces project-owned Claude identifiers', () => {
     const violations: string[] = [];
-    for (const dir of SCAN_DIRS) {
-      for (const file of iterFiles(dir)) {
-        if (file.endsWith('naming-boundary.test.ts')) continue;
-        const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
-        for (const { pattern, label } of BANNED) {
-          if (!pattern.test(content)) continue;
-          const allowed = ALLOWED_OCCURRENCES.some(
-            (a) => a.file === file && a.pattern.source === pattern.source
-          );
-          if (!allowed) violations.push(`${file}: ${label}`);
-        }
+    const files = [...SCAN_DIRS.flatMap((dir) => [...iterFiles(dir)]), ...ROOT_FILES];
+    for (const file of files) {
+      if (file.endsWith('naming-boundary.test.ts')) continue;
+      if (!fs.existsSync(path.join(ROOT, file))) continue;
+      const content = fs.readFileSync(path.join(ROOT, file), 'utf8');
+      for (const { pattern, label } of BANNED) {
+        if (!pattern.test(content)) continue;
+        const allowed = ALLOWED_OCCURRENCES.some(
+          (a) => a.file === file && a.pattern.source === pattern.source
+        );
+        if (!allowed) violations.push(`${file}: ${label}`);
       }
     }
     expect(violations).toEqual([]);

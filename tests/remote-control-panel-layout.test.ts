@@ -7,7 +7,7 @@ const remotePanelPath = path.resolve(
   'src/renderer/components/RemoteControlPanel.tsx'
 );
 
-describe('RemoteControlPanel Claude-style layout', () => {
+describe('RemoteControlPanel layout', () => {
   it('uses softer shell treatments instead of dashboard-heavy panels', () => {
     const source = fs.readFileSync(remotePanelPath, 'utf8');
     expect(source).toContain('rounded-[2rem]');

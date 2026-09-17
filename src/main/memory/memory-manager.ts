@@ -14,7 +14,7 @@ interface ContextStrategy {
  *
  * Two main functions:
  * 1. Message storage and retrieval
- * 2. Intelligent context management for Claude API calls
+ * 2. Intelligent context management for model API calls
  */
 export class MemoryManager {
   private db: Database.Database;
@@ -214,10 +214,10 @@ export class MemoryManager {
   }
 
   /**
-   * Generate a summary of messages (placeholder - would call Claude API)
+   * Generate a summary of messages (placeholder - would call the model API)
    */
   private generateSummary(messages: Message[]): string {
-    // In production, this would call Claude API to generate a proper summary
+    // In production, this would call the model API to generate a proper summary
     const userMessages = messages.filter((m) => m.role === 'user');
     const topicSet = new Set<string>();
 

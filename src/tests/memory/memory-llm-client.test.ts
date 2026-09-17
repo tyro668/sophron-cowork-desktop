@@ -20,7 +20,6 @@ function makeConfig(timeoutMs: number): AppConfig {
     profiles: {},
     activeConfigSetId: 'default',
     configSets: [],
-    claudeCodePath: '',
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: false,

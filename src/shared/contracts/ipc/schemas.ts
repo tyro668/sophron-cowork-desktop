@@ -149,7 +149,6 @@ const appConfigUpdate = z.looseObject({
   profiles: z.record(str, obj).optional(),
   activeConfigSetId: strOpt,
   configSets: z.array(obj).optional(),
-  claudeCodePath: strOpt,
   defaultWorkdir: strOpt,
   globalSkillsPath: strOpt,
   enableDevLogs: boolOpt,

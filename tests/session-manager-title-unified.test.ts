@@ -101,7 +101,7 @@ describe('SessionManager unified title generation', () => {
     vi.restoreAllMocks();
   });
 
-  it('routes title generation through Claude SDK in unified mode', async () => {
+  it('routes title generation through the agent SDK in unified mode', async () => {
     const proto = SessionManager.prototype as unknown as {
       generateTitleWithConfig(titlePrompt: string): Promise<string | null>;
     };
@@ -119,7 +119,7 @@ describe('SessionManager unified title generation', () => {
     );
   });
 
-  it('routes gemini title generation through Claude SDK even when unified mode flag is disabled', async () => {
+  it('routes gemini title generation through the agent SDK even when unified mode flag is disabled', async () => {
     process.env.COWORK_DISABLE_CLAUDE_UNIFIED = '1';
     configStore.set('provider', 'gemini');
     configStore.set('customProtocol', 'gemini');

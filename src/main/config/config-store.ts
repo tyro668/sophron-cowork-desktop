@@ -83,7 +83,6 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'builtinLlmModel',
   'activeProfileKey',
   'activeConfigSetId',
-  'claudeCodePath',
   'defaultWorkdir',
   'globalSkillsPath',
   'enableDevLogs',
@@ -185,7 +184,7 @@ const defaultConfig: AppConfig = {
   profiles: defaultProfiles,
   activeConfigSetId: DEFAULT_CONFIG_SET_ID,
   configSets: [defaultConfigSet],
-  claudeCodePath: '',
+
   defaultWorkdir: '',
   globalSkillsPath: '',
   enableDevLogs: false,
@@ -1019,8 +1018,7 @@ export class ConfigStore {
       profiles: projected.profiles,
       activeConfigSetId,
       configSets,
-      claudeCodePath:
-        typeof raw.claudeCodePath === 'string' ? raw.claudeCodePath : defaultConfig.claudeCodePath,
+
       defaultWorkdir:
         typeof raw.defaultWorkdir === 'string' ? raw.defaultWorkdir : defaultConfig.defaultWorkdir,
       globalSkillsPath:
@@ -1050,11 +1048,17 @@ export class ConfigStore {
 
   private saveConfig(config: AppConfig): void {
     const normalized = this.normalizeConfig(config);
-    // claudeCodePath is no longer used (the agent SDK handles model routing
-    // natively): keep reading it from legacy config files, but stop writing it.
-    const persisted = normalized as AppConfig & { claudeCodePath?: string };
-    delete persisted.claudeCodePath;
-    this.store.set(persisted);
+    this.store.set(normalized);
+  }
+
+  /**
+   * Legacy `claudeCodePath` is no longer part of AppConfig (the agent SDK
+   * handles model routing natively), but old config files may still carry a
+   * value — read it directly from the store for diagnostics.
+   */
+  getLegacyClaudeCodePath(): string {
+    const raw = this.store.get('claudeCodePath');
+    return typeof raw === 'string' ? raw : '';
   }
 
   private composeProjectedConfig(
@@ -1741,8 +1745,6 @@ export class ConfigStore {
         process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = projectedConfig.model;
       }
     }
-
-    // claudeCodePath is no longer used (the agent SDK handles model routing natively)
 
     if (projectedConfig.defaultWorkdir) {
       process.env.COWORK_WORKDIR = projectedConfig.defaultWorkdir;

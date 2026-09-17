@@ -118,21 +118,21 @@ LLM 和 CLI 都必须显式区分：
 
 `src/main/data/data-task-store.ts` 已有核心方法：
 
-| 能力 | 方法 |
-| --- | --- |
-| 创建数据任务 | `createTask` |
-| 更新数据任务 | `updateTask` |
-| 删除数据任务 | `deleteTask` |
-| 运行数据任务 | `runTask` |
-| 导入输入表 | `importDataset` |
-| 更新输入表 | `updateDataset` |
-| 删除输入表 | `deleteDataset` |
-| 预览输入表或输出表 | `previewDataset` |
+| 能力                 | 方法                |
+| -------------------- | ------------------- |
+| 创建数据任务         | `createTask`        |
+| 更新数据任务         | `updateTask`        |
+| 删除数据任务         | `deleteTask`        |
+| 运行数据任务         | `runTask`           |
+| 导入输入表           | `importDataset`     |
+| 更新输入表           | `updateDataset`     |
+| 删除输入表           | `deleteDataset`     |
+| 预览输入表或输出表   | `previewDataset`    |
 | 预览未保存输入表配置 | `previewInputTable` |
-| 创建输出表 | `createOutputTable` |
-| 更新输出表 | `updateOutputTable` |
-| 获取工作流 | `getTaskWorkflow` |
-| 保存工作流 | `saveTaskWorkflow` |
+| 创建输出表           | `createOutputTable` |
+| 更新输出表           | `updateOutputTable` |
+| 获取工作流           | `getTaskWorkflow`   |
+| 保存工作流           | `saveTaskWorkflow`  |
 
 ### 4.2 DSL 能力
 
@@ -282,31 +282,31 @@ npm run data -- task list
 
 ### 6.2 通用参数
 
-| 参数 | 说明 |
-| --- | --- |
-| `--json` | 输出 JSON |
-| `--pretty` | JSON 缩进 |
+| 参数                 | 说明                                      |
+| -------------------- | ----------------------------------------- |
+| `--json`             | 输出 JSON                                 |
+| `--pretty`           | JSON 缩进                                 |
 | `--workspace <path>` | 指定工作区数据目录，默认使用应用 userData |
-| `--cowork-db <path>` | 指定 SQLite 配置库 |
-| `--duckdb <path>` | 指定 DuckDB 数据库 |
-| `--yes` | 跳过删除、覆盖等确认 |
-| `--dry-run` | 只校验和展示计划，不落库 |
-| `--quiet` | 仅输出结果 id 或必要信息 |
-| `--limit <n>` | 列表或预览条数 |
-| `--offset <n>` | 分页偏移 |
+| `--cowork-db <path>` | 指定 SQLite 配置库                        |
+| `--duckdb <path>`    | 指定 DuckDB 数据库                        |
+| `--yes`              | 跳过删除、覆盖等确认                      |
+| `--dry-run`          | 只校验和展示计划，不落库                  |
+| `--quiet`            | 仅输出结果 id 或必要信息                  |
+| `--limit <n>`        | 列表或预览条数                            |
+| `--offset <n>`       | 分页偏移                                  |
 
 ### 6.3 退出码
 
-| 退出码 | 含义 |
-| --- | --- |
-| `0` | 成功 |
-| `1` | 通用失败 |
-| `2` | 参数错误 |
-| `3` | 校验失败 |
-| `4` | 资源不存在 |
-| `5` | 权限或路径访问失败 |
-| `6` | 数据执行失败 |
-| `7` | 并发锁失败 |
+| 退出码 | 含义               |
+| ------ | ------------------ |
+| `0`    | 成功               |
+| `1`    | 通用失败           |
+| `2`    | 参数错误           |
+| `3`    | 校验失败           |
+| `4`    | 资源不存在         |
+| `5`    | 权限或路径访问失败 |
+| `6`    | 数据执行失败       |
+| `7`    | 并发锁失败         |
 
 ### 6.4 输出结构
 
@@ -413,14 +413,14 @@ sophron data task run --id task_xxx --mode temporary --dsl-file ./draft.prep --j
 
 参数：
 
-| 参数 | 说明 |
-| --- | --- |
-| `--mode persisted` | 使用保存的 workflow，写正式输出表 |
-| `--mode temporary` | 使用传入 workflow 或保存 workflow，写临时表 |
-| `--dsl <text>` | 临时 DSL |
-| `--dsl-file <path>` | 临时 DSL 文件 |
-| `--wait` | 等待运行完成，MVP 默认等待 |
-| `--preview <n>` | 运行后返回前 n 行 |
+| 参数                | 说明                                        |
+| ------------------- | ------------------------------------------- |
+| `--mode persisted`  | 使用保存的 workflow，写正式输出表           |
+| `--mode temporary`  | 使用传入 workflow 或保存 workflow，写临时表 |
+| `--dsl <text>`      | 临时 DSL                                    |
+| `--dsl-file <path>` | 临时 DSL 文件                               |
+| `--wait`            | 等待运行完成，MVP 默认等待                  |
+| `--preview <n>`     | 运行后返回前 n 行                           |
 
 ### 7.2 输入表
 
@@ -705,26 +705,26 @@ LLM 生成 DSL 时必须遵守：
 - `complete-current`：语法已部分支持，但执行层或文档需要补齐。
 - `new`：对齐 DuckDB 能力后建议新增的算子。
 
-| 算子 | 内部类型 | DSL 关键字 | 状态 | DuckDB 映射 |
-| --- | --- | --- | --- | --- |
-| 输入源 | `input_source` | `input source` | implemented | 注册输入 relation |
-| 输出 | `output` | `output` | implemented | 写正式/临时 DuckDB 表或文件 |
-| 字段选择 | `field_select` | `select` / `drop` | implemented | `SELECT cols` / `SELECT * EXCLUDE` |
-| 字段映射 | `field_mapping` | `map` / `rename` | implemented | `SELECT col AS new_col` |
-| 行过滤 | `filter` | `filter` | implemented | `WHERE expr` |
-| 派生字段 | `calculate_field` | `derive` | implemented | `SELECT *, expr AS col` |
-| 类型转换 | `type_convert` | `cast` | complete-current | `CAST` / `TRY_CAST` / `strptime` / `try_strptime` |
-| 缺失值处理 | `missing_value` | `missing value` | complete-current | `COALESCE`、`CASE`、窗口函数、聚合补值 |
-| 去重 | `deduplicate` | `deduplicate` | implemented | `DISTINCT` / `ROW_NUMBER() OVER (...)` |
-| 排序 | `sort` | `sort by` | implemented | `ORDER BY` |
-| 聚合 | `aggregate` | `aggregate` | complete-current | `GROUP BY` + aggregate functions |
-| 连接 | `join` | `join` | implemented | `JOIN` / `EXISTS` / `ASOF` fallback |
-| 限制行数 | `limit` | `limit` / `top` | new | `LIMIT` / `OFFSET` / `ORDER BY ... LIMIT` |
-| 透视 | `pivot` | `pivot` | new | `PIVOT` |
-| 反透视 | `unpivot` | `unpivot` | new | `UNPIVOT` |
-| 集合操作 | `set_op` | `union` / `intersect` / `except` | new | set operations |
-| 嵌套展开 | `unnest` | `unnest` / `explode` | new | `unnest` / JSON table functions |
-| 高级分组 | `aggregate` 扩展 | `grouping sets` / `rollup` / `cube` | new | `GROUPING SETS` / `ROLLUP` / `CUBE` |
+| 算子       | 内部类型          | DSL 关键字                          | 状态             | DuckDB 映射                                       |
+| ---------- | ----------------- | ----------------------------------- | ---------------- | ------------------------------------------------- |
+| 输入源     | `input_source`    | `input source`                      | implemented      | 注册输入 relation                                 |
+| 输出       | `output`          | `output`                            | implemented      | 写正式/临时 DuckDB 表或文件                       |
+| 字段选择   | `field_select`    | `select` / `drop`                   | implemented      | `SELECT cols` / `SELECT * EXCLUDE`                |
+| 字段映射   | `field_mapping`   | `map` / `rename`                    | implemented      | `SELECT col AS new_col`                           |
+| 行过滤     | `filter`          | `filter`                            | implemented      | `WHERE expr`                                      |
+| 派生字段   | `calculate_field` | `derive`                            | implemented      | `SELECT *, expr AS col`                           |
+| 类型转换   | `type_convert`    | `cast`                              | complete-current | `CAST` / `TRY_CAST` / `strptime` / `try_strptime` |
+| 缺失值处理 | `missing_value`   | `missing value`                     | complete-current | `COALESCE`、`CASE`、窗口函数、聚合补值            |
+| 去重       | `deduplicate`     | `deduplicate`                       | implemented      | `DISTINCT` / `ROW_NUMBER() OVER (...)`            |
+| 排序       | `sort`            | `sort by`                           | implemented      | `ORDER BY`                                        |
+| 聚合       | `aggregate`       | `aggregate`                         | complete-current | `GROUP BY` + aggregate functions                  |
+| 连接       | `join`            | `join`                              | implemented      | `JOIN` / `EXISTS` / `ASOF` fallback               |
+| 限制行数   | `limit`           | `limit` / `top`                     | new              | `LIMIT` / `OFFSET` / `ORDER BY ... LIMIT`         |
+| 透视       | `pivot`           | `pivot`                             | new              | `PIVOT`                                           |
+| 反透视     | `unpivot`         | `unpivot`                           | new              | `UNPIVOT`                                         |
+| 集合操作   | `set_op`          | `union` / `intersect` / `except`    | new              | set operations                                    |
+| 嵌套展开   | `unnest`          | `unnest` / `explode`                | new              | `unnest` / JSON table functions                   |
+| 高级分组   | `aggregate` 扩展  | `grouping sets` / `rollup` / `cube` | new              | `GROUPING SETS` / `ROLLUP` / `CUBE`               |
 
 字符串清洗、日期拆分、正则提取等能力默认先通过 `derive`、`filter`、`missing value` 和 `cast` 表达；如果后续 UI 需要更低门槛的表单配置，再引入 `text_clean`、`date_time` 这类语法糖算子，但它们仍应编译为表达式型 SQL。
 
@@ -831,9 +831,7 @@ rename [客户编号] as [customer_id], [订单金额] as [amount]
 {
   "type": "field_mapping",
   "config": {
-    "mappings": [
-      { "source": "old_name", "target": "new_name" }
-    ]
+    "mappings": [{ "source": "old_name", "target": "new_name" }]
   }
 }
 ```
@@ -874,21 +872,19 @@ derive [running_amount] = sum([amount]) over(partition by [region] order by [cre
 {
   "type": "calculate_field",
   "config": {
-    "calculations": [
-      { "field": "margin", "expression": "[profit] / [revenue]" }
-    ]
+    "calculations": [{ "field": "margin", "expression": "[profit] / [revenue]" }]
   }
 }
 ```
 
 窗口分析语法仍使用 `derive ... over(...)`，不新增独立 `window` 算子。推荐支持：
 
-| 类别 | 函数 |
-| --- | --- |
+| 类别 | 函数                                                                     |
+| ---- | ------------------------------------------------------------------------ |
 | 排名 | `row_number`, `rank`, `dense_rank`, `percent_rank`, `cume_dist`, `ntile` |
-| 偏移 | `lag`, `lead`, `first_value`, `last_value`, `nth_value` |
-| 累计 | `sum`, `avg`, `min`, `max`, `count` over window |
-| 补值 | `fill`，以及 `lag/lead ignore nulls` 的前后填充语义 |
+| 偏移 | `lag`, `lead`, `first_value`, `last_value`, `nth_value`                  |
+| 累计 | `sum`, `avg`, `min`, `max`, `count` over window                          |
+| 补值 | `fill`，以及 `lag/lead ignore nulls` 的前后填充语义                      |
 
 执行映射：
 
@@ -997,9 +993,7 @@ deduplicate by [id] keep last order by [updated_at] desc
     "strategy": "by_columns",
     "columns": ["id"],
     "keep": "last",
-    "orderBy": [
-      { "column": "updated_at", "direction": "desc" }
-    ]
+    "orderBy": [{ "column": "updated_at", "direction": "desc" }]
   }
 }
 ```
@@ -1017,9 +1011,7 @@ sort by [region] asc, [amount] desc nulls last
 {
   "type": "sort",
   "config": {
-    "keys": [
-      { "column": "created_at", "direction": "desc", "nulls": "last" }
-    ]
+    "keys": [{ "column": "created_at", "direction": "desc", "nulls": "last" }]
   }
 }
 ```
@@ -1054,12 +1046,12 @@ aggregate by [region] metrics string_agg([sku], "," order by [sku]) as [sku_list
 
 建议支持的聚合函数：
 
-| 类别 | 函数 |
-| --- | --- |
-| 基础 | `count`, `count_distinct`, `sum`, `avg`, `min`, `max` |
-| 统计 | `median`, `mode`, `quantile_cont`, `quantile_disc`, `stddev_samp`, `stddev_pop`, `var_samp`, `var_pop` |
-| 字符串/列表 | `string_agg`, `list`, `first`, `last` |
-| 近似 | `approx_count_distinct`, `approx_quantile`, `approx_top_k` |
+| 类别        | 函数                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------ |
+| 基础        | `count`, `count_distinct`, `sum`, `avg`, `min`, `max`                                                  |
+| 统计        | `median`, `mode`, `quantile_cont`, `quantile_disc`, `stddev_samp`, `stddev_pop`, `var_samp`, `var_pop` |
+| 字符串/列表 | `string_agg`, `list`, `first`, `last`                                                                  |
+| 近似        | `approx_count_distinct`, `approx_quantile`, `approx_top_k`                                             |
 
 ##### aggregate grouping 扩展
 
@@ -1079,9 +1071,7 @@ aggregate by grouping sets (([region], [category]), ([region]), ()) metrics sum(
   "config": {
     "groupingMode": "rollup",
     "groupBy": ["country", "city"],
-    "metrics": [
-      { "function": "sum", "expression": "[amount]", "alias": "amount_sum" }
-    ]
+    "metrics": [{ "function": "sum", "expression": "[amount]", "alias": "amount_sum" }]
   }
 }
 ```
@@ -1145,9 +1135,7 @@ top 5 by [updated_at] desc nulls last
   "config": {
     "mode": "top",
     "limit": 10,
-    "orderBy": [
-      { "column": "amount", "direction": "desc" }
-    ]
+    "orderBy": [{ "column": "amount", "direction": "desc" }]
   }
 }
 ```
@@ -1173,9 +1161,7 @@ pivot on [status] in ("paid", "refund") using count(*) group by [region]
   "type": "pivot",
   "config": {
     "on": ["month"],
-    "using": [
-      { "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }
-    ],
+    "using": [{ "function": "sum", "expression": "[revenue]", "alias": "revenue_sum" }],
     "groupBy": ["region"],
     "values": []
   }
@@ -1309,16 +1295,16 @@ FROM input
 
 以下 DuckDB 能力不必一开始都新增独立算子，可以作为表达式能力暴露：
 
-| 能力 | 推荐 DSL | 示例 |
-| --- | --- | --- |
-| 文本清洗 | `derive` / `filter` | `derive [sku_clean] = upper(trim([sku]))` |
-| 正则提取 | `derive` | `derive [code] = regexp_extract([text], '([A-Z]+)', 1)` |
-| 正则替换 | `derive` | `derive [name] = regexp_replace([name], '\\s+', ' ', 'g')` |
-| 字符串拆分 | `derive` | `derive [part1] = split_part([size], 'x', 1)` |
-| 日期截断 | `derive` | `derive [month] = date_trunc('month', [order_date])` |
-| 日期部件 | `derive` | `derive [year] = date_part('year', [order_date])` |
-| 日期解析 | `cast` 或 `derive` | `cast [order_date] as date format "%Y-%m-%d"` |
-| 窗口分析 | `derive` | `derive [rn] = row_number() over(partition by [region] order by [amount] desc)` |
+| 能力       | 推荐 DSL            | 示例                                                                            |
+| ---------- | ------------------- | ------------------------------------------------------------------------------- |
+| 文本清洗   | `derive` / `filter` | `derive [sku_clean] = upper(trim([sku]))`                                       |
+| 正则提取   | `derive`            | `derive [code] = regexp_extract([text], '([A-Z]+)', 1)`                         |
+| 正则替换   | `derive`            | `derive [name] = regexp_replace([name], '\\s+', ' ', 'g')`                      |
+| 字符串拆分 | `derive`            | `derive [part1] = split_part([size], 'x', 1)`                                   |
+| 日期截断   | `derive`            | `derive [month] = date_trunc('month', [order_date])`                            |
+| 日期部件   | `derive`            | `derive [year] = date_part('year', [order_date])`                               |
+| 日期解析   | `cast` 或 `derive`  | `cast [order_date] as date format "%Y-%m-%d"`                                   |
+| 窗口分析   | `derive`            | `derive [rn] = row_number() over(partition by [region] order by [amount] desc)` |
 
 新增独立算子的判断标准：
 
@@ -1360,7 +1346,10 @@ sophron data node validate-dsl --type calculate_field --dsl 'derive [rn] = row_n
   "result": {
     "version": "prep-dsl/v1",
     "operators": [
-      { "type": "calculate_field", "dsl": "derive [rn] = row_number() over(partition by [id] order by [ts])" }
+      {
+        "type": "calculate_field",
+        "dsl": "derive [rn] = row_number() over(partition by [id] order by [ts])"
+      }
     ],
     "diagnostics": []
   }
@@ -1399,20 +1388,20 @@ sophron data node export-dsl --task task_xxx --node node_derive
 
 设计依据只使用 DuckDB 官方文档，后续实现时也应按当前打包 DuckDB 版本验证：
 
-| 能力 | DuckDB 官方文档 |
-| --- | --- |
-| Window functions | https://duckdb.org/docs/current/sql/functions/window_functions.html |
-| PIVOT | https://duckdb.org/docs/sql/statements/pivot.html |
-| UNPIVOT | https://duckdb.org/docs/current/sql/statements/unpivot.html |
-| LIMIT/OFFSET | https://duckdb.org/docs/current/sql/query_syntax/limit.html |
-| Set operations | https://duckdb.org/docs/1.3/sql/query_syntax/setops.html |
-| JSON functions | https://duckdb.org/docs/stable/data/json/json_functions |
-| Unnesting | https://duckdb.org/docs/current/sql/query_syntax/unnest.html |
-| Aggregates | https://duckdb.org/docs/stable/sql/functions/aggregates.html |
-| GROUPING SETS / ROLLUP / CUBE | https://duckdb.org/docs/current/sql/query_syntax/grouping_sets |
-| Text functions | https://duckdb.org/docs/current/sql/functions/text.html |
-| Date part functions | https://duckdb.org/docs/current/sql/functions/datepart.html |
-| Timestamp parsing | https://duckdb.org/docs/stable/sql/functions/timestamp |
+| 能力                          | DuckDB 官方文档                                                     |
+| ----------------------------- | ------------------------------------------------------------------- |
+| Window functions              | https://duckdb.org/docs/current/sql/functions/window_functions.html |
+| PIVOT                         | https://duckdb.org/docs/sql/statements/pivot.html                   |
+| UNPIVOT                       | https://duckdb.org/docs/current/sql/statements/unpivot.html         |
+| LIMIT/OFFSET                  | https://duckdb.org/docs/current/sql/query_syntax/limit.html         |
+| Set operations                | https://duckdb.org/docs/1.3/sql/query_syntax/setops.html            |
+| JSON functions                | https://duckdb.org/docs/stable/data/json/json_functions             |
+| Unnesting                     | https://duckdb.org/docs/current/sql/query_syntax/unnest.html        |
+| Aggregates                    | https://duckdb.org/docs/stable/sql/functions/aggregates.html        |
+| GROUPING SETS / ROLLUP / CUBE | https://duckdb.org/docs/current/sql/query_syntax/grouping_sets      |
+| Text functions                | https://duckdb.org/docs/current/sql/functions/text.html             |
+| Date part functions           | https://duckdb.org/docs/current/sql/functions/datepart.html         |
+| Timestamp parsing             | https://duckdb.org/docs/stable/sql/functions/timestamp              |
 
 #### 7.6.9 落地优先级
 
@@ -1468,7 +1457,7 @@ MVP 不新增一套孤立的工具调用通道，而是接入当前应用已经�
 src/main/extensions/agent-runtime-extension-manager.ts
   DataAgentRuntimeExtension.beforeSessionRun(...)
 
-src/main/claude/agent-runner.ts
+src/main/agent/agent-runner.ts
   customTools = [...mcpCustomTools, ...extensionCustomTools]
 ```
 
@@ -1513,7 +1502,7 @@ src/main/data/data-tool-types.ts
 
 ```ts
 export function createDataAgentRuntimeExtension(
-  dataToolService: DataToolService,
+  dataToolService: DataToolService
 ): AgentRuntimeExtension {
   return {
     name: 'data-tools',
@@ -1530,9 +1519,7 @@ export function createDataAgentRuntimeExtension(
 注册位置应和已有运行时扩展保持一致，在 agent runtime 初始化时注入：
 
 ```ts
-agentRuntimeExtensionManager.register(
-  createDataAgentRuntimeExtension(dataToolService),
-);
+agentRuntimeExtensionManager.register(createDataAgentRuntimeExtension(dataToolService));
 ```
 
 注意：
@@ -1717,13 +1704,13 @@ data_update_output_table
 
 ### 8.4 工具权限分级
 
-| 等级 | 工具 | 默认策略 |
-| --- | --- | --- |
-| read | list、show、preview、export DSL、validate DSL | 可自动批准 |
-| write_config | create/update/delete、save workflow、apply DSL、create input/output/task | 需要用户确认或会话授权 |
-| execute | run task、execute temp DSL | 需要用户确认，临时运行可降低风险 |
-| destructive | delete、overwrite output、replace physical table | 必须确认 |
-| file_access | import local file/folder | 必须确认路径权限 |
+| 等级         | 工具                                                                     | 默认策略                         |
+| ------------ | ------------------------------------------------------------------------ | -------------------------------- |
+| read         | list、show、preview、export DSL、validate DSL                            | 可自动批准                       |
+| write_config | create/update/delete、save workflow、apply DSL、create input/output/task | 需要用户确认或会话授权           |
+| execute      | run task、execute temp DSL                                               | 需要用户确认，临时运行可降低风险 |
+| destructive  | delete、overwrite output、replace physical table                         | 必须确认                         |
+| file_access  | import local file/folder                                                 | 必须确认路径权限                 |
 
 ### 8.5 核心工具定义
 
@@ -1979,15 +1966,15 @@ Excel 文件：
 
 `topic` 可选：
 
-| topic | 返回内容 |
-| --- | --- |
-| `overview` | DSL 版本、工作流结构、字段引用规则 |
-| `operators` | 当前运行时支持的完整算子列表 |
-| `input_output` | 输入源和输出语法 |
-| `cleaning` | select/drop/filter/map/cast/missing/deduplicate/sort |
-| `aggregate_join` | aggregate/join/set_op |
-| `derive_window` | `derive ... over(...)` 窗口表达式 |
-| `reshape` | pivot/unpivot/unnest |
+| topic            | 返回内容                                             |
+| ---------------- | ---------------------------------------------------- |
+| `overview`       | DSL 版本、工作流结构、字段引用规则                   |
+| `operators`      | 当前运行时支持的完整算子列表                         |
+| `input_output`   | 输入源和输出语法                                     |
+| `cleaning`       | select/drop/filter/map/cast/missing/deduplicate/sort |
+| `aggregate_join` | aggregate/join/set_op                                |
+| `derive_window`  | `derive ... over(...)` 窗口表达式                    |
+| `reshape`        | pivot/unpivot/unnest                                 |
 
 输出：
 
@@ -2319,22 +2306,22 @@ filter [region] in ("华东", "华南")
 
 ## 10. 统一错误码
 
-| 错误码 | 场景 |
-| --- | --- |
-| `INVALID_ARGUMENT` | CLI 或 tool 参数缺失、格式错误 |
-| `RESOURCE_NOT_FOUND` | task/input/output/node/edge 不存在 |
-| `RESOURCE_ALREADY_EXISTS` | 创建输入表、输出表或任务时名称冲突，不能静默覆盖 |
-| `VALIDATION_FAILED` | 数据配置校验失败 |
-| `DSL_PARSE_FAILED` | DSL 解析失败 |
-| `OPERATOR_TYPE_MISMATCH` | 单算子 DSL 类型和节点类型不一致 |
-| `UNSUPPORTED_OPERATOR_EXECUTION` | DSL 语法可识别，但当前运行时尚未支持该算子保存或执行 |
-| `AMBIGUOUS_DATA_RESOURCE` | 通过名称匹配到多个任务、输入表、输出表或节点，需要用户确认 |
-| `FILE_ACCESS_DENIED` | 文件或文件夹路径无权限 |
-| `UNSUPPORTED_SOURCE_KIND` | 不支持的输入表来源类型 |
-| `WORKFLOW_INVALID` | 工作流缺少输入、输出、连线或存在循环 |
-| `TASK_RUN_FAILED` | DuckDB 执行失败 |
-| `PERMISSION_REQUIRED` | tool_call 需要用户确认 |
-| `LOCK_TIMEOUT` | 数据库锁等待超时 |
+| 错误码                           | 场景                                                       |
+| -------------------------------- | ---------------------------------------------------------- |
+| `INVALID_ARGUMENT`               | CLI 或 tool 参数缺失、格式错误                             |
+| `RESOURCE_NOT_FOUND`             | task/input/output/node/edge 不存在                         |
+| `RESOURCE_ALREADY_EXISTS`        | 创建输入表、输出表或任务时名称冲突，不能静默覆盖           |
+| `VALIDATION_FAILED`              | 数据配置校验失败                                           |
+| `DSL_PARSE_FAILED`               | DSL 解析失败                                               |
+| `OPERATOR_TYPE_MISMATCH`         | 单算子 DSL 类型和节点类型不一致                            |
+| `UNSUPPORTED_OPERATOR_EXECUTION` | DSL 语法可识别，但当前运行时尚未支持该算子保存或执行       |
+| `AMBIGUOUS_DATA_RESOURCE`        | 通过名称匹配到多个任务、输入表、输出表或节点，需要用户确认 |
+| `FILE_ACCESS_DENIED`             | 文件或文件夹路径无权限                                     |
+| `UNSUPPORTED_SOURCE_KIND`        | 不支持的输入表来源类型                                     |
+| `WORKFLOW_INVALID`               | 工作流缺少输入、输出、连线或存在循环                       |
+| `TASK_RUN_FAILED`                | DuckDB 执行失败                                            |
+| `PERMISSION_REQUIRED`            | tool_call 需要用户确认                                     |
+| `LOCK_TIMEOUT`                   | 数据库锁等待超时                                           |
 
 ---
 
@@ -2536,7 +2523,7 @@ CREATE TABLE data_command_events (
 
 ```bash
 npm run typecheck
-npx eslint src/main/data src/cli src/main/claude src/main/mcp tests
+npx eslint src/main/data src/cli src/main/agent src/main/mcp tests
 npx vitest run tests/data-duckdb-store.test.ts tests/prep-dsl/parser-compiler.test.ts
 ```
 

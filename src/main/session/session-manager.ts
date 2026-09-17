@@ -1192,7 +1192,7 @@ export class SessionManager {
   }
 
   // Update session's working directory
-  // Also clears SDK session cache because Claude SDK sessions are bound to cwd
+  // Also clears SDK session cache because agent SDK sessions are bound to cwd
   updateSessionCwd(sessionId: string, cwd: string): void {
     if (this.activeSessions.has(sessionId)) {
       logWarn(
@@ -1205,7 +1205,7 @@ export class SessionManager {
     const projectId = project?.id;
     const mountedPaths = this.buildMountedPaths(cwd);
     // Clear agent_session_id in DB so next query creates a new SDK session
-    // (Claude SDK sessions cannot change cwd mid-session)
+    // (agent SDK sessions cannot change cwd mid-session)
     this.db.sessions.update(sessionId, {
       project_id: projectId || null,
       cwd: projectId ? null : cwd,

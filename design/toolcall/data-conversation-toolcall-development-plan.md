@@ -30,13 +30,13 @@
 
 已有能力：
 
-| 模块 | 可复用基础 |
-| --- | --- |
-| 数据存储与执行 | `src/main/data/data-task-store.ts` 已支持任务、输入表、输出表、工作流保存、运行和预览 |
-| DSL | `src/shared/prep-dsl` 已支持任务级和单算子 DSL 解析、编译、导出、校验 |
-| Agent 扩展 | `AgentRuntimeExtensionManager.beforeSessionRun(...)` 可注入 `promptPrefix` 和 `customTools` |
-| Tool 合并 | `src/main/claude/agent-runner.ts` 已合并 MCP tools 和 extension custom tools |
-| 工具展示 | `src/renderer/components/message/toolHelpers.tsx` 可扩展 `data_*` 图标和标题 |
+| 模块           | 可复用基础                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| 数据存储与执行 | `src/main/data/data-task-store.ts` 已支持任务、输入表、输出表、工作流保存、运行和预览       |
+| DSL            | `src/shared/prep-dsl` 已支持任务级和单算子 DSL 解析、编译、导出、校验                       |
+| Agent 扩展     | `AgentRuntimeExtensionManager.beforeSessionRun(...)` 可注入 `promptPrefix` 和 `customTools` |
+| Tool 合并      | `src/main/agent/agent-runner.ts` 已合并 MCP tools 和 extension custom tools                 |
+| 工具展示       | `src/renderer/components/message/toolHelpers.tsx` 可扩展 `data_*` 图标和标题                |
 
 需要补齐：
 
@@ -105,24 +105,24 @@ src/cli/data-cli.ts
 第一批方法：
 
 ```ts
-listInputTables(input)
-createInputTable(input)
-updateInputTable(input)
-listOutputTables(input)
-createOutputTable(input)
-updateOutputTable(input)
-previewTable(input)
-listTasks(input)
-createTask(input)
-updateTask(input)
-getTaskWorkflow(input)
-applyWorkflowDsl(input)
-exportWorkflowDsl(input)
-configureInputOperator(input)
-applyOperatorDsl(input)
-configureOutputOperator(input)
-runTask(input)
-getRunResult(input)
+listInputTables(input);
+createInputTable(input);
+updateInputTable(input);
+listOutputTables(input);
+createOutputTable(input);
+updateOutputTable(input);
+previewTable(input);
+listTasks(input);
+createTask(input);
+updateTask(input);
+getTaskWorkflow(input);
+applyWorkflowDsl(input);
+exportWorkflowDsl(input);
+configureInputOperator(input);
+applyOperatorDsl(input);
+configureOutputOperator(input);
+runTask(input);
+getRunResult(input);
 ```
 
 职责：
@@ -161,9 +161,7 @@ getRunResult(input)
 注册为 agent runtime 扩展：
 
 ```ts
-agentRuntimeExtensionManager.register(
-  createDataAgentRuntimeExtension(dataToolService)
-);
+agentRuntimeExtensionManager.register(createDataAgentRuntimeExtension(dataToolService));
 ```
 
 `beforeSessionRun` 返回：
@@ -198,14 +196,14 @@ MVP 可先只支持显式 ID。第二步再让数据页面在打开任务、输�
 
 ### 4.5 权限等级
 
-| 等级 | 工具 | 策略 |
-| --- | --- | --- |
-| read | list、preview、get workflow、export DSL | 默认允许，限制返回规模 |
-| validate | dry-run DSL、schema 检查 | 默认允许 |
-| write_config | create/update/apply DSL/configure operator | 需要确认或会话授权 |
-| execute | run task temporary/persisted | 需要确认，temporary 风险较低 |
-| destructive | delete、overwrite output、replace physical table | 必须明确确认 |
-| file_access | import file/folder | 必须确认路径权限 |
+| 等级         | 工具                                             | 策略                         |
+| ------------ | ------------------------------------------------ | ---------------------------- |
+| read         | list、preview、get workflow、export DSL          | 默认允许，限制返回规模       |
+| validate     | dry-run DSL、schema 检查                         | 默认允许                     |
+| write_config | create/update/apply DSL/configure operator       | 需要确认或会话授权           |
+| execute      | run task temporary/persisted                     | 需要确认，temporary 风险较低 |
+| destructive  | delete、overwrite output、replace physical table | 必须明确确认                 |
+| file_access  | import file/folder                               | 必须确认路径权限             |
 
 ---
 
@@ -550,16 +548,16 @@ npx vitest run tests/data-command-service.test.ts tests/data-tool-service.test.t
 
 ## 9. 风险与对策
 
-| 风险 | 对策 |
-| --- | --- |
-| LLM 猜表名或字段名 | prompt 要求先 list/preview；工具对名称歧义返回候选 |
+| 风险                           | 对策                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------------------------------- |
+| LLM 猜表名或字段名             | prompt 要求先 list/preview；工具对名称歧义返回候选                                           |
 | LLM 把一次性分析误判为数据任务 | prompt 明确只有固定/可复用流程才使用工作流写入和执行工具；一次性探索先追问是否沉淀为数据任务 |
-| 预览数据过大 | 默认 20 行、最大 100 行、字段截断 |
-| 临时运行污染正式结果 | `temporary` 和 `persisted` 类型强制区分，测试覆盖 |
-| 权限绕过 | tool 只走 `DataCommandService`，写入/执行/删除统一确认 |
-| UI、CLI、tool 行为分叉 | 所有入口共享 `DataCommandService` |
-| DuckDB/SQLite 并发写冲突 | MVP 全局串行写队列，后续引入 lock 文件和任务级队列 |
-| 工具结果难读 | `toolHelpers.tsx` 增加 data 工具标题，结果正文只放摘要 |
+| 预览数据过大                   | 默认 20 行、最大 100 行、字段截断                                                            |
+| 临时运行污染正式结果           | `temporary` 和 `persisted` 类型强制区分，测试覆盖                                            |
+| 权限绕过                       | tool 只走 `DataCommandService`，写入/执行/删除统一确认                                       |
+| UI、CLI、tool 行为分叉         | 所有入口共享 `DataCommandService`                                                            |
+| DuckDB/SQLite 并发写冲突       | MVP 全局串行写队列，后续引入 lock 文件和任务级队列                                           |
+| 工具结果难读                   | `toolHelpers.tsx` 增加 data 工具标题，结果正文只放摘要                                       |
 
 ---
 

@@ -51,9 +51,8 @@ coverage/
 *.pem
 *.p12
 
-# Claude
-.claude/*
-!.claude/skills/
+# Local tool state
+.claude/
 CLAUDE.md
 AGENTS.md
 

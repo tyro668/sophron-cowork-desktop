@@ -26,7 +26,7 @@ const SCALAR_FIELDS = [
   'enableThinking',
   'enableDevLogs',
   'isConfigured',
-  'claudeCodePath',
+
   'defaultWorkdir',
   'globalSkillsPath',
 ] as const;

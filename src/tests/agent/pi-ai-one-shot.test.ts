@@ -28,7 +28,6 @@ function makeConfig(): AppConfig {
     profiles: {},
     activeConfigSetId: 'default',
     configSets: [],
-    claudeCodePath: '',
     defaultWorkdir: '',
     globalSkillsPath: '',
     enableDevLogs: false,
