@@ -627,7 +627,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           className={`mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
         >
           <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
-            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted backdrop-blur-xl 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
+            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
               <span />
               <span>{t('skills.workspace.table.skill')}</span>
               <span>{t('skills.workspace.table.type')}</span>
@@ -679,7 +679,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                 })}
               </span>
               <div className="flex flex-shrink-0 items-center gap-2">
-                <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/42 px-3">
+                <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3">
                   {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
                 </span>
                 {pageCount > 1 && (
@@ -687,12 +687,12 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     type="button"
                     onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                     disabled={safeCurrentPage <= 1}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                 )}
-                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent/10 px-2 text-accent">
+                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent-muted px-2 text-accent">
                   {safeCurrentPage}
                 </span>
                 {(pageCount > 1 || hasNextPage) && (
@@ -700,7 +700,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     type="button"
                     onClick={() => void handleNextPage()}
                     disabled={!hasNextPage || isPluginLoadingMore}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-background/42 text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {isPluginLoadingMore ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -717,7 +717,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
               <>
                 <div className="flex items-start gap-3">
-                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
                     <SelectedIcon className="h-7 w-7" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -790,7 +790,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       }
                       className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
                         selectedPlugin
-                          ? 'border-accent/20 bg-accent/5 text-accent hover:bg-accent/10'
+                          ? 'border-accent/20 bg-accent-muted text-accent hover:bg-accent-muted'
                           : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
                       }`}
                     >
@@ -848,7 +848,7 @@ function SkillTableRow({
         }
       }}
       className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px] ${
-        selected ? 'bg-accent/10 ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
+        selected ? 'bg-accent-muted ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
       }`}
     >
       <span className="flex items-center">
@@ -863,7 +863,7 @@ function SkillTableRow({
         />
       </span>
       <span className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           <Icon className="h-4 w-4" />
         </span>
         <span className="min-w-0">
@@ -892,7 +892,7 @@ function SkillTypeBadge({ item }: { item: SkillTableItem }) {
         item.type === 'plugin'
           ? 'bg-mcp/10 text-mcp'
           : item.type === 'builtin'
-            ? 'bg-accent/10 text-accent'
+            ? 'bg-accent-muted text-accent'
             : item.type === 'mcp'
               ? 'bg-mcp/10 text-mcp'
               : 'bg-success/10 text-success'

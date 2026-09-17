@@ -358,7 +358,7 @@ export function CloudTableProcessActionEditor({
           />
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
             {requirementAnalysis && (
-              <div className="w-full rounded-lg border border-border-muted bg-background/45 p-3">
+              <div className="w-full rounded-lg border border-border-muted bg-surface p-3">
                 <div className="mb-2 text-[12px] font-semibold text-text-secondary">
                   {tr('schedule.requirementAnalysisResult', '需求解析结果')}
                 </div>

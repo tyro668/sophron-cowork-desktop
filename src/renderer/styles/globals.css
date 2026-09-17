@@ -46,7 +46,9 @@
     --color-accent-text: #8ed9b2;
     --color-accent-text-hover: #b6edcf;
     --color-accent-text-muted: #a2e3c1;
-    --color-accent-foreground: #ffffff;
+    --color-accent-foreground: #0c1210;
+    --color-error-foreground: #0c1210;
+    --color-success-foreground: #0c1210;
     --color-text-primary: #f2f8f4;
     --color-text-secondary: #c7d7ce;
     --color-text-muted: #91a79b;
@@ -59,7 +61,9 @@
     --color-accent-text-rgb: 142 217 178;
     --color-accent-text-hover-rgb: 182 237 207;
     --color-accent-text-muted-rgb: 162 227 193;
-    --color-accent-foreground-rgb: 255 255 255;
+    --color-accent-foreground-rgb: 12 18 16;
+    --color-error-foreground-rgb: 12 18 16;
+    --color-success-foreground-rgb: 12 18 16;
     --color-text-primary-rgb: 242 248 244;
     --color-text-secondary-rgb: 199 215 206;
     --color-text-muted-rgb: 145 167 155;
@@ -130,7 +134,9 @@
     --color-accent-text: #267b54;
     --color-accent-text-hover: #1f6847;
     --color-accent-text-muted: #2b7252;
-    --color-accent-foreground: #ffffff;
+    --color-accent-foreground: #0c1210;
+    --color-error-foreground: #0c1210;
+    --color-success-foreground: #0c1210;
     --color-text-primary: #24362e;
     --color-text-secondary: #52675d;
     --color-text-muted: #718078;
@@ -143,7 +149,9 @@
     --color-accent-text-rgb: 38 123 84;
     --color-accent-text-hover-rgb: 31 104 71;
     --color-accent-text-muted-rgb: 43 114 82;
-    --color-accent-foreground-rgb: 255 255 255;
+    --color-accent-foreground-rgb: 12 18 16;
+    --color-error-foreground-rgb: 12 18 16;
+    --color-success-foreground-rgb: 12 18 16;
     --color-text-primary-rgb: 36 54 46;
     --color-text-secondary-rgb: 82 103 93;
     --color-text-muted-rgb: 113 128 120;
@@ -212,12 +220,14 @@
     --color-accent-text: #c4b5fd;
     --color-accent-text-hover: #ddd6fe;
     --color-accent-text-muted: #d0c5fd;
+    --color-accent-foreground: #ffffff;
     --color-accent-rgb: 118 86 232;
     --color-accent-hover-rgb: 98 68 204;
     --color-accent-muted-rgb: 59 49 93;
     --color-accent-text-rgb: 196 181 253;
     --color-accent-text-hover-rgb: 221 214 254;
     --color-accent-text-muted-rgb: 208 197 253;
+    --color-accent-foreground-rgb: 255 255 255;
   }
 
   :root.light[data-accent-theme='lavender'] {
@@ -225,10 +235,12 @@
     --color-accent-text: #6546c8;
     --color-accent-text-hover: #5338ad;
     --color-accent-text-muted: #6145b7;
+    --color-accent-foreground: #ffffff;
     --color-accent-muted-rgb: 240 237 255;
     --color-accent-text-rgb: 101 70 200;
     --color-accent-text-hover-rgb: 83 56 173;
     --color-accent-text-muted-rgb: 97 69 183;
+    --color-accent-foreground-rgb: 255 255 255;
   }
 
   :root[data-accent-theme='orange'] {
@@ -384,7 +396,7 @@
 
   .btn-primary {
     background: var(--color-accent);
-    @apply text-white;
+    color: var(--color-accent-foreground);
     @apply shadow-soft;
   }
 
@@ -394,7 +406,7 @@
 
   .jade-primary-button {
     background: var(--color-accent);
-    color: #ffffff;
+    color: var(--color-accent-foreground);
     box-shadow: var(--shadow-soft);
   }
 

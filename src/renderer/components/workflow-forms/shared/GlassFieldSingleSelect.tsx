@@ -199,7 +199,7 @@ export function GlassFieldSingleSelect({
         aria-label={placeholder}
         className={[
           'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
-          'border-border-muted bg-background/42 text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
+          'border-border-muted bg-surface text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
       >
@@ -237,7 +237,7 @@ export function GlassFieldSingleSelect({
               maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-elevated backdrop-blur-xl"
+            className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-elevated"
           >
             <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
               <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
@@ -277,12 +277,10 @@ export function GlassFieldSingleSelect({
                       className={[
                         'flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
-                          ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
-                          : 'text-text-secondary hover:bg-background/58 hover:text-text-primary',
+                          ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary',
                         disabled ? 'pointer-events-none opacity-45' : '',
-                        idx === highlightedIndex && !selected
-                          ? 'bg-background/58 text-text-primary'
-                          : '',
+                        idx === highlightedIndex && !selected ? 'bg-surface text-text-primary' : '',
                       ].join(' ')}
                     >
                       <DataTypeIcon type={columnTypes[opt]} />

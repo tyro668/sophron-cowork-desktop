@@ -34,10 +34,10 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
           {pairedUsers.map((user) => (
             <div
               key={`${user.channelType}-${user.userId}`}
-              className="flex items-center justify-between rounded-lg border border-border-subtle bg-background/34 p-3 shadow-soft"
+              className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface p-3 shadow-soft"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center">
                   <Users className="w-4 h-4 text-accent" />
                 </div>
                 <div>
@@ -45,7 +45,7 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
                     <span className="font-medium text-text-primary text-sm">
                       {user.userName || user.userId.slice(0, 12) + '...'}
                     </span>
-                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium capitalize text-accent">
+                    <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[10px] font-medium capitalize text-accent">
                       {user.channelType}
                     </span>
                   </div>

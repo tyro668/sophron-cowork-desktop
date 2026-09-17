@@ -34,6 +34,8 @@ import type { InputTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
 import {
   INPUT_TABLE_PREVIEW_PAGE_SIZE,
+  InputTableCheckbox,
+  InputTableSelect,
   InputTableStatusBadge,
   formatDisplayPath,
   getInputTableSourceMeta,
@@ -555,7 +557,7 @@ export function InputTableEditorWorkbench({
           <div className="flex min-w-0 items-center gap-4">
             <button
               onClick={onBack}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t('data.inputTables.editor.backShort')}
@@ -604,7 +606,7 @@ export function InputTableEditorWorkbench({
                 type="button"
                 onClick={() => setIsNameEditing(true)}
                 disabled={isBusy || isNameEditing}
-                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
                 aria-label={t('common.edit')}
                 title={t('common.edit')}
               >
@@ -617,7 +619,7 @@ export function InputTableEditorWorkbench({
               type="button"
               onClick={() => void previewInputTable()}
               disabled={!canPreview || previewLoading}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               {previewLoading ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -630,7 +632,7 @@ export function InputTableEditorWorkbench({
               type="button"
               onClick={saveInputTable}
               disabled={!canSave}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-3.5 w-3.5" />
               {isBusy ? t('common.saving') : t('common.save')}
@@ -638,7 +640,7 @@ export function InputTableEditorWorkbench({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card)] shadow-card backdrop-blur-xl">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-muted bg-surface shadow-card">
           <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
             <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
               <GlassSelect
@@ -657,7 +659,7 @@ export function InputTableEditorWorkbench({
                     <SourceIcon className="h-4 w-4" />
                   </span>
                 }
-                triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </InputTableConfigRow>
@@ -670,7 +672,7 @@ export function InputTableEditorWorkbench({
               }
             >
               <div className="flex min-w-0 items-stretch">
-                <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-background/50 px-3 shadow-soft">
+                <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-surface px-3 shadow-soft">
                   <span
                     className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
                   >
@@ -689,7 +691,7 @@ export function InputTableEditorWorkbench({
                   type="button"
                   onClick={() => chooseSource(localSourceKind)}
                   disabled={isBusy || !trimmedName}
-                  className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {localSourceKind === 'folder'
                     ? t('data.inputTables.editor.changeFolder')
@@ -719,7 +721,7 @@ export function InputTableEditorWorkbench({
                   { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
                 ]}
                 disabled={isBusy || !dataset}
-                triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </InputTableConfigRow>
@@ -804,7 +806,7 @@ export function InputTableEditorWorkbench({
 
                 {activeEditorTab === 'code' ? (
                   <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
-                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/50">
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
                       <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
                         <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
                           {selectedNormalizerFile?.path ??
@@ -818,7 +820,7 @@ export function InputTableEditorWorkbench({
                               void navigator.clipboard?.writeText(selectedNormalizerFile.content);
                             }
                           }}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                           title={t('data.inputTables.editor.copyCode')}
                         >
                           <Copy className="h-3.5 w-3.5" />
@@ -826,7 +828,7 @@ export function InputTableEditorWorkbench({
                       </div>
                       <CodePreview file={selectedNormalizerFile} t={t} />
                     </div>
-                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42">
+                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
                       <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
                         {t('data.inputTables.editor.projectStructure')}
                       </div>
@@ -864,7 +866,7 @@ export function InputTableEditorWorkbench({
                   type="button"
                   disabled={!canGenerateCustomizeDraft}
                   onClick={() => void generateCustomizeDraft()}
-                  className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                  className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                   title={t('data.inputTables.editor.generateProjectDisabled')}
                 >
                   {customizeGenerating ? (
@@ -880,7 +882,7 @@ export function InputTableEditorWorkbench({
                   type="button"
                   disabled={!customizeArtifactVersionId || previewLoading || !dataset}
                   onClick={() => void previewCustomizeDraft()}
-                  className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-background/62 px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {previewLoading ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -910,7 +912,7 @@ export function InputTableEditorWorkbench({
                           : ['Sheet1']
                         ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                         disabled={isBusy || !dataset}
-                        triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                        triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                         contentClassName="w-[var(--radix-select-trigger-width)]"
                       />
                     </InputTableConfigRow>
@@ -921,12 +923,12 @@ export function InputTableEditorWorkbench({
                           <span className="group relative inline-flex">
                             <button
                               type="button"
-                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent/10 hover:text-accent focus:bg-accent/10 focus:text-accent focus:outline-none"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
                               aria-label={t('data.inputTables.editor.headerRowDetectHint')}
                             >
                               <Info className="h-3.5 w-3.5" />
                             </button>
-                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated backdrop-blur-xl group-hover:block group-focus-within:block">
+                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
                               {t('data.inputTables.editor.headerRowDetectHint')}
                             </span>
                           </span>
@@ -956,7 +958,7 @@ export function InputTableEditorWorkbench({
                             },
                           ]}
                           disabled={isBusy || !dataset}
-                          triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                          triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                           contentClassName="w-[var(--radix-select-trigger-width)]"
                         />
                         {excelConfig.headerMode === 'manual' ? (
@@ -976,7 +978,7 @@ export function InputTableEditorWorkbench({
                                 })
                               }
                               disabled={isBusy || !dataset}
-                              className="box-border !h-10 w-full rounded-lg border border-border-muted bg-background/50 pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="box-border !h-10 w-full rounded-lg border border-border-muted bg-surface pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                             />
                             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
                               {t('data.inputTables.editor.rowUnit')}
@@ -1110,7 +1112,7 @@ export function InputTableGenerationOutputPanel({
   }, [isStreaming, output]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted bg-background/42 shadow-soft">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface shadow-soft">
       <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
         <div className="inline-flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-primary">
           {isStreaming ? (
@@ -1130,61 +1132,11 @@ export function InputTableGenerationOutputPanel({
         {output ? (
           <MessageCard message={message} isStreaming={isStreaming} />
         ) : (
-          <div className="flex h-full min-h-28 items-center justify-center rounded-lg border border-dashed border-border-muted bg-background/30 px-4 text-center text-[13px] font-medium text-text-muted">
+          <div className="flex h-full min-h-28 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface px-4 text-center text-[13px] font-medium text-text-muted">
             {t('data.inputTables.editor.generatedStatusEmpty')}
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-export function InputTableSelect({
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  options: Array<{ value: string; label: string }>;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <GlassSelect
-        value={value}
-        disabled={disabled}
-        onValueChange={onChange}
-        options={options}
-        triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
-        contentClassName="w-[var(--radix-select-trigger-width)]"
-      />
-    </label>
-  );
-}
-
-export function InputTableCheckbox({
-  checked,
-  disabled,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="inline-flex w-fit items-center gap-2 text-[13px] font-medium text-text-secondary">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 rounded border-border-muted accent-accent disabled:cursor-not-allowed disabled:opacity-60"
-      />
-      {label}
-    </label>
   );
 }

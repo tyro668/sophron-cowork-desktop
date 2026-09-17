@@ -41,8 +41,8 @@ export function SettingsGeneral() {
               onClick={() => updateSettings({ theme: opt.value })}
               className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all ${
                 settings.theme === opt.value
-                  ? 'border-accent/40 bg-accent/10 text-text-primary shadow-soft'
-                  : 'border-border-muted bg-background/62 hover:border-accent/40 text-text-secondary shadow-soft'
+                  ? 'border-accent/40 bg-accent-muted text-text-primary shadow-soft'
+                  : 'border-border-muted bg-surface hover:border-accent/40 text-text-secondary shadow-soft'
               }`}
             >
               {opt.label}
@@ -61,8 +61,8 @@ export function SettingsGeneral() {
               onClick={() => i18n.changeLanguage(lang.code)}
               className={`flex-1 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all ${
                 currentLang === lang.code
-                  ? 'border-accent/40 bg-accent/10 text-text-primary shadow-soft'
-                  : 'border-border-muted bg-background/62 hover:border-accent/40 text-text-secondary shadow-soft'
+                  ? 'border-accent/40 bg-accent-muted text-text-primary shadow-soft'
+                  : 'border-border-muted bg-surface hover:border-accent/40 text-text-secondary shadow-soft'
               }`}
             >
               {lang.nativeName}

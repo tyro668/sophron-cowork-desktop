@@ -592,7 +592,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-[2rem] border border-border-subtle bg-background/18 shadow-card">
+    <div className="w-full overflow-hidden rounded-[2rem] border border-border-subtle bg-surface shadow-card">
       <div className="space-y-3 p-4 sm:p-5">
         {error && (
           <div className="flex items-center gap-3 rounded-xl border border-error/30 bg-error/10 p-3">
@@ -714,7 +714,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 onGatewayPortChange={setGatewayPort}
                 onAutoApproveChange={setAutoApproveSafeTools}
               />
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-accent/20 bg-accent/5 p-3 text-xs leading-5 text-text-secondary">
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-accent/20 bg-accent-muted p-3 text-xs leading-5 text-text-secondary">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
                 {t('remote.globalSettingsHint')}
               </div>
@@ -724,7 +724,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 type="button"
                 onClick={saveGatewayConfig}
                 disabled={isSaving}
-                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -740,7 +740,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         {activeSection === 'logs' && (
           <section className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card">
             <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-accent/10 p-2.5">
+              <div className="rounded-xl bg-accent-muted p-2.5">
                 <ScrollText className="h-5 w-5 text-accent" />
               </div>
               <div>
@@ -756,7 +756,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 return (
                   <div
                     key={channel.type}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-background/34 p-3"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-surface p-3"
                   >
                     <div className="flex items-center gap-2.5 text-sm text-text-secondary">
                       <ChannelBrandIcon type={channel.type} className="h-7 w-7" />

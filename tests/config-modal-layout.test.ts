@@ -7,7 +7,7 @@ const configModalPath = path.resolve(process.cwd(), 'src/renderer/components/Con
 describe('ConfigModal layout', () => {
   it('uses a quieter editorial shell with softer modal framing', () => {
     const source = fs.readFileSync(configModalPath, 'utf8');
-    expect(source).toContain('bg-black/25 backdrop-blur-md');
+    expect(source).toContain('bg-black/25');
     expect(source).toContain('glass-surface rounded-2xl');
     expect(source).toContain('max-w-[880px]');
   });

@@ -26,10 +26,10 @@ import {
 } from '../shared';
 
 const TASK_ICON_STYLES = [
-  { Icon: Database, className: 'bg-accent/10 text-accent' },
-  { Icon: BarChart3, className: 'bg-accent/10 text-accent' },
+  { Icon: Database, className: 'bg-accent-muted text-accent' },
+  { Icon: BarChart3, className: 'bg-accent-muted text-accent' },
   { Icon: Folder, className: 'bg-warning/10 text-warning' },
-  { Icon: UploadCloud, className: 'bg-surface-active/70 text-text-secondary' },
+  { Icon: UploadCloud, className: 'bg-surface-active text-text-secondary' },
   { Icon: Cloud, className: 'bg-success/10 text-success' },
 ];
 
@@ -88,7 +88,7 @@ export function TasksPanel({
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.newCleaningTask')}
@@ -224,7 +224,7 @@ function TasksTable({
     <div className="min-w-full overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="w-[4%] px-4">
               <span className="sr-only">{t('data.tasks.selection')}</span>
             </th>
@@ -251,7 +251,7 @@ function TasksTable({
                 onDoubleClick={() => onEdit(task)}
                 className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
                   selected
-                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                    ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
                     : 'hover:bg-surface-hover/35'
                 }`}
               >

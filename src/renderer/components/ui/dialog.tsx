@@ -19,10 +19,13 @@ export interface DialogProps {
   children?: React.ReactNode;
 }
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * Lightweight modal dialog primitive: portal, dimmed overlay, Esc-to-close,
- * initial focus (`[data-autofocus]` inside the panel, else the panel itself)
- * and focus restoration on close.
+ * Tab/Shift+Tab focus trap, initial focus (`[data-autofocus]` inside the panel,
+ * else the panel itself) and focus restoration on close.
  */
 export function Dialog({
   open,
@@ -38,29 +41,59 @@ export function Dialog({
 }: DialogProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const restoreFocusRef = React.useRef<HTMLElement | null>(null);
-  const requestClose = React.useCallback(() => {
+  // Latest-close ref keeps the open-lifecycle effect stable: changing the
+  // consumer's onOpenChange identity must not re-run focus initialization.
+  const requestCloseRef = React.useRef<() => void>(() => {});
+  requestCloseRef.current = () => {
     if (!busy) onOpenChange?.(false);
-  }, [busy, onOpenChange]);
+  };
 
   React.useEffect(() => {
     if (!open) return;
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        requestClose();
+        requestCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (items.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      // The panel itself counts as "outside" — Tab must move focus into items.
+      const focusOutside = !active || active === panel || !panel.contains(active);
+      if (event.shiftKey) {
+        if (focusOutside || active === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (focusOutside || active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
-    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown, true);
+
     const panel = panelRef.current;
     const autofocus = panel?.querySelector<HTMLElement>('[data-autofocus]');
     (autofocus ?? panel)?.focus();
+
     return () => {
-      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keydown', onKeyDown, true);
       restoreFocusRef.current?.focus?.();
       restoreFocusRef.current = null;
     };
-  }, [open, requestClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -71,7 +104,7 @@ export function Dialog({
         overlayClassName
       )}
       onMouseDown={(event) => {
-        if (closeOnOverlayClick && event.target === event.currentTarget) requestClose();
+        if (closeOnOverlayClick && event.target === event.currentTarget) requestCloseRef.current();
       }}
     >
       <div

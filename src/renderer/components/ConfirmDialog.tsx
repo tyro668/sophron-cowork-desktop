@@ -115,7 +115,7 @@ function ConfirmDialogOverlay({
           <div className="flex items-start gap-3">
             <div
               className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-                isDanger ? 'bg-error/10 text-error' : 'bg-accent/10 text-accent'
+                isDanger ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
               }`}
             >
               <Icon className="h-5 w-5" />

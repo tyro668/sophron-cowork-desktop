@@ -47,7 +47,7 @@ export function AskUserQuestionBlock({ block }: AskUserQuestionBlockProps) {
                 {q.options.map((option, optIdx) => (
                   <div
                     key={optIdx}
-                    className="flex w-full items-start gap-2.5 rounded-lg border border-border-subtle/70 bg-surface-muted/50 p-2.5 text-left"
+                    className="flex w-full items-start gap-2.5 rounded-lg border border-border-subtle/70 bg-surface-muted p-2.5 text-left"
                   >
                     <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-surface-active text-[11px] font-medium text-text-secondary">
                       {getOptionLetter(optIdx)}

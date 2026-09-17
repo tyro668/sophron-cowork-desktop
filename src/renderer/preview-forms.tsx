@@ -90,7 +90,7 @@ function Panel({
 }) {
   return (
     <section className="overflow-hidden rounded-lg border border-border-muted bg-surface">
-      <header className="border-b border-border-muted bg-surface-active/50 px-3 py-1.5 text-[13px] font-medium text-text-primary">
+      <header className="border-b border-border-muted bg-surface-active px-3 py-1.5 text-[13px] font-medium text-text-primary">
         {title}
       </header>
       <div className={`operator-ui ${tall ? 'h-[420px]' : 'h-[320px]'} min-h-0`}>{children}</div>

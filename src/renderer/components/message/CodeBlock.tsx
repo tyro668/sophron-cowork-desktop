@@ -45,7 +45,7 @@ export const CodeBlock = memo(function CodeBlock({ language, children }: CodeBlo
   };
 
   return (
-    <div className="group my-3 overflow-hidden rounded-lg border border-border-subtle bg-surface-muted/60">
+    <div className="group my-3 overflow-hidden rounded-lg border border-border-subtle bg-surface-muted">
       <div className="flex h-7 items-center justify-between border-b border-border-subtle/70 px-3">
         <span className="font-mono text-[11px] lowercase text-text-muted">{language}</span>
         <button

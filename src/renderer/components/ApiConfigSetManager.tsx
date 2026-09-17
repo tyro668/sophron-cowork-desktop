@@ -99,7 +99,7 @@ export function ApiConfigSetManager({
   return (
     <section className="rounded-xl border border-border-muted bg-background p-4 shadow-soft">
       <div className="mb-4 flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           <Layers3 className="h-4.5 w-4.5" />
         </div>
         <div className="min-w-0">
@@ -162,7 +162,7 @@ export function ApiConfigSetManager({
                         {set.name}
                       </span>
                       {set.isSystem && (
-                        <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">
+                        <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground">
                           {t('api.defaultSetTag')}
                         </span>
                       )}
@@ -224,7 +224,7 @@ export function ApiConfigSetManager({
           type="button"
           onClick={() => void onRequestCreateBlankSet()}
           disabled={isMutatingConfigSet || Boolean(renameTargetId)}
-          className="flex min-h-[58px] items-center justify-center gap-2 rounded-lg border border-dashed border-accent/35 bg-accent/[0.025] px-4 text-[14px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[58px] items-center justify-center gap-2 rounded-lg border border-dashed border-accent/35 bg-accent/[0.025] px-4 text-[14px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="h-5 w-5" />
           {t('api.newSet')}

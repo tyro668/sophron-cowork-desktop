@@ -181,7 +181,7 @@ export function GlassOptionSingleSelect({
             ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
             : variant === 'muted'
               ? 'border-border-subtle/80 bg-surface-hover/45 text-text-secondary'
-              : 'border-border-muted bg-background/42 text-text-secondary'
+              : 'border-border-muted bg-surface text-text-secondary'
         } ${className ?? ''}`}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate whitespace-nowrap px-2 text-left">
@@ -217,7 +217,7 @@ export function GlassOptionSingleSelect({
               maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto rounded-lg border border-border-muted bg-surface py-1 shadow-elevated"
           >
             {groups.map((g, gi) => (
               <div key={g.key}>
@@ -243,7 +243,7 @@ export function GlassOptionSingleSelect({
                       data-index={globalIdx}
                       className={`min-h-8 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
-                          ? 'text-accent font-medium bg-accent/10 ring-1 ring-inset ring-accent/20'
+                          ? 'text-accent font-medium bg-accent-muted ring-1 ring-inset ring-accent/20'
                           : 'text-text-secondary hover:bg-surface-hover'
                       } ${globalIdx === highlightedIndex && !selected ? 'bg-surface-hover' : ''}`}
                       onMouseDown={(e) => {

@@ -83,7 +83,7 @@ export function FeishuConfigStep({
                 onClick={() => onDmPolicyChange(option.value)}
                 className={`p-3 rounded-lg border text-left transition-all ${
                   feishuDmPolicy === option.value
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-accent bg-accent-muted'
                     : 'border-border hover:border-accent/50'
                 }`}
               >

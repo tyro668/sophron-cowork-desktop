@@ -49,7 +49,7 @@ export function QuickStartGuide({ permissionScopes, permissionSeparator }: Props
       <ol className="space-y-2 text-sm text-text-secondary">
         {steps.map((step) => (
           <li key={step.key} className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent/10 text-accent text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="w-5 h-5 rounded-full bg-accent-muted text-accent text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
               {step.key}
             </span>
             {step.content}

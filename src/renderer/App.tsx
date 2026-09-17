@@ -64,7 +64,7 @@ function MainPanelFallback() {
 function ContextPanelFallback() {
   return (
     <div
-      className="ml-2 hidden w-[340px] shrink-0 rounded-2xl border border-border-subtle bg-background/55 backdrop-blur-xl xl:block"
+      className="ml-2 hidden w-[340px] shrink-0 rounded-2xl border border-border-subtle bg-surface xl:block"
       aria-hidden="true"
     />
   );

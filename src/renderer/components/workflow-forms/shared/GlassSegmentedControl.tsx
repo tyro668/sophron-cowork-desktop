@@ -24,7 +24,7 @@ export function GlassSegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-border-muted bg-background/60 p-0.5"
+      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-border-muted bg-surface p-0.5"
     >
       {options.map((opt) => (
         <button

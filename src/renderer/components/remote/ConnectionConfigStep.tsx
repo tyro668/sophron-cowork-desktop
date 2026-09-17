@@ -56,9 +56,7 @@ export function ConnectionConfigStep({
           <div
             className={`p-2 rounded-lg ${useLongConnection ? 'bg-success/10' : 'bg-surface-active'}`}
           >
-            <Zap
-              className={`w-5 h-5 ${useLongConnection ? 'text-success' : 'text-text-muted'}`}
-            />
+            <Zap className={`w-5 h-5 ${useLongConnection ? 'text-success' : 'text-text-muted'}`} />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -70,15 +68,13 @@ export function ConnectionConfigStep({
             <p className="text-sm text-text-secondary mt-1">{t('remote.longConnectionDesc')}</p>
             <div className="flex items-center gap-4 mt-3 text-xs text-text-muted">
               <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-success" />{' '}
-                {t('remote.noPublicInternet')}
+                <CheckCircle2 className="w-3.5 h-3.5 text-success" /> {t('remote.noPublicInternet')}
               </span>
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-success" /> {t('remote.outOfBox')}
               </span>
               <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-success" />{' '}
-                {t('remote.stableReliable')}
+                <CheckCircle2 className="w-3.5 h-3.5 text-success" /> {t('remote.stableReliable')}
               </span>
             </div>
           </div>
@@ -87,7 +83,7 @@ export function ConnectionConfigStep({
               useLongConnection ? 'border-success bg-success' : 'border-border'
             }`}
           >
-            {useLongConnection && <Check className="w-3 h-3 text-white" />}
+            {useLongConnection && <Check className="w-3 h-3 text-accent-foreground" />}
           </div>
         </div>
       </div>
@@ -96,12 +92,14 @@ export function ConnectionConfigStep({
       <div
         onClick={() => onLongConnectionChange(false)}
         className={`p-4 rounded-lg border cursor-pointer transition-all ${
-          !useLongConnection ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/50'
+          !useLongConnection
+            ? 'border-accent bg-accent-muted'
+            : 'border-border hover:border-accent/50'
         }`}
       >
         <div className="flex items-start gap-3">
           <div
-            className={`p-2 rounded-lg ${!useLongConnection ? 'bg-accent/10' : 'bg-surface-active'}`}
+            className={`p-2 rounded-lg ${!useLongConnection ? 'bg-accent-muted' : 'bg-surface-active'}`}
           >
             <Link2
               className={`w-5 h-5 ${!useLongConnection ? 'text-accent' : 'text-text-muted'}`}
@@ -116,7 +114,7 @@ export function ConnectionConfigStep({
               !useLongConnection ? 'border-accent bg-accent' : 'border-border'
             }`}
           >
-            {!useLongConnection && <Check className="w-3 h-3 text-white" />}
+            {!useLongConnection && <Check className="w-3 h-3 text-accent-foreground" />}
           </div>
         </div>
 

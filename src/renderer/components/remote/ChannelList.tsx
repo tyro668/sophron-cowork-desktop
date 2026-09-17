@@ -43,7 +43,7 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
         <button
           type="button"
           disabled
-          className="flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-white opacity-55"
+          className="flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground opacity-55"
           title={t('remote.channelAddHint')}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -63,7 +63,7 @@ export function ChannelList({ channels, selectedChannel, onSelect }: Props) {
               onClick={() => onSelect(channel.type)}
               className={`grid w-full grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border p-3 text-left transition-all ${
                 isSelected
-                  ? 'border-accent/50 bg-accent/10 shadow-soft'
+                  ? 'border-accent/50 bg-accent-muted shadow-soft'
                   : 'border-transparent hover:border-border-subtle hover:bg-surface-hover/60'
               }`}
             >

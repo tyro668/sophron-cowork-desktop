@@ -187,7 +187,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
             <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-text-muted">
               {t('messageCard.input')}
             </div>
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-surface-muted/70 p-2 font-mono text-[11.5px] leading-5 text-text-secondary">
+            <pre className="whitespace-pre-wrap break-all rounded-md bg-surface-muted p-2 font-mono text-[11.5px] leading-5 text-text-secondary">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           </div>
@@ -212,7 +212,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({
               {shouldShowOutputText && (
                 <div
                   className={`max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[11.5px] leading-5 ${
-                    isError ? 'bg-error/5 text-error' : 'bg-surface-muted/70 text-text-secondary'
+                    isError ? 'bg-error/5 text-error' : 'bg-surface-muted text-text-secondary'
                   } ${preferImageOutput ? 'mt-1.5' : ''}`}
                 >
                   <DataLinkedText text={toolResult.content} />

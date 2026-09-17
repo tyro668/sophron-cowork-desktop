@@ -1075,7 +1075,7 @@ export function CloudAnalysisPanel() {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
       {isConnected && (
-        <div className="flex h-10 w-full flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-background/18 px-5 backdrop-blur-xl">
+        <div className="flex h-10 w-full flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-surface px-5">
           <div className="flex min-w-0 items-center gap-2">
             <Cloud className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
             <span className="truncate text-[12px] font-medium text-text-muted">
@@ -1089,7 +1089,7 @@ export function CloudAnalysisPanel() {
                 onClick={() =>
                   switchConnectionMode(usesDesktopAuthConnection ? 'apiKey' : 'account')
                 }
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
               >
                 {usesDesktopAuthConnection
                   ? t('cloudData.switchToApiKeyMode')
@@ -1100,7 +1100,7 @@ export function CloudAnalysisPanel() {
               type="button"
               onClick={() => void loadCatalog({ forceRefresh: true })}
               disabled={loadingCatalog}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loadingCatalog ? 'animate-spin' : ''}`} />
               {t('common.refresh')}
@@ -1108,7 +1108,7 @@ export function CloudAnalysisPanel() {
             <button
               type="button"
               onClick={openSettings}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <Settings className="h-3.5 w-3.5" />
               {t('cloudData.manageConnection')}
@@ -1118,7 +1118,7 @@ export function CloudAnalysisPanel() {
       )}
 
       {notice && (
-        <div className="mx-5 mt-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-lg border border-border-muted bg-background/72 px-3 py-2 text-[13px] shadow-soft">
+        <div className="mx-5 mt-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-lg border border-border-muted bg-background px-3 py-2 text-[13px] shadow-soft">
           <div
             className={`flex min-w-0 items-center gap-2 ${
               notice.type === 'error'
@@ -1142,7 +1142,7 @@ export function CloudAnalysisPanel() {
                 onClick={() =>
                   navigateToDataElement({ kind: 'input_table', id: notice.inputTableId! })
                 }
-                className="rounded-md px-2 py-1 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                className="rounded-md px-2 py-1 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent-muted"
               >
                 {t('cloudData.viewInputTable')}
               </button>
@@ -1161,7 +1161,7 @@ export function CloudAnalysisPanel() {
       {!isConnected ? (
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
           <div className="flex w-full max-w-[340px] flex-col items-center text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent-text">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
               <Cloud className="h-6 w-6" />
             </div>
 
@@ -1177,7 +1177,7 @@ export function CloudAnalysisPanel() {
                 type="button"
                 onClick={() => void handleLogin()}
                 disabled={loginBusy}
-                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
               >
                 {loginBusy ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1205,7 +1205,7 @@ export function CloudAnalysisPanel() {
       ) : (
         <div className="flex min-h-0 flex-1 gap-0 overflow-hidden px-5 py-4">
           <aside
-            className={`flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-background/54 transition-[width] duration-200 ${
+            className={`flex-shrink-0 overflow-hidden rounded-l-xl border border-border-subtle bg-surface transition-[width] duration-200 ${
               catalogCollapsed ? 'w-[52px]' : 'w-[260px]'
             }`}
           >
@@ -1248,14 +1248,14 @@ export function CloudAnalysisPanel() {
             </div>
             {catalogCollapsed ? (
               <div className="flex h-[calc(100%-2.5rem)] flex-col items-center gap-3 px-2 py-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10 text-accent-text">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-muted text-accent-text">
                   <Database className="h-4 w-4" />
                 </div>
                 {selectedProjectRecord && (
                   <button
                     type="button"
                     onClick={() => setCatalogCollapsed(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-background/72 text-text-secondary ring-1 ring-border-subtle transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-background text-text-secondary ring-1 ring-border-subtle transition-colors hover:bg-surface-hover hover:text-text-primary"
                     aria-label={selectedProjectRecord.projectName}
                     title={`${selectedSpace?.spaceName ?? ''} / ${selectedProjectRecord.projectName}`}
                   >
@@ -1272,7 +1272,7 @@ export function CloudAnalysisPanel() {
                       value={projectFilterQuery}
                       onChange={(event) => setProjectFilterQuery(event.target.value)}
                       placeholder={t('cloudData.filterProjects')}
-                      className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                      className="h-8 w-full rounded-lg border border-border-muted bg-background pl-8 pr-3 text-[12px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
                     />
                   </div>
                   {projectFilterQuery.trim() && (
@@ -1288,7 +1288,7 @@ export function CloudAnalysisPanel() {
                       <button
                         type="button"
                         onClick={() => void loadCatalog({ forceRefresh: true })}
-                        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent-muted"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                         {t('cloudData.refreshTables')}
@@ -1362,7 +1362,7 @@ export function CloudAnalysisPanel() {
                                         }
                                         className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors ${
                                           active
-                                            ? 'bg-accent/10 text-accent-text ring-1 ring-inset ring-accent/15'
+                                            ? 'bg-accent-muted text-accent-text ring-1 ring-inset ring-accent/15'
                                             : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                                         }`}
                                       >
@@ -1386,7 +1386,7 @@ export function CloudAnalysisPanel() {
             )}
           </aside>
 
-          <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-r-xl border-y border-r border-border-subtle bg-background/48">
+          <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-r-xl border-y border-r border-border-subtle bg-surface">
             <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3">
               <div className="min-w-0">
                 <div className="truncate text-[13px] font-semibold text-text-primary">
@@ -1401,7 +1401,7 @@ export function CloudAnalysisPanel() {
                       : (selectedSpace?.spaceName ?? t('cloudData.tableList'))}
                   </span>
                   {tableLookupStarted && (
-                    <span className="flex-shrink-0 rounded-md bg-accent/10 px-1.5 py-0.5 font-medium text-accent-text">
+                    <span className="flex-shrink-0 rounded-md bg-accent-muted px-1.5 py-0.5 font-medium text-accent-text">
                       {t('cloudData.tableCountLoaded', {
                         count: tables.length,
                         total: tablePageInfo.total,
@@ -1411,14 +1411,14 @@ export function CloudAnalysisPanel() {
                 </div>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
-                <div className="flex h-8 rounded-lg border border-border-muted bg-background/70 p-0.5">
+                <div className="flex h-8 rounded-lg border border-border-muted bg-background p-0.5">
                   <button
                     type="button"
                     onClick={() => switchTableSearchScope('global')}
                     disabled={globalSearchDisabled}
                     className={`rounded-md px-2.5 text-[12px] font-medium transition-colors ${
                       tableSearchScope === 'global'
-                        ? 'bg-accent/10 text-accent-text'
+                        ? 'bg-accent-muted text-accent-text'
                         : 'text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50'
                     }`}
                   >
@@ -1430,7 +1430,7 @@ export function CloudAnalysisPanel() {
                     disabled={!selectedProject}
                     className={`rounded-md px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       tableSearchScope === 'project'
-                        ? 'bg-accent/10 text-accent-text'
+                        ? 'bg-accent-muted text-accent-text'
                         : 'text-text-muted hover:text-text-primary'
                     }`}
                   >
@@ -1455,7 +1455,7 @@ export function CloudAnalysisPanel() {
                         ? t('cloudData.searchAllTables')
                         : t('cloudData.searchTables')
                     }
-                    className="h-8 w-full rounded-lg border border-border-muted bg-background/72 pl-8 pr-3 text-[13px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="h-8 w-full rounded-lg border border-border-muted bg-background pl-8 pr-3 text-[13px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -1466,7 +1466,7 @@ export function CloudAnalysisPanel() {
                 {showTableLocator ? (
                   <div className="flex min-h-full items-center justify-center px-6 py-10">
                     <div className="w-full max-w-[560px] text-center">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent-text">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
                         <Search className="h-6 w-6" />
                       </div>
                       <h3 className="mt-4 text-[16px] font-semibold text-text-primary">
@@ -1486,7 +1486,7 @@ export function CloudAnalysisPanel() {
                             : t('cloudData.locateTablesDesc')}
                       </p>
                       <div className="mt-5 grid gap-3 text-left sm:grid-cols-2">
-                        <div className="rounded-xl border border-border-subtle bg-surface/55 px-4 py-3">
+                        <div className="rounded-xl border border-border-subtle bg-surface px-4 py-3">
                           <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                             <Search className="h-4 w-4 text-accent-text" />
                             {tableSearchScope === 'global'
@@ -1499,7 +1499,7 @@ export function CloudAnalysisPanel() {
                               : t('cloudData.projectScopedSearchDesc')}
                           </p>
                         </div>
-                        <div className="rounded-xl border border-border-subtle bg-surface/55 px-4 py-3">
+                        <div className="rounded-xl border border-border-subtle bg-surface px-4 py-3">
                           <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                             <FolderKanban className="h-4 w-4 text-accent-text" />
                             {t('cloudData.projectTreeFilter')}
@@ -1513,7 +1513,7 @@ export function CloudAnalysisPanel() {
                         <button
                           type="button"
                           onClick={() => setTableLookupStarted(true)}
-                          className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg border border-border-muted bg-background/70 px-4 text-[13px] font-semibold text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
+                          className="mt-5 inline-flex h-9 items-center gap-2 rounded-lg border border-border-muted bg-background px-4 text-[13px] font-semibold text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
                         >
                           <Table2 className="h-4 w-4" />
                           {t('cloudData.browseCurrentProject')}
@@ -1564,7 +1564,7 @@ export function CloudAnalysisPanel() {
                                       });
                                     }
                                   }}
-                                  className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent/10"
+                                  className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent-muted"
                                 >
                                   <RefreshCw className="h-3.5 w-3.5" />
                                   {t('cloudData.refreshTables')}
@@ -1586,7 +1586,7 @@ export function CloudAnalysisPanel() {
                                 onClick={() => toggleTableSelection(table.tableId)}
                                 className={`group h-[50px] cursor-pointer transition-colors ${
                                   isSelected
-                                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/15'
+                                    ? 'bg-accent-muted ring-1 ring-inset ring-accent/15'
                                     : 'hover:bg-surface-hover/60'
                                 }`}
                               >
@@ -1625,7 +1625,7 @@ export function CloudAnalysisPanel() {
                                   </div>
                                 </td>
                                 <td className="px-3">
-                                  <span className="inline-flex h-6 max-w-full items-center rounded-md bg-accent/10 px-2 text-[11px] font-semibold text-accent-text">
+                                  <span className="inline-flex h-6 max-w-full items-center rounded-md bg-accent-muted px-2 text-[11px] font-semibold text-accent-text">
                                     <span className="truncate">{sourceType}</span>
                                   </span>
                                 </td>
@@ -1637,7 +1637,7 @@ export function CloudAnalysisPanel() {
                                         event.stopPropagation();
                                         void previewTable(table, 1);
                                       }}
-                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-background/60 px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                       {t('cloudData.preview')}
@@ -1651,8 +1651,8 @@ export function CloudAnalysisPanel() {
                                       disabled={importingTableId === table.tableId}
                                       className={`inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                                         importingTableId === table.tableId
-                                          ? 'border-accent bg-accent text-white shadow-soft'
-                                          : 'border-accent/25 bg-accent/10 text-accent-text hover:bg-accent hover:text-white'
+                                          ? 'border-accent bg-accent text-accent-foreground shadow-soft'
+                                          : 'border-accent/25 bg-accent-muted text-accent-text hover:bg-accent hover:text-accent-foreground'
                                       }`}
                                     >
                                       {importingTableId === table.tableId ? (
@@ -1668,7 +1668,7 @@ export function CloudAnalysisPanel() {
                                         event.stopPropagation();
                                         startCloudTableAutomation(table);
                                       }}
-                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-success/30 bg-success/10 px-2.5 text-[12px] font-medium text-success transition-colors hover:bg-success hover:text-white"
+                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-success/30 bg-success/10 px-2.5 text-[12px] font-medium text-success transition-colors hover:bg-success hover:text-success-foreground"
                                     >
                                       <CalendarClock className="h-3.5 w-3.5" />
                                       {t('cloudData.autoProcess')}
@@ -1688,7 +1688,7 @@ export function CloudAnalysisPanel() {
                           type="button"
                           onClick={loadMoreTables}
                           disabled={loadingMoreTables}
-                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-muted bg-background/70 px-3 text-[12px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-muted bg-background px-3 text-[12px] font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-60"
                         >
                           {loadingMoreTables ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1705,7 +1705,7 @@ export function CloudAnalysisPanel() {
 
               {selectedTables.length > 0 && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
-                  <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border-subtle bg-background/95 px-4 py-3 shadow-elevated backdrop-blur-xl">
+                  <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border-subtle bg-background px-4 py-3 shadow-elevated">
                     <span className="whitespace-nowrap text-[13px] font-medium text-text-secondary">
                       {t('cloudData.selectedTableCount', { count: selectedTables.length })}
                     </span>
@@ -1713,7 +1713,7 @@ export function CloudAnalysisPanel() {
                       type="button"
                       onClick={() => void addSelectedTablesToChat()}
                       disabled={addingToChat}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-semibold text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
                     >
                       {addingToChat ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1746,7 +1746,7 @@ export function CloudAnalysisPanel() {
               <button
                 type="button"
                 onClick={closePreview}
-                className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
               >
                 {t('common.cancel')}
               </button>
@@ -1754,7 +1754,7 @@ export function CloudAnalysisPanel() {
                 type="button"
                 onClick={() => void importTable(preview.table)}
                 disabled={importingTableId === preview.table.tableId}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {importingTableId === preview.table.tableId ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1769,7 +1769,7 @@ export function CloudAnalysisPanel() {
                   startCloudTableAutomation(preview.table);
                   closePreview();
                 }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 text-[12px] font-medium text-success shadow-soft transition-colors hover:bg-success hover:text-white"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 text-[12px] font-medium text-success shadow-soft transition-colors hover:bg-success hover:text-success-foreground"
               >
                 <CalendarClock className="h-3.5 w-3.5" />
                 {t('cloudData.autoProcess')}

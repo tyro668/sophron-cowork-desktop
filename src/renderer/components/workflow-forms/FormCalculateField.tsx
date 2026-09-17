@@ -165,7 +165,7 @@ export default function FormCalculateField({
                 {hasAddConflict && (
                   <span className="group absolute right-1 top-1/2 inline-flex -translate-y-1/2">
                     <AlertCircle className="h-4 w-4 text-error" />
-                    <span className="invisible absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-2.5 py-1.5 text-[12px] text-error opacity-0 shadow-elevated backdrop-blur-xl transition-opacity group-hover:visible group-hover:opacity-100">
+                    <span className="invisible absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px] text-error opacity-0 shadow-elevated transition-opacity group-hover:visible group-hover:opacity-100">
                       {tr('calcFieldConflictWarning')}
                     </span>
                   </span>

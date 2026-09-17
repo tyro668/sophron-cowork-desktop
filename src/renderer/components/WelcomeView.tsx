@@ -603,7 +603,7 @@ export function WelcomeView() {
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
-                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-error text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-error text-error-foreground opacity-0 transition-opacity group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -640,7 +640,7 @@ export function WelcomeView() {
               {attachedCloudTables.map((table, index) => (
                 <div
                   key={table.id}
-                  className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent/10 px-3 py-2 text-[13px] text-accent-text shadow-soft"
+                  className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/20 bg-accent-muted px-3 py-2 text-[13px] text-accent-text shadow-soft"
                 >
                   <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
                   <span className="min-w-0 truncate font-medium">{table.tableName}</span>
@@ -652,7 +652,7 @@ export function WelcomeView() {
                   <button
                     type="button"
                     onClick={() => removeCloudTable(index)}
-                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-background/60 text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-surface text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -787,15 +787,15 @@ export function WelcomeView() {
               onClick={() => handleTagClick(tag.id, tag.prompt)}
               className={`group flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
                 selectedTag === tag.id
-                  ? 'border-accent/35 bg-accent/10 ring-1 ring-inset ring-accent/20'
-                  : 'border-border-subtle bg-background/62 hover:border-accent/25 hover:bg-surface-hover/70'
+                  ? 'border-accent/35 bg-accent-muted ring-1 ring-inset ring-accent/20'
+                  : 'border-border-subtle bg-surface hover:border-accent/25 hover:bg-surface-hover/70'
               }`}
             >
               <span
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
                   selectedTag === tag.id
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-accent/10 text-accent group-hover:bg-accent/15'
+                    ? 'bg-accent-muted text-accent'
+                    : 'bg-accent-muted text-accent group-hover:bg-accent-muted'
                 }`}
               >
                 <tag.icon className="h-4 w-4" />

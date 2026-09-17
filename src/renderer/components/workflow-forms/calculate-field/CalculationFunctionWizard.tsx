@@ -253,7 +253,7 @@ export function CalculationFunctionWizard({
         <div
           role="tablist"
           aria-label={tr('calcFieldOpenWizard')}
-          className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border-muted/60 bg-background/20 px-2"
+          className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border-muted/60 bg-surface px-2"
         >
           {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
             <button
@@ -262,7 +262,7 @@ export function CalculationFunctionWizard({
               role="tab"
               aria-selected={item === category}
               onClick={() => selectCategory(item)}
-              className={`h-8 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent/8 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+              className={`h-8 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                 item === category
                   ? 'border-accent font-medium text-accent'
                   : 'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -457,7 +457,7 @@ export function CalculationFunctionWizard({
                     dragTitle={tr('rowList.dragToReorder')}
                   />
                 ) : (
-                  <div className="rounded-md bg-background/30 p-2 text-[11px] text-text-muted">
+                  <div className="rounded-md bg-surface p-2 text-[11px] text-text-muted">
                     {tr('calcFieldOrderNotRequired')}
                   </div>
                 )}
@@ -467,7 +467,7 @@ export function CalculationFunctionWizard({
             <section className="flex min-w-0 flex-col border-t border-border-muted/60 p-3 md:border-l md:border-t-0">
               <SectionTitle>{tr('calcFieldSpecialConfig')}</SectionTitle>
               {!hasSpecialConfig && (
-                <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-background/20 px-4 text-center text-[11px] leading-5 text-text-muted">
+                <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-surface px-4 text-center text-[11px] leading-5 text-text-muted">
                   {tr('calcFieldNoSpecialConfig')}
                 </div>
               )}
@@ -498,7 +498,7 @@ export function CalculationFunctionWizard({
         </div>
       </div>
 
-      <div className="flex items-end gap-3 rounded-lg border border-border-muted/60 bg-background/20 p-3">
+      <div className="flex items-end gap-3 rounded-lg border border-border-muted/60 bg-surface p-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 text-[10px] font-medium text-text-muted">
             {tr('calcFieldExpressionPreview')}
@@ -515,7 +515,7 @@ export function CalculationFunctionWizard({
           type="button"
           disabled={!preview.expression}
           onClick={() => onInsert(preview.expression)}
-          className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           {tr('calcFieldInsertExpression')}
         </button>

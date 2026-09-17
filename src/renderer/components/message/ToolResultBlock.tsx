@@ -152,7 +152,7 @@ export const ToolResultBlock = memo(function ToolResultBlock({
           {shouldShowOutputText && (
             <div
               className={`max-h-[300px] overflow-y-auto whitespace-pre-wrap break-all rounded-md p-2 font-mono text-[11.5px] leading-5 ${
-                block.isError ? 'bg-error/5 text-error' : 'bg-surface-muted/70 text-text-secondary'
+                block.isError ? 'bg-error/5 text-error' : 'bg-surface-muted text-text-secondary'
               } ${preferImageOutput ? 'mt-1.5' : ''}`}
             >
               <DataLinkedText text={block.content} />

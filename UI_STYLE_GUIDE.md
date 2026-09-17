@@ -16,21 +16,27 @@
 
 组件必须使用 `src/renderer/styles/globals.css` 中的语义变量或对应的 Tailwind 类，禁止把主题色直接写进组件。
 
-| 用途       | 默认值    | 变量 / 类                                        |
-| ---------- | --------- | ------------------------------------------------ |
-| 应用背景   | `#F4F8F5` | `--app-backdrop`                                 |
-| 主工作区   | `#FBFDFB` | `--color-background` / `bg-background`           |
-| 卡片与输入 | `#FFFFFF` | `--color-surface` / `bg-surface`                 |
-| 薄荷选中态 | `#EAF6EE` | `--color-surface-active` / `bg-surface-active`   |
-| 主色       | `#2F8F63` | `--color-accent` / `bg-accent`                   |
-| 主色悬停   | `#267B54` | `--color-accent-hover` / `bg-accent-hover`       |
-| 主要文字   | `#24362E` | `--color-text-primary` / `text-text-primary`     |
-| 次要文字   | `#52675D` | `--color-text-secondary` / `text-text-secondary` |
-| 弱文字     | `#718078` | `--color-text-muted` / `text-text-muted`         |
-| 普通边框   | `#DCE8DF` | `--color-border-muted` / `border-border-muted`   |
-| 弱分隔线   | `#E6EEE8` | `--color-border-subtle` / `border-border-subtle` |
+| 用途       | 默认值    | 变量 / 类                                                |
+| ---------- | --------- | -------------------------------------------------------- |
+| 应用背景   | `#F4F8F5` | `--app-backdrop`                                         |
+| 主工作区   | `#FBFDFB` | `--color-background` / `bg-background`                   |
+| 卡片与输入 | `#FFFFFF` | `--color-surface` / `bg-surface`                         |
+| 薄荷选中态 | `#EAF6EE` | `--color-surface-active` / `bg-surface-active`           |
+| 主色       | `#2F8F63` | `--color-accent` / `bg-accent`                           |
+| 主色悬停   | `#267B54` | `--color-accent-hover` / `bg-accent-hover`               |
+| 主色浅底   | `#EAF6EE` | `--color-accent-muted` / `bg-accent-muted`               |
+| 主色上前景 | `#0C1210` | `--color-accent-foreground` / `text-accent-foreground`   |
+| 错误上前景 | `#0C1210` | `--color-error-foreground` / `text-error-foreground`     |
+| 成功上前景 | `#0C1210` | `--color-success-foreground` / `text-success-foreground` |
+| 主要文字   | `#24362E` | `--color-text-primary` / `text-text-primary`             |
+| 次要文字   | `#52675D` | `--color-text-secondary` / `text-text-secondary`         |
+| 弱文字     | `#718078` | `--color-text-muted` / `text-text-muted`                 |
+| 普通边框   | `#DCE8DF` | `--color-border-muted` / `border-border-muted`           |
+| 弱分隔线   | `#E6EEE8` | `--color-border-subtle` / `border-border-subtle`         |
 
 主题换色只替换 accent 系列变量，背景、文字、成功、警告、错误等语义颜色保持独立。全局样式已预留 `data-accent-theme="lake"`、`lavender`、`orange`、`rose` 四套方案；默认无属性时为薄荷绿。新增主题也应沿用同一变量接口。
+
+实心状态按钮（`bg-accent`/`bg-error`/`bg-success`）必须使用对应的 `*-foreground` 前景 token，不得写 `text-white`：湖蓝、橙色主题下白字对比度不足 4.5:1。`accent-foreground`/`error-foreground`/`success-foreground` 为深色字（lavender 主题单独覆盖为白字），已核验全部主题组合 ≥4.5:1。
 
 ## 3. 容器、边框和阴影
 
@@ -52,7 +58,9 @@
 
 ## 5. 控件
 
-- 主要按钮使用 `bg-accent`、白字、`8px` 到 `10px` 圆角和轻阴影。
+通用控件集中在 `src/renderer/components/ui/`（Button、Input、Select、DropdownMenu、Switch、Dialog、Badge、Tabs），新代码优先使用这些原语而非裸标签；原语只使用语义 token，不含 blur/渐变/写死色，且不依赖 electronAPI。类合并一律用 `cn()`（内部 tailwind-merge），调用方传入的冲突类（如 `w-32`、`max-w-[24rem]`）会正确覆盖默认值。
+
+- 主要按钮使用 `bg-accent`、`text-accent-foreground`、`8px` 到 `10px` 圆角和轻阴影。
 - 次级按钮使用白底、细边框和深灰绿文字；悬停时变为极浅薄荷色。
 - 输入框、下拉框和日期选择器使用白底、细边框；聚焦时使用主色边框和低透明度 focus ring。
 - 开关开启时使用当前主题主色，关闭时使用中性浅底和边框。

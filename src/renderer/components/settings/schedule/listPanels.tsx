@@ -83,7 +83,7 @@ export function AutomationListPanel({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <button
             onClick={onCreate}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             {tr('schedule.newAutomation', '新建自动化')}
@@ -237,7 +237,7 @@ function AutomationRunTable({
     <div className="min-w-0 overflow-hidden">
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="w-[22%] whitespace-nowrap px-3">
               {tr('schedule.runColumns.automation', '自动化')}
             </th>
@@ -335,7 +335,7 @@ function AutomationTable({
           <col className="w-52" />
         </colgroup>
         <thead>
-          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="px-3">
               <span className="sr-only">{tr('schedule.selection', '选择')}</span>
             </th>
@@ -363,7 +363,7 @@ function AutomationTable({
                 onDoubleClick={onEdit}
                 className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
                   selected
-                    ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                    ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
                     : 'hover:bg-surface-hover/35'
                 }`}
               >
@@ -419,8 +419,8 @@ function AutomationTable({
 }
 
 const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
-  { Icon: CalendarClock, className: 'bg-accent/10 text-accent' },
-  { Icon: Database, className: 'bg-accent/10 text-accent' },
+  { Icon: CalendarClock, className: 'bg-accent-muted text-accent' },
+  { Icon: Database, className: 'bg-accent-muted text-accent' },
   { Icon: Bell, className: 'bg-warning/10 text-warning' },
 ];
 
@@ -575,7 +575,7 @@ function DataToolbarButton({
       className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
         danger
           ? 'text-error hover:border-error/30 hover:bg-error/10'
-          : 'text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+          : 'text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
       }`}
     >
       {icon}
@@ -611,7 +611,7 @@ function DataMoreMenu({
       trigger={
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           title={tr('data.actions.more', '更多')}
           aria-label={tr('data.actions.more', '更多')}
         >
@@ -637,7 +637,7 @@ function DataMoreMenu({
 function LoadingState({ label }: { label: string }) {
   return (
     <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
-      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2 shadow-soft">
+      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2 shadow-soft">
         <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
         {label}
       </div>

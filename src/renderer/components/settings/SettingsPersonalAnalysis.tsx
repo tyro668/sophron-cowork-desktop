@@ -145,7 +145,7 @@ export function SettingsPersonalAnalysis() {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-border-subtle bg-background/54 px-4 py-3 shadow-soft">
+      <div className="rounded-xl border border-border-subtle bg-surface px-4 py-3 shadow-soft">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
@@ -187,7 +187,7 @@ export function SettingsPersonalAnalysis() {
                 value={form.apiOrigin}
                 onChange={(event) => updateField('apiOrigin', event.target.value)}
                 placeholder={t('personalAnalysis.apiOriginPlaceholder')}
-                className="h-9 w-full rounded-lg border border-border-muted bg-background/72 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-9 w-full rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
             </label>
             <label className="block">
@@ -200,7 +200,7 @@ export function SettingsPersonalAnalysis() {
                 value={form.apiKey}
                 onChange={(event) => updateField('apiKey', event.target.value)}
                 placeholder={t('personalAnalysis.apiKeyPlaceholder')}
-                className="h-9 w-full rounded-lg border border-border-muted bg-background/72 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-9 w-full rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
             </label>
             <p className="text-[12px] leading-5 text-text-muted">{t('cloudData.apiKeyHint')}</p>
@@ -226,7 +226,7 @@ export function SettingsPersonalAnalysis() {
           type="button"
           onClick={() => void handleTest()}
           disabled={isTesting || isSaving}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isTesting ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -238,7 +238,7 @@ export function SettingsPersonalAnalysis() {
         <button
           type="button"
           onClick={handleOpenApiKeyPage}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           {t('cloudData.openApiKeyPage')}
@@ -248,7 +248,7 @@ export function SettingsPersonalAnalysis() {
             type="button"
             onClick={() => void handleSave()}
             disabled={isSaving}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSaving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -261,7 +261,7 @@ export function SettingsPersonalAnalysis() {
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover"
           >
             <KeyRound className="h-3.5 w-3.5" />
             {t('cloudData.changeConnection')}
@@ -272,7 +272,7 @@ export function SettingsPersonalAnalysis() {
             <button
               type="button"
               onClick={handleViewCloudData}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <Cloud className="h-3.5 w-3.5" />
               {t('cloudData.viewCloudData')}
@@ -295,7 +295,7 @@ export function SettingsPersonalAnalysis() {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-background/46 px-3 py-2">
+    <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2">
       <div className="text-[11px] text-text-muted">{label}</div>
       <div className="mt-1 truncate text-[13px] font-medium text-text-primary">{value}</div>
     </div>

@@ -24,6 +24,7 @@ import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
 import { ApiConfigSetManager } from '../ApiConfigSetManager';
 import { GlassSelect } from '../GlassSelect';
 import { GlassSwitch } from '../GlassSwitch';
+import { Button, Input } from '../ui';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import { CodexAuthCard } from './CodexAuthCard';
 
@@ -44,7 +45,7 @@ function SettingsCard({
   return (
     <section className="min-w-0 rounded-xl border border-border-muted bg-background p-4 shadow-soft sm:p-5 lg:h-full">
       <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           {icon}
         </div>
         <h2 className="min-w-0 text-[15px] font-semibold text-text-primary">{title}</h2>
@@ -209,7 +210,7 @@ export function SettingsAPI() {
                   label: presets[item]?.name || item,
                 })),
               ]}
-              triggerClassName="h-11 w-full justify-between bg-background px-3 text-[13px] text-text-primary"
+              triggerClassName="h-11 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
               contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </FieldRow>
@@ -239,13 +240,13 @@ export function SettingsAPI() {
           {!providerUnset && !isSophronMode && !isCodexMode && (
             <FieldRow label={t('api.apiKey')}>
               <div className="relative">
-                <input
+                <Input
                   id="api-key-input"
                   type={showApiKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
                   placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-                  className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 pr-11 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-11 pr-11 shadow-soft"
                   aria-label={t('api.apiKey')}
                 />
                 <button
@@ -265,21 +266,21 @@ export function SettingsAPI() {
           {!providerUnset && (provider === 'custom' || isOllamaMode) && (
             <FieldRow label={t('api.baseUrl')}>
               <div className="flex min-w-0 gap-2">
-                <input
+                <Input
                   id="api-base-url-input"
                   type="url"
                   value={baseUrl}
                   onChange={(event) => setBaseUrl(event.target.value)}
                   placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
-                  className="h-11 min-w-0 flex-1 rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-11 min-w-0 flex-1 shadow-soft"
                   aria-label={t('api.baseUrl')}
                 />
                 {isOllamaMode && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
                     onClick={() => void discoverLocalOllama()}
                     disabled={isDiscoveringLocalOllama}
-                    className="btn btn-secondary h-11 shrink-0"
+                    className="h-11 shrink-0"
                     title={t('api.discoverLocalOllama')}
                   >
                     {isDiscoveringLocalOllama ? (
@@ -287,7 +288,7 @@ export function SettingsAPI() {
                     ) : (
                       <Plug className="h-4 w-4" />
                     )}
-                  </button>
+                  </Button>
                 )}
               </div>
             </FieldRow>
@@ -313,13 +314,13 @@ export function SettingsAPI() {
                 <div className="flex min-w-0 gap-2">
                   <div className="min-w-0 flex-1">
                     {useCustomModel ? (
-                      <input
+                      <Input
                         id="api-model-input"
                         type="text"
                         value={customModel}
                         onChange={(event) => setCustomModel(event.target.value)}
                         placeholder={modelInputPlaceholder}
-                        className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                        className="h-11 shadow-soft"
                       />
                     ) : (
                       <GlassSelect
@@ -341,41 +342,41 @@ export function SettingsAPI() {
                         }
                         placeholder={t('api.noModelsAvailable')}
                         disabled={!modelOptions.length}
-                        triggerClassName="h-11 w-full justify-between bg-background/42 px-3 text-[13px] text-text-primary"
+                        triggerClassName="h-11 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
                         contentClassName="w-[var(--radix-select-trigger-width)]"
                       />
                     )}
                   </div>
                   {!isSophronMode && !isCodexMode && (
-                    <button
-                      type="button"
+                    <Button
+                      variant={useCustomModel ? 'primary' : 'secondary'}
                       onClick={toggleCustomModel}
-                      className={`btn h-11 shrink-0 ${useCustomModel ? 'btn-primary' : 'btn-secondary'}`}
+                      className="h-11 shrink-0"
                     >
                       <Edit3 className="h-4 w-4" />
                       <span className="hidden lg:inline">
                         {useCustomModel ? t('api.usePreset') : t('api.customModel')}
                       </span>
-                    </button>
+                    </Button>
                   )}
                   {(isOllamaMode || provider === 'sophron') && !useCustomModel && (
-                    <button
-                      type="button"
+                    <Button
+                      variant="secondary"
                       onClick={() => void refreshModelOptions()}
                       disabled={isRefreshingModels}
-                      className="btn btn-secondary h-11 shrink-0"
+                      className="h-11 shrink-0"
                       title={t('api.refreshModels')}
                     >
                       <RefreshCw
                         className={`h-4 w-4 ${isRefreshingModels ? 'animate-spin' : ''}`}
                       />
-                    </button>
+                    </Button>
                   )}
                 </div>
               </FieldRow>
 
               <FieldRow label={t('api.contextWindow')}>
-                <input
+                <Input
                   id="api-context-window-input"
                   type="number"
                   value={contextWindow}
@@ -383,12 +384,12 @@ export function SettingsAPI() {
                   placeholder={t('api.contextWindowPlaceholder')}
                   min={1024}
                   step={1024}
-                  className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-11 shadow-soft"
                 />
               </FieldRow>
 
               <FieldRow label={t('api.maxOutputTokens')}>
-                <input
+                <Input
                   id="api-max-tokens-input"
                   type="number"
                   value={maxTokens}
@@ -396,7 +397,7 @@ export function SettingsAPI() {
                   placeholder={t('api.maxOutputTokensPlaceholder')}
                   min={256}
                   step={256}
-                  className="h-11 w-full rounded-lg border border-border-muted bg-background/42 px-3 text-[13px] text-text-primary shadow-soft outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="h-11 shadow-soft"
                 />
               </FieldRow>
 
@@ -433,12 +434,12 @@ export function SettingsAPI() {
         </section>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-1 mt-auto flex flex-wrap items-center gap-3 border-t border-border-muted bg-background/95 px-1 py-3 backdrop-blur-xl">
-        <button
-          type="button"
+      <div className="sticky bottom-0 z-10 -mx-1 mt-auto flex flex-wrap items-center gap-3 border-t border-border-muted bg-background px-1 py-3">
+        <Button
+          variant="secondary"
           onClick={() => void handleDiagnose()}
           disabled={isDiagnosing || providerUnset || (requiresApiKey && !apiKey.trim())}
-          className="btn btn-secondary h-10"
+          className="h-10"
         >
           {isDiagnosing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -446,17 +447,17 @@ export function SettingsAPI() {
             <Play className="h-4 w-4" />
           )}
           {isDiagnosing ? t('api.diagnostic.running') : t('api.testConnection')}
-        </button>
+        </Button>
         {isOllamaMode && (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => void handleDeepDiagnose()}
             disabled={isDiagnosing || (requiresApiKey && !apiKey.trim())}
-            className="btn btn-secondary h-10"
+            className="h-10"
           >
             <Cpu className="h-4 w-4" />
             {t('api.diagnostic.runDeepDiagnostics')}
-          </button>
+          </Button>
         )}
 
         <div
@@ -478,15 +479,16 @@ export function SettingsAPI() {
               : t('api.connectionNotTested')}
         </div>
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onClick={() => void handleSave()}
           disabled={!canSave}
-          className="btn btn-primary h-10 shrink-0 px-5 disabled:cursor-not-allowed disabled:opacity-50"
+          loading={isSaving}
+          className="h-10 shrink-0 px-5"
         >
-          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {isSaving ? null : <Save className="h-4 w-4" />}
           {isSaving ? t('common.saving') : t('api.saveSettings')}
-        </button>
+        </Button>
       </div>
     </div>
   );

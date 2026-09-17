@@ -25,7 +25,7 @@ export function GuidanceInlineHint({ text, tone = 'info' }: GuidanceInlineHintPr
   const toneClass =
     tone === 'warning'
       ? 'border-warning/30 bg-warning/10 text-warning'
-      : 'border-border-subtle bg-background/60 text-text-secondary';
+      : 'border-border-subtle bg-surface text-text-secondary';
 
   return (
     <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${toneClass}`}>
@@ -40,10 +40,7 @@ interface CommonProviderSetupsCardProps {
   onApplySetup: (setupId: string) => void;
 }
 
-export function CommonProviderSetupsCard({
-  setups,
-  onApplySetup,
-}: CommonProviderSetupsCardProps) {
+export function CommonProviderSetupsCard({ setups, onApplySetup }: CommonProviderSetupsCardProps) {
   const { t } = useTranslation();
 
   if (setups.length === 0) {
@@ -51,7 +48,7 @@ export function CommonProviderSetupsCard({
   }
 
   return (
-    <details className="rounded-[1.5rem] border border-border-subtle bg-background/40 px-4 py-4">
+    <details className="rounded-[1.5rem] border border-border-subtle bg-surface px-4 py-4">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-text-primary">
         <span className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-accent" />
@@ -79,13 +76,15 @@ export function CommonProviderSetupsCard({
             {setups.map((setup) => (
               <tr
                 key={setup.id}
-                className={setup.isDetected ? 'bg-accent/5 text-text-primary' : 'text-text-secondary'}
+                className={
+                  setup.isDetected ? 'bg-accent-muted text-text-primary' : 'text-text-secondary'
+                }
               >
                 <td className="px-2 py-3 font-medium">
                   <div className="flex items-center gap-2">
                     <span>{setup.name}</span>
                     {setup.isDetected && (
-                      <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-accent">
+                      <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-accent">
                         {t('api.guidance.detectedBadge')}
                       </span>
                     )}

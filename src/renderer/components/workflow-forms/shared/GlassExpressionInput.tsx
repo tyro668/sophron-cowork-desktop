@@ -59,9 +59,9 @@ export function functionToken(
 }
 
 const FN_CHIP =
-  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const FN_CHIP_HOVERED =
-  'flex min-h-8 w-full cursor-pointer items-center bg-accent/10 px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center bg-accent-muted px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
 const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
 const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
@@ -688,7 +688,7 @@ function FunctionDetailPanel({
         {token.returnType && (
           <div className="flex gap-2">
             <span className="text-text-muted shrink-0">{tr('aggregateReturnType')}:</span>
-            <code className="rounded bg-accent/10 px-1 text-accent">{token.returnType}</code>
+            <code className="rounded bg-accent-muted px-1 text-accent">{token.returnType}</code>
           </div>
         )}
       </div>
@@ -697,12 +697,11 @@ function FunctionDetailPanel({
           <div className="mb-1 text-text-muted">{tr('expressionFunctionArgument')}:</div>
           <div className="space-y-0.5">
             {token.params.map((p) => (
-              <div
-                key={p.name}
-                className="flex items-center gap-2 rounded bg-background/30 px-2 py-1"
-              >
+              <div key={p.name} className="flex items-center gap-2 rounded bg-surface px-2 py-1">
                 <code className="text-text-primary shrink-0">{p.name}</code>
-                <code className="rounded bg-accent/10 px-1 text-[10px] text-accent">{p.type}</code>
+                <code className="rounded bg-accent-muted px-1 text-[10px] text-accent">
+                  {p.type}
+                </code>
                 {p.optional && (
                   <span className="text-[10px] text-text-muted">{tr('optional')}</span>
                 )}
@@ -718,7 +717,7 @@ function FunctionDetailPanel({
             {token.examples.map((ex) => (
               <pre
                 key={ex}
-                className="rounded-md border border-border-muted/60 bg-background/20 px-2 py-1 font-mono text-[11px] text-text-secondary leading-5 whitespace-pre-wrap break-all"
+                className="rounded-md border border-border-muted/60 bg-surface px-2 py-1 font-mono text-[11px] text-text-secondary leading-5 whitespace-pre-wrap break-all"
               >
                 {ex}
               </pre>
@@ -770,7 +769,7 @@ function GlassFunctionHelper({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr('expressionFunctionSearchPlaceholder')}
-          className="h-8 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
         />
       </div>
       <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
@@ -792,7 +791,7 @@ function GlassFunctionHelper({
                     return next;
                   });
                 }}
-                className="flex w-full items-center gap-2 border-b border-border-muted/60 bg-background/20 px-3 py-2 text-left text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                className="flex w-full items-center gap-2 border-b border-border-muted/60 bg-surface px-3 py-2 text-left text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
               >
                 <ChevronDown
                   className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsedGroups.has(group.i18nKey) ? '-rotate-90' : ''}`}
@@ -845,7 +844,7 @@ export function GlassExpressionInput({
     return (
       <div
         onClick={() => setOpen(true)}
-        className="relative h-8 w-full cursor-pointer rounded-md border border-border-muted bg-background/42 text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
+        className="relative h-8 w-full cursor-pointer rounded-md border border-border-muted bg-surface text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
       >
         <span className="block truncate px-1.5 leading-7">
           {value || (
@@ -854,7 +853,7 @@ export function GlassExpressionInput({
             </span>
           )}
         </span>
-        <span className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-tl bg-background/60 text-text-muted opacity-50 hover:opacity-100 transition-opacity">
+        <span className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-tl bg-surface text-text-muted opacity-50 hover:opacity-100 transition-opacity">
           <Pencil className="h-3 w-3" />
         </span>
       </div>
@@ -1010,7 +1009,7 @@ function ExpressionEditorDialog({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+      <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-card">
         <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
           <div className="flex items-center gap-2">
             <h3 className="text-[14px] font-medium text-text-primary">
@@ -1022,8 +1021,8 @@ function ExpressionEditorDialog({
                 onClick={() => setShowAssistantPanel((current) => !current)}
                 className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
                   showAssistantPanel
-                    ? 'border-accent/30 bg-accent/10 text-accent'
-                    : 'border-border-muted bg-background/42 text-text-secondary hover:bg-surface-hover'
+                    ? 'border-accent/30 bg-accent-muted text-accent'
+                    : 'border-border-muted bg-surface text-text-secondary hover:bg-surface-hover'
                 }`}
               >
                 <WandSparkles className="h-3.5 w-3.5" />
@@ -1086,7 +1085,7 @@ function ExpressionEditorDialog({
                       value={fieldQuery}
                       onChange={(e) => setFieldQuery(e.target.value)}
                       placeholder={tr('expressionFieldSearchPlaceholder')}
-                      className="h-8 w-full rounded-md border border-border-muted bg-background/42 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                     />
                   </div>
                   <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
@@ -1106,7 +1105,7 @@ function ExpressionEditorDialog({
                                 e.preventDefault();
                                 editAtCursor(`[${col}]`);
                               }}
-                              className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                              className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
                             >
                               <span className="flex min-w-0 items-center gap-2">
                                 <DataTypeIcon type={colType} />
@@ -1148,14 +1147,14 @@ function ExpressionEditorDialog({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 items-center rounded-md border border-border-muted bg-background/42 px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
+            className="flex h-8 items-center rounded-md border border-border-muted bg-surface px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
           >
             {tr('cancel')}
           </button>
           <button
             type="button"
             onClick={handleConfirm}
-            className="flex h-8 items-center rounded-md bg-accent px-3 text-[12px] text-white transition-colors hover:bg-accent/90"
+            className="flex h-8 items-center rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover"
           >
             {tr('confirm')}
           </button>

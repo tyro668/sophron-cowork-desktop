@@ -338,7 +338,7 @@ export function WorkflowInspector({
           </span>
           <div className="flex min-w-0 items-center gap-1.5">
             {isEditingNodeTitle ? (
-              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2 shadow-soft ring-2 ring-accent/15">
+              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-surface px-2 shadow-soft ring-2 ring-accent/15">
                 <input
                   ref={nodeTitleInputRef}
                   value={node.label}
@@ -361,7 +361,7 @@ export function WorkflowInspector({
             )}
             <button
               onClick={() => setIsEditingNodeTitle(true)}
-              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
               title={t('common.edit')}
             >
               <PencilLine className="h-3.5 w-3.5" />
@@ -395,7 +395,7 @@ export function WorkflowInspector({
         }`}
       >
         {resolvedTab === 'logs' ? (
-          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-background/34 p-2.5 text-xs text-text-muted">
+          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-surface p-2.5 text-xs text-text-muted">
             {t('data.workflow.noLogs')}
           </div>
         ) : resolvedTab === 'data' ? (

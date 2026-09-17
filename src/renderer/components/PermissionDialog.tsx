@@ -55,7 +55,7 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
   const allowResult = rememberTool ? 'allow_always' : 'allow';
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/25 p-5 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/25 p-5">
       <div className="glass-surface w-full max-w-[720px] max-h-[calc(100vh-40px)] animate-slide-up overflow-y-auto rounded-2xl px-5 pb-5 pt-4 text-text-primary">
         <div className="flex items-center justify-center gap-3 border-b border-border-subtle pb-4 text-center">
           <ShieldAlert className="h-9 w-9 flex-shrink-0 text-accent" strokeWidth={1.9} />
@@ -69,14 +69,14 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
             <span className="text-[13px] font-medium text-text-primary">
               {t('permission.toolLabel')}
             </span>
-            <span className="rounded-lg border border-accent/20 bg-accent/10 px-3 py-1 font-mono text-[12px] font-medium text-accent shadow-soft">
+            <span className="rounded-lg border border-accent/20 bg-accent-muted px-3 py-1 font-mono text-[12px] font-medium text-accent shadow-soft">
               {permission.toolName}
             </span>
           </div>
 
           <div className="mt-4">
             <div className="mb-2 text-[13px] font-medium text-text-primary">{previewLabel}</div>
-            <div className="relative rounded-xl border border-border-subtle bg-background/42 px-4 py-3 shadow-soft backdrop-blur-xl">
+            <div className="relative rounded-xl border border-border-subtle bg-surface px-4 py-3 shadow-soft">
               <div
                 className={`flex min-w-0 gap-3 pr-10 font-mono text-[13px] leading-6 ${
                   isPreviewExpanded ? 'items-start' : 'items-center'
@@ -146,14 +146,14 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
               <button
                 type="button"
                 onClick={() => respondToPermission(permission.toolUseId, 'deny')}
-                className="h-10 rounded-xl border border-border-muted bg-background/42 text-[13px] font-medium text-text-primary shadow-soft transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-accent/25"
+                className="h-10 rounded-xl border border-border-muted bg-surface text-[13px] font-medium text-text-primary shadow-soft transition-colors hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-accent/25"
               >
                 {t('permission.deny')}
               </button>
               <button
                 type="button"
                 onClick={() => respondToPermission(permission.toolUseId, allowResult)}
-                className="h-10 rounded-xl bg-accent text-[13px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent/30"
+                className="h-10 rounded-xl bg-accent text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent/30"
               >
                 {t('permission.allow')}
               </button>

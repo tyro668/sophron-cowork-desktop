@@ -110,7 +110,7 @@ export function ActionChainSection({
     </GlassDropdownMenu>
   );
   return (
-    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
       <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted">
         <h2 className="min-w-0 text-[16px] font-semibold text-text-secondary">
           {tr('schedule.actionsTitle', '执行动作')}
@@ -401,7 +401,7 @@ export function GeneratedTaskReviewCard({
               {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
             </div>
           ) : (
-            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-background/60 p-2 text-[11px] leading-5 text-text-secondary">
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
               {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
             </pre>
           )}

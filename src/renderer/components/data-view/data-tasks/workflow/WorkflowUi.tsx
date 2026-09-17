@@ -57,10 +57,10 @@ export function WorkflowDslDialog({
       aria-modal="true"
       aria-label={isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
     >
-      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-surface shadow-card">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
               {isImport ? <Upload className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
             </span>
             <div className="truncate text-[14px] font-semibold text-text-primary">
@@ -70,20 +70,20 @@ export function WorkflowDslDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
             title={t('common.close')}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-background/24 p-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-surface p-3">
           <textarea
             value={value}
             onChange={(event) => onChange(event.target.value)}
             readOnly={!isImport}
             spellCheck={false}
-            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-background/48 px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active/40"
+            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-surface px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active"
             placeholder={t('data.workflow.dslPlaceholder')}
           />
           {error && (
@@ -100,7 +100,7 @@ export function WorkflowDslDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           >
             {isImport ? t('common.cancel') : t('common.close')}
           </button>
@@ -108,7 +108,7 @@ export function WorkflowDslDialog({
             <button
               type="button"
               onClick={onApply}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
             >
               <Workflow className="h-3.5 w-3.5" />
               {t('data.workflow.applyDsl')}
@@ -118,7 +118,7 @@ export function WorkflowDslDialog({
               type="button"
               onClick={onCopy}
               disabled={!value}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('data.workflow.copyDsl')}
@@ -149,7 +149,7 @@ export function WorkflowOperatorPalette({ operators }: WorkflowOperatorPalettePr
             type="button"
             draggable
             onDragStart={(event) => handleDragStart(event, type)}
-            className="flex h-9 w-full cursor-grab items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent active:cursor-grabbing"
+            className="flex h-9 w-full cursor-grab items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent active:cursor-grabbing"
           >
             <span
               className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${colorClassName}`}
@@ -180,7 +180,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
     <div
       data-node-id={node.id}
       style={{ width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT }}
-      className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-[var(--glass-card-strong)] px-2.5 text-left shadow-soft backdrop-blur-xl transition-colors ${
+      className={`workflow-node-drag-handle relative flex items-center gap-2 rounded-lg border bg-surface px-2.5 text-left shadow-soft transition-colors ${
         invalid
           ? 'border-error/60 text-error ring-2 ring-error/15'
           : selected
@@ -399,7 +399,7 @@ export function WorkflowSummaryPanel({
               key={`${row.label}-${row.value}`}
               className="grid grid-cols-[5.5rem_minmax(0,1fr)] border-b border-border-muted last:border-b-0"
             >
-              <div className="bg-background/72 px-2 py-1.5 text-text-muted">{row.label}</div>
+              <div className="bg-background px-2 py-1.5 text-text-muted">{row.label}</div>
               <div
                 className={`min-w-0 break-words px-2 py-1.5 text-text-secondary ${
                   row.mono ? 'font-mono text-[10.5px]' : ''

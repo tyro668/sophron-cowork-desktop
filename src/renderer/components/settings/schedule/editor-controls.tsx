@@ -33,7 +33,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
             className={`h-8 whitespace-nowrap rounded-md px-3 text-[12px] font-medium transition-colors ${
               fill ? 'min-w-max flex-1' : 'shrink-0'
-            } ${active ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-text-secondary'}`}
+            } ${active ? 'bg-accent-muted text-accent' : 'text-text-muted hover:text-text-secondary'}`}
           >
             {option.label}
           </button>

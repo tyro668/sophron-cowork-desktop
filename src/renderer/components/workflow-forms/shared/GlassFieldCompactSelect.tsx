@@ -121,7 +121,7 @@ export const GlassFieldCompactSelect = memo(function GlassFieldCompactSelect({
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
-      <div className="mb-2 flex min-h-8 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+      <div className="mb-2 flex min-h-8 min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-md border border-border-muted bg-surface px-2.5 py-1">
         <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
         <input
           type="text"

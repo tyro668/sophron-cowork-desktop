@@ -225,7 +225,7 @@ export default function FormJoin({
 
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3">
           <span className="truncate text-[13px] text-text-secondary">
             {leftSourceLabel || tr('sources.noLeftSource')}
           </span>
@@ -234,7 +234,7 @@ export default function FormJoin({
 
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3">
+        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3">
           <span className="truncate text-[13px] text-text-secondary">
             {rightSourceLabel || tr('sources.noRightSource')}
           </span>

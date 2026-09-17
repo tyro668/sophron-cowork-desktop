@@ -77,8 +77,8 @@ export function GlassTimePickerColumns({
   const cellClass = (active: boolean) =>
     `flex h-7 w-10 shrink-0 items-center justify-center rounded-lg text-[12px] font-medium transition-colors ${
       active
-        ? 'bg-success text-white shadow-soft'
-        : 'text-text-secondary hover:bg-accent/10 hover:text-accent'
+        ? 'bg-success text-success-foreground shadow-soft'
+        : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
     }`;
 
   return (

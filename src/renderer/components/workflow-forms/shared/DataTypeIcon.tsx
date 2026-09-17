@@ -53,7 +53,7 @@ export const DataTypeIcon = memo(function DataTypeIcon({ type, className }: Data
 
   return (
     <span
-      className={`inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] bg-accent/12 font-semibold leading-none text-accent ${className ?? ''}`}
+      className={`inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] bg-accent-muted font-semibold leading-none text-accent ${className ?? ''}`}
       title={label}
       aria-label={label}
     >

@@ -282,7 +282,7 @@ export function ContextPanel() {
 
   if (contextPanelCollapsed) {
     return (
-      <div className="ml-3 w-10 rounded-2xl border border-border-subtle bg-background/48 flex items-start justify-center pt-3 backdrop-blur-xl">
+      <div className="ml-3 w-10 rounded-2xl border border-border-subtle bg-surface flex items-start justify-center pt-3">
         <button
           onClick={toggleContextPanel}
           className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
@@ -297,7 +297,7 @@ export function ContextPanel() {
   return (
     <div className="glass-surface ml-3 w-80 rounded-2xl flex flex-col overflow-hidden text-sm">
       {/* Header */}
-      <div className="px-3 h-10 flex items-center gap-2 border-b border-border-subtle shrink-0 bg-background/24">
+      <div className="px-3 h-10 flex items-center gap-2 border-b border-border-subtle shrink-0 bg-surface">
         <button
           onClick={toggleContextPanel}
           className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
@@ -310,7 +310,7 @@ export function ContextPanel() {
 
       {/* Session Stats */}
       {activeSession && (
-        <div className="m-2 rounded-xl border border-border-subtle bg-background/46 px-3 py-3 shadow-soft space-y-1.5">
+        <div className="m-2 rounded-xl border border-border-subtle bg-surface px-3 py-3 shadow-soft space-y-1.5">
           <div className="flex items-center gap-1.5 text-text-primary font-medium">
             <Cpu className="w-3.5 h-3.5 text-text-muted shrink-0" />
             <span className="truncate">{modelName}</span>
@@ -336,7 +336,7 @@ export function ContextPanel() {
 
       {/* Context Usage */}
       {activeSession && contextUsage && (
-        <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-background/46 px-3 py-2.5 shadow-soft space-y-1.5">
+        <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-surface px-3 py-2.5 shadow-soft space-y-1.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
               {t('context.contextUsage')}
@@ -375,7 +375,7 @@ export function ContextPanel() {
       )}
 
       {/* Artifacts Section */}
-      <div className="mx-2 mb-2 overflow-hidden rounded-xl border border-border-subtle bg-background/46 shadow-soft">
+      <div className="mx-2 mb-2 overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-soft">
         <button
           onClick={() => setArtifactsOpen(!artifactsOpen)}
           className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-surface-hover transition-colors"
@@ -469,7 +469,7 @@ export function ContextPanel() {
       </div>
 
       {/* Working Directory */}
-      <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-background/46 shadow-soft">
+      <div className="mx-2 mb-2 rounded-xl border border-border-subtle bg-surface shadow-soft">
         <div className="px-3 py-2.5">
           <p className="text-xs font-medium text-text-muted mb-2">
             {t('context.workingDirectory')}
@@ -610,7 +610,7 @@ function ConnectorItem({
   ).length;
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-background/42 overflow-hidden shadow-soft">
+    <div className="rounded-lg border border-border-subtle bg-surface overflow-hidden shadow-soft">
       <button
         onClick={onToggle}
         className={`w-full px-3 py-2 flex items-center gap-2 transition-colors ${

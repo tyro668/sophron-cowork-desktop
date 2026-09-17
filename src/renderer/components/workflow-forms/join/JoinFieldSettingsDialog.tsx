@@ -92,7 +92,7 @@ function JoinKeepFieldColumn({
                 onChange={(event) => onAliasChange(qualifiedField, event.target.value)}
                 placeholder={field}
                 tabIndex={isChecked ? undefined : -1}
-                className={`h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-background/30 px-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/50 focus:border-accent ${
+                className={`h-5 w-28 shrink-0 rounded border border-border-muted/50 bg-surface px-1.5 text-[11px] text-text-primary outline-none placeholder:text-text-muted/50 focus:border-accent ${
                   isChecked ? '' : 'invisible'
                 }`}
               />
@@ -242,7 +242,7 @@ export function JoinFieldSettingsDialog({
       <div
         autoFocus
         tabIndex={-1}
-        className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl outline-none"
+        className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-surface shadow-card outline-none"
       >
         <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
           <h3 className="text-[13px] font-semibold text-text-primary">{tr('joinFieldSettings')}</h3>
@@ -320,14 +320,14 @@ export function JoinFieldSettingsDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-border-muted bg-background/42 px-3 py-1 text-[12px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
+            className="rounded-md border border-border-muted bg-surface px-3 py-1 text-[12px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
           >
             {tr('cancel')}
           </button>
           <button
             type="button"
             onClick={confirm}
-            className="rounded-md bg-accent px-3 py-1 text-[12px] text-white hover:bg-accent/90 transition-colors"
+            className="rounded-md bg-accent px-3 py-1 text-[12px] text-accent-foreground hover:bg-accent-hover transition-colors"
           >
             {tr('confirm')}
           </button>

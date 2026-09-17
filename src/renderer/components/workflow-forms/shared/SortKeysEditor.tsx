@@ -163,7 +163,7 @@ export function SortKeysEditor({
               onChange={(v) =>
                 updateKey(i, { nulls: (v || undefined) as 'first' | 'last' | undefined })
               }
-              className="h-8 w-full text-center rounded border border-border-muted bg-background/42 px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
+              className="h-8 w-full text-center rounded border border-border-muted bg-surface px-1.5 text-[12px] text-text-secondary outline-none focus:border-accent"
             />
           ),
         },

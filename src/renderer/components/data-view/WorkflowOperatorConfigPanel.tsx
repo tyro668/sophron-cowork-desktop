@@ -133,7 +133,7 @@ export function WorkflowOperatorConfigPanel({
             <button
               type="button"
               onClick={copyDsl}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('data.workflow.copyDsl', 'Copy DSL')}
@@ -141,7 +141,7 @@ export function WorkflowOperatorConfigPanel({
             <button
               type="button"
               onClick={onFormatDsl}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <Code2 className="h-3.5 w-3.5" />
               {t('data.workflow.formatDsl', 'Format')}
@@ -149,7 +149,7 @@ export function WorkflowOperatorConfigPanel({
             <button
               type="button"
               onClick={onStartDslEdit}
-              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <Maximize2 className="h-3.5 w-3.5" />
               {t('common.expand', 'Expand')}
@@ -160,7 +160,7 @@ export function WorkflowOperatorConfigPanel({
                   type="button"
                   onClick={onCancelDslEdit}
                   disabled={isRunningOperatorDsl}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   {t('common.cancel', 'Cancel')}
                 </button>
@@ -168,7 +168,7 @@ export function WorkflowOperatorConfigPanel({
                   type="button"
                   onClick={onApplyDsl}
                   disabled={isRunningOperatorDsl}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   {t('data.workflow.applyOperatorDsl', 'Apply')}
@@ -177,7 +177,7 @@ export function WorkflowOperatorConfigPanel({
             )}
           </div>
         </div>
-        <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md border border-border-subtle bg-background/34">
+        <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md border border-border-subtle bg-surface">
           <PrepDslEditor
             value={operatorDsl}
             operatorType={node.type}
@@ -271,7 +271,7 @@ function WorkflowOperatorDslDialog({
 
   return (
     <div className="operator-ui fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-[var(--glass-card-strong)] shadow-card backdrop-blur-xl">
+      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-card">
         <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
@@ -289,7 +289,7 @@ function WorkflowOperatorDslDialog({
             <button
               type="button"
               onClick={onCopy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <Copy className="h-3.5 w-3.5" />
               {t('data.workflow.copyDsl', 'Copy DSL')}
@@ -297,7 +297,7 @@ function WorkflowOperatorDslDialog({
             <button
               type="button"
               onClick={onFormat}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
             >
               <Code2 className="h-3.5 w-3.5" />
               {t('data.workflow.formatDsl', 'Format')}
@@ -306,7 +306,7 @@ function WorkflowOperatorDslDialog({
               type="button"
               onClick={onClose}
               disabled={isRunningOperatorDsl}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-background/50 px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
             >
               <X className="h-3.5 w-3.5" />
               {t('common.cancel', 'Cancel')}
@@ -315,7 +315,7 @@ function WorkflowOperatorDslDialog({
               type="button"
               onClick={onApply}
               disabled={isRunningOperatorDsl}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               {t('data.workflow.applyOperatorDsl', 'Apply')}
@@ -324,7 +324,7 @@ function WorkflowOperatorDslDialog({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-background/34">
+          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-surface">
             <PrepDslEditor
               value={operatorDsl}
               operatorType={operatorType}

@@ -145,16 +145,14 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
         borderless
           ? ''
           : `rounded-lg border ${
-              isGlass
-                ? 'border-border-subtle bg-background/48'
-                : 'border-border-muted bg-background/60'
+              isGlass ? 'border-border-subtle bg-surface' : 'border-border-muted bg-surface'
             }`
       } ${className}`}
     >
       <div
         className={`flex min-h-8 items-center px-2.5 py-1 ${
           searchBordered
-            ? 'mb-2 rounded-md border border-border-muted bg-background/60'
+            ? 'mb-2 rounded-md border border-border-muted bg-surface'
             : 'border-b border-border-subtle'
         } ${isGlass ? 'gap-1.5' : 'gap-2'}`}
       >

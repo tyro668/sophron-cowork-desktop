@@ -31,10 +31,10 @@ export function PairingGuideCard() {
   }
 
   return (
-    <div className="p-4 rounded-lg border border-accent/30 bg-accent/5 relative">
+    <div className="p-4 rounded-lg border border-accent/30 bg-accent-muted relative">
       <button
         onClick={handleDismiss}
-        className="absolute top-3 right-3 p-1 rounded-lg hover:bg-accent/10 text-text-secondary transition-colors"
+        className="absolute top-3 right-3 p-1 rounded-lg hover:bg-accent-muted text-text-secondary transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
@@ -45,7 +45,7 @@ export function PairingGuideCard() {
       <ol className="space-y-2 text-sm text-text-secondary">
         {steps.map((step, i) => (
           <li key={i} className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent/10 text-accent text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="w-5 h-5 rounded-full bg-accent-muted text-accent text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
               {i + 1}
             </span>
             <span>{step}</span>

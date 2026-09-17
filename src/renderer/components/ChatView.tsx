@@ -1002,7 +1002,7 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-error-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1171,7 +1171,7 @@ export function ChatView() {
                       !hasSelectedModel ||
                       isSubmitting
                     }
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted"
                     title={t('chat.sendMessage')}
                   >
                     <ArrowUp className="h-4 w-4" strokeWidth={2.25} />

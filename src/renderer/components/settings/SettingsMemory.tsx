@@ -246,7 +246,7 @@ export function SettingsMemory() {
         <div className="flex min-w-0 items-center gap-3">
           <div
             className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-              enabled ? 'bg-accent/10 text-accent' : 'bg-surface-muted text-text-muted'
+              enabled ? 'bg-accent-muted text-accent' : 'bg-surface-muted text-text-muted'
             }`}
           >
             <ShieldCheck className="h-5 w-5" />
@@ -258,7 +258,7 @@ export function SettingsMemory() {
               </h3>
               <span
                 className={`inline-flex h-5 items-center rounded-full px-2 text-[11px] font-semibold ${
-                  enabled ? 'bg-accent/10 text-accent' : 'bg-surface-muted text-text-secondary'
+                  enabled ? 'bg-accent-muted text-accent' : 'bg-surface-muted text-text-secondary'
                 }`}
               >
                 {enabled ? t('memory.enabled', '已启用') : t('memory.disabled', '已停用')}
@@ -301,7 +301,9 @@ export function SettingsMemory() {
             <MemoryMetricCard
               icon={ShieldCheck}
               label={t('memory.health')}
-              value={overview?.failedSessionCount ? t('memory.risky', '异常') : t('memory.good', '良好')}
+              value={
+                overview?.failedSessionCount ? t('memory.risky', '异常') : t('memory.good', '良好')
+              }
               description={
                 overview?.failedSessionCount
                   ? t('memory.failedSessions', { count: overview.failedSessionCount })
@@ -313,11 +315,14 @@ export function SettingsMemory() {
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
             <div className="glass-card flex h-full min-h-0 min-w-0 flex-col rounded-xl p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-full bg-background/62 p-1 shadow-soft ring-1 ring-border-subtle">
+                <div className="inline-flex rounded-full bg-surface p-1 shadow-soft ring-1 ring-border-subtle">
                   <MemoryTabButton active={activeTab === 'all'} onClick={() => setActiveTab('all')}>
                     {t('memory.allTab', '全部')}
                   </MemoryTabButton>
-                  <MemoryTabButton active={activeTab === 'core'} onClick={() => setActiveTab('core')}>
+                  <MemoryTabButton
+                    active={activeTab === 'core'}
+                    onClick={() => setActiveTab('core')}
+                  >
                     {t('memory.coreCapabilityTab', '核心能力')}
                   </MemoryTabButton>
                   <MemoryTabButton
@@ -332,7 +337,7 @@ export function SettingsMemory() {
                     type="button"
                     onClick={handleRebuildWorkspace}
                     disabled={!hasWorkspace || isBusy}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     {t('memory.organizeAction', '整理')}
@@ -346,7 +351,7 @@ export function SettingsMemory() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={t('memory.searchListPlaceholder', '搜索记忆标题或标签')}
-                  className="h-8 w-full rounded-lg border border-border-muted bg-background/56 pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
+                  className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
                 />
               </label>
 
@@ -363,24 +368,28 @@ export function SettingsMemory() {
                     />
                   ))
                 ) : (
-                  <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border-muted bg-background/42 text-sm text-text-muted">
+                  <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface text-sm text-text-muted">
                     {t('memory.noResults')}
                   </div>
                 )}
               </div>
 
               <div className="mt-2 flex min-h-7 items-center justify-between gap-2 text-xs font-medium text-text-secondary">
-                <span>{t('memory.totalMemories', '共 {{count}} 条记忆', { count: filteredRecords.length })}</span>
+                <span>
+                  {t('memory.totalMemories', '共 {{count}} 条记忆', {
+                    count: filteredRecords.length,
+                  })}
+                </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                     disabled={safeCurrentPage <= 1}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-background/48 transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent px-2 text-white shadow-soft">
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent px-2 text-accent-foreground shadow-soft">
                     {safeCurrentPage}
                   </span>
                   <span>/ {pageCount}</span>
@@ -388,7 +397,7 @@ export function SettingsMemory() {
                     type="button"
                     onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
                     disabled={safeCurrentPage >= pageCount}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-background/48 transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
@@ -466,7 +475,7 @@ function MemoryMetricCard({
 }) {
   return (
     <article className="glass-card flex h-[4.75rem] items-center gap-2.5 rounded-xl px-3">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
@@ -475,7 +484,9 @@ function MemoryMetricCard({
           <span className="truncate text-[19px] font-semibold leading-none text-text-primary">
             {value}
           </span>
-          {unit ? <span className="pb-0.5 text-[12px] font-medium text-text-secondary">{unit}</span> : null}
+          {unit ? (
+            <span className="pb-0.5 text-[12px] font-medium text-text-secondary">{unit}</span>
+          ) : null}
         </div>
         <p className="mt-0.5 truncate text-[11px] text-text-muted">{description}</p>
       </div>
@@ -498,7 +509,7 @@ function MemoryTabButton({
       onClick={onClick}
       className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
         active
-          ? 'bg-accent text-white shadow-soft'
+          ? 'bg-accent text-accent-foreground shadow-soft'
           : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
       }`}
     >
@@ -524,7 +535,7 @@ function MemoryListItem({
   const confidenceLevel = getConfidenceLevel(record.confidence);
   const confidenceTone =
     confidenceLevel === 'high'
-      ? 'bg-accent/10 text-accent'
+      ? 'bg-accent-muted text-accent'
       : confidenceLevel === 'medium'
         ? 'bg-warning/10 text-warning'
         : 'bg-error/10 text-error';
@@ -535,8 +546,8 @@ function MemoryListItem({
       onClick={onSelect}
       className={`group rounded-lg border px-3 py-2 text-left transition-colors ${
         selected
-          ? 'border-accent/55 bg-accent/5 ring-1 ring-inset ring-accent/20'
-          : 'border-border-muted bg-background/46 hover:border-accent/25 hover:bg-surface-hover/50'
+          ? 'border-accent/55 bg-accent-muted ring-1 ring-inset ring-accent/20'
+          : 'border-border-muted bg-surface hover:border-accent/25 hover:bg-surface-hover/50'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -547,7 +558,9 @@ function MemoryListItem({
           </p>
         </div>
         <div className="flex flex-shrink-0 flex-col items-end">
-          <span className={`inline-flex h-6 items-center rounded-full px-2 text-[11px] font-semibold ${confidenceTone}`}>
+          <span
+            className={`inline-flex h-6 items-center rounded-full px-2 text-[11px] font-semibold ${confidenceTone}`}
+          >
             {getConfidenceLevelLabel(confidenceLevel, t)}
           </span>
         </div>
@@ -591,7 +604,7 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
   return (
     <aside className="glass-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
-        <span className="inline-flex h-6 items-center rounded-lg bg-accent/10 px-2.5 text-xs font-medium text-accent">
+        <span className="inline-flex h-6 items-center rounded-lg bg-accent-muted px-2.5 text-xs font-medium text-accent">
           {record.kind === 'core'
             ? t('memory.coreCapabilityTab', '核心能力')
             : t('memory.projectContextTab', '项目上下文')}
@@ -611,23 +624,27 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
       <div className="mt-4">
         <div className="flex items-center justify-between text-[12px] font-semibold text-text-primary">
           <span>{t('memory.confidenceLabel', '可信等级')}</span>
-          <span className="text-accent">
-            {getConfidenceLevelLabel(confidenceLevel, t)}
-          </span>
+          <span className="text-accent">{getConfidenceLevelLabel(confidenceLevel, t)}</span>
         </div>
-        <div className="mt-2 rounded-lg border border-border-subtle bg-background/42 px-3 py-2 text-[12px] leading-5 text-text-secondary">
+        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
           <p>{confidenceReason}</p>
           <p className="mt-1 text-text-muted">
-            {t('memory.confidenceEvidenceMeta', '证据 {{evidence}} 条 · 复验 {{corroboration}} 次', {
-              evidence: record.confidenceSignals.evidenceCount,
-              corroboration: record.confidenceSignals.corroborationCount,
-            })}
+            {t(
+              'memory.confidenceEvidenceMeta',
+              '证据 {{evidence}} 条 · 复验 {{corroboration}} 次',
+              {
+                evidence: record.confidenceSignals.evidenceCount,
+                corroboration: record.confidenceSignals.corroborationCount,
+              }
+            )}
           </p>
         </div>
       </div>
 
       <div className="mt-4 border-b border-border-muted pb-3">
-        <h4 className="text-[12px] font-semibold text-text-primary">{t('memory.source', '来源')}</h4>
+        <h4 className="text-[12px] font-semibold text-text-primary">
+          {t('memory.source', '来源')}
+        </h4>
         <div className="mt-2 flex items-center gap-2 text-[12px] font-medium text-text-secondary">
           <FileText className="h-4 w-4 text-text-muted" />
           <span className="truncate">
@@ -649,17 +666,20 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
               >
                 <span className="flex min-w-0 items-center gap-2 text-text-secondary">
                   <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
-                  <span className="truncate">{evidence.sourceSessionTitle || evidence.excerpt || '-'}</span>
+                  <span className="truncate">
+                    {evidence.sourceSessionTitle || evidence.excerpt || '-'}
+                  </span>
                 </span>
                 <span className="text-right text-text-muted">{formatDate(evidence.createdAt)}</span>
               </div>
             ))
           ) : (
-            <div className="text-[12px] text-text-muted">{t('memory.noEvidence', '暂无来源记录')}</div>
+            <div className="text-[12px] text-text-muted">
+              {t('memory.noEvidence', '暂无来源记录')}
+            </div>
           )}
         </div>
       </div>
-
     </aside>
   );
 }
@@ -681,7 +701,7 @@ function MemorySuggestionCard({
 }) {
   return (
     <div className="glass-card flex min-h-[3.75rem] items-center gap-2.5 rounded-xl px-3 py-2">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -692,7 +712,7 @@ function MemorySuggestionCard({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className="inline-flex h-7 items-center rounded-lg border border-border-muted bg-background/60 px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex h-7 items-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
       >
         {actionLabel}
       </button>
@@ -750,7 +770,10 @@ function formatCoreTitle(entry: CoreMemoryEntry): string {
   return entry.combinedKey || entry.key;
 }
 
-function formatProjectTitle(entry: ProjectMemoryEntry, t: ReturnType<typeof useTranslation>['t']): string {
+function formatProjectTitle(
+  entry: ProjectMemoryEntry,
+  t: ReturnType<typeof useTranslation>['t']
+): string {
   return `${t('memory.projectPrefix', '项目')}: ${entry.key}`;
 }
 
@@ -760,17 +783,27 @@ function buildMemoryTags(
   t: ReturnType<typeof useTranslation>['t']
 ): string[] {
   const tags = new Set<string>();
-  tags.add(kind === 'core' ? t('memory.coreCapabilityTab', '核心能力') : t('memory.projectContextTab', '项目上下文'));
+  tags.add(
+    kind === 'core'
+      ? t('memory.coreCapabilityTab', '核心能力')
+      : t('memory.projectContextTab', '项目上下文')
+  );
   if ('category' in entry && entry.category) {
     tags.add(categoryLabel(entry.category, t));
   }
-  for (const token of entry.key.split(/[._:\s/,-]+/).filter(Boolean).slice(0, 2)) {
+  for (const token of entry.key
+    .split(/[._:\s/,-]+/)
+    .filter(Boolean)
+    .slice(0, 2)) {
     tags.add(token);
   }
   return [...tags].slice(0, 3);
 }
 
-function categoryLabel(category: CoreMemoryEntry['category'], t: ReturnType<typeof useTranslation>['t']): string {
+function categoryLabel(
+  category: CoreMemoryEntry['category'],
+  t: ReturnType<typeof useTranslation>['t']
+): string {
   if (category === 'skills') return t('memory.categorySkills', '技能');
   if (category === 'preferences') return t('memory.categoryPreferences', '偏好');
   if (category === 'interests') return t('memory.categoryInterests', '兴趣');
@@ -815,7 +848,10 @@ function getConfidenceReason(
     return t('memory.confidenceReasonExplicit', '来自用户明确表达，并保存了对应对话证据。');
   }
   if (signals.sourceType === 'conversation_summary') {
-    return t('memory.confidenceReasonSummary', '来自会话总结，可信度取决于证据轮次和重复支持次数。');
+    return t(
+      'memory.confidenceReasonSummary',
+      '来自会话总结，可信度取决于证据轮次和重复支持次数。'
+    );
   }
   if (signals.sourceType === 'llm_inference') {
     return t('memory.confidenceReasonInference', '来自模型推断，建议在后续使用中继续验证。');

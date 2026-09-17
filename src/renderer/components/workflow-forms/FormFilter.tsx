@@ -356,7 +356,7 @@ function BranchGroupRenderer({
           type="button"
           onClick={() => ctx.toggleBranchConnective(branch.id)}
           style={{ top: branchLayout.anchor }}
-          className="absolute left-0 flex h-6 w-8 -translate-y-1/2 items-center justify-center rounded border border-accent/70 bg-accent/10 text-center text-[12px] font-medium text-accent-text transition-colors hover:border-accent hover:bg-accent/15"
+          className="absolute left-0 flex h-6 w-8 -translate-y-1/2 items-center justify-center rounded border border-accent/70 bg-accent-muted text-center text-[12px] font-medium text-accent-text transition-colors hover:border-accent hover:bg-accent-muted"
           title={ctx.tr('filterToggleAndOr')}
         >
           {ctx.tr(branch.connective === 'and' ? 'filterConnectiveAnd' : 'filterConnectiveOr')}

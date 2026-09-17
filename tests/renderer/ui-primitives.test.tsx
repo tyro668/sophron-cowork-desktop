@@ -10,9 +10,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   Badge,
   Button,
+  cn,
   Dialog,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Switch,
   Tabs,
   TabsContent,
@@ -153,6 +163,71 @@ describe('Dialog', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('traps Tab focus inside the panel', () => {
+    function Fixture() {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <>
+          <button data-testid="outside" onClick={() => setOpen(true)}>
+            outside
+          </button>
+          <Dialog open={open} onOpenChange={setOpen} ariaLabel="d">
+            <button data-testid="first">first</button>
+            <button data-testid="last">last</button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Fixture />);
+    fireEvent.click(screen.getByTestId('outside'));
+    const first = screen.getByTestId('first');
+    const last = screen.getByTestId('last');
+    const panel = screen.getByRole('dialog');
+
+    // autofocus lands on the panel itself (no data-autofocus here)
+    expect(document.activeElement).toBe(panel);
+    const pressTab = (shiftKey = false) =>
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Tab', shiftKey });
+    // Tab on panel (focus outside items) → wraps to first
+    pressTab();
+    expect(document.activeElement).toBe(first);
+    // Tab on last → wraps to first
+    last.focus();
+    pressTab();
+    expect(document.activeElement).toBe(first);
+    // Shift+Tab on first → wraps to last
+    first.focus();
+    pressTab(true);
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('does not re-run initial focus when onOpenChange identity changes', () => {
+    function Fixture() {
+      const [open, setOpen] = React.useState(true);
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button data-testid="tick" onClick={() => setTick((n) => n + 1)}>
+            {tick}
+          </button>
+          <Dialog open={open} onOpenChange={() => setOpen(false)} ariaLabel="d">
+            <button data-autofocus data-testid="inside">
+              inside
+            </button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Fixture />);
+    const inside = screen.getByTestId('inside');
+    expect(document.activeElement).toBe(inside);
+    // Move focus away from the autofocus target inside the dialog
+    inside.blur();
+    // Re-render with a new inline onOpenChange identity — focus must not jump back
+    fireEvent.click(screen.getByTestId('tick'));
+    expect(document.activeElement).not.toBe(inside);
+  });
+
   it('overlay click only closes when closeOnOverlayClick', () => {
     const onOpenChange = vi.fn();
     render(
@@ -163,6 +238,57 @@ describe('Dialog', () => {
     const overlay = document.body.querySelector('.fixed.inset-0') as HTMLElement;
     fireEvent.mouseDown(overlay);
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('cn', () => {
+  it('lets caller classes win on tailwind conflicts', () => {
+    expect(cn('w-full', 'w-32')).toBe('w-32');
+    expect(cn('max-w-md', 'max-w-[24rem]')).toBe('max-w-[24rem]');
+    expect(cn('h-8 px-3', undefined, 'px-4')).toBe('h-8 px-4');
+  });
+});
+
+describe('Select', () => {
+  it('opens on Enter, selects an item by click, reports value', async () => {
+    const onValueChange = vi.fn();
+    render(
+      <Select onValueChange={onValueChange}>
+        <SelectTrigger aria-label="pick">
+          <SelectValue placeholder="choose" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="a">Alpha</SelectItem>
+          <SelectItem value="b">Beta</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+    const trigger = screen.getByRole('combobox');
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    const option = await screen.findByRole('option', { name: 'Beta' });
+    fireEvent.click(option);
+    expect(onValueChange).toHaveBeenCalledWith('b');
+  });
+});
+
+describe('DropdownMenu', () => {
+  it('opens via keyboard and fires item onSelect', async () => {
+    const onSelect = vi.fn();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button>menu</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={onSelect}>item</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+    const trigger = screen.getByRole('button', { name: 'menu' });
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    const item = await screen.findByRole('menuitem', { name: 'item' });
+    fireEvent.click(item);
+    expect(onSelect).toHaveBeenCalled();
   });
 });
 

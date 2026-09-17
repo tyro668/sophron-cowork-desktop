@@ -139,14 +139,14 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
           href={platformUrl[channelType]}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border-subtle bg-background/34 px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/10"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border-subtle bg-surface px-3 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent-muted"
         >
           <ExternalLink className="h-3.5 w-3.5" />
           {t(`remote.openPlatform.${channelType}`)}
         </a>
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl border border-accent/20 bg-accent/5 p-3">
+      <div className="flex items-start gap-2 rounded-xl border border-accent/20 bg-accent-muted p-3">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
         <div>
           <div className="text-xs font-semibold text-text-primary">
@@ -168,11 +168,11 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
               {index < steps.length - 1 && (
                 <span className="absolute bottom-[-14px] left-[14px] top-7 w-px bg-border" />
               )}
-              <span className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-xs font-semibold text-accent">
+              <span className="relative z-10 flex h-7 w-7 items-center justify-center rounded-full border border-accent/30 bg-accent-muted text-xs font-semibold text-accent">
                 {index + 1}
               </span>
 
-              <div className="rounded-xl border border-border-subtle bg-background/28 p-3.5">
+              <div className="rounded-xl border border-border-subtle bg-surface p-3.5">
                 <h5 className="text-xs font-semibold text-text-primary">{t(`${keyBase}.title`)}</h5>
                 <p className="mt-1.5 text-[11px] leading-5 text-text-secondary">
                   {t(`${keyBase}.description`)}
@@ -191,7 +191,7 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
                 </div>
 
                 {step.copyValue && (
-                  <div className="mt-2 overflow-hidden rounded-lg border border-border-subtle bg-surface-muted/55">
+                  <div className="mt-2 overflow-hidden rounded-lg border border-border-subtle bg-surface-muted">
                     <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2.5 py-1.5">
                       <span className="text-[10px] font-medium text-text-muted">
                         {step.copyLabelKey ? t(step.copyLabelKey) : t('remote.setupGuide.copy')}
@@ -199,7 +199,7 @@ export function ChannelSetupGuide({ channelType, useLongConnection, webhookUrl, 
                       <button
                         type="button"
                         onClick={() => copyStepValue(step)}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-accent transition-colors hover:bg-accent/10"
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-accent transition-colors hover:bg-accent-muted"
                       >
                         {isCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         {isCopied ? t('remote.setupGuide.copied') : t('remote.setupGuide.copy')}

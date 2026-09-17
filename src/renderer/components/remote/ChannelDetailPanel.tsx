@@ -257,7 +257,7 @@ export function ChannelDetailPanel({
             onClick={() => setActiveTab(id)}
             className={`flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${
               activeTab === id
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
             }`}
           >
@@ -421,7 +421,7 @@ export function ChannelDetailPanel({
             </div>
 
             {channelUsesWebhook && (
-              <div className="space-y-3 rounded-xl border border-border-subtle bg-background/30 p-3">
+              <div className="space-y-3 rounded-xl border border-border-subtle bg-surface p-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
                     {t('remote.localWebhookUrl')}
@@ -500,7 +500,7 @@ export function ChannelDetailPanel({
                   onClick={() => setDmPolicy(value)}
                   className={`rounded-xl border p-3 text-left transition-all ${
                     dmPolicy === value
-                      ? 'border-accent/60 bg-accent/10'
+                      ? 'border-accent/60 bg-accent-muted'
                       : 'border-border-subtle hover:border-accent/30 hover:bg-surface-hover/50'
                   }`}
                 >
@@ -516,7 +516,7 @@ export function ChannelDetailPanel({
               ))}
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-background/34 p-3">
+            <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-surface p-3">
               <div>
                 <div className="text-sm font-medium text-text-primary">
                   {t('remote.requireMention')}
@@ -594,7 +594,7 @@ export function ChannelDetailPanel({
               : undefined
           }
           disabled={!channel.backendAvailable || isSaving}
-          className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
+          className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-45"
         >
           {isSaving ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -670,7 +670,7 @@ function ConnectionOption({
       onClick={onClick}
       className={`rounded-xl border p-3 text-left transition-all ${
         selected
-          ? 'border-accent/60 bg-accent/10'
+          ? 'border-accent/60 bg-accent-muted'
           : 'border-border-subtle hover:border-accent/30 hover:bg-surface-hover/50'
       } disabled:cursor-not-allowed disabled:opacity-50`}
     >

@@ -467,7 +467,7 @@ function WorkflowCanvasContent({
         <button
           type="button"
           onClick={() => setToolbarCollapsed((current) => !current)}
-          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           title={
             toolbarCollapsed
               ? t('data.workflow.expandCanvasToolbar')

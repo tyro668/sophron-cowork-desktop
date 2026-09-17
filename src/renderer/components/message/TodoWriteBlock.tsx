@@ -91,7 +91,7 @@ export const TodoWriteBlock = memo(function TodoWriteBlock({ block }: TodoWriteB
               <div
                 key={todo.id || index}
                 className={`flex items-start gap-2 rounded-md px-1.5 py-1 transition-colors ${
-                  todo.status === 'in_progress' ? 'bg-accent/5' : ''
+                  todo.status === 'in_progress' ? 'bg-accent-muted' : ''
                 }`}
               >
                 <div className="mt-0.5 flex-shrink-0">{getStatusIcon(todo.status)}</div>

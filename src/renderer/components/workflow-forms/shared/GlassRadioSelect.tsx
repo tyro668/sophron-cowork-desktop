@@ -41,7 +41,7 @@ export function GlassRadioSelect({
             isHorizontal
               ? 'cursor-pointer text-text-secondary hover:bg-surface-hover hover:text-text-primary'
               : 'w-full text-left hover:bg-surface-hover'
-          } ${value === opt.value ? (isHorizontal ? 'text-text-primary font-medium' : 'bg-accent/10 font-medium text-accent') : ''}`}
+          } ${value === opt.value ? (isHorizontal ? 'text-text-primary font-medium' : 'bg-accent-muted font-medium text-accent') : ''}`}
         >
           <span
             className={`h-3.5 w-3.5 shrink-0 rounded-full ${value === opt.value ? 'bg-accent' : 'bg-border-muted'}`}

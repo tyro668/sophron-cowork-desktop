@@ -260,8 +260,9 @@ export function GlassDateTimePicker({
             week: 'h-9',
             day: 'h-8 w-8 p-0 text-center align-middle',
             day_button:
-              'mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent/10 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
-            selected: '[&>button]:bg-success [&>button]:text-white [&>button]:shadow-soft',
+              'mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
+            selected:
+              '[&>button]:bg-success [&>button]:text-success-foreground [&>button]:shadow-soft',
             today: '[&>button]:ring-1 [&>button]:ring-success/45',
             outside: 'opacity-35',
             disabled: 'opacity-30',

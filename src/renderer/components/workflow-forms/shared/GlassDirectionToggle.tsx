@@ -25,8 +25,8 @@ export function GlassDirectionToggle({
         variant === 'highlight'
           ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
           : value === 'asc'
-            ? 'border-accent/30 bg-accent/10 text-accent'
-            : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/30'
+            ? 'border-accent/30 bg-accent-muted text-accent'
+            : 'border-border-muted bg-surface text-text-secondary hover:border-accent/30'
       } ${className ?? ''}`}
       title={value === 'asc' ? tr('asc') : tr('desc')}
       aria-label={value === 'asc' ? tr('asc') : tr('desc')}

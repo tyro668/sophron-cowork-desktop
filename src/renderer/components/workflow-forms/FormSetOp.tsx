@@ -65,7 +65,7 @@ export default function FormSetOp({
   );
 
   function opBoxClass() {
-    return 'flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-background/28 px-3';
+    return 'flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3';
   }
 
   return (

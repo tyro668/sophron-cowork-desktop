@@ -49,8 +49,8 @@ export function WeekdayPicker({
             onClick={() => toggle(day)}
             className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-[12px] font-medium transition-colors ${
               active
-                ? 'border-success bg-success text-white shadow-soft'
-                : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+                ? 'border-success bg-success text-success-foreground shadow-soft'
+                : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >
             {tr(`schedule.weekdayShort${day}`, WEEKDAY_SHORT_FALLBACK[day])}
@@ -121,7 +121,7 @@ export function MonthlyDayPicker({
         trigger={
           <button
             type="button"
-            className="inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-background/42 px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="inline-flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors hover:border-accent/25 hover:bg-surface-hover focus:border-accent focus:ring-2 focus:ring-accent/20"
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5">
               {selectedTags.length > 0 ? (
@@ -162,7 +162,7 @@ export function MonthlyDayPicker({
                 </span>
               )}
               {selectedTags.length > 4 && (
-                <span className="inline-flex h-5 items-center rounded-md bg-background/62 px-1.5 text-[11px] text-text-muted">
+                <span className="inline-flex h-5 items-center rounded-md bg-surface px-1.5 text-[11px] text-text-muted">
                   +{selectedTags.length - 4}
                 </span>
               )}
@@ -183,7 +183,7 @@ export function MonthlyDayPicker({
                 className={`inline-flex h-8 min-w-0 items-center justify-center rounded-md border text-[12px] font-semibold transition-colors ${
                   active
                     ? 'border-success bg-success/12 text-success shadow-soft'
-                    : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+                    : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
                 }`}
               >
                 {tr('schedule.monthDayNumber', '{{day}}').replace('{{day}}', String(day))}
@@ -197,7 +197,7 @@ export function MonthlyDayPicker({
             className={`col-span-7 mt-1 inline-flex h-8 items-center justify-center rounded-md border px-2 text-[12px] font-semibold transition-colors ${
               includeLastDay
                 ? 'border-success bg-success/12 text-success shadow-soft'
-                : 'border-border-muted bg-background/42 text-text-secondary hover:border-accent/25 hover:bg-accent/10 hover:text-accent'
+                : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >
             {tr('schedule.monthLastDay', '每月最后一天')}
@@ -245,7 +245,7 @@ export function TimesEditor({
       <button
         type="button"
         onClick={() => onChange([...safeTimes, DEFAULT_TIME])}
-        className="inline-flex h-8 items-center gap-1 rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        className="inline-flex h-8 items-center gap-1 rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
       >
         <Plus className="h-3.5 w-3.5" />
         {tr('schedule.addTime', '添加时间')}

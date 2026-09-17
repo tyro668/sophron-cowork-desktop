@@ -102,7 +102,7 @@ export function SlackConfigStep({
                 onClick={() => onDmPolicyChange(option.value)}
                 className={`p-3 rounded-xl border-2 text-left transition-all ${
                   dmPolicy === option.value
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-accent bg-accent-muted'
                     : 'border-border hover:border-accent/50'
                 }`}
               >

@@ -67,14 +67,14 @@ export function EditorHeader({
       <div className="flex min-w-0 items-center gap-4">
         <button
           onClick={onBack}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           {tr('schedule.backToList', '返回列表')}
         </button>
         <div className="flex min-w-0 items-center gap-2">
           {isEditingTitle ? (
-            <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
+            <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-surface px-2.5 shadow-soft ring-2 ring-accent/15">
               <input
                 ref={titleInputRef}
                 value={localTitle}
@@ -100,7 +100,7 @@ export function EditorHeader({
             <button
               onClick={() => setIsEditingTitle(true)}
               disabled={isSaving}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
               title={tr('common.edit', '编辑')}
             >
               <PencilLine className="h-3.5 w-3.5" />
@@ -113,7 +113,7 @@ export function EditorHeader({
         <button
           onClick={onSave}
           disabled={isSaving}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
         >
           <Save className="h-3.5 w-3.5" />
           {tr('schedule.save', '保存')}
@@ -121,7 +121,7 @@ export function EditorHeader({
         {selectedAutomation && (
           <button
             onClick={onRun}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
           >
             <Play className="h-3.5 w-3.5" />
             {tr('schedule.runNowDetail', '立即运行')}
@@ -156,7 +156,7 @@ export function TaskStatusSection({
   );
 
   return (
-    <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface/70 p-4 lg:grid-cols-[360px] lg:items-center">
+    <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface p-4 lg:grid-cols-[360px] lg:items-center">
       <div className="flex min-h-10 items-center gap-4">
         <span className="text-[13px] font-medium text-text-secondary">
           {tr('schedule.taskStatus', '任务状态')}
@@ -197,7 +197,7 @@ export function ExecutionProjectPanel({
   };
 
   return (
-    <section className="glass-card flex flex-shrink-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+    <section className="glass-card flex flex-shrink-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
       <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
         <h2 className="text-[16px] font-semibold text-text-secondary">
           {tr('schedule.projectPanelTitle', '执行项目')}
@@ -245,7 +245,7 @@ export function TriggerConditionPanel({
   };
 
   return (
-    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface/70 p-4">
+    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
       <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
         <h2 className="text-[16px] font-semibold text-text-secondary">
           {tr('schedule.triggerTitle', '触发条件')}
@@ -464,7 +464,7 @@ function ScheduledConfigCard({
                       endAt: trigger.startAt + DEFAULT_INTERVAL_END_OFFSET_MS,
                     })
                   }
-                  className="inline-flex h-9 items-center gap-1 self-start rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+                  className="inline-flex h-9 items-center gap-1 self-start rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {tr('schedule.setEndAt', '设置结束时间')}

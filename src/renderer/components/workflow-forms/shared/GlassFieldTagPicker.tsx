@@ -47,7 +47,7 @@ export function GlassFieldTagPicker({
   return (
     <div className={`grid min-w-0 gap-0 ${className}`}>
       <div
-        className={`flex h-8 min-h-8 w-full min-w-0 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-background/42 ${
+        className={`flex h-8 min-h-8 w-full min-w-0 max-w-full items-center overflow-hidden rounded-md border border-border-muted bg-surface ${
           open ? 'rounded-b-none' : ''
         } ${tagClassName}`}
       >
@@ -72,13 +72,13 @@ export function GlassFieldTagPicker({
             {selected.map((item, index) => (
               <span
                 key={`${item}-${index}`}
-                className="inline-flex min-h-6 max-w-[180px] shrink-0 items-center gap-0.5 rounded bg-accent/10 px-1 py-0.5 text-[12px] font-medium text-accent"
+                className="inline-flex min-h-6 max-w-[180px] shrink-0 items-center gap-0.5 rounded bg-accent-muted px-1 py-0.5 text-[12px] font-medium text-accent"
               >
                 <span className="truncate">{item}</span>
                 <button
                   type="button"
                   onClick={() => onRemove(item)}
-                  className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full outline-none hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-accent/30"
+                  className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full outline-none hover:bg-accent-muted focus-visible:ring-2 focus-visible:ring-accent/30"
                   aria-label={tr('removeField')}
                 >
                   <X className="h-2.5 w-2.5" />

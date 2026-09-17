@@ -164,7 +164,7 @@ export function GlassValueInput({
         className={`relative min-w-0 ${multi ? 'w-[280px] max-w-full flex-shrink' : 'flex-1'} ${className ?? ''}`}
       >
         <div
-          className={`flex h-8 w-full items-center gap-1 rounded-md border bg-background/42 transition-colors ${
+          className={`flex h-8 w-full items-center gap-1 rounded-md border bg-surface transition-colors ${
             multi ? 'pl-1 pr-0' : 'focus-within:border-accent'
           } ${open ? 'border-accent' : 'border-border-muted'} ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
         >
@@ -237,13 +237,13 @@ export function GlassValueInput({
               width: position.width,
               maxHeight,
             }}
-            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto overflow-x-hidden rounded-lg border border-border-muted bg-[var(--glass-card-strong)] py-1 shadow-elevated backdrop-blur-xl"
+            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto overflow-x-hidden rounded-lg border border-border-muted bg-surface py-1 shadow-elevated"
           >
             {filtered.map((s) => (
               <button
                 key={s}
                 type="button"
-                className={`flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'bg-accent/10 font-medium text-accent ring-1 ring-inset ring-accent/20' : 'text-text-secondary'}`}
+                className={`flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'bg-accent-muted font-medium text-accent ring-1 ring-inset ring-accent/20' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();

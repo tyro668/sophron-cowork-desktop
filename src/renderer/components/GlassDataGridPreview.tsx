@@ -148,7 +148,7 @@ export function GlassDataGridPreview({
             type="button"
             onClick={() => onPageChange?.(safeCurrentPage - 1)}
             disabled={isLoading || !onPageChange || safeCurrentPage <= 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -160,8 +160,8 @@ export function GlassDataGridPreview({
               disabled={isLoading || !onPageChange}
               className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 pageNumber === safeCurrentPage
-                  ? 'bg-accent text-white shadow-soft'
-                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent/10 hover:text-text-primary'
+                  ? 'bg-accent text-accent-foreground shadow-soft'
+                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary'
               }`}
             >
               {pageNumber}
@@ -171,7 +171,7 @@ export function GlassDataGridPreview({
             type="button"
             onClick={() => onPageChange?.(safeCurrentPage + 1)}
             disabled={isLoading || !onPageChange || safeCurrentPage >= pageCount}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -191,7 +191,7 @@ function PreviewState({ label, kind }: { label: string; kind: 'loading' | 'empty
     >
       <div
         className={`inline-flex max-w-[30rem] items-center gap-2 rounded-lg border px-3 py-2 ${
-          isError ? 'border-error/15 bg-error/5' : 'border-border-muted bg-background/34'
+          isError ? 'border-error/15 bg-error/5' : 'border-border-muted bg-surface'
         }`}
       >
         {kind === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}

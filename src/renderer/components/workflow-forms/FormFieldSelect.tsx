@@ -131,7 +131,7 @@ export default function FormFieldSelect({
           ariaLabel={tr('fieldSelectMode')}
         />
 
-        <div className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-background/60 px-2.5 py-1">
+        <div className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-surface px-2.5 py-1">
           <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           <input
             type="text"

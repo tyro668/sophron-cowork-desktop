@@ -37,7 +37,7 @@ function Tag({
 }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent/10 font-medium text-accent ${
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent-muted font-medium text-accent ${
         variant === 'compact'
           ? 'h-5 max-w-[132px] px-1.5 text-[11px] leading-none'
           : 'min-h-6 max-w-[180px] px-1 py-0.5 text-[12px]'
@@ -57,7 +57,7 @@ function Tag({
             onRemove();
           }}
           aria-label={label}
-          className={`ml-0.5 inline-flex items-center justify-center rounded-full outline-none hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-accent/30 ${
+          className={`ml-0.5 inline-flex items-center justify-center rounded-full outline-none hover:bg-accent-muted focus-visible:ring-2 focus-visible:ring-accent/30 ${
             variant === 'compact' ? 'h-4 w-4' : 'h-5 w-5'
           }`}
         >
@@ -133,7 +133,7 @@ export function GlassOverflowTagList({
         {hidden.length > 0 && (
           <span
             title={hidden.join(', ')}
-            className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 px-1 font-medium leading-none text-accent ${
+            className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent-muted px-1 font-medium leading-none text-accent ${
               variant === 'compact' ? 'text-[10px]' : 'text-[11px]'
             }`}
           >
@@ -157,7 +157,7 @@ export function GlassOverflowTagList({
               onRemove={onRemove ? () => undefined : undefined}
             />
           ))}
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent/10 px-1 text-[11px] font-medium leading-none text-accent">
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-muted px-1 text-[11px] font-medium leading-none text-accent">
             +{values.length}
           </span>
         </div>

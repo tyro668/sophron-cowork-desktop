@@ -251,7 +251,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
       {/* Preset Environment Configuration Modal */}
       {configuringPreset && (
-        <div className="p-4 rounded-lg border border-accent/30 bg-accent/5 space-y-4">
+        <div className="p-4 rounded-lg border border-accent/30 bg-accent-muted space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-text-primary">
               {t('mcp.configure')} {configuringPreset.preset.name}
@@ -311,7 +311,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                   (key: string) => !presetEnvValues[key]?.trim()
                 )
               }
-              className="px-4 py-1.5 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+              className="px-4 py-1.5 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
             >
               {t('common.add')}
             </button>
@@ -374,7 +374,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                       <button
                         onClick={() => handleAddPreset(key)}
                         disabled={isLoading}
-                        className="px-3 py-1.5 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         {requiresConfig ? t('mcp.configure') : t('common.add')}
@@ -392,7 +392,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       {!showAddForm && !editingServer && (
         <button
           onClick={() => setShowAddForm(true)}
-          className="w-full py-3 px-4 rounded-lg border-2 border-dashed border-border hover:border-accent hover:bg-accent/5 transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent"
+          className="w-full py-3 px-4 rounded-lg border-2 border-dashed border-border hover:border-accent hover:bg-accent-muted transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent"
         >
           <Plus className="w-5 h-5" />
           {t('mcp.addCustomConnector')}
@@ -432,7 +432,7 @@ function ServerCard({
   const [showTools, setShowTools] = useState(false);
 
   return (
-    <div className="rounded-lg border border-border bg-[var(--glass-card)] overflow-hidden backdrop-blur-xl">
+    <div className="rounded-lg border border-border bg-surface overflow-hidden">
       <div className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -481,7 +481,7 @@ function ServerCard({
                       ? 'bg-error/10 text-error'
                       : serverStatus === 'connecting'
                         ? 'bg-warning/10 text-warning'
-                        : 'bg-accent/10 text-accent'
+                        : 'bg-accent-muted text-accent'
                 }`}
               >
                 {serverStatus === 'connected'
@@ -522,7 +522,7 @@ function ServerCard({
                       return (
                         <div
                           key={idx}
-                          className="px-2 py-1.5 rounded bg-background/42 border border-border-muted text-xs text-text-secondary"
+                          className="px-2 py-1.5 rounded bg-surface border border-border-muted text-xs text-text-secondary"
                           title={tool.description || tool.name}
                         >
                           <div className="font-mono text-accent break-words whitespace-normal">
@@ -690,7 +690,7 @@ function ServerForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('mcp.namePlaceholder')}
-          className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30"
+          className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30"
           required
         />
       </div>
@@ -703,7 +703,7 @@ function ServerForm({
             onClick={() => setType('stdio')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               type === 'stdio'
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
             }`}
           >
@@ -714,7 +714,7 @@ function ServerForm({
             onClick={() => setType('sse')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               type === 'sse'
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
             }`}
           >
@@ -725,7 +725,7 @@ function ServerForm({
             onClick={() => setType('streamable-http')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               type === 'streamable-http'
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
             }`}
           >
@@ -745,7 +745,7 @@ function ServerForm({
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               placeholder={t('mcp.commandPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
               required
             />
           </div>
@@ -758,7 +758,7 @@ function ServerForm({
               value={args}
               onChange={(e) => setArgs(e.target.value)}
               placeholder={t('mcp.argumentsPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
             />
             <p className="text-xs text-text-muted mt-1">{t('mcp.spaceSeparated')}</p>
           </div>
@@ -792,7 +792,7 @@ function ServerForm({
                       value={value}
                       onChange={(e) => handleEnvChange(key, e.target.value)}
                       placeholder={`${t('mcp.envValuePlaceholder')}: ${key}`}
-                      className="flex-1 px-3 py-1.5 rounded bg-background/42 border border-border-muted text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      className="flex-1 px-3 py-1.5 rounded bg-surface border border-border-muted text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
                     />
                     <button
                       type="button"
@@ -831,7 +831,7 @@ function ServerForm({
                         type="button"
                         onClick={handleSaveNewEnvVar}
                         disabled={!newEnvKey.trim()}
-                        className="flex-1 py-1 px-3 rounded bg-accent text-white text-xs hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="flex-1 py-1 px-3 rounded bg-accent text-accent-foreground text-xs hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {t('common.save')}
                       </button>
@@ -849,7 +849,7 @@ function ServerForm({
                   <button
                     type="button"
                     onClick={handleAddEnvVar}
-                    className="w-full mt-2 py-1.5 px-3 rounded border border-dashed border-border hover:border-accent hover:bg-accent/5 text-xs text-text-secondary hover:text-accent transition-colors flex items-center justify-center gap-1"
+                    className="w-full mt-2 py-1.5 px-3 rounded border border-dashed border-border hover:border-accent hover:bg-accent-muted text-xs text-text-secondary hover:text-accent transition-colors flex items-center justify-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {t('credentials.envVars')}
@@ -868,7 +868,7 @@ function ServerForm({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/mcp"
-            className="w-full px-4 py-2 rounded-lg bg-background/42 border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+            className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
             required
           />
         </div>
@@ -891,7 +891,7 @@ function ServerForm({
         <button
           type="submit"
           disabled={isLoading}
-          className="flex-1 py-2 px-4 rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          className="flex-1 py-2 px-4 rounded-lg bg-accent text-accent-foreground hover:bg-accent-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
           {isLoading ? (
             <>

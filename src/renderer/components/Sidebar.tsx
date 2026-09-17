@@ -612,8 +612,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       <span
         className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${
           showAnalyticsAvatar
-            ? 'border-accent/25 bg-accent/10 text-accent shadow-soft'
-            : 'border-border-subtle bg-background/70 text-text-secondary'
+            ? 'border-accent/25 bg-accent-muted text-accent shadow-soft'
+            : 'border-border-subtle bg-background text-text-secondary'
         } ${containerClassName}`}
       >
         {isAuthBusy ? (
@@ -627,9 +627,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           />
         ) : desktopAuthStatus.authenticated ? (
           <span className="relative flex h-full w-full items-center justify-center">
-            <span className="absolute inset-0 bg-accent/10" />
+            <span className="absolute inset-0 bg-accent-muted" />
             <span className="absolute left-[18%] top-[22%] h-1.5 w-1.5 rounded-full bg-accent/35" />
-            <span className="absolute bottom-[20%] right-[18%] h-2 w-2 rounded-full bg-accent/20" />
+            <span className="absolute bottom-[20%] right-[18%] h-2 w-2 rounded-full bg-accent-muted" />
             <ChartNoAxesCombined className={`relative z-10 ${iconClassName}`} />
           </span>
         ) : (
@@ -649,7 +649,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       </div>
       <div className="mx-1 my-1 h-px bg-border-subtle" />
-      <div className="mx-1 mb-1 flex items-center justify-between gap-3 rounded-lg bg-background/54 px-2.5 py-2 text-[12px]">
+      <div className="mx-1 mb-1 flex items-center justify-between gap-3 rounded-lg bg-surface px-2.5 py-2 text-[12px]">
         <span className="flex min-w-0 items-center gap-2 font-medium text-text-secondary">
           <CircleDollarSign className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
           <span className="truncate">{authCreditsLabel}</span>
@@ -682,7 +682,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           )}
           <button
             onClick={handleNewSession}
-            className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors text-white shadow-soft"
+            className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors shadow-soft"
             title={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
@@ -691,7 +691,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleDataPage}
             className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
               isDataPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover'
             }`}
             title={t('mainNav.data')}
@@ -702,7 +702,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleSkillsPage}
             className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
               isSkillsPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover'
             }`}
             title={t('mainNav.skills')}
@@ -713,7 +713,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleAutomationPage}
             className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
               isAutomationPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover'
             }`}
             title={t('mainNav.automation')}
@@ -796,7 +796,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             <img
               src={sidebarLogoSrc}
               alt={t('common.appLogoAlt')}
-              className="w-10 h-10 rounded-xl object-contain p-1.5 border border-border-subtle bg-background/60 flex-shrink-0 shadow-soft"
+              className="w-10 h-10 rounded-xl object-contain p-1.5 border border-border-subtle bg-surface flex-shrink-0 shadow-soft"
             />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
@@ -807,7 +807,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   <button
                     type="button"
                     onClick={() => void handleUpdateBadgeClick()}
-                    className="h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent/10 px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-white"
+                    className="h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent-muted px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
                     title={updateBadgeTitle}
                   >
                     {t('general.updateAvailableBadge')}
@@ -827,9 +827,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
         <button
           onClick={handleNewSession}
-          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl jade-primary-button px-3 text-left text-white transition-colors shadow-soft"
+          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl jade-primary-button px-3 text-left transition-colors shadow-soft"
         >
-          <Plus className="w-4 h-4 text-white flex-shrink-0" />
+          <Plus className="w-4 h-4 text-accent-foreground flex-shrink-0" />
           <span className="text-[13px] font-medium">{t('sidebar.newTask')}</span>
         </button>
 
@@ -842,7 +842,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className="w-full h-9 rounded-xl border border-border-muted bg-background/72 pl-9 pr-3 text-[13px] text-text-primary shadow-soft placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-background/92 focus:ring-2 focus:ring-accent/20 transition-colors"
+                className="w-full h-9 rounded-xl border border-border-muted bg-background pl-9 pr-3 text-[13px] text-text-primary shadow-soft placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors"
               />
             </div>
             <button
@@ -855,7 +855,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               }}
               className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
                 isSelectMode
-                  ? 'bg-accent text-white'
+                  ? 'bg-accent text-accent-foreground'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
               }`}
               title={t('sidebar.manage')}
@@ -870,7 +870,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleDataPage}
             className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
               isDataPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -881,7 +881,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleSkillsPage}
             className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
               isSkillsPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -892,7 +892,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleAutomationPage}
             className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
               isAutomationPageActive
-                ? 'bg-accent/10 text-accent'
+                ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -921,7 +921,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   <div className="px-1.5">
                     {renamingProjectKey === group.key ? (
                       <form
-                        className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background/78 p-1 shadow-soft"
+                        className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background p-1 shadow-soft"
                         onSubmit={(event) => {
                           event.preventDefault();
                           void handleSaveProjectName(group);
@@ -939,12 +939,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                             }
                           }}
                           placeholder={t('sidebar.projectNamePlaceholder')}
-                          className="min-w-0 flex-1 rounded-md border border-border-muted bg-background/86 px-2 py-1 text-[12px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+                          className="min-w-0 flex-1 rounded-md border border-border-muted bg-background px-2 py-1 text-[12px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
                         />
                         <button
                           type="submit"
                           disabled={isSavingProjectName}
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-60"
                           title={t('sidebar.saveProjectName')}
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -1058,9 +1058,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                             onMouseLeave={() => setHoveredSession(null)}
                             className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
                               isSelectMode && isSelected
-                                ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                                ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
                                 : isActive && !isSelectMode
-                                  ? 'bg-accent/10'
+                                  ? 'bg-accent-muted'
                                   : 'hover:bg-surface-hover/60'
                             }`}
                           >
@@ -1074,7 +1074,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                                 <div
                                   className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
                                     isSelected
-                                      ? 'bg-accent text-white'
+                                      ? 'bg-accent text-accent-foreground'
                                       : 'border border-border-muted bg-background'
                                   }`}
                                 >
@@ -1153,7 +1153,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={selectedIds.size === 0}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium bg-error text-white hover:bg-error/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium bg-error text-error-foreground hover:bg-error/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   {t('common.delete')}
@@ -1164,7 +1164,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       ) : (
         <div className="border-t border-border-subtle">
-          <div className="flex h-14 w-full items-center gap-2 bg-background/42 px-4 backdrop-blur-xl">
+          <div className="flex h-14 w-full items-center gap-2 bg-surface px-4">
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}

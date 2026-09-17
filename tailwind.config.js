@@ -42,9 +42,15 @@ module.exports = {
           secondary: colorVar('--color-text-secondary-rgb'),
           muted: colorVar('--color-text-muted-rgb'),
         },
-        success: colorVar('--color-success-rgb'),
+        success: {
+          DEFAULT: colorVar('--color-success-rgb'),
+          foreground: colorVar('--color-success-foreground-rgb'),
+        },
         warning: colorVar('--color-warning-rgb'),
-        error: colorVar('--color-error-rgb'),
+        error: {
+          DEFAULT: colorVar('--color-error-rgb'),
+          foreground: colorVar('--color-error-foreground-rgb'),
+        },
       },
       textColor: {
         accent: {

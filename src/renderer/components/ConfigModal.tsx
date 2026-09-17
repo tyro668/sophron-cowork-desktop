@@ -161,12 +161,12 @@ export function ConfigModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25">
       <div className="glass-surface rounded-2xl w-full max-w-[880px] mx-4 max-h-[88vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-background/30">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle bg-surface">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl border border-border-subtle bg-background/58 flex items-center justify-center text-accent shadow-soft">
+            <div className="w-10 h-10 rounded-xl border border-border-subtle bg-surface flex items-center justify-center text-accent shadow-soft">
               <Key className="w-5 h-5" />
             </div>
             <div>
@@ -190,7 +190,7 @@ export function ConfigModal({
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-background/18">
+        <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-surface">
           {/* Config Set Switcher */}
           <ApiConfigSetManager
             configSets={configSets}
@@ -225,7 +225,7 @@ export function ConfigModal({
                   onClick={() => changeProvider(p)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     provider === p
-                      ? 'bg-accent text-white'
+                      ? 'bg-accent text-accent-foreground'
                       : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
                   }`}
                 >
@@ -246,7 +246,7 @@ export function ConfigModal({
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-surface px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
           )}
@@ -275,7 +275,7 @@ export function ConfigModal({
                     onClick={() => changeProtocol(mode.id)}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                       customProtocol === mode.id
-                        ? 'bg-accent text-white'
+                        ? 'bg-accent text-accent-foreground'
                         : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
                     }`}
                   >
@@ -301,7 +301,7 @@ export function ConfigModal({
                       void discoverLocalOllama();
                     }}
                     disabled={isDiscoveringLocalOllama}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all bg-accent/10 text-text-primary hover:bg-accent/15 disabled:opacity-50"
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all bg-accent-muted text-text-primary hover:bg-accent-muted disabled:opacity-50"
                   >
                     <Plug className="w-3 h-3" />
                     {isDiscoveringLocalOllama
@@ -315,7 +315,7 @@ export function ConfigModal({
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={baseUrlPlaceholder}
-                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-surface px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             </div>
           )}
@@ -347,7 +347,7 @@ export function ConfigModal({
                     onClick={toggleCustomModel}
                     className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all ${
                       useCustomModel
-                        ? 'bg-accent/10 text-text-primary ring-1 ring-inset ring-accent/20'
+                        ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
                         : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
                     }`}
                   >
@@ -369,7 +369,7 @@ export function ConfigModal({
                 value={customModel}
                 onChange={(e) => setCustomModel(e.target.value)}
                 placeholder={modelInputPlaceholder}
-                className="w-full rounded-lg border border-border-muted bg-background/42 px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
+                className="w-full rounded-lg border border-border-muted bg-surface px-3 py-2 text-[13px] text-text-primary shadow-soft placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-all"
               />
             ) : (
               <GlassSelect
@@ -382,7 +382,7 @@ export function ConfigModal({
                 }
                 placeholder={t('api.noModelsAvailable')}
                 disabled={!modelOptions.length}
-                triggerClassName="h-9 w-full justify-between rounded-lg bg-background/42 px-3 text-text-primary"
+                triggerClassName="h-9 w-full justify-between rounded-lg bg-surface px-3 text-text-primary"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             )}
@@ -445,7 +445,7 @@ export function ConfigModal({
             <button
               onClick={handleTest}
               disabled={isTesting || (requiresApiKey && !apiKey.trim())}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-muted bg-background/42 px-4 py-3 font-medium text-text-primary shadow-soft transition-all hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-muted bg-surface px-4 py-3 font-medium text-text-primary shadow-soft transition-all hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isTesting ? (
                 <>
@@ -464,7 +464,7 @@ export function ConfigModal({
                 void handleSave();
               }}
               disabled={isSaving || (requiresApiKey && !apiKey.trim())}
-              className="w-full py-3 px-4 rounded-xl bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 rounded-xl bg-accent text-accent-foreground font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
             >
               {isSaving ? (
                 <>

@@ -593,7 +593,7 @@ function PivotValueList({
             type="button"
             disabled={!customValue.trim()}
             onClick={submitCustomValue}
-            className="h-8 flex-none rounded-md bg-accent px-2.5 text-[12px] font-medium text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-8 flex-none rounded-md bg-accent px-2.5 text-[12px] font-medium text-accent-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           >
             {tr('confirm')}
           </button>

@@ -17,6 +17,7 @@ import type { DataOutputTable, DataTaskStatus } from '../../types';
 import type { InputTableSourceKind } from '../../features/data/model/types';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
+import { Button, Input } from '../ui';
 
 export type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
@@ -68,19 +69,21 @@ export function DataToolbarButton({
   onClick?: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="secondary"
+      size="md"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+      className={`px-2.5 text-xs text-text-secondary shadow-soft disabled:opacity-45 ${
         danger
           ? 'hover:border-error/30 hover:bg-error/10 hover:text-error'
-          : 'hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+          : 'hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
       }`}
       title={label}
     >
       {icon}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -96,11 +99,11 @@ export function DataTableSearch({
   return (
     <div className="relative w-full sm:w-[18rem]">
       <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-      <input
+      <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+        className="pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft"
       />
     </div>
   );
@@ -126,14 +129,15 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
       align="end"
       contentClassName="w-40"
       trigger={
-        <button
-          type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+        <Button
+          variant="secondary"
+          size="icon"
+          className="text-text-secondary shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           title={t('data.actions.more')}
           aria-label={t('data.actions.more')}
         >
           <MoreHorizontal className="h-4 w-4" />
-        </button>
+        </Button>
       }
     >
       {items.map((item) => (
@@ -207,7 +211,7 @@ export function EmptyState({
 export function LoadingState({ label }: { label: string }) {
   return (
     <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
-      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-background/42 px-3 py-2 shadow-soft">
+      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2 shadow-soft">
         <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
         {label}
       </div>
@@ -239,42 +243,52 @@ export function PaginationFooter({
     >
       <span>{t('data.totalCount', { count })}</span>
       <div className="flex items-center gap-2">
-        <button className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
+        <Button
+          variant="secondary"
+          size="md"
+          className="min-w-[7rem] text-text-secondary shadow-soft"
+        >
           {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
           <ChevronDown className="h-3.5 w-3.5" />
-        </button>
+        </Button>
         <div className="flex items-center gap-2">
           {pageCount > 1 && (
-            <button
+            <Button
+              variant="secondary"
+              size="icon"
               onClick={() => onPageChange(safeCurrentPage - 1)}
               disabled={safeCurrentPage <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              className="text-text-muted shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:opacity-45"
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
+            </Button>
           )}
           {pageNumbers.map((pageNumber) => (
-            <button
+            <Button
               key={pageNumber}
+              variant="secondary"
+              size="icon"
               onClick={() => onPageChange(pageNumber)}
               aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-medium shadow-soft ${
+              className={`text-sm shadow-soft ${
                 pageNumber === safeCurrentPage
-                  ? 'border-accent bg-accent/10 text-accent'
-                  : 'border-border-muted bg-surface text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent'
+                  ? 'border-accent bg-accent-muted text-accent'
+                  : 'text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
               }`}
             >
               {pageNumber}
-            </button>
+            </Button>
           ))}
           {pageCount > 1 && (
-            <button
+            <Button
+              variant="secondary"
+              size="icon"
               onClick={() => onPageChange(safeCurrentPage + 1)}
               disabled={safeCurrentPage >= pageCount}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              className="text-text-secondary shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:opacity-45"
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -303,7 +317,7 @@ export function InputTableInfo({
 }) {
   return (
     <div
-      className={`flex min-h-11 items-center gap-2 rounded-lg border border-accent/15 bg-accent/5 px-3 text-xs font-medium text-text-muted ${className}`}
+      className={`flex min-h-11 items-center gap-2 rounded-lg border border-accent/15 bg-accent-muted px-3 text-xs font-medium text-text-muted ${className}`}
     >
       <Info className="h-4 w-4 flex-shrink-0 text-accent" />
       <span>{children}</span>
@@ -329,7 +343,7 @@ export function InputTableSelect({
         disabled={disabled}
         onValueChange={onChange}
         options={options}
-        triggerClassName="!h-10 w-full justify-between rounded-lg bg-background/50 px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+        triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />
     </label>
@@ -446,7 +460,7 @@ function statusBadgeClass(status: DataTaskStatus): string {
     case 'running':
       return 'bg-success/10 text-success';
     case 'completed':
-      return 'bg-accent/10 text-accent';
+      return 'bg-accent-muted text-accent';
     case 'stopped':
       return 'bg-text-muted/10 text-text-muted';
     case 'pending':
@@ -484,8 +498,8 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.csv',
-        className: 'bg-accent/10 text-accent',
-        badgeClassName: 'bg-accent/10 text-accent',
+        className: 'bg-accent-muted text-accent',
+        badgeClassName: 'bg-accent-muted text-accent',
       };
     case 'folder':
       return {
@@ -498,8 +512,8 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
       return {
         Icon: FileText,
         labelKey: 'data.inputTables.sources.file',
-        className: 'bg-surface-active/70 text-text-secondary',
-        badgeClassName: 'bg-surface-active/70 text-text-secondary',
+        className: 'bg-surface-active text-text-secondary',
+        badgeClassName: 'bg-surface-active text-text-secondary',
       };
   }
 }

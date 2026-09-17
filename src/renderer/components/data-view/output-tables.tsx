@@ -103,7 +103,7 @@ export function OutputTablesPanel({
           <button
             onClick={onCreate}
             disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('data.outputTables.add')}
@@ -188,7 +188,7 @@ export function OutputTablesPanel({
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
-                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted backdrop-blur-xl">
+                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
                     <th className="w-[4%] px-4">
                       <span className="sr-only">{t('data.outputTables.selection')}</span>
                     </th>
@@ -217,9 +217,9 @@ export function OutputTablesPanel({
                         onDoubleClick={() => onEdit(outputTable)}
                         className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
                           selected
-                            ? 'bg-accent/10 ring-1 ring-inset ring-accent/20'
+                            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
                             : index === 1
-                              ? 'bg-accent/5'
+                              ? 'bg-accent-muted'
                               : 'hover:bg-surface-hover/35'
                         }`}
                       >
@@ -236,7 +236,7 @@ export function OutputTablesPanel({
                         </td>
                         <td className="px-2">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
                               <UploadCloud className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
@@ -542,7 +542,7 @@ export function UploadOutputTableToCloudDialog({
 
   if (!hasCloudConnection) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5">
         <div className="flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
           <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
             <div className="min-w-0">
@@ -567,9 +567,9 @@ export function UploadOutputTableToCloudDialog({
           <div className="space-y-4 px-4 py-4">
             <InputTableInfo>{t('data.outputTables.uploadToCloud.connectInfo')}</InputTableInfo>
 
-            <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-3">
+            <div className="rounded-lg border border-border-subtle bg-surface px-3 py-3">
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
                   <Cloud className="h-[18px] w-[18px]" />
                 </div>
                 <div className="min-w-0">
@@ -595,7 +595,7 @@ export function UploadOutputTableToCloudDialog({
               type="button"
               onClick={openApiKeySettings}
               disabled={loginBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Settings className="h-3.5 w-3.5" />
               {t('data.outputTables.uploadToCloud.connectWithApiKey')}
@@ -604,7 +604,7 @@ export function UploadOutputTableToCloudDialog({
               type="button"
               onClick={() => void handleLoginAndContinue()}
               disabled={loginBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loginBusy ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -622,7 +622,7 @@ export function UploadOutputTableToCloudDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5">
       <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
         <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
           <div className="min-w-0">
@@ -647,7 +647,7 @@ export function UploadOutputTableToCloudDialog({
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
           <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
-          <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-2 text-[12px] leading-5 text-text-secondary">
+          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
             <div className="font-medium text-text-primary">
               {t('data.outputTables.uploadToCloud.accessIdentity')}
             </div>
@@ -700,7 +700,7 @@ export function UploadOutputTableToCloudDialog({
             <InputTableFormLabel>
               {t('data.outputTables.uploadToCloud.writeMode')}
             </InputTableFormLabel>
-            <div className="inline-flex rounded-lg border border-border-muted/55 bg-background/24 p-0.5">
+            <div className="inline-flex rounded-lg border border-border-muted/55 bg-surface p-0.5">
               {(['CREATE', 'REPLACE'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -713,8 +713,8 @@ export function UploadOutputTableToCloudDialog({
                   disabled={uploading}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                     writeMode === mode
-                      ? 'bg-background/80 text-accent shadow-soft'
-                      : 'text-text-muted hover:bg-background/30 hover:text-text-secondary'
+                      ? 'bg-background text-accent shadow-soft'
+                      : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
                   }`}
                 >
                   {mode === 'CREATE' ? (
@@ -767,12 +767,12 @@ export function UploadOutputTableToCloudDialog({
               value={tableName}
               disabled={uploading}
               onChange={(event) => setTableName(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border-muted bg-background/50 px-3 text-[13px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+              className="h-10 w-full rounded-lg border border-border-muted bg-surface px-3 text-[13px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
               placeholder={t('data.outputTables.uploadToCloud.tableNamePlaceholder')}
             />
           </label>
 
-          <div className="rounded-lg border border-border-subtle bg-surface/35 px-3 py-2 text-[12px] text-text-secondary">
+          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] text-text-secondary">
             <div className="font-medium text-text-primary">
               {t(
                 writeMode === 'REPLACE'
@@ -795,7 +795,7 @@ export function UploadOutputTableToCloudDialog({
             </div>
           )}
           {success && (
-            <div className="rounded-lg border border-success/25 bg-accent/10 px-3 py-2 text-[13px] text-success">
+            <div className="rounded-lg border border-success/25 bg-accent-muted px-3 py-2 text-[13px] text-success">
               {success}
             </div>
           )}
@@ -806,7 +806,7 @@ export function UploadOutputTableToCloudDialog({
             type="button"
             onClick={onClose}
             disabled={uploading}
-            className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-background/60 px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {t('common.cancel')}
           </button>
@@ -814,7 +814,7 @@ export function UploadOutputTableToCloudDialog({
             type="button"
             onClick={() => void handleUpload()}
             disabled={!canUpload}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-white shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -893,7 +893,7 @@ export function OutputTableEditor({
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.outputTables.editor.back')}
@@ -933,7 +933,7 @@ export function OutputTableEditor({
               type="button"
               onClick={() => setIsNameEditing(true)}
               disabled={isBusy || isNameEditing}
-              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
               aria-label={t('common.edit')}
               title={t('common.edit')}
             >
@@ -945,7 +945,7 @@ export function OutputTableEditor({
           type="button"
           onClick={() => void onSave(outputTable, localName, sourceDatasetId || null)}
           disabled={!canSave}
-          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
           {isBusy ? t('common.saving') : t('common.save')}
@@ -977,12 +977,12 @@ function InlineInfoTooltip({ label }: { label: string }) {
     <span className="group relative inline-flex">
       <button
         type="button"
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent/10 hover:text-accent focus:bg-accent/10 focus:text-accent focus:outline-none"
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
         aria-label={label}
       >
         <Info className="h-3.5 w-3.5" />
       </button>
-      <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-[var(--glass-card-strong)] px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated backdrop-blur-xl group-hover:block group-focus-within:block">
+      <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
         {label}
       </span>
     </span>

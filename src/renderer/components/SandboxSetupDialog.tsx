@@ -94,7 +94,7 @@ export function SandboxSetupDialog({ progress, onComplete }: Props) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-500 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 transition-opacity duration-500 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}
     >
       <div className="bg-background border border-border-subtle rounded-[2rem] shadow-elevated max-w-md w-full mx-4 overflow-hidden">
         {/* Header */}
@@ -166,7 +166,7 @@ export function SandboxSetupDialog({ progress, onComplete }: Props) {
                 <button
                   onClick={handleRetryLima}
                   disabled={isRetrying}
-                  className="w-full py-2.5 px-4 bg-accent hover:bg-accent/90 text-white rounded-xl font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-2.5 px-4 bg-accent hover:bg-accent-hover text-accent-foreground rounded-xl font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isRetrying ? t('sandbox.retryingLima') : t('sandbox.retryLima')}
                 </button>
@@ -176,7 +176,7 @@ export function SandboxSetupDialog({ progress, onComplete }: Props) {
                 className={`w-full py-2.5 px-4 rounded-xl font-medium transition-colors ${
                   isMac
                     ? 'bg-surface hover:bg-surface-muted text-text-primary border border-border'
-                    : 'bg-accent hover:bg-accent/90 text-white'
+                    : 'bg-accent hover:bg-accent-hover text-accent-foreground'
                 }`}
               >
                 {t('sandbox.continueNative')}

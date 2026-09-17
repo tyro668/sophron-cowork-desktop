@@ -712,14 +712,14 @@ export function TaskEditor({
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={() => void handleBack()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.editor.back')}
           </button>
           <div className="flex min-w-0 items-center gap-2">
             {isEditingTaskTitle ? (
-              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-background/48 px-2.5 shadow-soft ring-2 ring-accent/15">
+              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-surface px-2.5 shadow-soft ring-2 ring-accent/15">
                 <input
                   ref={taskTitleInputRef}
                   value={taskTitle}
@@ -746,7 +746,7 @@ export function TaskEditor({
               <button
                 onClick={() => setIsEditingTaskTitle(true)}
                 disabled={isBusy}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
                 title={t('common.edit')}
               >
                 <PencilLine className="h-3.5 w-3.5" />
@@ -759,7 +759,7 @@ export function TaskEditor({
           <button
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Save className="h-3.5 w-3.5" />
             {saving ? t('common.saving') : t('common.save')}
@@ -767,7 +767,7 @@ export function TaskEditor({
           <button
             onClick={() => void handleTrialRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.trialRun')}
@@ -775,7 +775,7 @@ export function TaskEditor({
           <button
             onClick={() => void handleSaveAndRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium text-white shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.saveAndRun')}
@@ -789,7 +789,7 @@ export function TaskEditor({
               <button
                 type="button"
                 disabled={isBusy || !workflow}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
                 title={t('data.actions.more')}
               >
                 <MoreHorizontal className="h-4 w-4" />
@@ -807,7 +807,7 @@ export function TaskEditor({
       </div>
 
       {!workflow ? (
-        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-background/42 text-xs text-text-muted shadow-card">
+        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-surface text-xs text-text-muted shadow-card">
           {t('common.loading')}
         </div>
       ) : (
@@ -862,7 +862,7 @@ export function TaskEditor({
         <div
           role="alert"
           onClick={() => setLocalError(null)}
-          className="absolute bottom-4 left-1/2 z-40 flex max-w-[min(90%,32rem)] -translate-x-1/2 cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-[var(--glass-card-strong)] px-3.5 py-2.5 text-[13px] text-error shadow-card backdrop-blur-xl"
+          className="absolute bottom-4 left-1/2 z-40 flex max-w-[min(90%,32rem)] -translate-x-1/2 cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-surface px-3.5 py-2.5 text-[13px] text-error shadow-card"
         >
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>{localError}</span>

@@ -148,7 +148,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
-      <div className="flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-background/28 px-3 py-2 backdrop-blur-xl sm:px-4">
+      <div className="flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-surface px-3 py-2 sm:px-4">
         <button
           onClick={onClose}
           aria-label={t('common.close')}
@@ -161,7 +161,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div
-          className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} ml-2 mr-0 mt-3 mb-2 rounded-2xl border border-border-subtle bg-background/46 flex flex-col flex-shrink-0 shadow-card backdrop-blur-xl`}
+          className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} ml-2 mr-0 mt-3 mb-2 rounded-2xl border border-border-subtle bg-surface flex flex-col flex-shrink-0 shadow-card`}
         >
           <div
             className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}
@@ -173,7 +173,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 title={compactSidebar ? tab.label : undefined}
                 className={`w-full flex items-center ${compactSidebar ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-3'} rounded-lg text-left transition-colors active:scale-[0.98] ${
                   activeTab === tab.id
-                    ? 'bg-accent/10 text-text-primary font-medium shadow-soft'
+                    ? 'bg-accent-muted text-text-primary font-medium shadow-soft'
                     : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
                 }`}
               >
@@ -195,7 +195,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
           <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-subtle`}>
             <button
               onClick={onClose}
-              className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-background/68 hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
+              className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-surface hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
               title={compactSidebar ? t('common.close') : undefined}
             >
               {compactSidebar ? <X className="w-4 h-4 mx-auto" /> : t('common.close')}

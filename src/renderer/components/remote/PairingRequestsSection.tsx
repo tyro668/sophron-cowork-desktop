@@ -73,7 +73,7 @@ export function PairingRequestsSection({
                   <span className="font-medium text-text-primary">
                     {request.userName || t('remote.unknownUser')}
                   </span>
-                  <span className="px-1.5 py-0.5 text-xs rounded bg-accent/10 text-accent capitalize">
+                  <span className="px-1.5 py-0.5 text-xs rounded bg-accent-muted text-accent capitalize">
                     {request.channelType}
                   </span>
                 </div>
