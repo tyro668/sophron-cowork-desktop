@@ -47,6 +47,7 @@ export function WelcomeView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { startSession, changeWorkingDir, isElectron } = useIPC();
   const workingDir = useAppStore((state) => state.workingDir);
+  const setWorkingDir = useAppStore((state) => state.setWorkingDir);
   const setGlobalNotice = useAppStore((state) => state.setGlobalNotice);
   const isConfigured = useAppStore((state) => state.isConfigured);
   const appConfig = useAppStore((state) => state.appConfig);
@@ -89,7 +90,9 @@ export function WelcomeView() {
   const handleSelectFolder = async () => {
     try {
       const result = await changeWorkingDir(undefined, workingDir || undefined);
-      if (!result.success && result.error && result.error !== 'User cancelled') {
+      if (result.success && result.path) {
+        setWorkingDir(result.path);
+      } else if (result.error && result.error !== 'User cancelled') {
         setGlobalNotice({
           id: `notice-workdir-select-${Date.now()}`,
           type: 'warning',
@@ -708,7 +711,7 @@ export function WelcomeView() {
 
           {/* Bottom Actions */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <div className="flex min-w-max flex-1 items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleFileSelect}
@@ -740,7 +743,7 @@ export function WelcomeView() {
               </button>
             </div>
 
-            <div className="ml-auto flex min-w-0 items-center gap-2">
+            <div className="ml-auto flex min-w-max items-center gap-2">
               {hasConfiguredModel ? (
                 <AgentModelSelector
                   open={showModelMenu}

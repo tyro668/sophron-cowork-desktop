@@ -7,6 +7,7 @@ import 'highlight.js/styles/github-dark-dimmed.min.css';
 import './styles/globals.css';
 import { useAppStore } from './store';
 import { ChatView } from './components/ChatView';
+import { WelcomeView } from './components/WelcomeView';
 import type { AppConfig, Message, Session } from './types';
 
 const SESSION_ID = 'preview-session';
@@ -189,6 +190,7 @@ document.documentElement.classList.add('light');
 
 function PreviewApp() {
   const [dark, setDark] = useState(false);
+  const showWelcome = new URLSearchParams(window.location.search).has('welcome');
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', !dark);
@@ -197,7 +199,7 @@ function PreviewApp() {
   return (
     <div className="h-screen w-screen p-3" style={{ background: 'var(--app-backdrop)' }}>
       <main className="app-main-panel flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        <ChatView />
+        {showWelcome ? <WelcomeView /> : <ChatView />}
       </main>
       <button
         type="button"

@@ -50,7 +50,7 @@ export function PermissionPolicySelector({
       onValueChange={handleSelect}
       side="top"
       align="start"
-      triggerClassName={`${buttonClassName} !text-accent`}
+      triggerClassName={`${buttonClassName} w-auto !text-accent`}
     />
   );
 }
