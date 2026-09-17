@@ -45,7 +45,7 @@ run(npm, ['run', 'prepare:python:all']);
 run(npm, ['run', 'build:wsl-agent']);
 run(npm, ['run', 'build:lima-agent']);
 run(npm, ['run', 'build:mcp']);
-run(npx, ['tsc']);
+run(npx, ['tsc', '-b']);
 run(npx, ['vite', 'build', '--config', 'vite.config.ts']);
 run('node', ['scripts/pre-build-check.js']);
 

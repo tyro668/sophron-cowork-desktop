@@ -215,6 +215,21 @@ export class DatasetRepository {
     }
     return outputTable;
   }
+  /**
+   * Whether a user-managed (explicit) output-table dataset row claims this
+   * physical table. Such rows mark resources a task may reference but never
+   * owns — task deletion must leave them alone.
+   */
+  async hasExplicitOutputTableForTableName(tableName: string): Promise<boolean> {
+    const rows = await this.ctx.metaQueryRows<{ id: string }>(
+      `SELECT d.id FROM data_datasets d
+       WHERE d.table_name = $tableName
+         AND ${outputTableConfigPredicateSql('d')}
+       LIMIT 1`,
+      { tableName }
+    );
+    return rows.length > 0;
+  }
   async insertDataset(row: {
     id: string;
     name: string;

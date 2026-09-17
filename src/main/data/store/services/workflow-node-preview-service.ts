@@ -32,6 +32,16 @@ export class WorkflowNodePreviewService {
     private readonly compiler: WorkflowCompiler
   ) {}
   async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> {
+    // Node previews may materialize cache/preview tables — physical writes
+    // serialize with commits through the exclusive section.
+    return this.ctx.runExclusive(
+      () => this.previewWorkflowNodeUnsafe(input),
+      `previewWorkflowNode:${input.taskId}:${input.nodeId}`
+    );
+  }
+  private async previewWorkflowNodeUnsafe(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<DataInputTablePreview> {
     await this.ctx.ensureMetadataReady();
     const task = await this.tasks.requireTask(input.taskId);
     await this.ctx.ensureReady();
@@ -81,6 +91,14 @@ export class WorkflowNodePreviewService {
     };
   }
   async getWorkflowNodeColumns(input: DataPreviewWorkflowNodeInput): Promise<string[]> {
+    return this.ctx.runExclusive(
+      () => this.getWorkflowNodeColumnsUnsafe(input),
+      `getWorkflowNodeColumns:${input.taskId}:${input.nodeId}`
+    );
+  }
+  private async getWorkflowNodeColumnsUnsafe(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<string[]> {
     await this.ctx.ensureMetadataReady();
     const task = await this.tasks.requireTask(input.taskId);
     await this.ctx.ensureReady();
@@ -114,6 +132,14 @@ export class WorkflowNodePreviewService {
   async getWorkflowNodeColumnTypes(
     input: DataPreviewWorkflowNodeInput
   ): Promise<DataColumnTypeInfo[]> {
+    return this.ctx.runExclusive(
+      () => this.getWorkflowNodeColumnTypesUnsafe(input),
+      `getWorkflowNodeColumnTypes:${input.taskId}:${input.nodeId}`
+    );
+  }
+  private async getWorkflowNodeColumnTypesUnsafe(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<DataColumnTypeInfo[]> {
     await this.ctx.ensureMetadataReady();
     const task = await this.tasks.requireTask(input.taskId);
     await this.ctx.ensureReady();
@@ -139,6 +165,14 @@ export class WorkflowNodePreviewService {
     return this.ctx.getTableColumnTypes(tableName);
   }
   async getWorkflowNodeColumnValues(
+    input: DataPreviewWorkflowNodeInput & { column: string }
+  ): Promise<string[]> {
+    return this.ctx.runExclusive(
+      () => this.getWorkflowNodeColumnValuesUnsafe(input),
+      `getWorkflowNodeColumnValues:${input.taskId}:${input.nodeId}`
+    );
+  }
+  private async getWorkflowNodeColumnValuesUnsafe(
     input: DataPreviewWorkflowNodeInput & { column: string }
   ): Promise<string[]> {
     await this.ctx.ensureMetadataReady();
@@ -202,6 +236,14 @@ export class WorkflowNodePreviewService {
     return rows.map((row) => (row.val === null ? '' : String(row.val)));
   }
   async getWorkflowNodeRowCount(input: DataPreviewWorkflowNodeInput): Promise<number> {
+    return this.ctx.runExclusive(
+      () => this.getWorkflowNodeRowCountUnsafe(input),
+      `getWorkflowNodeRowCount:${input.taskId}:${input.nodeId}`
+    );
+  }
+  private async getWorkflowNodeRowCountUnsafe(
+    input: DataPreviewWorkflowNodeInput
+  ): Promise<number> {
     await this.ctx.ensureMetadataReady();
     const task = await this.tasks.requireTask(input.taskId);
     await this.ctx.ensureReady();

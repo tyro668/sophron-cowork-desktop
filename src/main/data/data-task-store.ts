@@ -48,6 +48,7 @@ import { CacheRepository } from './store/repositories/cache-repository';
 import { DatasetRepository } from './store/repositories/dataset-repository';
 import { NormalizerRepository } from './store/repositories/normalizer-repository';
 import { OutputCommitJournal } from './store/repositories/output-commit-journal';
+import { TableCommitJournal } from './store/repositories/table-commit-journal';
 import { RunStatsRepository } from './store/repositories/run-stats-repository';
 import { TaskRepository } from './store/repositories/task-repository';
 import { WatermarkRepository } from './store/repositories/watermark-repository';
@@ -91,10 +92,11 @@ export class DataTaskStore {
     const caches = new CacheRepository(this.ctx);
     const watermarks = new WatermarkRepository(this.ctx);
     const journal = new OutputCommitJournal(this.ctx);
+    const tableCommits = new TableCommitJournal(this.ctx);
 
     const summarizer = new InputSourceSummaryService(this.ctx);
     const normalizerService = new NormalizerService(this.ctx, normalizers, summarizer);
-    const inputTables = new InputTableService(this.ctx, datasets, normalizerService);
+    const inputTables = new InputTableService(this.ctx, datasets, normalizerService, tableCommits);
     const binding = new WorkflowBindingResolver(datasets);
     const compiler = new WorkflowCompiler(this.ctx, datasets, caches);
     const validator = new WorkflowValidator(this.ctx, tasks, compiler, binding);
@@ -133,6 +135,7 @@ export class DataTaskStore {
     );
 
     this.ctx.registerPostReadyHook(() => commitCoordinator.recoverPendingOutputCommits());
+    this.ctx.registerPostReadyHook(() => inputTables.recoverPendingTableCommits());
 
     this.tasks = tasks;
     this.datasets = datasets;

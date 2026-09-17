@@ -42,6 +42,7 @@ import {
   readImportRelationForPath,
 } from '../input-source';
 import { DatasetRepository } from '../repositories/dataset-repository';
+import { TableCommitJournal } from '../repositories/table-commit-journal';
 import { NormalizerService } from './normalizer-service';
 import { basename } from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -50,7 +51,8 @@ export class InputTableService {
   constructor(
     private readonly ctx: DataStoreContext,
     private readonly datasets: DatasetRepository,
-    private readonly normalizerService: NormalizerService
+    private readonly normalizerService: NormalizerService,
+    private readonly tableCommits: TableCommitJournal
   ) {}
   async importDataset(input: DataImportDatasetInput): Promise<DataDataset> {
     return this.ctx.runExclusive(() => this.importDatasetUnsafe(input), 'importDataset');
@@ -128,28 +130,24 @@ export class InputTableService {
         input.config ?? dataset.inputConfig
       );
       const now = this.ctx.now();
-      await this.ctx.runSql('BEGIN TRANSACTION');
-      try {
-        await this.ctx.dropTableIfExists(dataset.tableName);
-        await this.ctx.runSql(
-          `ALTER TABLE ${quoteIdentifier(replacementTable)} RENAME TO ${quoteIdentifier(dataset.tableName)}`
-        );
-        await this.ctx.runSql('COMMIT');
-        await this.datasets.updateDatasetAfterReimport({
-          id: dataset.id,
-          name: name || dataset.name,
-          sourcePath,
-          sourceKind,
-          configJson: JSON.stringify(prepared.config),
-          fileCount: prepared.fileCount,
-          rowCount: prepared.rowCount,
-          columnCount: prepared.columnCount,
-          updatedAt: now,
-        });
-      } catch (error) {
-        await this.ctx.runSql('ROLLBACK').catch(() => undefined);
-        throw error;
-      }
+      await this.commitStagedTable({
+        datasetId: dataset.id,
+        operation: 'reimport',
+        stagingTable: replacementTable,
+        targetTable: dataset.tableName,
+        writeMetadata: () =>
+          this.datasets.updateDatasetAfterReimport({
+            id: dataset.id,
+            name: name || dataset.name,
+            sourcePath,
+            sourceKind,
+            configJson: JSON.stringify(prepared.config),
+            fileCount: prepared.fileCount,
+            rowCount: prepared.rowCount,
+            columnCount: prepared.columnCount,
+            updatedAt: now,
+          }),
+      });
       return this.datasets.requireDataset(dataset.id);
     } catch (error) {
       await this.ctx.dropTableIfExists(replacementTable).catch(() => undefined);
@@ -157,6 +155,14 @@ export class InputTableService {
     }
   }
   async updateOutputTable(input: DataUpdateOutputTableInput): Promise<DataOutputTable> {
+    return this.ctx.runExclusive(
+      () => this.updateOutputTableUnsafe(input),
+      `updateOutputTable:${input.id}`
+    );
+  }
+  private async updateOutputTableUnsafe(
+    input: DataUpdateOutputTableInput
+  ): Promise<DataOutputTable> {
     await this.ctx.ensureMetadataReady();
     const outputTable = await this.datasets.requireOutputTable(input.id);
     const name = input.name?.trim();
@@ -175,23 +181,35 @@ export class InputTableService {
       if (!(await this.ctx.physicalTableExists(sourceDataset.tableName))) {
         throw new Error(`Input table is not materialized: ${sourceDataset.id}`);
       }
-      await this.ctx.dropTableIfExists(outputTable.tableName);
-      await this.ctx.runSql(
-        `CREATE TABLE ${quoteIdentifier(outputTable.tableName)} AS SELECT * FROM ${quoteIdentifier(
-          sourceDataset.tableName
-        )}`
-      );
-      const rowCount = await this.ctx.countRows(outputTable.tableName);
-      const columnCount = (await this.ctx.getTableColumns(outputTable.tableName)).length;
-      await this.datasets.updateOutputTableForSource({
-        id: outputTable.id,
-        name: nextName,
-        sourcePath: `input-table://${sourceDataset.id}`,
-        configJson: outputTableConfigJson(sourceDataset.id),
-        rowCount,
-        columnCount,
-        updatedAt: this.ctx.now(),
-      });
+      const stagingTable = tableNameFromId('output_rebind', uuidv4());
+      try {
+        await this.ctx.runSql(
+          `CREATE TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${quoteIdentifier(
+            sourceDataset.tableName
+          )}`
+        );
+        const rowCount = await this.ctx.countRows(stagingTable);
+        const columnCount = (await this.ctx.getTableColumns(stagingTable)).length;
+        await this.commitStagedTable({
+          datasetId: outputTable.id,
+          operation: 'rebind_output',
+          stagingTable,
+          targetTable: outputTable.tableName,
+          writeMetadata: () =>
+            this.datasets.updateOutputTableForSource({
+              id: outputTable.id,
+              name: nextName,
+              sourcePath: `input-table://${sourceDataset.id}`,
+              configJson: outputTableConfigJson(sourceDataset.id),
+              rowCount,
+              columnCount,
+              updatedAt: this.ctx.now(),
+            }),
+        });
+      } catch (error) {
+        await this.ctx.dropTableIfExists(stagingTable).catch(() => undefined);
+        throw error;
+      }
       return this.datasets.requireOutputTable(input.id);
     }
 
@@ -211,7 +229,170 @@ export class InputTableService {
     }
     return this.datasets.requireOutputTable(input.id);
   }
+  /**
+   * Journaled physical+metadata commit for a staged replacement table. The
+   * old target survives under a backup name until metadata commits, so a
+   * mid-commit failure can always restore the pre-commit state. When the
+   * restore itself fails the journal row stays recoverable ('prepared' or
+   * 'data_committed') and startup recovery retries it — mirroring the
+   * data_output_commits contract. Callers must already hold runExclusive.
+   */
+  private async commitStagedTable(input: {
+    datasetId: string;
+    operation: 'reimport' | 'rebind_output';
+    stagingTable: string;
+    targetTable: string;
+    writeMetadata: () => Promise<void>;
+  }): Promise<void> {
+    const journalId = uuidv4();
+    const targetExisted = await this.ctx.physicalTableExists(input.targetTable);
+    const backupTable = targetExisted ? tableNameFromId('table_backup', journalId) : null;
+    await this.tableCommits.insertPreparedCommit({
+      id: journalId,
+      datasetId: input.datasetId,
+      operation: input.operation,
+      stagingTable: input.stagingTable,
+      targetTable: input.targetTable,
+      backupTable,
+      targetExisted,
+      at: this.ctx.now(),
+    });
+
+    let physicalCommitted = false;
+    let metadataTransactionStarted = false;
+    try {
+      await this.ctx.runSql('BEGIN TRANSACTION');
+      if (backupTable) {
+        await this.ctx.dropTableIfExists(backupTable);
+        await this.ctx.runSql(
+          `ALTER TABLE ${quoteIdentifier(input.targetTable)} RENAME TO ${quoteIdentifier(backupTable)}`
+        );
+      }
+      await this.ctx.runSql(
+        `ALTER TABLE ${quoteIdentifier(input.stagingTable)} RENAME TO ${quoteIdentifier(input.targetTable)}`
+      );
+      await this.ctx.runSql('COMMIT');
+      physicalCommitted = true;
+      await this.tableCommits.updateCommitState(journalId, 'data_committed');
+
+      await this.ctx.metaRunSql('BEGIN TRANSACTION');
+      metadataTransactionStarted = true;
+      await input.writeMetadata();
+      // Mark the journal inside the metadata transaction so the state
+      // flips atomically with the dataset row it describes.
+      await this.tableCommits.updateCommitState(journalId, 'metadata_committed');
+      await this.ctx.metaRunSql('COMMIT');
+      metadataTransactionStarted = false;
+    } catch (error) {
+      if (metadataTransactionStarted) {
+        await this.ctx.metaRunSql('ROLLBACK').catch(() => undefined);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      let restored = false;
+      if (physicalCommitted) {
+        try {
+          await this.restoreTableCommit({
+            targetTable: input.targetTable,
+            backupTable,
+            targetExisted,
+          });
+          restored = true;
+        } catch {
+          restored = false;
+        }
+      } else {
+        try {
+          await this.ctx.runSql('ROLLBACK');
+          restored = true;
+        } catch {
+          restored = false;
+        }
+      }
+      if (restored) {
+        await this.tableCommits
+          .updateCommitState(journalId, 'failed', message)
+          .catch(() => undefined);
+      } else {
+        await this.tableCommits
+          .updateCommitState(
+            journalId,
+            physicalCommitted ? 'data_committed' : 'prepared',
+            `commit failed and restore also failed; pending recovery: ${message}`
+          )
+          .catch(() => undefined);
+      }
+      throw error;
+    }
+
+    if (backupTable) {
+      await this.ctx.dropTableIfExists(backupTable).catch(() => undefined);
+    }
+    await this.ctx.dropTableIfExists(input.stagingTable).catch(() => undefined);
+    await this.tableCommits.updateCommitState(journalId, 'completed').catch(() => undefined);
+  }
+  private async restoreTableCommit(input: {
+    targetTable: string;
+    backupTable: string | null;
+    targetExisted: boolean;
+  }): Promise<void> {
+    await this.ctx.runSql('BEGIN TRANSACTION');
+    try {
+      if (input.targetExisted && input.backupTable) {
+        if (await this.ctx.physicalTableExists(input.backupTable)) {
+          await this.ctx.dropTableIfExists(input.targetTable);
+          await this.ctx.runSql(
+            `ALTER TABLE ${quoteIdentifier(input.backupTable)} RENAME TO ${quoteIdentifier(input.targetTable)}`
+          );
+        }
+      } else {
+        await this.ctx.dropTableIfExists(input.targetTable);
+      }
+      await this.ctx.runSql('COMMIT');
+    } catch (error) {
+      await this.ctx.runSql('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  }
+  /**
+   * Startup recovery for interrupted table commits (crash between the
+   * physical swap and the metadata commit). 'metadata_committed' rows only
+   * need leftover tables dropped; 'prepared'/'data_committed' rows get the
+   * pre-commit physical state restored. Registered as a post-ready hook.
+   */
+  async recoverPendingTableCommits(): Promise<void> {
+    const rows = await this.tableCommits.listPendingCommits();
+    for (const row of rows) {
+      const targetTable = String(row.target_table);
+      const backupTable = row.backup_table ? String(row.backup_table) : null;
+      const targetExisted = toNumber(row.target_existed) === 1;
+      if (row.state === 'metadata_committed') {
+        if (backupTable) {
+          await this.ctx.dropTableIfExists(backupTable).catch(() => undefined);
+        }
+        await this.ctx.dropTableIfExists(String(row.staging_table)).catch(() => undefined);
+        await this.tableCommits.updateCommitState(String(row.id), 'completed');
+        continue;
+      }
+      await this.restoreTableCommit({ targetTable, backupTable, targetExisted });
+      await this.ctx.dropTableIfExists(String(row.staging_table)).catch(() => undefined);
+      await this.tableCommits.updateCommitState(
+        String(row.id),
+        'failed',
+        'Recovered an interrupted table commit by restoring the previous table'
+      );
+    }
+  }
   async previewInputTable(input: DataPreviewInputTableInput): Promise<DataInputTablePreview> {
+    // Builds and drops TEMP tables on the shared connection — DDL must
+    // serialize with commits, so previews hold the exclusive section.
+    return this.ctx.runExclusive(
+      () => this.previewInputTableUnsafe(input),
+      `previewInputTable:${input.filePath ?? 'dataset'}`
+    );
+  }
+  private async previewInputTableUnsafe(
+    input: DataPreviewInputTableInput
+  ): Promise<DataInputTablePreview> {
     await this.ctx.ensureReady();
     const sourcePath = normalizeImportSourcePath(input.filePath);
     const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
@@ -357,14 +538,19 @@ export class InputTableService {
     };
   }
   async deleteDataset(id: string): Promise<boolean> {
-    await this.ctx.ensureReady();
-    const dataset = await this.datasets.getDataset(id);
-    if (!dataset) {
-      return false;
-    }
-    await this.ctx.dropTableIfExists(dataset.tableName);
-    await this.datasets.deleteDatasetRow(id);
-    return true;
+    return this.ctx.runExclusive(async () => {
+      await this.ctx.ensureReady();
+      const dataset = await this.datasets.getDataset(id);
+      if (!dataset) {
+        return false;
+      }
+      // Physical drop first: if the process dies before the row delete, the
+      // leftover metadata row is a ghost that deleteDataset can retry. The
+      // reverse order would orphan an invisible physical table.
+      await this.ctx.dropTableIfExists(dataset.tableName);
+      await this.datasets.deleteDatasetRow(id);
+      return true;
+    }, `deleteDataset:${id}`);
   }
   async createDatasetTableFromSource(
     tableName: string,

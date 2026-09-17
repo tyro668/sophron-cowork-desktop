@@ -360,12 +360,13 @@ describe('metadata migrations', () => {
 
     // Ledger records every migration in order.
     const ledger = ledgerRows(raw);
-    expect(ledger.map((row) => row.version)).toEqual([1, 2, 3, 4]);
+    expect(ledger.map((row) => row.version)).toEqual([1, 2, 3, 4, 5]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
       'drop_legacy_demo_rows',
       'drop_legacy_default_workflow_graphs',
       'normalize_output_table_metadata',
+      'table_commit_journal',
     ]);
 
     // Baseline adds the missing column and the newer tables.
@@ -375,6 +376,7 @@ describe('metadata migrations', () => {
       'data_task_node_run_stats',
       'data_workflow_node_caches',
       'data_output_commits',
+      'data_table_commits',
       'data_input_table_normalizer_artifacts',
       'data_input_table_normalizer_artifact_versions',
       METADATA_MIGRATION_LEDGER,

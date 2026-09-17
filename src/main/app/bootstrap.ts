@@ -32,6 +32,7 @@ import { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import { SkillsManager } from '../skills/skills-manager';
 import { UpdateService } from '../update/update-service';
 import { log, logWarn, logError, setDevLogsEnabled } from '../utils/logger';
+import { sanitizeUrlForLog } from '../utils/sanitize-url';
 import { appContext, desktopAuthService } from './context';
 import { sendToRenderer } from './events';
 import { prepareForUpdateInstall } from './lifecycle';
@@ -97,11 +98,17 @@ export async function bootstrap(): Promise<void> {
   log('Developer logs:', enableDevLogs ? 'Enabled' : 'Disabled');
   log('Environment Variables:');
   log('  ANTHROPIC_AUTH_TOKEN:', process.env.ANTHROPIC_AUTH_TOKEN ? '✓ Set' : '✗ Not set');
-  log('  ANTHROPIC_BASE_URL:', process.env.ANTHROPIC_BASE_URL || '(not set)');
+  log(
+    '  ANTHROPIC_BASE_URL:',
+    process.env.ANTHROPIC_BASE_URL ? sanitizeUrlForLog(process.env.ANTHROPIC_BASE_URL) : '(not set)'
+  );
   log('  CLAUDE_MODEL:', process.env.CLAUDE_MODEL || '(not set)');
   log('  CLAUDE_CODE_PATH:', process.env.CLAUDE_CODE_PATH || '(not set)');
   log('  OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '✓ Set' : '✗ Not set');
-  log('  OPENAI_BASE_URL:', process.env.OPENAI_BASE_URL || '(not set)');
+  log(
+    '  OPENAI_BASE_URL:',
+    process.env.OPENAI_BASE_URL ? sanitizeUrlForLog(process.env.OPENAI_BASE_URL) : '(not set)'
+  );
   log('  OPENAI_MODEL:', process.env.OPENAI_MODEL || '(not set)');
   log('  OPENAI_API_MODE:', process.env.OPENAI_API_MODE || '(default)');
   log('===========================');

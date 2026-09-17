@@ -341,15 +341,34 @@ function normalizeLogValue(value: unknown, seen = new WeakSet<object>(), depth =
   return String(value);
 }
 
+/**
+ * Last-line-of-defense redaction for log text. Masks URL userinfo
+ * (scheme://user:pass@ → scheme://***@) and credential-looking query
+ * parameters, so a call site that logs a raw URL or config blob still
+ * cannot write secrets into persisted/exportable logs.
+ */
+export function sanitizeLogText(text: string): string {
+  return text
+    .replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]+@/g, '$1***@')
+    .replace(
+      /([?&][A-Za-z0-9_-]*(?:key|token|secret|password|passwd|credential|auth)[A-Za-z0-9_-]*=)[^\s&"']+/gi,
+      '$1***'
+    );
+}
+
+function sanitizeConsoleArg(arg: unknown): unknown {
+  return typeof arg === 'string' ? sanitizeLogText(arg) : arg;
+}
+
 function serializeLogArg(arg: unknown): string {
   const normalized = normalizeLogValue(arg);
   if (typeof normalized === 'string') {
-    return normalized;
+    return sanitizeLogText(normalized);
   }
   try {
-    return JSON.stringify(normalized, null, 2);
+    return sanitizeLogText(JSON.stringify(normalized, null, 2));
   } catch {
-    return String(normalized);
+    return sanitizeLogText(String(normalized));
   }
 }
 
@@ -395,17 +414,17 @@ function getTimestamp(): string {
 }
 
 export function log(...args: unknown[]): void {
-  safeConsoleLog(`[${getTimestamp()}]`, ...args);
+  safeConsoleLog(`[${getTimestamp()}]`, ...args.map(sanitizeConsoleArg));
   writeToFile('INFO', ...args);
 }
 
 export function logWarn(...args: unknown[]): void {
-  safeConsoleWarn(`[${getTimestamp()}]`, ...args);
+  safeConsoleWarn(`[${getTimestamp()}]`, ...args.map(sanitizeConsoleArg));
   writeToFile('WARN', ...args);
 }
 
 export function logError(...args: unknown[]): void {
-  safeConsoleError(`[${getTimestamp()}]`, ...args);
+  safeConsoleError(`[${getTimestamp()}]`, ...args.map(sanitizeConsoleArg));
   writeToFile('ERROR', ...args);
 }
 
@@ -413,19 +432,19 @@ export function logError(...args: unknown[]): void {
 
 export function logCtx(...args: unknown[]): void {
   const prefix = formatCtxPrefix();
-  safeConsoleLog(`[${getTimestamp()}]`, prefix, ...args);
+  safeConsoleLog(`[${getTimestamp()}]`, prefix, ...args.map(sanitizeConsoleArg));
   writeToFile('INFO', ...args);
 }
 
 export function logCtxWarn(...args: unknown[]): void {
   const prefix = formatCtxPrefix();
-  safeConsoleWarn(`[${getTimestamp()}]`, prefix, ...args);
+  safeConsoleWarn(`[${getTimestamp()}]`, prefix, ...args.map(sanitizeConsoleArg));
   writeToFile('WARN', ...args);
 }
 
 export function logCtxError(...args: unknown[]): void {
   const prefix = formatCtxPrefix();
-  safeConsoleError(`[${getTimestamp()}]`, prefix, ...args);
+  safeConsoleError(`[${getTimestamp()}]`, prefix, ...args.map(sanitizeConsoleArg));
   writeToFile('ERROR', ...args);
 }
 
@@ -437,7 +456,7 @@ export function logTiming(label: string, startTime: number): void {
   const elapsed = Date.now() - startTime;
   const prefix = formatCtxPrefix();
   const msg = `[TIMING] ${label}: ${elapsed}ms`;
-  safeConsoleLog(`[${getTimestamp()}]`, prefix, msg);
+  safeConsoleLog(`[${getTimestamp()}]`, prefix, sanitizeLogText(msg));
   writeToFile('INFO', msg);
 }
 

@@ -9,6 +9,7 @@
  * spread the raw payload.
  */
 import type { AppConfigUpdate, MemoryModelRuntimeConfig } from '../../../shared/contracts';
+import { sanitizeUrlForLog } from '../../utils/sanitize-url';
 
 const SCALAR_FIELDS = [
   'provider',
@@ -28,8 +29,11 @@ const SCALAR_FIELDS = [
   'claudeCodePath',
   'defaultWorkdir',
   'globalSkillsPath',
-  'baseUrl',
 ] as const;
+
+function sanitizeUrl(value: string | undefined): string | undefined {
+  return typeof value === 'string' && value ? sanitizeUrlForLog(value) : undefined;
+}
 
 function summarizeMemoryModel(model: MemoryModelRuntimeConfig | undefined) {
   if (!model) return undefined;
@@ -38,7 +42,7 @@ function summarizeMemoryModel(model: MemoryModelRuntimeConfig | undefined) {
     provider: model.provider,
     customProtocol: model.customProtocol,
     model: model.model,
-    baseUrl: model.baseUrl,
+    baseUrl: sanitizeUrl(model.baseUrl),
     timeoutMs: model.timeoutMs,
     hasApiKey: Boolean(model.apiKey),
   };
@@ -58,6 +62,10 @@ export function summarizeConfigUpdate(config: AppConfigUpdate): Record<string, u
 
   if (config.apiKey !== undefined) {
     summary.hasApiKey = Boolean(config.apiKey);
+  }
+  if (config.baseUrl !== undefined) {
+    // Credentials can hide in userinfo or query params — never log them raw.
+    summary.baseUrl = sanitizeUrl(config.baseUrl) ?? null;
   }
   if (config.profiles !== undefined) {
     summary.profileKeys = Object.keys(config.profiles).sort();
@@ -87,7 +95,7 @@ export function summarizeConfigUpdate(config: AppConfigUpdate): Record<string, u
   }
   if (config.personalAnalysis !== undefined) {
     summary.personalAnalysis = {
-      apiOrigin: config.personalAnalysis.apiOrigin,
+      apiOrigin: sanitizeUrl(config.personalAnalysis.apiOrigin) ?? null,
       hasApiKey: Boolean(config.personalAnalysis.apiKey),
     };
   }

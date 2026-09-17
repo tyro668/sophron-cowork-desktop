@@ -121,6 +121,20 @@ export interface DataOutputCommitRow {
   updated_at: number | string;
 }
 
+export interface DataTableCommitRow {
+  id: string;
+  dataset_id: string;
+  operation: string;
+  staging_table: string;
+  target_table: string;
+  backup_table: string | null;
+  target_existed: number | string;
+  state: string;
+  error: string | null;
+  created_at: number | string;
+  updated_at: number | string;
+}
+
 export const LEGACY_DEMO_TASK_NAMES = [
   '用户行为数据清洗',
   '销售数据汇总',

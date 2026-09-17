@@ -177,20 +177,29 @@ export class TaskService {
     }, `cleanupTemporaryTaskResources:${taskId}`);
   }
   async deleteTask(id: string): Promise<boolean> {
-    await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.getTask(id);
-    if (!task) {
-      return false;
-    }
-    if (task.outputTable) {
-      await this.ctx.ensureReady();
-      await this.ctx.dropTableIfExists(task.outputTable);
-      await this.datasets.deleteDatasetRowsByTableName(task.outputTable);
-    }
-    await this.caches.deleteWorkflowNodeCachesForTask(id);
-    await this.workflows.deleteTaskGraph(id);
-    await this.tasks.deleteTaskRow(id);
-    return true;
+    return this.ctx.runExclusive(async () => {
+      await this.ctx.ensureMetadataReady();
+      const task = await this.tasks.getTask(id);
+      if (!task) {
+        return false;
+      }
+      if (task.outputTable) {
+        // Ownership boundary: a dataset row carrying the explicit
+        // output-table marker is a user-managed resource the task only
+        // references (bound via outputTableId or an output node's
+        // outputDatasetId). Only task-owned output tables — no explicit row —
+        // have their physical table and metadata rows removed.
+        if (!(await this.datasets.hasExplicitOutputTableForTableName(task.outputTable))) {
+          await this.ctx.ensureReady();
+          await this.ctx.dropTableIfExists(task.outputTable);
+          await this.datasets.deleteDatasetRowsByTableName(task.outputTable);
+        }
+      }
+      await this.caches.deleteWorkflowNodeCachesForTask(id);
+      await this.workflows.deleteTaskGraph(id);
+      await this.tasks.deleteTaskRow(id);
+      return true;
+    }, `deleteTask:${id}`);
   }
   async deleteTaskMetadataOnly(id: string): Promise<boolean> {
     await this.ctx.ensureMetadataReady();

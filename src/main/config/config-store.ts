@@ -13,6 +13,7 @@
  */
 import Store, { type Options as StoreOptions } from 'electron-store';
 import { log, logWarn } from '../utils/logger';
+import { sanitizeUrlForLog } from '../utils/sanitize-url';
 import { createEncryptedStoreWithKeyRotation } from '../utils/store-encryption';
 import {
   isOpenAIProvider,
@@ -1748,14 +1749,20 @@ export class ConfigStore {
     log('[Config] Applied env vars for provider:', projectedConfig.provider, {
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '✓ Set' : '(empty/unset)',
       ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN ? '✓ Set' : '(empty/unset)',
-      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || '(default)',
+      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL
+        ? sanitizeUrlForLog(process.env.ANTHROPIC_BASE_URL)
+        : '(default)',
       OPENAI_API_KEY: process.env.OPENAI_API_KEY ? '✓ Set' : '(empty/unset)',
-      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || '(default)',
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL
+        ? sanitizeUrlForLog(process.env.OPENAI_BASE_URL)
+        : '(default)',
       OPENAI_MODEL: process.env.OPENAI_MODEL || '(not set)',
       OPENAI_API_MODE: process.env.OPENAI_API_MODE || '(default)',
       OPENAI_ACCOUNT_ID: process.env.OPENAI_ACCOUNT_ID || '(not set)',
       GEMINI_API_KEY: process.env.GEMINI_API_KEY ? '✓ Set' : '(empty/unset)',
-      GEMINI_BASE_URL: process.env.GEMINI_BASE_URL || '(default)',
+      GEMINI_BASE_URL: process.env.GEMINI_BASE_URL
+        ? sanitizeUrlForLog(process.env.GEMINI_BASE_URL)
+        : '(default)',
     });
   }
 

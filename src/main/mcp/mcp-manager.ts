@@ -21,6 +21,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { log, logError, logWarn, logCtx, logCtxError, logTiming } from '../utils/logger';
 import { getDefaultShell } from '../utils/shell-resolver';
+import { sanitizeUrlForLog } from '../utils/sanitize-url';
 
 const MCP_LIST_TOOLS_TIMEOUT_MS = 5 * 60 * 1000;
 const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -940,7 +941,9 @@ export class MCPManager {
       try {
         sseUrl = new URL(config.url);
       } catch {
-        throw new Error(`SSE server ${config.name} has a malformed URL: "${config.url}"`);
+        throw new Error(
+          `SSE server ${config.name} has a malformed URL: "${sanitizeUrlForLog(config.url)}"`
+        );
       }
 
       // Create SSE transport — headers must be passed via requestInit, not as a raw dict
@@ -950,14 +953,14 @@ export class MCPManager {
         throw new Error(`Streamable HTTP server ${config.name} requires a URL`);
       }
 
-      log(`[MCPManager] Creating Streamable HTTP transport: ${config.url}`);
+      log(`[MCPManager] Creating Streamable HTTP transport: ${sanitizeUrlForLog(config.url)}`);
 
       let httpUrl: URL;
       try {
         httpUrl = new URL(config.url);
       } catch {
         throw new Error(
-          `Streamable HTTP server ${config.name} has a malformed URL: "${config.url}"`
+          `Streamable HTTP server ${config.name} has a malformed URL: "${sanitizeUrlForLog(config.url)}"`
         );
       }
 

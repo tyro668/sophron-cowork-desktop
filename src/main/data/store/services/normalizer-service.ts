@@ -155,6 +155,16 @@ export class NormalizerService {
   async previewInputTableNormalizerVersion(
     input: DataPreviewInputTableNormalizerVersionInput
   ): Promise<DataInputTablePreview> {
+    // Runs the normalizer project and materializes a TEMP table on the shared
+    // connection — serialize with commits through the exclusive section.
+    return this.ctx.runExclusive(
+      () => this.previewInputTableNormalizerVersionUnsafe(input),
+      `previewInputTableNormalizerVersion:${input.versionId}`
+    );
+  }
+  private async previewInputTableNormalizerVersionUnsafe(
+    input: DataPreviewInputTableNormalizerVersionInput
+  ): Promise<DataInputTablePreview> {
     await this.ctx.ensureReady();
     const version = await this.normalizers.requireInputTableNormalizerArtifactVersion(
       input.versionId

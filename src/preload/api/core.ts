@@ -8,6 +8,14 @@ type CoreApi = Pick<
   'send' | 'on' | 'invoke' | 'platform' | 'getSystemTheme' | 'getVersion'
 >;
 
+// Per-event IPC logs are a hot path — stream events fire constantly. Opt-in
+// only for dev; packaged builds must stay silent.
+const DEBUG_IPC =
+  process.env.NODE_ENV === 'development' || Boolean(process.env.VITE_DEV_SERVER_URL);
+const debugIpc = (...args: unknown[]) => {
+  if (DEBUG_IPC) console.log(...args);
+};
+
 export function createCoreApi(): CoreApi {
   // Track registered callbacks to prevent duplicate listeners
   let registeredCallback: ((event: ServerEvent) => void) | null = null;
@@ -19,7 +27,7 @@ export function createCoreApi(): CoreApi {
         console.warn('[Preload] Blocked unauthorized event type:', event.type);
         return;
       }
-      console.log('[Preload] Sending event:', event.type);
+      debugIpc('[Preload] Sending event:', event.type);
       ipcRenderer.send('client-event', event);
     },
 
@@ -32,7 +40,7 @@ export function createCoreApi(): CoreApi {
 
       registeredCallback = callback;
       ipcListener = (_: Electron.IpcRendererEvent, data: ServerEvent) => {
-        console.log('[Preload] Received event:', data.type);
+        debugIpc('[Preload] Received event:', data.type);
         if (registeredCallback) {
           registeredCallback(data);
         }
@@ -57,7 +65,7 @@ export function createCoreApi(): CoreApi {
         console.warn('[Preload] Blocked unauthorized invoke type:', event.type);
         throw new Error(`Unauthorized event type: ${event.type}`);
       }
-      console.log('[Preload] Invoking:', event.type);
+      debugIpc('[Preload] Invoking:', event.type);
       return ipcRenderer.invoke('client-invoke', event);
     },
 

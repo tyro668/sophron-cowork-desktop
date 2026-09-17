@@ -347,6 +347,33 @@ async function normalizeOutputTableMetadata(ctx: DataStoreContext): Promise<void
   }
 }
 
+/**
+ * Journal for input-table reimports and output-table rebinds. Each commit
+ * stages the new physical table under a staging name, keeps the old target
+ * under a backup name until metadata commits, and leaves a recoverable row
+ * when a crash interrupts the swap.
+ */
+async function createTableCommitJournal(ctx: DataStoreContext): Promise<void> {
+  await ctx.metaRunSql(`
+    CREATE TABLE IF NOT EXISTS data_table_commits (
+      id VARCHAR PRIMARY KEY,
+      dataset_id VARCHAR NOT NULL,
+      operation VARCHAR NOT NULL,
+      staging_table VARCHAR NOT NULL,
+      target_table VARCHAR NOT NULL,
+      backup_table VARCHAR,
+      target_existed INTEGER NOT NULL,
+      state VARCHAR NOT NULL,
+      error VARCHAR,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+  `);
+  await ctx.metaRunSql(
+    'CREATE INDEX IF NOT EXISTS idx_data_table_commits_state ON data_table_commits(state, updated_at)'
+  );
+}
+
 export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
   {
     version: 1,
@@ -367,6 +394,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     version: 4,
     name: 'normalize_output_table_metadata',
     up: (ctx) => normalizeOutputTableMetadata(ctx),
+  },
+  {
+    version: 5,
+    name: 'table_commit_journal',
+    up: (ctx) => createTableCommitJournal(ctx),
   },
 ];
 
