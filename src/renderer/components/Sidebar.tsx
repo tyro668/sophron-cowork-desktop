@@ -68,6 +68,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     deleteProject,
     getSessionMessages,
     getSessionTraceSteps,
+    setWorkingDirPath,
     isElectron,
   } = useIPC();
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
@@ -566,9 +567,17 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   );
 
   const handleNewSession = () => {
+    // Default the welcome picker to the previous conversation's project:
+    // the session being viewed, or the most recently updated one.
+    const previousCwd =
+      sessions.find((session) => session.id === activeSessionId)?.cwd ??
+      [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)[0]?.cwd;
     setMainView('chat');
     setActiveSession(null);
     setShowSettings(false);
+    if (previousCwd && previousCwd !== useAppStore.getState().workingDir) {
+      void setWorkingDirPath(previousCwd);
+    }
   };
 
   const handleUpdateBadgeClick = useCallback(async () => {
