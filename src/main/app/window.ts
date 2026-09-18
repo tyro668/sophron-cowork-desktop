@@ -1,7 +1,8 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 import { join } from 'path';
 import { localPathFromAppUrlPathname, localPathFromFileUrl } from '../../shared/local-file-path';
 import { configStore } from '../config/config-store';
+import { getWindowIconPath } from './brand-icons';
 import { log, logWarn, logError } from '../utils/logger';
 import { appContext } from './context';
 import { sendToRenderer } from './events';
@@ -70,12 +71,7 @@ export function createWindow() {
     minWidth: 800,
     minHeight: 600,
     backgroundColor: THEME.background,
-    icon: (() => {
-      const windowIconName = isMac ? 'icon.icns' : isWindows ? 'icon.ico' : 'icon.png';
-      return app.isPackaged
-        ? join(process.resourcesPath, windowIconName)
-        : join(__dirname, `../../resources/${windowIconName}`);
-    })(),
+    icon: getWindowIconPath(configStore.get('logoVariant')),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,

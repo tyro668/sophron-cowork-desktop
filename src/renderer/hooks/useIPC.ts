@@ -136,6 +136,7 @@ export function useIPC() {
       store.setSettings({
         theme: config.theme || 'light',
         accentTheme: config.accentTheme || 'mint',
+        logoVariant: config.logoVariant || 'mark',
         permissionPolicy: normalizePermissionPolicy(config.permissionPolicy),
       });
       if (isInitialConfigStatus) {

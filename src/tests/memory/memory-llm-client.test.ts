@@ -25,6 +25,7 @@ function makeConfig(timeoutMs: number): AppConfig {
     enableDevLogs: false,
     theme: 'light',
     accentTheme: 'mint',
+    logoVariant: 'mark',
     permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: true,

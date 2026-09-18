@@ -239,6 +239,7 @@ interface AppState {
 const defaultSettings: Settings = {
   theme: 'light',
   accentTheme: 'mint',
+  logoVariant: 'mark',
   defaultTools: [
     'askuserquestion',
     'todowrite',

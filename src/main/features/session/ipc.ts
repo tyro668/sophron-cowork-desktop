@@ -17,7 +17,13 @@ import {
 } from '../../app/theme';
 import { getWorkingDir, getWorkspacePathUnsupportedReason, setWorkingDir } from '../../app/workdir';
 import { eventRequiresSessionManager } from '../../client-event-utils';
-import { configStore, type AppTheme, type AppAccentTheme } from '../../config/config-store';
+import {
+  configStore,
+  type AppTheme,
+  type AppAccentTheme,
+  type AppLogoVariant,
+} from '../../config/config-store';
+import { applyRuntimeLogo } from '../../app/brand-icons';
 import { setPermissionRules } from '../../config/permission-rules-store';
 import { handleIpc } from '../../ipc-handle';
 import { logWarn, logError } from '../../utils/logger';
@@ -239,13 +245,19 @@ export function registerSessionIpc(): void {
         const nextPolicy = isPermissionPolicy(event.payload.permissionPolicy)
           ? event.payload.permissionPolicy
           : undefined;
+        const nextLogoVariant =
+          event.payload.logoVariant === 'mark' || event.payload.logoVariant === 'fold'
+            ? (event.payload.logoVariant as AppLogoVariant)
+            : undefined;
 
-        if (nextTheme || nextAccentTheme || nextPolicy) {
+        if (nextTheme || nextAccentTheme || nextPolicy || nextLogoVariant) {
           configStore.update({
             theme: nextTheme,
             accentTheme: nextAccentTheme,
             permissionPolicy: nextPolicy,
+            logoVariant: nextLogoVariant,
           });
+          if (nextLogoVariant) applyRuntimeLogo(nextLogoVariant);
           if (nextTheme) {
             applyNativeThemePreference(nextTheme);
             if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {

@@ -1539,6 +1539,9 @@
     "accentLavender": "Lavender",
     "accentOrange": "Orange",
     "accentRose": "Rose",
+    "logo": "App logo",
+    "logoMark": "Jiusi mark",
+    "logoFold": "Collaborative fold",
     "language": "Language",
     "updateAvailableBadge": "New version",
     "updateAvailableBadgeTitle": "Download and install version {{version}}"

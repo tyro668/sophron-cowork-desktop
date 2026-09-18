@@ -37,12 +37,21 @@ function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));
   makeFile(path.join(root, 'resources/icon.png'));
+  makeFile(path.join(root, 'resources/icon-fold.png'));
 
   // macOS FATAL resources
   makeFile(path.join(root, `resources/node/darwin-${arch}/bin/node`));
   makeFile(path.join(root, 'dist-lima-agent/index.js'));
   makeFile(path.join(root, 'resources/icon.icns'));
   makeFile(path.join(root, 'resources/tray-iconTemplate.png'));
+  for (const name of [
+    'icon-mac.png',
+    'icon-fold-mac.png',
+    'icon-fold.icns',
+    'tray-icon-foldTemplate.png',
+  ]) {
+    makeFile(path.join(root, 'resources', name));
+  }
 }
 
 /**
@@ -56,10 +65,19 @@ function populateWin32Artifacts(root: string): void {
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));
   makeFile(path.join(root, 'resources/icon.png'));
+  makeFile(path.join(root, 'resources/icon-fold.png'));
   makeFile(path.join(root, 'resources/node/win32-x64/node.exe'));
   makeFile(path.join(root, 'dist-wsl-agent/index.js'));
   makeFile(path.join(root, 'resources/icon.ico'));
   makeFile(path.join(root, 'resources/tray-icon.ico'));
+  for (const name of [
+    'icon-fold.ico',
+    'tray-icon-fold.ico',
+    'tray-icon.png',
+    'tray-icon-fold.png',
+  ]) {
+    makeFile(path.join(root, 'resources', name));
+  }
 }
 
 // ---------------------------------------------------------------------------

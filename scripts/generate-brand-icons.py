@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Export the approved Jiusi mark to every app and web icon format.
+"""Export both approved Jiusi logo variants to app icon formats.
 
-Requires Pillow. Run from any directory with:
+Requires Pillow and rsvg-convert. Run from any directory with:
     python3 scripts/generate-brand-icons.py
 
-The two generated design sources in design/brand are the only editable visual
-inputs. Keep all derived icons in sync by running this script after a change.
+The editable visual inputs live in design/brand. Keep all derived icons in
+sync by running this script after a source change.
 """
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
+import subprocess
+from xml.etree import ElementTree
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 ICON_SOURCE = ROOT / "design/brand/jiusi-logo-source.png"
 TRAY_SOURCE = ROOT / "design/brand/jiusi-tray-mark-source.png"
+FOLD_SOURCE = ROOT / "design/brand/jiusi-fold-source.svg"
 MINT = (234, 246, 238)
 PINE = (23, 110, 77)
 APP_ICON_SIZE = 1024
@@ -122,6 +126,49 @@ def save_social_preview(icon: Image.Image) -> None:
     preview.save(ROOT / "website/public/og-image.png", format="PNG", optimize=True)
 
 
+def render_fold_source(mark_only: bool = False) -> Image.Image:
+    """Rasterize the reviewed vector master, optionally omitting its white tile."""
+    root = ElementTree.parse(FOLD_SOURCE).getroot()
+    if mark_only:
+        for element in list(root):
+            if element.tag.endswith("}rect"):
+                root.remove(element)
+    svg = ElementTree.tostring(root, encoding="utf-8")
+    result = subprocess.run(
+        ["rsvg-convert", "-w", str(APP_ICON_SIZE), "-h", str(APP_ICON_SIZE)],
+        input=svg,
+        capture_output=True,
+        check=True,
+    )
+    return Image.open(BytesIO(result.stdout)).convert("RGBA")
+
+
+def save_fold_icons() -> None:
+    icon = render_fold_source()
+    mark = render_fold_source(mark_only=True)
+    mac_icon = inset_mac_icon(icon)
+
+    save_png(icon, "resources/icon-fold.png", APP_ICON_SIZE)
+    save_png(mac_icon, "resources/icon-fold-mac.png", APP_ICON_SIZE)
+    save_png(mark, "src/renderer/assets/logo-fold.png", APP_ICON_SIZE)
+    mac_icon.save(ROOT / "resources/icon-fold.icns", format="ICNS")
+    icon.save(
+        ROOT / "resources/icon-fold.ico",
+        format="ICO",
+        sizes=[(size, size) for size in (16, 24, 32, 48, 64, 128, 256)],
+    )
+
+    tray_mark = Image.new("RGBA", mark.size, (0, 0, 0, 0))
+    tray_mark.putalpha(mark.getchannel("A"))
+    save_png(tray_mark, "resources/tray-icon-foldTemplate.png", 32)
+    save_png(icon, "resources/tray-icon-fold.png", 32)
+    icon.save(
+        ROOT / "resources/tray-icon-fold.ico",
+        format="ICO",
+        sizes=[(size, size) for size in (16, 24, 32, 48, 64)],
+    )
+
+
 def main() -> None:
     source = Image.open(ICON_SOURCE)
     icon = flatten_approved_palette(source).resize((APP_ICON_SIZE, APP_ICON_SIZE), RESAMPLE)
@@ -176,6 +223,7 @@ def main() -> None:
     )
 
     save_social_preview(icon)
+    save_fold_icons()
 
 
 if __name__ == "__main__":

@@ -30,6 +30,9 @@ export type AppTheme = 'dark' | 'light' | 'system';
 /** Accent color families rendered via `:root[data-accent-theme]` in globals.css. */
 export type AppAccentTheme = 'mint' | 'lake' | 'lavender' | 'orange' | 'rose';
 
+/** The selectable application logo artwork. */
+export type AppLogoVariant = 'mark' | 'fold';
+
 export type ProviderProfileKey =
   | 'openrouter'
   | 'anthropic'
@@ -122,6 +125,7 @@ export interface AppConfig {
   enableDevLogs: boolean;
   theme: AppTheme;
   accentTheme: AppAccentTheme;
+  logoVariant: AppLogoVariant;
   permissionPolicy: PermissionPolicyId;
   sandboxEnabled: boolean;
   memoryEnabled: boolean;

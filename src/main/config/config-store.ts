@@ -44,6 +44,7 @@ export type {
   CustomProtocolType,
   AppTheme,
   AppAccentTheme,
+  AppLogoVariant,
   ProviderProfileKey,
   ConfigSetId,
   CreateSetMode,
@@ -61,6 +62,7 @@ import type {
   CustomProtocolType,
   AppTheme,
   AppAccentTheme,
+  AppLogoVariant,
   ProviderProfileKey,
   ConfigSetId,
   CreateSetMode,
@@ -95,6 +97,7 @@ const DIRECT_READ_KEYS = new Set<keyof AppConfig>([
   'enableDevLogs',
   'theme',
   'accentTheme',
+  'logoVariant',
   'permissionPolicy',
   'sandboxEnabled',
   'memoryEnabled',
@@ -199,6 +202,7 @@ const defaultConfig: AppConfig = {
   enableDevLogs: false,
   theme: 'light',
   accentTheme: 'mint',
+  logoVariant: 'mark',
   permissionPolicy: DEFAULT_PERMISSION_POLICY,
   sandboxEnabled: false,
   memoryEnabled: true,
@@ -310,6 +314,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
 ];
 const VALID_THEMES: AppTheme[] = ['dark', 'light', 'system'];
 const VALID_ACCENT_THEMES: AppAccentTheme[] = ['mint', 'lake', 'lavender', 'orange', 'rose'];
+const VALID_LOGO_VARIANTS: AppLogoVariant[] = ['mark', 'fold'];
 
 function isProviderType(value: unknown): value is ProviderType {
   return (
@@ -342,6 +347,10 @@ function isAppTheme(value: unknown): value is AppTheme {
 
 function isAppAccentTheme(value: unknown): value is AppAccentTheme {
   return typeof value === 'string' && VALID_ACCENT_THEMES.includes(value as AppAccentTheme);
+}
+
+function isAppLogoVariant(value: unknown): value is AppLogoVariant {
+  return typeof value === 'string' && VALID_LOGO_VARIANTS.includes(value as AppLogoVariant);
 }
 
 function isMemoryModelRuntimeConfig(value: unknown): value is Partial<MemoryModelRuntimeConfig> {
@@ -1044,6 +1053,7 @@ export class ConfigStore {
       enableDevLogs: toBoolean(raw.enableDevLogs, defaultConfig.enableDevLogs),
       theme: isAppTheme(raw.theme) ? raw.theme : defaultConfig.theme,
       accentTheme: isAppAccentTheme(raw.accentTheme) ? raw.accentTheme : defaultConfig.accentTheme,
+      logoVariant: isAppLogoVariant(raw.logoVariant) ? raw.logoVariant : defaultConfig.logoVariant,
       permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy),
       sandboxEnabled: toBoolean(raw.sandboxEnabled, defaultConfig.sandboxEnabled),
       memoryEnabled: toBoolean(raw.memoryEnabled, defaultConfig.memoryEnabled),
@@ -1174,6 +1184,9 @@ export class ConfigStore {
           return defaultConfig[key];
         }
         if (key === 'accentTheme' && !isAppAccentTheme(rawValue)) {
+          return defaultConfig[key];
+        }
+        if (key === 'logoVariant' && !isAppLogoVariant(rawValue)) {
           return defaultConfig[key];
         }
         if (key === 'permissionPolicy' && !isPermissionPolicy(rawValue)) {
@@ -1505,6 +1518,7 @@ export class ConfigStore {
         updates.enableDevLogs !== undefined ? updates.enableDevLogs : current.enableDevLogs,
       theme: updates.theme !== undefined ? updates.theme : current.theme,
       accentTheme: updates.accentTheme !== undefined ? updates.accentTheme : current.accentTheme,
+      logoVariant: updates.logoVariant !== undefined ? updates.logoVariant : current.logoVariant,
       permissionPolicy:
         updates.permissionPolicy !== undefined
           ? normalizePermissionPolicy(updates.permissionPolicy)

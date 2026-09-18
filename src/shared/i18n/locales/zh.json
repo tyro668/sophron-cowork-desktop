@@ -1539,6 +1539,9 @@
     "accentLavender": "薰衣草",
     "accentOrange": "暖橙",
     "accentRose": "玫瑰",
+    "logo": "应用标识",
+    "logoMark": "九思印记",
+    "logoFold": "协作折页",
     "language": "语言",
     "updateAvailableBadge": "有新版本",
     "updateAvailableBadgeTitle": "下载并安装新版本 {{version}}"

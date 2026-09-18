@@ -20,6 +20,7 @@ describe('theme settings persistence', () => {
     expect(source).toContain("const LIGHT_BG = '#f5f3ee';");
     expect(source).toContain('theme: nextTheme,');
     expect(source).toContain('accentTheme: nextAccentTheme,');
+    expect(source).toContain('logoVariant: nextLogoVariant,');
     expect(source).toContain('permissionPolicy: nextPolicy,');
     expect(source).toContain('nativeTheme.themeSource = theme;');
     expect(source).toContain('mainWindow.setBackgroundColor(');
@@ -38,6 +39,7 @@ describe('theme settings persistence', () => {
     );
     expect(source).toContain("theme: config.theme || 'light'");
     expect(source).toContain("accentTheme: config.accentTheme || 'mint'");
+    expect(source).toContain("logoVariant: config.logoVariant || 'mark'");
     expect(source).toContain(
       'permissionPolicy: normalizePermissionPolicy(config.permissionPolicy)'
     );

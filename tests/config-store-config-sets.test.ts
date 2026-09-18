@@ -304,6 +304,18 @@ describe('ConfigStore config sets', () => {
     expect(invalidStore.get('theme')).toBe('light');
   });
 
+  it('persists the selected logo and rejects an invalid stored variant', () => {
+    const store = new ConfigStore();
+    expect(store.get('logoVariant')).toBe('mark');
+    store.update({ logoVariant: 'fold' });
+    expect(store.get('logoVariant')).toBe('fold');
+    expect(store.createSet({ name: 'Logo carry', mode: 'clone' }).logoVariant).toBe('fold');
+
+    mocks.seed = { logoVariant: 'unknown' };
+    const invalidStore = new ConfigStore();
+    expect(invalidStore.get('logoVariant')).toBe('mark');
+  });
+
   it('persists the selected permission policy across reopen and config-set changes', () => {
     const store = new ConfigStore();
     expect(store.get('permissionPolicy')).toBe('auto_review');

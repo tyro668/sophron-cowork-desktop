@@ -1,31 +1,22 @@
-import { app, Menu, Tray } from 'electron';
+import { Menu, Tray } from 'electron';
 import * as fs from 'fs';
-import { join } from 'path';
 import { log } from '../utils/logger';
 import { appContext } from './context';
 import { getRuntimeAppName } from './notifications';
 import { createWindow } from './window';
+import { getTrayIconPath } from './brand-icons';
+import { configStore } from '../config/config-store';
 
 export function setupTray() {
   if (appContext.tray) return;
 
   // macOS tints the monochrome Template image; Windows uses a multi-size ICO.
-  const iconName =
-    process.platform === 'darwin'
-      ? 'tray-iconTemplate.png'
-      : process.platform === 'win32'
-        ? 'tray-icon.ico'
-        : 'tray-icon.png';
-  const iconPath = app.isPackaged
-    ? join(process.resourcesPath, iconName)
-    : join(__dirname, '../../resources', iconName);
+  const iconPath = getTrayIconPath(configStore.get('logoVariant'));
 
   // On Windows, fall back to .png if the .ico file has not been created yet
   const resolvedIconPath =
     process.platform === 'win32' && !fs.existsSync(iconPath)
-      ? app.isPackaged
-        ? join(process.resourcesPath, 'tray-icon.png')
-        : join(__dirname, '../../resources', 'tray-icon.png')
+      ? iconPath.replace(/\.ico$/, '.png')
       : iconPath;
 
   // Gracefully skip the tray if an icon is missing in a dev environment.

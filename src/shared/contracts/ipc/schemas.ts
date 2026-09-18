@@ -149,6 +149,7 @@ const appConfigUpdate = z.looseObject({
   enableDevLogs: boolOpt,
   theme: z.enum(['dark', 'light', 'system']).optional(),
   accentTheme: z.enum(['mint', 'lake', 'lavender', 'orange', 'rose']).optional(),
+  logoVariant: z.enum(['mark', 'fold']).optional(),
   permissionPolicy: z.enum(['default', 'auto_review', 'full_access']).optional(),
   sandboxEnabled: boolOpt,
   memoryEnabled: boolOpt,

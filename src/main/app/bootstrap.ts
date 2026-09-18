@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
 import { join } from 'path';
 import { APP_INTERNAL_NAME } from '../../shared/branding';
+import { applyRuntimeLogo } from './brand-icons';
 import { AutomationRunner } from '../automation/automation-runner';
 import { AutomationScheduler } from '../automation/automation-scheduler';
 import { AutomationService } from '../automation/automation-service';
@@ -62,10 +63,8 @@ import {
 export async function bootstrap(): Promise<void> {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.sophron.app');
-  } else if (process.platform === 'darwin' && !app.isPackaged && app.dock) {
-    // Packaged apps use icon.icns; the dev Electron shell needs an explicit Dock icon.
-    app.dock.setIcon(join(__dirname, '../../resources/icon-mac.png'));
   }
+  applyRuntimeLogo(configStore.get('logoVariant'));
 
   // Smoke test mode: verify the app can start, then exit cleanly
   if (process.argv.includes('--smoke-test')) {

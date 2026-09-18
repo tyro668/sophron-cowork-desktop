@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
+import { BrandMark } from '../BrandMark';
 
 export function SettingsGeneral() {
   const { i18n, t } = useTranslation();
@@ -36,6 +37,10 @@ export function SettingsGeneral() {
     { value: 'lavender' as const, label: t('general.accentLavender'), swatch: '#7656e8' },
     { value: 'orange' as const, label: t('general.accentOrange'), swatch: '#e47b2e' },
     { value: 'rose' as const, label: t('general.accentRose'), swatch: '#d94d78' },
+  ];
+  const logoOptions = [
+    { value: 'mark' as const, label: t('general.logoMark') },
+    { value: 'fold' as const, label: t('general.logoFold') },
   ];
 
   return (
@@ -77,6 +82,29 @@ export function SettingsGeneral() {
                 style={{ backgroundColor: opt.swatch }}
               />
               {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass-card space-y-3 rounded-xl px-4 py-3">
+        <h4 className="text-[13px] font-medium text-text-primary">{t('general.logo')}</h4>
+        <div role="radiogroup" aria-label={t('general.logo')} className="flex gap-2">
+          {logoOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={settings.logoVariant === opt.value}
+              onClick={() => updateSettings({ logoVariant: opt.value })}
+              className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg border px-3 py-2 text-left text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                settings.logoVariant === opt.value
+                  ? 'border-accent/40 bg-accent-muted text-text-primary'
+                  : 'border-border-muted bg-surface text-text-secondary hover:border-accent/40'
+              }`}
+            >
+              <BrandMark variant={opt.value} className="h-9 w-9" />
+              <span className="truncate">{opt.label}</span>
             </button>
           ))}
         </div>

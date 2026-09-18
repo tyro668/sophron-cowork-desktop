@@ -77,6 +77,12 @@ function buildCheckList(platform, arch) {
       type: 'file',
       severity: 'fatal',
     },
+    {
+      label: 'Alternate desktop icon (resources/icon-fold.png)',
+      relPath: 'resources/icon-fold.png',
+      type: 'file',
+      severity: 'fatal',
+    },
   ];
 
   if (platform === 'darwin') {
@@ -105,6 +111,14 @@ function buildCheckList(platform, arch) {
         type: 'file',
         severity: 'fatal',
       },
+      ...['icon-mac.png', 'icon-fold-mac.png', 'icon-fold.icns', 'tray-icon-foldTemplate.png'].map(
+        (name) => ({
+          label: `Selectable macOS icon (${name})`,
+          relPath: `resources/${name}`,
+          type: 'file',
+          severity: 'fatal',
+        })
+      ),
       {
         label: `Python runtime for macOS ${arch} (GUI automation)`,
         relPath: `resources/python/darwin-${arch}`,
@@ -143,7 +157,15 @@ function buildCheckList(platform, arch) {
         relPath: 'resources/tray-icon.ico',
         type: 'file',
         severity: 'fatal',
-      }
+      },
+      ...['icon-fold.ico', 'tray-icon-fold.ico', 'tray-icon.png', 'tray-icon-fold.png'].map(
+        (name) => ({
+          label: `Selectable Windows icon (${name})`,
+          relPath: `resources/${name}`,
+          type: 'file',
+          severity: 'fatal',
+        })
+      )
     );
   } else if (platform === 'linux') {
     checks.push(
@@ -156,6 +178,12 @@ function buildCheckList(platform, arch) {
       {
         label: 'Linux tray icon (resources/tray-icon.png)',
         relPath: 'resources/tray-icon.png',
+        type: 'file',
+        severity: 'fatal',
+      },
+      {
+        label: 'Alternate Linux tray icon (resources/tray-icon-fold.png)',
+        relPath: 'resources/tray-icon-fold.png',
         type: 'file',
         severity: 'fatal',
       }

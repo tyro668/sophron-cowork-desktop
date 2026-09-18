@@ -94,8 +94,11 @@ module.exports = {
     signAndEditExecutable: false,
     extraResources: [
       { from: 'resources/icon.ico', to: 'icon.ico' },
+      { from: 'resources/icon-fold.ico', to: 'icon-fold.ico' },
       { from: 'resources/tray-icon.ico', to: 'tray-icon.ico' },
+      { from: 'resources/tray-icon-fold.ico', to: 'tray-icon-fold.ico' },
       { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
+      { from: 'resources/tray-icon-fold.png', to: 'tray-icon-fold.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',
@@ -133,7 +136,11 @@ module.exports = {
     },
     extraResources: [
       { from: 'resources/icon.icns', to: 'icon.icns' },
+      { from: 'resources/icon-fold.icns', to: 'icon-fold.icns' },
+      { from: 'resources/icon-mac.png', to: 'icon-mac.png' },
+      { from: 'resources/icon-fold-mac.png', to: 'icon-fold-mac.png' },
       { from: 'resources/tray-iconTemplate.png', to: 'tray-iconTemplate.png' },
+      { from: 'resources/tray-icon-foldTemplate.png', to: 'tray-icon-foldTemplate.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',
@@ -162,7 +169,9 @@ module.exports = {
     artifactName: `${artifactPattern}-linux-\${arch}.\${ext}`,
     extraResources: [
       { from: 'resources/icon.png', to: 'icon.png' },
+      { from: 'resources/icon-fold.png', to: 'icon-fold.png' },
       { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
+      { from: 'resources/tray-icon-fold.png', to: 'tray-icon-fold.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',

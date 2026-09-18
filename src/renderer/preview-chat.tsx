@@ -161,6 +161,7 @@ const appConfig: AppConfig = {
   enableDevLogs: false,
   theme: 'dark',
   accentTheme: 'mint',
+  logoVariant: 'mark',
   permissionPolicy: 'auto_review',
   sandboxEnabled: false,
   memoryEnabled: false,

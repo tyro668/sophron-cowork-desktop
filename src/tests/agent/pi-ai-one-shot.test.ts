@@ -33,6 +33,7 @@ function makeConfig(): AppConfig {
     enableDevLogs: false,
     theme: 'light',
     accentTheme: 'mint',
+    logoVariant: 'mark',
     permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: true,

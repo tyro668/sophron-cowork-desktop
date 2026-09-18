@@ -153,6 +153,7 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     enableDevLogs: true,
     theme: 'light',
     accentTheme: 'mint',
+    logoVariant: 'mark',
     permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: false,

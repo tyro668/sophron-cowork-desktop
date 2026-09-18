@@ -103,8 +103,31 @@ describe('approved Jiusi brand assets', () => {
     expect(pngPixel(mac, 512, 80)[3]).toBe(0);
     expect(pngPixel(standard, 512, 80)[3]).toBeGreaterThan(240);
 
-    const bootstrap = fs.readFileSync(path.join(projectRoot, 'src/main/app/bootstrap.ts'), 'utf8');
-    expect(bootstrap).toContain("'../../resources/icon-mac.png'");
+    const runtimeIcons = fs.readFileSync(
+      path.join(projectRoot, 'src/main/app/brand-icons.ts'),
+      'utf8'
+    );
+    expect(runtimeIcons).toContain("'icon-mac.png'");
+    expect(runtimeIcons).toContain("'icon-fold-mac.png'");
+  });
+
+  it('exports the collaborative fold as a separate complete runtime set', () => {
+    const standard = asset('resources/icon-fold.png');
+    const mac = asset('resources/icon-fold-mac.png');
+    const ui = asset('src/renderer/assets/logo-fold.png');
+    expect(pngSize(standard)).toEqual([1024, 1024]);
+    expect(pngSize(mac)).toEqual([1024, 1024]);
+    expect(pngSize(ui)).toEqual([1024, 1024]);
+    expect(pngPixel(standard, 512, 512)).toEqual([255, 255, 255, 255]);
+    expect(pngPixel(ui, 512, 512)[3]).toBe(0);
+    expect(pngPixel(ui, 250, 500)[3]).toBeGreaterThan(240);
+    expect(pngPixel(mac, 512, 80)[3]).toBe(0);
+    expect(pngSize(asset('resources/tray-icon-fold.png'))).toEqual([32, 32]);
+    expect(pngSize(asset('resources/tray-icon-foldTemplate.png'))).toEqual([32, 32]);
+    for (const name of ['icon-fold.ico', 'tray-icon-fold.ico']) {
+      expect(asset(`resources/${name}`).readUInt16LE(4)).toBeGreaterThanOrEqual(5);
+    }
+    expect(asset('resources/icon-fold.icns').toString('ascii', 0, 4)).toBe('icns');
   });
 
   it('provides small web and tray sizes and a full social preview', () => {
@@ -126,9 +149,13 @@ describe('approved Jiusi brand assets', () => {
 
   it('keeps the main-process tray paths aligned with exported assets', () => {
     const traySource = fs.readFileSync(path.join(projectRoot, 'src/main/app/tray.ts'), 'utf8');
-    expect(traySource).toContain("'tray-iconTemplate.png'");
-    expect(traySource).toContain("'tray-icon.ico'");
-    expect(traySource).toContain("'tray-icon.png'");
+    const runtimeIcons = fs.readFileSync(
+      path.join(projectRoot, 'src/main/app/brand-icons.ts'),
+      'utf8'
+    );
+    expect(traySource).toContain("getTrayIconPath(configStore.get('logoVariant'))");
+    expect(runtimeIcons).toContain('tray-icon${suffix}${extension}');
+    expect(runtimeIcons).toContain("'Template.png'");
     expect(traySource).not.toContain('appContext.tray-icon');
   });
 
@@ -139,9 +166,23 @@ describe('approved Jiusi brand assets', () => {
       { extraResources: Array<{ from: string; to: string }> }
     >;
     const expected = {
-      mac: ['icon.icns', 'tray-iconTemplate.png'],
-      win: ['icon.ico', 'tray-icon.ico', 'tray-icon.png'],
-      linux: ['icon.png', 'tray-icon.png'],
+      mac: [
+        'icon.icns',
+        'icon-fold.icns',
+        'icon-mac.png',
+        'icon-fold-mac.png',
+        'tray-iconTemplate.png',
+        'tray-icon-foldTemplate.png',
+      ],
+      win: [
+        'icon.ico',
+        'icon-fold.ico',
+        'tray-icon.ico',
+        'tray-icon-fold.ico',
+        'tray-icon.png',
+        'tray-icon-fold.png',
+      ],
+      linux: ['icon.png', 'icon-fold.png', 'tray-icon.png', 'tray-icon-fold.png'],
     };
     for (const platform of ['mac', 'win', 'linux'] as const) {
       for (const name of expected[platform]) {
