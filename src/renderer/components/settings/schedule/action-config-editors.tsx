@@ -92,7 +92,7 @@ export function ActionChainSection({
   const addActionButton = (
     <GlassDropdownMenu
       trigger={
-        <button className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/10">
+        <button className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15">
           <Plus size={13} />
           {tr('schedule.addAction', '添加动作')}
         </button>
@@ -167,7 +167,7 @@ export function ActionStepCard({
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/20 p-4">
       <div className="mb-5 flex items-center gap-3">
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-success/12 text-[13px] font-semibold text-success">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-[13px] font-semibold text-accent">
           {index + 1}
         </span>
         <Icon className="h-5 w-5 flex-shrink-0 text-text-secondary" />
@@ -381,7 +381,7 @@ export function GeneratedTaskReviewCard({
             if (event.currentTarget.open) void loadCurrentWorkflowDsl();
           }}
         >
-          <summary className="cursor-pointer text-[12px] font-medium text-success">
+          <summary className="cursor-pointer text-[12px] font-medium text-accent">
             {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
           </summary>
           {isLoadingWorkflowDsl ? (

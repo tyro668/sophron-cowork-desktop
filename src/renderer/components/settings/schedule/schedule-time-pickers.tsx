@@ -49,7 +49,7 @@ export function WeekdayPicker({
             onClick={() => toggle(day)}
             className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-[12px] font-medium transition-colors ${
               active
-                ? 'border-success bg-success text-success-foreground shadow-soft'
+                ? 'border-accent bg-accent text-accent-foreground shadow-soft'
                 : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >
@@ -128,7 +128,7 @@ export function MonthlyDayPicker({
                 selectedTags.slice(0, 4).map((tag) => (
                   <span
                     key={tag.key}
-                    className="inline-flex h-5 max-w-[5.25rem] items-center gap-1 rounded-md bg-success/10 px-1.5 text-[11px] font-semibold text-success"
+                    className="inline-flex h-5 max-w-[5.25rem] items-center gap-1 rounded-md bg-accent-muted px-1.5 text-[11px] font-semibold text-accent"
                   >
                     <span className="truncate">{tag.label}</span>
                     <span
@@ -150,7 +150,7 @@ export function MonthlyDayPicker({
                         event.stopPropagation();
                         tag.onRemove();
                       }}
-                      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-success/70 transition-colors hover:bg-success/10 hover:text-success"
+                      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-accent/70 transition-colors hover:bg-accent-muted hover:text-accent"
                     >
                       <X className="h-2.5 w-2.5" />
                     </span>
@@ -182,7 +182,7 @@ export function MonthlyDayPicker({
                 onClick={() => toggleDay(day)}
                 className={`inline-flex h-8 min-w-0 items-center justify-center rounded-md border text-[12px] font-semibold transition-colors ${
                   active
-                    ? 'border-success bg-success/12 text-success shadow-soft'
+                    ? 'border-accent bg-accent-muted text-accent shadow-soft'
                     : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
                 }`}
               >
@@ -196,7 +196,7 @@ export function MonthlyDayPicker({
             onClick={toggleLastDay}
             className={`col-span-7 mt-1 inline-flex h-8 items-center justify-center rounded-md border px-2 text-[12px] font-semibold transition-colors ${
               includeLastDay
-                ? 'border-success bg-success/12 text-success shadow-soft'
+                ? 'border-accent bg-accent-muted text-accent shadow-soft'
                 : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >

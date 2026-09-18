@@ -257,6 +257,11 @@
   }
 
   :root.light[data-accent-theme='lake'] {
+    /* Mode-agnostic accent tokens — the :not(.light) block is inert here. */
+    --color-accent: #2f9fd1;
+    --color-accent-hover: #2485b2;
+    --color-accent-rgb: 47 159 209;
+    --color-accent-hover-rgb: 36 133 178;
     --color-accent-muted: #e8f5fb;
     --color-accent-text: #247da5;
     --color-accent-text-hover: #1c688c;
@@ -388,6 +393,11 @@
   }
 
   :root.light[data-accent-theme='lavender'] {
+    /* Mode-agnostic accent tokens — the :not(.light) block is inert here. */
+    --color-accent: #7656e8;
+    --color-accent-hover: #6244cc;
+    --color-accent-rgb: 118 86 232;
+    --color-accent-hover-rgb: 98 68 204;
     --color-accent-muted: #f0edff;
     --color-accent-text: #6546c8;
     --color-accent-text-hover: #5338ad;
@@ -519,6 +529,11 @@
   }
 
   :root.light[data-accent-theme='orange'] {
+    /* Mode-agnostic accent tokens — the :not(.light) block is inert here. */
+    --color-accent: #e47b2e;
+    --color-accent-hover: #c96621;
+    --color-accent-rgb: 228 123 46;
+    --color-accent-hover-rgb: 201 102 33;
     --color-accent-muted: #fff1e6;
     --color-accent-text: #b85c1d;
     --color-accent-text-hover: #974916;
@@ -648,6 +663,11 @@
   }
 
   :root.light[data-accent-theme='rose'] {
+    /* Mode-agnostic accent tokens — the :not(.light) block is inert here. */
+    --color-accent: #d94d78;
+    --color-accent-hover: #bd3d66;
+    --color-accent-rgb: 217 77 120;
+    --color-accent-hover-rgb: 189 61 102;
     --color-accent-muted: #fcebf1;
     --color-accent-text: #b83a63;
     --color-accent-text-hover: #982e50;

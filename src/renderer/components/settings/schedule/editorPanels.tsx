@@ -503,7 +503,7 @@ function FileChangeConfigCard({
   };
   return (
     <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-accent">
         <Folder className="h-4 w-4" />
         {tr('schedule.fileChangeConfig', '文件变更配置')}
       </div>

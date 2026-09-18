@@ -230,7 +230,6 @@ export function ChannelDetailPanel({
                 onCheckedChange={onToggleChannel}
                 disabled={!channel.configured || isTogglingChannel}
                 aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
-                className="data-[state=checked]:border-success data-[state=checked]:bg-success"
               />
               <span>{t(channel.enabled ? 'remote.enableChannel' : 'remote.disableChannel')}</span>
               {isTogglingChannel && (
@@ -651,7 +650,7 @@ function ConnectionOption({
         {selected && <Check className="h-4 w-4 text-accent" />}
       </div>
       {recommended && (
-        <span className="mt-2 inline-block rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+        <span className="mt-2 inline-block rounded-full bg-accent-muted px-2 py-0.5 text-[10px] font-semibold text-accent">
           {t('remote.recommended')}
         </span>
       )}

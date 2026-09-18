@@ -262,8 +262,8 @@ export function GlassDateTimePicker({
             day_button:
               'mx-auto flex h-8 w-8 items-center justify-center rounded-lg text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
             selected:
-              '[&>button]:bg-success [&>button]:text-success-foreground [&>button]:shadow-soft',
-            today: '[&>button]:ring-1 [&>button]:ring-success/45',
+              '[&>button]:bg-accent [&>button]:text-accent-foreground [&>button]:shadow-soft',
+            today: '[&>button]:ring-1 [&>button]:ring-accent/45',
             outside: 'opacity-35',
             disabled: 'opacity-30',
           }}
@@ -305,7 +305,7 @@ export function GlassDateTimePicker({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-success bg-success/10 px-2.5 text-xs font-semibold text-success transition-colors hover:bg-success/15"
+            className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15"
           >
             <Check className="h-3.5 w-3.5" />
             {t('common.confirm', { defaultValue: isChinese ? '确定' : 'OK' })}

@@ -24,9 +24,9 @@ describe('dark theme palette', () => {
     const source = fs.readFileSync(stylesPath, 'utf8');
     expect(source).toContain('--color-accent: #2f8f63;');
     expect(source).toContain('--color-accent-hover: #267b54;');
-    expect(source).toContain(":root[data-accent-theme='lake']");
-    expect(source).toContain(":root[data-accent-theme='lavender']");
-    expect(source).toContain(":root[data-accent-theme='orange']");
-    expect(source).toContain(":root[data-accent-theme='rose']");
+    for (const theme of ['lake', 'lavender', 'orange', 'rose']) {
+      expect(source).toContain(`:root:not(.light)[data-accent-theme='${theme}']`);
+      expect(source).toContain(`:root.light[data-accent-theme='${theme}']`);
+    }
   });
 });

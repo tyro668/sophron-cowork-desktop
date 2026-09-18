@@ -262,7 +262,7 @@ export function CloudTableProcessActionEditor({
     <div className="space-y-4">
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-success">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-accent">
             {sourceLocation === 'local' ? (
               <Database className="h-4 w-4" />
             ) : (
@@ -302,7 +302,7 @@ export function CloudTableProcessActionEditor({
       </div>
 
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-success">
+        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-accent">
           <Wand2 className="h-4 w-4" />
           {tr('schedule.cloudProcessSection', '处理逻辑')}
         </div>
@@ -419,7 +419,7 @@ export function CloudTableProcessActionEditor({
                             .join('\n')
                         )
                       }
-                      className="h-8 rounded-lg border border-success bg-success/5 px-3 text-[12px] font-semibold text-success hover:bg-success/10 disabled:opacity-50"
+                      className="h-8 rounded-lg border border-accent/40 bg-accent-muted px-3 text-[12px] font-semibold text-accent hover:bg-accent/15 disabled:opacity-50"
                     >
                       {requirementAnalysis.status === 'supported'
                         ? tr('schedule.confirmGenerateTask', '确认生成')
@@ -431,21 +431,21 @@ export function CloudTableProcessActionEditor({
             )}
             {isAnalyzingTask && (
               <div
-                className="flex w-full items-center gap-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
+                className="flex w-full items-center gap-2 rounded-md border border-accent/20 bg-accent-muted px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-success" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
                 {tr('schedule.analyzingTaskRequirement', '正在拆解要求并匹配支持能力…')}
               </div>
             )}
             {isGeneratingTask && (
               <div
-                className="flex w-full items-center gap-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
+                className="flex w-full items-center gap-2 rounded-md border border-accent/20 bg-accent-muted px-2.5 py-2 text-[12px] leading-5 text-text-secondary"
                 role="status"
                 aria-live="polite"
               >
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-success" />
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
                 {tr(
                   'schedule.parsingAndValidatingTask',
                   '正在拆解处理要求，并校验字段、参数和任务逻辑…'
@@ -463,7 +463,7 @@ export function CloudTableProcessActionEditor({
                 (config.output.writeMode === 'replace' && !config.output.targetTableId.trim())
               }
               onClick={() => void analyzeTask()}
-              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-success bg-success/5 px-3 text-xs font-semibold text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {isAnalyzingTask || isGeneratingTask ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -487,7 +487,7 @@ export function CloudTableProcessActionEditor({
 
       <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-success">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-accent">
             {outputLocation === 'local' ? (
               <Save className="h-4 w-4" />
             ) : (

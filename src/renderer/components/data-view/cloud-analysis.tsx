@@ -1668,7 +1668,7 @@ export function CloudAnalysisPanel() {
                                         event.stopPropagation();
                                         startCloudTableAutomation(table);
                                       }}
-                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-success/30 bg-success/10 px-2.5 text-[12px] font-medium text-success transition-colors hover:bg-success hover:text-success-foreground"
+                                      className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-accent/30 bg-accent-muted px-2.5 text-[12px] font-medium text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
                                     >
                                       <CalendarClock className="h-3.5 w-3.5" />
                                       {t('cloudData.autoProcess')}
@@ -1769,7 +1769,7 @@ export function CloudAnalysisPanel() {
                   startCloudTableAutomation(preview.table);
                   closePreview();
                 }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 text-[12px] font-medium text-success shadow-soft transition-colors hover:bg-success hover:text-success-foreground"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-accent/30 bg-accent-muted px-3 text-[12px] font-medium text-accent shadow-soft transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 <CalendarClock className="h-3.5 w-3.5" />
                 {t('cloudData.autoProcess')}

@@ -60,22 +60,20 @@ export function ConnectionConfigStep({
           }}
           className={`p-4 rounded-lg border cursor-pointer transition-all ${
             useLongConnection
-              ? 'border-success bg-success/5'
-              : 'border-border hover:border-success/50'
+              ? 'border-accent bg-accent-muted'
+              : 'border-border hover:border-accent/50'
           }`}
         >
           <div className="flex items-start gap-3">
             <div
-              className={`p-2 rounded-lg ${useLongConnection ? 'bg-success/10' : 'bg-surface-active'}`}
+              className={`p-2 rounded-lg ${useLongConnection ? 'bg-accent-muted' : 'bg-surface-active'}`}
             >
-              <Zap
-                className={`w-5 h-5 ${useLongConnection ? 'text-success' : 'text-text-muted'}`}
-              />
+              <Zap className={`w-5 h-5 ${useLongConnection ? 'text-accent' : 'text-text-muted'}`} />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-text-primary">{t('remote.longConnection')}</span>
-                <span className="px-2 py-0.5 text-xs rounded-full bg-success/10 text-success font-medium">
+                <span className="px-2 py-0.5 text-xs rounded-full bg-accent-muted text-accent font-medium">
                   {t('remote.recommended')}
                 </span>
               </div>
@@ -95,7 +93,7 @@ export function ConnectionConfigStep({
             </div>
             <div
               className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                useLongConnection ? 'border-success bg-success' : 'border-border'
+                useLongConnection ? 'border-accent bg-accent' : 'border-border'
               }`}
             >
               {useLongConnection && <Check className="w-3 h-3 text-accent-foreground" />}
