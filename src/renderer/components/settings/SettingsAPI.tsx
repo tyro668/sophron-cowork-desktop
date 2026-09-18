@@ -426,8 +426,8 @@ export function SettingsAPI() {
                         }}
                         className={`h-8 rounded-md text-[12px] font-medium transition-colors ${
                           active
-                            ? 'bg-background text-accent shadow-soft ring-1 ring-inset ring-accent/25'
-                            : 'text-text-muted hover:text-text-primary'
+                            ? 'bg-accent text-accent-foreground shadow-soft'
+                            : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
                         }`}
                       >
                         {t(`api.thinkingLevels.${level}`)}
