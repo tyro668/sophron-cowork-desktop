@@ -29,6 +29,15 @@ export function SettingsGeneral() {
     { value: 'system' as const, label: t('general.themeSystem', 'System') },
   ];
 
+  // Swatch hexes mirror each accent family's --color-accent in globals.css.
+  const accentOptions = [
+    { value: 'mint' as const, label: t('general.accentMint'), swatch: '#2f8f63' },
+    { value: 'lake' as const, label: t('general.accentLake'), swatch: '#2f9fd1' },
+    { value: 'lavender' as const, label: t('general.accentLavender'), swatch: '#7656e8' },
+    { value: 'orange' as const, label: t('general.accentOrange'), swatch: '#e47b2e' },
+    { value: 'rose' as const, label: t('general.accentRose'), swatch: '#d94d78' },
+  ];
+
   return (
     <div className="space-y-3">
       {/* Theme */}
@@ -45,6 +54,28 @@ export function SettingsGeneral() {
                   : 'border-border-muted bg-surface hover:border-accent/40 text-text-secondary shadow-soft'
               }`}
             >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div role="radiogroup" aria-label={t('general.accentTheme')} className="flex gap-2">
+          {accentOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={settings.accentTheme === opt.value}
+              onClick={() => updateSettings({ accentTheme: opt.value })}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[12px] font-medium transition-all ${
+                settings.accentTheme === opt.value
+                  ? 'border-accent/40 bg-accent-muted text-text-primary shadow-soft'
+                  : 'border-border-muted bg-surface hover:border-accent/40 text-text-secondary shadow-soft'
+              }`}
+            >
+              <span
+                className="h-3 w-3 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: opt.swatch }}
+              />
               {opt.label}
             </button>
           ))}

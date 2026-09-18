@@ -143,6 +143,16 @@ function App() {
     }
   }, [settings.theme, systemDarkMode]);
 
+  // Apply accent color family — mint is the stylesheet default, others set data-accent-theme
+  useEffect(() => {
+    const accent = settings.accentTheme;
+    if (accent && accent !== 'mint') {
+      document.documentElement.setAttribute('data-accent-theme', accent);
+    } else {
+      document.documentElement.removeAttribute('data-accent-theme');
+    }
+  }, [settings.accentTheme]);
+
   useEffect(() => {
     setContextPanelCollapsed(width < 1100);
   }, [width, setContextPanelCollapsed]);

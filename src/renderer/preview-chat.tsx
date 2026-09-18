@@ -160,6 +160,7 @@ const appConfig: AppConfig = {
   configSets: [],
   enableDevLogs: false,
   theme: 'dark',
+  accentTheme: 'mint',
   permissionPolicy: 'auto_review',
   sandboxEnabled: false,
   memoryEnabled: false,

@@ -27,6 +27,9 @@ export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
 
 export type AppTheme = 'dark' | 'light' | 'system';
 
+/** Accent color families rendered via `:root[data-accent-theme]` in globals.css. */
+export type AppAccentTheme = 'mint' | 'lake' | 'lavender' | 'orange' | 'rose';
+
 export type ProviderProfileKey =
   | 'openrouter'
   | 'anthropic'
@@ -118,6 +121,7 @@ export interface AppConfig {
   globalSkillsPath?: string;
   enableDevLogs: boolean;
   theme: AppTheme;
+  accentTheme: AppAccentTheme;
   permissionPolicy: PermissionPolicyId;
   sandboxEnabled: boolean;
   memoryEnabled: boolean;

@@ -1531,6 +1531,12 @@
     "themeLight": "浅色",
     "themeDark": "深色",
     "themeSystem": "跟随系统",
+    "accentTheme": "色系",
+    "accentMint": "薄荷绿",
+    "accentLake": "湖蓝",
+    "accentLavender": "薰衣草",
+    "accentOrange": "暖橙",
+    "accentRose": "玫瑰",
     "language": "语言",
     "updateAvailableBadge": "有新版本",
     "updateAvailableBadgeTitle": "下载并安装新版本 {{version}}"

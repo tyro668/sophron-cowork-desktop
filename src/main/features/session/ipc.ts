@@ -17,7 +17,7 @@ import {
 } from '../../app/theme';
 import { getWorkingDir, getWorkspacePathUnsupportedReason, setWorkingDir } from '../../app/workdir';
 import { eventRequiresSessionManager } from '../../client-event-utils';
-import { configStore, type AppTheme } from '../../config/config-store';
+import { configStore, type AppTheme, type AppAccentTheme } from '../../config/config-store';
 import { setPermissionRules } from '../../config/permission-rules-store';
 import { handleIpc } from '../../ipc-handle';
 import { logWarn, logError } from '../../utils/logger';
@@ -231,12 +231,21 @@ export function registerSessionIpc(): void {
           event.payload.theme === 'system'
             ? (event.payload.theme as AppTheme)
             : undefined;
+        const nextAccentTheme = (['mint', 'lake', 'lavender', 'orange', 'rose'] as const).includes(
+          event.payload.accentTheme as AppAccentTheme
+        )
+          ? (event.payload.accentTheme as AppAccentTheme)
+          : undefined;
         const nextPolicy = isPermissionPolicy(event.payload.permissionPolicy)
           ? event.payload.permissionPolicy
           : undefined;
 
-        if (nextTheme || nextPolicy) {
-          configStore.update({ theme: nextTheme, permissionPolicy: nextPolicy });
+        if (nextTheme || nextAccentTheme || nextPolicy) {
+          configStore.update({
+            theme: nextTheme,
+            accentTheme: nextAccentTheme,
+            permissionPolicy: nextPolicy,
+          });
           if (nextTheme) {
             applyNativeThemePreference(nextTheme);
             if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {

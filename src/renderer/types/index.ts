@@ -5,12 +5,13 @@
  */
 export * from '../../shared/contracts';
 
-import type { AppTheme } from '../../shared/contracts';
+import type { AppTheme, AppAccentTheme } from '../../shared/contracts';
 import type { PermissionPolicyId } from '../../shared/permission-policies';
 
 // Settings types
 export interface Settings {
   theme: AppTheme;
+  accentTheme: AppAccentTheme;
   apiKey?: string;
   defaultTools: string[];
   permissionPolicy: PermissionPolicyId;

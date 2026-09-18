@@ -24,6 +24,7 @@ function makeConfig(timeoutMs: number): AppConfig {
     globalSkillsPath: '',
     enableDevLogs: false,
     theme: 'light',
+    accentTheme: 'mint',
     permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: true,

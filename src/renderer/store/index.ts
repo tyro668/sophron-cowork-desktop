@@ -238,6 +238,7 @@ interface AppState {
 
 const defaultSettings: Settings = {
   theme: 'light',
+  accentTheme: 'mint',
   defaultTools: [
     'askuserquestion',
     'todowrite',

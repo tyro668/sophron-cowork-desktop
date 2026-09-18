@@ -152,6 +152,7 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     globalSkillsPath: '',
     enableDevLogs: true,
     theme: 'light',
+    accentTheme: 'mint',
     permissionPolicy: 'auto_review',
     sandboxEnabled: false,
     memoryEnabled: false,

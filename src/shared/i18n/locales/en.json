@@ -1531,6 +1531,12 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "themeSystem": "System",
+    "accentTheme": "Color scheme",
+    "accentMint": "Mint",
+    "accentLake": "Lake",
+    "accentLavender": "Lavender",
+    "accentOrange": "Orange",
+    "accentRose": "Rose",
     "language": "Language",
     "updateAvailableBadge": "New version",
     "updateAvailableBadgeTitle": "Download and install version {{version}}"
