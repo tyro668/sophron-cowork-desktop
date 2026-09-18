@@ -25,7 +25,19 @@ import type {
   ToolResultContent,
   FileAttachmentContent,
 } from '../../types';
-import { FileText, Table2 } from 'lucide-react';
+import {
+  File,
+  FileArchive,
+  FileAudio2,
+  FileCode2,
+  FilePieChart,
+  FileSpreadsheet,
+  FileText,
+  FileVideo,
+  Image as ImageIcon,
+  Table2,
+} from 'lucide-react';
+import { getArtifactIconKey, type ArtifactIconKey } from '../../utils/artifact-steps';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolUseBlock } from './ToolUseBlock';
@@ -40,6 +52,25 @@ const MessageMarkdown = lazy(() =>
 // Render them as regular links instead of strikethrough links.
 function normalizeCitationMarkdownLinks(markdown: string): string {
   return markdown.replace(/~\[(.+?)\]\(([^)\s]+)\)~/g, '[$1]($2)');
+}
+
+const attachmentIconMap: Record<ArtifactIconKey, typeof FileText> = {
+  slides: FilePieChart,
+  table: FileSpreadsheet,
+  doc: FileText,
+  code: FileCode2,
+  text: FileText,
+  image: ImageIcon,
+  audio: FileAudio2,
+  video: FileVideo,
+  archive: FileArchive,
+  file: File,
+};
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
 
 export const ContentBlockView = memo(function ContentBlockView({
@@ -344,12 +375,22 @@ export const ContentBlockView = memo(function ContentBlockView({
 
     case 'file_attachment': {
       const fileBlock = block as FileAttachmentContent;
+      const AttachmentIcon = attachmentIconMap[getArtifactIconKey(fileBlock.filename)];
 
       return (
-        <div className="flex max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-lg bg-surface-muted px-3 py-2">
-          <FileText className="w-4 h-4 text-text-muted flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] text-text-primary truncate">{fileBlock.filename}</p>
+        <div className="flex max-w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-xl border border-border bg-background px-3 py-2">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted">
+            <AttachmentIcon className="h-4 w-4 text-accent" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-medium leading-5 text-text-primary">
+              {fileBlock.filename}
+            </p>
+            {fileBlock.size > 0 && (
+              <p className="text-[11px] leading-4 text-text-muted">
+                {formatAttachmentSize(fileBlock.size)}
+              </p>
+            )}
           </div>
         </div>
       );
@@ -366,9 +407,9 @@ export const ContentBlockView = memo(function ContentBlockView({
           {tables.map((table, index) => (
             <div
               key={table.id || `${table.tableId}-${index}`}
-              className="inline-flex max-w-full items-center gap-2 rounded-lg bg-accent-muted px-3 py-1.5 text-[13px] text-accent-text"
+              className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-[13px] text-text-primary"
             >
-              <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+              <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
               <span className="min-w-0 truncate font-medium">{table.tableName}</span>
               {table.projectName && (
                 <span className="hidden flex-shrink-0 text-[11px] text-text-muted sm:inline">
