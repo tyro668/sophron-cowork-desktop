@@ -24,6 +24,11 @@ interface SkillHubSkillListItem {
   homepage?: string;
   source?: string;
   labels?: Record<string, string | boolean | null | undefined> | null;
+  namespace?: {
+    canonicalName?: string;
+    handle?: string;
+    publicSlug?: string;
+  } | null;
 }
 
 export interface DownloadedSkillHubSkill {
@@ -134,6 +139,9 @@ export class SkillHubService {
     const name = (skill.name || slug).trim();
     const requiresApiKey =
       skill.labels?.requires_api_key === true || skill.labels?.requires_api_key === 'true';
+    // Slugs are not unique across publishers — the canonical @handle/slug
+    // identity disambiguates them for install and installed-detection.
+    const canonicalSlug = skill.namespace?.canonicalName?.trim() || slug;
 
     return {
       name,
@@ -145,10 +153,12 @@ export class SkillHubService {
       componentCounts: { ...SKILL_ONLY_COUNTS },
       skillCount: 1,
       hasSkills: true,
-      pluginId: `skillhub:${slug}`,
-      skillHubSlug: slug,
-      installCommand: `skillhub install ${slug}`,
-      detailUrl: `${SKILLHUB_SITE_BASE_URL}/skills/${encodeURIComponent(slug)}`,
+      pluginId: `skillhub:${canonicalSlug}`,
+      skillHubSlug: canonicalSlug,
+      installCommand: `skillhub install ${canonicalSlug}`,
+      detailUrl:
+        skill.homepage?.trim() ||
+        `${SKILLHUB_SITE_BASE_URL}/skills/${encodeURIComponent(canonicalSlug)}`,
       catalogSource: 'skillhub',
       requiresApiKey,
     };
@@ -156,7 +166,8 @@ export class SkillHubService {
 
   private normalizeSlug(slug: string): string {
     const normalized = slug.trim().replace(/^skillhub:/i, '');
-    if (!/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(normalized)) {
+    // Accepts both `slug` and the canonical `@handle/slug` form.
+    if (!/^(@[a-z0-9][a-z0-9._-]{0,63}\/)?[a-z0-9][a-z0-9._-]{0,127}$/i.test(normalized)) {
       throw new Error(`Invalid SkillHub slug: ${slug}`);
     }
     return normalized;

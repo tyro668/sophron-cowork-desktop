@@ -14,6 +14,8 @@ export interface Skill {
   path?: string;
   type: SkillType;
   enabled: boolean;
+  /** SkillHub package slug persisted from `_meta.json` when installed from the hub. */
+  skillHubSlug?: string;
   config?: Record<string, unknown>;
   createdAt: number;
 }

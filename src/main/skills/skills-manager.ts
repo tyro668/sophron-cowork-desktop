@@ -759,6 +759,7 @@ export class SkillsManager {
               path: entryPath,
               type: 'custom',
               enabled: true,
+              skillHubSlug: this.readSkillHubSlug(entryPath),
               createdAt: Date.now(),
             };
 
@@ -1025,6 +1026,22 @@ export class SkillsManager {
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Read the SkillHub package slug recorded in `_meta.json` (written by the
+   * hub into every downloaded package). Returns undefined for non-hub skills.
+   */
+  private readSkillHubSlug(skillPath: string): string | undefined {
+    try {
+      const metaPath = path.join(skillPath, '_meta.json');
+      if (!fs.existsSync(metaPath)) return undefined;
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { slug?: string };
+      const slug = meta.slug?.trim();
+      return slug || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

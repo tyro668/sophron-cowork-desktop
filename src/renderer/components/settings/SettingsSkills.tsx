@@ -70,17 +70,19 @@ type SkillTableItem =
       tags: string[];
     };
 
-function normalizePluginLookupKey(value: string | undefined): string {
+export function normalizePluginLookupKey(value: string | undefined): string {
   if (!value) {
     return '';
   }
   return value
+    .trim()
+    .replace(/\.skills?$/i, '')
     .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '');
 }
 
-function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
+export function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
   const keys = new Set<string>();
   const addKey = (value: string | undefined) => {
     if (!value) {
@@ -102,10 +104,35 @@ function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
   addKey(plugin.pluginId);
   addKey(plugin.skillHubSlug);
 
-  const marketplaceId = plugin.pluginId?.split('@')[0];
-  addKey(marketplaceId);
+  // Canonical "@handle/slug" identities also key by the bare slug — the
+  // installed package records only the slug in its `_meta.json`.
+  const bareSlug = plugin.skillHubSlug?.split('/').pop();
+  addKey(bareSlug);
+  if (bareSlug) {
+    addKey(`skillhub:${bareSlug}`);
+  }
+
+  // Marketplace alias ("name@source" → "name") only applies to
+  // claude-marketplace ids; skillhub ids are "skillhub:<canonical>".
+  if (plugin.catalogSource !== 'skillhub') {
+    addKey(plugin.pluginId?.split('@')[0]);
+  }
 
   return [...keys];
+}
+
+/** Lookup keys identifying an installed skill for catalog installed-detection. */
+export function getInstalledSkillLookupKeys(skill: Skill): string[] {
+  const dirName = skill.path?.split(/[/\\]/).filter(Boolean).pop();
+  return [
+    skill.name,
+    skill.name?.toLowerCase(),
+    normalizePluginLookupKey(skill.name),
+    dirName,
+    normalizePluginLookupKey(dirName),
+    skill.skillHubSlug,
+    skill.skillHubSlug ? `skillhub:${skill.skillHubSlug}` : undefined,
+  ].filter((value): value is string => Boolean(value));
 }
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
@@ -146,12 +173,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     };
 
     for (const skill of skills) {
-      const candidates = [
-        skill.name,
-        skill.name?.toLowerCase(),
-        normalizePluginLookupKey(skill.name),
-      ].filter((value): value is string => Boolean(value));
-      for (const key of candidates) {
+      for (const key of getInstalledSkillLookupKeys(skill)) {
         addLookupKey(key, skill);
       }
     }
@@ -227,11 +249,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           if (reset) {
             return nextCatalog;
           }
-          const seen = new Set(current.map((plugin) => plugin.pluginId || plugin.name));
-          return [
-            ...current,
-            ...nextCatalog.filter((plugin) => !seen.has(plugin.pluginId || plugin.name)),
-          ];
+          const dedupeKey = (plugin: PluginCatalogItemV2) =>
+            (plugin.skillHubSlug?.split('/').pop() || plugin.pluginId || plugin.name).toLowerCase();
+          const seen = new Set(current.map(dedupeKey));
+          return [...current, ...nextCatalog.filter((plugin) => !seen.has(dedupeKey(plugin)))];
         });
         pluginPageRef.current = nextPage;
         setHasMorePlugins(nextCatalog.length >= SKILLHUB_MARKET_PAGE_SIZE);
@@ -404,6 +425,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   const tableItems = useMemo<SkillTableItem[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
+    const seenSlugs = new Set<string>();
     const skillRows = skills
       .filter((skill) => {
         if (activeWorkspaceTab === 'builtin' && skill.type !== 'builtin') return false;
@@ -436,6 +458,18 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               return `${plugin.name} ${plugin.description ?? ''} ${plugin.catalogSource ?? ''}`
                 .toLocaleLowerCase()
                 .includes(query);
+            })
+            // Same bare slug = same package identity (they install into the
+            // same directory) — keep only the first (score-sorted) entry.
+            .filter((plugin) => {
+              const key = (
+                plugin.skillHubSlug?.split('/').pop() ||
+                plugin.pluginId ||
+                plugin.name
+              ).toLowerCase();
+              if (seenSlugs.has(key)) return false;
+              seenSlugs.add(key);
+              return true;
             })
             .map((plugin) => {
               const installedPlugin = getCatalogLookupKeys(plugin)
@@ -921,6 +955,7 @@ function SkillTypeBadge({ item }: { item: SkillTableItem }) {
 function SkillStatusBadge({ item }: { item: SkillTableItem }) {
   const { t } = useTranslation();
   const installable = item.kind === 'plugin' && !item.installed;
+  const installedPlugin = item.kind === 'plugin' && item.installed;
 
   return (
     <span
@@ -940,9 +975,11 @@ function SkillStatusBadge({ item }: { item: SkillTableItem }) {
       <span className="truncate">
         {installable
           ? t('skills.workspace.installable')
-          : item.enabled
-            ? t('skills.workspace.enabled')
-            : t('skills.workspace.disabled')}
+          : installedPlugin
+            ? t('skills.pluginInstalled')
+            : item.enabled
+              ? t('skills.workspace.enabled')
+              : t('skills.workspace.disabled')}
       </span>
     </span>
   );
