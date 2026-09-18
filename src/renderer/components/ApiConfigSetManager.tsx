@@ -115,7 +115,7 @@ export function ApiConfigSetManager({
         </div>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,176px),1fr))] gap-2">
         {configSets.map((set) => {
           const isSelected = set.id === selectedConfigSetId;
           const isDefault = set.id === activeConfigSetId;
@@ -124,7 +124,7 @@ export function ApiConfigSetManager({
           return (
             <div
               key={set.id}
-              className={`group flex min-h-[58px] min-w-0 items-center rounded-lg border bg-background transition-colors ${
+              className={`group flex min-h-[46px] min-w-0 items-center rounded-lg border bg-background transition-colors ${
                 isSelected
                   ? 'border-accent shadow-[0_0_0_1px_rgb(var(--color-accent-rgb)/0.14)]'
                   : 'border-border-muted hover:border-accent/35 hover:bg-surface-hover'
@@ -146,7 +146,7 @@ export function ApiConfigSetManager({
                     }
                   }}
                   autoFocus
-                  className="ml-4 min-w-0 flex-1 rounded-lg border border-accent bg-background px-3 py-2 text-[13px] text-text-primary outline-none ring-2 ring-accent/15"
+                  className="mx-1.5 min-w-0 flex-1 rounded-md border border-accent bg-background px-2 py-1.5 text-[13px] text-text-primary outline-none ring-2 ring-accent/15"
                   aria-label={t('api.currentSetName')}
                 />
               ) : (
@@ -155,24 +155,24 @@ export function ApiConfigSetManager({
                   onClick={() => void onSelectSet(set.id)}
                   disabled={isMutatingConfigSet}
                   aria-pressed={isSelected}
-                  className="flex min-w-0 flex-1 items-center gap-3 self-stretch px-3.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
+                  className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-3 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-[14px] font-medium text-text-primary">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[13px] font-medium text-text-primary">
                         {set.name}
                       </span>
                       {set.isSystem && (
-                        <span className="shrink-0 rounded-md bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground">
+                        <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-foreground">
                           {t('api.defaultSetTag')}
                         </span>
                       )}
                       {isSelected && !set.isSystem && (
-                        <Check className="h-4 w-4 shrink-0 text-accent" />
+                        <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
                       )}
                     </div>
                     {summary && (
-                      <p className="mt-0.5 truncate text-[11px] text-text-muted">{summary}</p>
+                      <p className="truncate text-[11px] leading-4 text-text-muted">{summary}</p>
                     )}
                   </div>
                 </button>
@@ -186,10 +186,10 @@ export function ApiConfigSetManager({
                       type="button"
                       onClick={(event) => event.stopPropagation()}
                       disabled={isMutatingConfigSet}
-                      className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary disabled:opacity-50"
+                      className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary disabled:opacity-50"
                       aria-label={t('api.moreActions')}
                     >
-                      <MoreVertical className="h-4 w-4" />
+                      <MoreVertical className="h-3.5 w-3.5" />
                     </button>
                   }
                   contentClassName="w-40"
@@ -225,9 +225,9 @@ export function ApiConfigSetManager({
           type="button"
           onClick={() => void onRequestCreateBlankSet()}
           disabled={isMutatingConfigSet || Boolean(renameTargetId)}
-          className="flex min-h-[58px] items-center justify-center gap-2 rounded-lg border border-dashed border-accent/35 bg-accent/[0.025] px-4 text-[14px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-lg border border-dashed border-accent/35 bg-accent/[0.025] px-3 text-[13px] font-medium text-accent transition-colors hover:border-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
           {t('api.newSet')}
         </button>
       </div>
