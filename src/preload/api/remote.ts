@@ -16,6 +16,10 @@ import type { ElectronApi } from '../../shared/contracts/electron-api';
 
 export function createRemoteApi(): ElectronApi['remote'] {
   return {
+    beginQrSetup: (id, channel) => ipcRenderer.invoke('remote.beginQrSetup', id, channel),
+    getQrSetup: (id) => ipcRenderer.invoke('remote.getQrSetup', id),
+    submitQrSetupCode: (id, code) => ipcRenderer.invoke('remote.submitQrSetupCode', id, code),
+    cancelQrSetup: (id) => ipcRenderer.invoke('remote.cancelQrSetup', id),
     getConfig: (): Promise<RemoteConfig> => ipcRenderer.invoke('remote.getConfig'),
     getStatus: (): Promise<{
       running: boolean;

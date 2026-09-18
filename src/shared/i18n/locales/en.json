@@ -2764,7 +2764,9 @@
     "channelName": {
       "feishu": "Feishu",
       "dingtalk": "DingTalk",
-      "wecom": "WeCom"
+      "wecom": "WeCom",
+      "lark": "Lark",
+      "wechat": "WeChat"
     },
     "channelDesc": {
       "feishu": "Enter app credentials to enable",
@@ -3091,21 +3093,61 @@
     "actionFailed": "Operation failed",
     "configSaved": "Configuration saved",
     "saveFailed": "Failed to save configuration",
-    "pairingApproved": "Pairing approved",
+    "pairingApproved": "Access approved. Return to the IM app and send your message again.",
     "approveFailed": "Failed to approve pairing",
     "reject": "Reject",
     "pairingRejected": "Pairing rejected",
     "rejectFailed": "Failed to reject pairing",
     "pairingGuideTitle": "Pairing guide",
-    "pairingGuideStep1": "Open Feishu and find the bot",
+    "pairingGuideStep1": "Open the bot conversation in your connected IM app",
     "pairingGuideStep2": "Send any message to initiate pairing",
-    "pairingGuideStep3": "Approve the pairing request below",
-    "pairingGuideStep4": "Done — the user can now chat with the bot",
+    "pairingGuideStep3": "Verify the user and request code below, then click Approve",
+    "pairingGuideStep4": "Return to the IM app and send your message again",
     "waitingForPairing": "Waiting for users to initiate pairing...",
     "expiresIn": "Expires in {{time}}",
     "userRemoved": "User removed",
     "revokeFailed": "Failed to remove user",
-    "copied": "Copied"
+    "copied": "Copied",
+    "qr": {
+      "title": "Configure {{channel}}",
+      "instruction": "Scan with {{channel}} to create and configure a bot",
+      "wechatInstruction": "Scan with WeChat and confirm the connection on your phone",
+      "refresh": "Refresh QR code",
+      "manual": "Configure an existing app manually",
+      "scanSetup": "Set up with QR code",
+      "imageAlt": "{{channel}} setup QR code",
+      "verifyCode": "Code shown on your phone",
+      "appId": "App ID",
+      "appSecret": "App secret",
+      "done": "Done",
+      "confirm": "Confirm",
+      "wechatTextOnly": "Supports direct text messages and transcribed voice messages.",
+      "status": {
+        "generating": "Generating QR code…",
+        "waiting": "Waiting for scan and confirmation",
+        "scanned": "Scanned. Complete confirmation on your phone",
+        "verifying": "Enter the code shown on your phone",
+        "saving": "Saving configuration…",
+        "completed": "Configuration saved. You can enable the remote service.",
+        "expired": "QR code expired. Refresh to try again",
+        "denied": "Authorization incomplete. Refresh to try again",
+        "cancelled": "Setup cancelled"
+      },
+      "errors": {
+        "unavailable": "Cannot reach the setup service. Try again",
+        "registration_failed": "QR setup failed. Check your connection and retry",
+        "save_failed": "Could not save or apply configuration. Check channel status and retry",
+        "unsupported_brand": "Account does not match this channel. Select Feishu or Lark to match your account"
+      }
+    },
+    "configureChannel": "Configure",
+    "manageChannel": "Manage",
+    "channelSummary": "Receive and reply to messages through a {{channel}} bot",
+    "pendingApprovalNotice": "{{count}} remote access request(s) awaiting approval",
+    "reviewPairings": "Review authorized users",
+    "pairingReviewHint": "Verify the channel, user and request code, then click Approve. Ask the user to send their message again in the IM app.",
+    "noPendingPairings": "No pairing requests awaiting approval",
+    "authorizedUsersReady": "The users below are authorized. Return to the IM app and send your message again; no further pairing is needed."
   },
   "time": {
     "now": "now"

@@ -10,7 +10,7 @@ import {
   MapPin,
   ShieldAlert,
 } from 'lucide-react';
-import type { RemoteChannelType } from './types';
+import type { ManualRemoteChannelType as RemoteChannelType } from './types';
 
 interface Props {
   channelType: RemoteChannelType;

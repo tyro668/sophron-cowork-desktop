@@ -133,8 +133,8 @@ class RemoteConfigStore {
    * Set feishu channel config
    */
   setFeishuConfig(config: FeishuChannelConfig): void {
-    const current = this.getFeishuConfig();
-    this.store.set('channels.feishu', this.withPreservedChannelEnabled(config, current));
+    const current = this.store.get(`channels.${config.type}`);
+    this.store.set(`channels.${config.type}`, this.withPreservedChannelEnabled(config, current));
     log('[RemoteConfig] Feishu config updated');
   }
 

@@ -36,6 +36,7 @@ const providerType = z.enum([
 const customProtocol = z.enum(['anthropic', 'openai', 'gemini']);
 const channelType = z.enum([
   'feishu',
+  'lark',
   'wechat',
   'wecom',
   'telegram',
@@ -43,7 +44,7 @@ const channelType = z.enum([
   'websocket',
   'slack',
 ]);
-const controllableChannelType = z.enum(['feishu', 'dingtalk', 'wecom']);
+const controllableChannelType = z.enum(['feishu', 'lark', 'wechat', 'dingtalk', 'wecom']);
 const inputTableSourceKind = z.enum(['excel', 'csv', 'folder']);
 const memoryItemStatus = z.enum(['active', 'pending', 'rejected', 'archived']);
 
@@ -215,7 +216,7 @@ const gatewayConfigPatch = z.looseObject({
 });
 
 const feishuChannelConfig = z.looseObject({
-  type: z.literal('feishu'),
+  type: z.enum(['feishu', 'lark']),
   enabled: boolOpt,
   appId: str,
   appSecret: str,
@@ -434,6 +435,13 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'remote.setEnabled': [bool],
   'remote.setChannelEnabled': [controllableChannelType, bool],
   'remote.updateGatewayConfig': [gatewayConfigPatch],
+  'remote.beginQrSetup': [
+    z.string().uuid(),
+    z.enum(['feishu', 'lark', 'wechat', 'dingtalk', 'wecom']),
+  ],
+  'remote.getQrSetup': [z.string().uuid()],
+  'remote.submitQrSetupCode': [z.string().uuid(), z.string().regex(/^\d{4,12}$/)],
+  'remote.cancelQrSetup': [z.string().uuid()],
   'remote.updateFeishuConfig': [feishuChannelConfig],
   'remote.updateDingtalkConfig': [dingtalkChannelConfig, gatewayConfigPatch.optional()],
   'remote.updateWecomConfig': [wecomChannelConfig, gatewayConfigPatch.optional()],

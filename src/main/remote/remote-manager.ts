@@ -13,6 +13,7 @@ import { isNonRetryableChannelError } from './channels/channel-base';
 import { FeishuChannel } from './channels/feishu';
 import { DingtalkChannel } from './channels/dingtalk';
 import { WecomChannel } from './channels/wecom';
+import { WechatChannel } from './channels/wechat/wechat-channel';
 import { SlackChannel } from './channels/slack';
 import { remoteConfigStore } from './remote-config-store';
 import { tunnelManager, TunnelStatus } from './tunnel-manager';
@@ -23,6 +24,7 @@ import type {
   GatewayStatus,
   GatewayConfig,
   FeishuChannelConfig,
+  WechatChannelConfig,
   DingtalkChannelConfig,
   WecomChannelConfig,
   ChannelType,
@@ -396,9 +398,11 @@ export class RemoteManager extends EventEmitter {
     }
   }
 
-  /**
-   * Update feishu channel config
-   */
+  async updateWechatConfig(config: WechatChannelConfig): Promise<void> {
+    remoteConfigStore.setWechatConfig(config);
+    if (this.gateway?.running) await this.restart();
+  }
+
   async updateFeishuConfig(config: FeishuChannelConfig): Promise<void> {
     remoteConfigStore.setFeishuConfig(config);
 
@@ -1502,6 +1506,18 @@ export class RemoteManager extends EventEmitter {
    */
   private async registerChannels(config: RemoteConfig): Promise<void> {
     if (!this.gateway) return;
+
+    const larkConfig = config.channels.lark;
+    if (larkConfig?.appId && larkConfig.appSecret) {
+      this.gateway.registerChannel(
+        new FeishuChannel({ ...larkConfig, type: 'lark' }),
+        larkConfig.enabled !== false
+      );
+    }
+    const wechatConfig = config.channels.wechat;
+    if (wechatConfig?.botToken && wechatConfig.botId) {
+      this.gateway.registerChannel(new WechatChannel(wechatConfig), wechatConfig.enabled !== false);
+    }
 
     // Register Feishu channel if configured
     const feishuConfig = config.channels.feishu;

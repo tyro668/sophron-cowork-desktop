@@ -21,6 +21,11 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
         <Users className="w-4 h-4" />
         {t('remote.authorizedUsersTitle', { count: pairedUsers.length })}
       </h3>
+      {pairedUsers.length > 0 && (
+        <p role="status" className="mb-3 text-sm text-success">
+          {t('remote.authorizedUsersReady')}
+        </p>
+      )}
       {pairedUsers.length === 0 ? (
         <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-border p-6 text-center">
           <UserRoundCheck className="h-7 w-7 text-text-muted" />

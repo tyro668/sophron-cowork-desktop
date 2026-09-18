@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { log, logError, logWarn } from '../../../utils/logger';
 
 export interface FeishuWSConfig {
+  brand?: 'feishu' | 'lark';
   appId: string;
   appSecret: string;
   logLevel?: 'debug' | 'info' | 'warn' | 'error';
@@ -122,6 +123,7 @@ export class FeishuWSClient extends EventEmitter {
       this.client = new Lark.Client({
         appId,
         appSecret,
+        domain: this.config.brand === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu,
         disableTokenCache: false,
       });
 
@@ -130,6 +132,7 @@ export class FeishuWSClient extends EventEmitter {
       sdkWSClient = new Lark.WSClient({
         appId,
         appSecret,
+        domain: this.config.brand === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu,
         loggerLevel,
         autoReconnect: true,
         handshakeTimeoutMs:

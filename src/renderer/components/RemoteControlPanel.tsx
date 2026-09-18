@@ -1,12 +1,17 @@
 /**
  * Multi-channel remote control settings shell.
  *
- * Feishu, DingTalk, and WeCom are wired to the remote backend.
+ * DingTalk, Feishu, Lark, WeChat, and WeCom share QR setup and channel controls.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Check, CheckCircle2, Info, Loader2, Save, ScrollText } from 'lucide-react';
+import { X } from 'lucide-react';
+import { Button } from './ui/button';
+import { Dialog, DialogTitle, DialogBody } from './ui/dialog';
+import { QrSetupDialog } from './remote/QrSetupDialog';
+import { AdditionalChannelSettings } from './remote/AdditionalChannelSettings';
 import { AdvancedConfigStep } from './remote/AdvancedConfigStep';
 import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
 import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
@@ -58,6 +63,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
   const [activeSection, setActiveSection] = useState<RemoteSection>('channels');
+  const [setupMode, setSetupMode] = useState<'scan' | 'manual' | null>(null);
+  const [additionalConfig, setAdditionalConfig] = useState<
+    Pick<RemoteConfig['channels'], 'lark' | 'wechat'>
+  >({});
   const [selectedChannel, setSelectedChannel] = useState<RemoteChannelType>('feishu');
 
   const [feishuAppId, setFeishuAppId] = useState('');
@@ -91,6 +100,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
   const applyConfig = useCallback((configResult: RemoteConfig | null) => {
     if (!configResult) return;
+    setAdditionalConfig({ lark: configResult.channels.lark, wechat: configResult.channels.wechat });
 
     setGatewayPort(configResult.gateway?.port || 18789);
     setDefaultWorkingDirectory(configResult.gateway?.defaultWorkingDirectory || '');
@@ -174,6 +184,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     [applyConfig]
   );
 
+  useEffect(() => {
+    if (!isActive) setSetupMode(null);
+  }, [isActive]);
+
   const refreshStatus = useCallback(async () => {
     if (!isElectron) return;
     try {
@@ -206,7 +220,11 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setError(null);
     try {
       const newEnabled = !status?.running;
-      await window.electronAPI.remote.setEnabled(newEnabled);
+      const result = await window.electronAPI.remote.setEnabled(newEnabled);
+      if (!result.success) {
+        setError({ key: 'remote.actionFailed' });
+        return;
+      }
       await refreshStatus();
       showSuccess({ key: newEnabled ? 'remote.started' : 'remote.stopped' });
     } catch (toggleError) {
@@ -259,7 +277,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setIsSaving(true);
     setError(null);
     try {
-      await window.electronAPI.remote.updateFeishuConfig({
+      const result = await window.electronAPI.remote.updateFeishuConfig({
         type: 'feishu',
         enabled: feishuEnabled,
         appId: feishuAppId,
@@ -267,7 +285,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         useWebSocket: useLongConnection,
         dm: { policy: feishuDmPolicy as 'open' | 'pairing' | 'allowlist' },
       });
+      if (!result.success) {
+        setError({ key: 'remote.saveFailed' });
+        return;
+      }
       showSuccess({ key: 'remote.configSaved' });
+      setSetupMode(null);
       await loadData();
     } catch (saveError) {
       console.error('Failed to save Feishu config:', saveError);
@@ -414,6 +437,11 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       if (type === 'feishu') setFeishuEnabled(result.desiredEnabled);
       if (type === 'dingtalk') setDingtalkEnabled(result.desiredEnabled);
       if (type === 'wecom') setWecomEnabled(result.desiredEnabled);
+      if (type === 'lark' || type === 'wechat')
+        setAdditionalConfig((current) => ({
+          ...current,
+          [type]: { ...current[type], enabled: result.desiredEnabled },
+        }));
     }
 
     const connected = result.connected;
@@ -439,7 +467,13 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function toggleChannel(type: RemoteChannelType) {
     if (!isElectron || togglingChannel) return;
     const currentlyEnabled =
-      type === 'feishu' ? feishuEnabled : type === 'dingtalk' ? dingtalkEnabled : wecomEnabled;
+      type === 'lark' || type === 'wechat'
+        ? additionalConfig[type]?.enabled !== false
+        : type === 'feishu'
+          ? feishuEnabled
+          : type === 'dingtalk'
+            ? dingtalkEnabled
+            : wecomEnabled;
     const nextEnabled = !currentlyEnabled;
 
     setTogglingChannel(type);
@@ -491,20 +525,35 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       : !!(wecomBotId && wecomSecret);
   const isWecomConnected =
     status?.channels.some((channel) => channel.type === 'wecom' && channel.connected) ?? false;
+  const extraConfigured = [
+    !!(additionalConfig.lark?.appId && additionalConfig.lark.appSecret),
+    !!(additionalConfig.wechat?.botToken && additionalConfig.wechat.botId),
+  ];
   const configuredChannelCount =
-    Number(isFeishuConfigured) + Number(isDingtalkConfigured) + Number(isWecomConfigured);
+    Number(isFeishuConfigured) +
+    Number(isDingtalkConfigured) +
+    Number(isWecomConfigured) +
+    extraConfigured.filter(Boolean).length;
   const enabledConfiguredChannelCount =
     Number(isFeishuConfigured && feishuEnabled) +
     Number(isDingtalkConfigured && dingtalkEnabled) +
-    Number(isWecomConfigured && wecomEnabled);
+    Number(isWecomConfigured && wecomEnabled) +
+    Number(extraConfigured[0] && additionalConfig.lark?.enabled !== false) +
+    Number(extraConfigured[1] && additionalConfig.wechat?.enabled !== false);
   const connectedChannelCount =
-    Number(isFeishuConnected) + Number(isDingtalkConnected) + Number(isWecomConnected);
+    Number(isFeishuConnected) +
+    Number(isDingtalkConnected) +
+    Number(isWecomConnected) +
+    (status?.channels.filter(
+      (channel) => ['lark', 'wechat'].includes(channel.type) && channel.connected
+    ).length || 0);
   const isPairingEnabled =
     (feishuEnabled && feishuDmPolicy === 'pairing') ||
     (dingtalkEnabled && dingtalkDmPolicy === 'pairing') ||
-    (wecomEnabled && wecomDmPolicy === 'pairing');
+    (wecomEnabled && wecomDmPolicy === 'pairing') ||
+    (additionalConfig.lark?.enabled !== false && additionalConfig.lark?.dm.policy === 'pairing');
 
-  const channels = useMemo<RemoteChannelViewModel[]>(
+  const baseChannels = useMemo<RemoteChannelViewModel[]>(
     () => [
       {
         type: 'feishu',
@@ -580,6 +629,33 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     ]
   );
 
+  const extraChannels: RemoteChannelViewModel[] = (['lark', 'wechat'] as const).map(
+    (type, index) => ({
+      type,
+      name: t(`remote.channelName.${type}`),
+      description: t('remote.channelSummary', { channel: t(`remote.channelName.${type}`) }),
+      configured: extraConfigured[index],
+      enabled: additionalConfig[type]?.enabled !== false,
+      connected:
+        status?.channels.some((channel) => channel.type === type && channel.connected) || false,
+      backendAvailable: true,
+      authorizedUsers: pairedUsers.filter((user) => user.channelType === type).length,
+      error: status?.channels.find((channel) => channel.type === type)?.error,
+    })
+  );
+  const channels = [
+    baseChannels[1],
+    baseChannels[0],
+    extraChannels[0],
+    extraChannels[1],
+    baseChannels[2],
+  ];
+  const openSetup = (type: RemoteChannelType, manual = false) => {
+    setError(null);
+    setSelectedChannel(type);
+    setSetupMode(manual ? 'manual' : 'scan');
+  };
+
   const selectedChannelModel =
     channels.find((channel) => channel.type === selectedChannel) ?? channels[0];
 
@@ -620,6 +696,14 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
           canStartService={enabledConfiguredChannelCount > 0}
           onToggle={toggleGateway}
         />
+        {pendingPairings.length > 0 && activeSection !== 'users' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/5 p-3">
+            <span role="status" className="text-sm text-text-primary">
+              {t('remote.pendingApprovalNotice', { count: pendingPairings.length })}
+            </span>
+            <Button onClick={() => setActiveSection('users')}>{t('remote.reviewPairings')}</Button>
+          </div>
+        )}
       </div>
 
       <RemoteSectionNav
@@ -634,64 +718,120 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             id="remote-panel-channels"
             role="tabpanel"
             aria-labelledby="remote-nav-tab-channels"
-            className="grid items-start gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.5fr)]"
+            className="space-y-3"
           >
             <ChannelList
               channels={channels}
-              selectedChannel={selectedChannel}
-              onSelect={setSelectedChannel}
+              onSelect={(type) => openSetup(type)}
+              onManage={(type) => openSetup(type, true)}
             />
-            <ChannelDetailPanel
-              channel={selectedChannelModel}
-              feishuAppId={feishuAppId}
-              feishuAppSecret={feishuAppSecret}
-              feishuDmPolicy={feishuDmPolicy}
-              dingtalkAppKey={dingtalkAppKey}
-              dingtalkAppSecret={dingtalkAppSecret}
-              dingtalkRobotCode={dingtalkRobotCode}
-              dingtalkDmPolicy={dingtalkDmPolicy}
-              dingtalkRequireMention={dingtalkRequireMention}
-              dingtalkReceiveMode={dingtalkReceiveMode}
-              wecomBotId={wecomBotId}
-              wecomSecret={wecomSecret}
-              wecomWebhookToken={wecomWebhookToken}
-              wecomWebhookEncodingAESKey={wecomWebhookEncodingAESKey}
-              wecomReceiveMode={wecomReceiveMode}
-              wecomDmPolicy={wecomDmPolicy}
-              wecomRequireMention={wecomRequireMention}
-              useLongConnection={useLongConnection}
-              gatewayPort={gatewayPort}
-              tunnelEnabled={tunnelEnabled}
-              ngrokAuthToken={ngrokAuthToken}
-              tunnelStatus={tunnelStatus}
-              webhookUrl={webhookUrl}
-              isSaving={isSaving}
-              isTogglingChannel={togglingChannel === selectedChannel}
-              onFeishuAppIdChange={setFeishuAppId}
-              onFeishuAppSecretChange={setFeishuAppSecret}
-              onFeishuDmPolicyChange={setFeishuDmPolicy}
-              onDingtalkAppKeyChange={setDingtalkAppKey}
-              onDingtalkAppSecretChange={setDingtalkAppSecret}
-              onDingtalkRobotCodeChange={setDingtalkRobotCode}
-              onDingtalkDmPolicyChange={setDingtalkDmPolicy}
-              onDingtalkRequireMentionChange={setDingtalkRequireMention}
-              onDingtalkReceiveModeChange={setDingtalkReceiveMode}
-              onWecomBotIdChange={setWecomBotId}
-              onWecomSecretChange={setWecomSecret}
-              onWecomWebhookTokenChange={setWecomWebhookToken}
-              onWecomWebhookEncodingAESKeyChange={setWecomWebhookEncodingAESKey}
-              onWecomReceiveModeChange={setWecomReceiveMode}
-              onWecomDmPolicyChange={setWecomDmPolicy}
-              onWecomRequireMentionChange={setWecomRequireMention}
-              onLongConnectionChange={setUseLongConnection}
-              onTunnelEnabledChange={setTunnelEnabled}
-              onNgrokAuthTokenChange={setNgrokAuthToken}
-              onCopy={copyToClipboard}
-              onSaveFeishu={saveFeishuConfig}
-              onSaveDingtalk={saveDingtalkConfig}
-              onSaveWecom={saveWecomConfig}
-              onToggleChannel={() => void toggleChannel(selectedChannel)}
-            />
+            {setupMode === 'scan' && (
+              <QrSetupDialog
+                channel={selectedChannel}
+                onClose={() => setSetupMode(null)}
+                onManual={() => setSetupMode('manual')}
+                onCompleted={() => {
+                  void loadData({ showLoading: false });
+                }}
+              />
+            )}
+            <Dialog
+              open={setupMode === 'manual'}
+              busy={isSaving}
+              onOpenChange={(open) => {
+                if (!open) setSetupMode(null);
+              }}
+              ariaLabelledBy="remote-config-title"
+              className="max-w-2xl"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <DialogTitle id="remote-config-title">
+                  {t('remote.qr.title', { channel: selectedChannelModel.name })}
+                </DialogTitle>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={isSaving}
+                  aria-label={t('common.close')}
+                  onClick={() => setSetupMode(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <DialogBody>
+                {error && (
+                  <p role="alert" className="mb-3 text-sm text-error">
+                    {error.key ? t(error.key) : error.text}
+                  </p>
+                )}
+                {selectedChannel === 'lark' || selectedChannel === 'wechat' ? (
+                  <AdditionalChannelSettings
+                    key={selectedChannel}
+                    channel={selectedChannelModel}
+                    larkConfig={additionalConfig.lark}
+                    onSaved={() => {
+                      setSetupMode(null);
+                      void loadData({ showLoading: false });
+                    }}
+                    onToggle={() => void toggleChannel(selectedChannel)}
+                    toggling={togglingChannel === selectedChannel}
+                    onScan={() => setSetupMode('scan')}
+                  />
+                ) : (
+                  <ChannelDetailPanel
+                    channel={{ ...selectedChannelModel, type: selectedChannel }}
+                    feishuAppId={feishuAppId}
+                    feishuAppSecret={feishuAppSecret}
+                    feishuDmPolicy={feishuDmPolicy}
+                    dingtalkAppKey={dingtalkAppKey}
+                    dingtalkAppSecret={dingtalkAppSecret}
+                    dingtalkRobotCode={dingtalkRobotCode}
+                    dingtalkDmPolicy={dingtalkDmPolicy}
+                    dingtalkRequireMention={dingtalkRequireMention}
+                    dingtalkReceiveMode={dingtalkReceiveMode}
+                    wecomBotId={wecomBotId}
+                    wecomSecret={wecomSecret}
+                    wecomWebhookToken={wecomWebhookToken}
+                    wecomWebhookEncodingAESKey={wecomWebhookEncodingAESKey}
+                    wecomReceiveMode={wecomReceiveMode}
+                    wecomDmPolicy={wecomDmPolicy}
+                    wecomRequireMention={wecomRequireMention}
+                    useLongConnection={useLongConnection}
+                    gatewayPort={gatewayPort}
+                    tunnelEnabled={tunnelEnabled}
+                    ngrokAuthToken={ngrokAuthToken}
+                    tunnelStatus={tunnelStatus}
+                    webhookUrl={webhookUrl}
+                    isSaving={isSaving}
+                    isTogglingChannel={togglingChannel === selectedChannel}
+                    onFeishuAppIdChange={setFeishuAppId}
+                    onFeishuAppSecretChange={setFeishuAppSecret}
+                    onFeishuDmPolicyChange={setFeishuDmPolicy}
+                    onDingtalkAppKeyChange={setDingtalkAppKey}
+                    onDingtalkAppSecretChange={setDingtalkAppSecret}
+                    onDingtalkRobotCodeChange={setDingtalkRobotCode}
+                    onDingtalkDmPolicyChange={setDingtalkDmPolicy}
+                    onDingtalkRequireMentionChange={setDingtalkRequireMention}
+                    onDingtalkReceiveModeChange={setDingtalkReceiveMode}
+                    onWecomBotIdChange={setWecomBotId}
+                    onWecomSecretChange={setWecomSecret}
+                    onWecomWebhookTokenChange={setWecomWebhookToken}
+                    onWecomWebhookEncodingAESKeyChange={setWecomWebhookEncodingAESKey}
+                    onWecomReceiveModeChange={setWecomReceiveMode}
+                    onWecomDmPolicyChange={setWecomDmPolicy}
+                    onWecomRequireMentionChange={setWecomRequireMention}
+                    onLongConnectionChange={setUseLongConnection}
+                    onTunnelEnabledChange={setTunnelEnabled}
+                    onNgrokAuthTokenChange={setNgrokAuthToken}
+                    onCopy={copyToClipboard}
+                    onSaveFeishu={saveFeishuConfig}
+                    onSaveDingtalk={saveDingtalkConfig}
+                    onSaveWecom={saveWecomConfig}
+                    onToggleChannel={() => void toggleChannel(selectedChannel)}
+                  />
+                )}
+              </DialogBody>
+            </Dialog>
           </div>
         )}
 
@@ -702,10 +842,13 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             aria-labelledby="remote-nav-tab-users"
             className="space-y-4"
           >
-            {status?.running && isPairingEnabled && <PairingGuideCard />}
+            {status?.running &&
+              isPairingEnabled &&
+              pendingPairings.length === 0 &&
+              pairedUsers.length === 0 && <PairingGuideCard />}
             <PairingRequestsSection
               pendingPairings={pendingPairings}
-              showEmpty={status?.running && isPairingEnabled}
+              showEmpty={status?.running && isPairingEnabled && pairedUsers.length === 0}
               onApprove={approvePairing}
               onReject={rejectPairing}
             />

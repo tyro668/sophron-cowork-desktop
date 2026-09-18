@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const sdkMocks = vi.hoisted(() => {
   type WSClientOptions = {
     handshakeTimeoutMs?: number;
+    domain?: string;
     onReady?: () => void;
     onError?: (error: Error) => void;
     onReconnecting?: () => void;
@@ -48,6 +49,7 @@ const sdkMocks = vi.hoisted(() => {
 });
 
 vi.mock('@larksuiteoapi/node-sdk', () => ({
+  Domain: { Feishu: 'https://open.feishu.cn', Lark: 'https://open.larksuite.com' },
   Client: class {},
   WSClient: sdkMocks.FakeWSClient,
   EventDispatcher: sdkMocks.FakeEventDispatcher,
@@ -76,6 +78,16 @@ describe('FeishuWSClient lifecycle', () => {
   beforeEach(() => {
     vi.useRealTimers();
     sdkMocks.FakeWSClient.instances.length = 0;
+  });
+
+  it('uses the Lark endpoint for Lark channels', async () => {
+    const client = new FeishuWSClient({ appId: 'lark-id', appSecret: 'secret', brand: 'lark' });
+    const started = client.start();
+    const sdk = await waitForSDKInstance(0);
+    expect(sdk.options.domain).toBe('https://open.larksuite.com');
+    sdk.triggerReady();
+    await started;
+    await client.stop();
   });
 
   it('reports connected only after the SDK emits its public ready signal', async () => {

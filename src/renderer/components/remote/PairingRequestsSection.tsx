@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Shield, Check, X, Clock } from 'lucide-react';
+import { Button } from '../ui/button';
 import type { PairingRequest } from './types';
 
 interface Props {
@@ -57,27 +58,33 @@ export function PairingRequestsSection({
         <Shield className="w-4 h-4" />
         {t('remote.pairingRequests')}
       </h3>
+      {pendingPairings.length > 0 && (
+        <p className="mb-3 text-sm text-text-secondary">{t('remote.pairingReviewHint')}</p>
+      )}
       {pendingPairings.length === 0 ? (
         <div className="text-sm text-text-secondary py-3 text-center">
-          {t('remote.waitingForPairing')}
+          {t('remote.noPendingPairings')}
         </div>
       ) : (
         <div className="space-y-3">
           {pendingPairings.map((request) => (
             <div
               key={`${request.channelType}-${request.userId}`}
-              className="flex items-center justify-between p-3 bg-surface rounded-lg"
+              className="flex flex-wrap items-center justify-between gap-3 p-3 bg-surface rounded-lg"
             >
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-text-primary">
                     {request.userName || t('remote.unknownUser')}
                   </span>
                   <span className="px-1.5 py-0.5 text-xs rounded bg-accent-muted text-accent capitalize">
-                    {request.channelType}
+                    {t(`remote.channelName.${request.channelType}`, {
+                      defaultValue: request.channelType,
+                    })}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-text-secondary mt-1">
+                <p className="mt-1 break-all text-xs text-text-secondary">{request.userId}</p>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary mt-1">
                   <span>
                     {t('remote.pairingCode')}:{' '}
                     <span className="font-mono text-warning font-medium">{request.code}</span>
@@ -86,20 +93,14 @@ export function PairingRequestsSection({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onReject(request)}
-                  className="p-2 rounded-lg bg-error/10 hover:bg-error/20 text-error transition-colors"
-                  title={t('remote.reject')}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => onApprove(request)}
-                  className="p-2 rounded-lg bg-success/10 hover:bg-success/20 text-success transition-colors"
-                  title={t('remote.approve')}
-                >
-                  <Check className="w-5 h-5" />
-                </button>
+                <Button onClick={() => onReject(request)}>
+                  <X className="w-4 h-4" />
+                  {t('remote.reject')}
+                </Button>
+                <Button variant="primary" onClick={() => onApprove(request)}>
+                  <Check className="w-4 h-4" />
+                  {t('remote.approve')}
+                </Button>
               </div>
             </div>
           ))}

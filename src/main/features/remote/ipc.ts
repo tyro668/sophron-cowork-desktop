@@ -1,3 +1,5 @@
+import type { RemoteQrChannel } from '../../../shared/contracts/remote/qr-setup';
+import { RemoteQrSetupService } from '../../remote/qr-setup-service';
 import type {
   GatewayConfig,
   FeishuChannelConfig,
@@ -13,6 +15,39 @@ import { remoteManager } from '../../remote/remote-manager';
 import { logError } from '../../utils/logger';
 
 export function registerRemoteIpc(): void {
+  const qrSetup = new RemoteQrSetupService((config) => {
+    switch (config.type) {
+      case 'wechat':
+        return remoteManager.updateWechatConfig(config);
+      case 'dingtalk':
+        return remoteManager.updateDingtalkConfig(config);
+      case 'wecom':
+        return remoteManager.updateWecomConfig(config);
+      default:
+        return remoteManager.updateFeishuConfig(config);
+    }
+  });
+  const setupOwners = new Set<number>();
+  handleIpc('remote.beginQrSetup', (event, id: string, channel: RemoteQrChannel) => {
+    const owner = event.sender.id;
+    if (!setupOwners.has(owner)) {
+      setupOwners.add(owner);
+      event.sender.on('did-start-navigation', (_navigation, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) qrSetup.cancel(owner);
+      });
+      event.sender.once('destroyed', () => {
+        qrSetup.cancel(owner);
+        setupOwners.delete(owner);
+      });
+    }
+    return qrSetup.begin(owner, id, channel);
+  });
+  handleIpc('remote.getQrSetup', (event, id: string) => qrSetup.get(event.sender.id, id));
+  handleIpc('remote.submitQrSetupCode', (event, id: string, code: string) =>
+    qrSetup.submitCode(event.sender.id, id, code)
+  );
+  handleIpc('remote.cancelQrSetup', (event, id: string) => qrSetup.cancel(event.sender.id, id));
+
   // ============================================================================
   // 远程控制 IPC 处理
   // ============================================================================
@@ -54,7 +89,13 @@ export function registerRemoteIpc(): void {
 
   handleIpc('remote.setChannelEnabled', async (_event, type: unknown, enabled: unknown) => {
     try {
-      if (type !== 'feishu' && type !== 'dingtalk' && type !== 'wecom') {
+      if (
+        type !== 'feishu' &&
+        type !== 'dingtalk' &&
+        type !== 'wecom' &&
+        type !== 'lark' &&
+        type !== 'wechat'
+      ) {
         throw new Error('Unsupported remote channel type');
       }
       if (typeof enabled !== 'boolean') {
@@ -65,7 +106,13 @@ export function registerRemoteIpc(): void {
     } catch (error) {
       logError('[Remote] Error setting channel enabled state:', error);
       let state: ControllableChannelState | undefined;
-      if (type === 'feishu' || type === 'dingtalk' || type === 'wecom') {
+      if (
+        type === 'feishu' ||
+        type === 'dingtalk' ||
+        type === 'wecom' ||
+        type === 'lark' ||
+        type === 'wechat'
+      ) {
         try {
           state = remoteManager.getChannelControlState(type);
         } catch {

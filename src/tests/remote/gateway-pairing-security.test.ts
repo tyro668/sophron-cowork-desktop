@@ -70,6 +70,9 @@ describe('RemoteGateway pairing security', () => {
 
     const request = internals.pairingRequests.get('feishu:user-1');
     expect(request?.code).toMatch(/^\d{8}$/);
+    expect(gateway.getPendingPairings()).toHaveLength(1);
+    expect(send.mock.calls.at(-1)?.[0].content.text).toContain('设置 → 远程控制 → 授权用户');
+    expect(send.mock.calls.at(-1)?.[0].content.text).toContain('批准后请重新发送消息');
     expect(internals.pairedUsers.has('feishu:user-1')).toBe(false);
 
     await internals.handleChannelMessage(createMessage(request!.code, 'message-2'));
@@ -80,8 +83,23 @@ describe('RemoteGateway pairing security', () => {
     expect(send.mock.calls.at(-1)?.[0].content.text).toContain('等待管理员审批');
 
     expect(gateway.approvePairing('feishu', 'user-1')).toBe(true);
+    expect(gateway.getPendingPairings()).toHaveLength(0);
+    expect(gateway.getPairedUsers()).toEqual([
+      expect.objectContaining({ userId: 'user-1', channelType: 'feishu' }),
+    ]);
     await internals.handleChannelMessage(createMessage('authorized message', 'message-3'));
     expect(routeMessage).toHaveBeenCalledOnce();
+  });
+
+  it('rejects expired approval and issues a new request on the next message', async () => {
+    await internals.handleChannelMessage(createMessage('hello', 'before-expiry'));
+    internals.pairingRequests.get('feishu:user-1')!.expiresAt = Date.now() - 1;
+    expect(gateway.approvePairing('feishu', 'user-1')).toBe(false);
+    expect(gateway.getPairedUsers()).toHaveLength(0);
+    await internals.handleChannelMessage(createMessage('hello again', 'after-expiry'));
+    expect(gateway.getPendingPairings()).toHaveLength(1);
+    expect(gateway.getPendingPairings()[0].expiresAt).toBeGreaterThan(Date.now());
+    expect(routeMessage).not.toHaveBeenCalled();
   });
 
   it('limits repeated new pairing requests after rejection', async () => {

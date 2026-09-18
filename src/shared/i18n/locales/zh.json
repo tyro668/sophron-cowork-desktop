@@ -2764,7 +2764,9 @@
     "channelName": {
       "feishu": "飞书",
       "dingtalk": "钉钉",
-      "wecom": "企业微信"
+      "wecom": "企业微信",
+      "lark": "Lark",
+      "wechat": "微信"
     },
     "channelDesc": {
       "feishu": "填写应用凭证后启用",
@@ -3091,21 +3093,61 @@
     "actionFailed": "操作失败",
     "configSaved": "配置已保存",
     "saveFailed": "保存失败",
-    "pairingApproved": "配对已批准",
+    "pairingApproved": "授权已完成，请回到 IM 重新发送消息",
     "approveFailed": "批准失败",
     "reject": "拒绝",
     "pairingRejected": "已拒绝配对",
     "rejectFailed": "拒绝失败",
     "pairingGuideTitle": "配对引导",
-    "pairingGuideStep1": "打开飞书，找到机器人",
+    "pairingGuideStep1": "在已绑定的 IM 应用中打开机器人对话",
     "pairingGuideStep2": "发送任意消息，发起配对",
-    "pairingGuideStep3": "在下方面板中审批配对请求",
-    "pairingGuideStep4": "完成 — 用户即可使用机器人",
+    "pairingGuideStep3": "在下方核对用户和申请码，点击“批准”",
+    "pairingGuideStep4": "回到 IM 重新发送消息，即可开始使用",
     "waitingForPairing": "等待用户发起配对...",
     "expiresIn": "{{time}}后过期",
     "userRemoved": "用户已移除",
     "revokeFailed": "移除失败",
-    "copied": "已复制"
+    "copied": "已复制",
+    "qr": {
+      "title": "配置{{channel}}",
+      "instruction": "使用{{channel}}扫描下方二维码，创建并配置机器人",
+      "wechatInstruction": "使用微信扫描下方二维码，并在手机上确认连接",
+      "refresh": "刷新二维码",
+      "manual": "手动配置已有应用",
+      "scanSetup": "扫码配置",
+      "imageAlt": "{{channel}}配置二维码",
+      "verifyCode": "输入手机上显示的验证码",
+      "appId": "应用 ID",
+      "appSecret": "应用密钥",
+      "done": "完成",
+      "confirm": "确认",
+      "wechatTextOnly": "支持微信私聊文字和已转写的语音消息。",
+      "status": {
+        "generating": "正在生成二维码…",
+        "waiting": "等待扫码确认",
+        "scanned": "已扫码，请在手机上完成确认",
+        "verifying": "请输入手机上显示的验证码",
+        "saving": "正在保存配置…",
+        "completed": "配置已保存，可在远程服务中启用。",
+        "expired": "二维码已过期，请刷新",
+        "denied": "授权未完成，请刷新后重试",
+        "cancelled": "配置已取消"
+      },
+      "errors": {
+        "unavailable": "无法连接配置服务，请重试",
+        "registration_failed": "无法完成扫码配置，请检查网络后重试",
+        "save_failed": "保存或应用配置失败，请检查渠道状态后重试",
+        "unsupported_brand": "扫码账号与所选渠道不一致，请选择对应的飞书或 Lark 渠道"
+      }
+    },
+    "configureChannel": "配置",
+    "manageChannel": "管理",
+    "channelSummary": "通过{{channel}}机器人接收并回复用户消息",
+    "pendingApprovalNotice": "有 {{count}} 个远程访问申请等待批准",
+    "reviewPairings": "前往授权用户",
+    "pairingReviewHint": "核对渠道、用户和申请码后点击“批准”。批准后，请对方回到 IM 重新发送消息。",
+    "noPendingPairings": "暂无待审批的配对请求",
+    "authorizedUsersReady": "以下用户已完成授权，可回到 IM 重新发送消息，无需再次配对。"
   },
   "time": {
     "now": "刚刚"

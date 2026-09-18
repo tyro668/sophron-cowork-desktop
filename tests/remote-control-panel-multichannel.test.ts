@@ -65,8 +65,14 @@ describe('RemoteControlPanel multi-channel UI', () => {
 
   it('uses platform-only channel names in both locales', () => {
     const expectedNames = {
-      zh: { feishu: '飞书', dingtalk: '钉钉', wecom: '企业微信' },
-      en: { feishu: 'Feishu', dingtalk: 'DingTalk', wecom: 'WeCom' },
+      zh: { feishu: '飞书', dingtalk: '钉钉', wecom: '企业微信', lark: 'Lark', wechat: '微信' },
+      en: {
+        feishu: 'Feishu',
+        dingtalk: 'DingTalk',
+        wecom: 'WeCom',
+        lark: 'Lark',
+        wechat: 'WeChat',
+      },
     };
 
     for (const locale of ['zh', 'en'] as const) {
@@ -155,6 +161,8 @@ describe('RemoteControlPanel multi-channel UI', () => {
     const source = readFileSync(panelPath, 'utf8');
 
     expect(source).toContain("wecomDmPolicy === 'pairing'");
-    expect(source).toContain('showEmpty={status?.running && isPairingEnabled}');
+    expect(source).toContain(
+      'showEmpty={status?.running && isPairingEnabled && pairedUsers.length === 0}'
+    );
   });
 });

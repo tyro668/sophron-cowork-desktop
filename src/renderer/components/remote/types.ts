@@ -28,75 +28,7 @@ export interface PairingRequest {
   expiresAt: number;
 }
 
-export interface RemoteConfig {
-  gateway: {
-    enabled: boolean;
-    port: number;
-    bind: string;
-    defaultWorkingDirectory?: string;
-    autoApproveSafeTools?: boolean;
-    tunnel?: {
-      enabled: boolean;
-      type: 'ngrok' | 'cloudflare' | 'frp';
-      ngrok?: {
-        authToken: string;
-        region?: string;
-      };
-    };
-    auth: {
-      mode: string;
-      token?: string;
-      requirePairing?: boolean;
-    };
-  };
-  channels: {
-    feishu?: {
-      enabled?: boolean;
-      appId: string;
-      appSecret: string;
-      useWebSocket?: boolean;
-      dm: {
-        policy: string;
-      };
-    };
-    dingtalk?: {
-      enabled?: boolean;
-      appKey: string;
-      appSecret: string;
-      robotCode?: string;
-      receiveMode?: 'stream' | 'webhook';
-      dm: {
-        policy: string;
-      };
-      defaultGroupSettings?: {
-        requireMention: boolean;
-      };
-    };
-    wecom?: {
-      enabled?: boolean;
-      receiveMode?: 'websocket' | 'webhook';
-      botId: string;
-      secret: string;
-      wsUrl?: string;
-      webhookToken?: string;
-      webhookEncodingAESKey?: string;
-      dm: {
-        policy: string;
-      };
-      defaultGroupSettings?: {
-        requireMention: boolean;
-      };
-    };
-    slack?: {
-      botToken: string;
-      appToken?: string;
-      useSocketMode?: boolean;
-      dm: {
-        policy: string;
-      };
-    };
-  };
-}
+export type { RemoteConfig } from '../../../shared/contracts/remote';
 
 export interface TunnelStatus {
   connected: boolean;
@@ -107,7 +39,8 @@ export interface TunnelStatus {
 
 export type RemoteSection = 'channels' | 'users' | 'global' | 'logs';
 
-export type RemoteChannelType = 'feishu' | 'dingtalk' | 'wecom';
+export type ManualRemoteChannelType = 'feishu' | 'dingtalk' | 'wecom';
+export type RemoteChannelType = ManualRemoteChannelType | 'lark' | 'wechat';
 
 export type ChannelConfigTab = 'basic' | 'access' | 'advanced';
 

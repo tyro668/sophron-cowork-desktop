@@ -586,7 +586,7 @@ export class RemoteGateway extends EventEmitter {
           channelId: message.channelId,
           content: {
             type: 'text',
-            text: `您的授权申请正在等待管理员审批。\n\n申请码: **${existing.code}**\n\n请让管理员在九思助理的“授权用户”页面批准。直接回复申请码不会自动获得权限。`,
+            text: `您的授权申请正在等待管理员审批。\n\n申请码: **${existing.code}**\n\n请在运行九思助理的电脑上打开「设置 → 远程控制 → 授权用户」，在“待授权的配对请求”中核对用户和申请码，点击“批准”。如果这台电脑由他人管理，请联系该管理员操作。批准后请重新发送消息；直接回复申请码不会自动获得权限。`,
           },
           replyTo: message.id,
         });
@@ -625,7 +625,7 @@ export class RemoteGateway extends EventEmitter {
       channelId: message.channelId,
       content: {
         type: 'text',
-        text: `👋 您好！首次使用需要管理员授权。\n\n申请码: **${code}**\n\n请让管理员在九思助理的“授权用户”页面核对并批准。申请有效期10分钟，直接回复申请码不会自动获得权限。`,
+        text: `👋 您好！首次使用需要管理员授权。\n\n申请码: **${code}**\n\n请在运行九思助理的电脑上打开「设置 → 远程控制 → 授权用户」，在“待授权的配对请求”中核对用户和申请码，点击“批准”。如果这台电脑由他人管理，请联系该管理员操作。申请有效期10分钟，过期后重新发消息即可再次申请。批准后请重新发送消息；直接回复申请码不会自动获得权限。`,
       },
       replyTo: message.id,
     });

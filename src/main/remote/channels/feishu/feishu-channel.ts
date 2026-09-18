@@ -19,7 +19,7 @@ import { FeishuAPI } from './feishu-api';
 import { FeishuWSClient } from './feishu-ws-client';
 
 export class FeishuChannel extends ChannelBase {
-  readonly type = 'feishu' as const;
+  readonly type: 'feishu' | 'lark';
 
   private config: FeishuChannelConfig;
   private api: FeishuAPI;
@@ -32,7 +32,8 @@ export class FeishuChannel extends ChannelBase {
   constructor(config: FeishuChannelConfig) {
     super();
     this.config = config;
-    this.api = new FeishuAPI(config.appId, config.appSecret);
+    this.type = config.type;
+    this.api = new FeishuAPI(config.appId, config.appSecret, config.type);
   }
 
   /**
@@ -248,6 +249,7 @@ export class FeishuChannel extends ChannelBase {
 
     // Create WebSocket client
     this.wsClient = new FeishuWSClient({
+      brand: this.type,
       appId: this.config.appId,
       appSecret: this.config.appSecret,
       logLevel: 'info',
@@ -273,7 +275,7 @@ export class FeishuChannel extends ChannelBase {
         });
         const remoteMessage: RemoteMessage = {
           id: String(data.messageId || ''),
-          channelType: 'feishu',
+          channelType: this.type,
           channelId: String(data.chatId || ''), // Use actual chat_id for sending messages
           sender: {
             id: String(data.senderId || ''),
@@ -360,7 +362,7 @@ export class FeishuChannel extends ChannelBase {
       // Build remote message
       const remoteMessage: RemoteMessage = {
         id: String(message.message_id || ''),
-        channelType: 'feishu',
+        channelType: this.type,
         channelId: String(message.chat_id || ''),
         sender: {
           id: String(senderId?.open_id || senderId?.user_id || 'unknown'),

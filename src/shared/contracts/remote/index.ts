@@ -77,6 +77,7 @@ export interface TunnelConfig {
 
 export type ChannelType =
   | 'feishu'
+  | 'lark'
   | 'wechat'
   | 'wecom'
   | 'telegram'
@@ -84,7 +85,7 @@ export type ChannelType =
   | 'websocket'
   | 'slack';
 
-export type ControllableChannelType = 'feishu' | 'dingtalk' | 'wecom';
+export type ControllableChannelType = 'feishu' | 'lark' | 'wechat' | 'dingtalk' | 'wecom';
 
 /** Authoritative desired and runtime state returned after a per-channel toggle. */
 export interface ControllableChannelState {
@@ -114,7 +115,7 @@ export interface ChannelConfig {
 
 // Feishu (飞书) Channel
 export interface FeishuChannelConfig {
-  type: 'feishu';
+  type: 'feishu' | 'lark';
 
   /** Whether this channel should start with the remote service. Defaults to true. */
   enabled?: boolean;
@@ -160,9 +161,14 @@ export interface FeishuChannelConfig {
   };
 }
 
-// WeChat Channel (via wechaty)
+// WeChat iLink channel (legacy puppet settings remain readable)
 export interface WechatChannelConfig {
   type: 'wechat';
+  enabled?: boolean;
+  botToken?: string;
+  botId?: string;
+  baseUrl?: string;
+  userId?: string;
 
   /** Wechaty puppet type */
   puppet?: 'wechaty-puppet-wechat' | 'wechaty-puppet-padlocal';
@@ -630,6 +636,7 @@ export interface RemoteConfig {
   gateway: GatewayConfig;
   channels: {
     feishu?: FeishuChannelConfig;
+    lark?: FeishuChannelConfig;
     wechat?: WechatChannelConfig;
     wecom?: WecomChannelConfig;
     telegram?: TelegramChannelConfig;

@@ -38,7 +38,7 @@ const CHANNEL_STATE_BADGE_CLASS = {
 } satisfies Record<RemoteChannelState, string>;
 
 interface Props {
-  channel: RemoteChannelViewModel;
+  channel: RemoteChannelViewModel & { type: 'feishu' | 'dingtalk' | 'wecom' };
   feishuAppId: string;
   feishuAppSecret: string;
   feishuDmPolicy: string;

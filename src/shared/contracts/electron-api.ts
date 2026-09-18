@@ -1,3 +1,4 @@
+import type { RemoteQrSetupState, RemoteQrChannel } from './remote/qr-setup';
 /**
  * @module shared/contracts/electron-api
  *
@@ -394,6 +395,10 @@ export interface ElectronApi {
     ) => Promise<{ success: boolean; error?: string }>;
   };
   remote: {
+    beginQrSetup: (id: string, channel: RemoteQrChannel) => Promise<RemoteQrSetupState>;
+    getQrSetup: (id: string) => Promise<RemoteQrSetupState>;
+    submitQrSetupCode: (id: string, code: string) => Promise<void>;
+    cancelQrSetup: (id: string) => Promise<void>;
     getConfig: () => Promise<RemoteConfig>;
     getStatus: () => Promise<{
       running: boolean;
