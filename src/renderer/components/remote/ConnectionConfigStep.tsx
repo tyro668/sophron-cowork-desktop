@@ -5,6 +5,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { Zap, Link2, Check, Copy, CheckCircle2 } from 'lucide-react';
+import { Switch } from '../ui/switch';
 import type { TunnelStatus } from './types';
 
 interface Props {
@@ -147,21 +148,12 @@ export function ConnectionConfigStep({
                 <span className="text-sm font-medium text-text-primary">
                   {t('remote.useBuiltInNgrok')}
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTunnelEnabledChange(!tunnelEnabled);
-                  }}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${
-                    tunnelEnabled ? 'bg-accent' : 'bg-surface-active'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                      tunnelEnabled ? 'left-5' : 'left-0.5'
-                    }`}
-                  />
-                </button>
+                <Switch
+                  checked={tunnelEnabled}
+                  onCheckedChange={onTunnelEnabledChange}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={t('remote.useBuiltInNgrok')}
+                />
               </div>
 
               {tunnelEnabled && (

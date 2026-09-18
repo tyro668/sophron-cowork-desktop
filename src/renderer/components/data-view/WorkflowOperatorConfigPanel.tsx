@@ -5,6 +5,8 @@ import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
 import { PrepDslEditor } from '../PrepDslEditor';
+import { Button } from '../ui/button';
+import { Dialog } from '../ui/dialog';
 
 interface WorkflowOperatorConfigPanelProps {
   mode: 'form' | 'dsl';
@@ -270,91 +272,91 @@ function WorkflowOperatorDslDialog({
   }, [isRunningOperatorDsl, onClose]);
 
   return (
-    <div className="operator-ui fixed inset-0 z-50 flex items-center justify-center bg-[#163526]/16 px-4 py-6 dark:bg-black/50">
-      <div className="flex h-[42rem] max-h-[calc(100vh-3rem)] w-[72rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-card">
-        <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
-          <div className="min-w-0">
-            <div className="text-[14px] font-semibold text-text-primary">
-              {t('data.workflow.dslEditor', 'DSL 编辑器')}
-            </div>
-            <div className="truncate text-[11px] text-text-muted">{nodeLabel}</div>
+    <Dialog
+      open
+      onOpenChange={onClose}
+      busy={isRunningOperatorDsl}
+      closeOnEscape={false}
+      ariaLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
+      overlayClassName="operator-ui bg-[#163526]/16 px-4 py-6 dark:bg-black/50"
+      className="h-[42rem] w-[72rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
+    >
+      <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-semibold text-text-primary">
+            {t('data.workflow.dslEditor', 'DSL 编辑器')}
           </div>
-          <div className="flex items-center gap-1.5">
-            {operatorDslStatus && (
-              <div className="flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
-                <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{operatorDslStatus}</span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={onCopy}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              {t('data.workflow.copyDsl', 'Copy DSL')}
-            </button>
-            <button
-              type="button"
-              onClick={onFormat}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
-            >
-              <Code2 className="h-3.5 w-3.5" />
-              {t('data.workflow.formatDsl', 'Format')}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isRunningOperatorDsl}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted/70 bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              <X className="h-3.5 w-3.5" />
-              {t('common.cancel', 'Cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={onApply}
-              disabled={isRunningOperatorDsl}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-[11px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              {t('data.workflow.applyOperatorDsl', 'Apply')}
-            </button>
-          </div>
+          <div className="truncate text-[11px] text-text-muted">{nodeLabel}</div>
         </div>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-surface">
-            <PrepDslEditor
-              value={operatorDsl}
-              operatorType={operatorType}
-              placeholderText={t('data.workflow.operatorDslPlaceholder')}
-              completionLabels={editorCompletionLabels}
-              formatDiagnostic={formatEditorDiagnostic}
-              onChange={onChange}
-              onDiagnosticsChange={onDiagnosticsChange}
-              fieldCompletions={fieldCompletions}
-              editable
-              height="100%"
-            />
-          </div>
-          {visibleDiagnostics.length > 0 && (
-            <div className="max-h-24 overflow-y-auto rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
-              <div className="mb-1 flex items-center gap-2">
-                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                <span>{t('data.workflow.syntaxInvalid')}</span>
-              </div>
-              <div className="space-y-1">
-                {visibleDiagnostics.map((diagnostic, index) => (
-                  <div key={`${diagnostic.code ?? diagnostic.message}-${index}`}>
-                    {formatEditorDiagnostic(diagnostic)}
-                  </div>
-                ))}
-              </div>
+        <div className="flex items-center gap-1.5">
+          {operatorDslStatus && (
+            <div className="flex h-6 min-w-0 items-center rounded-full border border-success/20 bg-success/5 px-2 text-[11px] text-success">
+              <CheckCircle2 className="mr-1 h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{operatorDslStatus}</span>
             </div>
           )}
+          <Button variant="secondary" size="sm" onClick={onCopy} className="text-[11px]">
+            <Copy className="h-3.5 w-3.5" />
+            {t('data.workflow.copyDsl', 'Copy DSL')}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onFormat} className="text-[11px]">
+            <Code2 className="h-3.5 w-3.5" />
+            {t('data.workflow.formatDsl', 'Format')}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+            disabled={isRunningOperatorDsl}
+            className="text-[11px]"
+          >
+            <X className="h-3.5 w-3.5" />
+            {t('common.cancel', 'Cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onApply}
+            disabled={isRunningOperatorDsl}
+            className="text-[11px]"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {t('data.workflow.applyOperatorDsl', 'Apply')}
+          </Button>
         </div>
       </div>
-    </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-surface">
+          <PrepDslEditor
+            value={operatorDsl}
+            operatorType={operatorType}
+            placeholderText={t('data.workflow.operatorDslPlaceholder')}
+            completionLabels={editorCompletionLabels}
+            formatDiagnostic={formatEditorDiagnostic}
+            onChange={onChange}
+            onDiagnosticsChange={onDiagnosticsChange}
+            fieldCompletions={fieldCompletions}
+            editable
+            height="100%"
+          />
+        </div>
+        {visibleDiagnostics.length > 0 && (
+          <div className="max-h-24 overflow-y-auto rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
+            <div className="mb-1 flex items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>{t('data.workflow.syntaxInvalid')}</span>
+            </div>
+            <div className="space-y-1">
+              {visibleDiagnostics.map((diagnostic, index) => (
+                <div key={`${diagnostic.code ?? diagnostic.message}-${index}`}>
+                  {formatEditorDiagnostic(diagnostic)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }

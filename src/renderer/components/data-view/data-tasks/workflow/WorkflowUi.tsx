@@ -11,6 +11,8 @@ import {
 import { AlertCircle, Copy, Upload, Workflow, X } from 'lucide-react';
 import type { DataInputTablePreview, DataWorkflowOperatorType } from '../../../../types';
 import { GlassDataGridPreview } from '../../../GlassDataGridPreview';
+import { Button } from '../../../ui/button';
+import { Dialog } from '../../../ui/dialog';
 import type { WorkflowOperatorCatalogItem } from './operator-catalog';
 import { getOperatorCatalog } from './operator-catalog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
@@ -51,82 +53,76 @@ export function WorkflowDslDialog({
   const isImport = mode === 'import';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label={isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+    <Dialog
+      open
+      onOpenChange={onClose}
+      ariaLabel={isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+      overlayClassName="bg-black/28 px-4 py-6"
+      className="h-[34rem] w-[54rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl border-border-muted p-0 shadow-card"
     >
-      <div className="flex h-[34rem] max-h-[calc(100vh-3rem)] w-[54rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-muted bg-surface shadow-card">
-        <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-              {isImport ? <Upload className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
-            </span>
-            <div className="truncate text-[14px] font-semibold text-text-primary">
-              {isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+      <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+            {isImport ? <Upload className="h-3.5 w-3.5" /> : <Workflow className="h-3.5 w-3.5" />}
+          </span>
+          <div className="truncate text-[14px] font-semibold text-text-primary">
+            {isImport ? t('data.workflow.importDsl') : t('data.workflow.viewExportDsl')}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="text-text-muted hover:bg-accent-muted hover:text-accent"
+          title={t('common.close')}
+          aria-label={t('common.close')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 bg-surface p-3">
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          readOnly={!isImport}
+          spellCheck={false}
+          className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-surface px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active"
+          placeholder={t('data.workflow.dslPlaceholder')}
+        />
+        {error && (
+          <div className="max-h-24 overflow-y-auto whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span>{error}</span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
-            title={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-3 bg-surface p-3">
-          <textarea
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            readOnly={!isImport}
-            spellCheck={false}
-            className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-surface px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active"
-            placeholder={t('data.workflow.dslPlaceholder')}
-          />
-          {error && (
-            <div className="max-h-24 overflow-y-auto whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-muted px-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
-          >
-            {isImport ? t('common.cancel') : t('common.close')}
-          </button>
-          {isImport ? (
-            <button
-              type="button"
-              onClick={onApply}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
-            >
-              <Workflow className="h-3.5 w-3.5" />
-              {t('data.workflow.applyDsl')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onCopy}
-              disabled={!value}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              {t('data.workflow.copyDsl')}
-            </button>
-          )}
-        </div>
+        )}
       </div>
-    </div>
+
+      <div className="flex h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-muted px-4">
+        <Button variant="secondary" size="sm" onClick={onClose} className="text-xs">
+          {isImport ? t('common.cancel') : t('common.close')}
+        </Button>
+        {isImport ? (
+          <Button variant="primary" size="sm" onClick={onApply} className="text-xs">
+            <Workflow className="h-3.5 w-3.5" />
+            {t('data.workflow.applyDsl')}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onCopy}
+            disabled={!value}
+            className="text-xs"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {t('data.workflow.copyDsl')}
+          </Button>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

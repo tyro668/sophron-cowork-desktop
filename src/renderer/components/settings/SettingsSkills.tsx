@@ -31,9 +31,11 @@ import {
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
-  TabButton,
+  underlineTabTriggerClass,
 } from '../data-view/shared';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { Button } from '../ui/button';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
@@ -535,21 +537,25 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">
-          <TabButton
-            active={activeWorkspaceTab === 'installed'}
-            label={t('skills.workspace.installedTab')}
-            onClick={() => setActiveWorkspaceTab('installed')}
-          />
-          <TabButton
-            active={activeWorkspaceTab === 'builtin'}
-            label={t('skills.workspace.builtinTab')}
-            onClick={() => setActiveWorkspaceTab('builtin')}
-          />
-          <TabButton
-            active={activeWorkspaceTab === 'market'}
-            label={t('skills.workspace.marketTab')}
-            onClick={() => void handleBrowseMarket()}
-          />
+          <Tabs
+            value={activeWorkspaceTab}
+            onValueChange={(v) => {
+              if (v === 'market') void handleBrowseMarket();
+              else setActiveWorkspaceTab(v as SkillWorkspaceTab);
+            }}
+          >
+            <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
+              <TabsTrigger value="installed" className={underlineTabTriggerClass}>
+                {t('skills.workspace.installedTab')}
+              </TabsTrigger>
+              <TabsTrigger value="builtin" className={underlineTabTriggerClass}>
+                {t('skills.workspace.builtinTab')}
+              </TabsTrigger>
+              <TabsTrigger value="market" className={underlineTabTriggerClass}>
+                {t('skills.workspace.marketTab')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
@@ -644,17 +650,18 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   )}
                   action={
                     searchQuery.trim() ? (
-                      <button className="btn btn-secondary" onClick={() => setSearchQuery('')}>
+                      <Button variant="secondary" onClick={() => setSearchQuery('')}>
                         {t('workspaceEmpty.clearSearch')}
-                      </button>
+                      </Button>
                     ) : (
                       activeWorkspaceTab !== 'market' && (
-                        <button
-                          className="btn btn-primary"
+                        <Button
+                          variant="primary"
                           onClick={() => void handleBrowseMarket()}
+                          className="shadow-soft"
                         >
                           {t('skills.workspace.marketTab')}
-                        </button>
+                        </Button>
                       )
                     )
                   }

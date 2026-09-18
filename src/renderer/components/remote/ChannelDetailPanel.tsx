@@ -16,10 +16,17 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
+import { Switch } from '../ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { ChannelBrandIcon } from './ChannelBrandIcon';
 import { ChannelSetupGuide } from './ChannelSetupGuide';
 import { getChannelState, type RemoteChannelState } from './channel-state';
 import type { ChannelConfigTab, RemoteChannelViewModel, TunnelStatus } from './types';
+
+const channelTabTriggerClass =
+  'flex shrink-0 items-center gap-1.5 rounded-t-lg rounded-b-none px-3 py-2 ' +
+  'shadow-none data-[state=active]:bg-accent-muted data-[state=active]:text-accent ' +
+  'data-[state=active]:shadow-none';
 
 const CHANNEL_STATE_BADGE_CLASS = {
   connected: 'bg-success/10 text-success',
@@ -217,55 +224,33 @@ export function ChannelDetailPanel({
             {t(`remote.channelState.${channelState}`)}
           </span>
           {channel.backendAvailable && (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={channel.enabled}
-              aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
-              title={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
-              onClick={onToggleChannel}
-              disabled={!channel.configured || isTogglingChannel}
-              className="group inline-flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span
-                aria-hidden="true"
-                className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${
-                  channel.enabled ? 'bg-success' : 'bg-surface-active'
-                }`}
-              >
-                <span
-                  className={`absolute left-0.5 top-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    channel.enabled ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                >
-                  {isTogglingChannel && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-                  )}
-                </span>
-              </span>
+            <div className="group inline-flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm font-medium text-text-secondary">
+              <Switch
+                checked={channel.enabled}
+                onCheckedChange={onToggleChannel}
+                disabled={!channel.configured || isTogglingChannel}
+                aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
+                className="data-[state=checked]:border-success data-[state=checked]:bg-success"
+              />
               <span>{t(channel.enabled ? 'remote.enableChannel' : 'remote.disableChannel')}</span>
-            </button>
+              {isTogglingChannel && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" aria-hidden />
+              )}
+            </div>
           )}
         </div>
       </header>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border-subtle px-3 pt-2">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === id
-                ? 'bg-accent-muted text-accent'
-                : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChannelConfigTab)}>
+        <TabsList className="flex w-full gap-1 overflow-x-auto rounded-none border-0 border-b border-border-subtle bg-transparent px-3 pt-2">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <TabsTrigger key={id} value={id} className={channelTabTriggerClass}>
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div className="min-h-[410px] p-4">
         {!channel.backendAvailable && (
@@ -451,21 +436,11 @@ export function ChannelDetailPanel({
                       {t('remote.ngrokChannelHint')}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={tunnelEnabled}
-                    onClick={() => onTunnelEnabledChange(!tunnelEnabled)}
-                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                      tunnelEnabled ? 'bg-accent' : 'bg-surface-active'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-soft transition-transform ${
-                        tunnelEnabled ? 'left-6' : 'left-1'
-                      }`}
-                    />
-                  </button>
+                  <Switch
+                    checked={tunnelEnabled}
+                    onCheckedChange={onTunnelEnabledChange}
+                    aria-label={t('remote.useBuiltInNgrok')}
+                  />
                 </div>
                 {tunnelEnabled && (
                   <input
@@ -523,29 +498,19 @@ export function ChannelDetailPanel({
                 </div>
                 <p className="mt-1 text-xs text-text-muted">{t('remote.requireMentionDesc')}</p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={activeRequireMention}
-                onClick={() => {
+              <Switch
+                checked={activeRequireMention}
+                onCheckedChange={(checked) => {
                   if (channel.type === 'dingtalk') {
-                    onDingtalkRequireMentionChange(!activeRequireMention);
+                    onDingtalkRequireMentionChange(checked);
                   } else if (channel.type === 'wecom') {
-                    onWecomRequireMentionChange(!activeRequireMention);
+                    onWecomRequireMentionChange(checked);
                   } else {
-                    setRequireMention((value) => !value);
+                    setRequireMention(checked);
                   }
                 }}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                  activeRequireMention ? 'bg-accent' : 'bg-surface-active'
-                }`}
-              >
-                <span
-                  className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-soft transition-transform ${
-                    activeRequireMention ? 'left-6' : 'left-1'
-                  }`}
-                />
-              </button>
+                aria-label={t('remote.requireMention')}
+              />
             </div>
           </div>
         )}

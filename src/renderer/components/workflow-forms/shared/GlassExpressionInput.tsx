@@ -16,6 +16,8 @@ import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { Tag, tags } from '@lezer/highlight';
 import { DataTypeIcon } from './DataTypeIcon';
+import { Button } from '../../ui/button';
+import { Dialog } from '../../ui/dialog';
 
 export interface ExpressionAssistantPanelContext {
   currentExpression: string;
@@ -1001,165 +1003,159 @@ function ExpressionEditorDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <Dialog
+      open
+      onOpenChange={onClose}
+      closeOnOverlayClick
+      closeOnEscape={false}
+      ariaLabel={tr('aggregateExpressionEditor')}
+      overlayClassName="bg-black/28 px-4 py-6"
+      className="h-[36rem] w-[56rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
     >
-      <div className="flex h-[36rem] max-h-[calc(100vh-3rem)] w-[56rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-card">
-        <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-[14px] font-medium text-text-primary">
-              {tr('aggregateExpressionEditor')}
-            </h3>
-            {assistantPanel && (
-              <button
-                type="button"
-                onClick={() => setShowAssistantPanel((current) => !current)}
-                className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
-                  showAssistantPanel
-                    ? 'border-accent/30 bg-accent-muted text-accent'
-                    : 'border-border-muted bg-surface text-text-secondary hover:bg-surface-hover'
-                }`}
-              >
-                <WandSparkles className="h-3.5 w-3.5" />
-                {showAssistantPanel ? assistantPanel.closeLabel : assistantPanel.openLabel}
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-secondary transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[14px] font-medium text-text-primary">
+            {tr('aggregateExpressionEditor')}
+          </h3>
+          {assistantPanel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAssistantPanel((current) => !current)}
+              className={`gap-1 border px-2 text-[11px] ${
+                showAssistantPanel
+                  ? 'border-accent/30 bg-accent-muted text-accent hover:bg-accent-muted hover:text-accent'
+                  : 'border-border-muted bg-surface'
+              }`}
+            >
+              <WandSparkles className="h-3.5 w-3.5" />
+              {showAssistantPanel ? assistantPanel.closeLabel : assistantPanel.openLabel}
+            </Button>
+          )}
         </div>
-        <div className="flex flex-1 flex-col overflow-hidden p-4">
-          <div ref={hostRef} className="shrink-0" style={{ height: editorHeight }} />
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
-            aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
-            aria-valuenow={editorHeight}
-            tabIndex={0}
-            onPointerDown={handleEditorResizeStart}
-            onPointerMove={handleEditorResizeMove}
-            onPointerUp={handleEditorResizeEnd}
-            onPointerCancel={handleEditorResizeEnd}
-            onKeyDown={(event) => {
-              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-              event.preventDefault();
-              const delta =
-                event.key === 'ArrowUp'
-                  ? -EXPRESSION_EDITOR_RESIZE_STEP
-                  : EXPRESSION_EDITOR_RESIZE_STEP;
-              setEditorHeight((current) => clampEditorHeight(current + delta));
-            }}
-            className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
-          >
-            <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
-          </div>
-          {showAssistantPanel && assistantPanel ? (
-            assistantPanel.render({
-              currentExpression: draft,
-              insertExpression: editAtCursor,
-              replaceExpression,
-              closePanel: () => setShowAssistantPanel(false),
-            })
-          ) : (
-            <div className="grid grid-cols-[1fr_1fr_1.5fr] min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
-              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
-                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted border-b border-border-muted/60">
-                  {tr('expressionFieldsTab')}
-                </div>
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="relative shrink-0 px-3 pt-2 pb-2">
-                    <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-                    <input
-                      type="text"
-                      value={fieldQuery}
-                      onChange={(e) => setFieldQuery(e.target.value)}
-                      placeholder={tr('expressionFieldSearchPlaceholder')}
-                      className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                    />
-                  </div>
-                  <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
-                    {sortedFields.length === 0 ? (
-                      <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                        {tr('fieldPicker.noMatch')}
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-border-muted/60">
-                        {sortedFields.map((col) => {
-                          const colType = columnTypes?.[col];
-                          return (
-                            <button
-                              key={col}
-                              type="button"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                editAtCursor(`[${col}]`);
-                              }}
-                              className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
-                            >
-                              <span className="flex min-w-0 items-center gap-2">
-                                <DataTypeIcon type={colType} />
-                                <span className="min-w-0 truncate">{col}</span>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="text-text-muted"
+          aria-label={tr('cancel')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
+        <div ref={hostRef} className="shrink-0" style={{ height: editorHeight }} />
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
+          aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
+          aria-valuenow={editorHeight}
+          tabIndex={0}
+          onPointerDown={handleEditorResizeStart}
+          onPointerMove={handleEditorResizeMove}
+          onPointerUp={handleEditorResizeEnd}
+          onPointerCancel={handleEditorResizeEnd}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+            event.preventDefault();
+            const delta =
+              event.key === 'ArrowUp'
+                ? -EXPRESSION_EDITOR_RESIZE_STEP
+                : EXPRESSION_EDITOR_RESIZE_STEP;
+            setEditorHeight((current) => clampEditorHeight(current + delta));
+          }}
+          className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
+        >
+          <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
+        </div>
+        {showAssistantPanel && assistantPanel ? (
+          assistantPanel.render({
+            currentExpression: draft,
+            insertExpression: editAtCursor,
+            replaceExpression,
+            closePanel: () => setShowAssistantPanel(false),
+          })
+        ) : (
+          <div className="grid grid-cols-[1fr_1fr_1.5fr] min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
+            <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted border-b border-border-muted/60">
+                {tr('expressionFieldsTab')}
               </div>
-              <div className="flex flex-col border-r border-border-muted/60 min-h-0">
-                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
-                  {tr('expressionFunctionHelperLabel')}
-                </div>
-                <div className="flex-1 border-t border-border-muted/60 min-h-0">
-                  <GlassFunctionHelper
-                    onInsert={editAtCursor}
-                    functionGroups={functionGroups}
-                    excludeCategories={excludeFunctionCategories}
-                    onTokenHover={setHoveredToken}
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="relative shrink-0 px-3 pt-2 pb-2">
+                  <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+                  <input
+                    type="text"
+                    value={fieldQuery}
+                    onChange={(e) => setFieldQuery(e.target.value)}
+                    placeholder={tr('expressionFieldSearchPlaceholder')}
+                    className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
                   />
                 </div>
-              </div>
-              <div className="flex flex-col min-h-0">
-                <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
-                  {tr('expressionFunctionDetailLabel')}
-                </div>
-                <div className="scrollbar-hover flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                  <FunctionDetailPanel token={hoveredToken} tr={tr} />
+                <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
+                  {sortedFields.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-[11px] text-text-muted">
+                      {tr('fieldPicker.noMatch')}
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border-muted/60">
+                      {sortedFields.map((col) => {
+                        const colType = columnTypes?.[col];
+                        return (
+                          <button
+                            key={col}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              editAtCursor(`[${col}]`);
+                            }}
+                            className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <DataTypeIcon type={colType} />
+                              <span className="min-w-0 truncate">{col}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 items-center rounded-md border border-border-muted bg-surface px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
-          >
-            {tr('cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className="flex h-8 items-center rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover"
-          >
-            {tr('confirm')}
-          </button>
-        </div>
+            <div className="flex flex-col border-r border-border-muted/60 min-h-0">
+              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                {tr('expressionFunctionHelperLabel')}
+              </div>
+              <div className="flex-1 border-t border-border-muted/60 min-h-0">
+                <GlassFunctionHelper
+                  onInsert={editAtCursor}
+                  functionGroups={functionGroups}
+                  excludeCategories={excludeFunctionCategories}
+                  onTokenHover={setHoveredToken}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col min-h-0">
+              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+                {tr('expressionFunctionDetailLabel')}
+              </div>
+              <div className="scrollbar-hover flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
+                <FunctionDetailPanel token={hoveredToken} tr={tr} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+      <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-4 py-3">
+        <Button variant="secondary" size="sm" onClick={onClose} className="text-[12px]">
+          {tr('cancel')}
+        </Button>
+        <Button variant="primary" size="sm" onClick={handleConfirm} className="text-[12px]">
+          {tr('confirm')}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

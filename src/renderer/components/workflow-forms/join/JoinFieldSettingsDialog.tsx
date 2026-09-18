@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '../../ui/button';
+import { Dialog } from '../../ui/dialog';
 import { GlassFormTextInput } from '../shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { toggleSelectAll } from '@/shared/collections/selection';
@@ -231,108 +233,94 @@ export function JoinFieldSettingsDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/28 px-4 py-6"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
+    <Dialog
+      open
+      onOpenChange={onCancel}
+      closeOnOverlayClick
+      ariaLabel={tr('joinFieldSettings')}
+      overlayClassName="bg-black/28 px-4 py-6"
+      className="w-[680px] gap-0 rounded-xl p-0 shadow-card"
     >
-      <div
-        autoFocus
-        tabIndex={-1}
-        className="flex max-h-full w-[680px] flex-col rounded-xl border border-border-subtle bg-surface shadow-card outline-none"
-      >
-        <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
-          <h3 className="text-[13px] font-semibold text-text-primary">{tr('joinFieldSettings')}</h3>
-        </div>
-        <div className="scrollbar-hover flex gap-4 overflow-y-auto p-4">
-          <JoinKeepFieldColumn
-            side="left"
-            title={leftTitle}
-            fields={leftFields}
-            alias={leftAlias}
-            selected={draft.leftSelected}
-            aliases={draft.leftAliases}
-            allChecked={leftAllChecked}
-            allIndeterminate={leftIndeterminate}
-            onToggleAll={() => toggleAll('left')}
-            onToggleField={(field) => toggleField('left', field)}
-            onAliasChange={(field, alias) => updateAlias('left', field, alias)}
-          />
-          <JoinKeepFieldColumn
-            side="right"
-            title={rightTitle}
-            fields={rightFields}
-            alias={rightAlias}
-            selected={draft.rightSelected}
-            aliases={draft.rightAliases}
-            allChecked={rightAllChecked}
-            allIndeterminate={rightIndeterminate}
-            onToggleAll={() => toggleAll('right')}
-            onToggleField={(field) => toggleField('right', field)}
-            onAliasChange={(field, alias) => updateAlias('right', field, alias)}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-muted/50 px-4 py-3">
-          <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
-          <GlassOptionSingleSelect
-            value={draft.conflict.strategy}
-            groups={conflictGroups}
-            onChange={(v) => updateConflict({ strategy: v })}
-            className="h-8 w-40 text-[12px] [&>span]:text-left"
-          />
-          {draft.conflict.strategy === 'suffix' ? (
-            <>
-              <label className="flex items-center gap-1 text-[12px] text-text-secondary">
-                {tr('conflictLeftSuffix')}
-                <GlassFormTextInput
-                  value={draft.conflict.leftSuffix}
-                  onChange={(v) => updateConflict({ leftSuffix: v })}
-                  placeholder={JOIN_CONFLICT_DEFAULTS.leftSuffix}
-                  className="h-8 w-24 text-[12px]"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-[12px] text-text-secondary">
-                {tr('conflictRightSuffix')}
-                <GlassFormTextInput
-                  value={draft.conflict.rightSuffix}
-                  onChange={(v) => updateConflict({ rightSuffix: v })}
-                  placeholder={JOIN_CONFLICT_DEFAULTS.rightSuffix}
-                  className="h-8 w-24 text-[12px]"
-                />
-              </label>
-            </>
-          ) : (
+      <div className="flex items-center justify-between border-b border-border-muted/50 px-4 py-3">
+        <h3 className="text-[13px] font-semibold text-text-primary">{tr('joinFieldSettings')}</h3>
+      </div>
+      <div className="scrollbar-hover flex gap-4 overflow-y-auto p-4">
+        <JoinKeepFieldColumn
+          side="left"
+          title={leftTitle}
+          fields={leftFields}
+          alias={leftAlias}
+          selected={draft.leftSelected}
+          aliases={draft.leftAliases}
+          allChecked={leftAllChecked}
+          allIndeterminate={leftIndeterminate}
+          onToggleAll={() => toggleAll('left')}
+          onToggleField={(field) => toggleField('left', field)}
+          onAliasChange={(field, alias) => updateAlias('left', field, alias)}
+        />
+        <JoinKeepFieldColumn
+          side="right"
+          title={rightTitle}
+          fields={rightFields}
+          alias={rightAlias}
+          selected={draft.rightSelected}
+          aliases={draft.rightAliases}
+          allChecked={rightAllChecked}
+          allIndeterminate={rightIndeterminate}
+          onToggleAll={() => toggleAll('right')}
+          onToggleField={(field) => toggleField('right', field)}
+          onAliasChange={(field, alias) => updateAlias('right', field, alias)}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-muted/50 px-4 py-3">
+        <span className="shrink-0 text-[12px] text-text-primary">{tr('conflict')}</span>
+        <GlassOptionSingleSelect
+          value={draft.conflict.strategy}
+          groups={conflictGroups}
+          onChange={(v) => updateConflict({ strategy: v })}
+          className="h-8 w-40 text-[12px] [&>span]:text-left"
+        />
+        {draft.conflict.strategy === 'suffix' ? (
+          <>
             <label className="flex items-center gap-1 text-[12px] text-text-secondary">
-              {tr('prefix')}
+              {tr('conflictLeftSuffix')}
               <GlassFormTextInput
-                value={draft.conflict.rightPrefix}
-                onChange={(v) => updateConflict({ rightPrefix: v })}
-                placeholder={JOIN_CONFLICT_DEFAULTS.rightPrefix}
+                value={draft.conflict.leftSuffix}
+                onChange={(v) => updateConflict({ leftSuffix: v })}
+                placeholder={JOIN_CONFLICT_DEFAULTS.leftSuffix}
                 className="h-8 w-24 text-[12px]"
               />
             </label>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 px-4 py-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-border-muted bg-surface px-3 py-1 text-[12px] text-text-secondary hover:border-accent/30 hover:text-accent transition-colors"
-          >
-            {tr('cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            className="rounded-md bg-accent px-3 py-1 text-[12px] text-accent-foreground hover:bg-accent-hover transition-colors"
-          >
-            {tr('confirm')}
-          </button>
-        </div>
+            <label className="flex items-center gap-1 text-[12px] text-text-secondary">
+              {tr('conflictRightSuffix')}
+              <GlassFormTextInput
+                value={draft.conflict.rightSuffix}
+                onChange={(v) => updateConflict({ rightSuffix: v })}
+                placeholder={JOIN_CONFLICT_DEFAULTS.rightSuffix}
+                className="h-8 w-24 text-[12px]"
+              />
+            </label>
+          </>
+        ) : (
+          <label className="flex items-center gap-1 text-[12px] text-text-secondary">
+            {tr('prefix')}
+            <GlassFormTextInput
+              value={draft.conflict.rightPrefix}
+              onChange={(v) => updateConflict({ rightPrefix: v })}
+              placeholder={JOIN_CONFLICT_DEFAULTS.rightPrefix}
+              className="h-8 w-24 text-[12px]"
+            />
+          </label>
+        )}
       </div>
-    </div>
+      <div className="flex justify-end gap-2 px-4 py-3">
+        <Button variant="secondary" size="sm" onClick={onCancel} className="text-[12px]">
+          {tr('cancel')}
+        </Button>
+        <Button variant="primary" size="sm" onClick={confirm} className="text-[12px]">
+          {tr('confirm')}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

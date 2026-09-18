@@ -23,6 +23,7 @@ import {
   type CalculationFrameBoundType,
 } from '../../../../shared/calculate-field/wizard-state';
 import { useDragReorder } from '../../../hooks/useDragReorder';
+import { Tabs, TabsList, TabsTrigger } from '../../ui/tabs';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassFieldTagPicker } from '../shared/GlassFieldTagPicker';
@@ -250,28 +251,25 @@ export function CalculationFunctionWizard({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted/60">
-        <div
-          role="tablist"
-          aria-label={tr('calcFieldOpenWizard')}
-          className="flex shrink-0 items-stretch overflow-x-auto overflow-y-hidden border-b border-border-muted/60 bg-surface px-2"
+        <Tabs
+          value={category}
+          onValueChange={(v) => selectCategory(v as CalculationFunctionCategory)}
         >
-          {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={item === category}
-              onClick={() => selectCategory(item)}
-              className={`h-8 shrink-0 border-b-2 px-3 text-[12px] outline-none transition-colors focus-visible:bg-accent-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
-                item === category
-                  ? 'border-accent font-medium text-accent'
-                  : 'border-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-              }`}
-            >
-              {tr(CATEGORY_LABEL_KEYS[item])}
-            </button>
-          ))}
-        </div>
+          <TabsList
+            aria-label={tr('calcFieldOpenWizard')}
+            className="flex w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-0 border-b border-border-muted/60 bg-surface px-2"
+          >
+            {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
+              <TabsTrigger
+                key={item}
+                value={item}
+                className="h-8 shrink-0 rounded-none border-b-2 px-3 text-[12px] shadow-none data-[state=active]:border-accent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-accent data-[state=active]:shadow-none"
+              >
+                {tr(CATEGORY_LABEL_KEYS[item])}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto pr-1">
           <section className="p-3">

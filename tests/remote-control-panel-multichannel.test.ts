@@ -111,10 +111,9 @@ describe('RemoteControlPanel multi-channel UI', () => {
     expect(detailSource).toContain("'remote.enableChannel'");
     expect(detailSource).toContain('getChannelState(channel)');
     expect(channelStateSource).toContain("return 'disabled'");
-    expect(detailSource).toContain('role="switch"');
-    expect(detailSource).toContain('aria-checked={channel.enabled}');
-    expect(detailSource).toContain("channel.enabled ? 'bg-success' : 'bg-surface-active'");
-    expect(detailSource).toContain("channel.enabled ? 'translate-x-5' : 'translate-x-0'");
+    expect(detailSource).toContain('<Switch');
+    expect(detailSource).toContain('checked={channel.enabled}');
+    expect(detailSource).toContain('data-[state=checked]:bg-success');
   });
 
   it('enables DingTalk and WeCom Webhook modes and persists their receive modes', () => {

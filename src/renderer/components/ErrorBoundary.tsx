@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Button } from './ui/button';
 import i18n from '../i18n/config';
 
 interface ErrorBoundaryProps {
@@ -54,12 +55,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
           {/* Heading & description */}
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-text-primary">
-              {t('errorBoundary.title')}
-            </h2>
-            <p className="text-sm text-text-secondary">
-              {t('errorBoundary.description')}
-            </p>
+            <h2 className="text-xl font-semibold text-text-primary">{t('errorBoundary.title')}</h2>
+            <p className="text-sm text-text-secondary">{t('errorBoundary.description')}</p>
           </div>
 
           {/* Error detail (collapsed, non-critical) */}
@@ -75,14 +72,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           )}
 
           {/* Retry button */}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={this.handleReset}
-            className="inline-flex items-center gap-2 btn btn-primary px-5 py-2.5 rounded-2xl"
+            className="h-auto gap-2 rounded-2xl px-5 py-2.5 shadow-soft"
           >
             <RefreshCw className="w-4 h-4" />
             <span>{t('errorBoundary.retry')}</span>
-          </button>
+          </Button>
         </div>
       </div>
     );

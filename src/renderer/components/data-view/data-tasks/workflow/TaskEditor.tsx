@@ -39,6 +39,7 @@ import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
 import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
+import { Button } from '../../../ui/button';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import {
   connectWorkflowNodes as connectWorkflowGraphNodes,
@@ -756,30 +757,33 @@ export function TaskEditor({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            variant="secondary"
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            className="px-3 text-xs shadow-soft"
           >
             <Save className="h-3.5 w-3.5" />
             {saving ? t('common.saving') : t('common.save')}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => void handleTrialRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+            className="px-3 text-xs shadow-soft"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.trialRun')}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void handleSaveAndRun()}
             disabled={isBusy || !workflow}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-55"
+            className="px-3 text-xs shadow-soft"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.saveAndRun')}
-          </button>
+          </Button>
           <GlassDropdownMenu
             open={workflowMenuOpen}
             onOpenChange={setWorkflowMenuOpen}

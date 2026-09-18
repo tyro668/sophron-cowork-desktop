@@ -4,6 +4,7 @@ import type { Automation, AutomationTrigger, Project } from '../../../types';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassSelect } from '../../GlassSelect';
 import { GlassSwitch } from '../../GlassSwitch';
+import { Button } from '../../ui/button';
 import {
   type AutomationDraft,
   type EditableAutomationTrigger,
@@ -110,22 +111,20 @@ export function EditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          variant="secondary"
           onClick={onSave}
           disabled={isSaving}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+          className="h-9 px-3 text-xs shadow-soft"
         >
           <Save className="h-3.5 w-3.5" />
           {tr('schedule.save', '保存')}
-        </button>
+        </Button>
         {selectedAutomation && (
-          <button
-            onClick={onRun}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
-          >
+          <Button variant="primary" onClick={onRun} className="h-9 px-3 text-xs shadow-soft">
             <Play className="h-3.5 w-3.5" />
             {tr('schedule.runNowDetail', '立即运行')}
-          </button>
+          </Button>
         )}
       </div>
     </div>

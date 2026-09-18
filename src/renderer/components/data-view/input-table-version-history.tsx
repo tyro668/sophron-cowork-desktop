@@ -4,6 +4,7 @@ import type {
   DataNormalizerProjectFile,
 } from '../../types';
 import { formatDateTime, type TranslateFn } from './shared';
+import { Button } from '../ui/button';
 import { ChevronDown, FileText, Folder, RefreshCw, Trash2 } from 'lucide-react';
 import {
   buildNormalizerProjectTree,
@@ -200,11 +201,12 @@ export function InputTableVersionHistoryPanel({
                     </td>
                     <td className="w-[13rem] px-3">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
+                        <Button
+                          variant="primary"
+                          size="sm"
                           disabled={isPublished || publishingVersionId === version.id}
                           onClick={() => onPublish(version)}
-                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg jade-primary-button px-3 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                          className="h-7 min-w-[4.25rem] gap-1 px-3 text-[11px]"
                         >
                           {publishingVersionId === version.id ? (
                             <RefreshCw className="h-3 w-3 animate-spin" />
@@ -212,7 +214,7 @@ export function InputTableVersionHistoryPanel({
                           {isPublished
                             ? t('data.inputTables.editor.publishedVersion')
                             : t('data.inputTables.editor.publishVersionAction')}
-                        </button>
+                        </Button>
                         <button
                           type="button"
                           disabled={isPublished || deletingVersionId === version.id}

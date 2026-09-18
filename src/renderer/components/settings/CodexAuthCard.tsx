@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  AlertCircle,
-  CheckCircle,
-  KeyRound,
-  Loader2,
-  LogIn,
-  LogOut,
-  RefreshCw,
-} from 'lucide-react';
+import { AlertCircle, CheckCircle, KeyRound, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import type { CodexAuthStatus, CodexLoginPromptPayload } from '../../types';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 
 type BusyAction = 'login' | 'import' | 'logout' | null;
 
@@ -134,54 +128,61 @@ export function CodexAuthCard() {
 
         <div className="flex shrink-0 items-center gap-2">
           {connected ? (
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={() => {
                 void handleLogout();
               }}
+              loading={busy === 'logout'}
               disabled={busy !== null}
-              className="btn btn-secondary h-8"
             >
               {busy === 'logout' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                t('api.codexLogout')
               ) : (
-                <LogOut className="h-3.5 w-3.5" />
+                <>
+                  <LogOut className="h-3.5 w-3.5" />
+                  {t('api.codexLogout')}
+                </>
               )}
-              {t('api.codexLogout')}
-            </button>
+            </Button>
           ) : (
             <>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={() => {
                   void handleImport();
                 }}
+                loading={busy === 'import'}
                 disabled={busy !== null}
-                className="btn btn-secondary h-8"
                 title={t('api.codexRedetect')}
               >
                 {busy === 'import' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  t('api.codexRedetect')
                 ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    {t('api.codexRedetect')}
+                  </>
                 )}
-                {t('api.codexRedetect')}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => {
                   void handleLogin();
                 }}
+                loading={busy === 'login'}
                 disabled={busy !== null}
-                className="btn btn-primary h-8"
+                className="shadow-soft"
               >
                 {busy === 'login' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  t('api.codexLoggingIn')
                 ) : (
-                  <LogIn className="h-3.5 w-3.5" />
+                  <>
+                    <LogIn className="h-3.5 w-3.5" />
+                    {t('api.codexLogin')}
+                  </>
                 )}
-                {busy === 'login' ? t('api.codexLoggingIn') : t('api.codexLogin')}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -189,22 +190,22 @@ export function CodexAuthCard() {
 
       {prompt && (
         <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-3">
-          <input
+          <Input
             type="text"
             value={manualCode}
             onChange={(e) => setManualCode(e.target.value)}
             placeholder={t('api.codexManualCodePlaceholder')}
             aria-label={t('api.codexManualCodeLabel')}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary outline-none transition-all placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className="h-9 min-w-0 flex-1 bg-background px-3"
           />
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={submitManualCode}
             disabled={!manualCode.trim()}
-            className="btn btn-primary h-9 shrink-0"
+            className="h-9 shrink-0 shadow-soft"
           >
             {t('api.codexManualCodeSubmit')}
-          </button>
+          </Button>
         </div>
       )}
 

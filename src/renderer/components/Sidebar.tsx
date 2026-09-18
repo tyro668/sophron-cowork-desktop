@@ -680,13 +680,16 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               <ChevronRight className="w-4 h-4" />
             </button>
           )}
-          <button
+          <Button
+            variant="primary"
+            size="icon"
             onClick={handleNewSession}
-            className="w-8 h-8 rounded-xl flex items-center justify-center jade-primary-button transition-colors shadow-soft"
+            className="rounded-xl shadow-soft"
             title={t('sidebar.newTask')}
+            aria-label={t('sidebar.newTask')}
           >
             <Plus className="w-4 h-4" />
-          </button>
+          </Button>
           <button
             onClick={handleDataPage}
             className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
@@ -825,13 +828,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </button>
         </div>
 
-        <button
+        <Button
+          variant="primary"
           onClick={handleNewSession}
-          className="mt-3 w-full flex h-9 items-center gap-2 rounded-xl jade-primary-button px-3 text-left transition-colors shadow-soft"
+          className="mt-3 h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft"
         >
-          <Plus className="w-4 h-4 text-accent-foreground flex-shrink-0" />
-          <span className="text-[13px] font-medium">{t('sidebar.newTask')}</span>
-        </button>
+          <Plus className="w-4 h-4 flex-shrink-0" />
+          <span className="text-[13px]">{t('sidebar.newTask')}</span>
+        </Button>
 
         {sessions.length > 0 && (
           <div className="mt-2 flex items-center gap-2">

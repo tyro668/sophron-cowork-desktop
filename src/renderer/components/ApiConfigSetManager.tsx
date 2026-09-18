@@ -4,6 +4,7 @@ import { Check, Layers3, MoreVertical, Pencil, Plus, Star, Trash2 } from 'lucide
 import type { ApiConfigSet } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { useConfirmDialog } from './ConfirmDialog';
+import { Button } from './ui/button';
 
 type PendingConfigSetAction = { type: 'select' | 'switch'; targetSetId: string };
 
@@ -237,30 +238,28 @@ export function ApiConfigSetManager({
             {t('api.unsavedSwitchPrompt', { name: pendingConfigSet?.name || '-' })}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="primary"
               onClick={() => void onSaveAndContinuePendingAction()}
               disabled={isMutatingConfigSet || isSaving}
-              className="btn btn-primary h-8"
+              className="shadow-soft"
             >
               {t('api.saveAndContinue')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => void onDiscardAndContinuePendingAction()}
               disabled={isMutatingConfigSet || isSaving}
-              className="btn btn-secondary h-8"
             >
               {t('api.discardAndContinue')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               onClick={onCancelPendingAction}
               disabled={isMutatingConfigSet || isSaving}
-              className="btn btn-secondary h-8"
             >
               {t('common.cancel')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -39,7 +39,7 @@ describe('main workspace navigation', () => {
 
     expect(dashboardHook).toContain('dataClient.getDashboard');
     expect(tasksPanel).toContain("t('data.newCleaningTask')");
-    expect(source).toContain("t('data.tabs.tasks')");
+    expect(source).toContain("'data.tabs.tasks'");
     expect(source).not.toContain('WelcomeView');
   });
 

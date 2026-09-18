@@ -33,27 +33,15 @@ export function makeLocalId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-export function TabButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative h-9 px-2.5 text-left text-[13px] font-medium transition-colors ${
-        active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
-      }`}
-    >
-      {label}
-      {active && <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />}
-    </button>
-  );
-}
+/**
+ * Underline-tab trigger styling for `TabsTrigger` — preserves the legacy
+ * text + bottom-accent-line look on top of the semantic `Tabs` primitives.
+ */
+export const underlineTabTriggerClass =
+  'relative h-9 rounded-none bg-transparent px-2.5 text-[13px] text-text-secondary shadow-none ' +
+  'hover:text-text-primary data-[state=active]:bg-transparent data-[state=active]:text-accent ' +
+  'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-px ' +
+  'after:w-full after:rounded-full data-[state=active]:after:bg-accent';
 
 export function DataToolbarButton({
   icon,

@@ -26,7 +26,14 @@ export {
   menuItemClass,
 } from './dropdown-menu';
 export type { DropdownMenuItemProps } from './dropdown-menu';
-export { Dialog, DialogTitle, DialogDescription, DialogFooter } from './dialog';
+export {
+  Dialog,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogHeader,
+  DialogFooter,
+} from './dialog';
 export type { DialogProps } from './dialog';
 export { Badge } from './badge';
 export type { BadgeProps, BadgeTone } from './badge';

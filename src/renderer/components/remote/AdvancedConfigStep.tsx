@@ -3,6 +3,8 @@
  */
 
 import { useTranslation } from 'react-i18next';
+import { Input } from '../ui/input';
+import { Switch } from '../ui/switch';
 
 interface Props {
   defaultWorkingDirectory: string;
@@ -26,7 +28,9 @@ export function AdvancedConfigStep({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-medium text-text-primary mb-1">{t('remote.advancedTitle')}</h3>
+        <h3 className="text-base font-medium text-text-primary mb-1">
+          {t('remote.advancedTitle')}
+        </h3>
         <p className="text-sm text-text-secondary">{t('remote.advancedDesc')}</p>
       </div>
 
@@ -35,27 +39,25 @@ export function AdvancedConfigStep({
           <label className="block text-sm font-medium text-text-secondary mb-2">
             {t('remote.defaultWorkingDirectory')}
           </label>
-          <input
+          <Input
             type="text"
             value={defaultWorkingDirectory}
             onChange={(e) => onWorkingDirectoryChange(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none"
+            className="h-auto bg-surface-hover px-3 py-2.5 text-sm"
             placeholder={t('remote.defaultWorkingDirectoryPlaceholder')}
           />
-          <p className="text-xs text-text-muted mt-1">
-            {t('remote.defaultWorkingDirectoryHint')}
-          </p>
+          <p className="text-xs text-text-muted mt-1">{t('remote.defaultWorkingDirectoryHint')}</p>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-2">
             {t('remote.gatewayPort')}
           </label>
-          <input
+          <Input
             type="number"
             value={gatewayPort}
             onChange={(e) => onGatewayPortChange(parseInt(e.target.value) || 18789)}
-            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none"
+            className="h-auto bg-surface-hover px-3 py-2.5 text-sm"
             placeholder="18789"
           />
         </div>
@@ -65,22 +67,13 @@ export function AdvancedConfigStep({
             <div className="font-medium text-text-primary text-sm">
               {t('remote.autoApproveSafeTools')}
             </div>
-            <p className="text-xs text-text-muted mt-0.5">
-              {t('remote.autoApproveSafeToolsDesc')}
-            </p>
+            <p className="text-xs text-text-muted mt-0.5">{t('remote.autoApproveSafeToolsDesc')}</p>
           </div>
-          <button
-            onClick={() => onAutoApproveChange(!autoApproveSafeTools)}
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              autoApproveSafeTools ? 'bg-accent' : 'bg-surface-active'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                autoApproveSafeTools ? 'left-5' : 'left-0.5'
-              }`}
-            />
-          </button>
+          <Switch
+            checked={autoApproveSafeTools}
+            onCheckedChange={onAutoApproveChange}
+            aria-label={t('remote.autoApproveSafeTools')}
+          />
         </div>
       </div>
     </div>

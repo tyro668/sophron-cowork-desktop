@@ -37,12 +37,9 @@ import {
   parsePendingCloudAutomationTemplate,
   validateEnabledActionNodes,
 } from './schedule/model';
-import {
-  AutomationListPanel,
-  AutomationRunLogPanel,
-  TabButton,
-  getRunSortTime,
-} from './schedule/listPanels';
+import { AutomationListPanel, AutomationRunLogPanel, getRunSortTime } from './schedule/listPanels';
+import { underlineTabTriggerClass } from '../data-view/shared';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   ActionChainSection,
   EditorHeader,
@@ -565,16 +562,16 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
-          <TabButton
-            active={activeListTab === 'automations'}
-            label={tr('schedule.tabs.automations', '自动化')}
-            onClick={() => setActiveListTab('automations')}
-          />
-          <TabButton
-            active={activeListTab === 'runs'}
-            label={tr('schedule.tabs.runs', '执行日志')}
-            onClick={() => setActiveListTab('runs')}
-          />
+          <Tabs value={activeListTab} onValueChange={(v) => setActiveListTab(v as ListTab)}>
+            <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
+              <TabsTrigger value="automations" className={underlineTabTriggerClass}>
+                {tr('schedule.tabs.automations', '自动化')}
+              </TabsTrigger>
+              <TabsTrigger value="runs" className={underlineTabTriggerClass}>
+                {tr('schedule.tabs.runs', '执行日志')}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         {activeListTab === 'automations' ? (
           <AutomationListPanel

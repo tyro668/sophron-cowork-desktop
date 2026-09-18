@@ -15,6 +15,7 @@ import {
   type PrepDiagnostic,
 } from '../../../../../shared/prep-dsl';
 import { INPUT_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
+import { Tabs, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowOperatorConfigPanel } from '../../WorkflowOperatorConfigPanel';
 import { getOperatorCatalog } from './operator-catalog';
@@ -370,22 +371,22 @@ export function WorkflowInspector({
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <div className="flex rounded-lg bg-surface-active p-0.5 text-xs font-medium">
-            {inspectorTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onActiveTabChange(tab.id)}
-                className={`h-7 whitespace-nowrap rounded-md px-3 ${
-                  resolvedTab === tab.id
-                    ? 'bg-background text-accent shadow-soft'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            value={resolvedTab}
+            onValueChange={(v) => onActiveTabChange(v as WorkflowInspectorTab)}
+          >
+            <TabsList className="flex gap-0 rounded-lg border-0 bg-surface-active p-0.5 text-xs">
+              {inspectorTabs.map((tab) => (
+                <TabsTrigger
+                  key={tab.id}
+                  value={tab.id}
+                  className="h-7 whitespace-nowrap rounded-md px-3 data-[state=active]:bg-background data-[state=active]:text-accent"
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
           <X className="h-4 w-4 text-text-muted" />
         </div>
       </div>

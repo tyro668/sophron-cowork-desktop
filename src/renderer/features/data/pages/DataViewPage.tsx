@@ -20,7 +20,8 @@ import {
   OutputTablesPanel,
   UploadOutputTableToCloudDialog,
 } from '../../../components/data-view/output-tables';
-import { TabButton } from '../../../components/data-view/shared';
+import { underlineTabTriggerClass } from '../../../components/data-view/shared';
+import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
 import { useDataDashboard } from '../hooks/use-data-dashboard';
@@ -261,28 +262,22 @@ export function DataViewPage() {
           <div className="flex min-h-0 flex-1 flex-col">
             <section className="flex min-h-0 flex-1 flex-col">
               <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex items-end gap-5">
-                  <TabButton
-                    active={activeTab === 'tasks'}
-                    onClick={() => handleTabChange('tasks')}
-                    label={t('data.tabs.tasks')}
-                  />
-                  <TabButton
-                    active={activeTab === 'input_tables'}
-                    onClick={() => handleTabChange('input_tables')}
-                    label={t('data.tabs.inputTables')}
-                  />
-                  <TabButton
-                    active={activeTab === 'output_tables'}
-                    onClick={() => handleTabChange('output_tables')}
-                    label={t('data.tabs.outputTables')}
-                  />
-                  <TabButton
-                    active={activeTab === 'cloud_analysis'}
-                    onClick={() => handleTabChange('cloud_analysis')}
-                    label={t('data.tabs.cloudAnalysis')}
-                  />
-                </div>
+                <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as DataTab)}>
+                  <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
+                    {(
+                      [
+                        ['tasks', 'data.tabs.tasks'],
+                        ['input_tables', 'data.tabs.inputTables'],
+                        ['output_tables', 'data.tabs.outputTables'],
+                        ['cloud_analysis', 'data.tabs.cloudAnalysis'],
+                      ] as const
+                    ).map(([value, key]) => (
+                      <TabsTrigger key={value} value={value} className={underlineTabTriggerClass}>
+                        {t(key)}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
               </div>
 
               {activeTab === 'tasks' ? (

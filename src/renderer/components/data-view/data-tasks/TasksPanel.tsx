@@ -24,6 +24,7 @@ import {
   StatusBadge,
   formatTimestamp,
 } from '../shared';
+import { Button } from '../../ui/button';
 
 const TASK_ICON_STYLES = [
   { Icon: Database, className: 'bg-accent-muted text-accent' },
@@ -164,15 +165,15 @@ export function TasksPanel({
               )}
               action={
                 searchQuery.trim() ? (
-                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                  <Button variant="secondary" onClick={() => onSearchChange('')}>
                     {t('workspaceEmpty.clearSearch')}
-                  </button>
+                  </Button>
                 ) : (
                   !isCreateDisabled && (
-                    <button className="btn btn-primary" onClick={onCreate}>
+                    <Button variant="primary" onClick={onCreate} className="shadow-soft">
                       <Plus className="h-4 w-4" />
                       {t('data.newCleaningTask')}
-                    </button>
+                    </Button>
                   )
                 )
               }

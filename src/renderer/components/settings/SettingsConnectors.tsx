@@ -9,13 +9,14 @@ import {
   Plus,
   Power,
   PowerOff,
-  Loader2,
   ChevronRight,
   ChevronDown,
   X,
 } from 'lucide-react';
 import type { MCPServerConfig, MCPServerStatus, MCPToolInfo, MCPPreset } from './shared';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
@@ -256,15 +257,18 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
             <h3 className="text-sm font-medium text-text-primary">
               {t('mcp.configure')} {configuringPreset.preset.name}
             </h3>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 setConfiguringPreset(null);
                 setPresetEnvValues({});
               }}
-              className="text-text-muted hover:text-text-primary"
+              className="h-7 w-7 text-text-muted"
+              aria-label={t('common.close')}
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-text-muted">
             This connector requires configuration before it can be added.
@@ -275,29 +279,33 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                 <label className="block text-xs font-medium text-text-secondary mb-1">
                   {configuringPreset.preset.envDescription?.[envKey] || envKey}
                 </label>
-                <input
+                <Input
                   type="password"
                   value={presetEnvValues[envKey] || ''}
                   onChange={(e) =>
                     setPresetEnvValues((prev) => ({ ...prev, [envKey]: e.target.value }))
                   }
                   placeholder={`Enter ${envKey}`}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  className="h-auto border-border px-3 py-2 text-sm"
                 />
               </div>
             ))}
           </div>
           <div className="flex justify-end gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setConfiguringPreset(null);
                 setPresetEnvValues({});
               }}
-              className="px-3 py-1.5 rounded-md text-sm text-text-secondary hover:text-text-primary transition-colors"
+              className="text-sm"
             >
               {t('common.cancel')}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() =>
                 void addPresetServer(
                   configuringPreset.key,
@@ -311,10 +319,10 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                   (key: string) => !presetEnvValues[key]?.trim()
                 )
               }
-              className="px-4 py-1.5 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+              className="px-4 text-sm"
             >
               {t('common.add')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -371,14 +379,16 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                         <span>{t('mcp.added')}</span>
                       </div>
                     ) : (
-                      <button
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => handleAddPreset(key)}
                         disabled={isLoading}
-                        className="px-3 py-1.5 rounded-md bg-accent text-accent-foreground text-xs font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 whitespace-nowrap flex items-center gap-1"
+                        className="gap-1 whitespace-nowrap text-xs"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         {requiresConfig ? t('mcp.configure') : t('common.add')}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 );
@@ -390,13 +400,14 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
       {/* Add Custom Button */}
       {!showAddForm && !editingServer && (
-        <button
+        <Button
+          variant="secondary"
           onClick={() => setShowAddForm(true)}
-          className="w-full py-3 px-4 rounded-lg border-2 border-dashed border-border hover:border-accent hover:bg-accent-muted transition-all flex items-center justify-center gap-2 text-text-secondary hover:text-accent"
+          className="h-auto w-full gap-2 border-2 border-dashed border-border px-4 py-3 hover:border-accent hover:bg-accent-muted hover:text-accent"
         >
           <Plus className="w-5 h-5" />
           {t('mcp.addCustomConnector')}
-        </button>
+        </Button>
       )}
 
       {/* Footer info */}
@@ -547,36 +558,47 @@ function ServerCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onToggleEnabled}
               disabled={isLoading}
-              className={`p-2 rounded-lg transition-colors ${
+              className={
                 server.enabled
-                  ? 'bg-success/10 text-success hover:bg-success/20'
+                  ? 'bg-success/10 text-success hover:bg-success/20 hover:text-success'
                   : 'bg-surface-muted text-text-muted hover:bg-surface-active'
-              }`}
+              }
               title={
+                server.enabled ? t('common.disable') || 'Disable' : t('common.enable') || 'Enable'
+              }
+              aria-label={
                 server.enabled ? t('common.disable') || 'Disable' : t('common.enable') || 'Enable'
               }
             >
               {server.enabled ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onEdit}
               disabled={isLoading}
-              className="p-2 rounded-lg bg-surface-muted text-text-secondary hover:bg-surface-active transition-colors"
+              className="bg-surface-muted hover:bg-surface-active"
               title={t('common.edit')}
+              aria-label={t('common.edit')}
             >
               <Edit3 className="w-4 h-4" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onDelete}
               disabled={isLoading}
-              className="p-2 rounded-lg bg-error/10 text-error hover:bg-error/20 transition-colors"
+              className="bg-error/10 text-error hover:bg-error/20 hover:text-error"
               title={t('common.delete')}
+              aria-label={t('common.delete')}
             >
               <Trash2 className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -685,12 +707,12 @@ function ServerForm({
 
       <div>
         <label className="block text-sm font-medium text-text-primary mb-2">{t('mcp.name')}</label>
-        <input
+        <Input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('mcp.namePlaceholder')}
-          className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30"
+          className="h-auto px-4 py-2"
           required
         />
       </div>
@@ -740,12 +762,12 @@ function ServerForm({
             <label className="block text-sm font-medium text-text-primary mb-2">
               {t('mcp.command')}
             </label>
-            <input
+            <Input
               type="text"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               placeholder={t('mcp.commandPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="h-auto px-4 py-2 font-mono text-sm"
               required
             />
           </div>
@@ -753,12 +775,12 @@ function ServerForm({
             <label className="block text-sm font-medium text-text-primary mb-2">
               {t('mcp.arguments')}
             </label>
-            <input
+            <Input
               type="text"
               value={args}
               onChange={(e) => setArgs(e.target.value)}
               placeholder={t('mcp.argumentsPlaceholder')}
-              className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+              className="h-auto px-4 py-2 font-mono text-sm"
             />
             <p className="text-xs text-text-muted mt-1">{t('mcp.spaceSeparated')}</p>
           </div>
@@ -769,13 +791,14 @@ function ServerForm({
               <label className="text-sm font-medium text-text-primary">
                 {t('credentials.envVars')}
               </label>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowEnvSection(!showEnvSection)}
-                className="text-xs text-accent hover:text-accent-hover"
+                className="h-auto px-1 py-0.5 text-xs text-accent hover:text-accent-hover"
               >
                 {showEnvSection ? t('mcp.hide') : t('mcp.show')}
-              </button>
+              </Button>
             </div>
             {showEnvSection && (
               <div className="space-y-2 p-3 rounded-lg bg-surface-muted border border-border">
@@ -787,21 +810,23 @@ function ServerForm({
                     >
                       {key}
                     </span>
-                    <input
+                    <Input
                       type="password"
                       value={value}
                       onChange={(e) => handleEnvChange(key, e.target.value)}
                       placeholder={`${t('mcp.envValuePlaceholder')}: ${key}`}
-                      className="flex-1 px-3 py-1.5 rounded bg-surface border border-border-muted text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      className="h-auto flex-1 px-3 py-1.5 font-mono text-sm"
                     />
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleRemoveEnvVar(key)}
-                      className="p-1.5 rounded hover:bg-error/10 text-text-muted hover:text-error transition-colors"
+                      className="h-8 w-8 text-text-muted hover:bg-error/10 hover:text-error"
                       title={t('mcp.removeVar')}
+                      aria-label={t('mcp.removeVar')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 ))}
                 {Object.keys(envVars).length === 0 && !isAddingEnvVar && (
@@ -811,49 +836,52 @@ function ServerForm({
                 )}
                 {isAddingEnvVar && (
                   <div className="space-y-2 p-2 rounded bg-background border border-accent/30">
-                    <input
+                    <Input
                       type="text"
                       value={newEnvKey}
                       onChange={(e) => setNewEnvKey(e.target.value)}
                       placeholder="NOTION_TOKEN"
-                      className="w-full px-3 py-1.5 rounded bg-surface border border-border text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      className="h-auto border-border px-3 py-1.5 font-mono text-sm"
                       autoFocus
                     />
-                    <input
+                    <Input
                       type="password"
                       value={newEnvValue}
                       onChange={(e) => setNewEnvValue(e.target.value)}
                       placeholder={t('mcp.envValuePlaceholder')}
-                      className="w-full px-3 py-1.5 rounded bg-surface border border-border text-text-primary text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                      className="h-auto border-border px-3 py-1.5 font-mono text-sm"
                     />
                     <div className="flex gap-2">
-                      <button
-                        type="button"
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={handleSaveNewEnvVar}
                         disabled={!newEnvKey.trim()}
-                        className="flex-1 py-1 px-3 rounded bg-accent text-accent-foreground text-xs hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="h-auto flex-1 px-3 py-1 text-xs"
                       >
                         {t('common.save')}
-                      </button>
-                      <button
-                        type="button"
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={handleCancelNewEnvVar}
-                        className="flex-1 py-1 px-3 rounded bg-surface-muted text-text-secondary text-xs hover:bg-surface-active transition-colors"
+                        className="h-auto flex-1 border-transparent bg-surface-muted px-3 py-1 text-xs hover:bg-surface-active"
                       >
                         {t('common.cancel')}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
                 {!isAddingEnvVar && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={handleAddEnvVar}
-                    className="w-full mt-2 py-1.5 px-3 rounded border border-dashed border-border hover:border-accent hover:bg-accent-muted text-xs text-text-secondary hover:text-accent transition-colors flex items-center justify-center gap-1"
+                    className="mt-2 h-auto w-full gap-1 border-dashed border-border px-3 py-1.5 text-xs hover:border-accent hover:bg-accent-muted hover:text-accent"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {t('credentials.envVars')}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -863,12 +891,12 @@ function ServerForm({
       ) : (
         <div>
           <label className="block text-sm font-medium text-text-primary mb-2">{t('mcp.url')}</label>
-          <input
+          <Input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/mcp"
-            className="w-full px-4 py-2 rounded-lg bg-surface border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 font-mono text-sm"
+            className="h-auto px-4 py-2 font-mono text-sm"
             required
           />
         </div>
@@ -888,28 +916,22 @@ function ServerForm({
       </div>
 
       <div className="flex gap-2">
-        <button
+        <Button
           type="submit"
-          disabled={isLoading}
-          className="flex-1 py-2 px-4 rounded-lg bg-accent text-accent-foreground hover:bg-accent-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          variant="primary"
+          loading={isLoading}
+          className="h-auto flex-1 gap-2 px-4 py-2"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {t('common.saving')}
-            </>
-          ) : (
-            t('common.save')
-          )}
-        </button>
-        <button
-          type="button"
+          {isLoading ? t('common.saving') : t('common.save')}
+        </Button>
+        <Button
+          variant="secondary"
           onClick={onCancel}
           disabled={isLoading}
-          className="px-4 py-2 rounded-lg bg-surface-muted text-text-secondary hover:bg-surface-active transition-colors"
+          className="h-auto border-transparent bg-surface-muted px-4 py-2 hover:bg-surface-active"
         >
           {t('common.cancel')}
-        </button>
+        </Button>
       </div>
     </form>
   );

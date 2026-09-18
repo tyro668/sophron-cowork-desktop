@@ -4,6 +4,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
+import { Switch } from '../ui/switch';
 
 interface Props {
   botToken: string;
@@ -60,14 +61,11 @@ export function SlackConfigStep({
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => onSocketModeChange(!useSocketMode)}
-            className={`relative w-10 h-6 rounded-full transition-colors ${useSocketMode ? 'bg-accent' : 'bg-border'}`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${useSocketMode ? 'translate-x-5' : 'translate-x-1'}`}
-            />
-          </button>
+          <Switch
+            checked={useSocketMode}
+            onCheckedChange={onSocketModeChange}
+            aria-label={t('remote.slackSocketMode')}
+          />
           <div>
             <div className="text-sm font-medium text-text-primary">
               {t('remote.slackSocketMode')}

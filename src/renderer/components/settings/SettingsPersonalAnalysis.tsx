@@ -5,7 +5,6 @@ import {
   Cloud,
   ExternalLink,
   KeyRound,
-  Loader2,
   PlugZap,
   Unplug,
 } from 'lucide-react';
@@ -18,6 +17,8 @@ import {
   normalizePersonalAnalysisApiOrigin,
   validatePersonalAnalysisConnection,
 } from '../../../shared/personal-analysis';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 
 type PersonalAnalysisFormField = 'apiOrigin' | 'apiKey';
 
@@ -181,26 +182,26 @@ export function SettingsPersonalAnalysis() {
               <span className="mb-1 block text-[12px] font-medium text-text-secondary">
                 {t('personalAnalysis.apiOrigin')}
               </span>
-              <input
+              <Input
                 id="personal-analysis-api-origin"
                 type="text"
                 value={form.apiOrigin}
                 onChange={(event) => updateField('apiOrigin', event.target.value)}
                 placeholder={t('personalAnalysis.apiOriginPlaceholder')}
-                className="h-9 w-full rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-9 bg-background px-3 shadow-soft"
               />
             </label>
             <label className="block">
               <span className="mb-1 block text-[12px] font-medium text-text-secondary">
                 {t('personalAnalysis.apiKey')}
               </span>
-              <input
+              <Input
                 id="personal-analysis-api-key"
                 type="password"
                 value={form.apiKey}
                 onChange={(event) => updateField('apiKey', event.target.value)}
                 placeholder={t('personalAnalysis.apiKeyPlaceholder')}
-                className="h-9 w-full rounded-lg border border-border-muted bg-background px-3 text-[13px] text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="h-9 bg-background px-3 shadow-soft"
               />
             </label>
             <p className="text-[12px] leading-5 text-text-muted">{t('cloudData.apiKeyHint')}</p>
@@ -222,70 +223,67 @@ export function SettingsPersonalAnalysis() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={() => void handleTest()}
-          disabled={isTesting || isSaving}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+          loading={isTesting}
+          disabled={isSaving}
+          className="text-[12px]"
         >
           {isTesting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            t('cloudData.testConnection')
           ) : (
-            <PlugZap className="h-3.5 w-3.5" />
+            <>
+              <PlugZap className="h-3.5 w-3.5" />
+              {t('cloudData.testConnection')}
+            </>
           )}
-          {t('cloudData.testConnection')}
-        </button>
-        <button
-          type="button"
-          onClick={handleOpenApiKeyPage}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-        >
+        </Button>
+        <Button variant="secondary" onClick={handleOpenApiKeyPage} className="text-[12px]">
           <ExternalLink className="h-3.5 w-3.5" />
           {t('cloudData.openApiKeyPage')}
-        </button>
+        </Button>
         {isEditing ? (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => void handleSave()}
-            disabled={isSaving}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            loading={isSaving}
+            className="text-[12px] shadow-soft"
           >
             {isSaving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              t('cloudData.connect')
             ) : (
-              <KeyRound className="h-3.5 w-3.5" />
+              <>
+                <KeyRound className="h-3.5 w-3.5" />
+                {t('cloudData.connect')}
+              </>
             )}
-            {t('cloudData.connect')}
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => setIsEditing(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover"
+            className="text-[12px] shadow-soft"
           >
             <KeyRound className="h-3.5 w-3.5" />
             {t('cloudData.changeConnection')}
-          </button>
+          </Button>
         )}
         {isConnected && (
           <>
-            <button
-              type="button"
-              onClick={handleViewCloudData}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-            >
+            <Button variant="secondary" onClick={handleViewCloudData} className="text-[12px]">
               <Cloud className="h-3.5 w-3.5" />
               {t('cloudData.viewCloudData')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
               onClick={() => void handleDisconnect()}
               disabled={isSaving}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="text-[12px] text-error hover:bg-error/10 hover:text-error"
             >
               <Unplug className="h-3.5 w-3.5" />
               {t('cloudData.disconnect')}
-            </button>
+            </Button>
           </>
         )}
       </div>

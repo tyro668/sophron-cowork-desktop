@@ -23,6 +23,7 @@ import type {
 import { useAppStore } from '../../store';
 import { GlassSwitch } from '../GlassSwitch';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 
 type ManagedMemoryEntry = CoreMemoryEntry | ProjectMemoryEntry;
 type MemoryTab = 'all' | 'core' | 'project';
@@ -315,23 +316,19 @@ export function SettingsMemory() {
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
             <div className="glass-card flex h-full min-h-0 min-w-0 flex-col rounded-xl p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="inline-flex rounded-full bg-surface p-1 shadow-soft ring-1 ring-border-subtle">
-                  <MemoryTabButton active={activeTab === 'all'} onClick={() => setActiveTab('all')}>
-                    {t('memory.allTab', '全部')}
-                  </MemoryTabButton>
-                  <MemoryTabButton
-                    active={activeTab === 'core'}
-                    onClick={() => setActiveTab('core')}
-                  >
-                    {t('memory.coreCapabilityTab', '核心能力')}
-                  </MemoryTabButton>
-                  <MemoryTabButton
-                    active={activeTab === 'project'}
-                    onClick={() => setActiveTab('project')}
-                  >
-                    {t('memory.projectContextTab', '项目上下文')}
-                  </MemoryTabButton>
-                </div>
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MemoryTab)}>
+                  <TabsList className="inline-flex rounded-full border-0 bg-surface p-1 shadow-soft ring-1 ring-border-subtle">
+                    <TabsTrigger value="all" className={memoryTabTriggerClass}>
+                      {t('memory.allTab', '全部')}
+                    </TabsTrigger>
+                    <TabsTrigger value="core" className={memoryTabTriggerClass}>
+                      {t('memory.coreCapabilityTab', '核心能力')}
+                    </TabsTrigger>
+                    <TabsTrigger value="project" className={memoryTabTriggerClass}>
+                      {t('memory.projectContextTab', '项目上下文')}
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -494,29 +491,9 @@ function MemoryMetricCard({
   );
 }
 
-function MemoryTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
-        active
-          ? 'bg-accent text-accent-foreground shadow-soft'
-          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
+const memoryTabTriggerClass =
+  'h-7 rounded-full px-3 text-xs shadow-none data-[state=active]:bg-accent ' +
+  'data-[state=active]:text-accent-foreground data-[state=active]:shadow-soft';
 
 function MemoryListItem({
   record,

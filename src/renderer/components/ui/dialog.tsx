@@ -10,6 +10,12 @@ export interface DialogProps {
   busy?: boolean;
   /** Whether clicking the overlay requests a close. Defaults to false (modals confirm explicitly). */
   closeOnOverlayClick?: boolean;
+  /**
+   * Whether Esc requests a close. Defaults to true. Set false when inner
+   * content consumes Esc itself (e.g. a code editor dismissing autocomplete);
+   * the consumer can still wire its own Esc handling.
+   */
+  closeOnEscape?: boolean;
   className?: string;
   overlayClassName?: string;
   /** aria-label when no DialogTitle is rendered. */
@@ -32,6 +38,7 @@ export function Dialog({
   onOpenChange,
   busy = false,
   closeOnOverlayClick = false,
+  closeOnEscape = true,
   className,
   overlayClassName,
   ariaLabel,
@@ -47,6 +54,8 @@ export function Dialog({
   requestCloseRef.current = () => {
     if (!busy) onOpenChange?.(false);
   };
+  const closeOnEscapeRef = React.useRef(closeOnEscape);
+  closeOnEscapeRef.current = closeOnEscape;
 
   React.useEffect(() => {
     if (!open) return;
@@ -54,8 +63,10 @@ export function Dialog({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        event.preventDefault();
-        requestCloseRef.current();
+        if (closeOnEscapeRef.current) {
+          event.preventDefault();
+          requestCloseRef.current();
+        }
         return;
       }
       if (event.key !== 'Tab') return;
@@ -116,7 +127,7 @@ export function Dialog({
         aria-describedby={ariaDescribedBy}
         tabIndex={-1}
         className={cn(
-          'mx-4 flex w-full max-w-md flex-col gap-3 rounded-2xl border border-border-subtle bg-surface p-5 text-text-primary shadow-elevated outline-none',
+          'mx-4 flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col gap-3 rounded-2xl border border-border-subtle bg-surface p-5 text-text-primary shadow-elevated outline-none',
           className
         )}
       >
@@ -143,6 +154,14 @@ export function DialogDescription({
   return (
     <p className={cn('text-[13px] leading-relaxed text-text-secondary', className)} {...rest} />
   );
+}
+
+export function DialogBody({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('min-h-0 flex-1 overflow-y-auto', className)} {...rest} />;
+}
+
+export function DialogHeader({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('flex items-start justify-between gap-3', className)} {...rest} />;
 }
 
 export function DialogFooter({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {

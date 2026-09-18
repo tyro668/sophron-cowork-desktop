@@ -41,6 +41,9 @@ import {
   formatOutputTableRelatedTaskNames,
 } from './shared';
 import { dataClient } from '../../features/data/api/data-client';
+import { Button } from '../ui/button';
+import { Dialog } from '../ui/dialog';
+import { Input } from '../ui/input';
 
 export function OutputTablesPanel({
   outputTables,
@@ -192,15 +195,15 @@ export function OutputTablesPanel({
               )}
               action={
                 searchQuery.trim() ? (
-                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                  <Button variant="secondary" onClick={() => onSearchChange('')}>
                     {t('workspaceEmpty.clearSearch')}
-                  </button>
+                  </Button>
                 ) : (
                   !isCreateDisabled && (
-                    <button className="btn btn-primary" onClick={onCreate}>
+                    <Button variant="primary" onClick={onCreate} className="shadow-soft">
                       <Plus className="h-4 w-4" />
                       {t('data.outputTables.add')}
-                    </button>
+                    </Button>
                   )
                 )
               }
@@ -563,250 +566,52 @@ export function UploadOutputTableToCloudDialog({
 
   if (!hasCloudConnection) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5">
-        <div className="flex max-h-full w-full max-w-[520px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
-          <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
-            <div className="min-w-0">
-              <div className="truncate text-[14px] font-semibold text-text-primary">
-                {t('data.outputTables.uploadToCloud.connectTitle')}
-              </div>
-              <div className="truncate text-[11px] text-text-muted">
-                {t('data.outputTables.uploadToCloud.connectSubtitle', {
-                  name: outputTable.name,
-                })}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="space-y-4 px-4 py-4">
-            <InputTableInfo>{t('data.outputTables.uploadToCloud.connectInfo')}</InputTableInfo>
-
-            <div className="rounded-lg border border-border-subtle bg-surface px-3 py-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                  <Cloud className="h-[18px] w-[18px]" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-text-primary">
-                    {t('data.outputTables.uploadToCloud.connectPrimaryTitle')}
-                  </div>
-                  <div className="mt-1 text-[12px] leading-5 text-text-muted">
-                    {t('data.outputTables.uploadToCloud.connectPrimaryDescription')}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
-                {error}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-shrink-0 flex-col gap-2 border-t border-border-subtle px-4 py-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={openApiKeySettings}
-              disabled={loginBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              {t('data.outputTables.uploadToCloud.connectWithApiKey')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleLoginAndContinue()}
-              disabled={loginBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loginBusy ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <LogIn className="h-3.5 w-3.5" />
-              )}
-              {loginBusy
-                ? t('data.outputTables.uploadToCloud.loggingIn')
-                : t('data.outputTables.uploadToCloud.loginAndContinue')}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-5">
-      <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-border-subtle bg-background shadow-elevated">
+      <Dialog
+        open
+        onOpenChange={onClose}
+        busy={loginBusy}
+        ariaLabel={t('data.outputTables.uploadToCloud.connectTitle')}
+        overlayClassName="bg-black/18 px-5 py-5"
+        className="max-w-[520px] gap-0 overflow-hidden rounded-xl bg-background p-0"
+      >
         <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
           <div className="min-w-0">
             <div className="truncate text-[14px] font-semibold text-text-primary">
-              {t('data.outputTables.uploadToCloud.title')}
+              {t('data.outputTables.uploadToCloud.connectTitle')}
             </div>
             <div className="truncate text-[11px] text-text-muted">
-              {t('data.outputTables.uploadToCloud.accessMode', {
-                mode: accessModeLabel,
-                host: connectionLabel,
+              {t('data.outputTables.uploadToCloud.connectSubtitle', {
+                name: outputTable.name,
               })}
             </div>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+            className="text-text-muted"
+            aria-label={t('common.close')}
           >
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-          <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
-          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
-            <div className="font-medium text-text-primary">
-              {t('data.outputTables.uploadToCloud.accessIdentity')}
-            </div>
-            <div className="mt-1 text-text-muted">
-              {t('data.outputTables.uploadToCloud.accessMode', {
-                mode: accessModeLabel,
-                host: connectionLabel,
-              })}
-            </div>
-          </div>
+        <div className="space-y-4 px-4 py-4">
+          <InputTableInfo>{t('data.outputTables.uploadToCloud.connectInfo')}</InputTableInfo>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5">
-              <InputTableFormLabel>
-                {t('data.outputTables.uploadToCloud.space')}
-              </InputTableFormLabel>
-              <InputTableSelect
-                value={spaceId}
-                disabled={loadingSpaces || uploading || spaces.length === 0}
-                onChange={setSpaceId}
-                options={
-                  spaces.length
-                    ? spaces.map((space) => ({ value: space.spaceId, label: space.spaceName }))
-                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noSpaces') }]
-                }
-              />
-            </label>
-
-            <label className="space-y-1.5">
-              <InputTableFormLabel>
-                {t('data.outputTables.uploadToCloud.project')}
-              </InputTableFormLabel>
-              <InputTableSelect
-                value={projectId}
-                disabled={loadingProjects || uploading || projects.length === 0}
-                onChange={setProjectId}
-                options={
-                  projects.length
-                    ? projects.map((project) => ({
-                        value: project.projectId,
-                        label: project.projectName,
-                      }))
-                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noProjects') }]
-                }
-              />
-            </label>
-          </div>
-
-          <div className="space-y-1.5">
-            <InputTableFormLabel>
-              {t('data.outputTables.uploadToCloud.writeMode')}
-            </InputTableFormLabel>
-            <div className="inline-flex rounded-lg border border-border-muted/55 bg-surface p-0.5">
-              {(['CREATE', 'REPLACE'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    setWriteMode(mode);
-                    setSuccess(null);
-                    setError(null);
-                  }}
-                  disabled={uploading}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    writeMode === mode
-                      ? 'bg-background text-accent shadow-soft'
-                      : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
-                  }`}
-                >
-                  {mode === 'CREATE' ? (
-                    <Plus className="h-3.5 w-3.5" />
-                  ) : (
-                    <Repeat2 className="h-3.5 w-3.5" />
-                  )}
-                  {t(
-                    mode === 'CREATE'
-                      ? 'data.outputTables.uploadToCloud.writeModeCreateShort'
-                      : 'data.outputTables.uploadToCloud.writeModeReplaceShort'
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {writeMode === 'REPLACE' && (
-            <label className="block space-y-1.5">
-              <InputTableFormLabel>
-                {t('data.outputTables.uploadToCloud.targetTable')}
-              </InputTableFormLabel>
-              <InputTableSelect
-                value={targetTableId}
-                disabled={loadingTables || uploading || cloudTables.length === 0}
-                onChange={(value) => {
-                  setTargetTableId(value);
-                  const target = cloudTables.find((table) => table.tableId === value);
-                  if (target) {
-                    setTableName(target.tableName);
-                  }
-                }}
-                options={
-                  cloudTables.length
-                    ? cloudTables.map((table) => ({
-                        value: table.tableId,
-                        label: `${table.tableName} · ${table.tableId}`,
-                      }))
-                    : [{ value: '', label: t('data.outputTables.uploadToCloud.noTables') }]
-                }
-              />
-            </label>
-          )}
-
-          <label className="block space-y-1.5">
-            <InputTableFormLabel>
-              {t('data.outputTables.uploadToCloud.tableName')}
-            </InputTableFormLabel>
-            <input
-              value={tableName}
-              disabled={uploading}
-              onChange={(event) => setTableName(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border-muted bg-surface px-3 text-[13px] font-medium text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
-              placeholder={t('data.outputTables.uploadToCloud.tableNamePlaceholder')}
-            />
-          </label>
-
-          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] text-text-secondary">
-            <div className="font-medium text-text-primary">
-              {t(
-                writeMode === 'REPLACE'
-                  ? 'data.outputTables.uploadToCloud.writeModeReplace'
-                  : 'data.outputTables.uploadToCloud.writeModeCreate'
-              )}
-            </div>
-            <div className="mt-1 text-text-muted">
-              {t(
-                writeMode === 'REPLACE'
-                  ? 'data.outputTables.uploadToCloud.writeModeReplaceHint'
-                  : 'data.outputTables.uploadToCloud.writeModeCreateHint'
-              )}
+          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+                <Cloud className="h-[18px] w-[18px]" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-medium text-text-primary">
+                  {t('data.outputTables.uploadToCloud.connectPrimaryTitle')}
+                </div>
+                <div className="mt-1 text-[12px] leading-5 text-text-muted">
+                  {t('data.outputTables.uploadToCloud.connectPrimaryDescription')}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -815,40 +620,247 @@ export function UploadOutputTableToCloudDialog({
               {error}
             </div>
           )}
-          {success && (
-            <div className="rounded-lg border border-success/25 bg-accent-muted px-3 py-2 text-[13px] text-success">
-              {success}
-            </div>
-          )}
         </div>
 
-        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border-subtle px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={uploading}
-            className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex flex-shrink-0 flex-col gap-2 border-t border-border-subtle px-4 py-3 sm:flex-row sm:justify-end">
+          <Button
+            variant="secondary"
+            onClick={openApiKeySettings}
+            disabled={loginBusy}
+            className="text-[12px]"
           >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleUpload()}
-            disabled={!canUpload}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-[12px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            <Settings className="h-3.5 w-3.5" />
+            {t('data.outputTables.uploadToCloud.connectWithApiKey')}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => void handleLoginAndContinue()}
+            loading={loginBusy}
+            className="text-[12px] shadow-soft"
           >
-            {uploading ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            {loginBusy ? (
+              t('data.outputTables.uploadToCloud.loggingIn')
             ) : (
-              <UploadCloud className="h-3.5 w-3.5" />
+              <>
+                <LogIn className="h-3.5 w-3.5" />
+                {t('data.outputTables.uploadToCloud.loginAndContinue')}
+              </>
             )}
-            {uploading
-              ? t('data.outputTables.uploadToCloud.uploading')
-              : t('data.outputTables.uploadToCloud.confirm')}
-          </button>
+          </Button>
         </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={onClose}
+      busy={uploading}
+      ariaLabel={t('data.outputTables.uploadToCloud.title')}
+      overlayClassName="bg-black/18 px-5 py-5"
+      className="max-w-[560px] gap-0 overflow-hidden rounded-xl bg-background p-0"
+    >
+      <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
+        <div className="min-w-0">
+          <div className="truncate text-[14px] font-semibold text-text-primary">
+            {t('data.outputTables.uploadToCloud.title')}
+          </div>
+          <div className="truncate text-[11px] text-text-muted">
+            {t('data.outputTables.uploadToCloud.accessMode', {
+              mode: accessModeLabel,
+              host: connectionLabel,
+            })}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          disabled={uploading}
+          className="text-text-muted"
+          aria-label={t('common.close')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
-    </div>
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
+        <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
+          <div className="font-medium text-text-primary">
+            {t('data.outputTables.uploadToCloud.accessIdentity')}
+          </div>
+          <div className="mt-1 text-text-muted">
+            {t('data.outputTables.uploadToCloud.accessMode', {
+              mode: accessModeLabel,
+              host: connectionLabel,
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5">
+            <InputTableFormLabel>{t('data.outputTables.uploadToCloud.space')}</InputTableFormLabel>
+            <InputTableSelect
+              value={spaceId}
+              disabled={loadingSpaces || uploading || spaces.length === 0}
+              onChange={setSpaceId}
+              options={
+                spaces.length
+                  ? spaces.map((space) => ({ value: space.spaceId, label: space.spaceName }))
+                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noSpaces') }]
+              }
+            />
+          </label>
+
+          <label className="space-y-1.5">
+            <InputTableFormLabel>
+              {t('data.outputTables.uploadToCloud.project')}
+            </InputTableFormLabel>
+            <InputTableSelect
+              value={projectId}
+              disabled={loadingProjects || uploading || projects.length === 0}
+              onChange={setProjectId}
+              options={
+                projects.length
+                  ? projects.map((project) => ({
+                      value: project.projectId,
+                      label: project.projectName,
+                    }))
+                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noProjects') }]
+              }
+            />
+          </label>
+        </div>
+
+        <div className="space-y-1.5">
+          <InputTableFormLabel>
+            {t('data.outputTables.uploadToCloud.writeMode')}
+          </InputTableFormLabel>
+          <div className="inline-flex rounded-lg border border-border-muted/55 bg-surface p-0.5">
+            {(['CREATE', 'REPLACE'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setWriteMode(mode);
+                  setSuccess(null);
+                  setError(null);
+                }}
+                disabled={uploading}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  writeMode === mode
+                    ? 'bg-background text-accent shadow-soft'
+                    : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
+                }`}
+              >
+                {mode === 'CREATE' ? (
+                  <Plus className="h-3.5 w-3.5" />
+                ) : (
+                  <Repeat2 className="h-3.5 w-3.5" />
+                )}
+                {t(
+                  mode === 'CREATE'
+                    ? 'data.outputTables.uploadToCloud.writeModeCreateShort'
+                    : 'data.outputTables.uploadToCloud.writeModeReplaceShort'
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {writeMode === 'REPLACE' && (
+          <label className="block space-y-1.5">
+            <InputTableFormLabel>
+              {t('data.outputTables.uploadToCloud.targetTable')}
+            </InputTableFormLabel>
+            <InputTableSelect
+              value={targetTableId}
+              disabled={loadingTables || uploading || cloudTables.length === 0}
+              onChange={(value) => {
+                setTargetTableId(value);
+                const target = cloudTables.find((table) => table.tableId === value);
+                if (target) {
+                  setTableName(target.tableName);
+                }
+              }}
+              options={
+                cloudTables.length
+                  ? cloudTables.map((table) => ({
+                      value: table.tableId,
+                      label: `${table.tableName} · ${table.tableId}`,
+                    }))
+                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noTables') }]
+              }
+            />
+          </label>
+        )}
+
+        <label className="block space-y-1.5">
+          <InputTableFormLabel>
+            {t('data.outputTables.uploadToCloud.tableName')}
+          </InputTableFormLabel>
+          <Input
+            value={tableName}
+            disabled={uploading}
+            onChange={(event) => setTableName(event.target.value)}
+            className="h-10 px-3 font-medium"
+            placeholder={t('data.outputTables.uploadToCloud.tableNamePlaceholder')}
+          />
+        </label>
+
+        <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] text-text-secondary">
+          <div className="font-medium text-text-primary">
+            {t(
+              writeMode === 'REPLACE'
+                ? 'data.outputTables.uploadToCloud.writeModeReplace'
+                : 'data.outputTables.uploadToCloud.writeModeCreate'
+            )}
+          </div>
+          <div className="mt-1 text-text-muted">
+            {t(
+              writeMode === 'REPLACE'
+                ? 'data.outputTables.uploadToCloud.writeModeReplaceHint'
+                : 'data.outputTables.uploadToCloud.writeModeCreateHint'
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="rounded-lg border border-success/25 bg-accent-muted px-3 py-2 text-[13px] text-success">
+            {success}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border-subtle px-4 py-3">
+        <Button variant="secondary" onClick={onClose} disabled={uploading} className="text-[12px]">
+          {t('common.cancel')}
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() => void handleUpload()}
+          loading={uploading}
+          disabled={!canUpload}
+          className="text-[12px] shadow-soft"
+        >
+          {uploading ? (
+            t('data.outputTables.uploadToCloud.uploading')
+          ) : (
+            <>
+              <UploadCloud className="h-3.5 w-3.5" />
+              {t('data.outputTables.uploadToCloud.confirm')}
+            </>
+          )}
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

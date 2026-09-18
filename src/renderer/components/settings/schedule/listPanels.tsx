@@ -19,28 +19,7 @@ import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
 
 import { EmptyState } from '../../data-view/shared';
-
-export function TabButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`relative h-9 px-2.5 text-left text-[13px] font-medium transition-colors ${
-        active ? 'text-accent' : 'text-text-secondary hover:text-text-primary'
-      }`}
-    >
-      {label}
-      {active && <span className="absolute bottom-0 left-0 h-px w-full rounded-full bg-accent" />}
-    </button>
-  );
-}
+import { Button } from '../../ui/button';
 
 export function AutomationListPanel({
   automations,
@@ -144,14 +123,14 @@ export function AutomationListPanel({
               }
               action={
                 searchQuery.trim() ? (
-                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                  <Button variant="secondary" onClick={() => onSearchChange('')}>
                     {tr('workspaceEmpty.clearSearch', '清除搜索')}
-                  </button>
+                  </Button>
                 ) : (
-                  <button className="btn btn-primary" onClick={onCreate}>
+                  <Button variant="primary" onClick={onCreate} className="shadow-soft">
                     <Plus className="h-4 w-4" />
                     {tr('schedule.newAutomation', '新建自动化')}
-                  </button>
+                  </Button>
                 )
               }
             />

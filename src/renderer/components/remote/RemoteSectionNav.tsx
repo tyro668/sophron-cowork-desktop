@@ -1,5 +1,8 @@
 import { Cable, Users, Settings2, ScrollText } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { underlineTabTriggerClass } from '../data-view/shared';
+import { cn } from '../ui/cn';
 import type { RemoteSection } from './types';
 
 interface Props {
@@ -18,34 +21,30 @@ export function RemoteSectionNav({ activeSection, pendingPairings, onSectionChan
   ];
 
   return (
-    <div
-      className="flex items-center gap-1 overflow-x-auto border-b border-border-subtle px-2"
-      role="tablist"
-      aria-label={t('remote.navigationLabel')}
-    >
-      {items.map(({ id, label, icon: Icon, count }) => (
-        <button
-          key={id}
-          type="button"
-          role="tab"
-          aria-selected={activeSection === id}
-          onClick={() => onSectionChange(id)}
-          className={`relative flex shrink-0 items-center gap-2 px-3 py-3 text-sm font-medium transition-colors ${
-            activeSection === id ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-          <span>{label}</span>
-          {!!count && (
-            <span className="min-w-5 rounded-full bg-warning/15 px-1.5 py-0.5 text-center text-[10px] font-semibold text-warning">
-              {count}
-            </span>
-          )}
-          {activeSection === id && (
-            <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />
-          )}
-        </button>
-      ))}
-    </div>
+    <Tabs value={activeSection} onValueChange={(v) => onSectionChange(v as RemoteSection)}>
+      <TabsList
+        aria-label={t('remote.navigationLabel')}
+        className="flex w-full items-center gap-1 overflow-x-auto rounded-none border-0 border-b border-border-subtle bg-transparent px-2"
+      >
+        {items.map(({ id, label, icon: Icon, count }) => (
+          <TabsTrigger
+            key={id}
+            value={id}
+            className={cn(
+              underlineTabTriggerClass,
+              'flex h-auto shrink-0 items-center gap-2 px-3 py-3 text-sm'
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            <span>{label}</span>
+            {!!count && (
+              <span className="min-w-5 rounded-full bg-warning/15 px-1.5 py-0.5 text-center text-[10px] font-semibold text-warning">
+                {count}
+              </span>
+            )}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }

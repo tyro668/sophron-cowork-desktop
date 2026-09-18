@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowUpDown, Eye, PencilLine, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { DataDataset, DataInputTableConfig, DataInputTableSourceKind } from '../../types';
 import { GlassSelect } from '../GlassSelect';
+import { Button } from '../ui/button';
 import type { InputTableDraft, InputTableSourceFilter } from '../../features/data/model/types';
 import {
   DataMoreMenu,
@@ -229,15 +230,15 @@ export function InputTablesPanel({
               )}
               action={
                 searchQuery.trim() ? (
-                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                  <Button variant="secondary" onClick={() => onSearchChange('')}>
                     {t('workspaceEmpty.clearSearch')}
-                  </button>
+                  </Button>
                 ) : (
                   !isCreateDisabled && (
-                    <button className="btn btn-primary" onClick={onCreate}>
+                    <Button variant="primary" onClick={onCreate} className="shadow-soft">
                       <Plus className="h-4 w-4" />
                       {t('data.inputTables.add')}
-                    </button>
+                    </Button>
                   )
                 )
               }

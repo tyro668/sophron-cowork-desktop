@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useIPC } from '../hooks/useIPC';
 import type { SudoPasswordRequest } from '../types';
 import { Shield, X, Play } from 'lucide-react';
+import { Button } from './ui/button';
+import { Dialog } from './ui/dialog';
+import { Input } from './ui/input';
 
 interface SudoPasswordDialogProps {
   request: SudoPasswordRequest;
@@ -16,7 +19,6 @@ export function SudoPasswordDialog({ request }: SudoPasswordDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
     // Capture ref values for safe use in cleanup
     const inputEl = inputRef.current;
     // Clear the password from memory when the dialog unmounts
@@ -51,69 +53,74 @@ export function SudoPasswordDialog({ request }: SudoPasswordDialogProps) {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
-    } else if (e.key === 'Escape') {
-      handleCancel();
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50 animate-fade-in">
-      <div className="card w-full max-w-md p-6 m-4 shadow-elevated animate-slide-up">
-        {/* Header */}
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-warning/10">
-            <Shield className="w-6 h-6 text-warning" />
-          </div>
-
-          <div className="flex-1">
-            <h2 className="text-lg font-semibold text-text-primary">{t('sudo.title')}</h2>
-            <p className="text-sm text-text-secondary mt-1">{t('sudo.description')}</p>
-          </div>
+    <Dialog
+      open
+      onOpenChange={handleCancel}
+      ariaLabelledBy="sudo-dialog-title"
+      overlayClassName="animate-fade-in bg-black/20"
+      className="animate-slide-up gap-0 p-6"
+    >
+      {/* Header */}
+      <div className="flex items-start gap-4">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 bg-warning/10">
+          <Shield className="w-6 h-6 text-warning" />
         </div>
 
-        {/* Command display */}
-        <div className="mt-4 p-4 bg-surface-muted rounded-xl">
-          <pre className="text-xs code-block max-h-32 overflow-auto whitespace-pre-wrap break-all">
-            {request.command}
-          </pre>
-        </div>
-
-        {/* Password input */}
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-text-primary mb-1">
-            {t('sudo.passwordLabel')}
-          </label>
-          <input
-            ref={inputRef}
-            type="password"
-            onChange={(e) => {
-              passwordRef.current = e.target.value;
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder={t('sudo.passwordPlaceholder')}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-accent/50"
-            autoComplete="new-password"
-          />
-        </div>
-
-        {/* Warning */}
-        <div className="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-xl">
-          <p className="text-xs text-warning">{t('sudo.warning')}</p>
-        </div>
-
-        {/* Actions */}
-        <div className="mt-6 flex items-center gap-3">
-          <button onClick={handleCancel} className="flex-1 btn btn-secondary">
-            <X className="w-4 h-4" />
-            {t('sudo.cancel')}
-          </button>
-
-          <button onClick={handleSubmit} className="flex-1 btn btn-primary">
-            <Play className="w-4 h-4" />
-            {t('sudo.execute')}
-          </button>
+        <div className="flex-1">
+          <h2 id="sudo-dialog-title" className="text-lg font-semibold text-text-primary">
+            {t('sudo.title')}
+          </h2>
+          <p className="text-sm text-text-secondary mt-1">{t('sudo.description')}</p>
         </div>
       </div>
-    </div>
+
+      {/* Command display */}
+      <div className="mt-4 p-4 bg-surface-muted rounded-xl">
+        <pre className="text-xs code-block max-h-32 overflow-auto whitespace-pre-wrap break-all">
+          {request.command}
+        </pre>
+      </div>
+
+      {/* Password input */}
+      <div className="mt-4">
+        <label className="block text-sm font-medium text-text-primary mb-1">
+          {t('sudo.passwordLabel')}
+        </label>
+        <Input
+          ref={inputRef}
+          type="password"
+          data-autofocus
+          onChange={(e) => {
+            passwordRef.current = e.target.value;
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={t('sudo.passwordPlaceholder')}
+          className="h-auto px-3 py-2"
+          autoComplete="new-password"
+        />
+      </div>
+
+      {/* Warning */}
+      <div className="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-xl">
+        <p className="text-xs text-warning">{t('sudo.warning')}</p>
+      </div>
+
+      {/* Actions */}
+      <div className="mt-6 flex items-center gap-3">
+        <Button variant="secondary" onClick={handleCancel} className="flex-1">
+          <X className="w-4 h-4" />
+          {t('sudo.cancel')}
+        </Button>
+
+        <Button variant="primary" onClick={handleSubmit} className="flex-1">
+          <Play className="w-4 h-4" />
+          {t('sudo.execute')}
+        </Button>
+      </div>
+    </Dialog>
   );
 }
