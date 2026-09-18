@@ -38,6 +38,7 @@ import {
   type ToolCallDescriptor,
 } from './agent-runner-loop-guard';
 import { normalizeToolExecutionResultForUi } from './tool-result-utils';
+import { buildLiveToolOutputSnapshot } from './live-tool-output';
 import {
   buildTraceError,
   buildTraceOutputPreview,
@@ -99,6 +100,7 @@ export class AgentRunEventBridge {
   firstStreamEventAt: number | undefined;
   toolCallCount = 0;
   toolErrorCount = 0;
+  private liveToolOutputSent = new Map<string, { text: string; sentAt: number }>();
 
   // ── Loop guard: protect against runaway tool-call loops ──
   // (e.g. gemini-3.1-pro with thinking=off has been observed producing hundreds
@@ -311,6 +313,8 @@ export class AgentRunEventBridge {
         );
       } else if (event.type === 'turn_end') {
         log(`[AgentRunner] Event: ${event.type}`);
+      } else if (event.type === 'tool_execution_update') {
+        // High-frequency cumulative output is forwarded in bounded snapshots below.
       } else {
         log(`[AgentRunner] Event: ${event.type}`);
       }
@@ -612,9 +616,31 @@ export class AgentRunEventBridge {
           break;
         }
 
+        case 'tool_execution_update': {
+          if (this.ctx.controller.signal.aborted) break;
+          const snapshot = buildLiveToolOutputSnapshot(event.partialResult);
+          if (!snapshot) break;
+          const previous = this.liveToolOutputSent.get(event.toolCallId);
+          const now = Date.now();
+          if (previous?.text === snapshot.text || (previous && now - previous.sentAt < 150)) break;
+          this.liveToolOutputSent.set(event.toolCallId, { text: snapshot.text, sentAt: now });
+          this.ctx.sendToRenderer({
+            type: 'stream.toolOutput',
+            payload: {
+              sessionId: this.ctx.session.id,
+              toolCallId: event.toolCallId,
+              text: snapshot.text,
+              truncated: snapshot.truncated,
+              timestamp: now,
+            },
+          });
+          break;
+        }
+
         case 'tool_execution_end': {
           if (this.ctx.controller.signal.aborted) break;
           const toolCallId = event.toolCallId;
+          this.liveToolOutputSent.delete(toolCallId);
           const isError = event.isError;
           const normalizedToolResult = normalizeToolExecutionResultForUi(event.result);
           const outputText = this.ctx.sanitizeOutputPaths(normalizedToolResult.content);

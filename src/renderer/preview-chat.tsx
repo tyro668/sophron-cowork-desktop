@@ -188,7 +188,25 @@ useAppStore.setState({
       pendingTurns: [],
       activeTurn: { stepId: 'step-1', userMessageId: 'u1' },
       executionClock: { startAt: Date.now() - 12000, endAt: null },
-      traceSteps: [],
+      traceSteps: [
+        {
+          id: 'tu6',
+          parentId: 'step-1',
+          type: 'tool_call',
+          status: 'running',
+          title: 'data_run_task',
+          toolName: 'data_run_task',
+          timestamp: Date.now() - 8000,
+        },
+      ],
+      liveToolOutputs: {
+        tu6: {
+          text: '已处理 8,000 / 12,480 行\n正在生成输出表…',
+          truncated: false,
+          updatedAt: Date.now(),
+        },
+      },
+      lastActivityAt: Date.now(),
       contextWindow: 0,
     },
   },

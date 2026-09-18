@@ -103,6 +103,16 @@ export type ServerEvent =
   | { type: 'stream.reset'; payload: { sessionId: string } }
   | { type: 'stream.thinking'; payload: { sessionId: string; delta: string } }
   | {
+      type: 'stream.toolOutput';
+      payload: {
+        sessionId: string;
+        toolCallId: string;
+        text: string;
+        truncated: boolean;
+        timestamp: number;
+      };
+    }
+  | {
       type: 'stream.executionTime';
       payload: { sessionId: string; messageId: string; executionTimeMs: number };
     }

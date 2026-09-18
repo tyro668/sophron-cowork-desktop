@@ -52,6 +52,12 @@ export interface SessionExecutionClock {
   endAt: number | null;
 }
 
+export interface LiveToolOutput {
+  text: string;
+  truncated: boolean;
+  updatedAt: number;
+}
+
 // Unified per-session state that replaces 8 parallel xxxBySession Maps
 export interface SessionState {
   messages: Message[];
@@ -61,6 +67,8 @@ export interface SessionState {
   activeTurn: { stepId: string; userMessageId: string } | null;
   executionClock: SessionExecutionClock;
   traceSteps: TraceStep[];
+  liveToolOutputs: Record<string, LiveToolOutput>;
+  lastActivityAt: number | null;
   contextWindow: number;
 }
 
@@ -72,6 +80,8 @@ const DEFAULT_SESSION_STATE: SessionState = {
   activeTurn: null,
   executionClock: { startAt: null, endAt: null },
   traceSteps: [],
+  liveToolOutputs: {},
+  lastActivityAt: null,
   contextWindow: 0,
 };
 
@@ -178,6 +188,8 @@ interface AppState {
   addTraceStep: (sessionId: string, step: TraceStep) => void;
   updateTraceStep: (sessionId: string, stepId: string, updates: Partial<TraceStep>) => void;
   setTraceSteps: (sessionId: string, steps: TraceStep[]) => void;
+  setLiveToolOutput: (sessionId: string, toolCallId: string, output: LiveToolOutput) => void;
+  clearLiveToolOutput: (sessionId: string, toolCallId?: string) => void;
 
   setLoading: (loading: boolean) => void;
   setMainView: (view: MainView) => void;
@@ -418,6 +430,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessionStates: patchSession(state.sessionStates, sessionId, {
           messages: updatedMessages,
           pendingTurns: updatedPendingTurns,
+          lastActivityAt:
+            message.role === 'user' && ss.activeTurn ? ss.lastActivityAt : message.timestamp,
           ...(shouldClearPartial ? { partialMessage: '', partialThinking: '' } : {}),
         }),
       };
@@ -437,11 +451,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   startExecutionClock: (sessionId, startAt) =>
-    set((state) => ({
-      sessionStates: patchSession(state.sessionStates, sessionId, {
-        executionClock: { startAt, endAt: null },
-      }),
-    })),
+    set((state) => {
+      const ss = getSession(state.sessionStates, sessionId);
+      // A queued prompt must not replace the running turn's activity or output.
+      if (ss.activeTurn) return {};
+      return {
+        sessionStates: patchSession(state.sessionStates, sessionId, {
+          executionClock: { startAt, endAt: null },
+          lastActivityAt: startAt,
+        }),
+      };
+    }),
 
   finishExecutionClock: (sessionId, endAt) =>
     set((state) => {
@@ -475,6 +495,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessionStates: patchSession(state.sessionStates, sessionId, {
           partialMessage: ss.partialMessage + partial,
+          lastActivityAt: Date.now(),
         }),
       };
     }),
@@ -490,6 +511,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessionStates: patchSession(state.sessionStates, sessionId, {
           partialThinking: ss.partialThinking + delta,
+          lastActivityAt: Date.now(),
         }),
       };
     }),
@@ -520,6 +542,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           messages: updatedMessages,
           pendingTurns: rest,
           activeTurn: { stepId, userMessageId: nextMessageId },
+          executionClock: { startAt: Date.now(), endAt: null },
+          liveToolOutputs: {},
+          lastActivityAt: Date.now(),
         }),
       };
     }),
@@ -543,6 +568,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessionStates: patchSession(state.sessionStates, sessionId, {
           activeTurn: null,
+          liveToolOutputs: {},
         }),
       };
     }),
@@ -603,6 +629,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sessionStates: patchSession(state.sessionStates, sessionId, {
           traceSteps: [...ss.traceSteps, step],
+          lastActivityAt: Date.now(),
         }),
       };
     }),
@@ -626,6 +653,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                   ...updates,
                 },
               ],
+          lastActivityAt: Date.now(),
         }),
       };
     }),
@@ -634,6 +662,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       sessionStates: patchSession(state.sessionStates, sessionId, { traceSteps: steps }),
     })),
+
+  setLiveToolOutput: (sessionId, toolCallId, output) =>
+    set((state) => {
+      const ss = getSession(state.sessionStates, sessionId);
+      return {
+        sessionStates: patchSession(state.sessionStates, sessionId, {
+          liveToolOutputs: { ...ss.liveToolOutputs, [toolCallId]: output },
+          lastActivityAt: output.updatedAt,
+        }),
+      };
+    }),
+
+  clearLiveToolOutput: (sessionId, toolCallId) =>
+    set((state) => {
+      const ss = getSession(state.sessionStates, sessionId);
+      if (!toolCallId) {
+        if (Object.keys(ss.liveToolOutputs).length === 0) return {};
+        return {
+          sessionStates: patchSession(state.sessionStates, sessionId, { liveToolOutputs: {} }),
+        };
+      }
+      if (!(toolCallId in ss.liveToolOutputs)) return {};
+      const liveToolOutputs = { ...ss.liveToolOutputs };
+      delete liveToolOutputs[toolCallId];
+      return { sessionStates: patchSession(state.sessionStates, sessionId, { liveToolOutputs }) };
+    }),
 
   // UI actions
   setLoading: (loading) => set({ isLoading: loading }),

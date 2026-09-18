@@ -2285,6 +2285,15 @@
     "sendMessage": "发送消息",
     "stop": "停止",
     "processing": "处理中...",
+    "activity": {
+      "waitingModel": "等待模型响应",
+      "responding": "正在生成回复",
+      "runningTool": "正在执行：{{tool}}",
+      "liveOutput": "实时输出",
+      "noOutputYet": "此工具尚未产生可显示的输出",
+      "outputTruncated": "仅显示最近的输出",
+      "lastActivity": "最近 {{count}} 秒没有新活动"
+    },
     "typeMessage": "输入消息， Enter 发送， Shift + Enter 换行",
     "loadingConversation": "加载对话中...",
     "startConversation": "开始对话",

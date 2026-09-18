@@ -16,11 +16,12 @@ import { useSkillMentions } from '../hooks/useSkillMentions';
 import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
+import { TaskActivity } from './message/TaskActivity';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import { Button } from './ui';
 import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
-import { Square, Plus, Loader2, Plug, X, Clock, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
+import { Square, Plus, Plug, X, Clock, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -953,18 +954,18 @@ export function ChatView() {
             messageElements
           )}
 
-          {/* Processing indicator - show when we have an active turn but no streaming content yet */}
-          {hasActiveTurn &&
-            (!partialMessage || partialMessage.trim() === '') &&
-            !partialThinking && (
-              <div className="-mx-2 flex items-center gap-2 px-2 py-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-                <span className="text-[12px] text-text-muted">{t('chat.processing')}</span>
-              </div>
-            )}
+          {activeSessionId && activeTurn && (
+            <TaskActivity
+              sessionId={activeSessionId}
+              activeTurnStepId={activeTurn.stepId}
+              hasStreamingText={Boolean(partialMessage.trim() || partialThinking.trim())}
+              elapsedMs={liveElapsed}
+              now={clockNow}
+            />
+          )}
 
           {/* Real-time execution timer */}
-          {liveElapsed > 0 && (
+          {!hasActiveTurn && liveElapsed > 0 && (
             <div className="flex items-center gap-1.5 text-[11px] text-text-muted mt-1 ml-0.5">
               <Clock className="w-3 h-3" />
               <span>

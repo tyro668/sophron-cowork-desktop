@@ -175,6 +175,7 @@ export function useIPC() {
             });
             if (event.payload.status !== 'running') {
               store.finishExecutionClock(event.payload.sessionId);
+              store.clearLiveToolOutput(event.payload.sessionId);
               store.setLoading(false);
               store.clearActiveTurn(event.payload.sessionId);
               store.clearPendingTurns(event.payload.sessionId);
@@ -215,6 +216,14 @@ export function useIPC() {
             bufferThinking(event.payload.sessionId, event.payload.delta);
             break;
 
+          case 'stream.toolOutput':
+            store.setLiveToolOutput(event.payload.sessionId, event.payload.toolCallId, {
+              text: event.payload.text,
+              truncated: event.payload.truncated,
+              updatedAt: event.payload.timestamp,
+            });
+            break;
+
           case 'trace.step': {
             if (event.payload.step.type === 'thinking' && event.payload.step.status === 'running') {
               const currentState = useAppStore.getState();
@@ -242,6 +251,7 @@ export function useIPC() {
               (event.payload.updates.status === 'completed' ||
                 event.payload.updates.status === 'error')
             ) {
+              store.clearLiveToolOutput(event.payload.sessionId, event.payload.stepId);
               store.clearActiveTurn(event.payload.sessionId, event.payload.stepId);
             }
             bufferTrace({
@@ -686,6 +696,7 @@ export function useIPC() {
       cancelQueuedMessages(sessionId);
       clearPendingTurns(sessionId);
       clearActiveTurn(sessionId);
+      useAppStore.getState().clearLiveToolOutput(sessionId);
       finishExecutionClock(sessionId);
       if (!isElectron) {
         updateSession(sessionId, { status: 'idle' });
