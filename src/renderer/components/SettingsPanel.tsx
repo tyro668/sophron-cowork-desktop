@@ -71,16 +71,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
   const [activeTab, setActiveTab] = useState<TabId>(resolvedInitial);
   // Track which tabs have been viewed at least once (for lazy loading)
   const [viewedTabs, setViewedTabs] = useState<Set<TabId>>(new Set([resolvedInitial]));
-  const [appVersion, setAppVersion] = useState('');
-  useEffect(() => {
-    try {
-      const v = window.electronAPI?.getVersion?.();
-      if (v instanceof Promise) v.then(setAppVersion);
-      else if (v) setAppVersion(v);
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   // Consume the store signal and apply tab in one effect
   useEffect(() => {
@@ -100,49 +90,41 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       id: 'api' as TabId,
       label: t('settings.apiSettings'),
       icon: Settings,
-      description: t('settings.apiSettingsDesc'),
     },
     {
       id: 'sandbox' as TabId,
       label: t('settings.sandbox'),
       icon: Shield,
-      description: t('settings.sandboxDesc'),
     },
     {
       id: 'connectors' as TabId,
       label: t('settings.connectors'),
       icon: Plug,
-      description: t('settings.connectorsDesc'),
     },
     {
       id: 'memory' as TabId,
       label: t('settings.memory'),
       icon: BrainCircuit,
-      description: t('settings.memoryDesc'),
     },
     {
       id: 'personal-analysis' as TabId,
       label: t('settings.personalAnalysis', 'Personal Analysis'),
       icon: Database,
-      description: t('settings.personalAnalysisDesc', '管理云端数据连接'),
     },
     {
       id: 'remote' as TabId,
       label: t('settings.remote', '远程控制'),
       icon: Wifi,
-      description: t('settings.remoteDesc', '通过飞书等平台远程使用'),
     },
     {
       id: 'logs' as TabId,
       label: t('settings.logs'),
       icon: AlertCircle,
-      description: t('settings.logsDesc'),
     },
     {
       id: 'general' as TabId,
       label: t('settings.general'),
       icon: Globe,
-      description: t('settings.generalDesc'),
     },
   ];
 
@@ -181,9 +163,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 {!compactSidebar && (
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{tab.label}</p>
-                    <p className="text-[11px] leading-4 text-text-muted line-clamp-2 mt-0.5">
-                      {tab.description}
-                    </p>
                   </div>
                 )}
                 {!compactSidebar && activeTab === tab.id && (
@@ -191,20 +170,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 )}
               </button>
             ))}
-          </div>
-          <div className={`${compactSidebar ? 'p-1.5' : 'p-4'} border-t border-border-subtle`}>
-            <button
-              onClick={onClose}
-              className={`w-full py-2 ${compactSidebar ? 'px-2' : 'px-4'} rounded-lg bg-surface hover:bg-surface-hover transition-colors text-text-secondary text-sm shadow-soft`}
-              title={compactSidebar ? t('common.close') : undefined}
-            >
-              {compactSidebar ? <X className="w-4 h-4 mx-auto" /> : t('common.close')}
-            </button>
-            {!compactSidebar && (
-              <p className="text-[10px] text-text-muted text-center mt-2 select-text">
-                v{appVersion}
-              </p>
-            )}
           </div>
         </div>
 
