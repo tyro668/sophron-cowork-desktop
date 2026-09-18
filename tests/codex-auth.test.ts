@@ -173,6 +173,86 @@ describe('ensureCodexCredentials', () => {
     );
   });
 
+  it('re-imports when the CLI rotated to a newer token pair than the stored CLI copy', () => {
+    const staleAccess = makeJwt({ exp: 1_700_000_000 });
+    mocks.store.set(OPENAI_CODEX_PROVIDER, {
+      type: 'oauth',
+      access: staleAccess,
+      refresh: 'refresh-old',
+      expires: 1_700_000_000_000,
+      codexAuthSource: 'codex-cli',
+    });
+    writeCliAuth(tmpDir, {
+      tokens: { access_token: ACCESS_TOKEN, refresh_token: 'refresh-new', account_id: 'acct-2' },
+    });
+    process.env.SOPHRON_CODEX_AUTH_PATH = path.join(tmpDir, 'auth.json');
+
+    expect(ensureCodexCredentials()).toBe(true);
+    expect(mocks.store.get(OPENAI_CODEX_PROVIDER)).toMatchObject({
+      access: ACCESS_TOKEN,
+      refresh: 'refresh-new',
+      expires: ACCESS_EXP_MS,
+      accountId: 'acct-2',
+      codexAuthSource: 'codex-cli',
+    });
+  });
+
+  it('keeps the stored pair when it is newer than the CLI file (own refresh won)', () => {
+    const freshAccess = makeJwt({ exp: ACCESS_EXP_MS / 1000 + 1000 });
+    mocks.store.set(OPENAI_CODEX_PROVIDER, {
+      type: 'oauth',
+      access: freshAccess,
+      refresh: 'refresh-ours',
+      expires: ACCESS_EXP_MS + 1_000_000,
+      codexAuthSource: 'codex-cli',
+    });
+    writeCliAuth(tmpDir, {
+      tokens: { access_token: ACCESS_TOKEN, refresh_token: 'refresh-cli-old' },
+    });
+    process.env.SOPHRON_CODEX_AUTH_PATH = path.join(tmpDir, 'auth.json');
+
+    expect(ensureCodexCredentials()).toBe(true);
+    expect((mocks.store.get(OPENAI_CODEX_PROVIDER) as { refresh: string }).refresh).toBe(
+      'refresh-ours'
+    );
+  });
+
+  it('does not overwrite app-sourced credentials when the CLI file differs', () => {
+    mocks.store.set(OPENAI_CODEX_PROVIDER, {
+      type: 'oauth',
+      access: 'a-app',
+      refresh: 'r-app',
+      expires: 1,
+      codexAuthSource: 'app',
+    });
+    writeCliAuth(tmpDir, {
+      tokens: { access_token: ACCESS_TOKEN, refresh_token: 'refresh-cli' },
+    });
+    process.env.SOPHRON_CODEX_AUTH_PATH = path.join(tmpDir, 'auth.json');
+
+    expect(ensureCodexCredentials()).toBe(true);
+    expect((mocks.store.get(OPENAI_CODEX_PROVIDER) as { refresh: string }).refresh).toBe('r-app');
+  });
+
+  it('keeps the stored pair when the CLI file holds the same generation', () => {
+    mocks.store.set(OPENAI_CODEX_PROVIDER, {
+      type: 'oauth',
+      access: ACCESS_TOKEN,
+      refresh: 'refresh-1',
+      expires: ACCESS_EXP_MS,
+      codexAuthSource: 'codex-cli',
+    });
+    writeCliAuth(tmpDir, {
+      tokens: { access_token: 'different-access-same-generation', refresh_token: 'refresh-1' },
+    });
+    process.env.SOPHRON_CODEX_AUTH_PATH = path.join(tmpDir, 'auth.json');
+
+    expect(ensureCodexCredentials()).toBe(true);
+    expect((mocks.store.get(OPENAI_CODEX_PROVIDER) as { access: string }).access).toBe(
+      ACCESS_TOKEN
+    );
+  });
+
   it('returns false when neither stored credentials nor a CLI login exist', () => {
     process.env.SOPHRON_CODEX_AUTH_PATH = path.join(tmpDir, 'missing.json');
     expect(ensureCodexCredentials()).toBe(false);

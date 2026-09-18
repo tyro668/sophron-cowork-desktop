@@ -115,30 +115,8 @@ export function readCodexCliCredentials(authPath?: string): CodexCliCredentials 
   };
 }
 
-/**
- * Make sure the shared AuthStorage holds OAuth credentials for openai-codex.
- * Imports from the local codex CLI auth file when nothing is stored yet (or
- * when `forceImport` is set, e.g. the user re-ran `codex login`). Existing
- * stored credentials are otherwise left untouched — AuthStorage refreshes
- * them automatically.
- *
- * Returns true when usable OAuth credentials are available afterwards.
- */
-export function ensureCodexCredentials(options?: { forceImport?: boolean }): boolean {
-  const authStorage = getSharedAuthStorage();
-  const stored = authStorage.get(OPENAI_CODEX_PROVIDER);
-  const hasStored = stored?.type === 'oauth';
-
-  if (hasStored && !options?.forceImport) {
-    return true;
-  }
-
-  const cli = readCodexCliCredentials();
-  if (!cli) {
-    return hasStored;
-  }
-
-  authStorage.set(OPENAI_CODEX_PROVIDER, {
+function importCliCredentials(cli: CodexCliCredentials): void {
+  getSharedAuthStorage().set(OPENAI_CODEX_PROVIDER, {
     type: 'oauth',
     access: cli.access,
     refresh: cli.refresh,
@@ -146,6 +124,48 @@ export function ensureCodexCredentials(options?: { forceImport?: boolean }): boo
     ...(cli.accountId ? { accountId: cli.accountId } : {}),
     [SOURCE_FIELD]: 'codex-cli',
   });
+}
+
+/**
+ * Make sure the shared AuthStorage holds OAuth credentials for openai-codex.
+ * Imports from the local codex CLI auth file when nothing is stored yet (or
+ * when `forceImport` is set, e.g. the user re-ran `codex login`). Existing
+ * stored credentials are otherwise left untouched — AuthStorage refreshes
+ * them automatically.
+ *
+ * Credentials tagged as CLI-imported additionally track token rotation: the
+ * codex CLI rewrites `~/.codex/auth.json` with a new token pair whenever it
+ * refreshes, which leaves our copy holding a dead refresh token. When the CLI
+ * file carries a newer generation than the stored pair, it is re-imported.
+ * (A stored pair newer than the CLI file — e.g. produced by our own refresh —
+ * is kept, since the CLI file's tokens are the stale side then.)
+ *
+ * Returns true when usable OAuth credentials are available afterwards.
+ */
+export function ensureCodexCredentials(options?: { forceImport?: boolean }): boolean {
+  const authStorage = getSharedAuthStorage();
+  const stored = authStorage.get(OPENAI_CODEX_PROVIDER);
+  const hasStored = stored?.type === 'oauth';
+  const cli = readCodexCliCredentials();
+
+  if (hasStored && !options?.forceImport) {
+    if (
+      cli &&
+      storedSource(stored as Record<string, unknown>, cli) === 'codex-cli' &&
+      cli.refresh !== stored.refresh &&
+      (cli.expires === 0 || cli.expires > (stored.expires ?? 0))
+    ) {
+      importCliCredentials(cli);
+      log('[CodexAuth] Re-imported rotated codex CLI credentials into AuthStorage');
+    }
+    return true;
+  }
+
+  if (!cli) {
+    return hasStored;
+  }
+
+  importCliCredentials(cli);
   log('[CodexAuth] Imported codex CLI credentials into AuthStorage');
   return true;
 }
