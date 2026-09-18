@@ -273,7 +273,7 @@ export function InputTablesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((row, index) => {
+                  {pageRows.map((row) => {
                     const dataset = row.kind === 'dataset' ? row.dataset : null;
                     const draft = row.kind === 'draft' ? row.draft : null;
                     const sourceKind = dataset ? dataset.sourceKind : 'draft';
@@ -296,9 +296,7 @@ export function InputTablesPanel({
                         className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
                           selected
                             ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                            : index === 1
-                              ? 'bg-accent-muted'
-                              : 'hover:bg-surface-hover/35'
+                            : 'hover:bg-surface-hover/35'
                         }`}
                       >
                         <td className="px-4">

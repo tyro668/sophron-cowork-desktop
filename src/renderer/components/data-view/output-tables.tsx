@@ -232,7 +232,7 @@ export function OutputTablesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {outputTables.map((outputTable, index) => {
+                  {outputTables.map((outputTable) => {
                     const selected = outputTable.id === selectedOutputTableId;
                     return (
                       <tr
@@ -242,9 +242,7 @@ export function OutputTablesPanel({
                         className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
                           selected
                             ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                            : index === 1
-                              ? 'bg-accent-muted'
-                              : 'hover:bg-surface-hover/35'
+                            : 'hover:bg-surface-hover/35'
                         }`}
                       >
                         <td className="px-4">
