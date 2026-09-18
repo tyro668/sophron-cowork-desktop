@@ -278,7 +278,7 @@ function WorkflowOperatorDslDialog({
       busy={isRunningOperatorDsl}
       closeOnEscape={false}
       ariaLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
-      overlayClassName="operator-ui bg-[#163526]/16 px-4 py-6 dark:bg-black/50"
+      overlayClassName="operator-ui bg-[rgb(var(--color-text-primary-rgb)/0.16)] px-4 py-6 dark:bg-black/50"
       className="h-[42rem] w-[72rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
     >
       <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">

@@ -433,7 +433,7 @@ function buildGlassDataGridTheme(readColor: (name: string) => string): Partial<T
   const gridTextMuted = color('--data-grid-text-muted', PREVIEW_GRID_TEXT_MUTED);
   return {
     accentColor: color('--color-accent', '#2f8f63'),
-    accentFg: '#ffffff',
+    accentFg: color('--color-accent-foreground', '#0c1210'),
     accentLight: color('--color-accent-muted', '#eaf6ee'),
     textDark: gridTextPrimary,
     textMedium: gridTextSecondary,

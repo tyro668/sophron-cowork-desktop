@@ -34,7 +34,7 @@
 | 普通边框   | `#DCE8DF` | `--color-border-muted` / `border-border-muted`           |
 | 弱分隔线   | `#E6EEE8` | `--color-border-subtle` / `border-border-subtle`         |
 
-主题换色只替换 accent 系列变量，背景、文字、成功、警告、错误等语义颜色保持独立。全局样式提供 `data-accent-theme="lake"`、`lavender`、`orange`、`rose` 四套方案；默认无属性时为薄荷绿。用户选择持久化在 `AppConfig.accentTheme`（设置 → 外观 → 色系），由 `App.tsx` 写入根节点属性。新增主题也应沿用同一变量接口。
+主题换色替换 accent 系列变量，并将中性色板（背景、表面、边框、文字、阴影、数据网格、工作流画布、代码预览）的色相旋转至该色系——饱和度与明度与原薄荷色板一致，对比度关系不变；成功、警告、错误等语义颜色保持独立。全局样式提供 `data-accent-theme="lake"`、`lavender`、`orange`、`rose` 四套方案；默认无属性时为薄荷绿。用户选择持久化在 `AppConfig.accentTheme`（设置 → 外观 → 色系），由 `App.tsx` 写入根节点属性。新增主题应沿用同一变量接口，并同步生成同色相的中性色板。
 
 实心状态按钮（`bg-accent`/`bg-error`/`bg-success`）必须使用对应的 `*-foreground` 前景 token，不得写 `text-white`：湖蓝、橙色主题下白字对比度不足 4.5:1。`accent-foreground`/`error-foreground`/`success-foreground` 为深色字（lavender 主题单独覆盖为白字），已核验全部主题组合 ≥4.5:1。
 
