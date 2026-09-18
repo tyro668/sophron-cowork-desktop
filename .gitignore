@@ -123,7 +123,10 @@ website/.vitepress/cache/
 !src/renderer/assets/*.png
 !public/*.png
 !website/public/*.png
+!design/brand/jiusi-logo-source.png
+!design/brand/jiusi-tray-mark-source.png
 !resources/icon.png
+!resources/icon-mac.png
 !resources/logo.png
 !resources/tray-icon.png
 !resources/tray-iconTemplate.png

@@ -71,6 +71,12 @@ function buildCheckList(platform, arch) {
       type: 'dir',
       severity: 'fatal',
     },
+    {
+      label: 'Desktop icon source (resources/icon.png)',
+      relPath: 'resources/icon.png',
+      type: 'file',
+      severity: 'fatal',
+    },
   ];
 
   if (platform === 'darwin') {
@@ -84,6 +90,18 @@ function buildCheckList(platform, arch) {
       {
         label: 'Lima sandbox agent bundle (dist-lima-agent/index.js)',
         relPath: 'dist-lima-agent/index.js',
+        type: 'file',
+        severity: 'fatal',
+      },
+      {
+        label: 'macOS app icon (resources/icon.icns)',
+        relPath: 'resources/icon.icns',
+        type: 'file',
+        severity: 'fatal',
+      },
+      {
+        label: 'macOS tray template (resources/tray-iconTemplate.png)',
+        relPath: 'resources/tray-iconTemplate.png',
         type: 'file',
         severity: 'fatal',
       },
@@ -113,15 +131,35 @@ function buildCheckList(platform, arch) {
         relPath: 'dist-wsl-agent/index.js',
         type: 'file',
         severity: 'fatal',
+      },
+      {
+        label: 'Windows app icon (resources/icon.ico)',
+        relPath: 'resources/icon.ico',
+        type: 'file',
+        severity: 'fatal',
+      },
+      {
+        label: 'Windows tray icon (resources/tray-icon.ico)',
+        relPath: 'resources/tray-icon.ico',
+        type: 'file',
+        severity: 'fatal',
       }
     );
   } else if (platform === 'linux') {
-    checks.push({
-      label: 'Node.js directory for Linux x64',
-      relPath: 'resources/node/linux-x64',
-      type: 'dir',
-      severity: 'fatal',
-    });
+    checks.push(
+      {
+        label: 'Node.js directory for Linux x64',
+        relPath: 'resources/node/linux-x64',
+        type: 'dir',
+        severity: 'fatal',
+      },
+      {
+        label: 'Linux tray icon (resources/tray-icon.png)',
+        relPath: 'resources/tray-icon.png',
+        type: 'file',
+        severity: 'fatal',
+      }
+    );
   }
 
   return checks;

@@ -46,6 +46,7 @@
     --color-accent-text: #8ed9b2;
     --color-accent-text-hover: #b6edcf;
     --color-accent-text-muted: #a2e3c1;
+    --color-brand-mark: #8ed9b2;
     --color-accent-foreground: #0c1210;
     --color-error-foreground: #0c1210;
     --color-success-foreground: #0c1210;
@@ -134,6 +135,7 @@
     --color-accent-text: #267b54;
     --color-accent-text-hover: #1f6847;
     --color-accent-text-muted: #2b7252;
+    --color-brand-mark: #176e4d;
     --color-accent-foreground: #0c1210;
     --color-error-foreground: #0c1210;
     --color-success-foreground: #0c1210;

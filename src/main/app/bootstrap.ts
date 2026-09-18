@@ -62,6 +62,9 @@ import {
 export async function bootstrap(): Promise<void> {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.sophron.app');
+  } else if (process.platform === 'darwin' && !app.isPackaged && app.dock) {
+    // Packaged apps use icon.icns; the dev Electron shell needs an explicit Dock icon.
+    app.dock.setIcon(join(__dirname, '../../resources/icon-mac.png'));
   }
 
   // Smoke test mode: verify the app can start, then exit cleanly

@@ -9,14 +9,13 @@ import { createWindow } from './window';
 export function setupTray() {
   if (appContext.tray) return;
 
-  // Use .ico on Windows for proper multi-resolution appContext.tray support; fall back to .png if absent
+  // macOS tints the monochrome Template image; Windows uses a multi-size ICO.
   const iconName =
     process.platform === 'darwin'
-      ? 'appContext.tray-iconTemplate.png'
+      ? 'tray-iconTemplate.png'
       : process.platform === 'win32'
-        ? 'appContext.tray-icon.ico'
-        : 'appContext.tray-icon.png';
-  // TODO: create resources/appContext.tray-icon.ico from appContext.tray-icon.png for full Windows appContext.tray fidelity
+        ? 'tray-icon.ico'
+        : 'tray-icon.png';
   const iconPath = app.isPackaged
     ? join(process.resourcesPath, iconName)
     : join(__dirname, '../../resources', iconName);
@@ -25,13 +24,13 @@ export function setupTray() {
   const resolvedIconPath =
     process.platform === 'win32' && !fs.existsSync(iconPath)
       ? app.isPackaged
-        ? join(process.resourcesPath, 'appContext.tray-icon.png')
-        : join(__dirname, '../../resources', 'appContext.tray-icon.png')
+        ? join(process.resourcesPath, 'tray-icon.png')
+        : join(__dirname, '../../resources', 'tray-icon.png')
       : iconPath;
 
-  // Gracefully skip appContext.tray if icon is missing (e.g. dev environment)
+  // Gracefully skip the tray if an icon is missing in a dev environment.
   if (!fs.existsSync(resolvedIconPath)) {
-    log('[Tray] Icon not found at', resolvedIconPath, '— skipping appContext.tray setup');
+    log('[Tray] Icon not found at', resolvedIconPath, '— skipping tray setup');
     return;
   }
 

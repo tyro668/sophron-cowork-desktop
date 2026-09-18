@@ -40,6 +40,7 @@ import {
 import sidebarLogoSrc from '../assets/logo.png';
 
 const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
+const sidebarLogoMask = `url("${sidebarLogoSrc}") center / contain no-repeat`;
 
 export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }) {
   const { t } = useTranslation();
@@ -796,10 +797,15 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       <div className="px-3.5 pt-4 pb-3.5 border-b border-border-subtle">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex items-center gap-3">
-            <img
-              src={sidebarLogoSrc}
-              alt={t('common.appLogoAlt')}
-              className="w-10 h-10 rounded-xl object-contain p-1.5 border border-border-subtle bg-surface flex-shrink-0 shadow-soft"
+            <span
+              role="img"
+              aria-label={t('common.appLogoAlt')}
+              className="h-10 w-10 flex-shrink-0 transition-colors"
+              style={{
+                backgroundColor: 'var(--color-brand-mark)',
+                WebkitMask: sidebarLogoMask,
+                mask: sidebarLogoMask,
+              }}
             />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">

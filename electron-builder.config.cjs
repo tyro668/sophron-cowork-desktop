@@ -93,6 +93,9 @@ module.exports = {
     artifactName: `${artifactPattern}-win-\${arch}.\${ext}`,
     signAndEditExecutable: false,
     extraResources: [
+      { from: 'resources/icon.ico', to: 'icon.ico' },
+      { from: 'resources/tray-icon.ico', to: 'tray-icon.ico' },
+      { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',
@@ -129,6 +132,8 @@ module.exports = {
       NSAccessibilityUsageDescription: `${brand.productName} needs accessibility access for GUI automation.`,
     },
     extraResources: [
+      { from: 'resources/icon.icns', to: 'icon.icns' },
+      { from: 'resources/tray-iconTemplate.png', to: 'tray-iconTemplate.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',
@@ -156,6 +161,8 @@ module.exports = {
     ],
     artifactName: `${artifactPattern}-linux-\${arch}.\${ext}`,
     extraResources: [
+      { from: 'resources/icon.png', to: 'icon.png' },
+      { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
       {
         from: 'src/main/data/workflow/workflow-sandbox-runner.js',
         to: 'workflow/workflow-sandbox-runner.js',

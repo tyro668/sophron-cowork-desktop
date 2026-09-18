@@ -36,10 +36,13 @@ function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
   makeDir(path.join(root, 'dist-electron'));
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));
+  makeFile(path.join(root, 'resources/icon.png'));
 
   // macOS FATAL resources
   makeFile(path.join(root, `resources/node/darwin-${arch}/bin/node`));
   makeFile(path.join(root, 'dist-lima-agent/index.js'));
+  makeFile(path.join(root, 'resources/icon.icns'));
+  makeFile(path.join(root, 'resources/tray-iconTemplate.png'));
 }
 
 /**
@@ -52,8 +55,11 @@ function populateWin32Artifacts(root: string): void {
   makeDir(path.join(root, 'dist-electron'));
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));
+  makeFile(path.join(root, 'resources/icon.png'));
   makeFile(path.join(root, 'resources/node/win32-x64/node.exe'));
   makeFile(path.join(root, 'dist-wsl-agent/index.js'));
+  makeFile(path.join(root, 'resources/icon.ico'));
+  makeFile(path.join(root, 'resources/tray-icon.ico'));
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +88,8 @@ describe('pre-build-check: runChecks', () => {
 
     expect(result.failed).toBe(0);
     expect(result.hasFatal).toBe(false);
-    // 6 common + 2 darwin FATAL = 8 FATAL checks should pass
-    expect(result.passed).toBeGreaterThanOrEqual(8);
+    // 7 common + 4 darwin FATAL checks should pass.
+    expect(result.passed).toBeGreaterThanOrEqual(11);
   });
 
   it('passes all FATAL checks on win32 when required artifacts exist', () => {
@@ -93,7 +99,7 @@ describe('pre-build-check: runChecks', () => {
 
     expect(result.failed).toBe(0);
     expect(result.hasFatal).toBe(false);
-    expect(result.passed).toBeGreaterThanOrEqual(8);
+    expect(result.passed).toBeGreaterThanOrEqual(11);
   });
 
   it('reports warnings for optional darwin resources that are missing', () => {
@@ -163,6 +169,20 @@ describe('pre-build-check: runChecks', () => {
 
     expect(result.failed).toBeGreaterThan(0);
     expect(result.hasFatal).toBe(true);
+  });
+
+  it('reports hasFatal when the macOS tray icon is missing', () => {
+    populateDarwinArtifacts(tmpDir, 'arm64');
+    fs.rmSync(path.join(tmpDir, 'resources/tray-iconTemplate.png'));
+
+    const result = runChecks(tmpDir, 'darwin', 'arm64');
+
+    expect(result.hasFatal).toBe(true);
+    expect(
+      result.results.find(
+        (entry: { relPath: string }) => entry.relPath === 'resources/tray-iconTemplate.png'
+      )?.passed
+    ).toBe(false);
   });
 
   it('reports hasFatal when win32 node.exe is missing', () => {
