@@ -164,6 +164,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
 
   const ollamaRefreshRequestIdRef = useRef(0);
   const selectedConfigSetIdRef = useRef(selectedConfigSetId);
+  const hasAppliedLoadedStateRef = useRef(false);
   useEffect(() => {
     selectedConfigSetIdRef.current = selectedConfigSetId;
   }, [selectedConfigSetId]);
@@ -216,12 +217,15 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   const hasDiscoveredModelOptions =
     usesDiscoveredModelOptions &&
     Object.prototype.hasOwnProperty.call(discoveredModels, activeProfileKey);
-  const modelOptions =
-    provider === 'ollama'
-      ? discoveredModels[activeProfileKey] || []
-      : hasDiscoveredModelOptions
+  const modelOptions = useMemo(
+    () =>
+      provider === 'ollama'
         ? discoveredModels[activeProfileKey] || []
-        : modelPreset.models;
+        : hasDiscoveredModelOptions
+          ? discoveredModels[activeProfileKey] || []
+          : modelPreset.models,
+    [activeProfileKey, discoveredModels, hasDiscoveredModelOptions, modelPreset.models, provider]
+  );
   const modelInputGuidance = getModelInputGuidance(provider, customProtocol);
 
   const currentConfigSet = useMemo(
@@ -396,8 +400,15 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         (customProtocol === 'gemini' && isCustomGeminiLoopbackGateway(baseUrl))));
   const requiresApiKey = !allowEmptyApiKey;
   const currentDraftSignature = useMemo(
-    () => buildApiConfigDraftSignature(activeProfileKey, profiles, enableThinking, thinkingLevel),
-    [activeProfileKey, profiles, enableThinking, thinkingLevel]
+    () =>
+      buildApiConfigDraftSignature(
+        activeProfileKey,
+        profiles,
+        enableThinking,
+        thinkingLevel,
+        providerUnset
+      ),
+    [activeProfileKey, profiles, enableThinking, thinkingLevel, providerUnset]
   );
   const hasUnsavedChanges =
     savedDraftSignature !== '' && currentDraftSignature !== savedDraftSignature;
@@ -410,18 +421,26 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     ) => {
       const bootstrap = buildApiConfigBootstrap(config, loadedPresets);
 
-      // Keep the editor on the previously selected set when it still exists;
-      // otherwise fall back to the default set.
-      const candidateSelectedId = requestedSelectedConfigSetId ?? selectedConfigSetIdRef.current;
+      // The initial reducer state may be only a placeholder before config.get()
+      // resolves. On the first real load, select the persisted active set;
+      // later refreshes preserve the user's editor selection.
+      const candidateSelectedId =
+        requestedSelectedConfigSetId ??
+        (hasAppliedLoadedStateRef.current
+          ? selectedConfigSetIdRef.current
+          : bootstrap.activeConfigSetId);
       const selectedConfigSetId = bootstrap.configSets.some((set) => set.id === candidateSelectedId)
         ? (candidateSelectedId as string)
         : bootstrap.activeConfigSetId;
+      selectedConfigSetIdRef.current = selectedConfigSetId;
+      hasAppliedLoadedStateRef.current = true;
       const selectedSet =
         bootstrap.configSets.find((set) => set.id === selectedConfigSetId) ?? null;
       const snapshot =
         selectedSet && selectedConfigSetId !== bootstrap.activeConfigSetId
           ? buildSnapshotFromConfigSet(selectedSet, loadedPresets)
           : bootstrap.snapshot;
+      const loadedProviderUnset = selectedSet?.provider === '' || snapshot.providerUnset;
 
       const selectedMeta = profileKeyToProvider(snapshot.activeProfileKey);
       const resolvedLastCustomProtocol: CustomProtocolType =
@@ -439,7 +458,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           presets: loadedPresets,
           profiles: snapshot.profiles,
           activeProfileKey: snapshot.activeProfileKey,
-          providerUnset: selectedSet?.provider === '',
+          providerUnset: loadedProviderUnset,
           enableThinking: snapshot.enableThinking,
           thinkingLevel: snapshot.thinkingLevel,
           configSets: bootstrap.configSets,
@@ -450,7 +469,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
             snapshot.activeProfileKey,
             snapshot.profiles,
             snapshot.enableThinking,
-            snapshot.thinkingLevel
+            snapshot.thinkingLevel,
+            loadedProviderUnset
           ),
         },
       });
@@ -580,9 +600,12 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       return {
         ...prev,
         useCustomModel: false,
+        model: modelOptions.some((option) => option.id === prev.model)
+          ? prev.model
+          : modelOptions[0]?.id || prev.model,
       };
     });
-  }, [updateActiveProfile]);
+  }, [modelOptions, updateActiveProfile]);
 
   // Public setter exposed to consumers — wraps dispatch so the interface stays stable
   const setEnableThinking = useCallback((value: boolean) => {
@@ -1165,6 +1188,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     (setId: string) => {
       const target = configSets.find((set) => set.id === setId);
       if (!target || setId === selectedConfigSetId) return;
+      selectedConfigSetIdRef.current = setId;
       const snapshot = buildSnapshotFromConfigSet(target, presets);
       const selectedMeta = profileKeyToProvider(snapshot.activeProfileKey);
       dispatch({
@@ -1185,7 +1209,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
             snapshot.activeProfileKey,
             snapshot.profiles,
             snapshot.enableThinking,
-            snapshot.thinkingLevel
+            snapshot.thinkingLevel,
+            snapshot.providerUnset
           ),
         },
       });

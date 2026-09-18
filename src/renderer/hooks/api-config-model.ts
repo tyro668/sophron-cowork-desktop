@@ -296,7 +296,9 @@ export function normalizeProfile(
     apiKey: profile?.apiKey || '',
     baseUrl:
       profileKey === 'ollama' ? normalizeOllamaBaseUrl(rawBaseUrl) || fallback.baseUrl : rawBaseUrl,
-    model: hasPresetModel ? modelValue : fallback.model,
+    // Keep the persisted value even when it is absent from today's presets.
+    // The editor renders those values through its custom-model input.
+    model: modelValue,
     customModel: hasPresetModel ? '' : modelValue,
     useCustomModel: !hasPresetModel,
     contextWindow: profile?.contextWindow ? String(profile.contextWindow) : '',
@@ -391,11 +393,13 @@ export function buildApiConfigDraftSignature(
   activeProfileKey: ProviderProfileKey,
   profiles: Record<ProviderProfileKey, UIProviderProfile>,
   enableThinking: boolean,
-  thinkingLevel: ThinkingLevel
+  thinkingLevel: ThinkingLevel,
+  providerUnset = false
 ): string {
   const persisted = toPersistedProfiles(profiles);
   return JSON.stringify({
     activeProfileKey,
+    providerUnset,
     enableThinking,
     thinkingLevel,
     profiles: PROFILE_KEYS.map((key) => ({
