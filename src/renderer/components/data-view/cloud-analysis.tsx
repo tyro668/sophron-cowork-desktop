@@ -1599,7 +1599,7 @@ export function CloudAnalysisPanel() {
                                     className={`h-3.5 w-3.5 rounded border-border-muted accent-accent transition-opacity ${
                                       isSelected
                                         ? 'opacity-100'
-                                        : 'opacity-0 group-hover:opacity-100'
+                                        : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                                     }`}
                                     aria-label={table.tableName}
                                   />

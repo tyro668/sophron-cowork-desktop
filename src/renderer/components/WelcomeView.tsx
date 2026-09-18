@@ -606,9 +606,10 @@ export function WelcomeView() {
                   <button
                     type="button"
                     onClick={() => removeImage(index)}
-                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-error text-error-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                    aria-label={t('common.removeImage', { index: index + 1 })}
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-error text-error-foreground opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-3 w-3" aria-hidden />
                   </button>
                 </div>
               ))}
@@ -629,9 +630,10 @@ export function WelcomeView() {
                   <button
                     type="button"
                     onClick={() => removeFile(index)}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error opacity-0 transition-opacity hover:bg-error/20 group-hover:opacity-100"
+                    aria-label={t('common.removeAttachment', { name: file.name })}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error opacity-0 transition-opacity hover:bg-error/20 focus-visible:opacity-100 group-hover:opacity-100"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 </div>
               ))}
@@ -655,7 +657,8 @@ export function WelcomeView() {
                   <button
                     type="button"
                     onClick={() => removeCloudTable(index)}
-                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-surface text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                    aria-label={t('common.removeCloudTable', { name: table.tableName })}
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-surface text-text-muted opacity-70 transition-colors hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </button>

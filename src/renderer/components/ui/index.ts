@@ -37,5 +37,5 @@ export {
 export type { DialogProps } from './dialog';
 export { Badge } from './badge';
 export type { BadgeProps, BadgeTone } from './badge';
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
+export { Tabs, TabsList, TabsTrigger, TabsContent, useTabsIds } from './tabs';
 export type { TabsProps, TabsTriggerProps, TabsContentProps } from './tabs';

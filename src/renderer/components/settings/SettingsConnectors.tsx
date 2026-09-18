@@ -718,41 +718,32 @@ function ServerForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-text-primary mb-2">{t('mcp.type')}</label>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => setType('stdio')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              type === 'stdio'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
-            }`}
-          >
-            {t('mcp.typeStdioLocal')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setType('sse')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              type === 'sse'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
-            }`}
-          >
-            {t('mcp.typeSseRemote')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setType('streamable-http')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              type === 'streamable-http'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
-            }`}
-          >
-            {t('mcp.typeStreamableHttp')}
-          </button>
+        <span id="mcp-type-label" className="block text-sm font-medium text-text-primary mb-2">
+          {t('mcp.type')}
+        </span>
+        <div role="radiogroup" aria-labelledby="mcp-type-label" className="grid grid-cols-3 gap-2">
+          {(
+            [
+              ['stdio', 'mcp.typeStdioLocal'],
+              ['sse', 'mcp.typeSseRemote'],
+              ['streamable-http', 'mcp.typeStreamableHttp'],
+            ] as const
+          ).map(([value, labelKey]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={type === value}
+              onClick={() => setType(value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                type === value
+                  ? 'bg-accent text-accent-foreground'
+                  : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
+              }`}
+            >
+              {t(labelKey)}
+            </button>
+          ))}
         </div>
       </div>
 

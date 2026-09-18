@@ -1,12 +1,38 @@
 import React from 'react';
 import { cn } from './cn';
 
+const EMPTY_PANELS: ReadonlySet<string> = new Set();
+
 interface TabsContextValue {
   value: string;
   onValueChange?: (value: string) => void;
+  /** Base id used to derive tab/panel DOM ids for aria wiring. */
+  baseId: string;
+  /** Values whose TabsContent panel is currently mounted. */
+  panels: ReadonlySet<string>;
+  registerPanel: (value: string) => void;
+  unregisterPanel: (value: string) => void;
 }
 
 const TabsContext = React.createContext<TabsContextValue | null>(null);
+
+/**
+ * Tab/panel DOM ids derived from the Tabs instance's base id.
+ * Useful for wiring panels that live outside `<TabsContent>`
+ * (e.g. a shared panel whose content depends on the active tab).
+ */
+export function useTabsIds() {
+  const context = React.useContext(TabsContext);
+  if (!context) throw new Error('useTabsIds must be used inside <Tabs>');
+  const { baseId } = context;
+  return React.useMemo(
+    () => ({
+      tabId: (value: string) => `${baseId}-tab-${value}`,
+      panelId: (value: string) => `${baseId}-panel-${value}`,
+    }),
+    [baseId]
+  );
+}
 
 export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   value: string;
@@ -14,7 +40,24 @@ export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Tabs({ value, onValueChange, className, ...rest }: TabsProps) {
-  const context = React.useMemo(() => ({ value, onValueChange }), [value, onValueChange]);
+  const reactId = React.useId();
+  const baseId = React.useMemo(() => `tabs-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [reactId]);
+  const [panels, setPanels] = React.useState<ReadonlySet<string>>(EMPTY_PANELS);
+  const registerPanel = React.useCallback((panelValue: string) => {
+    setPanels((prev) => (prev.has(panelValue) ? prev : new Set(prev).add(panelValue)));
+  }, []);
+  const unregisterPanel = React.useCallback((panelValue: string) => {
+    setPanels((prev) => {
+      if (!prev.has(panelValue)) return prev;
+      const next = new Set(prev);
+      next.delete(panelValue);
+      return next;
+    });
+  }, []);
+  const context = React.useMemo(
+    () => ({ value, onValueChange, baseId, panels, registerPanel, unregisterPanel }),
+    [value, onValueChange, baseId, panels, registerPanel, unregisterPanel]
+  );
   return (
     <TabsContext.Provider value={context}>
       <div className={className} {...rest} />
@@ -60,16 +103,22 @@ export interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 export const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
-  ({ value, className, disabled, ...rest }, ref) => {
+  ({ value, className, disabled, id, ...rest }, ref) => {
     const context = React.useContext(TabsContext);
     if (!context) throw new Error('TabsTrigger must be used inside <Tabs>');
     const active = context.value === value;
+    const triggerId = id ?? `${context.baseId}-tab-${value}`;
+    // aria-controls only points at a panel that actually exists — a mounted
+    // TabsContent with this value, or an explicit aria-controls override.
+    const controls = context.panels.has(value) ? `${context.baseId}-panel-${value}` : undefined;
     return (
       <button
         ref={ref}
         type="button"
         role="tab"
+        id={triggerId}
         aria-selected={active}
+        aria-controls={controls}
         tabIndex={active ? 0 : -1}
         disabled={disabled}
         data-state={active ? 'active' : 'inactive'}
@@ -97,15 +146,27 @@ export interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
-  ({ value, forceMount = false, className, ...rest }, ref) => {
+  ({ value, forceMount = false, className, id, ...rest }, ref) => {
     const context = React.useContext(TabsContext);
     if (!context) throw new Error('TabsContent must be used inside <Tabs>');
     const active = context.value === value;
+    const panelId = id ?? `${context.baseId}-panel-${value}`;
+    const { registerPanel, unregisterPanel } = context;
+    React.useEffect(() => {
+      // Only register while the panel is actually in the DOM — an unmounted
+      // panel must not leave a dangling aria-controls reference on its tab.
+      if (!active && !forceMount) return;
+      registerPanel(value);
+      return () => unregisterPanel(value);
+    }, [registerPanel, unregisterPanel, value, active, forceMount]);
     if (!active && !forceMount) return null;
     return (
       <div
         ref={ref}
         role="tabpanel"
+        id={panelId}
+        aria-labelledby={`${context.baseId}-tab-${value}`}
+        tabIndex={0}
         hidden={!active}
         data-state={active ? 'active' : 'inactive'}
         className={cn(className)}

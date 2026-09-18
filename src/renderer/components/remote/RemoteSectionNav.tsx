@@ -30,6 +30,9 @@ export function RemoteSectionNav({ activeSection, pendingPairings, onSectionChan
           <TabsTrigger
             key={id}
             value={id}
+            id={`remote-nav-tab-${id}`}
+            // Panels are lazily mounted — only reference one that exists.
+            aria-controls={id === activeSection ? `remote-panel-${id}` : undefined}
             className={cn(
               underlineTabTriggerClass,
               'flex h-auto shrink-0 items-center gap-2 px-3 py-3 text-sm'

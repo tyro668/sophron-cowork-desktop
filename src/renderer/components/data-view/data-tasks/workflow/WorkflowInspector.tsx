@@ -15,7 +15,7 @@ import {
   type PrepDiagnostic,
 } from '../../../../../shared/prep-dsl';
 import { INPUT_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
-import { Tabs, TabsList, TabsTrigger } from '../../../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowOperatorConfigPanel } from '../../WorkflowOperatorConfigPanel';
 import { getOperatorCatalog } from './operator-catalog';
@@ -330,51 +330,52 @@ export function WorkflowInspector({
 
   return (
     <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
-          <span
-            className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
-          >
-            <Icon className="h-4 w-4" />
-          </span>
-          <div className="flex min-w-0 items-center gap-1.5">
-            {isEditingNodeTitle ? (
-              <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-surface px-2 shadow-soft ring-2 ring-accent/15">
-                <input
-                  ref={nodeTitleInputRef}
-                  value={node.label}
-                  maxLength={50}
-                  onChange={(event) => handleNodeTitleChange(event.target.value)}
-                  onBlur={() => setIsEditingNodeTitle(false)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === 'Escape') {
-                      event.currentTarget.blur();
-                    }
-                  }}
-                  className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-text-secondary outline-none"
-                />
-                <span className="ml-2 text-[10px] text-text-muted">{node.label.length}/50</span>
-              </span>
-            ) : (
-              <div className="min-w-0 truncate text-[14px] font-medium text-text-secondary">
-                {node.label || t(catalog.labelKey)}
-              </div>
-            )}
-            <button
-              onClick={() => setIsEditingNodeTitle(true)}
-              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
-              title={t('common.edit')}
+      <Tabs
+        value={resolvedTab}
+        onValueChange={(v) => onActiveTabChange(v as WorkflowInspectorTab)}
+        className="contents"
+      >
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
+            <span
+              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
             >
-              <PencilLine className="h-3.5 w-3.5" />
-              <span className="sr-only">{t('common.edit')}</span>
-            </button>
+              <Icon className="h-4 w-4" />
+            </span>
+            <div className="flex min-w-0 items-center gap-1.5">
+              {isEditingNodeTitle ? (
+                <span className="flex h-7 min-w-0 max-w-[16rem] items-center rounded-lg border border-accent/40 bg-surface px-2 shadow-soft ring-2 ring-accent/15">
+                  <input
+                    ref={nodeTitleInputRef}
+                    value={node.label}
+                    maxLength={50}
+                    onChange={(event) => handleNodeTitleChange(event.target.value)}
+                    onBlur={() => setIsEditingNodeTitle(false)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === 'Escape') {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    className="min-w-0 flex-1 bg-transparent text-[14px] font-medium text-text-secondary outline-none"
+                  />
+                  <span className="ml-2 text-[10px] text-text-muted">{node.label.length}/50</span>
+                </span>
+              ) : (
+                <div className="min-w-0 truncate text-[14px] font-medium text-text-secondary">
+                  {node.label || t(catalog.labelKey)}
+                </div>
+              )}
+              <button
+                onClick={() => setIsEditingNodeTitle(true)}
+                className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
+                title={t('common.edit')}
+              >
+                <PencilLine className="h-3.5 w-3.5" />
+                <span className="sr-only">{t('common.edit')}</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <Tabs
-            value={resolvedTab}
-            onValueChange={(v) => onActiveTabChange(v as WorkflowInspectorTab)}
-          >
+          <div className="flex flex-shrink-0 items-center gap-2">
             <TabsList className="flex gap-0 rounded-lg border-0 bg-surface-active p-0.5 text-xs">
               {inspectorTabs.map((tab) => (
                 <TabsTrigger
@@ -386,102 +387,104 @@ export function WorkflowInspector({
                 </TabsTrigger>
               ))}
             </TabsList>
-          </Tabs>
-          <X className="h-4 w-4 text-text-muted" />
+            <X className="h-4 w-4 text-text-muted" />
+          </div>
         </div>
-      </div>
-      <div
-        className={`min-h-0 flex-1 overflow-hidden ${
-          (resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl ? 'p-0' : 'p-2.5'
-        }`}
-      >
-        {resolvedTab === 'logs' ? (
-          <div className="h-full min-h-0 rounded-lg border border-border-muted bg-surface p-2.5 text-xs text-text-muted">
-            {t('data.workflow.noLogs')}
-          </div>
-        ) : resolvedTab === 'data' ? (
-          <WorkflowNodeDataPreview
-            preview={nodePreviewData}
-            isLoading={nodePreviewLoading}
-            error={nodePreviewError}
-            currentPage={nodePreviewPage}
-            onPageChange={setNodePreviewPage}
-          />
-        ) : usesOperatorDsl ? (
-          <WorkflowOperatorConfigPanel
-            mode={resolvedTab === 'dsl' ? 'dsl' : 'form'}
-            node={node}
-            workflowNodes={workflowNodes}
-            sourceNode={
-              operatorFieldSourceNode
-                ? {
-                    id: operatorFieldSourceNode.id,
-                    type: operatorFieldSourceNode.type,
-                    config: operatorFieldSourceNode.config,
-                  }
-                : undefined
-            }
-            rightSourceNode={
-              operatorRightSourceNode
-                ? {
-                    id: operatorRightSourceNode.id,
-                    type: operatorRightSourceNode.type,
-                    config: operatorRightSourceNode.config,
-                  }
-                : undefined
-            }
-            fieldCompletions={operatorFieldCompletions}
-            upstreamRowCount={nodePreviewData?.totalRows}
-            operatorDsl={operatorDsl}
-            operatorDslStatus={operatorDslStatus}
-            operatorDslDiagnostics={operatorDslDiagnostics}
-            isEditingOperatorDsl={isEditingOperatorDsl}
-            isDslDialogOpen={isDslDialogOpen}
-            isRunningOperatorDsl={isRunningOperatorDsl}
-            editorCompletionLabels={editorCompletionLabels}
-            formatEditorDiagnostic={formatEditorDiagnostic}
-            onNodeChange={onNodeChange}
-            onDslChange={handleOperatorDslChange}
-            onDiagnosticsChange={setOperatorDslDiagnostics}
-            onStartDslEdit={handleStartOperatorDslEdit}
-            onCancelDslEdit={handleCancelOperatorDslEdit}
-            onFormatDsl={handleFormatOperatorDsl}
-            onApplyDsl={() => void handleApplyOperatorDsl()}
-          />
-        ) : node.type === 'input_source' ? (
-          <WorkflowInputSourceConfig
-            node={node}
-            inputTables={inputTables}
-            isLoading={isInputTablesLoading}
-            onNodeChange={onNodeChange}
-          />
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-            <div className="grid content-start gap-3 sm:grid-cols-2">
-              {node.type === 'output' ? (
-                <WorkflowOutputConfig
-                  node={node}
-                  outputTables={outputTables}
-                  onNodeChange={onNodeChange}
-                />
-              ) : (
-                <>
-                  <SelectLike
-                    label={t('data.workflow.input')}
-                    value={t('data.workflow.previousOutput')}
-                  />
-                  <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
-                </>
-              )}
+        <TabsContent
+          value={resolvedTab}
+          forceMount
+          className={`min-h-0 flex-1 overflow-hidden ${
+            (resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl ? 'p-0' : 'p-2.5'
+          }`}
+        >
+          {resolvedTab === 'logs' ? (
+            <div className="h-full min-h-0 rounded-lg border border-border-muted bg-surface p-2.5 text-xs text-text-muted">
+              {t('data.workflow.noLogs')}
             </div>
-            <WorkflowSummaryPanel
-              title={t('data.workflow.summary')}
-              rows={summary.primary}
-              emptyText={t('data.workflow.noConfig')}
+          ) : resolvedTab === 'data' ? (
+            <WorkflowNodeDataPreview
+              preview={nodePreviewData}
+              isLoading={nodePreviewLoading}
+              error={nodePreviewError}
+              currentPage={nodePreviewPage}
+              onPageChange={setNodePreviewPage}
             />
-          </div>
-        )}
-      </div>
+          ) : usesOperatorDsl ? (
+            <WorkflowOperatorConfigPanel
+              mode={resolvedTab === 'dsl' ? 'dsl' : 'form'}
+              node={node}
+              workflowNodes={workflowNodes}
+              sourceNode={
+                operatorFieldSourceNode
+                  ? {
+                      id: operatorFieldSourceNode.id,
+                      type: operatorFieldSourceNode.type,
+                      config: operatorFieldSourceNode.config,
+                    }
+                  : undefined
+              }
+              rightSourceNode={
+                operatorRightSourceNode
+                  ? {
+                      id: operatorRightSourceNode.id,
+                      type: operatorRightSourceNode.type,
+                      config: operatorRightSourceNode.config,
+                    }
+                  : undefined
+              }
+              fieldCompletions={operatorFieldCompletions}
+              upstreamRowCount={nodePreviewData?.totalRows}
+              operatorDsl={operatorDsl}
+              operatorDslStatus={operatorDslStatus}
+              operatorDslDiagnostics={operatorDslDiagnostics}
+              isEditingOperatorDsl={isEditingOperatorDsl}
+              isDslDialogOpen={isDslDialogOpen}
+              isRunningOperatorDsl={isRunningOperatorDsl}
+              editorCompletionLabels={editorCompletionLabels}
+              formatEditorDiagnostic={formatEditorDiagnostic}
+              onNodeChange={onNodeChange}
+              onDslChange={handleOperatorDslChange}
+              onDiagnosticsChange={setOperatorDslDiagnostics}
+              onStartDslEdit={handleStartOperatorDslEdit}
+              onCancelDslEdit={handleCancelOperatorDslEdit}
+              onFormatDsl={handleFormatOperatorDsl}
+              onApplyDsl={() => void handleApplyOperatorDsl()}
+            />
+          ) : node.type === 'input_source' ? (
+            <WorkflowInputSourceConfig
+              node={node}
+              inputTables={inputTables}
+              isLoading={isInputTablesLoading}
+              onNodeChange={onNodeChange}
+            />
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+              <div className="grid content-start gap-3 sm:grid-cols-2">
+                {node.type === 'output' ? (
+                  <WorkflowOutputConfig
+                    node={node}
+                    outputTables={outputTables}
+                    onNodeChange={onNodeChange}
+                  />
+                ) : (
+                  <>
+                    <SelectLike
+                      label={t('data.workflow.input')}
+                      value={t('data.workflow.previousOutput')}
+                    />
+                    <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
+                  </>
+                )}
+              </div>
+              <WorkflowSummaryPanel
+                title={t('data.workflow.summary')}
+                rows={summary.primary}
+                emptyText={t('data.workflow.noConfig')}
+              />
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </aside>
   );
 }

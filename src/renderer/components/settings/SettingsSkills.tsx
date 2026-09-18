@@ -35,7 +35,7 @@ import {
 } from '../data-view/shared';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/button';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
@@ -536,14 +536,15 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       )}
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
-        <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">
-          <Tabs
-            value={activeWorkspaceTab}
-            onValueChange={(v) => {
-              if (v === 'market') void handleBrowseMarket();
-              else setActiveWorkspaceTab(v as SkillWorkspaceTab);
-            }}
-          >
+        <Tabs
+          value={activeWorkspaceTab}
+          onValueChange={(v) => {
+            if (v === 'market') void handleBrowseMarket();
+            else setActiveWorkspaceTab(v as SkillWorkspaceTab);
+          }}
+          className="contents"
+        >
+          <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">
             <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
               <TabsTrigger value="installed" className={underlineTabTriggerClass}>
                 {t('skills.workspace.installedTab')}
@@ -555,269 +556,276 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                 {t('skills.workspace.marketTab')}
               </TabsTrigger>
             </TabsList>
-          </Tabs>
-        </div>
-
-        <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-1 items-center">
-            <DataTableSearch
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder={t('skills.workspace.searchPlaceholder')}
-            />
           </div>
 
-          {activeWorkspaceTab === 'market' && (
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <DataToolbarButton
-                icon={<Plus className="h-3.5 w-3.5" />}
-                label={
-                  selectedPluginInstalled ? t('skills.pluginInstalled') : t('skills.pluginInstall')
-                }
-                onClick={() => void handleSelectedDelete()}
-                disabled={
-                  !selectedPlugin ||
-                  selectedPluginInstalled ||
-                  pluginActionKey !== null ||
-                  isLoading
-                }
-              />
-
-              <DataMoreMenu
-                items={[
-                  {
-                    key: 'refresh',
-                    label: t('skills.refreshSkills'),
-                    icon: <RefreshCw className="h-3.5 w-3.5" />,
-                    onClick: () => void loadPlugins(true),
-                  },
-                  {
-                    key: 'install-folder',
-                    label: t('skills.installSkillFromFolder'),
-                    icon: <Plus className="h-3.5 w-3.5" />,
-                    onClick: () => void handleInstall(),
-                  },
-                ]}
-              />
-            </div>
-          )}
-
-          {activeWorkspaceTab !== 'market' && (
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <DataToolbarButton
-                icon={
-                  selectedSkill?.enabled ? (
-                    <PowerOff className="h-3.5 w-3.5" />
-                  ) : (
-                    <Power className="h-3.5 w-3.5" />
-                  )
-                }
-                label={
-                  selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')
-                }
-                onClick={() => selectedSkill && void handleToggleEnabled(selectedSkill)}
-                disabled={!selectedSkill || isLoading}
-              />
-
-              <DataToolbarButton
-                icon={<FolderOpen className="h-3.5 w-3.5" />}
-                label={t('skills.openSkillPath')}
-                onClick={() => selectedSkill && void handleOpenSkillPath(selectedSkill)}
-                disabled={!selectedSkill || isLoading}
-              />
-            </div>
-          )}
-        </div>
-
-        <div
-          className={`mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
-        >
-          <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
-            <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
-              <span />
-              <span>{t('skills.workspace.table.skill')}</span>
-              <span>{t('skills.workspace.table.type')}</span>
-              <span>{t('skills.workspace.table.status')}</span>
-              <span className="hidden 2xl:block">{t('skills.workspace.table.updatedAt')}</span>
-            </div>
-
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-              {pageItems.length === 0 ? (
-                <EmptyState
-                  label={t('skills.workspace.emptyTitle')}
-                  description={t(
-                    searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.skillsHint'
-                  )}
-                  action={
-                    searchQuery.trim() ? (
-                      <Button variant="secondary" onClick={() => setSearchQuery('')}>
-                        {t('workspaceEmpty.clearSearch')}
-                      </Button>
-                    ) : (
-                      activeWorkspaceTab !== 'market' && (
-                        <Button
-                          variant="primary"
-                          onClick={() => void handleBrowseMarket()}
-                          className="shadow-soft"
-                        >
-                          {t('skills.workspace.marketTab')}
-                        </Button>
-                      )
-                    )
-                  }
+          <TabsContent value={activeWorkspaceTab} forceMount className="contents">
+            <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-1 items-center">
+                <DataTableSearch
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder={t('skills.workspace.searchPlaceholder')}
                 />
-              ) : (
-                pageItems.map((item) => (
-                  <SkillTableRow
-                    key={item.id}
-                    item={item}
-                    selected={selectedItem?.id === item.id}
-                    onSelect={() => setSelectedSkillId(item.id)}
+              </div>
+
+              {activeWorkspaceTab === 'market' && (
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <DataToolbarButton
+                    icon={<Plus className="h-3.5 w-3.5" />}
+                    label={
+                      selectedPluginInstalled
+                        ? t('skills.pluginInstalled')
+                        : t('skills.pluginInstall')
+                    }
+                    onClick={() => void handleSelectedDelete()}
+                    disabled={
+                      !selectedPlugin ||
+                      selectedPluginInstalled ||
+                      pluginActionKey !== null ||
+                      isLoading
+                    }
                   />
-                ))
+
+                  <DataMoreMenu
+                    items={[
+                      {
+                        key: 'refresh',
+                        label: t('skills.refreshSkills'),
+                        icon: <RefreshCw className="h-3.5 w-3.5" />,
+                        onClick: () => void loadPlugins(true),
+                      },
+                      {
+                        key: 'install-folder',
+                        label: t('skills.installSkillFromFolder'),
+                        icon: <Plus className="h-3.5 w-3.5" />,
+                        onClick: () => void handleInstall(),
+                      },
+                    ]}
+                  />
+                </div>
+              )}
+
+              {activeWorkspaceTab !== 'market' && (
+                <div className="flex flex-shrink-0 items-center gap-2">
+                  <DataToolbarButton
+                    icon={
+                      selectedSkill?.enabled ? (
+                        <PowerOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Power className="h-3.5 w-3.5" />
+                      )
+                    }
+                    label={
+                      selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')
+                    }
+                    onClick={() => selectedSkill && void handleToggleEnabled(selectedSkill)}
+                    disabled={!selectedSkill || isLoading}
+                  />
+
+                  <DataToolbarButton
+                    icon={<FolderOpen className="h-3.5 w-3.5" />}
+                    label={t('skills.openSkillPath')}
+                    onClick={() => selectedSkill && void handleOpenSkillPath(selectedSkill)}
+                    disabled={!selectedSkill || isLoading}
+                  />
+                </div>
               )}
             </div>
 
-            <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
-              <span className="min-w-0 truncate">
-                {t('skills.workspace.totalCount', {
-                  count: tableItems.length,
-                  defaultValue: `共 ${tableItems.length} 个技能`,
-                })}
-              </span>
-              <div className="flex flex-shrink-0 items-center gap-2">
-                <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3">
-                  {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
-                </span>
-                {pageCount > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                    disabled={safeCurrentPage <= 1}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                )}
-                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent-muted px-2 text-accent">
-                  {safeCurrentPage}
-                </span>
-                {(pageCount > 1 || hasNextPage) && (
-                  <button
-                    type="button"
-                    onClick={() => void handleNextPage()}
-                    disabled={!hasNextPage || isPluginLoadingMore}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {isPluginLoadingMore ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {selectedItem && (
-            <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
-              <>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
-                    <SelectedIcon className="h-7 w-7" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[16px] font-semibold text-text-primary">
-                      {selectedItem.name}
-                    </h3>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <SkillTypeBadge item={selectedItem} />
-                      <SkillStatusBadge item={selectedItem} />
-                    </div>
-                  </div>
+            <div
+              className={`mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
+            >
+              <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
+                <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
+                  <span />
+                  <span>{t('skills.workspace.table.skill')}</span>
+                  <span>{t('skills.workspace.table.type')}</span>
+                  <span>{t('skills.workspace.table.status')}</span>
+                  <span className="hidden 2xl:block">{t('skills.workspace.table.updatedAt')}</span>
                 </div>
 
-                <p className="mt-4 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
-                  {selectedItem.description || t('skills.installSkillsDesc')}
-                </p>
-
-                <div className="mt-4 border-t border-border-muted pt-4">
-                  <h4 className="text-[13px] font-semibold text-text-primary">
-                    {t('skills.workspace.supportedCapabilities')}
-                  </h4>
-                  <div className="mt-3 space-y-2">
-                    {selectedItem.tags.map((tag) => (
-                      <div
-                        key={`${selectedItem.id}:${tag}`}
-                        className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-text-secondary"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-                        <span className="min-w-0 flex-1 truncate" title={tag}>
-                          {tag}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <dl className="mt-4 space-y-3 border-t border-border-muted pt-4 text-[12px]">
-                  <div>
-                    <dt className="font-semibold text-text-primary">
-                      {t('skills.workspace.table.updatedAt')}
-                    </dt>
-                    <dd className="mt-1 text-text-secondary">
-                      {formatSkillDate(selectedItem.updatedAt)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-semibold text-text-primary">
-                      {t('skills.workspace.source')}
-                    </dt>
-                    <dd className="mt-1 text-text-secondary">
-                      {selectedItem.kind === 'plugin'
-                        ? t('skills.skillHubSource')
-                        : selectedItem.type === 'builtin'
-                          ? t('skills.workspace.systemBuiltin')
-                          : t('skills.customSkills')}
-                    </dd>
-                  </div>
-                </dl>
-
-                {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
-                  <div className="mt-auto pt-4">
-                    <button
-                      type="button"
-                      onClick={() => void handleSelectedDelete()}
-                      disabled={
-                        (!selectedPlugin && (!selectedSkill || selectedSkill.type === 'builtin')) ||
-                        selectedPluginInstalled ||
-                        pluginActionKey !== null ||
-                        isLoading
-                      }
-                      className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                        selectedPlugin
-                          ? 'border-accent/20 bg-accent-muted text-accent hover:bg-accent-muted'
-                          : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
-                      }`}
-                    >
-                      {selectedPlugin ? (
-                        <Plus className="h-3.5 w-3.5" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+                  {pageItems.length === 0 ? (
+                    <EmptyState
+                      label={t('skills.workspace.emptyTitle')}
+                      description={t(
+                        searchQuery.trim()
+                          ? 'workspaceEmpty.searchHint'
+                          : 'workspaceEmpty.skillsHint'
                       )}
-                      {selectedPlugin
-                        ? selectedPluginInstalled
-                          ? t('skills.pluginInstalled')
-                          : t('skills.pluginInstall')
-                        : t('skills.pluginManageUninstall')}
-                    </button>
+                      action={
+                        searchQuery.trim() ? (
+                          <Button variant="secondary" onClick={() => setSearchQuery('')}>
+                            {t('workspaceEmpty.clearSearch')}
+                          </Button>
+                        ) : (
+                          activeWorkspaceTab !== 'market' && (
+                            <Button
+                              variant="primary"
+                              onClick={() => void handleBrowseMarket()}
+                              className="shadow-soft"
+                            >
+                              {t('skills.workspace.marketTab')}
+                            </Button>
+                          )
+                        )
+                      }
+                    />
+                  ) : (
+                    pageItems.map((item) => (
+                      <SkillTableRow
+                        key={item.id}
+                        item={item}
+                        selected={selectedItem?.id === item.id}
+                        onSelect={() => setSelectedSkillId(item.id)}
+                      />
+                    ))
+                  )}
+                </div>
+
+                <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                  <span className="min-w-0 truncate">
+                    {t('skills.workspace.totalCount', {
+                      count: tableItems.length,
+                      defaultValue: `共 ${tableItems.length} 个技能`,
+                    })}
+                  </span>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3">
+                      {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
+                    </span>
+                    {pageCount > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        disabled={safeCurrentPage <= 1}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                    )}
+                    <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent-muted px-2 text-accent">
+                      {safeCurrentPage}
+                    </span>
+                    {(pageCount > 1 || hasNextPage) && (
+                      <button
+                        type="button"
+                        onClick={() => void handleNextPage()}
+                        disabled={!hasNextPage || isPluginLoadingMore}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {isPluginLoadingMore ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
                   </div>
-                )}
-              </>
-            </aside>
-          )}
-        </div>
+                </div>
+              </div>
+
+              {selectedItem && (
+                <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
+                  <>
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
+                        <SelectedIcon className="h-7 w-7" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-[16px] font-semibold text-text-primary">
+                          {selectedItem.name}
+                        </h3>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <SkillTypeBadge item={selectedItem} />
+                          <SkillStatusBadge item={selectedItem} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
+                      {selectedItem.description || t('skills.installSkillsDesc')}
+                    </p>
+
+                    <div className="mt-4 border-t border-border-muted pt-4">
+                      <h4 className="text-[13px] font-semibold text-text-primary">
+                        {t('skills.workspace.supportedCapabilities')}
+                      </h4>
+                      <div className="mt-3 space-y-2">
+                        {selectedItem.tags.map((tag) => (
+                          <div
+                            key={`${selectedItem.id}:${tag}`}
+                            className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-text-secondary"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+                            <span className="min-w-0 flex-1 truncate" title={tag}>
+                              {tag}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <dl className="mt-4 space-y-3 border-t border-border-muted pt-4 text-[12px]">
+                      <div>
+                        <dt className="font-semibold text-text-primary">
+                          {t('skills.workspace.table.updatedAt')}
+                        </dt>
+                        <dd className="mt-1 text-text-secondary">
+                          {formatSkillDate(selectedItem.updatedAt)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-semibold text-text-primary">
+                          {t('skills.workspace.source')}
+                        </dt>
+                        <dd className="mt-1 text-text-secondary">
+                          {selectedItem.kind === 'plugin'
+                            ? t('skills.skillHubSource')
+                            : selectedItem.type === 'builtin'
+                              ? t('skills.workspace.systemBuiltin')
+                              : t('skills.customSkills')}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
+                      <div className="mt-auto pt-4">
+                        <button
+                          type="button"
+                          onClick={() => void handleSelectedDelete()}
+                          disabled={
+                            (!selectedPlugin &&
+                              (!selectedSkill || selectedSkill.type === 'builtin')) ||
+                            selectedPluginInstalled ||
+                            pluginActionKey !== null ||
+                            isLoading
+                          }
+                          className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                            selectedPlugin
+                              ? 'border-accent/20 bg-accent-muted text-accent hover:bg-accent-muted'
+                              : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
+                          }`}
+                        >
+                          {selectedPlugin ? (
+                            <Plus className="h-3.5 w-3.5" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          {selectedPlugin
+                            ? selectedPluginInstalled
+                              ? t('skills.pluginInstalled')
+                              : t('skills.pluginInstall')
+                            : t('skills.pluginManageUninstall')}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                </aside>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </section>
 
       {pluginToastMessage && (

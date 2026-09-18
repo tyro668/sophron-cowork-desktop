@@ -29,6 +29,13 @@ const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Stack of currently open dialogs — the last entry is topmost. Only the
+ * topmost dialog answers Esc/Tab, so a nested dialog (e.g. a confirm box
+ * opened from a settings modal) never closes its parent along with itself.
+ */
+const dialogStack: symbol[] = [];
+
+/**
  * Lightweight modal dialog primitive: portal, dimmed overlay, Esc-to-close,
  * Tab/Shift+Tab focus trap, initial focus (`[data-autofocus]` inside the panel,
  * else the panel itself) and focus restoration on close.
@@ -48,6 +55,13 @@ export function Dialog({
 }: DialogProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const restoreFocusRef = React.useRef<HTMLElement | null>(null);
+  const stackIdRef = React.useRef<symbol | null>(null);
+  if (stackIdRef.current === null) stackIdRef.current = Symbol('dialog');
+  const stackId = stackIdRef.current;
+  const isTopmost = React.useCallback(
+    () => dialogStack[dialogStack.length - 1] === stackId,
+    [stackId]
+  );
   // Latest-close ref keeps the open-lifecycle effect stable: changing the
   // consumer's onOpenChange identity must not re-run focus initialization.
   const requestCloseRef = React.useRef<() => void>(() => {});
@@ -59,9 +73,11 @@ export function Dialog({
 
   React.useEffect(() => {
     if (!open) return;
+    dialogStack.push(stackId);
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopmost()) return;
       if (event.key === 'Escape') {
         if (closeOnEscapeRef.current) {
           event.preventDefault();
@@ -100,11 +116,13 @@ export function Dialog({
     (autofocus ?? panel)?.focus();
 
     return () => {
+      const index = dialogStack.lastIndexOf(stackId);
+      if (index !== -1) dialogStack.splice(index, 1);
       document.removeEventListener('keydown', onKeyDown, true);
       restoreFocusRef.current?.focus?.();
       restoreFocusRef.current = null;
     };
-  }, [open]);
+  }, [open, stackId, isTopmost]);
 
   if (!open) return null;
 
@@ -115,7 +133,9 @@ export function Dialog({
         overlayClassName
       )}
       onMouseDown={(event) => {
-        if (closeOnOverlayClick && event.target === event.currentTarget) requestCloseRef.current();
+        if (isTopmost() && closeOnOverlayClick && event.target === event.currentTarget) {
+          requestCloseRef.current();
+        }
       }}
     >
       <div

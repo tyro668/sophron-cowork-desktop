@@ -4,6 +4,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
+import { Input } from '../ui/input';
 
 interface Props {
   feishuAppId: string;
@@ -51,35 +52,57 @@ export function FeishuConfigStep({
 
       <div className="grid gap-3">
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">App ID</label>
-          <input
+          <label
+            htmlFor="feishu-app-id"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
+            App ID
+          </label>
+          <Input
+            id="feishu-app-id"
             type="text"
             value={feishuAppId}
             onChange={(e) => onAppIdChange(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+            className="h-auto bg-surface-hover px-3 py-2.5"
             placeholder="cli_xxxxxxxxxxxxxxxx"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">App Secret</label>
-          <input
+          <label
+            htmlFor="feishu-app-secret"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
+            App Secret
+          </label>
+          <Input
+            id="feishu-app-secret"
             type="password"
             value={feishuAppSecret}
             onChange={(e) => onAppSecretChange(e.target.value)}
-            className="w-full px-3 py-2.5 bg-surface-hover border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+            className="h-auto bg-surface-hover px-3 py-2.5"
             placeholder="••••••••••••••••"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <span
+            id="feishu-dm-policy-label"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             {t('remote.dmPolicy')}
-          </label>
-          <div className="grid grid-cols-3 gap-2">
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby="feishu-dm-policy-label"
+            className="grid grid-cols-3 gap-2"
+          >
             {dmPolicies.map((option) => (
               <button
                 key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={feishuDmPolicy === option.value}
                 onClick={() => onDmPolicyChange(option.value)}
                 className={`p-3 rounded-lg border text-left transition-all ${
                   feishuDmPolicy === option.value

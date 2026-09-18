@@ -39,7 +39,7 @@ import {
 } from './schedule/model';
 import { AutomationListPanel, AutomationRunLogPanel, getRunSortTime } from './schedule/listPanels';
 import { underlineTabTriggerClass } from '../data-view/shared';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   ActionChainSection,
   EditorHeader,
@@ -561,8 +561,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       {bannerContent}
 
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
-        <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
-          <Tabs value={activeListTab} onValueChange={(v) => setActiveListTab(v as ListTab)}>
+        <Tabs
+          value={activeListTab}
+          onValueChange={(v) => setActiveListTab(v as ListTab)}
+          className="contents"
+        >
+          <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
             <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
               <TabsTrigger value="automations" className={underlineTabTriggerClass}>
                 {tr('schedule.tabs.automations', '自动化')}
@@ -571,40 +575,41 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 {tr('schedule.tabs.runs', '执行日志')}
               </TabsTrigger>
             </TabsList>
-          </Tabs>
-        </div>
-        {activeListTab === 'automations' ? (
-          <AutomationListPanel
-            automations={pageAutomations}
-            totalAutomations={filteredAutomations.length}
-            currentPage={safeCurrentPage}
-            selectedId={selectedId}
-            selectedAutomation={selectedAutomation}
-            searchQuery={search}
-            isLoading={isLoading}
-            onCreate={createNew}
-            onSearchChange={setSearch}
-            onRefresh={() => void load()}
-            onPageChange={setCurrentPage}
-            onRun={() => void runNow()}
-            onEdit={openSelectedDetail}
-            onDelete={() => void remove()}
-            onSelect={(automation) => {
-              suppressSelectedAutomationSyncRef.current = false;
-              setSelectedId(automation.id);
-              setDraft(automationToDraft(automation));
-            }}
-            tr={tr}
-          />
-        ) : (
-          <AutomationRunLogPanel
-            automations={automations}
-            entries={automationRunLogs}
-            isLoading={isRunsLoading}
-            onRefresh={() => void loadRuns()}
-            tr={tr}
-          />
-        )}
+          </div>
+          <TabsContent value="automations" className="contents">
+            <AutomationListPanel
+              automations={pageAutomations}
+              totalAutomations={filteredAutomations.length}
+              currentPage={safeCurrentPage}
+              selectedId={selectedId}
+              selectedAutomation={selectedAutomation}
+              searchQuery={search}
+              isLoading={isLoading}
+              onCreate={createNew}
+              onSearchChange={setSearch}
+              onRefresh={() => void load()}
+              onPageChange={setCurrentPage}
+              onRun={() => void runNow()}
+              onEdit={openSelectedDetail}
+              onDelete={() => void remove()}
+              onSelect={(automation) => {
+                suppressSelectedAutomationSyncRef.current = false;
+                setSelectedId(automation.id);
+                setDraft(automationToDraft(automation));
+              }}
+              tr={tr}
+            />
+          </TabsContent>
+          <TabsContent value="runs" className="contents">
+            <AutomationRunLogPanel
+              automations={automations}
+              entries={automationRunLogs}
+              isLoading={isRunsLoading}
+              onRefresh={() => void loadRuns()}
+              tr={tr}
+            />
+          </TabsContent>
+        </Tabs>
       </section>
     </div>
   );

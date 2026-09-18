@@ -124,6 +124,43 @@ describe('Tabs', () => {
     fireEvent.keyDown(tabA.parentElement!, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(tabB);
   });
+
+  it('links tabs to their panels via aria-controls/aria-labelledby', () => {
+    render(<TabsFixture />);
+    const tabA = screen.getByRole('tab', { name: 'A' });
+    const tabB = screen.getByRole('tab', { name: 'B' });
+    const panelA = screen.getByText('panel-a');
+
+    // Active panel is registered → tab A points at it; inactive B has no
+    // mounted panel yet, so it must not carry a dangling reference.
+    expect(panelA.getAttribute('role')).toBe('tabpanel');
+    expect(tabA.getAttribute('aria-controls')).toBe(panelA.id);
+    expect(panelA.getAttribute('aria-labelledby')).toBe(tabA.id);
+    expect(tabB.getAttribute('aria-controls')).toBeNull();
+
+    fireEvent.click(tabB);
+    const panelB = screen.getByText('panel-b');
+    expect(tabB.getAttribute('aria-controls')).toBe(panelB.id);
+    expect(panelB.getAttribute('aria-labelledby')).toBe(tabB.id);
+  });
+
+  it('never emits dangling aria-controls without a mounted panel', () => {
+    render(
+      <Tabs value="a" onValueChange={() => {}}>
+        <TabsList>
+          <TabsTrigger value="a">A</TabsTrigger>
+          <TabsTrigger value="b" aria-controls="external-panel">
+            B
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+    );
+    expect(screen.getByRole('tab', { name: 'A' }).getAttribute('aria-controls')).toBeNull();
+    // Explicit aria-controls passes through for externally managed panels.
+    expect(screen.getByRole('tab', { name: 'B' }).getAttribute('aria-controls')).toBe(
+      'external-panel'
+    );
+  });
 });
 
 describe('Dialog', () => {
@@ -238,6 +275,59 @@ describe('Dialog', () => {
     const overlay = document.body.querySelector('.fixed.inset-0') as HTMLElement;
     fireEvent.mouseDown(overlay);
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('stacked dialogs: Esc and Tab only reach the topmost, focus restores per level', () => {
+    function Fixture() {
+      const [outer, setOuter] = React.useState(false);
+      const [inner, setInner] = React.useState(false);
+      return (
+        <>
+          <button data-testid="open-outer" onClick={() => setOuter(true)}>
+            open outer
+          </button>
+          <Dialog open={outer} onOpenChange={setOuter} ariaLabel="outer">
+            <button data-testid="open-inner" onClick={() => setInner(true)}>
+              open inner
+            </button>
+            <button data-testid="outer-other">outer other</button>
+          </Dialog>
+          <Dialog open={inner} onOpenChange={setInner} ariaLabel="inner">
+            <button data-testid="inner-btn" data-autofocus>
+              inner
+            </button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Fixture />);
+    const openOuter = screen.getByTestId('open-outer');
+    openOuter.focus();
+    fireEvent.click(openOuter);
+    const openInner = screen.getByTestId('open-inner');
+    openInner.focus();
+    fireEvent.click(openInner);
+
+    const innerBtn = screen.getByTestId('inner-btn');
+    expect(document.activeElement).toBe(innerBtn);
+    const dialogs = () => screen.queryAllByRole('dialog');
+    expect(dialogs()).toHaveLength(2);
+
+    // Tab while stacked stays inside the topmost dialog (inner has one
+    // focusable item — it wraps to itself; the outer trap must not run).
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' });
+    expect(document.activeElement).toBe(innerBtn);
+
+    // First Esc closes only the topmost dialog and restores focus into it.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(dialogs()).toHaveLength(1);
+    expect(screen.queryByTestId('inner-btn')).toBeNull();
+    expect(document.activeElement).toBe(openInner);
+
+    // Second Esc reaches the now-topmost outer dialog and restores its origin.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(dialogs()).toHaveLength(0);
+    expect(document.activeElement).toBe(openOuter);
   });
 });
 

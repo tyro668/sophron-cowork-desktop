@@ -5,6 +5,7 @@
 import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
 import { Switch } from '../ui/switch';
+import { Input } from '../ui/input';
 
 interface Props {
   botToken: string;
@@ -48,14 +49,18 @@ export function SlackConfigStep({
 
       <div className="grid gap-4">
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <label
+            htmlFor="slack-bot-token"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             {t('remote.slackBotToken')}
           </label>
-          <input
+          <Input
+            id="slack-bot-token"
             type="password"
             value={botToken}
             onChange={(e) => onBotTokenChange(e.target.value)}
-            className="w-full px-4 py-3 bg-surface-hover border border-border rounded-xl text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+            className="h-auto bg-surface-hover px-4 py-3"
             placeholder="xoxb-••••••••••••"
           />
         </div>
@@ -76,27 +81,41 @@ export function SlackConfigStep({
 
         {useSocketMode && (
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
+            <label
+              htmlFor="slack-app-token"
+              className="block text-sm font-medium text-text-secondary mb-2"
+            >
               {t('remote.slackAppToken')}
             </label>
-            <input
+            <Input
+              id="slack-app-token"
               type="password"
               value={appToken}
               onChange={(e) => onAppTokenChange(e.target.value)}
-              className="w-full px-4 py-3 bg-surface-hover border border-border rounded-xl text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+              className="h-auto bg-surface-hover px-4 py-3"
               placeholder="xapp-••••••••••••"
             />
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-text-secondary mb-2">
+          <span
+            id="slack-dm-policy-label"
+            className="block text-sm font-medium text-text-secondary mb-2"
+          >
             {t('remote.dmPolicy')}
-          </label>
-          <div className="grid grid-cols-3 gap-2">
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby="slack-dm-policy-label"
+            className="grid grid-cols-3 gap-2"
+          >
             {dmPolicies.map((option) => (
               <button
                 key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={dmPolicy === option.value}
                 onClick={() => onDmPolicyChange(option.value)}
                 className={`p-3 rounded-xl border-2 text-left transition-all ${
                   dmPolicy === option.value

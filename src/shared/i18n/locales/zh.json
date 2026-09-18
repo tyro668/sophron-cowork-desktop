@@ -24,6 +24,9 @@
     "optional": "可选",
     "appLogoAlt": "九思助理标志",
     "pastedImageAlt": "粘贴图片 {{index}}",
+    "removeImage": "删除图片 {{index}}",
+    "removeAttachment": "删除附件 {{name}}",
+    "removeCloudTable": "移除数据表 {{name}}",
     "expand": "展开",
     "collapse": "收起"
   },
@@ -3053,6 +3056,7 @@
     "webhookDesc": "飞书主动推送消息到你的服务器，需要公网可访问的地址",
     "localWebhookUrl": "本地 Webhook 地址",
     "useBuiltInNgrok": "使用内置 ngrok",
+    "ngrokAuthToken": "ngrok Authtoken",
     "ngrokHelpPrefix": "从",
     "ngrokHelpSuffix": "免费获取",
     "tunnelConnected": "隧道已连接",

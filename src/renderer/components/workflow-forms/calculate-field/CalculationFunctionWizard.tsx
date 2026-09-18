@@ -23,7 +23,7 @@ import {
   type CalculationFrameBoundType,
 } from '../../../../shared/calculate-field/wizard-state';
 import { useDragReorder } from '../../../hooks/useDragReorder';
-import { Tabs, TabsList, TabsTrigger } from '../../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassFieldTagPicker } from '../shared/GlassFieldTagPicker';
@@ -254,6 +254,7 @@ export function CalculationFunctionWizard({
         <Tabs
           value={category}
           onValueChange={(v) => selectCategory(v as CalculationFunctionCategory)}
+          className="contents"
         >
           <TabsList
             aria-label={tr('calcFieldOpenWizard')}
@@ -269,231 +270,235 @@ export function CalculationFunctionWizard({
               </TabsTrigger>
             ))}
           </TabsList>
-        </Tabs>
 
-        <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto pr-1">
-          <section className="p-3">
-            <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <WizardLabel text={tr('calcFieldFunction')}>
-                <GlassOptionSingleSelect
-                  value={definition.id}
-                  groups={[
-                    {
-                      key: category,
-                      items: definitions.map((item) => ({
-                        value: item.id,
-                        label: tr(item.labelKey),
-                      })),
-                    },
-                  ]}
-                  onChange={selectFunction}
-                  className="h-8 w-full text-[12px]"
-                />
-              </WizardLabel>
-
-              {definition.valueArgument !== 'none' && (
-                <WizardLabel text={tr('expression.expressionFunctionArgument')}>
-                  <GlassFieldSingleSelect
-                    value={value}
-                    options={valueOptions}
-                    columnTypes={columnTypes}
-                    onChange={setValue}
-                    placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                    className="h-8 w-full"
+          <TabsContent
+            value={category}
+            forceMount
+            className="scrollbar-hover min-h-0 flex-1 overflow-y-auto pr-1"
+          >
+            <section className="p-3">
+              <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <WizardLabel text={tr('calcFieldFunction')}>
+                  <GlassOptionSingleSelect
+                    value={definition.id}
+                    groups={[
+                      {
+                        key: category,
+                        items: definitions.map((item) => ({
+                          value: item.id,
+                          label: tr(item.labelKey),
+                        })),
+                      },
+                    ]}
+                    onChange={selectFunction}
+                    className="h-8 w-full text-[12px]"
                   />
                 </WizardLabel>
-              )}
 
-              {definition.extraParameter && (
-                <WizardLabel text={tr(definition.extraParameter.labelKey)}>
-                  <GlassFormTextInput
-                    inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
-                    value={effectiveExtraParameter}
-                    onChange={setExtraParameter}
-                    className="h-8 w-full rounded-md px-2 text-[12px]"
-                  />
-                </WizardLabel>
-              )}
-
-              {definition.parameters?.map((parameter) => (
-                <WizardLabel key={parameter.key} text={tr(parameter.labelKey)}>
-                  {parameter.kind === 'temporal-field' ? (
+                {definition.valueArgument !== 'none' && (
+                  <WizardLabel text={tr('expression.expressionFunctionArgument')}>
                     <GlassFieldSingleSelect
-                      value={effectiveParameterValues[parameter.key]}
-                      options={temporalFields}
+                      value={value}
+                      options={valueOptions}
                       columnTypes={columnTypes}
-                      onChange={(nextValue) =>
-                        setParameterValues((current) => ({
-                          ...current,
-                          [parameter.key]: nextValue,
-                        }))
-                      }
+                      onChange={setValue}
                       placeholder={tr('expressionFunctionArgumentPlaceholder')}
                       className="h-8 w-full"
                     />
-                  ) : parameter.kind === 'option' ? (
-                    <GlassOptionSingleSelect
-                      value={effectiveParameterValues[parameter.key]}
-                      groups={[
-                        {
-                          key: parameter.key,
-                          items: (parameter.options ?? []).map((option) => ({
-                            value: option.value,
-                            label: tr(option.labelKey),
-                          })),
-                        },
-                      ]}
-                      onChange={(nextValue) =>
-                        setParameterValues((current) => ({
-                          ...current,
-                          [parameter.key]: nextValue,
-                        }))
-                      }
-                      className="h-8 w-full text-[12px]"
-                    />
-                  ) : (
+                  </WizardLabel>
+                )}
+
+                {definition.extraParameter && (
+                  <WizardLabel text={tr(definition.extraParameter.labelKey)}>
                     <GlassFormTextInput
-                      inputMode="numeric"
-                      value={effectiveParameterValues[parameter.key]}
-                      onChange={(nextValue) =>
-                        setParameterValues((current) => ({
-                          ...current,
-                          [parameter.key]: nextValue,
-                        }))
-                      }
+                      inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
+                      value={effectiveExtraParameter}
+                      onChange={setExtraParameter}
                       className="h-8 w-full rounded-md px-2 text-[12px]"
                     />
-                  )}
-                </WizardLabel>
-              ))}
-            </div>
-          </section>
+                  </WizardLabel>
+                )}
 
-          <div className="grid grid-cols-1 border-t border-border-muted/60 md:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.65fr)]">
-            <section className="flex min-w-0 flex-col gap-3 p-3">
-              <SectionTitle>{tr('calcFieldFieldConfig')}</SectionTitle>
-              <div className="flex min-h-0 flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-text-muted">
-                  {tr('calcFieldPartitionBy')}
-                </span>
-                <GlassFieldTagPicker
-                  columns={fieldCompletions}
-                  selected={partitionBy}
-                  onChange={setPartitionBy}
-                  onRemove={(field) =>
-                    setPartitionBy((current) => current.filter((item) => item !== field))
-                  }
-                  onClear={() => setPartitionBy([])}
-                  open={partitionOpen}
-                  onToggle={() => setPartitionOpen((current) => !current)}
-                  columnTypes={columnTypes}
-                  maxHeight="132px"
-                  variant="flat"
-                  placeholder={tr('noFieldsSelected')}
-                />
+                {definition.parameters?.map((parameter) => (
+                  <WizardLabel key={parameter.key} text={tr(parameter.labelKey)}>
+                    {parameter.kind === 'temporal-field' ? (
+                      <GlassFieldSingleSelect
+                        value={effectiveParameterValues[parameter.key]}
+                        options={temporalFields}
+                        columnTypes={columnTypes}
+                        onChange={(nextValue) =>
+                          setParameterValues((current) => ({
+                            ...current,
+                            [parameter.key]: nextValue,
+                          }))
+                        }
+                        placeholder={tr('expressionFunctionArgumentPlaceholder')}
+                        className="h-8 w-full"
+                      />
+                    ) : parameter.kind === 'option' ? (
+                      <GlassOptionSingleSelect
+                        value={effectiveParameterValues[parameter.key]}
+                        groups={[
+                          {
+                            key: parameter.key,
+                            items: (parameter.options ?? []).map((option) => ({
+                              value: option.value,
+                              label: tr(option.labelKey),
+                            })),
+                          },
+                        ]}
+                        onChange={(nextValue) =>
+                          setParameterValues((current) => ({
+                            ...current,
+                            [parameter.key]: nextValue,
+                          }))
+                        }
+                        className="h-8 w-full text-[12px]"
+                      />
+                    ) : (
+                      <GlassFormTextInput
+                        inputMode="numeric"
+                        value={effectiveParameterValues[parameter.key]}
+                        onChange={(nextValue) =>
+                          setParameterValues((current) => ({
+                            ...current,
+                            [parameter.key]: nextValue,
+                          }))
+                        }
+                        className="h-8 w-full rounded-md px-2 text-[12px]"
+                      />
+                    )}
+                  </WizardLabel>
+                ))}
               </div>
+            </section>
 
-              <div className="border-t border-border-muted/60 pt-3">
-                <div className="mb-1.5 text-[11px] font-medium text-text-muted">
-                  {tr('calcFieldOrderBy')}
-                </div>
-                {definition.order === 'required' ? (
-                  <GlassRowList
-                    headerClassName=""
-                    items={activeOrderBy}
-                    columns={[
-                      {
-                        flex: 'flex-[3]',
-                        header: tr('sortKeys.sortFieldHeader'),
-                        render: (item, index) => {
-                          const disabledOptions = new Set(
-                            activeOrderBy.map((entry) => entry.field).filter(Boolean)
-                          );
-                          disabledOptions.delete(item.field);
-                          return (
-                            <GlassFieldSingleSelect
-                              value={item.field}
-                              options={fieldCompletions}
-                              columnTypes={columnTypes}
-                              disabledOptions={disabledOptions}
-                              onChange={(field) => updateOrderField(index, { field })}
-                              placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                              className="w-full"
-                            />
-                          );
-                        },
-                      },
-                      {
-                        flex: 'flex-[1.4]',
-                        header: tr('sortKeys.sortDirectionHeader'),
-                        render: (item, index) => (
-                          <GlassDirectionToggle
-                            value={item.direction}
-                            onChange={(direction) => updateOrderField(index, { direction })}
-                            className="h-6 w-full px-1 text-[11px]"
-                          />
-                        ),
-                      },
-                    ]}
-                    onAdd={addOrderField}
-                    onRemove={removeOrderField}
-                    addTitle={tr('sortKeys.sortAddKey')}
-                    removeTitle={tr('sortKeys.sortRemoveKey')}
-                    canAct={(action) =>
-                      action !== 'add' ||
-                      (!(definition.frame === 'custom' && usesRangeOffset) &&
-                        !activeOrderBy.some((item) => !item.field) &&
-                        activeOrderBy.length < fieldCompletions.length)
+            <div className="grid grid-cols-1 border-t border-border-muted/60 md:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.65fr)]">
+              <section className="flex min-w-0 flex-col gap-3 p-3">
+                <SectionTitle>{tr('calcFieldFieldConfig')}</SectionTitle>
+                <div className="flex min-h-0 flex-col gap-1.5">
+                  <span className="text-[11px] font-medium text-text-muted">
+                    {tr('calcFieldPartitionBy')}
+                  </span>
+                  <GlassFieldTagPicker
+                    columns={fieldCompletions}
+                    selected={partitionBy}
+                    onChange={setPartitionBy}
+                    onRemove={(field) =>
+                      setPartitionBy((current) => current.filter((item) => item !== field))
                     }
-                    draggable
-                    onDragStart={handleDragStart}
-                    onDragOver={handleDragOver}
-                    onDragEnd={handleDragEnd}
-                    onKeyboardMove={handleKeyboardMove}
-                    getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
-                    dragTitle={tr('rowList.dragToReorder')}
+                    onClear={() => setPartitionBy([])}
+                    open={partitionOpen}
+                    onToggle={() => setPartitionOpen((current) => !current)}
+                    columnTypes={columnTypes}
+                    maxHeight="132px"
+                    variant="flat"
+                    placeholder={tr('noFieldsSelected')}
                   />
-                ) : (
-                  <div className="rounded-md bg-surface p-2 text-[11px] text-text-muted">
-                    {tr('calcFieldOrderNotRequired')}
+                </div>
+
+                <div className="border-t border-border-muted/60 pt-3">
+                  <div className="mb-1.5 text-[11px] font-medium text-text-muted">
+                    {tr('calcFieldOrderBy')}
+                  </div>
+                  {definition.order === 'required' ? (
+                    <GlassRowList
+                      headerClassName=""
+                      items={activeOrderBy}
+                      columns={[
+                        {
+                          flex: 'flex-[3]',
+                          header: tr('sortKeys.sortFieldHeader'),
+                          render: (item, index) => {
+                            const disabledOptions = new Set(
+                              activeOrderBy.map((entry) => entry.field).filter(Boolean)
+                            );
+                            disabledOptions.delete(item.field);
+                            return (
+                              <GlassFieldSingleSelect
+                                value={item.field}
+                                options={fieldCompletions}
+                                columnTypes={columnTypes}
+                                disabledOptions={disabledOptions}
+                                onChange={(field) => updateOrderField(index, { field })}
+                                placeholder={tr('expressionFunctionArgumentPlaceholder')}
+                                className="w-full"
+                              />
+                            );
+                          },
+                        },
+                        {
+                          flex: 'flex-[1.4]',
+                          header: tr('sortKeys.sortDirectionHeader'),
+                          render: (item, index) => (
+                            <GlassDirectionToggle
+                              value={item.direction}
+                              onChange={(direction) => updateOrderField(index, { direction })}
+                              className="h-6 w-full px-1 text-[11px]"
+                            />
+                          ),
+                        },
+                      ]}
+                      onAdd={addOrderField}
+                      onRemove={removeOrderField}
+                      addTitle={tr('sortKeys.sortAddKey')}
+                      removeTitle={tr('sortKeys.sortRemoveKey')}
+                      canAct={(action) =>
+                        action !== 'add' ||
+                        (!(definition.frame === 'custom' && usesRangeOffset) &&
+                          !activeOrderBy.some((item) => !item.field) &&
+                          activeOrderBy.length < fieldCompletions.length)
+                      }
+                      draggable
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDragEnd={handleDragEnd}
+                      onKeyboardMove={handleKeyboardMove}
+                      getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
+                      dragTitle={tr('rowList.dragToReorder')}
+                    />
+                  ) : (
+                    <div className="rounded-md bg-surface p-2 text-[11px] text-text-muted">
+                      {tr('calcFieldOrderNotRequired')}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="flex min-w-0 flex-col border-t border-border-muted/60 p-3 md:border-l md:border-t-0">
+                <SectionTitle>{tr('calcFieldSpecialConfig')}</SectionTitle>
+                {!hasSpecialConfig && (
+                  <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-surface px-4 text-center text-[11px] leading-5 text-text-muted">
+                    {tr('calcFieldNoSpecialConfig')}
                   </div>
                 )}
-              </div>
-            </section>
-
-            <section className="flex min-w-0 flex-col border-t border-border-muted/60 p-3 md:border-l md:border-t-0">
-              <SectionTitle>{tr('calcFieldSpecialConfig')}</SectionTitle>
-              {!hasSpecialConfig && (
-                <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-surface px-4 text-center text-[11px] leading-5 text-text-muted">
-                  {tr('calcFieldNoSpecialConfig')}
-                </div>
-              )}
-              {definition.frame === 'custom' && (
-                <FrameEditor
-                  frameType={frameType}
-                  setFrameType={setFrameType}
-                  startType={frameStartType}
-                  setStartType={setFrameStartType}
-                  startOffset={frameStartOffset}
-                  setStartOffset={setFrameStartOffset}
-                  startUnit={frameStartUnit}
-                  setStartUnit={setFrameStartUnit}
-                  endType={frameEndType}
-                  setEndType={setFrameEndType}
-                  endOffset={frameEndOffset}
-                  setEndOffset={setFrameEndOffset}
-                  endUnit={frameEndUnit}
-                  setEndUnit={setFrameEndUnit}
-                  exclude={frameExclude}
-                  setExclude={setFrameExclude}
-                  usesTemporalRangeUnit={usesTemporalRangeUnit}
-                  tr={tr}
-                />
-              )}
-            </section>
-          </div>
-        </div>
+                {definition.frame === 'custom' && (
+                  <FrameEditor
+                    frameType={frameType}
+                    setFrameType={setFrameType}
+                    startType={frameStartType}
+                    setStartType={setFrameStartType}
+                    startOffset={frameStartOffset}
+                    setStartOffset={setFrameStartOffset}
+                    startUnit={frameStartUnit}
+                    setStartUnit={setFrameStartUnit}
+                    endType={frameEndType}
+                    setEndType={setFrameEndType}
+                    endOffset={frameEndOffset}
+                    setEndOffset={setFrameEndOffset}
+                    endUnit={frameEndUnit}
+                    setEndUnit={setFrameEndUnit}
+                    exclude={frameExclude}
+                    setExclude={setFrameExclude}
+                    usesTemporalRangeUnit={usesTemporalRangeUnit}
+                    tr={tr}
+                  />
+                )}
+              </section>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <div className="flex items-end gap-3 rounded-lg border border-border-muted/60 bg-surface p-3">

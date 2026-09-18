@@ -17,7 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Switch } from '../ui/switch';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ChannelBrandIcon } from './ChannelBrandIcon';
 import { ChannelSetupGuide } from './ChannelSetupGuide';
 import { getChannelState, type RemoteChannelState } from './channel-state';
@@ -241,7 +241,11 @@ export function ChannelDetailPanel({
         </div>
       </header>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ChannelConfigTab)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as ChannelConfigTab)}
+        className="contents"
+      >
         <TabsList className="flex w-full gap-1 overflow-x-auto rounded-none border-0 border-b border-border-subtle bg-transparent px-3 pt-2">
           {tabs.map(({ id, label, icon: Icon }) => (
             <TabsTrigger key={id} value={id} className={channelTabTriggerClass}>
@@ -250,280 +254,280 @@ export function ChannelDetailPanel({
             </TabsTrigger>
           ))}
         </TabsList>
-      </Tabs>
 
-      <div className="min-h-[410px] p-4">
-        {!channel.backendAvailable && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/5 p-3 text-xs leading-5 text-text-secondary">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-            <span>{t('remote.previewOnlyNotice')}</span>
-          </div>
-        )}
-        {channel.error && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-error/25 bg-error/5 p-3 text-xs leading-5 text-error">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{channel.error}</span>
-          </div>
-        )}
-
-        {activeTab === 'basic' && (
-          <div className="space-y-5">
-            <div>
-              <h4 className="text-sm font-semibold text-text-primary">
-                {t('remote.credentialsTitle')}
-              </h4>
-              <p className="mt-1 text-xs text-text-muted">
-                {t(`remote.credentialsDesc.${channel.type}`)}
-              </p>
+        <div className="min-h-[410px] p-4">
+          {!channel.backendAvailable && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning/5 p-3 text-xs leading-5 text-text-secondary">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <span>{t('remote.previewOnlyNotice')}</span>
             </div>
-
-            {channel.type === 'feishu' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CredentialField
-                  id="feishu-app-id"
-                  label="App ID"
-                  value={feishuAppId}
-                  placeholder="cli_xxxxxxxxxxxxxxxx"
-                  onChange={onFeishuAppIdChange}
-                />
-                <CredentialField
-                  id="feishu-app-secret"
-                  label="App Secret"
-                  value={feishuAppSecret}
-                  placeholder="••••••••••••••••"
-                  type="password"
-                  onChange={onFeishuAppSecretChange}
-                />
-              </div>
-            )}
-
-            {channel.type === 'dingtalk' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CredentialField
-                  id="dingtalk-client-id"
-                  label="Client ID / AppKey"
-                  value={dingtalkAppKey}
-                  placeholder="dingxxxxxxxxxxxxxxxx"
-                  onChange={onDingtalkAppKeyChange}
-                />
-                <CredentialField
-                  id="dingtalk-client-secret"
-                  label="Client Secret / AppSecret"
-                  value={dingtalkAppSecret}
-                  placeholder="••••••••••••••••"
-                  type="password"
-                  onChange={onDingtalkAppSecretChange}
-                />
-                <CredentialField
-                  id="dingtalk-robot-code"
-                  label="RobotCode"
-                  value={dingtalkRobotCode}
-                  placeholder={t('remote.optional')}
-                  onChange={onDingtalkRobotCodeChange}
-                />
-              </div>
-            )}
-
-            {channel.type === 'wecom' && wecomReceiveMode === 'websocket' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CredentialField
-                  id="wecom-bot-id"
-                  label="Bot ID"
-                  value={wecomBotId}
-                  placeholder="aibxxxxxxxxxxxxxxxx"
-                  onChange={onWecomBotIdChange}
-                />
-                <CredentialField
-                  id="wecom-bot-secret"
-                  label="Secret"
-                  value={wecomSecret}
-                  placeholder="••••••••••••••••"
-                  type="password"
-                  onChange={onWecomSecretChange}
-                />
-              </div>
-            )}
-
-            {channel.type === 'wecom' && wecomReceiveMode === 'webhook' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CredentialField
-                  id="wecom-webhook-token"
-                  label="Token"
-                  value={wecomWebhookToken}
-                  placeholder="Token"
-                  type="password"
-                  onChange={onWecomWebhookTokenChange}
-                />
-                <CredentialField
-                  id="wecom-webhook-aes-key"
-                  label="EncodingAESKey"
-                  value={wecomWebhookEncodingAESKey}
-                  placeholder="43 characters"
-                  type="password"
-                  onChange={onWecomWebhookEncodingAESKeyChange}
-                />
-              </div>
-            )}
-
-            <div>
-              <h4 className="mb-2 text-sm font-semibold text-text-primary">
-                {t('remote.receiveMode')}
-              </h4>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <ConnectionOption
-                  selected={channelUsesLongConnection}
-                  title={
-                    channel.type === 'dingtalk'
-                      ? t('remote.streamConnection')
-                      : t('remote.longConnection')
-                  }
-                  description={t(`remote.longConnectionChannelDesc.${channel.type}`)}
-                  recommended
-                  icon={Zap}
-                  onClick={() => {
-                    if (channel.type === 'feishu') onLongConnectionChange(true);
-                    if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('stream');
-                    if (channel.type === 'wecom') onWecomReceiveModeChange('websocket');
-                  }}
-                />
-                <ConnectionOption
-                  selected={channelUsesWebhook}
-                  title={t('remote.webhookMode')}
-                  description={t(
-                    channel.type === 'wecom'
-                      ? 'remote.wecomWebhookChannelDesc'
-                      : 'remote.webhookChannelDesc'
-                  )}
-                  disabled={!channel.backendAvailable}
-                  icon={Link2}
-                  onClick={() => {
-                    if (channel.type === 'feishu') onLongConnectionChange(false);
-                    if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('webhook');
-                    if (channel.type === 'wecom') onWecomReceiveModeChange('webhook');
-                  }}
-                />
-              </div>
+          )}
+          {channel.error && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-error/25 bg-error/5 p-3 text-xs leading-5 text-error">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{channel.error}</span>
             </div>
+          )}
 
-            {channelUsesWebhook && (
-              <div className="space-y-3 rounded-xl border border-border-subtle bg-surface p-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    {t('remote.localWebhookUrl')}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-lg bg-surface-hover px-3 py-2 text-xs text-text-secondary">
-                      http://127.0.0.1:{gatewayPort}/webhook/{channel.type}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onCopy(`http://127.0.0.1:${gatewayPort}/webhook/${channel.type}`)
-                      }
-                      className="rounded-lg p-2 text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary"
-                      title={t('remote.copied')}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-medium text-text-primary">
-                      {t('remote.useBuiltInNgrok')}
-                    </div>
-                    <p className="mt-1 text-[11px] text-text-muted">
-                      {t('remote.ngrokChannelHint')}
-                    </p>
-                  </div>
-                  <Switch
-                    checked={tunnelEnabled}
-                    onCheckedChange={onTunnelEnabledChange}
-                    aria-label={t('remote.useBuiltInNgrok')}
-                  />
-                </div>
-                {tunnelEnabled && (
-                  <input
-                    type="password"
-                    value={ngrokAuthToken}
-                    onChange={(event) => onNgrokAuthTokenChange(event.target.value)}
-                    className="w-full rounded-xl border border-border bg-surface-hover/55 px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                    placeholder="ngrok authtoken"
-                  />
-                )}
-                {tunnelStatus?.connected && activeWebhookUrl && (
-                  <div className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
-                    {t('remote.tunnelConnected')}: {activeWebhookUrl}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'access' && (
-          <div className="space-y-5">
-            <div>
-              <h4 className="text-sm font-semibold text-text-primary">{t('remote.dmPolicy')}</h4>
-              <p className="mt-1 text-xs text-text-muted">{t('remote.accessPolicyDesc')}</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {policies.map(({ value, label, desc, icon: Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setDmPolicy(value)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    dmPolicy === value
-                      ? 'border-accent/60 bg-accent-muted'
-                      : 'border-border-subtle hover:border-accent/30 hover:bg-surface-hover/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Icon
-                      className={`h-4 w-4 ${dmPolicy === value ? 'text-accent' : 'text-text-muted'}`}
-                    />
-                    {dmPolicy === value && <Check className="h-4 w-4 text-accent" />}
-                  </div>
-                  <div className="mt-3 text-xs font-semibold text-text-primary">{label}</div>
-                  <div className="mt-1 text-[11px] leading-4 text-text-muted">{desc}</div>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-surface p-3">
+          <TabsContent value="basic" className="contents">
+            <div className="space-y-5">
               <div>
-                <div className="text-sm font-medium text-text-primary">
-                  {t('remote.requireMention')}
-                </div>
-                <p className="mt-1 text-xs text-text-muted">{t('remote.requireMentionDesc')}</p>
+                <h4 className="text-sm font-semibold text-text-primary">
+                  {t('remote.credentialsTitle')}
+                </h4>
+                <p className="mt-1 text-xs text-text-muted">
+                  {t(`remote.credentialsDesc.${channel.type}`)}
+                </p>
               </div>
-              <Switch
-                checked={activeRequireMention}
-                onCheckedChange={(checked) => {
-                  if (channel.type === 'dingtalk') {
-                    onDingtalkRequireMentionChange(checked);
-                  } else if (channel.type === 'wecom') {
-                    onWecomRequireMentionChange(checked);
-                  } else {
-                    setRequireMention(checked);
-                  }
-                }}
-                aria-label={t('remote.requireMention')}
-              />
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'advanced' && (
-          <ChannelSetupGuide
-            channelType={channel.type}
-            useLongConnection={channelUsesLongConnection}
-            webhookUrl={activeWebhookUrl}
-            onCopy={onCopy}
-          />
-        )}
-      </div>
+              {channel.type === 'feishu' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CredentialField
+                    id="feishu-app-id"
+                    label="App ID"
+                    value={feishuAppId}
+                    placeholder="cli_xxxxxxxxxxxxxxxx"
+                    onChange={onFeishuAppIdChange}
+                  />
+                  <CredentialField
+                    id="feishu-app-secret"
+                    label="App Secret"
+                    value={feishuAppSecret}
+                    placeholder="••••••••••••••••"
+                    type="password"
+                    onChange={onFeishuAppSecretChange}
+                  />
+                </div>
+              )}
+
+              {channel.type === 'dingtalk' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CredentialField
+                    id="dingtalk-client-id"
+                    label="Client ID / AppKey"
+                    value={dingtalkAppKey}
+                    placeholder="dingxxxxxxxxxxxxxxxx"
+                    onChange={onDingtalkAppKeyChange}
+                  />
+                  <CredentialField
+                    id="dingtalk-client-secret"
+                    label="Client Secret / AppSecret"
+                    value={dingtalkAppSecret}
+                    placeholder="••••••••••••••••"
+                    type="password"
+                    onChange={onDingtalkAppSecretChange}
+                  />
+                  <CredentialField
+                    id="dingtalk-robot-code"
+                    label="RobotCode"
+                    value={dingtalkRobotCode}
+                    placeholder={t('remote.optional')}
+                    onChange={onDingtalkRobotCodeChange}
+                  />
+                </div>
+              )}
+
+              {channel.type === 'wecom' && wecomReceiveMode === 'websocket' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CredentialField
+                    id="wecom-bot-id"
+                    label="Bot ID"
+                    value={wecomBotId}
+                    placeholder="aibxxxxxxxxxxxxxxxx"
+                    onChange={onWecomBotIdChange}
+                  />
+                  <CredentialField
+                    id="wecom-bot-secret"
+                    label="Secret"
+                    value={wecomSecret}
+                    placeholder="••••••••••••••••"
+                    type="password"
+                    onChange={onWecomSecretChange}
+                  />
+                </div>
+              )}
+
+              {channel.type === 'wecom' && wecomReceiveMode === 'webhook' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CredentialField
+                    id="wecom-webhook-token"
+                    label="Token"
+                    value={wecomWebhookToken}
+                    placeholder="Token"
+                    type="password"
+                    onChange={onWecomWebhookTokenChange}
+                  />
+                  <CredentialField
+                    id="wecom-webhook-aes-key"
+                    label="EncodingAESKey"
+                    value={wecomWebhookEncodingAESKey}
+                    placeholder="43 characters"
+                    type="password"
+                    onChange={onWecomWebhookEncodingAESKeyChange}
+                  />
+                </div>
+              )}
+
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-text-primary">
+                  {t('remote.receiveMode')}
+                </h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <ConnectionOption
+                    selected={channelUsesLongConnection}
+                    title={
+                      channel.type === 'dingtalk'
+                        ? t('remote.streamConnection')
+                        : t('remote.longConnection')
+                    }
+                    description={t(`remote.longConnectionChannelDesc.${channel.type}`)}
+                    recommended
+                    icon={Zap}
+                    onClick={() => {
+                      if (channel.type === 'feishu') onLongConnectionChange(true);
+                      if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('stream');
+                      if (channel.type === 'wecom') onWecomReceiveModeChange('websocket');
+                    }}
+                  />
+                  <ConnectionOption
+                    selected={channelUsesWebhook}
+                    title={t('remote.webhookMode')}
+                    description={t(
+                      channel.type === 'wecom'
+                        ? 'remote.wecomWebhookChannelDesc'
+                        : 'remote.webhookChannelDesc'
+                    )}
+                    disabled={!channel.backendAvailable}
+                    icon={Link2}
+                    onClick={() => {
+                      if (channel.type === 'feishu') onLongConnectionChange(false);
+                      if (channel.type === 'dingtalk') onDingtalkReceiveModeChange('webhook');
+                      if (channel.type === 'wecom') onWecomReceiveModeChange('webhook');
+                    }}
+                  />
+                </div>
+              </div>
+
+              {channelUsesWebhook && (
+                <div className="space-y-3 rounded-xl border border-border-subtle bg-surface p-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                      {t('remote.localWebhookUrl')}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="min-w-0 flex-1 truncate rounded-lg bg-surface-hover px-3 py-2 text-xs text-text-secondary">
+                        http://127.0.0.1:{gatewayPort}/webhook/{channel.type}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onCopy(`http://127.0.0.1:${gatewayPort}/webhook/${channel.type}`)
+                        }
+                        className="rounded-lg p-2 text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary"
+                        title={t('remote.copied')}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-text-primary">
+                        {t('remote.useBuiltInNgrok')}
+                      </div>
+                      <p className="mt-1 text-[11px] text-text-muted">
+                        {t('remote.ngrokChannelHint')}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={tunnelEnabled}
+                      onCheckedChange={onTunnelEnabledChange}
+                      aria-label={t('remote.useBuiltInNgrok')}
+                    />
+                  </div>
+                  {tunnelEnabled && (
+                    <input
+                      type="password"
+                      value={ngrokAuthToken}
+                      onChange={(event) => onNgrokAuthTokenChange(event.target.value)}
+                      className="w-full rounded-xl border border-border bg-surface-hover/55 px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+                      placeholder="ngrok authtoken"
+                    />
+                  )}
+                  {tunnelStatus?.connected && activeWebhookUrl && (
+                    <div className="rounded-lg bg-success/10 px-3 py-2 text-xs text-success">
+                      {t('remote.tunnelConnected')}: {activeWebhookUrl}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="access" className="contents">
+            <div className="space-y-5">
+              <div>
+                <h4 className="text-sm font-semibold text-text-primary">{t('remote.dmPolicy')}</h4>
+                <p className="mt-1 text-xs text-text-muted">{t('remote.accessPolicyDesc')}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {policies.map(({ value, label, desc, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDmPolicy(value)}
+                    className={`rounded-xl border p-3 text-left transition-all ${
+                      dmPolicy === value
+                        ? 'border-accent/60 bg-accent-muted'
+                        : 'border-border-subtle hover:border-accent/30 hover:bg-surface-hover/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Icon
+                        className={`h-4 w-4 ${dmPolicy === value ? 'text-accent' : 'text-text-muted'}`}
+                      />
+                      {dmPolicy === value && <Check className="h-4 w-4 text-accent" />}
+                    </div>
+                    <div className="mt-3 text-xs font-semibold text-text-primary">{label}</div>
+                    <div className="mt-1 text-[11px] leading-4 text-text-muted">{desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-surface p-3">
+                <div>
+                  <div className="text-sm font-medium text-text-primary">
+                    {t('remote.requireMention')}
+                  </div>
+                  <p className="mt-1 text-xs text-text-muted">{t('remote.requireMentionDesc')}</p>
+                </div>
+                <Switch
+                  checked={activeRequireMention}
+                  onCheckedChange={(checked) => {
+                    if (channel.type === 'dingtalk') {
+                      onDingtalkRequireMentionChange(checked);
+                    } else if (channel.type === 'wecom') {
+                      onWecomRequireMentionChange(checked);
+                    } else {
+                      setRequireMention(checked);
+                    }
+                  }}
+                  aria-label={t('remote.requireMention')}
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="advanced" className="contents">
+            <ChannelSetupGuide
+              channelType={channel.type}
+              useLongConnection={channelUsesLongConnection}
+              webhookUrl={activeWebhookUrl}
+              onCopy={onCopy}
+            />
+          </TabsContent>
+        </div>
+      </Tabs>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle p-4">
         <p className="text-[11px] text-text-muted">

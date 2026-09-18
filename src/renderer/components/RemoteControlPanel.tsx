@@ -630,7 +630,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
       <div className="p-4 sm:p-5">
         {activeSection === 'channels' && (
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.5fr)]">
+          <div
+            id="remote-panel-channels"
+            role="tabpanel"
+            aria-labelledby="remote-nav-tab-channels"
+            className="grid items-start gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.5fr)]"
+          >
             <ChannelList
               channels={channels}
               selectedChannel={selectedChannel}
@@ -691,7 +696,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {activeSection === 'users' && (
-          <div className="space-y-4">
+          <div
+            id="remote-panel-users"
+            role="tabpanel"
+            aria-labelledby="remote-nav-tab-users"
+            className="space-y-4"
+          >
             {status?.running && isPairingEnabled && <PairingGuideCard />}
             <PairingRequestsSection
               pendingPairings={pendingPairings}
@@ -704,7 +714,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {activeSection === 'global' && (
-          <section className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card">
+          <section
+            id="remote-panel-global"
+            role="tabpanel"
+            aria-labelledby="remote-nav-tab-global"
+            className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card"
+          >
             <div className="p-4 sm:p-5">
               <AdvancedConfigStep
                 defaultWorkingDirectory={defaultWorkingDirectory}
@@ -738,7 +753,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {activeSection === 'logs' && (
-          <section className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card">
+          <section
+            id="remote-panel-logs"
+            role="tabpanel"
+            aria-labelledby="remote-nav-tab-logs"
+            className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card"
+          >
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-accent-muted p-2.5">
                 <ScrollText className="h-5 w-5 text-accent" />

@@ -1002,9 +1002,10 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-error-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={t('common.removeImage', { index: index + 1 })}
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-error-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                     >
-                      <X className="w-3 h-3" />
+                      <X className="w-3 h-3" aria-hidden />
                     </button>
                   </div>
                 ))}
@@ -1025,9 +1026,10 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={() => removeFile(index)}
-                      className="w-6 h-6 rounded-full hover:bg-error/10 text-text-muted hover:text-error flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={t('common.removeAttachment', { name: file.name })}
+                      className="w-6 h-6 rounded-full hover:bg-error/10 text-text-muted hover:text-error flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3.5 h-3.5" aria-hidden />
                     </button>
                   </div>
                 ))}
@@ -1051,9 +1053,10 @@ export function ChatView() {
                     <button
                       type="button"
                       onClick={() => removeCloudTable(index)}
+                      aria-label={t('common.removeCloudTable', { name: table.tableName })}
                       className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-error/10 hover:text-error"
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3 w-3" aria-hidden />
                     </button>
                   </div>
                 ))}

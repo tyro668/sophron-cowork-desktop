@@ -23,7 +23,7 @@ import type {
 import { useAppStore } from '../../store';
 import { GlassSwitch } from '../GlassSwitch';
 import { useConfirmDialog } from '../ConfirmDialog';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 type ManagedMemoryEntry = CoreMemoryEntry | ProjectMemoryEntry;
 type MemoryTab = 'all' | 'core' | 'project';
@@ -315,8 +315,12 @@ export function SettingsMemory() {
 
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
             <div className="glass-card flex h-full min-h-0 min-w-0 flex-col rounded-xl p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as MemoryTab)}>
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => setActiveTab(v as MemoryTab)}
+                className="contents"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <TabsList className="inline-flex rounded-full border-0 bg-surface p-1 shadow-soft ring-1 ring-border-subtle">
                     <TabsTrigger value="all" className={memoryTabTriggerClass}>
                       {t('memory.allTab', '全部')}
@@ -328,78 +332,80 @@ export function SettingsMemory() {
                       {t('memory.projectContextTab', '项目上下文')}
                     </TabsTrigger>
                   </TabsList>
-                </Tabs>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRebuildWorkspace}
-                    disabled={!hasWorkspace || isBusy}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {t('memory.organizeAction', '整理')}
-                  </button>
-                </div>
-              </div>
-
-              <label className="relative mt-2.5 block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t('memory.searchListPlaceholder', '搜索记忆标题或标签')}
-                  className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
-                />
-              </label>
-
-              <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
-                {visibleRecords.length ? (
-                  visibleRecords.map((record) => (
-                    <MemoryListItem
-                      key={record.id}
-                      record={record}
-                      selected={selectedRecord?.id === record.id}
-                      isBusy={isBusy}
-                      onSelect={() => setSelectedId(record.id)}
-                      onDelete={() => handleDelete(record)}
-                    />
-                  ))
-                ) : (
-                  <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface text-sm text-text-muted">
-                    {t('memory.noResults')}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRebuildWorkspace}
+                      disabled={!hasWorkspace || isBusy}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {t('memory.organizeAction', '整理')}
+                    </button>
                   </div>
-                )}
-              </div>
-
-              <div className="mt-2 flex min-h-7 items-center justify-between gap-2 text-xs font-medium text-text-secondary">
-                <span>
-                  {t('memory.totalMemories', '共 {{count}} 条记忆', {
-                    count: filteredRecords.length,
-                  })}
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                    disabled={safeCurrentPage <= 1}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent px-2 text-accent-foreground shadow-soft">
-                    {safeCurrentPage}
-                  </span>
-                  <span>/ {pageCount}</span>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
-                    disabled={safeCurrentPage >= pageCount}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
                 </div>
-              </div>
+
+                <TabsContent value={activeTab} forceMount className="contents">
+                  <label className="relative mt-2.5 block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={t('memory.searchListPlaceholder', '搜索记忆标题或标签')}
+                      className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    />
+                  </label>
+
+                  <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+                    {visibleRecords.length ? (
+                      visibleRecords.map((record) => (
+                        <MemoryListItem
+                          key={record.id}
+                          record={record}
+                          selected={selectedRecord?.id === record.id}
+                          isBusy={isBusy}
+                          onSelect={() => setSelectedId(record.id)}
+                          onDelete={() => handleDelete(record)}
+                        />
+                      ))
+                    ) : (
+                      <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface text-sm text-text-muted">
+                        {t('memory.noResults')}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex min-h-7 items-center justify-between gap-2 text-xs font-medium text-text-secondary">
+                    <span>
+                      {t('memory.totalMemories', '共 {{count}} 条记忆', {
+                        count: filteredRecords.length,
+                      })}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        disabled={safeCurrentPage <= 1}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent px-2 text-accent-foreground shadow-soft">
+                        {safeCurrentPage}
+                      </span>
+                      <span>/ {pageCount}</span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
+                        disabled={safeCurrentPage >= pageCount}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
 
             <MemoryDetailPanel record={selectedRecord} />

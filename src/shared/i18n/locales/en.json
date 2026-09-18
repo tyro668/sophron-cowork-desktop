@@ -24,6 +24,9 @@
     "optional": "optional",
     "appLogoAlt": "sophron cowork logo",
     "pastedImageAlt": "Pasted {{index}}",
+    "removeImage": "Remove image {{index}}",
+    "removeAttachment": "Remove attachment {{name}}",
+    "removeCloudTable": "Remove table {{name}}",
     "expand": "Expand",
     "collapse": "Collapse"
   },
@@ -3053,6 +3056,7 @@
     "webhookDesc": "Feishu pushes messages to your server. A publicly reachable address is required.",
     "localWebhookUrl": "Local webhook URL",
     "useBuiltInNgrok": "Use built-in ngrok",
+    "ngrokAuthToken": "ngrok authtoken",
     "ngrokHelpPrefix": "Get one for free from",
     "ngrokHelpSuffix": "",
     "tunnelConnected": "Tunnel connected",

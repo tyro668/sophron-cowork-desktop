@@ -21,7 +21,7 @@ import {
   UploadOutputTableToCloudDialog,
 } from '../../../components/data-view/output-tables';
 import { underlineTabTriggerClass } from '../../../components/data-view/shared';
-import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
 import { useDataDashboard } from '../hooks/use-data-dashboard';
@@ -261,8 +261,12 @@ export function DataViewPage() {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <section className="flex min-h-0 flex-1 flex-col">
-              <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
-                <Tabs value={activeTab} onValueChange={(v) => handleTabChange(v as DataTab)}>
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => handleTabChange(v as DataTab)}
+                className="contents"
+              >
+                <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
                   <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
                     {(
                       [
@@ -277,78 +281,77 @@ export function DataViewPage() {
                       </TabsTrigger>
                     ))}
                   </TabsList>
-                </Tabs>
-              </div>
-
-              {activeTab === 'tasks' ? (
-                <TasksPanel
-                  tasks={dashboard.dashboard.tasks}
-                  totalTasks={dashboard.dashboard.totalTasks}
-                  currentPage={dashboard.taskPage}
-                  searchQuery={searchQuery}
-                  actionId={actionId}
-                  isLoading={isTasksLoading}
-                  isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
-                  onCreate={actions.handleCreateTask}
-                  onSearchChange={handleSearchChange}
-                  onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
-                  onPageChange={handleTaskPageChange}
-                  onRun={actions.handleRunTask}
-                  onEdit={actions.handleEditTask}
-                  onDelete={actions.handleDeleteTask}
-                  onDeleteAll={actions.handleDeleteAllTasks}
-                />
-              ) : (
-                <div className="min-h-0 flex-1 bg-transparent">
-                  {activeTab === 'input_tables' ? (
-                    <InputTablesPanel
-                      datasets={inputTables.inputTableDatasets}
-                      drafts={drafts.drafts}
-                      totalDatasets={inputTables.totalInputTableDatasets}
-                      currentPage={inputTables.datasetPage}
-                      searchQuery={searchQuery}
-                      isLoading={isInputTablesLoading}
-                      sourceFilter={ui.inputTableSourceFilter}
-                      onSearchChange={handleSearchChange}
-                      onSourceFilterChange={handleInputTableSourceFilterChange}
-                      onPageChange={handleDatasetPageChange}
-                      onCreate={actions.handleCreateInputTableDraft}
-                      onRefresh={() => inputTables.loadInputTables({ preserveError: true })}
-                      onPreviewDataset={preview.previewInputTable}
-                      onDelete={actions.handleDeleteInputTable}
-                      onDeleteAll={actions.handleDeleteAllInputTables}
-                      onDeleteDraft={actions.handleDeleteInputTableDraft}
-                      onEditDraft={editors.setEditingInputTableDraftId}
-                      onEditDataset={actions.handleEditInputTableDataset}
-                      isCreateDisabled={!isDataApiAvailable}
-                      actionId={actionId}
-                    />
-                  ) : activeTab === 'output_tables' ? (
-                    <OutputTablesPanel
-                      outputTables={dashboard.dashboard.outputTables}
-                      totalOutputTables={dashboard.dashboard.totalOutputTables}
-                      currentPage={dashboard.outputPage}
-                      searchQuery={searchQuery}
-                      isLoading={isOutputTablesLoading}
-                      actionId={actionId}
-                      isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
-                      onCreate={actions.handleCreateOutputTable}
-                      onSearchChange={handleSearchChange}
-                      onRefresh={() =>
-                        dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
-                      }
-                      onPageChange={handleOutputPageChange}
-                      onPreview={preview.previewOutputTable}
-                      onUpload={(outputTable) => editors.setUploadCloudOutputTable(outputTable)}
-                      onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
-                      onDelete={actions.handleDeleteOutputTable}
-                      onDeleteAll={actions.handleDeleteAllOutputTables}
-                    />
-                  ) : (
-                    <CloudAnalysisPanel />
-                  )}
                 </div>
-              )}
+
+                <TabsContent value="tasks" className="contents">
+                  <TasksPanel
+                    tasks={dashboard.dashboard.tasks}
+                    totalTasks={dashboard.dashboard.totalTasks}
+                    currentPage={dashboard.taskPage}
+                    searchQuery={searchQuery}
+                    actionId={actionId}
+                    isLoading={isTasksLoading}
+                    isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
+                    onCreate={actions.handleCreateTask}
+                    onSearchChange={handleSearchChange}
+                    onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
+                    onPageChange={handleTaskPageChange}
+                    onRun={actions.handleRunTask}
+                    onEdit={actions.handleEditTask}
+                    onDelete={actions.handleDeleteTask}
+                    onDeleteAll={actions.handleDeleteAllTasks}
+                  />
+                </TabsContent>
+                <TabsContent value="input_tables" className="min-h-0 flex-1 bg-transparent">
+                  <InputTablesPanel
+                    datasets={inputTables.inputTableDatasets}
+                    drafts={drafts.drafts}
+                    totalDatasets={inputTables.totalInputTableDatasets}
+                    currentPage={inputTables.datasetPage}
+                    searchQuery={searchQuery}
+                    isLoading={isInputTablesLoading}
+                    sourceFilter={ui.inputTableSourceFilter}
+                    onSearchChange={handleSearchChange}
+                    onSourceFilterChange={handleInputTableSourceFilterChange}
+                    onPageChange={handleDatasetPageChange}
+                    onCreate={actions.handleCreateInputTableDraft}
+                    onRefresh={() => inputTables.loadInputTables({ preserveError: true })}
+                    onPreviewDataset={preview.previewInputTable}
+                    onDelete={actions.handleDeleteInputTable}
+                    onDeleteAll={actions.handleDeleteAllInputTables}
+                    onDeleteDraft={actions.handleDeleteInputTableDraft}
+                    onEditDraft={editors.setEditingInputTableDraftId}
+                    onEditDataset={actions.handleEditInputTableDataset}
+                    isCreateDisabled={!isDataApiAvailable}
+                    actionId={actionId}
+                  />
+                </TabsContent>
+                <TabsContent value="output_tables" className="min-h-0 flex-1 bg-transparent">
+                  <OutputTablesPanel
+                    outputTables={dashboard.dashboard.outputTables}
+                    totalOutputTables={dashboard.dashboard.totalOutputTables}
+                    currentPage={dashboard.outputPage}
+                    searchQuery={searchQuery}
+                    isLoading={isOutputTablesLoading}
+                    actionId={actionId}
+                    isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
+                    onCreate={actions.handleCreateOutputTable}
+                    onSearchChange={handleSearchChange}
+                    onRefresh={() =>
+                      dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
+                    }
+                    onPageChange={handleOutputPageChange}
+                    onPreview={preview.previewOutputTable}
+                    onUpload={(outputTable) => editors.setUploadCloudOutputTable(outputTable)}
+                    onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
+                    onDelete={actions.handleDeleteOutputTable}
+                    onDeleteAll={actions.handleDeleteAllOutputTables}
+                  />
+                </TabsContent>
+                <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
+                  <CloudAnalysisPanel />
+                </TabsContent>
+              </Tabs>
             </section>
             {preview.storedPreviewOpen && (
               <InputTablePreviewDialog
