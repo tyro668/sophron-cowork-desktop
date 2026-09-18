@@ -34,7 +34,6 @@ const EMPTY_WELCOME_CLOUD_TABLE_ATTACHMENTS: CloudTableChatAttachment[] = [];
 export function WelcomeView() {
   const { t } = useTranslation();
   const [prompt, setPrompt] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isComposingRef = useRef(false);
   const [pastedImages, setPastedImages] = useState<
@@ -492,15 +491,12 @@ export function WelcomeView() {
     }
   };
 
-  const handleTagClick = (tag: string, tagPrompt: string) => {
-    setSelectedTag(tag === selectedTag ? null : tag);
-    if (tag !== selectedTag) {
-      setPrompt(tagPrompt);
-      if (textareaRef.current) {
-        textareaRef.current.value = tagPrompt;
-        // Trigger height adjustment
-        adjustTextareaHeight();
-      }
+  const handleTagClick = (tagPrompt: string) => {
+    setPrompt(tagPrompt);
+    if (textareaRef.current) {
+      textareaRef.current.value = tagPrompt;
+      adjustTextareaHeight();
+      textareaRef.current.focus();
     }
   };
 
@@ -724,15 +720,11 @@ export function WelcomeView() {
                 <Plus className="h-5 w-5" />
               </button>
 
-              <span className="h-5 w-px bg-border-subtle" />
-
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
                 buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
               />
-
-              <span className="h-5 w-px bg-border-subtle" />
 
               <button
                 type="button"
@@ -784,29 +776,17 @@ export function WelcomeView() {
           </div>
         </form>
         {/* Quick Action Tags */}
-        <div className="mx-auto mt-3 grid w-full max-w-[860px] gap-2 sm:grid-cols-2">
+        <div className="mx-auto mt-4 flex w-full max-w-[860px] flex-wrap items-center justify-center gap-2">
           {quickTags.map((tag) => (
             <button
               key={tag.id}
+              type="button"
               title={tag.description}
-              aria-pressed={selectedTag === tag.id}
-              onClick={() => handleTagClick(tag.id, tag.prompt)}
-              className={`group flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all ${
-                selectedTag === tag.id
-                  ? 'border-accent/35 bg-accent-muted ring-1 ring-inset ring-accent/20'
-                  : 'border-border-subtle bg-surface hover:border-accent/25 hover:bg-surface-hover/70'
-              }`}
+              onClick={() => handleTagClick(tag.prompt)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle px-3 py-1.5 text-[12px] text-text-secondary transition-colors hover:border-accent/30 hover:text-accent"
             >
-              <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                  selectedTag === tag.id
-                    ? 'bg-accent-muted text-accent'
-                    : 'bg-accent-muted text-accent group-hover:bg-accent-muted'
-                }`}
-              >
-                <tag.icon className="h-4 w-4" />
-              </span>
-              <span className="text-[13px] font-medium text-text-primary">{tag.label}</span>
+              <tag.icon className="h-3.5 w-3.5" />
+              <span>{tag.label}</span>
             </button>
           ))}
         </div>
