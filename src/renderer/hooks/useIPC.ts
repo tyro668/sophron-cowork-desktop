@@ -875,6 +875,22 @@ export function useIPC() {
     [invoke]
   );
 
+  // Activate a project directory for the next session (WelcomeView picker).
+  // Main ensures a project row for the cwd and broadcasts workdir.changed.
+  const setWorkingDirPath = useCallback(
+    async (path: string): Promise<{ success: boolean; path: string; error?: string }> => {
+      if (!isElectron) {
+        useAppStore.getState().setWorkingDir(path);
+        return { success: true, path };
+      }
+      return invoke<{ success: boolean; path: string; error?: string }>({
+        type: 'workdir.set',
+        payload: { path },
+      });
+    },
+    [invoke]
+  );
+
   const getMCPServers = useCallback(async () => {
     if (!isElectron) {
       return [];
@@ -901,6 +917,7 @@ export function useIPC() {
     selectFolder,
     getWorkingDir,
     changeWorkingDir,
+    setWorkingDirPath,
     getMCPServers,
     isElectron,
   };

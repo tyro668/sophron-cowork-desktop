@@ -47,6 +47,8 @@
     "selectWorkingFolder": "选择工作文件夹（必填）",
     "defaultWorkingFolder": "默认工作目录",
     "selectWorkingFolderFailed": "选择工作文件夹失败",
+    "projectDirectory": "项目目录",
+    "openFolder": "打开文件夹…",
     "attachFiles": "附加文件",
     "letsGo": "开始",
     "starting": "启动中...",

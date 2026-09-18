@@ -9,12 +9,14 @@ import i18n from './i18n-test';
 
 const ipcMocks = vi.hoisted(() => ({
   changeWorkingDir: vi.fn(),
+  setWorkingDirPath: vi.fn(),
   startSession: vi.fn(),
 }));
 
 vi.mock('../../src/renderer/hooks/useIPC', () => ({
   useIPC: () => ({
     changeWorkingDir: ipcMocks.changeWorkingDir,
+    setWorkingDirPath: ipcMocks.setWorkingDirPath,
     startSession: ipcMocks.startSession,
     isElectron: false,
   }),
@@ -27,6 +29,7 @@ beforeEach(() => {
     isConfigured: true,
     appConfig: { provider: 'anthropic', model: 'test-model' } as AppConfig,
     welcomeCloudTableChatDrafts: [],
+    projects: [],
   });
 });
 
@@ -44,7 +47,11 @@ describe('new task project folder', () => {
     ipcMocks.startSession.mockResolvedValue(null);
 
     render(<WelcomeView />);
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('welcome.selectWorkingFolder') }));
+    const trigger = screen.getByRole('button', {
+      name: i18n.t('welcome.selectWorkingFolder'),
+    });
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: i18n.t('welcome.openFolder') }));
 
     await waitFor(() => expect(useAppStore.getState().workingDir).toBe('/tmp/demo-project'));
     expect(ipcMocks.changeWorkingDir).toHaveBeenCalledWith(undefined, undefined);
@@ -61,5 +68,36 @@ describe('new task project folder', () => {
         expect.any(Object)
       );
     });
+  });
+
+  it('lists existing projects in the directory menu and activates one', async () => {
+    ipcMocks.setWorkingDirPath.mockResolvedValue({ success: true, path: '/tmp/alpha' });
+    useAppStore.setState({
+      workingDir: '/tmp/alpha',
+      projects: [
+        {
+          id: 'p1',
+          name: 'Alpha',
+          cwd: '/tmp/alpha',
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        {
+          id: 'p2',
+          name: null,
+          cwd: '/tmp/beta',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    render(<WelcomeView />);
+    const trigger = screen.getByRole('button', { name: 'Alpha' });
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+
+    const betaItem = await screen.findByRole('menuitem', { name: 'beta' });
+    fireEvent.click(betaItem);
+    expect(ipcMocks.setWorkingDirPath).toHaveBeenCalledWith('/tmp/beta');
   });
 });

@@ -1,13 +1,22 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { useSkillMentions } from '../hooks/useSkillMentions';
 import { getWorkingDirDisplayName } from '../utils/working-dir-label';
+import { normalizeWorkspacePath } from '../utils/sidebar-project-groups';
 import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import type { CloudTableChatAttachment, ContentBlock } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
@@ -19,6 +28,9 @@ import {
   Plus,
   BookOpen,
   Table2,
+  Check,
+  ChevronDown,
+  Folder,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -44,8 +56,9 @@ export function WelcomeView() {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { startSession, changeWorkingDir, isElectron } = useIPC();
+  const { startSession, changeWorkingDir, setWorkingDirPath, isElectron } = useIPC();
   const workingDir = useAppStore((state) => state.workingDir);
+  const projects = useAppStore((state) => state.projects);
   const setWorkingDir = useAppStore((state) => state.setWorkingDir);
   const setGlobalNotice = useAppStore((state) => state.setGlobalNotice);
   const isConfigured = useAppStore((state) => state.isConfigured);
@@ -74,11 +87,28 @@ export function WelcomeView() {
   const hasConfiguredModel = Boolean(
     isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
   );
-  const workingDirLabel = getWorkingDirDisplayName(
+  const fallbackWorkingDirLabel = getWorkingDirDisplayName(
     workingDir,
     t('welcome.defaultWorkingFolder'),
     t('welcome.selectWorkingFolder')
   );
+  const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  const projectOptions = useMemo(() => {
+    const activeKey = normalizeWorkspacePath(workingDir, rendererPlatform);
+    return [...projects]
+      .filter((project) => Boolean(project.cwd?.trim()))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .map((project) => ({
+        id: project.id,
+        cwd: project.cwd,
+        label:
+          project.name?.trim() ||
+          getWorkingDirDisplayName(project.cwd, t('welcome.defaultWorkingFolder'), project.cwd),
+        active: normalizeWorkspacePath(project.cwd, rendererPlatform) === activeKey,
+      }));
+  }, [projects, workingDir, rendererPlatform, t]);
+  const workingDirLabel =
+    projectOptions.find((project) => project.active)?.label ?? fallbackWorkingDirLabel;
   const skillMentions = useSkillMentions({
     prompt,
     setPrompt,
@@ -106,6 +136,17 @@ export function WelcomeView() {
           error instanceof Error && error.message
             ? `${t('welcome.selectWorkingFolderFailed')}: ${error.message}`
             : t('welcome.selectWorkingFolderFailed'),
+      });
+    }
+  };
+
+  const handleSelectProjectDir = async (path: string) => {
+    const result = await setWorkingDirPath(path);
+    if (!result.success && result.error && result.error !== 'User cancelled') {
+      setGlobalNotice({
+        id: `notice-workdir-project-${Date.now()}`,
+        type: 'warning',
+        message: `${t('welcome.selectWorkingFolderFailed')}: ${result.error}`,
       });
     }
   };
@@ -726,16 +767,48 @@ export function WelcomeView() {
                 buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
               />
 
-              <button
-                type="button"
-                onClick={handleSelectFolder}
-                className={`composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  workingDir ? '' : 'text-accent hover:text-accent-hover'
-                }`}
-                title={workingDir || workingDirLabel}
-              >
-                <FolderOpen className="h-[18px] w-[18px] shrink-0" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[11rem] shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                    title={workingDir || workingDirLabel}
+                  >
+                    <FolderOpen className="h-[18px] w-[18px] shrink-0" />
+                    <span className="truncate">{workingDirLabel}</span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  className="max-h-72 w-64 overflow-y-auto"
+                >
+                  {projectOptions.length > 0 && (
+                    <>
+                      <DropdownMenuLabel>{t('welcome.projectDirectory')}</DropdownMenuLabel>
+                      {projectOptions.map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          title={project.cwd}
+                          onSelect={() => void handleSelectProjectDir(project.cwd)}
+                        >
+                          <Folder className="mr-2 h-4 w-4 shrink-0 text-text-muted" />
+                          <span className="min-w-0 flex-1 truncate">{project.label}</span>
+                          {project.active && (
+                            <Check className="ml-2 h-4 w-4 shrink-0 text-accent" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onSelect={() => void handleSelectFolder()}>
+                    <FolderOpen className="mr-2 h-4 w-4 shrink-0 text-text-muted" />
+                    <span>{t('welcome.openFolder')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <div className="ml-auto flex min-w-max items-center gap-2">

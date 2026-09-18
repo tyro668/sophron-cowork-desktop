@@ -47,6 +47,8 @@
     "selectWorkingFolder": "Select Working Folder (required)",
     "defaultWorkingFolder": "Default working directory",
     "selectWorkingFolderFailed": "Failed to select working folder",
+    "projectDirectory": "Project directory",
+    "openFolder": "Open folder…",
     "attachFiles": "Attach Files",
     "letsGo": "Let's go",
     "starting": "Starting...",
