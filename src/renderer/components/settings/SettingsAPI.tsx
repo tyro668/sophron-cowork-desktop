@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
-  BrainCircuit,
   CheckCircle,
   Cpu,
   Edit3,
@@ -23,7 +22,6 @@ import type { ProviderType } from '../../types';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
 import { ApiConfigSetManager } from '../ApiConfigSetManager';
 import { GlassSelect } from '../GlassSelect';
-import { GlassSwitch } from '../GlassSwitch';
 import { Button, Input } from '../ui';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import { CodexAuthCard } from './CodexAuthCard';
@@ -403,50 +401,41 @@ export function SettingsAPI() {
                 />
               </FieldRow>
 
-              <div className="border-t border-border-muted pt-4">
-                <div className="rounded-lg bg-surface-muted px-3 py-2.5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <BrainCircuit className="h-4.5 w-4.5 shrink-0 text-accent" />
-                      <p className="text-[13px] font-medium text-text-primary">
-                        {t('api.enableThinking')}
-                      </p>
-                    </div>
-                    <GlassSwitch
-                      checked={enableThinking}
-                      onCheckedChange={setEnableThinking}
-                      ariaLabel={t('api.enableThinking')}
-                    />
-                  </div>
-                  {enableThinking && (
-                    <div className="mt-2.5 border-t border-border-muted/60 pt-2.5">
-                      <p className="mb-1.5 text-[12px] text-text-muted">{t('api.thinkingLevel')}</p>
-                      <div
-                        role="radiogroup"
-                        aria-label={t('api.thinkingLevel')}
-                        className="grid grid-cols-3 gap-1 rounded-lg border border-border-muted bg-background p-1"
+              <FieldRow label={t('api.thinkingLevel')}>
+                <div
+                  role="radiogroup"
+                  aria-label={t('api.thinkingLevel')}
+                  className="grid grid-cols-4 gap-1 rounded-lg border border-border-muted bg-surface-muted p-1"
+                >
+                  {(['off', 'low', 'medium', 'high'] as const).map((level) => {
+                    const active =
+                      level === 'off' ? !enableThinking : enableThinking && thinkingLevel === level;
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => {
+                          if (level === 'off') {
+                            setEnableThinking(false);
+                          } else {
+                            setEnableThinking(true);
+                            setThinkingLevel(level);
+                          }
+                        }}
+                        className={`h-8 rounded-md text-[12px] font-medium transition-colors ${
+                          active
+                            ? 'bg-background text-accent shadow-soft ring-1 ring-inset ring-accent/25'
+                            : 'text-text-muted hover:text-text-primary'
+                        }`}
                       >
-                        {(['low', 'medium', 'high'] as const).map((level) => (
-                          <button
-                            key={level}
-                            type="button"
-                            role="radio"
-                            aria-checked={thinkingLevel === level}
-                            onClick={() => setThinkingLevel(level)}
-                            className={`h-7 rounded-md text-[12px] font-medium transition-colors ${
-                              thinkingLevel === level
-                                ? 'bg-surface-muted text-accent shadow-soft ring-1 ring-inset ring-accent/25'
-                                : 'text-text-muted hover:text-text-primary'
-                            }`}
-                          >
-                            {t(`api.thinkingLevels.${level}`)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                        {t(`api.thinkingLevels.${level}`)}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              </FieldRow>
             </>
           )}
         </SettingsCard>

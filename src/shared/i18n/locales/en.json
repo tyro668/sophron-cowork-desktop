@@ -1752,6 +1752,7 @@
     "enableThinkingHint": "Show the model's thinking process step by step. This provides more transparency but may increase token usage.",
     "thinkingLevel": "Thinking Effort",
     "thinkingLevels": {
+      "off": "Off",
       "low": "Low",
       "medium": "Medium",
       "high": "High"

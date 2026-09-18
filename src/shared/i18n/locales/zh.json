@@ -1752,6 +1752,7 @@
     "enableThinkingHint": "显示模型的思考过程。这提供更多透明度，但可能增加 token 消耗。",
     "thinkingLevel": "思考强度",
     "thinkingLevels": {
+      "off": "关闭",
       "low": "低",
       "medium": "中",
       "high": "高"
