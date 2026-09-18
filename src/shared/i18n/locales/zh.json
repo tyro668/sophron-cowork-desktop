@@ -3151,6 +3151,8 @@
     "clearSearch": "清除搜索",
     "dataHint": "新建一个数据任务，选择输入数据并配置处理步骤。",
     "skillsHint": "前往在线市场，选择适合当前工作的技能。",
-    "automationHint": "设置触发时间和执行动作，让重复工作自动完成。"
+    "automationHint": "设置触发时间和执行动作，让重复工作自动完成。",
+    "inputTablesHint": "添加 CSV、Excel 文件或文件夹作为输入数据。",
+    "outputTablesHint": "新建一张输出表，供数据任务写入处理结果。"
   }
 }

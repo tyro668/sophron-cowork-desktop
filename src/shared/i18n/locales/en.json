@@ -3151,6 +3151,8 @@
     "clearSearch": "Clear search",
     "dataHint": "Create a data task, choose its input data, and configure the processing steps.",
     "skillsHint": "Browse the marketplace to find skills for your work.",
-    "automationHint": "Choose a trigger and actions to automate recurring work."
+    "automationHint": "Choose a trigger and actions to automate recurring work.",
+    "inputTablesHint": "Add CSV, Excel files, or folders as input data.",
+    "outputTablesHint": "Create an output table for data tasks to write results into."
   }
 }

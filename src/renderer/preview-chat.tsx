@@ -8,6 +8,13 @@ import './styles/globals.css';
 import { useAppStore } from './store';
 import { ChatView } from './components/ChatView';
 import { WelcomeView } from './components/WelcomeView';
+import {
+  EmptyState,
+  PaginationFooter,
+  DataTableSearch,
+  DataToolbarButton,
+} from './components/data-view/shared';
+import { Plus } from 'lucide-react';
 import type { AppConfig, Message, Session } from './types';
 
 const SESSION_ID = 'preview-session';
@@ -188,9 +195,46 @@ useAppStore.setState({
 
 document.documentElement.classList.add('light');
 
+function EmptyPanelPreview({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-transparent">
+      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <DataTableSearch value="" onChange={() => {}} placeholder="搜索..." />
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<Plus className="h-3.5 w-3.5" />}
+            label="操作"
+            disabled
+            onClick={() => {}}
+          />
+        </div>
+      </div>
+      <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <EmptyState
+            label={`暂无${label}`}
+            description="设置触发时间和执行动作，让重复工作自动完成。"
+            action={
+              <button className="btn btn-primary">
+                <Plus className="h-4 w-4" />
+                {label}
+              </button>
+            }
+          />
+        </div>
+        <PaginationFooter count={0} currentPage={1} onPageChange={() => {}} embedded />
+      </div>
+    </div>
+  );
+}
+
 function PreviewApp() {
   const [dark, setDark] = useState(false);
-  const showWelcome = new URLSearchParams(window.location.search).has('welcome');
+  const params = new URLSearchParams(window.location.search);
+  const showWelcome = params.has('welcome');
+  const showEmpty = params.has('empty');
 
   useEffect(() => {
     document.documentElement.classList.toggle('light', !dark);
@@ -199,7 +243,18 @@ function PreviewApp() {
   return (
     <div className="h-screen w-screen p-3" style={{ background: 'var(--app-backdrop)' }}>
       <main className="app-main-panel flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        {showWelcome ? <WelcomeView /> : <ChatView />}
+        {showWelcome ? (
+          <WelcomeView />
+        ) : showEmpty ? (
+          <div className="grid h-full grid-cols-2 gap-3 overflow-auto p-3">
+            <EmptyPanelPreview label="新建任务" />
+            <EmptyPanelPreview label="添加输入表" />
+            <EmptyPanelPreview label="添加输出表" />
+            <EmptyPanelPreview label="新建自动化" />
+          </div>
+        ) : (
+          <ChatView />
+        )}
       </main>
       <button
         type="button"

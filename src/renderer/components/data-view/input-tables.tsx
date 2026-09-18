@@ -128,14 +128,16 @@ export function InputTablesPanel({
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <button
-            onClick={onCreate}
-            disabled={isCreateDisabled || bulkBusy}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('data.inputTables.add')}
-          </button>
+          {(isLoading || visibleRows.length > 0 || searchQuery.trim()) && (
+            <button
+              onClick={onCreate}
+              disabled={isCreateDisabled || bulkBusy}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('data.inputTables.add')}
+            </button>
+          )}
           <DataTableSearch
             value={searchQuery}
             onChange={onSearchChange}
@@ -220,7 +222,26 @@ export function InputTablesPanel({
           {isLoading ? (
             <LoadingState label={t('data.inputTables.loading')} />
           ) : visibleRows.length === 0 ? (
-            <EmptyState label={emptyLabel} />
+            <EmptyState
+              label={emptyLabel}
+              description={t(
+                searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.inputTablesHint'
+              )}
+              action={
+                searchQuery.trim() ? (
+                  <button className="btn btn-secondary" onClick={() => onSearchChange('')}>
+                    {t('workspaceEmpty.clearSearch')}
+                  </button>
+                ) : (
+                  !isCreateDisabled && (
+                    <button className="btn btn-primary" onClick={onCreate}>
+                      <Plus className="h-4 w-4" />
+                      {t('data.inputTables.add')}
+                    </button>
+                  )
+                )
+              }
+            />
           ) : (
             <div className="min-w-full overflow-x-auto">
               <table className="w-full table-fixed border-collapse text-left">
