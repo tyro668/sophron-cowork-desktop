@@ -12,6 +12,7 @@ import type { SkillsAdapter } from '../skills/skills-adapter';
 import { configStore } from '../config/config-store';
 import { log, logWarn } from '../utils/logger';
 import { getAppStorageDir } from '../utils/app-storage';
+import { resolveBuiltinSkillsPath } from '../utils/builtin-skills-path';
 import { getBundledNodePaths, resolveBundledPythonBinDir } from './agent-runner-env';
 
 export interface AgentRunnerSkillsDeps {
@@ -106,46 +107,17 @@ ${hints.join('\n')}
   getBuiltinSkillsPath(): string {
     // In development, skills are in the project's assets/skills directory
     // In production, they're extracted via extraResources to resources/skills
-    const appPath = app.getAppPath();
-    const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
-
-    const possiblePaths = [
-      // Development: relative to this file
-      path.join(__dirname, '..', '..', '..', 'assets', 'skills'),
-      // Production: extraResources extracts assets/skills → resources/skills
-      // This is the preferred production path (real directory, no asar issues)
-      path.join(process.resourcesPath || '', 'skills'),
-      // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
-      ...(this.physicalDirExists(path.join(unpackedPath, '.claude', 'skills'))
-        ? [path.join(unpackedPath, '.claude', 'skills')]
-        : []),
-      // Last resort: read from inside the asar archive (Electron intercepts this)
-      path.join(appPath, '.claude', 'skills'),
-    ];
-
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        log('[AgentRunner] Found built-in skills at:', p);
-        return p;
-      }
+    const found = resolveBuiltinSkillsPath({
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      moduleDir: __dirname,
+    });
+    if (found) {
+      log('[AgentRunner] Found built-in skills at:', found);
+    } else {
+      logWarn('[AgentRunner] No built-in skills directory found');
     }
-
-    logWarn('[AgentRunner] No built-in skills directory found');
-    return '';
-  }
-
-  /**
-   * Check if a directory physically exists on disk, bypassing Electron's
-   * asar interception.
-   */
-  private physicalDirExists(dirPath: string): boolean {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const originalFs = require('original-fs') as typeof import('fs');
-      return originalFs.existsSync(dirPath) && originalFs.statSync(dirPath).isDirectory();
-    } catch {
-      return false;
-    }
+    return found;
   }
 
   getAppAgentDir(): string {

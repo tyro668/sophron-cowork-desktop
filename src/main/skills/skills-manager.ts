@@ -20,6 +20,7 @@ import type { DatabaseInstance } from '../db/database';
 import { log, logError, logWarn } from '../utils/logger';
 import { isPathWithinRoot } from '../tools/path-containment';
 import { getAppStorageDir } from '../utils/app-storage';
+import { resolveBuiltinSkillsPath } from '../utils/builtin-skills-path';
 import { SkillHubService } from './skillhub-service';
 
 /**
@@ -326,43 +327,11 @@ export class SkillsManager {
    * Get the built-in skills directory path
    */
   private getBuiltinSkillsPath(): string {
-    const appPath = app.getAppPath();
-    const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
-
-    const possiblePaths = [
-      // Development
-      path.join(__dirname, '..', '..', '..', 'assets', 'skills'),
-      // Production: extraResources extracts assets/skills → resources/skills
-      path.join(process.resourcesPath || '', 'skills'),
-      // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
-      ...(this.physicalDirExists(path.join(unpackedPath, '.claude', 'skills'))
-        ? [path.join(unpackedPath, '.claude', 'skills')]
-        : []),
-      // Last resort: read from inside the asar archive (Electron intercepts this)
-      path.join(appPath, '.claude', 'skills'),
-    ];
-
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        return p;
-      }
-    }
-
-    return '';
-  }
-
-  /**
-   * Check if a directory physically exists on disk, bypassing Electron's
-   * asar interception. Uses try/catch with lstatSync on the real filesystem.
-   */
-  private physicalDirExists(dirPath: string): boolean {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const originalFs = require('original-fs') as typeof import('fs');
-      return originalFs.existsSync(dirPath) && originalFs.statSync(dirPath).isDirectory();
-    } catch {
-      return false;
-    }
+    return resolveBuiltinSkillsPath({
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      moduleDir: __dirname,
+    });
   }
 
   private getDefaultGlobalSkillsPath(): string {
