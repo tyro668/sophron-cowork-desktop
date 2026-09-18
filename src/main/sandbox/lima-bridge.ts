@@ -361,7 +361,8 @@ export class LimaBridge implements SandboxExecutor {
    * Start Lima instance
    */
   static async startLimaInstance(): Promise<boolean> {
-    log('[Lima] Starting instance:', LIMA_INSTANCE_NAME);
+    const instanceName = getLimaInstanceName();
+    log('[Lima] Starting instance:', instanceName);
     log('[Lima] This may take several minutes (first start includes image download)...');
 
     return new Promise((resolve) => {
@@ -381,14 +382,14 @@ export class LimaBridge implements SandboxExecutor {
           const { stdout } = await execAsync('limactl list', { timeout: 5000 });
           const lines = stdout.trim().split(/\r?\n/);
           return lines.some(
-            (line) => line.includes(LIMA_INSTANCE_NAME) && line.includes('Running')
+            (line) => line.trim().split(/\s+/)[0] === instanceName && line.includes('Running')
           );
         } catch {
           return false;
         }
       };
 
-      const limaProcess = spawn('limactl', ['start', LIMA_INSTANCE_NAME], {
+      const limaProcess = spawn('limactl', ['start', instanceName], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -450,9 +451,10 @@ export class LimaBridge implements SandboxExecutor {
    * Stop Lima instance
    */
   static async stopLimaInstance(): Promise<boolean> {
-    log('[Lima] Stopping instance:', LIMA_INSTANCE_NAME);
+    const instanceName = getLimaInstanceName();
+    log('[Lima] Stopping instance:', instanceName);
     try {
-      await execAsync(`limactl stop ${LIMA_INSTANCE_NAME}`, {
+      await execFileAsync('limactl', ['stop', instanceName], {
         timeout: 30000,
       });
       log('[Lima] Instance stopped');
@@ -705,7 +707,7 @@ export class LimaBridge implements SandboxExecutor {
 
     this.limaProcess = spawn(
       'limactl',
-      ['shell', LIMA_INSTANCE_NAME, '--', 'bash', '-c', nodeCommand],
+      ['shell', getLimaInstanceName(), '--', 'bash', '-c', nodeCommand],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
       }

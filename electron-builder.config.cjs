@@ -101,7 +101,7 @@ module.exports = {
       { from: 'resources/node/win32-x64', to: 'node' },
       { from: 'resources/node/win32-x64/node_modules/npm', to: 'node/node_modules/npm' },
       { from: 'dist-wsl-agent', to: 'wsl-agent' },
-      { from: '.claude/skills', to: 'skills' },
+      { from: 'assets/skills', to: 'skills' },
     ],
   },
 
@@ -142,7 +142,7 @@ module.exports = {
       { from: 'resources/python/darwin-${arch}', to: 'python' },
       { from: 'resources/tools/darwin-${arch}', to: 'tools' },
       { from: 'dist-lima-agent', to: 'lima-agent' },
-      { from: '.claude/skills', to: 'skills' },
+      { from: 'assets/skills', to: 'skills' },
     ],
   },
 
@@ -164,7 +164,7 @@ module.exports = {
       { from: 'resources/node/linux-x64', to: 'node' },
       { from: 'resources/node/linux-x64/lib/node_modules/npm', to: 'node/lib/node_modules/npm' },
       { from: 'resources/python/linux-${arch}', to: 'python' },
-      { from: '.claude/skills', to: 'skills' },
+      { from: 'assets/skills', to: 'skills' },
     ],
   },
 

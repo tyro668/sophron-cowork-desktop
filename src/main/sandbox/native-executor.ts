@@ -19,6 +19,7 @@ import type { SandboxConfig, SandboxExecutor, ExecutionResult, DirectoryEntry } 
 export class NativeExecutor implements SandboxExecutor {
   private config: SandboxConfig | null = null;
   private workspacePath: string = '';
+  private realWorkspacePath: string = '';
   private isInitialized: boolean = false;
 
   /**
@@ -32,6 +33,7 @@ export class NativeExecutor implements SandboxExecutor {
     if (!fs.existsSync(this.workspacePath)) {
       throw new Error(`Workspace does not exist: ${this.workspacePath}`);
     }
+    this.realWorkspacePath = fs.realpathSync(this.workspacePath);
 
     this.isInitialized = true;
     log('[NativeExecutor] Initialized with workspace:', this.workspacePath);
@@ -58,12 +60,33 @@ export class NativeExecutor implements SandboxExecutor {
       throw new Error(`Path is outside workspace: ${resolved}`);
     }
 
-    // Check for symlink escapes
-    if (fs.existsSync(resolved)) {
-      const realPath = fs.realpathSync(resolved);
-      const realCheck = isWindows ? realPath.toLowerCase() : realPath;
-      if (!isPathWithinRoot(realCheck, workspaceCheck, isWindows)) {
-        throw new Error(`Symlink escape detected: ${resolved} -> ${realPath}`);
+    // New write/copy/mkdir targets may not exist yet. Validate their nearest
+    // existing ancestor too, otherwise an intermediate symlink can escape.
+    const realWorkspaceCheck = isWindows
+      ? this.realWorkspacePath.toLowerCase()
+      : this.realWorkspacePath;
+    let ancestor = resolved;
+    for (;;) {
+      try {
+        const realPath = fs.realpathSync(ancestor);
+        const realCheck = isWindows ? realPath.toLowerCase() : realPath;
+        if (!isPathWithinRoot(realCheck, realWorkspaceCheck, isWindows)) {
+          throw new Error(`Symlink escape detected: ${resolved} -> ${realPath}`);
+        }
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        // Do not treat a dangling symlink as a safe, nonexistent path.
+        try {
+          if (fs.lstatSync(ancestor).isSymbolicLink()) {
+            throw new Error(`Symlink escape detected: unresolved link ${ancestor}`);
+          }
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') throw statError;
+        }
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) throw error;
+        ancestor = parent;
       }
     }
 

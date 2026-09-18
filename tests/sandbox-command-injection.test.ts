@@ -126,18 +126,6 @@ describe('lima-bridge execLimaShellWithRetry uses execFileAsync', () => {
   });
 });
 
-describe('wsl-bridge agent path metacharacter check', () => {
-  it('validates wslAgentPath for shell metacharacters before use', () => {
-    const startAgentStart = wslBridgeSrc.indexOf('private async startAgent()');
-    const startAgentEnd = wslBridgeSrc.indexOf("log('[WSL] Agent is ready')", startAgentStart);
-    const startAgentBody = wslBridgeSrc.substring(startAgentStart, startAgentEnd);
-
-    // Should check for metacharacters
-    expect(startAgentBody).toContain('/[;&|`$(){}]/.test(wslAgentPath)');
-    expect(startAgentBody).toContain('throw new Error(`Invalid agent path: ${wslAgentPath}`)');
-  });
-});
-
 describe('rm -rf symlink protection', () => {
   it('sandbox-sync verifies realpath before rm -rf', () => {
     const cleanupStart = sandboxSyncSrc.indexOf('static async cleanup(sessionId: string)');

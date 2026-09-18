@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
+import { posix } from 'path';
 import {
   createBashTool,
   createCodingTools,
@@ -36,6 +37,8 @@ function shellQuote(value: string): string {
 }
 
 function resolveSandboxPath(absolutePath: string, cwd: string): string {
+  // SDK mkdir uses the host's path.dirname, which can emit backslashes on Windows.
+  absolutePath = absolutePath.replace(/\\/g, '/');
   if (absolutePath === VIRTUAL_WORKSPACE_PATH) {
     return cwd;
   }
@@ -45,8 +48,49 @@ function resolveSandboxPath(absolutePath: string, cwd: string): string {
   return absolutePath;
 }
 
+export function resolveSandboxToolInput(filePath: string, cwd: string): string {
+  const input = filePath.replace(/^@/, '').replace(/\\/g, '/');
+  // Resolve before the SDK: path.resolve on a Windows host turns a Linux cwd
+  // into C:\\home\\..., and SDK tilde expansion would use the Windows home.
+  if (/^[A-Za-z]:|^\/\/|^~(?:\/|$)/.test(input)) {
+    throw new Error('Use a sandbox-relative path or an absolute Linux path.');
+  }
+  return resolveSandboxPath(posix.resolve(cwd, input), cwd);
+}
+
 function rewriteVirtualWorkspaceReferences(command: string, cwd: string): string {
-  return command.replace(/\/workspace(?=\/|\s|$)/g, shellQuote(cwd));
+  let quote: "'" | '"' | null = null;
+  let result = '';
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    if (char === '\\' && quote !== "'") {
+      result += command.slice(i, i + 2);
+      i++;
+      continue;
+    }
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? null : char;
+    }
+    if (
+      command.startsWith(VIRTUAL_WORKSPACE_PATH, i) &&
+      (i === 0 || /[\s'"=(:;&|<>]/.test(command[i - 1])) &&
+      (i + VIRTUAL_WORKSPACE_PATH.length === command.length ||
+        /[/\s'";)&|<>]/.test(command[i + VIRTUAL_WORKSPACE_PATH.length]))
+    ) {
+      // Preserve the caller's quoting context; nesting single quotes in an
+      // already double-quoted path changes the actual filename.
+      result +=
+        quote === "'"
+          ? cwd.replace(/'/g, "'\\''")
+          : quote === '"'
+            ? cwd.replace(/[\\$`"]/g, '\\$&')
+            : shellQuote(cwd);
+      i += VIRTUAL_WORKSPACE_PATH.length - 1;
+    } else {
+      result += char;
+    }
+  }
+  return result;
 }
 
 function buildSandboxShellInvocation(
@@ -120,7 +164,7 @@ function runSandboxShell(
       child.stdout?.off('data', onStdout);
       child.stderr?.off('data', onStderr);
       child.off('close', onClose);
-      child.off('error', onError);
+      // Keep the one-shot error listener: a spawn error may arrive after abort.
       options.signal?.removeEventListener('abort', onAbort);
     };
 
@@ -178,11 +222,17 @@ function runSandboxShell(
     child.once('close', onClose);
     child.once('error', onError);
     options.signal?.addEventListener('abort', onAbort, { once: true });
+    child.stdin?.on('error', onError);
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
 
     if (options.timeoutMs && options.timeoutMs > 0) {
       timeoutHandle = setTimeout(() => {
         timedOut = true;
         terminateSandboxProcess(child);
+        settleReject(new Error(`timeout:${options.timeoutMs ?? 0}`));
       }, options.timeoutMs);
       timeoutHandle.unref?.();
     }
@@ -214,7 +264,13 @@ function buildEnvExports(env?: NodeJS.ProcessEnv): string {
   return Object.entries(env)
     .filter((entry): entry is [string, string] => {
       const [key, value] = entry;
-      return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof value === 'string';
+      // The SDK supplies the full host environment. Keep the guest's runtime
+      // paths; Windows PATH/HOME/TEMP (and macOS runtime paths) are invalid here.
+      const guestOwned =
+        /^(path|home|userprofile|tmp|temp|tmpdir|shell|pwd|oldpwd|pythonhome|pythonpath|virtual_env|conda_prefix|node_path|ld_library_path|dyld_library_path)$/i;
+      return (
+        /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && typeof value === 'string' && !guestOwned.test(key)
+      );
     })
     .map(([key, value]) => `export ${key}=${shellQuote(value)};`)
     .join(' ');
@@ -301,10 +357,40 @@ export function createSandboxCodingTools(
   cwd: string,
   mode: SandboxToolMode
 ): ReturnType<typeof createCodingTools> {
+  const read = createReadTool(cwd, { operations: createSandboxReadOperations(mode, cwd) });
+  const edit = createEditTool(cwd, { operations: createSandboxEditOperations(mode, cwd) });
+  const write = createWriteTool(cwd, { operations: createSandboxWriteOperations(mode, cwd) });
   return [
-    createReadTool(cwd, { operations: createSandboxReadOperations(mode, cwd) }),
+    {
+      ...read,
+      execute: (id, params, signal, update) =>
+        read.execute(
+          id,
+          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          signal,
+          update
+        ),
+    },
     createBashTool(cwd, { operations: createSandboxBashOperations(mode) }),
-    createEditTool(cwd, { operations: createSandboxEditOperations(mode, cwd) }),
-    createWriteTool(cwd, { operations: createSandboxWriteOperations(mode, cwd) }),
+    {
+      ...edit,
+      execute: (id, params, signal, update) =>
+        edit.execute(
+          id,
+          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          signal,
+          update
+        ),
+    },
+    {
+      ...write,
+      execute: (id, params, signal, update) =>
+        write.execute(
+          id,
+          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          signal,
+          update
+        ),
+    },
   ] as ReturnType<typeof createCodingTools>;
 }

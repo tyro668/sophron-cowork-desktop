@@ -14,7 +14,7 @@ describe('Sandbox executor containment wiring', () => {
 
     expect(nativeSource).toContain("import { isPathWithinRoot } from '../tools/path-containment';");
     expect(nativeSource).toContain('isPathWithinRoot(targetCheck, workspaceCheck, isWindows)');
-    expect(nativeSource).toContain('isPathWithinRoot(realCheck, workspaceCheck, isWindows)');
+    expect(nativeSource).toContain('isPathWithinRoot(realCheck, realWorkspaceCheck, isWindows)');
 
     expect(wslSource).toContain("import { isPathWithinRoot } from './path-containment';");
     expect(wslSource).toContain('isPathWithinRoot(resolved, this.workspacePath)');

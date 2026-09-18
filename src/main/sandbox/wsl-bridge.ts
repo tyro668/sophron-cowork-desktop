@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import * as fs from 'fs';
 import { app } from 'electron';
-import { log, logError, logWarn } from '../utils/logger';
+import { log, logError } from '../utils/logger';
 import type {
   WSLStatus,
   SandboxConfig,
@@ -38,10 +38,6 @@ async function loadBootstrap() {
 
 const execFileAsync = promisify(execFile);
 
-function escapeForDoubleQuotes(s: string): string {
-  return s.replace(/[\\$`"!]/g, '\\$&');
-}
-
 /**
  * Path conversion utilities for Windows <-> WSL
  */
@@ -54,17 +50,20 @@ export const pathConverter: PathConverter = {
     if (!windowsPath) return windowsPath;
 
     // Handle UNC paths (\\server\share)
-    if (windowsPath.startsWith('\\\\')) {
-      logWarn('[WSL] UNC paths are not supported in WSL');
-      return windowsPath;
+    if (/^(?:\\\\|\/\/)/.test(windowsPath)) {
+      throw new Error('UNC paths are not supported in WSL sandbox mode');
     }
 
     // Convert drive letter path
-    const match = windowsPath.match(/^([A-Za-z]):(.*)/);
+    const match = windowsPath.match(/^([A-Za-z]):([\\/].*)$/);
     if (match) {
       const driveLetter = match[1].toLowerCase();
       const restPath = match[2].replace(/\\/g, '/');
       return `/mnt/${driveLetter}${restPath}`;
+    }
+
+    if (/^[A-Za-z]:/.test(windowsPath)) {
+      throw new Error('WSL requires an absolute Windows drive path');
     }
 
     // Already a Unix path or relative path
@@ -189,20 +188,35 @@ export class WSLBridge implements SandboxExecutor {
         return { available: false };
       }
 
-      // Prefer Ubuntu, otherwise use first available
-      const ubuntu = distros.find((d) => d.toLowerCase().includes('ubuntu'));
-      const selectedDistro = ubuntu || distros[0];
-      WSLBridge.validateDistroName(selectedDistro);
-      log('[WSL] Selected distro:', selectedDistro);
-
-      // Test if the distro actually works (WSL service might be broken)
-      const distroWorks = await WSLBridge.testDistro(selectedDistro);
-      if (!distroWorks) {
-        log('[WSL] Selected distro is not responding. WSL service may need restart.');
-        log('[WSL] Try: wsl --shutdown (in PowerShell as Admin), then restart the app');
-        return { available: false };
+      // Only user WSL 2 distributions are suitable. Docker's internal distros
+      // are managed appliances, and a stopped/broken Ubuntu must not mask a
+      // working Debian installation. The trailing version is locale-independent.
+      const listing = await execFileAsync('wsl', ['--list', '--verbose'], {
+        encoding: 'buffer' as BufferEncoding,
+        timeout: 10000,
+      });
+      const rows = WSLBridge.decodeWSLOutput(listing.stdout as unknown as Buffer)
+        .split('\n')
+        .map((row) => row.replace(/^\s*\*?\s*/, ''));
+      const candidates = distros
+        .filter(
+          (name) =>
+            !/^(docker-desktop|rancher-desktop)(?:-|$)/i.test(name) &&
+            rows.some(
+              (row) =>
+                row.startsWith(name) && /\s/.test(row[name.length] || '') && /\s2\s*$/.test(row)
+            )
+        )
+        .sort((a, b) => Number(/ubuntu/i.test(b)) - Number(/ubuntu/i.test(a)));
+      let selectedDistro: string | undefined;
+      for (const candidate of candidates) {
+        if (await WSLBridge.testDistro(candidate)) {
+          selectedDistro = candidate;
+          break;
+        }
       }
-      log('[WSL] Distro is responding');
+      if (!selectedDistro) return { available: false };
+      log('[WSL] Selected WSL 2 distro:', selectedDistro);
 
       // Check if Node.js is available in the distro
       // Use -e to execute a simple command
@@ -503,7 +517,7 @@ export class WSLBridge implements SandboxExecutor {
           '-e',
           'bash',
           '-c',
-          `python3 -m pip install --user ${packagesStr} 2>&1 | tail -5`,
+          `set -o pipefail; python3 -m pip install --user ${packagesStr} 2>&1 | tail -5`,
         ],
         { timeout: 300000, encoding: 'utf-8' } // 5 min timeout for package install
       );
@@ -654,7 +668,10 @@ export class WSLBridge implements SandboxExecutor {
       return this.initPromise;
     }
 
-    this.initPromise = this._initialize(config);
+    this.initPromise = this._initialize(config).catch((error) => {
+      this.disconnectAgent(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    });
     return this.initPromise;
   }
 
@@ -753,22 +770,27 @@ export class WSLBridge implements SandboxExecutor {
     const wslAgentPath = pathConverter.toWSL(agentPath);
     log('[WSL] Starting agent from:', wslAgentPath);
 
-    // Start WSL process with the agent
-    // Need to source nvm.sh first since node is installed via nvm
-    // Validate agentPath doesn't contain shell metacharacters
-    if (/[;&|`$(){}]/.test(wslAgentPath)) {
-      throw new Error(`Invalid agent path: ${wslAgentPath}`);
-    }
-    const nodeCommand = `source ~/.nvm/nvm.sh 2>/dev/null; node "${escapeForDoubleQuotes(wslAgentPath)}"`;
-    log('[WSL] Agent command:', nodeCommand);
-
-    this.wslProcess = spawn('wsl', ['-d', this.distro, '--', 'bash', '-c', nodeCommand], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    // Pass the script path as an argument, not shell source. Valid Windows
+    // installation folders can contain spaces, parentheses and apostrophes.
+    const nodeCommand = 'source ~/.nvm/nvm.sh 2>/dev/null; exec node "$1"';
+    const child = spawn(
+      'wsl',
+      ['-d', this.distro, '--', 'bash', '-c', nodeCommand, 'sophron-wsl-agent', wslAgentPath],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      }
+    );
+    this.wslProcess = child;
+    this.buffer = '';
+    child.stdin?.on('error', (error) => {
+      if (this.wslProcess === child) this.disconnectAgent(error);
     });
 
     // Handle stdout (JSON-RPC responses)
     const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB limit
-    this.wslProcess.stdout?.on('data', (data: Buffer) => {
+    child.stdout?.on('data', (data: Buffer) => {
+      if (this.wslProcess !== child) return;
       try {
         this.buffer += data.toString();
         if (this.buffer.length > MAX_BUFFER_SIZE) {
@@ -788,44 +810,39 @@ export class WSLBridge implements SandboxExecutor {
       log('[WSL Agent]', data.toString().trim());
     });
 
-    // Handle process exit
-    this.wslProcess.on('exit', (code, signal) => {
+    // Reject startup immediately on spawn/exit errors; do not leave a polling
+    // loop alive after a timeout or poison all subsequent initialize calls.
+    child.on('exit', (code, signal) => {
       log('[WSL] Agent process exited:', { code, signal });
-      this.wslProcess = null;
-      this.isInitialized = false;
-
-      // Reject all pending requests
-      for (const pending of this.pendingRequests.values()) {
-        pending.reject(new Error('WSL agent process exited'));
-        clearTimeout(pending.timeout);
-      }
-      this.pendingRequests.clear();
+      if (this.wslProcess === child) this.disconnectAgent(new Error('WSL agent process exited'));
     });
-
-    this.wslProcess.on('error', (error) => {
+    child.on('error', (error) => {
       logError('[WSL] Agent process error:', error);
+      if (this.wslProcess === child) this.disconnectAgent(error);
     });
-
-    // Wait for agent to be ready
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('WSL agent startup timeout'));
-      }, 30000);
-
-      const checkReady = async () => {
-        try {
-          await this.sendRequest('ping', {});
-          clearTimeout(timeout);
-          resolve();
-        } catch {
-          setTimeout(checkReady, 500);
-        }
-      };
-
-      setTimeout(checkReady, 1000);
-    });
+    // stdin buffers the ping until the agent is ready to read it.
+    try {
+      await this.sendRequest('ping', {}, 30000);
+    } catch (error) {
+      this.disconnectAgent(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
 
     log('[WSL] Agent is ready');
+  }
+
+  private disconnectAgent(error: Error): void {
+    const child = this.wslProcess;
+    this.wslProcess = null;
+    this.isInitialized = false;
+    this.initPromise = null;
+    this.buffer = '';
+    for (const pending of this.pendingRequests.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    this.pendingRequests.clear();
+    child?.kill();
   }
 
   /**
@@ -866,7 +883,8 @@ export class WSLBridge implements SandboxExecutor {
     params: Record<string, unknown>,
     timeoutMs: number = 60000
   ): Promise<T> {
-    if (!this.wslProcess?.stdin) {
+    const child = this.wslProcess;
+    if (!child?.stdin) {
       throw new Error('WSL agent not running');
     }
 
@@ -890,7 +908,9 @@ export class WSLBridge implements SandboxExecutor {
         timeout,
       });
 
-      this.wslProcess!.stdin!.write(JSON.stringify(request) + '\n');
+      child.stdin!.write(JSON.stringify(request) + '\n', (error) => {
+        if (error && this.wslProcess === child) this.disconnectAgent(error);
+      });
     });
   }
 
@@ -1083,17 +1103,12 @@ export class WSLBridge implements SandboxExecutor {
   async shutdown(): Promise<void> {
     if (this.wslProcess) {
       try {
-        await this.sendRequest('shutdown', {});
+        await this.sendRequest('shutdown', {}, 5000);
       } catch {
-        // Ignore errors during shutdown
+        // The agent may exit before acknowledging shutdown.
       }
-
-      this.wslProcess.kill();
-      this.wslProcess = null;
     }
-
-    this.isInitialized = false;
-    this.pendingRequests.clear();
+    this.disconnectAgent(new Error('WSL bridge shut down'));
     log('[WSL] Bridge shutdown complete');
   }
 

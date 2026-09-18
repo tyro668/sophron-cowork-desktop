@@ -1,7 +1,7 @@
 /**
  * SandboxSync - Manages file synchronization between Windows and WSL sandbox
  *
- * This module provides complete isolation by:
+ * This module provides a separate working copy (not an OS access boundary) by:
  * 1. Copying files from Windows to an isolated WSL directory (~/.sophron/sandbox/{sessionId})
  * 2. Running all operations within the isolated directory
  * 3. Syncing changes back to Windows when requested
@@ -108,6 +108,19 @@ export class SandboxSync {
 
     // Check if session already exists (sandbox persists across messages)
     const existingSession = sessions.get(sessionId);
+    if (
+      existingSession &&
+      (existingSession.windowsPath !== windowsPath || existingSession.distro !== distro)
+    ) {
+      // Preserve unsynced data rather than reusing/copying it into another project.
+      return {
+        success: false,
+        sandboxPath: existingSession.sandboxPath,
+        fileCount: 0,
+        totalSize: 0,
+        error: 'Sandbox session belongs to a different workspace or WSL distribution.',
+      };
+    }
     if (existingSession && existingSession.initialized) {
       log(`[SandboxSync] Reusing existing sandbox for session ${sessionId}`);
       log(`[SandboxSync]   Sandbox path: ${existingSession.sandboxPath}`);
@@ -136,12 +149,18 @@ export class SandboxSync {
     log(`[SandboxSync]   Distro: ${distro}`);
 
     // Get the actual home directory path from WSL (use cd ~ && pwd since $HOME won't expand in single quotes)
-    const homeResult = await this.wslExec(distro, 'cd ~ && pwd');
-    const homeDir = homeResult.stdout.trim() || '/root';
-    const sandboxPath = `${homeDir}/.sophron/sandbox/${sessionId}`;
-    log(`[SandboxSync]   Sandbox path: ${sandboxPath}`);
-
+    let sandboxPath = '';
     try {
+      const homeResult = await this.wslExec(distro, 'cd ~ && pwd');
+      const homeDir = homeResult.stdout.trim();
+      if (!homeDir.startsWith('/') || homeDir.includes('\n')) {
+        throw new Error('WSL returned an invalid home directory.');
+      }
+      sandboxPath = `${homeDir}/.sophron/sandbox/${sessionId}`;
+      await this.wslExec(
+        distro,
+        'command -v rsync >/dev/null || { echo "rsync is required in the WSL distribution" >&2; exit 1; }'
+      );
       // Create sandbox directory
       await this.wslExec(distro, `mkdir -p '${this.shellEscapePath(sandboxPath)}'`);
 
@@ -320,8 +339,8 @@ export class SandboxSync {
     // First sync changes back to Windows
     const syncResult = await this.syncToWindows(sessionId);
 
-    // Then cleanup the sandbox
-    await this.cleanup(sessionId);
+    // A failed copy-back must leave the only copy of the outputs recoverable.
+    if (syncResult.success) await this.cleanup(sessionId);
 
     return syncResult;
   }
@@ -421,7 +440,8 @@ export class SandboxSync {
       sessionIds.map(async (sessionId) => {
         try {
           // First sync to preserve changes
-          await this.syncToWindows(sessionId);
+          const result = await this.syncToWindows(sessionId);
+          if (!result.success) return { sessionId, success: false, error: result.error };
           // Then cleanup
           await this.cleanup(sessionId);
           return { sessionId, success: true };
