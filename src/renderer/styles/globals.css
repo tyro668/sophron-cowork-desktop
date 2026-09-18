@@ -187,7 +187,7 @@
   }
 
   /* Optional accent palettes. The app chrome remains neutral; only accent tokens change. */
-  :root[data-accent-theme='lake'] {
+  :root:not(.light)[data-accent-theme='lake'] {
     --color-accent: #2f9fd1;
     --color-accent-hover: #2485b2;
     --color-accent-muted: #204452;
@@ -316,7 +316,7 @@
     --code-token-comment: #717b80;
   }
 
-  :root[data-accent-theme='lavender'] {
+  :root:not(.light)[data-accent-theme='lavender'] {
     --color-accent: #7656e8;
     --color-accent-hover: #6244cc;
     --color-accent-muted: #3b315d;
@@ -449,7 +449,7 @@
     --code-token-comment: #747180;
   }
 
-  :root[data-accent-theme='orange'] {
+  :root:not(.light)[data-accent-theme='orange'] {
     --color-accent: #e47b2e;
     --color-accent-hover: #c96621;
     --color-accent-muted: #503723;
@@ -578,7 +578,7 @@
     --code-token-comment: #807871;
   }
 
-  :root[data-accent-theme='rose'] {
+  :root:not(.light)[data-accent-theme='rose'] {
     --color-accent: #d94d78;
     --color-accent-hover: #bd3d66;
     --color-accent-muted: #52303c;
