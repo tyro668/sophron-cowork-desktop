@@ -227,13 +227,29 @@ function AutomationRunTable({
   tr: (key: string, fallback: string) => string;
 }) {
   if (!hasAutomations) {
-    return <EmptyState label={tr('schedule.empty', '还没有自动化')} />;
+    return (
+      <EmptyState
+        label={tr('schedule.empty', '还没有自动化')}
+        description={tr(
+          'workspaceEmpty.automationHint',
+          '设置触发时间和执行动作，让重复工作自动完成。'
+        )}
+      />
+    );
   }
   if (isLoading) {
     return <LoadingState label={tr('schedule.runsLoading', '正在加载执行日志...')} />;
   }
   if (entries.length === 0) {
-    return <EmptyState label={tr('schedule.runsEmpty', '暂无执行记录')} />;
+    return (
+      <EmptyState
+        label={tr('schedule.runsEmpty', '暂无执行记录')}
+        description={tr(
+          'workspaceEmpty.runsHint',
+          '自动化按触发条件运行后，执行记录会显示在这里。'
+        )}
+      />
+    );
   }
   return (
     <div className="min-w-0 overflow-hidden">

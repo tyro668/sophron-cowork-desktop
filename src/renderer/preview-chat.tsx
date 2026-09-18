@@ -14,6 +14,7 @@ import {
   DataTableSearch,
   DataToolbarButton,
 } from './components/data-view/shared';
+import { TasksPanel } from './components/data-view/data-tasks/TasksPanel';
 import { Plus } from 'lucide-react';
 import type { AppConfig, Message, Session } from './types';
 
@@ -247,7 +248,23 @@ function PreviewApp() {
           <WelcomeView />
         ) : showEmpty ? (
           <div className="grid h-full grid-cols-2 gap-3 overflow-auto p-3">
-            <EmptyPanelPreview label="新建任务" />
+            <TasksPanel
+              tasks={[]}
+              totalTasks={0}
+              currentPage={1}
+              searchQuery=""
+              actionId={null}
+              isLoading={false}
+              isCreateDisabled={false}
+              onCreate={() => {}}
+              onSearchChange={() => {}}
+              onRefresh={() => {}}
+              onPageChange={() => {}}
+              onRun={() => {}}
+              onEdit={() => {}}
+              onDelete={() => {}}
+              onDeleteAll={() => {}}
+            />
             <EmptyPanelPreview label="添加输入表" />
             <EmptyPanelPreview label="添加输出表" />
             <EmptyPanelPreview label="新建自动化" />
