@@ -68,6 +68,7 @@ function makeConfig(): AppConfig {
       updatedAt: 0,
     },
     enableThinking: false,
+    thinkingLevel: 'medium',
     isConfigured: true,
   };
 }

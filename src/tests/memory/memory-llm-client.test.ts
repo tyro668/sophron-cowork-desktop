@@ -60,6 +60,7 @@ function makeConfig(timeoutMs: number): AppConfig {
       updatedAt: 0,
     },
     enableThinking: false,
+    thinkingLevel: 'medium',
     isConfigured: true,
   };
 }

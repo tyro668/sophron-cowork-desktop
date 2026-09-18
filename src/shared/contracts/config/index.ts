@@ -33,6 +33,9 @@ export type AppAccentTheme = 'mint' | 'lake' | 'lavender' | 'orange' | 'rose';
 /** The selectable application logo artwork. */
 export type AppLogoVariant = 'mark' | 'fold';
 
+/** Extended-thinking effort level applied when `enableThinking` is on. */
+export type ThinkingLevel = 'low' | 'medium' | 'high';
+
 export type ProviderProfileKey =
   | 'openrouter'
   | 'anthropic'
@@ -69,6 +72,7 @@ export interface ApiConfigSet {
   activeProfileKey: ProviderProfileKey;
   profiles: Partial<Record<ProviderProfileKey, ProviderProfile>>;
   enableThinking: boolean;
+  thinkingLevel: ThinkingLevel;
   updatedAt: string;
 }
 
@@ -132,6 +136,7 @@ export interface AppConfig {
   memoryRuntime: MemoryRuntimeConfig;
   personalAnalysis: StoredPersonalAnalysisConfig;
   enableThinking: boolean;
+  thinkingLevel: ThinkingLevel;
   isConfigured: boolean;
 }
 
@@ -233,6 +238,7 @@ export type AgentRuntimeConfig = Pick<
   | 'contextWindow'
   | 'maxTokens'
   | 'enableThinking'
+  | 'thinkingLevel'
 >;
 
 export interface ProviderPreset {

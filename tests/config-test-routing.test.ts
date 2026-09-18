@@ -41,6 +41,7 @@ function createConfig(): AppConfig {
     },
     personalAnalysis: { apiOrigin: '', apiKey: '', updatedAt: 0 },
     enableThinking: false,
+    thinkingLevel: 'medium',
     isConfigured: true,
   };
 }

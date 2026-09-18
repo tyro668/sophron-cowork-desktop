@@ -328,4 +328,42 @@ describe('ConfigStore config sets', () => {
     const reopened = new ConfigStore();
     expect(reopened.get('permissionPolicy')).toBe('default');
   });
+
+  it('persists thinking level per set and projects it into runtime config', () => {
+    const store = new ConfigStore();
+    expect(store.get('thinkingLevel')).toBe('medium');
+
+    store.update({ enableThinking: true, thinkingLevel: 'high' });
+    expect(store.get('thinkingLevel')).toBe('high');
+    expect(store.getAll().configSets[0].thinkingLevel).toBe('high');
+    expect(store.getRuntimeConfigForSet('default')?.thinkingLevel).toBe('high');
+
+    // Cloning carries the level over; other sets keep their own value.
+    const created = store.createSet({ name: 'High Think', mode: 'clone' });
+    const clone = created.configSets.find((set) => set.id !== 'default');
+    expect(clone?.thinkingLevel).toBe('high');
+
+    store.updateSet({ id: clone!.id, updates: { thinkingLevel: 'low' } });
+    expect(store.getRuntimeConfigForSet(clone!.id)?.thinkingLevel).toBe('low');
+    expect(store.get('thinkingLevel')).toBe('high');
+  });
+
+  it('normalizes missing or invalid thinking level to the default', () => {
+    // Legacy seeds have no thinkingLevel at all.
+    mocks.seed = {
+      provider: 'openai',
+      customProtocol: 'openai',
+      apiKey: 'sk-legacy',
+      model: 'gpt-5-mini',
+      enableThinking: true,
+      isConfigured: true,
+    };
+    const legacyStore = new ConfigStore();
+    expect(legacyStore.get('thinkingLevel')).toBe('medium');
+    expect(legacyStore.getAll().configSets[0].thinkingLevel).toBe('medium');
+
+    mocks.seed = { thinkingLevel: 'ultra' };
+    const invalidStore = new ConfigStore();
+    expect(invalidStore.get('thinkingLevel')).toBe('medium');
+  });
 });

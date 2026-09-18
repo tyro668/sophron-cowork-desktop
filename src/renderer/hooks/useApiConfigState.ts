@@ -8,6 +8,7 @@ import type {
   ProviderProfileKey,
   ProviderPresets,
   ProviderType,
+  ThinkingLevel,
 } from '../types';
 import { isLoopbackBaseUrl } from '../../shared/network/loopback';
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from '../../shared/ollama-base-url';
@@ -37,6 +38,7 @@ import {
   isElectron,
   modelPresetForProfile,
   normalizeDiscoveredOllamaModels,
+  normalizeThinkingLevel,
   profileKeyFromProvider,
   profileKeyToProvider,
   protocolLabel,
@@ -106,6 +108,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       isMutatingConfigSet: false,
       lastCustomProtocol: initialLastCustomProtocol,
       enableThinking: Boolean(initialConfig?.enableThinking),
+      thinkingLevel: normalizeThinkingLevel(initialConfig?.thinkingLevel, 'medium'),
       discoveredModels: {},
       isLoadingConfig: true,
       savedDraftSignature: '',
@@ -139,6 +142,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     isMutatingConfigSet,
     lastCustomProtocol,
     enableThinking,
+    thinkingLevel,
     discoveredModels,
     isLoadingConfig,
     savedDraftSignature,
@@ -392,8 +396,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         (customProtocol === 'gemini' && isCustomGeminiLoopbackGateway(baseUrl))));
   const requiresApiKey = !allowEmptyApiKey;
   const currentDraftSignature = useMemo(
-    () => buildApiConfigDraftSignature(activeProfileKey, profiles, enableThinking),
-    [activeProfileKey, profiles, enableThinking]
+    () => buildApiConfigDraftSignature(activeProfileKey, profiles, enableThinking, thinkingLevel),
+    [activeProfileKey, profiles, enableThinking, thinkingLevel]
   );
   const hasUnsavedChanges =
     savedDraftSignature !== '' && currentDraftSignature !== savedDraftSignature;
@@ -437,6 +441,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           activeProfileKey: snapshot.activeProfileKey,
           providerUnset: selectedSet?.provider === '',
           enableThinking: snapshot.enableThinking,
+          thinkingLevel: snapshot.thinkingLevel,
           configSets: bootstrap.configSets,
           activeConfigSetId: bootstrap.activeConfigSetId,
           selectedConfigSetId,
@@ -444,7 +449,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           savedDraftSignature: buildApiConfigDraftSignature(
             snapshot.activeProfileKey,
             snapshot.profiles,
-            snapshot.enableThinking
+            snapshot.enableThinking,
+            snapshot.thinkingLevel
           ),
         },
       });
@@ -581,6 +587,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   // Public setter exposed to consumers — wraps dispatch so the interface stays stable
   const setEnableThinking = useCallback((value: boolean) => {
     dispatch({ type: 'SET_ENABLE_THINKING', payload: value });
+  }, []);
+
+  const setThinkingLevel = useCallback((value: ThinkingLevel) => {
+    dispatch({ type: 'SET_THINKING_LEVEL', payload: value });
   }, []);
 
   useEffect(() => {
@@ -1054,6 +1064,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           activeProfileKey,
           profiles: persistedProfiles,
           enableThinking,
+          thinkingLevel,
         };
 
         const isEditingDefaultSet = selectedConfigSetId === activeConfigSetId;
@@ -1105,6 +1116,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       customModel,
       customProtocol,
       enableThinking,
+      thinkingLevel,
       model,
       onSave,
       presets,
@@ -1163,6 +1175,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           activeProfileKey: snapshot.activeProfileKey,
           providerUnset: target.provider === '',
           enableThinking: snapshot.enableThinking,
+          thinkingLevel: snapshot.thinkingLevel,
           configSets,
           activeConfigSetId,
           selectedConfigSetId: setId,
@@ -1171,7 +1184,8 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           savedDraftSignature: buildApiConfigDraftSignature(
             snapshot.activeProfileKey,
             snapshot.profiles,
-            snapshot.enableThinking
+            snapshot.enableThinking,
+            snapshot.thinkingLevel
           ),
         },
       });
@@ -1423,6 +1437,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     modelInputPlaceholder: modelInputGuidance.placeholder,
     modelInputHint: modelInputGuidance.hint,
     enableThinking,
+    thinkingLevel,
     isSaving,
     isTesting,
     isRefreshingModels,
@@ -1461,6 +1476,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     setMaxTokens,
     toggleCustomModel,
     setEnableThinking,
+    setThinkingLevel,
     applyCommonProviderSetup,
     changeProvider,
     clearProviderSelection,

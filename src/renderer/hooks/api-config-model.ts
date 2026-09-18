@@ -7,6 +7,7 @@ import type {
   ProviderProfileKey,
   ProviderPresets,
   ProviderType,
+  ThinkingLevel,
 } from '../types';
 import { useTranslation } from 'react-i18next';
 import { isLoopbackBaseUrl } from '../../shared/network/loopback';
@@ -34,6 +35,7 @@ export interface ConfigStateSnapshot {
   activeProfileKey: ProviderProfileKey;
   profiles: Record<ProviderProfileKey, UIProviderProfile>;
   enableThinking: boolean;
+  thinkingLevel: ThinkingLevel;
   providerUnset: boolean;
 }
 
@@ -73,6 +75,10 @@ export const PROFILE_KEYS: ProviderProfileKey[] = [
 
 export function isProfileKey(value: unknown): value is ProviderProfileKey {
   return typeof value === 'string' && PROFILE_KEYS.includes(value as ProviderProfileKey);
+}
+
+export function normalizeThinkingLevel(value: unknown, fallback: ThinkingLevel): ThinkingLevel {
+  return value === 'low' || value === 'medium' || value === 'high' ? value : fallback;
 }
 
 export function isProviderType(value: unknown): value is ProviderType {
@@ -356,6 +362,7 @@ export function buildApiConfigSnapshot(
     activeProfileKey,
     profiles,
     enableThinking: Boolean(config?.enableThinking),
+    thinkingLevel: normalizeThinkingLevel(config?.thinkingLevel, 'medium'),
     providerUnset: false,
   };
 }
@@ -383,12 +390,14 @@ export function toPersistedProfiles(
 export function buildApiConfigDraftSignature(
   activeProfileKey: ProviderProfileKey,
   profiles: Record<ProviderProfileKey, UIProviderProfile>,
-  enableThinking: boolean
+  enableThinking: boolean,
+  thinkingLevel: ThinkingLevel
 ): string {
   const persisted = toPersistedProfiles(profiles);
   return JSON.stringify({
     activeProfileKey,
     enableThinking,
+    thinkingLevel,
     profiles: PROFILE_KEYS.map((key) => ({
       key,
       apiKey: persisted[key]?.apiKey || '',
@@ -468,6 +477,7 @@ export function buildApiConfigSets(
         activeProfileKey,
         profiles: normalizedProfiles,
         enableThinking: Boolean(set.enableThinking),
+        thinkingLevel: normalizeThinkingLevel(set.thinkingLevel, 'medium'),
         updatedAt: typeof set.updatedAt === 'string' && set.updatedAt.trim() ? set.updatedAt : now,
       };
     });
@@ -490,6 +500,7 @@ export function buildApiConfigSets(
       activeProfileKey: snapshot.activeProfileKey,
       profiles: toPersistedProfiles(snapshot.profiles),
       enableThinking: snapshot.enableThinking,
+      thinkingLevel: snapshot.thinkingLevel,
       updatedAt: now,
     },
   ];
@@ -534,6 +545,7 @@ export function buildSnapshotFromConfigSet(
     activeProfileKey,
     profiles,
     enableThinking: Boolean(set.enableThinking),
+    thinkingLevel: normalizeThinkingLevel(set.thinkingLevel, 'medium'),
     providerUnset: set.provider === '',
   };
 }

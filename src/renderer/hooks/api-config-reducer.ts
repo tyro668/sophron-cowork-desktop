@@ -6,6 +6,7 @@ import type {
   ProviderModelInfo,
   ProviderProfileKey,
   ProviderPresets,
+  ThinkingLevel,
 } from '../types';
 import {
   clearDiscoveredModelsForProfile,
@@ -33,6 +34,8 @@ export interface ApiConfigState {
   pendingConfigSetAction: PendingConfigSetAction | null;
   // Extended thinking flag
   enableThinking: boolean;
+  // Extended thinking effort (only meaningful while enableThinking is on)
+  thinkingLevel: ThinkingLevel;
   // Remember last custom protocol so switching back to custom restores it
   lastCustomProtocol: CustomProtocolType;
   // Signature of the last persisted state (used for dirty-check)
@@ -75,6 +78,7 @@ export type ApiConfigAction =
         activeProfileKey: ProviderProfileKey;
         providerUnset: boolean;
         enableThinking: boolean;
+        thinkingLevel: ThinkingLevel;
         configSets: ApiConfigSet[];
         activeConfigSetId: string;
         selectedConfigSetId: string;
@@ -88,6 +92,8 @@ export type ApiConfigAction =
   | { type: 'SET_PROVIDER_UNSET'; payload: boolean }
   // Enable thinking toggle
   | { type: 'SET_ENABLE_THINKING'; payload: boolean }
+  // Thinking effort level
+  | { type: 'SET_THINKING_LEVEL'; payload: ThinkingLevel }
   // Patch one profile in the profiles map
   | { type: 'PATCH_PROFILE'; profileKey: ProviderProfileKey; patch: Partial<UIProviderProfile> }
   // Replace a profile using a functional updater
@@ -147,6 +153,7 @@ export function apiConfigReducer(state: ApiConfigState, action: ApiConfigAction)
         activeProfileKey: action.payload.activeProfileKey,
         providerUnset: action.payload.providerUnset,
         enableThinking: action.payload.enableThinking,
+        thinkingLevel: action.payload.thinkingLevel,
         configSets: action.payload.configSets,
         activeConfigSetId: action.payload.activeConfigSetId,
         selectedConfigSetId: action.payload.selectedConfigSetId,
@@ -163,6 +170,9 @@ export function apiConfigReducer(state: ApiConfigState, action: ApiConfigAction)
 
     case 'SET_ENABLE_THINKING':
       return { ...state, enableThinking: action.payload };
+
+    case 'SET_THINKING_LEVEL':
+      return { ...state, thinkingLevel: action.payload };
 
     case 'PATCH_PROFILE':
       return {

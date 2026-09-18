@@ -85,6 +85,7 @@ const testRuntimeConfig: AgentRuntimeConfig = {
   apiKey: 'test-key',
   model: 'test-model',
   enableThinking: false,
+  thinkingLevel: 'medium',
 };
 
 beforeEach(() => {

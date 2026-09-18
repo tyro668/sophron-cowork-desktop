@@ -43,6 +43,7 @@ export function resolveModelRuntimeConfigForAutomation(
         customProtocol: 'openai',
         model: builtinModel,
         enableThinking: false,
+        thinkingLevel: 'medium',
       }) ?? null
     );
   }

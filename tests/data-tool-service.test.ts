@@ -449,6 +449,7 @@ describe('DataToolService', () => {
       customProtocol: 'openai' as const,
       model: 'test-model',
       enableThinking: false,
+      thinkingLevel: 'medium' as const,
     };
     const promptContext = {
       sessionId: 'session_1',

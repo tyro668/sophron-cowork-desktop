@@ -24,6 +24,7 @@ const SCALAR_FIELDS = [
   'sandboxEnabled',
   'memoryEnabled',
   'enableThinking',
+  'thinkingLevel',
   'enableDevLogs',
   'isConfigured',
 

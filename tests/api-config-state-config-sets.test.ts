@@ -96,8 +96,18 @@ describe('api config set helpers', () => {
 
   it('generates stable draft signature and detects material changes', () => {
     const snapshot = buildApiConfigSnapshot(undefined, FALLBACK_PROVIDER_PRESETS);
-    const signatureA = buildApiConfigDraftSignature(snapshot.activeProfileKey, snapshot.profiles, snapshot.enableThinking);
-    const signatureB = buildApiConfigDraftSignature(snapshot.activeProfileKey, snapshot.profiles, snapshot.enableThinking);
+    const signatureA = buildApiConfigDraftSignature(
+      snapshot.activeProfileKey,
+      snapshot.profiles,
+      snapshot.enableThinking,
+      snapshot.thinkingLevel
+    );
+    const signatureB = buildApiConfigDraftSignature(
+      snapshot.activeProfileKey,
+      snapshot.profiles,
+      snapshot.enableThinking,
+      snapshot.thinkingLevel
+    );
     expect(signatureA).toBe(signatureB);
 
     const changedProfiles = {
@@ -107,8 +117,21 @@ describe('api config set helpers', () => {
         apiKey: 'sk-new',
       },
     };
-    const signatureC = buildApiConfigDraftSignature(snapshot.activeProfileKey, changedProfiles, snapshot.enableThinking);
+    const signatureC = buildApiConfigDraftSignature(
+      snapshot.activeProfileKey,
+      changedProfiles,
+      snapshot.enableThinking,
+      snapshot.thinkingLevel
+    );
     expect(signatureC).not.toBe(signatureA);
+
+    const signatureD = buildApiConfigDraftSignature(
+      snapshot.activeProfileKey,
+      snapshot.profiles,
+      snapshot.enableThinking,
+      'high'
+    );
+    expect(signatureD).not.toBe(signatureA);
   });
 
   it('builds bootstrap state in one pass with a valid active set', () => {
@@ -215,5 +238,52 @@ describe('api config set helpers', () => {
     expect(bootstrap.configSets[0].profiles.ollama?.baseUrl).toBe(
       'https://ollama.example.internal/proxy/v1'
     );
+  });
+
+  it('normalizes thinking level from config sets and snapshots', () => {
+    const snapshot = buildApiConfigSnapshot(undefined, FALLBACK_PROVIDER_PRESETS);
+    expect(snapshot.thinkingLevel).toBe('medium');
+
+    const config = {
+      provider: 'openai',
+      customProtocol: 'openai',
+      activeProfileKey: 'openai',
+      apiKey: 'sk-openai',
+      model: 'gpt-5.2',
+      enableThinking: true,
+      thinkingLevel: 'high',
+      activeConfigSetId: 'default',
+      configSets: [
+        {
+          id: 'default',
+          name: 'Default',
+          isSystem: true,
+          provider: 'openai',
+          customProtocol: 'openai',
+          activeProfileKey: 'openai',
+          profiles: {},
+          enableThinking: true,
+          thinkingLevel: 'high',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'stale',
+          name: 'Stale',
+          provider: 'openai',
+          customProtocol: 'openai',
+          activeProfileKey: 'openai',
+          profiles: {},
+          enableThinking: true,
+          thinkingLevel: 'ultra',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      isConfigured: true,
+    } as AppConfig;
+
+    const bootstrap = buildApiConfigBootstrap(config, FALLBACK_PROVIDER_PRESETS);
+    expect(bootstrap.snapshot.thinkingLevel).toBe('high');
+    expect(bootstrap.configSets[0].thinkingLevel).toBe('high');
+    expect(bootstrap.configSets[1].thinkingLevel).toBe('medium');
   });
 });

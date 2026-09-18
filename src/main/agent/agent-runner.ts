@@ -969,9 +969,11 @@ export class AgentRunner {
       // Resolve thinking level early — needed for session reuse check below
       const enableThinking =
         runtimeConfigOverride?.enableThinking ?? configStore.get('enableThinking') ?? false;
-      logCtx('[AgentRunner] Enable thinking mode:', enableThinking);
+      const configuredThinkingLevel =
+        runtimeConfigOverride?.thinkingLevel ?? configStore.get('thinkingLevel') ?? 'medium';
+      logCtx('[AgentRunner] Enable thinking mode:', enableThinking, configuredThinkingLevel);
       type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-      const thinkingLevel: PiThinkingLevel = enableThinking ? 'medium' : 'off';
+      const thinkingLevel: PiThinkingLevel = enableThinking ? configuredThinkingLevel : 'off';
       const sessionRuntimeSignature = buildPiSessionRuntimeSignature({
         configProvider: runtimeConfig.provider,
         customProtocol: runtimeConfig.customProtocol,

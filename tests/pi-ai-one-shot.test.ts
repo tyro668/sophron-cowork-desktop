@@ -166,6 +166,7 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     },
     personalAnalysis: { apiOrigin: '', apiKey: '', updatedAt: 0 },
     enableThinking: false,
+    thinkingLevel: 'medium',
     isConfigured: true,
     ...overrides,
   };

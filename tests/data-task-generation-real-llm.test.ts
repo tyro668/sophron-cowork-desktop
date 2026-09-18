@@ -59,6 +59,7 @@ type StoredConfigSet = {
   activeProfileKey: string;
   profiles?: Record<string, StoredProfile>;
   enableThinking?: boolean;
+  thinkingLevel?: AgentRuntimeConfig['thinkingLevel'];
 };
 
 type StoredConfig = {
@@ -95,6 +96,7 @@ function loadActiveRuntimeConfig(): AgentRuntimeConfig {
     contextWindow: profile.contextWindow,
     maxTokens: profile.maxTokens,
     enableThinking: configSet.enableThinking ?? false,
+    thinkingLevel: configSet.thinkingLevel ?? 'medium',
   };
 }
 

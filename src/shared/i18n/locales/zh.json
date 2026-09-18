@@ -1750,6 +1750,12 @@
     "codexCliNotFound": "未检测到本地 codex CLI 登录态（~/.codex/auth.json），请先在本机登录 codex，或改用浏览器登录",
     "enableThinking": "启用思考模式",
     "enableThinkingHint": "显示模型的思考过程。这提供更多透明度，但可能增加 token 消耗。",
+    "thinkingLevel": "思考强度",
+    "thinkingLevels": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
     "enableThinkingOllamaHint": "大多数 Ollama 模型不支持思考模式，仅在模型明确支持时启用。",
     "testSuccess": "连接成功（{{ms}}ms）",
     "testSuccessNeedSave": "连接测试成功，请点击“保存设置”后再开始会话。",

@@ -89,6 +89,7 @@ export function SettingsAPI() {
     isRefreshingModels,
     isDiscoveringLocalOllama,
     enableThinking,
+    thinkingLevel,
     isOllamaMode,
     requiresApiKey,
     commonProviderSetups,
@@ -108,6 +109,7 @@ export function SettingsAPI() {
     setMaxTokens,
     toggleCustomModel,
     setEnableThinking,
+    setThinkingLevel,
     applyCommonProviderSetup,
     changeProvider,
     clearProviderSelection,
@@ -402,18 +404,47 @@ export function SettingsAPI() {
               </FieldRow>
 
               <div className="border-t border-border-muted pt-4">
-                <div className="flex items-center justify-between gap-4 rounded-lg bg-surface-muted px-3 py-2.5">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <BrainCircuit className="h-4.5 w-4.5 shrink-0 text-accent" />
-                    <p className="text-[13px] font-medium text-text-primary">
-                      {t('api.enableThinking')}
-                    </p>
+                <div className="rounded-lg bg-surface-muted px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <BrainCircuit className="h-4.5 w-4.5 shrink-0 text-accent" />
+                      <p className="text-[13px] font-medium text-text-primary">
+                        {t('api.enableThinking')}
+                      </p>
+                    </div>
+                    <GlassSwitch
+                      checked={enableThinking}
+                      onCheckedChange={setEnableThinking}
+                      ariaLabel={t('api.enableThinking')}
+                    />
                   </div>
-                  <GlassSwitch
-                    checked={enableThinking}
-                    onCheckedChange={setEnableThinking}
-                    ariaLabel={t('api.enableThinking')}
-                  />
+                  {enableThinking && (
+                    <div className="mt-2.5 border-t border-border-muted/60 pt-2.5">
+                      <p className="mb-1.5 text-[12px] text-text-muted">{t('api.thinkingLevel')}</p>
+                      <div
+                        role="radiogroup"
+                        aria-label={t('api.thinkingLevel')}
+                        className="grid grid-cols-3 gap-1 rounded-lg border border-border-muted bg-background p-1"
+                      >
+                        {(['low', 'medium', 'high'] as const).map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            role="radio"
+                            aria-checked={thinkingLevel === level}
+                            onClick={() => setThinkingLevel(level)}
+                            className={`h-7 rounded-md text-[12px] font-medium transition-colors ${
+                              thinkingLevel === level
+                                ? 'bg-surface-muted text-accent shadow-soft ring-1 ring-inset ring-accent/25'
+                                : 'text-text-muted hover:text-text-primary'
+                            }`}
+                          >
+                            {t(`api.thinkingLevels.${level}`)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
