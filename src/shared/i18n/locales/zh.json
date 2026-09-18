@@ -3025,6 +3025,7 @@
     "wecomWebhookCredentialsRequired": "请先填写企业微信 Webhook Token 和 43 位 EncodingAESKey",
     "startService": "启动服务",
     "stopService": "停止服务",
+    "startToConfigure": "远程服务未启动。启动服务后才能配置渠道、授权用户和全局设置。",
     "activeSessions": "活跃会话",
     "authorizedUsers": "已授权用户",
     "pendingApprovals": "待授权",

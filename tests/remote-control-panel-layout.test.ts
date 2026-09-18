@@ -8,9 +8,16 @@ const remotePanelPath = path.resolve(
 );
 
 describe('RemoteControlPanel layout', () => {
-  it('uses softer shell treatments instead of dashboard-heavy panels', () => {
+  it('uses a flat shell instead of dashboard-heavy panels', () => {
     const source = fs.readFileSync(remotePanelPath, 'utf8');
-    expect(source).toContain('rounded-[2rem]');
+    expect(source).toContain('rounded-2xl');
     expect(source).toContain('border-border-subtle');
+  });
+
+  it('disables configuration while the service is stopped', () => {
+    const source = fs.readFileSync(remotePanelPath, 'utf8');
+    expect(source).toContain('serviceRunning');
+    expect(source).toContain('startToConfigure');
+    expect(source).toContain("inert: ''");
   });
 });

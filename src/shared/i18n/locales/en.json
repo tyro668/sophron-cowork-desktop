@@ -3025,6 +3025,7 @@
     "wecomWebhookCredentialsRequired": "Enter the WeCom Webhook Token and 43-character EncodingAESKey first",
     "startService": "Start service",
     "stopService": "Stop service",
+    "startToConfigure": "The remote service is stopped. Start it to configure channels, users, and settings.",
     "activeSessions": "Active sessions",
     "authorizedUsers": "Authorized users",
     "pendingApprovals": "Pending approvals",

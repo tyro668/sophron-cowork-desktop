@@ -17,7 +17,7 @@ import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
 import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
 import { ChannelList } from './remote/ChannelList';
 import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
-import { getChannelState, type RemoteChannelState } from './remote/channel-state';
+import { CHANNEL_STATE_DOT_CLASS, getChannelState } from './remote/channel-state';
 import { GatewayControlCard } from './remote/GatewayControlCard';
 import { PairingGuideCard } from './remote/PairingGuideCard';
 import { PairingRequestsSection } from './remote/PairingRequestsSection';
@@ -36,15 +36,6 @@ import type {
 import type { RemoteChannelToggleResult } from '../../shared/ipc-types';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-
-const CHANNEL_STATE_DOT_CLASS = {
-  connected: 'bg-success',
-  error: 'bg-error',
-  stopped: 'bg-text-muted',
-  disabled: 'bg-text-muted',
-  unconfigured: 'bg-text-muted',
-  preview: 'bg-text-muted',
-} satisfies Record<RemoteChannelState, string>;
 
 interface LoadDataOptions {
   showLoading?: boolean;
@@ -187,6 +178,11 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   useEffect(() => {
     if (!isActive) setSetupMode(null);
   }, [isActive]);
+
+  // A stopped gateway cannot accept configuration — close any open setup dialog.
+  useEffect(() => {
+    if (status?.running === false) setSetupMode(null);
+  }, [status?.running]);
 
   const refreshStatus = useCallback(async () => {
     if (!isElectron) return;
@@ -529,24 +525,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     !!(additionalConfig.lark?.appId && additionalConfig.lark.appSecret),
     !!(additionalConfig.wechat?.botToken && additionalConfig.wechat.botId),
   ];
-  const configuredChannelCount =
-    Number(isFeishuConfigured) +
-    Number(isDingtalkConfigured) +
-    Number(isWecomConfigured) +
-    extraConfigured.filter(Boolean).length;
-  const enabledConfiguredChannelCount =
-    Number(isFeishuConfigured && feishuEnabled) +
-    Number(isDingtalkConfigured && dingtalkEnabled) +
-    Number(isWecomConfigured && wecomEnabled) +
-    Number(extraConfigured[0] && additionalConfig.lark?.enabled !== false) +
-    Number(extraConfigured[1] && additionalConfig.wechat?.enabled !== false);
-  const connectedChannelCount =
-    Number(isFeishuConnected) +
-    Number(isDingtalkConnected) +
-    Number(isWecomConnected) +
-    (status?.channels.filter(
-      (channel) => ['lark', 'wechat'].includes(channel.type) && channel.connected
-    ).length || 0);
+  const serviceRunning = !!status?.running;
   const isPairingEnabled =
     (feishuEnabled && feishuDmPolicy === 'pairing') ||
     (dingtalkEnabled && dingtalkDmPolicy === 'pairing') ||
@@ -668,7 +647,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-[2rem] border border-border-subtle bg-surface shadow-card">
+    <div className="w-full overflow-hidden rounded-2xl border border-border-subtle bg-surface">
       <div className="space-y-3 p-4 sm:p-5">
         {error && (
           <div className="flex items-center gap-3 rounded-xl border border-error/30 bg-error/10 p-3">
@@ -687,13 +666,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
         <GatewayControlCard
           status={status}
-          pairedUsers={pairedUsers}
-          pendingPairings={pendingPairings}
           isTogglingGateway={isTogglingGateway}
-          configuredChannels={configuredChannelCount}
-          connectedChannels={connectedChannelCount}
-          totalChannels={channels.length}
-          canStartService={enabledConfiguredChannelCount > 0}
           onToggle={toggleGateway}
         />
         {pendingPairings.length > 0 && activeSection !== 'users' && (
@@ -712,7 +685,18 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         onSectionChange={setActiveSection}
       />
 
-      <div className="p-4 sm:p-5">
+      {!serviceRunning && (
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover/50 px-4 py-2.5 text-xs text-text-secondary sm:px-5">
+          <Info className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          {t('remote.startToConfigure')}
+        </div>
+      )}
+
+      <div
+        className={`p-4 sm:p-5 ${!serviceRunning ? 'opacity-60' : ''}`}
+        aria-disabled={!serviceRunning || undefined}
+        {...(!serviceRunning ? { inert: '' } : {})}
+      >
         {activeSection === 'channels' && (
           <div
             id="remote-panel-channels"
@@ -861,7 +845,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             id="remote-panel-global"
             role="tabpanel"
             aria-labelledby="remote-nav-tab-global"
-            className="glass-card overflow-hidden rounded-2xl border border-border-subtle shadow-card"
+            className="overflow-hidden rounded-2xl border border-border-subtle"
           >
             <div className="p-4 sm:p-5">
               <AdvancedConfigStep
@@ -900,7 +884,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             id="remote-panel-logs"
             role="tabpanel"
             aria-labelledby="remote-nav-tab-logs"
-            className="glass-card rounded-2xl border border-border-subtle p-5 shadow-card"
+            className="rounded-2xl border border-border-subtle p-5"
           >
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-accent-muted p-2.5">
@@ -919,7 +903,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 return (
                   <div
                     key={channel.type}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border-subtle bg-surface p-3"
+                    className="flex items-center justify-between gap-3 rounded-xl bg-surface-hover p-3"
                   >
                     <div className="flex items-center gap-2.5 text-sm text-text-secondary">
                       <ChannelBrandIcon type={channel.type} className="h-7 w-7" />

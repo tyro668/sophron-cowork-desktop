@@ -17,3 +17,13 @@ export function getChannelState(channel: RemoteChannelViewModel): RemoteChannelS
   if (channel.connected) return 'connected';
   return 'stopped';
 }
+
+/** Status dot color per channel state — semantic colors stay stable across themes. */
+export const CHANNEL_STATE_DOT_CLASS = {
+  connected: 'bg-success',
+  error: 'bg-error',
+  stopped: 'bg-text-muted',
+  disabled: 'bg-text-muted',
+  unconfigured: 'bg-text-muted',
+  preview: 'bg-text-muted',
+} satisfies Record<RemoteChannelState, string>;

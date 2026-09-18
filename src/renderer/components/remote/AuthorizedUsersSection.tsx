@@ -16,7 +16,7 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
   const { t } = useTranslation();
 
   return (
-    <div className="glass-card rounded-2xl border border-border-subtle p-4 shadow-card">
+    <div className="rounded-2xl border border-border-subtle p-4">
       <h3 className="font-medium text-text-primary mb-3 flex items-center gap-2">
         <Users className="w-4 h-4" />
         {t('remote.authorizedUsersTitle', { count: pairedUsers.length })}
