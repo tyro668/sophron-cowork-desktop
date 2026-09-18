@@ -270,7 +270,7 @@ export class SkillsManager {
    * Load built-in skills
    */
   private loadBuiltinSkills(): void {
-    // Load skills from .claude/skills directory (like pdf, xlsx, docx, pptx)
+    // Load skills from assets/skills directory (like pdf, xlsx, docx, pptx)
     const builtinSkillsPath = this.getBuiltinSkillsPath();
     if (builtinSkillsPath) {
       try {

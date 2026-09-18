@@ -2,20 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * Check if a directory physically exists on disk, bypassing Electron's
- * asar interception. Uses try/catch with lstatSync on the real filesystem.
- */
-function physicalDirExists(dirPath: string): boolean {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const originalFs = require('original-fs') as typeof import('fs');
-    return originalFs.existsSync(dirPath) && originalFs.statSync(dirPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Resolve the bundled built-in skills directory (assets/skills).
  *
  * `moduleDir` must be the caller's `__dirname` — its depth relative to the
@@ -29,7 +15,6 @@ export function resolveBuiltinSkillsPath(options: {
   moduleDir: string;
 }): string {
   const { appPath, resourcesPath, moduleDir } = options;
-  const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
 
   const possiblePaths = [
     // Production: extraResources extracts assets/skills → resources/skills
@@ -41,12 +26,6 @@ export function resolveBuiltinSkillsPath(options: {
     path.join(moduleDir, '..', '..', '..', 'assets', 'skills'),
     // Development via app path (repo root), or inside the packaged asar
     path.join(appPath, 'assets', 'skills'),
-    // Legacy: in app.asar.unpacked (for older builds with asarUnpack)
-    ...(physicalDirExists(path.join(unpackedPath, '.claude', 'skills'))
-      ? [path.join(unpackedPath, '.claude', 'skills')]
-      : []),
-    // Last resort: read from inside the asar archive (Electron intercepts this)
-    path.join(appPath, '.claude', 'skills'),
   ];
 
   for (const p of possiblePaths) {
