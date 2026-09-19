@@ -195,9 +195,6 @@ export function DataViewPage() {
     [dashboard, ui]
   );
 
-  const isInputTableEditor = Boolean(
-    editors.editingInputTableDraft || editors.editingInputTableDataset
-  );
   const isTasksLoading =
     ui.loadingTab === 'tasks' || (activeTab === 'tasks' && ui.pendingNavigationTab === 'tasks');
   const isInputTablesLoading =
@@ -210,11 +207,7 @@ export function DataViewPage() {
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
-      <div
-        className={`mx-auto w-full px-3 py-3 sm:px-4 ${
-          isInputTableEditor ? 'max-w-[1500px]' : 'max-w-[1120px]'
-        } flex h-full min-h-0 flex-col`}
-      >
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col px-3 py-3 sm:px-4">
         {error && (
           <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
