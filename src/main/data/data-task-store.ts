@@ -268,6 +268,7 @@ export class DataTaskStore {
     task: DataCleaningTask;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
+    failure?: { message: string };
   }> {
     return this.taskService.runTaskWithDiagnostics(id, input);
   }

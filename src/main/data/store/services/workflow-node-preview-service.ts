@@ -135,6 +135,15 @@ export class WorkflowNodePreviewService {
       return inputSourceColumns;
     }
 
+    // The live draft's plan-inferred schema wins over a materialized cache
+    // table — the cache may still carry the previous run's column names.
+    if (input.workflow?.nodes?.length) {
+      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
+      if (inferred) {
+        return inferred.map((column) => column.name);
+      }
+    }
+
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
@@ -175,8 +184,19 @@ export class WorkflowNodePreviewService {
       updatedAt: 0,
     };
 
+    // Same precedence as column names: draft-inferred schema first, cache
+    // table only fills types the plan cannot determine.
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
-    if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
+    const tableExists = tableName ? await this.ctx.physicalTableExists(tableName) : false;
+    if (input.workflow?.nodes?.length) {
+      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
+      if (inferred) {
+        const cacheTypes =
+          tableName && tableExists ? await this.ctx.getTableColumnTypes(tableName) : [];
+        return mergeInferredWithCacheTypes(inferred, cacheTypes);
+      }
+    }
+    if (!tableName || !tableExists) {
       return toColumnTypeInfos(await this.inferWorkflowNodeSchema(task, node, input.workflow));
     }
 
@@ -410,4 +430,30 @@ function toColumnTypeInfos(columns: PlanColumn[] | null): DataColumnTypeInfo[] {
       type: column.type as DataFieldType,
       storageType: column.type ?? '',
     }));
+}
+
+/**
+ * Draft-inferred columns win over a materialized cache table; where the plan
+ * cannot determine a column's type, the cached table's physical type fills in
+ * for same-named columns so the selector keeps a real type when available.
+ */
+function mergeInferredWithCacheTypes(
+  columns: PlanColumn[] | null,
+  cacheTypes: DataColumnTypeInfo[]
+): DataColumnTypeInfo[] {
+  const cacheByName = new Map(cacheTypes.map((typeInfo) => [typeInfo.name, typeInfo]));
+  const merged: DataColumnTypeInfo[] = [];
+  for (const column of columns ?? []) {
+    if (isDataFieldType(column.type)) {
+      merged.push({
+        name: column.name,
+        type: column.type as DataFieldType,
+        storageType: column.type ?? '',
+      });
+      continue;
+    }
+    const cached = cacheByName.get(column.name);
+    if (cached) merged.push(cached);
+  }
+  return merged;
 }

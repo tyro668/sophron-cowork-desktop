@@ -30,6 +30,7 @@ import {
   exportPrepWorkflowDsl,
   parsePrepDsl,
 } from '../../../../../shared/prep-dsl';
+import { dataFieldTypeFromDuckDbType } from '../../../../../shared/data-field-types';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
@@ -54,6 +55,7 @@ import {
 } from './workflow-graph-operations';
 import {
   getWorkflowSaveInputSignature,
+  getWorkflowUpstreamSignature,
   toWorkflowSaveInput,
   WORKFLOW_NODE_HEIGHT,
   type WorkflowInspectorTab,
@@ -82,6 +84,15 @@ export function TaskEditor({
   const { confirm, confirmDelete } = useConfirmDialog();
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
   const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
+  // The workflow as loaded — immutable proxy for the config that produced the
+  // persisted run stats/caches. Saving later must NOT update it: stale means
+  // "config differs from what generated the preview", not "unsaved changes".
+  const [loadedWorkflowInput, setLoadedWorkflowInput] = useState<DataWorkflowSaveInput | null>(
+    null
+  );
+  // Per-node upstream-config signature captured at each in-session run — the
+  // authoritative basis for preview staleness once a run happened.
+  const [runBasisByNode, setRunBasisByNode] = useState<ReadonlyMap<string, string>>(new Map());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeInspectorTab, setActiveInspectorTab] = useState<WorkflowInspectorTab>('config');
   const [saving, setSaving] = useState(false);
@@ -109,6 +120,8 @@ export function TaskEditor({
       const nextWorkflow = await dataClient.getTaskWorkflow(task.id);
       setWorkflow(nextWorkflow);
       setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
+      setLoadedWorkflowInput(toWorkflowSaveInput(nextWorkflow));
+      setRunBasisByNode(new Map());
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
@@ -233,6 +246,35 @@ export function TaskEditor({
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
   );
+  // Preview staleness = current upstream config ≠ config at the run that
+  // materialized the preview (in-session run basis wins; before any run the
+  // loaded workflow stands in for the persisted caches).
+  const selectedUpstreamSignature = useMemo(
+    () =>
+      selectedNode && workflowSaveInput
+        ? getWorkflowUpstreamSignature(workflowSaveInput, selectedNode.id)
+        : null,
+    [selectedNode, workflowSaveInput]
+  );
+  const isPreviewStale = useMemo(() => {
+    if (!selectedNode || !selectedUpstreamSignature) return false;
+    const basis =
+      runBasisByNode.get(selectedNode.id) ??
+      (loadedWorkflowInput
+        ? getWorkflowUpstreamSignature(loadedWorkflowInput, selectedNode.id)
+        : null);
+    return basis !== null && basis !== selectedUpstreamSignature;
+  }, [selectedNode, selectedUpstreamSignature, runBasisByNode, loadedWorkflowInput]);
+  const stampRunBasis = useCallback((saveInput: DataWorkflowSaveInput) => {
+    setRunBasisByNode((previous) => {
+      const next = new Map(previous);
+      for (const node of saveInput.nodes) {
+        if (node.type === 'output') continue;
+        next.set(node.id, getWorkflowUpstreamSignature(saveInput, node.id));
+      }
+      return next;
+    });
+  }, []);
   const isBusy = saving || renamingTask || actionId === task.id;
 
   useEffect(() => {
@@ -680,14 +722,14 @@ export function TaskEditor({
   }, [runNodeStats, persistedNodeStats]);
 
   // Structured expect-failure card: the executor names the offending node and
-  // the violation counts in the failure message; the persisted stat (when the
-  // run was persisted) carries the violating-row samples.
+  // the violation counts in the failure message; this run's stats — persisted
+  // for real runs, returned in-band for temporary runs — carry the samples.
   const failedExpectRun = useMemo(() => {
     if (!lastRunFailure) return null;
     const match = /Expect failed at node ([^:]+): (.+)$/.exec(lastRunFailure.message);
     if (!match) return null;
     const [, nodeId, detail] = match;
-    const stat = lastRunFailure.temporary ? undefined : runStatsByNode.get(nodeId);
+    const stat = runStatsByNode.get(nodeId);
     return {
       nodeId,
       detail,
@@ -726,9 +768,23 @@ export function TaskEditor({
     const sample = failedExpectRun?.stat?.sample;
     if (!sample?.length) return null;
     const columns = [...new Set(sample.flatMap((row) => Object.keys(row)))];
+    const columnTypes = columns.map((name) => {
+      const first = sample
+        .map((row) => row[name])
+        .find((value) => value !== null && value !== undefined);
+      const storageType =
+        typeof first === 'number'
+          ? Number.isInteger(first)
+            ? 'BIGINT'
+            : 'DOUBLE'
+          : typeof first === 'boolean'
+            ? 'BOOLEAN'
+            : 'VARCHAR';
+      return { name, type: dataFieldTypeFromDuckDbType(storageType), storageType };
+    });
     return {
       columns,
-      columnTypes: columns.map((name) => ({ name, type: 'text' })),
+      columnTypes,
       rows: sample as Record<string, string | number | boolean | null>[],
       fileCount: 1,
       limit: sample.length,
@@ -773,8 +829,16 @@ export function TaskEditor({
       workflow: workflowSaveInput,
       outputMode: 'temporary',
     });
+    stampRunBasis(workflowSaveInput);
     setNodeDataRefreshVersion((current) => current + 1);
-  }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput, flagPlanDiagnostics]);
+  }, [
+    onRun,
+    task,
+    validateWorkflowBeforeRun,
+    workflowSaveInput,
+    flagPlanDiagnostics,
+    stampRunBasis,
+  ]);
 
   /**
    * "Preview up to this step": runs a temporary execution scoped to the
@@ -836,6 +900,7 @@ export function TaskEditor({
       workflow: previewInput,
       outputMode: 'temporary',
     });
+    stampRunBasis(previewInput);
     setNodeDataRefreshVersion((current) => current + 1);
   }, [
     workflowSaveInput,
@@ -848,26 +913,39 @@ export function TaskEditor({
     flagPlanDiagnostics,
     onRun,
     task,
+    stampRunBasis,
   ]);
 
   /**
-   * Earliest node in flow order whose last-run output was zero rows — the
-   * first place the stream dried up, which explains empty downstream previews.
+   * Earliest zero-output node on the SELECTED node's ancestor path — the
+   * first place the stream feeding this node dried up. Zero-output nodes on
+   * unrelated branches must not be reported as this preview's cause.
    */
   const firstZeroOutputNode = useMemo(() => {
-    if (runStatsByNode.size === 0) return null;
+    if (!selectedNode || runStatsByNode.size === 0) return null;
+    const upstream = new Set<string>([selectedNode.id]);
+    const pending = [selectedNode.id];
+    while (pending.length > 0) {
+      const nodeId = pending.pop()!;
+      for (const edge of edges) {
+        if (edge.targetNodeId === nodeId && !upstream.has(edge.sourceNodeId)) {
+          upstream.add(edge.sourceNodeId);
+          pending.push(edge.sourceNodeId);
+        }
+      }
+    }
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const inDegree = new Map(nodes.map((node) => [node.id, 0]));
+    const inDegree = new Map<string, number>();
     const outgoing = new Map<string, string[]>();
     for (const edge of edges) {
-      if (!nodeById.has(edge.sourceNodeId) || !nodeById.has(edge.targetNodeId)) continue;
+      if (!upstream.has(edge.sourceNodeId) || !upstream.has(edge.targetNodeId)) continue;
       inDegree.set(edge.targetNodeId, (inDegree.get(edge.targetNodeId) ?? 0) + 1);
       outgoing.set(edge.sourceNodeId, [
         ...(outgoing.get(edge.sourceNodeId) ?? []),
         edge.targetNodeId,
       ]);
     }
-    const queue = nodes.filter((node) => (inDegree.get(node.id) ?? 0) === 0).map((node) => node.id);
+    const queue = [...upstream].filter((id) => (inDegree.get(id) ?? 0) === 0);
     const ordered: string[] = [];
     while (queue.length > 0) {
       const nodeId = queue.shift()!;
@@ -884,18 +962,20 @@ export function TaskEditor({
       }
     }
     return null;
-  }, [nodes, edges, runStatsByNode]);
+  }, [selectedNode, nodes, edges, runStatsByNode]);
 
   const handleSaveAndRun = useCallback(async () => {
     if (!validateWorkflowBeforeRun()) return;
     const saved = await saveWorkflow();
     if (!saved) return;
+    const savedInput = toWorkflowSaveInput(saved);
     await onRun(task, {
-      workflow: toWorkflowSaveInput(saved),
+      workflow: savedInput,
       outputMode: 'persisted',
     });
+    stampRunBasis(savedInput);
     setNodeDataRefreshVersion((current) => current + 1);
-  }, [onRun, saveWorkflow, task, validateWorkflowBeforeRun]);
+  }, [onRun, saveWorkflow, task, validateWorkflowBeforeRun, stampRunBasis]);
 
   const applyAndRunOperatorDsl = useCallback(
     async (nodeId: string, config: Record<string, unknown>) => {
@@ -926,13 +1006,15 @@ export function TaskEditor({
         setLocalError(planError);
         return;
       }
+      const nextInput = toWorkflowSaveInput(nextWorkflow);
       await onRun(task, {
-        workflow: toWorkflowSaveInput(nextWorkflow),
+        workflow: nextInput,
         outputMode: 'temporary',
       });
+      stampRunBasis(nextInput);
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics]
+    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics, stampRunBasis]
   );
 
   const openImportDsl = useCallback(() => {
@@ -1173,7 +1255,7 @@ export function TaskEditor({
                 nodeDataRefreshVersion={nodeDataRefreshVersion}
                 runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
                 firstZeroOutputNode={firstZeroOutputNode}
-                isWorkflowDirty={isWorkflowDirty}
+                isPreviewStale={isPreviewStale}
                 onPreviewToHere={() => void previewNodeToHere()}
                 isPreviewRunning={actionId === task.id}
               />

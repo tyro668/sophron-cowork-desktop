@@ -65,6 +65,22 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setError(null);
       try {
         const result = await dataClient.runTaskWithDiagnostics(task.id, payload);
+        if (result.failure) {
+          // Temporary runs return failures as a structured result (stats and
+          // violating samples travel with the run — nothing was persisted).
+          dashboard.setLastRunFailure({
+            message: result.failure.message,
+            at: Date.now(),
+            temporary: payload?.outputMode === 'temporary',
+          });
+          dashboard.setRunNodeStats(result.nodeStats ?? []);
+          const isExpectFailure = /Expect failed at node [^:]+:/.test(result.failure.message);
+          if (editors.editingTaskId !== task.id || !isExpectFailure) {
+            ui.setError(result.failure.message);
+          }
+          await loadDashboard({ preserveError: true });
+          return;
+        }
         editors.setFocusedTask((current) =>
           current?.id === result.task.id ? result.task : current
         );

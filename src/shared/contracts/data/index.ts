@@ -433,6 +433,12 @@ export interface RunTaskResult {
   task: DataCleaningTask;
   diagnostics?: unknown[];
   nodeStats?: WorkflowNodeRunStat[];
+  /**
+   * Temporary runs cannot persist run stats, so a failed temporary run is
+   * returned as a structured result instead of a bare rejection — `nodeStats`
+   * carries the stats/samples collected before the failure.
+   */
+  failure?: { message: string };
 }
 
 export type DataAutomationLocation = 'cloud' | 'local';

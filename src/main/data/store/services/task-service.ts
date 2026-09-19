@@ -82,7 +82,9 @@ export class TaskService {
     return this.tasks.requireTask(task.id);
   }
   async runTask(id: string, input: DataRunTaskInput = {}): Promise<DataCleaningTask> {
-    return (await this.runTaskWithDiagnostics(id, input)).task;
+    const result = await this.runTaskWithDiagnostics(id, input);
+    if (result.failure) throw new Error(result.failure.message);
+    return result.task;
   }
   async runTaskWithDiagnostics(
     id: string,
@@ -91,10 +93,25 @@ export class TaskService {
     task: DataCleaningTask;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
+    failure?: { message: string };
   }> {
     return this.ctx.runExclusive(async () => {
       if (input.outputMode === 'temporary') {
-        return this.executor.runTaskToTemporaryOutputUnsafe(id, input);
+        try {
+          return await this.executor.runTaskToTemporaryOutputUnsafe(id, input);
+        } catch (error) {
+          // Temporary runs never persist stats — return the partially
+          // collected stats/samples with the failure so callers can inspect
+          // where the run broke instead of showing a bare message.
+          const failedStats = (error as { nodeStats?: WorkflowNodeRunStat[] }).nodeStats;
+          const task = await this.tasks.requireTask(id);
+          return {
+            task,
+            diagnostics: [],
+            nodeStats: failedStats,
+            failure: { message: error instanceof Error ? error.message : String(error) },
+          };
+        }
       }
 
       await this.ctx.ensureReady();

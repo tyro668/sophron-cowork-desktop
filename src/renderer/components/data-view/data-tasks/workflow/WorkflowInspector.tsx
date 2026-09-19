@@ -64,7 +64,7 @@ export function WorkflowInspector({
   nodeDataRefreshVersion,
   runStat,
   firstZeroOutputNode,
-  isWorkflowDirty,
+  isPreviewStale,
   onPreviewToHere,
   isPreviewRunning,
 }: {
@@ -82,7 +82,7 @@ export function WorkflowInspector({
   nodeDataRefreshVersion: number;
   runStat?: WorkflowNodeRunStat;
   firstZeroOutputNode?: DataWorkflowNode | null;
-  isWorkflowDirty?: boolean;
+  isPreviewStale?: boolean;
   onPreviewToHere?: () => void;
   isPreviewRunning?: boolean;
 }) {
@@ -464,7 +464,7 @@ export function WorkflowInspector({
                     })}
                   </span>
                 ) : null}
-                {isWorkflowDirty ? (
+                {isPreviewStale ? (
                   <span className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                     {t('data.workflow.nodeDataStale')}
                   </span>

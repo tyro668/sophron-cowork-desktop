@@ -517,6 +517,90 @@ describe('DuckDB data task store', () => {
     expect(preview.totalRows).toBe(0);
   });
 
+  it('prefers the draft workflow schema over a materialized cache table', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const csvPath = path.join(tempRoot, 'draft-source.csv');
+    fs.writeFileSync(csvPath, 'id,name,amount\n1,Alice,10\n2,Bob,20\n', 'utf8');
+    const imported = await store.importDataset({ filePath: csvPath, name: 'Draft source' });
+
+    const task = await store.createTask({ name: 'Draft schema task' });
+    const parsed = parsePrepDsl(`
+      input source dataset "${imported.id}" as src
+
+      from src
+        | select [id], [amount]
+        | output table "draft_schema_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const selectNode = saved.nodes.find((node) => node.type === 'field_select');
+    expect(selectNode).toBeTruthy();
+
+    const saveInput = {
+      nodes: saved.nodes.map((node) => ({
+        id: node.id,
+        type: node.type,
+        label: node.label,
+        x: node.x,
+        y: node.y,
+        config: node.config,
+      })),
+      edges: saved.edges.map((edge) => ({
+        id: edge.id,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      })),
+    };
+    // Materialize the select node's cache with the two-column projection.
+    await store.runTaskWithDiagnostics(task.id, {
+      workflow: saveInput,
+      outputMode: 'temporary',
+    });
+    await expect(
+      store.getWorkflowNodeColumns({
+        taskId: task.id,
+        nodeId: selectNode!.id,
+        nodeType: selectNode!.type,
+        nodeConfig: selectNode!.config,
+      })
+    ).resolves.toEqual(['id', 'amount']);
+
+    // The draft narrows the projection — the selector must follow the draft
+    // config, not the stale cache table.
+    const draftInput = {
+      nodes: saveInput.nodes.map((node) =>
+        node.id === selectNode!.id ? { ...node, config: { ...node.config, columns: ['id'] } } : node
+      ),
+      edges: saveInput.edges,
+    };
+    await expect(
+      store.getWorkflowNodeColumns({
+        taskId: task.id,
+        nodeId: selectNode!.id,
+        nodeType: selectNode!.type,
+        nodeConfig: draftInput.nodes.find((node) => node.id === selectNode!.id)!.config,
+        workflow: draftInput,
+      })
+    ).resolves.toEqual(['id']);
+    const draftTypes = await store.getWorkflowNodeColumnTypes({
+      taskId: task.id,
+      nodeId: selectNode!.id,
+      nodeType: selectNode!.type,
+      nodeConfig: draftInput.nodes.find((node) => node.id === selectNode!.id)!.config,
+      workflow: draftInput,
+    });
+    expect(draftTypes.map((column) => column.name)).toEqual(['id']);
+  });
+
   it('lists Excel input tables without reading the source workbook', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);

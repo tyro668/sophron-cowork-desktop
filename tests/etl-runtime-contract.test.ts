@@ -184,6 +184,28 @@ describe('ETL runtime contract', () => {
     expect(taskAfter?.status).toBe('failed');
   });
 
+  it('temporary expect failure returns structured stats and violation samples', async () => {
+    const { store, tempRoot } = makeStore();
+    const csvPath = writeCsv(tempRoot, 'et.csv', 'id,amount\n1,10\n2,-5\n3,-9\n4,40\n');
+    const task = await store.createTask({ name: 'Temporary expect', sourcePath: csvPath });
+    await saveCompiledDsl(
+      store,
+      task.id,
+      `input source task as src
+        | expect [amount] > 0
+        | output table "et_out" mode replace`
+    );
+    // Temporary runs never persist stats — the failed run comes back as a
+    // structured result carrying the stats/samples collected so far.
+    const result = await store.runTaskWithDiagnostics(task.id, { outputMode: 'temporary' });
+    expect(result.failure?.message).toMatch(/expect/i);
+    const expectStat = result.nodeStats?.find((stat) => stat.nodeType === 'expect');
+    expect(expectStat?.rejectedRows).toBe(2);
+    expect(expectStat?.sample?.length).toBeGreaterThan(0);
+    // runTask keeps the throwing contract for non-diagnostics callers.
+    await expect(store.runTask(task.id, { outputMode: 'temporary' })).rejects.toThrow(/expect/i);
+  });
+
   it('expect ... reject to <stream> routes violating rows to a reject chain', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
