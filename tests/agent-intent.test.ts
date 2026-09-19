@@ -93,7 +93,13 @@ describe('SessionPackActivation', () => {
 
 describe('capabilities_search', () => {
   const execute = (tool: ReturnType<typeof createCapabilitiesSearchTool>, params: unknown) =>
-    tool.execute('call-1', params, new AbortController().signal, async () => undefined);
+    tool.execute(
+      'call-1',
+      params,
+      new AbortController().signal,
+      async () => undefined,
+      undefined as never
+    );
   const textOf = (result: Awaited<ReturnType<typeof execute>>): string =>
     result.content.map((block) => ('text' in block ? block.text : '')).join('\n');
 

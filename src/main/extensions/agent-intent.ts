@@ -14,7 +14,7 @@ const DATA_PROMPT_PATTERN =
 const DATA_FILE_PATTERN = /文件|文件夹|excel|csv|导入|上传|file\b|folder\b|import\b|upload/i;
 const DATA_CLOUD_PATTERN = /云|个人分析|云端|cloud|space\b|project\b/i;
 const DATA_AUTHORING_PATTERN =
-  /工作流|流程|节点|算子|dsl\b|plan\b|多表|多源|join\b|编排|修改流程|编辑流程|workflow/i;
+  /工作流|流程|节点|算子|dsl\b|plan\b|多表|多源|join\b|编排|修改流程|编辑流程|workflow|创建.{0,8}任务|新建.{0,8}任务|生成.{0,8}任务|需求|create.{0,20}task|new.{0,10}task|generate.{0,20}task|requirement/i;
 const DATA_NORMALIZER_PATTERN = /标准化|归一化|清洗规则|normaliz|规则引擎/i;
 const AUTOMATION_PROMPT_PATTERN =
   /自动化|定时|调度|周期|每天|每日|每周|每小时|每月|明天|稍后|提醒|cron|schedule[ds]?\b|automat|reschedule|改期|暂停|启用|停用/i;

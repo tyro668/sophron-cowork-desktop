@@ -669,4 +669,136 @@ describe('DataToolService', () => {
     expect(result.content[0]?.text).toContain('data_apply_workflow_dsl');
     expect(result.content[0]?.text).not.toContain('design/prep');
   });
+
+  it('reports omitted run mode as temporary / not committed', async () => {
+    const task: DataCleaningTask = {
+      id: 'task_run',
+      name: 'run evidence',
+      status: 'completed',
+      nodeCount: 1,
+      sourcePath: null,
+      sourceDatasetId: null,
+      outputTable: 'output_1',
+      rowCount: 3,
+      columnCount: 1,
+      error: null,
+      scheduledFor: null,
+      createdAt: 1,
+      updatedAt: 1,
+      lastRunAt: 1,
+    };
+    const runTask = vi.fn(async () => ({ task, preview: undefined, diagnostics: [] }));
+    const service = new DataToolService(
+      { runTask } as unknown as DataCommandService,
+      new RequirementAnalysisReceiptStore()
+    );
+
+    const omitted = await service.runTask({ taskId: task.id });
+    expect(omitted.content[0]?.text).toContain('mode=temporary');
+    expect(omitted.content[0]?.text).toContain('not_committed');
+    expect(omitted.content[0]?.text).not.toContain('commit=committed');
+
+    const temporary = await service.runTask({ taskId: task.id, mode: 'temporary' });
+    expect(temporary.content[0]?.text).toContain('not_committed');
+
+    const persisted = await service.runTask({ taskId: task.id, mode: 'persisted' });
+    expect(persisted.content[0]?.text).toContain('mode=persisted');
+    expect(persisted.content[0]?.text).toContain('commit=committed');
+  });
+
+  it('never promotes listed resources to the current selection', async () => {
+    const service = new DataToolService(
+      {} as DataCommandService,
+      new RequirementAnalysisReceiptStore()
+    );
+    const context = {
+      session: { id: 'session_1', cwd: '/tmp' },
+      prompt: '列出任务',
+      existingMessages: [],
+      isColdStart: false,
+    } as never;
+
+    // A bare list result records candidates — not a selection.
+    service.rememberResolvedResources(
+      'session_1',
+      'data_list_tasks',
+      {},
+      {
+        tasks: [
+          { id: 'task_a', name: 'A' },
+          { id: 'task_b', name: 'B' },
+          { id: 'task_c', name: 'C' },
+        ],
+      }
+    );
+    let resolved = await service.resolveConversationContext(context);
+    expect(resolved.selectedDataTaskId).toBeUndefined();
+    expect(
+      resolved.recentResources?.filter((ref) => ref.kind === 'Task').map((ref) => ref.id)
+    ).toEqual(['task_a', 'task_b', 'task_c']);
+    expect(resolved.recentResources?.every((ref) => ref.listed)).toBe(true);
+
+    // An explicit tool param selects the resource.
+    service.rememberResolvedResources(
+      'session_1',
+      'data_get_task_workflow',
+      { taskId: 'task_b' },
+      {
+        task: { id: 'task_b', name: 'B' },
+      }
+    );
+    resolved = await service.resolveConversationContext(context);
+    expect(resolved.selectedDataTaskId).toBe('task_b');
+
+    // Listing again afterwards must not demote the explicit selection.
+    service.rememberResolvedResources(
+      'session_1',
+      'data_list_tasks',
+      {},
+      {
+        tasks: [
+          { id: 'task_a', name: 'A' },
+          { id: 'task_c', name: 'C' },
+        ],
+      }
+    );
+    resolved = await service.resolveConversationContext(context);
+    expect(resolved.selectedDataTaskId).toBe('task_b');
+  });
+
+  it('bounds preview content by columns and total size', async () => {
+    const preview: DataInputTablePreview = {
+      columns: Array.from({ length: 100 }, (_, i) => `col_${i}`),
+      columnTypes: Array.from({ length: 100 }, (_, i) => ({
+        name: `col_${i}`,
+        type: 'text',
+        storageType: 'VARCHAR',
+      })),
+      rows: Array.from({ length: 5 }, (_, r) =>
+        Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`col_${i}`, `value_${r}_${i}`]))
+      ),
+      fileCount: 1,
+      limit: 5,
+      offset: 0,
+      totalRows: 5,
+    };
+    const service = new DataToolService(
+      {
+        previewTable: vi.fn(async () => ({ tableKind: 'input', id: 't', preview })),
+      } as unknown as DataCommandService,
+      new RequirementAnalysisReceiptStore()
+    );
+
+    const result = await service.previewTable({
+      tableKind: 'input',
+      id: 't',
+      limit: 5,
+      includeRows: true,
+    });
+    const text = result.content[0]?.text ?? '';
+    // 5 rows x 100 columns previously produced ~120k chars; bounded now.
+    expect(text.length).toBeLessThan(6000);
+    expect(text).toContain('column(s) omitted');
+    expect(text).not.toContain('col_99');
+  });
 });

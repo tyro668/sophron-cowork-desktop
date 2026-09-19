@@ -30,7 +30,8 @@ function buildCurrentContextSection(context: DataToolPromptContext): string {
     );
   }
   for (const ref of context.recentResources ?? []) {
-    lines.push(`- recent${ref.kind}: ${ref.id}${formatName(ref.name)}`);
+    const label = ref.listed ? `candidate${ref.kind} (listed, not selected)` : `recent${ref.kind}`;
+    lines.push(`- ${label}: ${ref.id}${formatName(ref.name)}`);
   }
   for (const table of context.attachedCloudTables ?? []) {
     lines.push(`- attachedCloudTable: ${table.id}${formatName(table.name)}`);

@@ -18,7 +18,7 @@ export function createCapabilitiesSearchTool(options: {
     name: CAPABILITIES_SEARCH_TOOL_NAME,
     label: 'Capabilities search',
     description:
-      'Discover and activate optional capability packs (data table creation, normalizer drafts, cloud sync, workflow plan/DSL authoring, automation create/reschedule). Call when a needed data_* or automation_* tool is not currently available.',
+      'Discover and activate optional capability packs (data table creation, normalizer drafts, cloud sync, workflow plan/DSL authoring, automation create/reschedule, connected MCP server tools via mcp.* packs). Call when a needed tool is not currently available.',
     parameters: Type.Object({
       query: Type.Optional(
         Type.String({

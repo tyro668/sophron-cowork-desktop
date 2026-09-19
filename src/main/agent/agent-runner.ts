@@ -91,7 +91,11 @@ import {
 import { initSandboxSyncForRun } from './agent-runner-sandbox-sync';
 import { AgentRunEventBridge } from './agent-runner-event-bridge';
 import { safeStringify, toErrorText } from './agent-runner-log-utils';
-import { buildMcpCustomTools } from './agent-runner-tools';
+import {
+  applyActiveToolsInPlace,
+  buildMcpCustomTools,
+  buildMcpToolPacks,
+} from './agent-runner-tools';
 import { AgentRunnerSkills } from './agent-runner-skills';
 import { createCapabilitiesSearchTool } from './agent-capabilities-tool';
 import type { ToolActivationResult } from '../extensions/agent-runtime-extension';
@@ -162,6 +166,12 @@ export class AgentRunner {
    * fingerprint of what was delivered so warm turns only get state deltas.
    */
   private readonly stablePromptFingerprints: Map<string, string> = new Map();
+  /**
+   * Tool names activated mid-run via capabilities_search. They stay sticky for
+   * the rest of the session so follow-up turns do not lose the pack the model
+   * just discovered.
+   */
+  private readonly sessionActivatedTools: Map<string, Set<string>> = new Map();
   private toolDisplayNameCache: Map<string, string> = new Map();
   private static readonly MAX_CACHED_SESSIONS = 50;
 
@@ -184,6 +194,7 @@ export class AgentRunner {
       }
       this.piSessions.delete(sessionId);
       this.stablePromptFingerprints.delete(sessionId);
+      this.sessionActivatedTools.delete(sessionId);
       log('[AgentRunner] Disposed pi session for:', sessionId);
     }
   }
@@ -1076,7 +1087,12 @@ export class AgentRunner {
         const unknown = toolNames.filter((name) => !registered.has(name));
         const valid = toolNames.filter((name) => registered.has(name));
         if (valid.length > 0) {
-          target.setActiveToolsByName([...new Set([...target.getActiveToolNames(), ...valid])]);
+          // In-place mutation makes the running loop's next iteration see the
+          // tools; setActiveToolsByName would only affect future prompts.
+          applyActiveToolsInPlace(target, [...new Set([...target.getActiveToolNames(), ...valid])]);
+          const sticky = this.sessionActivatedTools.get(session.id) ?? new Set<string>();
+          valid.forEach((name) => sticky.add(name));
+          this.sessionActivatedTools.set(session.id, sticky);
         }
         return { activated: valid, unknown };
       };
@@ -1334,9 +1350,10 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // Bridge MCP tools as customTools for the agent SDK.
       // Re-read every query so newly added/removed MCP servers take effect immediately.
       const mcpCustomTools = this.mcpManager ? buildMcpCustomTools(this.mcpManager) : [];
+      const mcpToolPacks = this.mcpManager ? buildMcpToolPacks(this.mcpManager) : {};
       const extensionCustomTools = extensionResult.customTools || [];
       const capabilitiesTool = createCapabilitiesSearchTool({
-        getPacks: () => extensionResult.toolPacks ?? {},
+        getPacks: () => ({ ...mcpToolPacks, ...(extensionResult.toolPacks ?? {}) }),
         activateTools: activateToolsForRun,
       });
       const customTools = [...mcpCustomTools, ...extensionCustomTools, capabilitiesTool];
@@ -1534,6 +1551,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               }
             }
             this.piSessions.delete(oldestKey);
+            this.sessionActivatedTools.delete(oldestKey);
             log('[AgentRunner] Evicted oldest cached session:', oldestKey);
           }
         }
@@ -1587,23 +1605,30 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         this.syncSessionToolRegistry(piSession, customTools);
       }
       // Registration != exposure: only this turn's activated subset is
-      // serialized for the model. Everything else stays registered and can be
-      // pulled in mid-run via capabilities_search.
+      // serialized for the model. Extension packs and MCP tools stay
+      // registered and can be pulled in mid-run via capabilities_search;
+      // names activated mid-run stay sticky for the rest of the session.
       const extensionCatalogNames = new Set(extensionCustomTools.map((tool) => tool.name));
+      const mcpCatalogNames = new Set(mcpCustomTools.map((tool) => tool.name));
       const allowedExtensionTools = new Set(
         extensionResult.activateTools ?? [...extensionCatalogNames]
       );
+      const stickyTools = this.sessionActivatedTools.get(session.id) ?? new Set<string>();
+      const hiddenCatalogs = new Set([...extensionCatalogNames, ...mcpCatalogNames]);
+      const registeredNames = new Set(piSession.getAllTools().map((tool) => tool.name));
       const nextActiveTools = piSession
         .getActiveToolNames()
-        .filter((name) => !extensionCatalogNames.has(name) || allowedExtensionTools.has(name));
-      for (const name of allowedExtensionTools) {
-        if (!nextActiveTools.includes(name)) nextActiveTools.push(name);
-      }
-      for (const name of queuedToolActivations) {
-        if (!nextActiveTools.includes(name)) nextActiveTools.push(name);
+        .filter(
+          (name) =>
+            !hiddenCatalogs.has(name) || allowedExtensionTools.has(name) || stickyTools.has(name)
+        );
+      for (const name of [...allowedExtensionTools, ...stickyTools, ...queuedToolActivations]) {
+        if (registeredNames.has(name) && !nextActiveTools.includes(name)) {
+          nextActiveTools.push(name);
+        }
       }
       queuedToolActivations.clear();
-      piSession.setActiveToolsByName(nextActiveTools);
+      applyActiveToolsInPlace(piSession, nextActiveTools);
       log(
         `[AgentRunner] Active tools this turn (${nextActiveTools.length}):`,
         nextActiveTools.join(', ')

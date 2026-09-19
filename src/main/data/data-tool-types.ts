@@ -8,6 +8,8 @@ export interface DataResourceRef {
   kind: 'InputTable' | 'OutputTable' | 'Task';
   id: string;
   name?: string;
+  /** true when the id only appeared inside a list result — a candidate, not a selection. */
+  listed?: boolean;
 }
 
 export interface DataToolPromptContext {

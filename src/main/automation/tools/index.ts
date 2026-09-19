@@ -43,9 +43,10 @@ export function createAutomationAgentRuntimeExtension(
       };
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const catalog = createAutomationCustomTools(service, executionContext);
+      const hasPendingDrafts = service.hasPendingDrafts(context.session.id);
       const intent = detectAutomationIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
-        hasPendingReceipts: service.hasPendingDrafts(context.session.id),
+        hasPendingReceipts: hasPendingDrafts,
       });
       if (!intent.active) {
         return {
@@ -54,10 +55,12 @@ export function createAutomationAgentRuntimeExtension(
           toolPacks: AUTOMATION_TOOL_PACKS,
         };
       }
+      // Pending drafts must keep their commit tools exposed — a bare "确认"
+      // follow-up carries no create/update keywords.
       const packs = activations.activate(context.session.id, [
         'automation.core',
-        ...(intent.create ? (['automation.create'] as const) : []),
-        ...(intent.update ? (['automation.update'] as const) : []),
+        ...(intent.create || hasPendingDrafts ? (['automation.create'] as const) : []),
+        ...(intent.update || hasPendingDrafts ? (['automation.update'] as const) : []),
       ]);
       const activateTools = [...packs].flatMap(
         (pack) => AUTOMATION_TOOL_PACKS[pack as keyof typeof AUTOMATION_TOOL_PACKS]?.tools ?? []

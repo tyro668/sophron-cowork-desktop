@@ -8,17 +8,13 @@ import type { AgentToolPack } from '../extensions/agent-runtime-extension';
  */
 export const DATA_TOOL_PACKS = {
   'data.core': {
-    description:
-      'List/preview data resources, read task workflows, requirement analysis, confirmed generation, run tasks, read run results',
+    description: 'List/preview data resources, read task workflows, run tasks, read run results',
     tools: [
       'data_list_input_tables',
       'data_list_output_tables',
       'data_list_tasks',
       'data_preview_table',
       'data_get_task_workflow',
-      'data_analyze_task_requirement',
-      'data_generate_task_from_requirement',
-      'data_update_task',
       'data_run_task',
       'data_get_run_result',
     ],
@@ -56,8 +52,11 @@ export const DATA_TOOL_PACKS = {
   },
   'data.authoring': {
     description:
-      'Direct workflow authoring: capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
+      'Task authoring: requirement analysis, confirmed task generation, task update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
     tools: [
+      'data_analyze_task_requirement',
+      'data_generate_task_from_requirement',
+      'data_update_task',
       'data_get_workflow_capability_manifest',
       'data_apply_workflow_plan',
       'data_apply_workflow_dsl',

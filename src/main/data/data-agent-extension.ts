@@ -28,20 +28,23 @@ export function createDataAgentRuntimeExtension(
       // The full catalog stays registered every turn so packs can be activated
       // later without rebuilding the session; only the subset is exposed.
       const catalog = createDataCustomTools(dataToolService, dataContext);
+      const hasPendingReceipts = dataToolService.hasPendingAnalysis(context.session.id);
       const intent = detectDataIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
-        hasPendingReceipts: dataToolService.hasPendingAnalysis(context.session.id),
+        hasPendingReceipts,
       });
       if (!intent.active) {
         return { customTools: catalog, activateTools: [], toolPacks: DATA_TOOL_PACKS };
       }
 
+      // A pending requirement analysis must keep data.authoring exposed —
+      // otherwise the "确认" follow-up turn would lose generate_task.
       const packs = activations.activate(context.session.id, [
         'data.core',
         ...(intent.file ? (['data.tables'] as const) : []),
         ...(intent.normalizer ? (['data.normalizer'] as const) : []),
         ...(intent.cloud ? (['data.cloud'] as const) : []),
-        ...(intent.authoring ? (['data.authoring'] as const) : []),
+        ...(intent.authoring || hasPendingReceipts ? (['data.authoring'] as const) : []),
       ]);
       const activateTools = [...packs].flatMap(
         (pack) => DATA_TOOL_PACKS[pack as keyof typeof DATA_TOOL_PACKS]?.tools ?? []

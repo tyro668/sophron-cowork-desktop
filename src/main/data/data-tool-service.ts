@@ -72,10 +72,21 @@ import { TOOL_RESULT_GUIDANCE } from '../prompts/tool-copy';
 const SESSION_RESOURCE_KINDS = ['InputTable', 'OutputTable', 'Task'] as const;
 const SESSION_RESOURCE_LIMIT = 8;
 
+interface SessionResourceEntry {
+  name?: string;
+  /**
+   * true only when the resource was explicitly referenced by id in tool params
+   * or confirmed as the single subject of a tool result. Entries that merely
+   * appeared inside a list result stay candidates — listing A/B/C must not
+   * silently select C as the current resource.
+   */
+  selected: boolean;
+}
+
 interface SessionResourceLedger {
-  InputTable: Map<string, string | undefined>;
-  OutputTable: Map<string, string | undefined>;
-  Task: Map<string, string | undefined>;
+  InputTable: Map<string, SessionResourceEntry>;
+  OutputTable: Map<string, SessionResourceEntry>;
+  Task: Map<string, SessionResourceEntry>;
 }
 
 export class DataToolService {
@@ -131,17 +142,28 @@ export class DataToolService {
   ): void {
     if (!sessionId) return;
     const ledger = this.sessionResources.get(sessionId) ?? {
-      InputTable: new Map<string, string | undefined>(),
-      OutputTable: new Map<string, string | undefined>(),
-      Task: new Map<string, string | undefined>(),
+      InputTable: new Map<string, SessionResourceEntry>(),
+      OutputTable: new Map<string, SessionResourceEntry>(),
+      Task: new Map<string, SessionResourceEntry>(),
     };
     this.sessionResources.set(sessionId, ledger);
 
-    const remember = (kind: keyof SessionResourceLedger, id: unknown, name?: unknown) => {
+    // `listed` marks candidates that only appeared in a list result — they are
+    // surfaced as choices but never become the current selected resource.
+    const remember = (
+      kind: keyof SessionResourceLedger,
+      id: unknown,
+      name?: unknown,
+      listed = false
+    ) => {
       if (typeof id !== 'string' || !id) return;
       const bucket = ledger[kind];
+      const previous = bucket.get(id);
       bucket.delete(id);
-      bucket.set(id, typeof name === 'string' && name ? name : undefined);
+      bucket.set(id, {
+        name: typeof name === 'string' && name ? name : previous?.name,
+        selected: previous?.selected === true || !listed,
+      });
       while (bucket.size > SESSION_RESOURCE_LIMIT) {
         bucket.delete(bucket.keys().next().value as string);
       }
@@ -152,8 +174,10 @@ export class DataToolService {
     remember('InputTable', record.inputTableId);
     remember('OutputTable', record.outputTableId);
     if (typeof record.id === 'string') {
-      if (toolName.includes('input_table')) remember('InputTable', record.id);
-      else if (toolName.includes('output_table')) remember('OutputTable', record.id);
+      if (record.tableKind === 'input' || toolName.includes('input_table'))
+        remember('InputTable', record.id);
+      else if (record.tableKind === 'output' || toolName.includes('output_table'))
+        remember('OutputTable', record.id);
       else if (toolName.includes('task')) remember('Task', record.id);
     }
     for (const id of Object.values(
@@ -181,7 +205,7 @@ export class DataToolService {
         if (!Array.isArray(list)) continue;
         for (const item of list.slice(0, 3)) {
           const entry = entity(item);
-          remember(kind, entry.id, entry.name);
+          remember(kind, entry.id, entry.name, true);
         }
       }
     }
@@ -193,13 +217,21 @@ export class DataToolService {
     const ledger = this.sessionResources.get(context.session.id);
     const latest = (kind: keyof SessionResourceLedger) => {
       const entries = ledger ? [...ledger[kind].entries()] : [];
-      const last = entries[entries.length - 1];
-      return last ? { id: last[0], name: last[1] } : undefined;
+      const last = entries.filter(([, entry]) => entry.selected).pop();
+      return last ? { id: last[0], name: last[1].name } : undefined;
     };
+    const selectedIds = new Set(
+      (['Task', 'InputTable', 'OutputTable'] as const)
+        .map((kind) => latest(kind)?.id)
+        .filter(Boolean) as string[]
+    );
     const recentResources = ledger
       ? SESSION_RESOURCE_KINDS.flatMap((kind) =>
-          [...ledger[kind].entries()].slice(-3).map(([id, name]) => ({ kind, id, name }))
-        )
+          [...ledger[kind].entries()]
+            .filter(([id]) => !selectedIds.has(id))
+            .slice(-3)
+            .map(([id, entry]) => ({ kind, id, name: entry.name, listed: !entry.selected }))
+        ).slice(-6)
       : [];
     const attachedCloudTables = [...context.existingMessages]
       .reverse()
@@ -207,7 +239,8 @@ export class DataToolService {
       ?.content.filter((block) => block.type === 'cloud_table_attachment')
       .flatMap((block) =>
         block.tables.map((table) => ({ id: table.tableId, name: table.tableName }))
-      );
+      )
+      .slice(0, 4);
     const selectedTask = latest('Task');
     const selectedInput = latest('InputTable');
     const selectedOutput = latest('OutputTable');
@@ -234,7 +267,7 @@ export class DataToolService {
 
   async listInputTables(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listInputTables(input);
-    const lines = result.inputTables.map(formatInputTable);
+    const lines = formatBoundedList(result.inputTables, formatInputTable);
     return toolResult(
       lines.length
         ? `Found ${result.inputTables.length} of ${result.total} input table(s):\n${lines.join('\n')}`
@@ -320,7 +353,7 @@ export class DataToolService {
 
   async listOutputTables(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listOutputTables(input);
-    const lines = result.outputTables.map(formatOutputTable);
+    const lines = formatBoundedList(result.outputTables, formatOutputTable);
     return toolResult(
       lines.length
         ? `Found ${result.outputTables.length} of ${result.total} output table(s):\n${lines.join('\n')}`
@@ -372,7 +405,7 @@ export class DataToolService {
 
   async listCloudSpaces(input: ListCloudSpacesCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudSpaces(input);
-    const lines = result.spaces.map(formatCloudSpace);
+    const lines = formatBoundedList(result.spaces, formatCloudSpace);
     return toolResult(
       lines.length
         ? `Found ${result.spaces.length} cloud space(s):\n${lines.join('\n')}`
@@ -383,7 +416,7 @@ export class DataToolService {
 
   async listCloudProjects(input: ListCloudProjectsCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudProjects(input);
-    const lines = result.projects.map(formatCloudProject);
+    const lines = formatBoundedList(result.projects, formatCloudProject);
     return toolResult(
       lines.length
         ? `Found ${result.projects.length} cloud project(s):\n${lines.join('\n')}`
@@ -394,7 +427,7 @@ export class DataToolService {
 
   async listCloudTables(input: ListCloudTablesCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudTables(input);
-    const lines = result.tables.map(formatCloudTable);
+    const lines = formatBoundedList(result.tables, formatCloudTable);
     return toolResult(
       lines.length
         ? `Found ${result.tables.length} cloud table(s) on page ${result.page} of ${result.total} total:\n${lines.join('\n')}`
@@ -455,7 +488,8 @@ export class DataToolService {
     input: ListInputTableNormalizerVersionsCommand
   ): Promise<DataToolResult> {
     const result = await this.commandService.listInputTableNormalizerVersions(input);
-    const lines = result.versions.map(
+    const lines = formatBoundedList(
+      result.versions,
       (version) =>
         `- v${version.version} id=${version.id} status=${version.status} files=${version.files.length} updatedAt=${version.updatedAt}`
     );
@@ -467,7 +501,7 @@ export class DataToolService {
 
   async listTasks(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listTasks(input);
-    const lines = result.tasks.map(formatTask);
+    const lines = formatBoundedList(result.tasks, formatTask);
     return toolResult(
       lines.length
         ? `Found ${result.tasks.length} of ${result.total} data task(s):\n${lines.join('\n')}`
@@ -936,7 +970,9 @@ function formatTask(task: DataCleaningTask): string {
  * successful run does not require a follow-up data_get_run_result round-trip.
  */
 function formatRunEvidence(input: RunTaskCommand, result: RunTaskResult): string {
-  const persisted = (input.mode ?? 'persisted') === 'persisted';
+  // The executor treats an omitted mode as a temporary validation run — the
+  // evidence must say the same thing or the model would trust a phantom commit.
+  const persisted = input.mode === 'persisted';
   const lines = [
     `Run: mode=${persisted ? 'persisted' : 'temporary'} commit=${persisted ? 'committed' : 'not_committed (validation only)'}`,
   ];
@@ -1022,36 +1058,83 @@ function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
   return `- ${node.id} type=${node.type}${details.length ? ` ${details.join(' ')}` : ''}`;
 }
 
-const MAX_PREVIEW_CELL_CHARS = 200;
+const MAX_PREVIEW_CELL_CHARS = 160;
+const MAX_PREVIEW_COLUMNS = 16;
+const MAX_PREVIEW_ROWS_CHARS = 4000;
 
 function truncateCellValue(value: unknown): unknown {
   if (typeof value === 'string' && value.length > MAX_PREVIEW_CELL_CHARS) {
     return `${value.slice(0, MAX_PREVIEW_CELL_CHARS)}…[+${value.length - MAX_PREVIEW_CELL_CHARS} chars]`;
   }
+  if (Array.isArray(value)) {
+    const serialized = JSON.stringify(value);
+    return serialized.length > MAX_PREVIEW_CELL_CHARS
+      ? `${serialized.slice(0, MAX_PREVIEW_CELL_CHARS)}…[+${serialized.length - MAX_PREVIEW_CELL_CHARS} chars]`
+      : value;
+  }
   return value;
 }
 
+/**
+ * Bounded model-visible preview: caps columns, per-cell text and the total
+ * serialized row payload, then reports what was truncated. The details payload
+ * still carries the full preview for the UI — this only bounds `content`.
+ */
 function formatPreview(preview: DataInputTablePreview | undefined, includeRows = true): string {
   if (!preview) {
     return '';
   }
-  const rows = preview.rows
-    .slice(0, preview.limit)
-    .map((row) =>
-      Object.fromEntries(Object.entries(row).map(([key, value]) => [key, truncateCellValue(value)]))
+  const shownColumns = preview.columns.slice(0, MAX_PREVIEW_COLUMNS);
+  const shownColumnSet = new Set(shownColumns);
+  const omittedColumns = preview.columns.length - shownColumns.length;
+  const requestedRows = includeRows ? preview.rows.slice(0, preview.limit) : [];
+  const rows: Record<string, unknown>[] = [];
+  let rowsChars = 0;
+  for (const row of requestedRows) {
+    const bounded = Object.fromEntries(
+      Object.entries(row)
+        .filter(([key]) => shownColumnSet.has(key))
+        .map(([key, value]) => [key, truncateCellValue(value)])
     );
+    const serialized = JSON.stringify(bounded);
+    if (rows.length > 0 && rowsChars + serialized.length > MAX_PREVIEW_ROWS_CHARS) break;
+    rows.push(bounded);
+    rowsChars += serialized.length;
+  }
+  const truncation: string[] = [];
+  if (requestedRows.length > rows.length) {
+    truncation.push(`${requestedRows.length - rows.length} row(s) omitted by size budget`);
+  }
+  if (omittedColumns > 0) {
+    truncation.push(`${omittedColumns} column(s) omitted`);
+  }
   const typeSummary = preview.columnTypes.length
-    ? ` types=${preview.columnTypes.map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`).join(', ')}`
+    ? ` types=${preview.columnTypes
+        .slice(0, MAX_PREVIEW_COLUMNS)
+        .map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`)
+        .join(', ')}`
     : '';
   const summary = includeRows
     ? `Preview rows=${rows.length}/${preview.totalRows}`
     : `Table schema totalRows=${preview.totalRows}`;
   return [
-    `${summary} columns=${preview.columns.join(', ') || '(none)'}${typeSummary}`,
-    includeRows && rows.length ? JSON.stringify(rows, null, 2) : '',
+    `${summary} columns=${shownColumns.join(', ') || '(none)'}${typeSummary}`,
+    truncation.length ? `Truncated: ${truncation.join('; ')}.` : '',
+    includeRows && rows.length ? JSON.stringify(rows) : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+const MAX_LIST_LINES = 20;
+
+/** Renders at most MAX_LIST_LINES entries plus an explicit "+N more" tail. */
+function formatBoundedList<T>(items: T[], format: (item: T) => string): string[] {
+  const lines = items.slice(0, MAX_LIST_LINES).map(format);
+  if (items.length > MAX_LIST_LINES) {
+    lines.push(`- … +${items.length - MAX_LIST_LINES} more (narrow the query or paginate)`);
+  }
+  return lines;
 }
 
 function withAgentResultPreviewLimit<T extends { previewRows?: number }>(input: T): T {
