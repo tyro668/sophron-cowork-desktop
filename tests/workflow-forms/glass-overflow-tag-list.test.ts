@@ -1,4 +1,6 @@
 import { createElement } from 'react';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
@@ -29,5 +31,19 @@ describe('GlassOverflowTagList', () => {
     expect(html).toContain('+3');
     expect(html).toContain('whitespace-nowrap');
     expect(html).toContain('overflow-hidden');
+  });
+
+  it('keeps every multi-select surface on the single GlassValueChip markup', () => {
+    const sharedDir = resolve(__dirname, '../../src/renderer/components/workflow-forms/shared');
+    const tagListSrc = readFileSync(resolve(sharedDir, 'GlassOverflowTagList.tsx'), 'utf-8');
+    const tagPickerSrc = readFileSync(resolve(sharedDir, 'GlassFieldTagPicker.tsx'), 'utf-8');
+
+    // The chip class signature lives in GlassValueChip only — no inline copies.
+    expect(tagListSrc).toContain('GlassValueChip');
+    expect(tagPickerSrc).toContain('GlassValueChip');
+    for (const source of [tagListSrc, tagPickerSrc]) {
+      expect(source).not.toContain('bg-accent-muted text-accent');
+      expect(source).not.toContain('rounded-md border px-2');
+    }
   });
 });
