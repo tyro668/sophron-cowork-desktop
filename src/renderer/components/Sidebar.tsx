@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import {
-  ChevronLeft,
-  ChevronRight,
   Trash2,
   Moon,
   Sun,
@@ -26,6 +24,8 @@ import {
   PencilLine,
   Folder,
   FolderOpen,
+  ArrowLeftToLine,
+  ArrowRightFromLine,
   X,
 } from 'lucide-react';
 import type { AppUpdateState } from '../types';
@@ -39,6 +39,7 @@ import {
 } from '../utils/sidebar-project-groups';
 
 const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
+const SIDEBAR_EDGE_DRAG_THRESHOLD = 56;
 
 export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }) {
   const { t } = useTranslation();
@@ -597,6 +598,72 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     deleteSession(sessionId);
   };
 
+  // Divider affordance: a click toggles the sidebar; dragging left past the
+  // threshold collapses it, dragging right expands it.
+  const handleEdgePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || forceCollapsed) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const wasCollapsed = sidebarCollapsed;
+      let moved = false;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      const onMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - startX;
+        if (Math.abs(dx) > 6) moved = true;
+        if (
+          (!wasCollapsed && dx <= -SIDEBAR_EDGE_DRAG_THRESHOLD) ||
+          (wasCollapsed && dx >= SIDEBAR_EDGE_DRAG_THRESHOLD)
+        ) {
+          finish();
+          toggleSidebar();
+        }
+      };
+      const onUp = (upEvent: PointerEvent) => {
+        const wasClick = !moved && Math.abs(upEvent.clientX - startX) <= 6;
+        finish();
+        if (wasClick) {
+          toggleSidebar();
+        }
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [forceCollapsed, sidebarCollapsed, toggleSidebar]
+  );
+
+  const edgeHandle = !forceCollapsed ? (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={sidebarCollapsed ? t('context.expandPanel') : t('context.collapsePanel')}
+      title={sidebarCollapsed ? t('context.expandPanel') : t('context.collapsePanel')}
+      onPointerDown={handleEdgePointerDown}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleSidebar();
+        }
+      }}
+      className="titlebar-no-drag group absolute inset-y-0 right-0 z-20 w-2 translate-x-1/2 cursor-ew-resize touch-none outline-none"
+    >
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent/40" />
+      <div className="absolute left-1/2 top-1/2 flex h-8 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-muted opacity-0 shadow-soft transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+        {sidebarCollapsed ? (
+          <ArrowRightFromLine className="h-3 w-3" />
+        ) : (
+          <ArrowLeftToLine className="h-3 w-3" />
+        )}
+      </div>
+    </div>
+  ) : null;
+
   const toggleTheme = () => {
     const next =
       settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark';
@@ -678,19 +745,10 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   if (sidebarCollapsed) {
     return (
-      <aside className="flex h-full w-[4.25rem] shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+      <aside className="relative flex h-full w-[4.25rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
         {/* macOS traffic lights overlay the top of the rail — keep the strip clear + draggable */}
         {isMac && <div className="titlebar-drag h-8 shrink-0" />}
         <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
-          {!forceCollapsed && (
-            <button
-              onClick={toggleSidebar}
-              className="w-8 h-8 rounded-xl flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
-              title={t('context.expandPanel')}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
           <Button
             variant="primary"
             size="icon"
@@ -798,15 +856,16 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             )}
           </button>
         </div>
+        {edgeHandle}
       </aside>
     );
   }
 
   return (
-    <aside className="flex h-full w-[19rem] shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+    <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
       {/* Brand row doubles as the window drag region; macOS traffic lights overlay its left edge */}
       <div
-        className={`titlebar-drag flex items-start justify-between gap-3 px-3.5 pb-3 pt-4 ${isMac ? 'pl-[76px]' : ''}`}
+        className={`titlebar-drag flex items-start gap-3 px-3.5 pb-3 pt-4 ${isMac ? 'pl-[76px]' : ''}`}
       >
         <div className="min-w-0 flex items-center gap-3">
           <BrandMark
@@ -832,13 +891,6 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             </div>
           </div>
         </div>
-        <button
-          onClick={toggleSidebar}
-          className="titlebar-no-drag w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary flex-shrink-0"
-          title={t('context.collapsePanel')}
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
       </div>
 
       <div className="px-3.5 pb-3.5 border-b border-border-subtle">
@@ -1246,6 +1298,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </div>
         </div>
       )}
+      {edgeHandle}
     </aside>
   );
 }
