@@ -1,12 +1,19 @@
 /** Node-level previews: rows, columns, column types, distinct values. */
 import type {
   DataColumnTypeInfo,
+  DataFieldType,
   DataInputTablePreview,
   DataWorkflowNode,
   DataCleaningTask,
   DataPreviewWorkflowNodeInput,
 } from '../../../../shared/contracts';
+import { isDataFieldType } from '../../../../shared/data-field-types';
 import { parseFieldRefExact } from '../../../../shared/prep-dsl';
+import {
+  buildWorkflowPlan,
+  propagateWorkflowPlanSchemas,
+  type PlanColumn,
+} from '../../../../shared/workflow-plan';
 import { quoteIdentifier, toNumber } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
@@ -20,6 +27,7 @@ import {
 import { CacheRepository } from '../repositories/cache-repository';
 import { DatasetRepository } from '../repositories/dataset-repository';
 import { TaskRepository } from '../repositories/task-repository';
+import { WorkflowRepository } from '../repositories/workflow-repository';
 import { stringConfigValue } from '../workflow-model';
 import { WorkflowCompiler } from './workflow-compiler';
 
@@ -29,7 +37,8 @@ export class WorkflowNodePreviewService {
     private readonly tasks: TaskRepository,
     private readonly datasets: DatasetRepository,
     private readonly caches: CacheRepository,
-    private readonly compiler: WorkflowCompiler
+    private readonly compiler: WorkflowCompiler,
+    private readonly workflows: WorkflowRepository
   ) {}
   async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> {
     // Node previews may materialize cache/preview tables — physical writes
@@ -49,7 +58,7 @@ export class WorkflowNodePreviewService {
     const limit = normalizePreviewLimit(input.limit);
     const offset = normalizePreviewOffset(input.offset);
     const nodeConfig = input.nodeConfig ?? {};
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, {
+    const node: DataWorkflowNode = {
       id: input.nodeId,
       taskId: task.id,
       type: input.nodeType,
@@ -59,12 +68,16 @@ export class WorkflowNodePreviewService {
       config: nodeConfig,
       createdAt: 0,
       updatedAt: 0,
-    });
+    };
+    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
+      // No materialized table yet — surface the plan-inferred schema so the
+      // data tab still shows the expected columns instead of a blank grid.
+      const inferred = await this.inferWorkflowNodeSchema(task, node);
       return {
-        columns: [],
-        columnTypes: [],
+        columns: (inferred ?? []).map((column) => column.name),
+        columnTypes: toColumnTypeInfos(inferred),
         rows: [],
         fileCount: 0,
         limit,
@@ -124,7 +137,7 @@ export class WorkflowNodePreviewService {
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
-      return [];
+      return (await this.inferWorkflowNodeSchema(task, node))?.map((column) => column.name) ?? [];
     }
 
     return this.ctx.getTableColumns(tableName);
@@ -159,10 +172,42 @@ export class WorkflowNodePreviewService {
 
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
-      return [];
+      return toColumnTypeInfos(await this.inferWorkflowNodeSchema(task, node));
     }
 
     return this.ctx.getTableColumnTypes(tableName);
+  }
+
+  /**
+   * Plan-level schema fallback: propagates input-source column types through
+   * the saved workflow graph so downstream field selectors keep type info
+   * before any run materializes preview tables. The queried node's current
+   * (possibly unsaved) config is overlaid onto its saved counterpart.
+   */
+  private async inferWorkflowNodeSchema(
+    task: DataCleaningTask,
+    node: DataWorkflowNode
+  ): Promise<PlanColumn[] | null> {
+    const runtime = await this.workflows.getRuntimeWorkflow(task.id);
+    if (runtime.nodes.length === 0) return null;
+    const overlaid = runtime.nodes.map((item) =>
+      item.id === node.id ? { ...item, type: node.type, config: node.config } : item
+    );
+    const { plan } = buildWorkflowPlan({ nodes: overlaid, edges: runtime.edges });
+    const inputSchemas = new Map<string, PlanColumn[]>();
+    for (const planNode of plan.nodes) {
+      if (planNode.type !== 'input_source') continue;
+      const taskNode = overlaid.find((item) => item.id === planNode.id);
+      if (!taskNode) continue;
+      const columns = await this.compiler.resolveInputSourceColumnTypes(taskNode, task.sourcePath);
+      if (columns) inputSchemas.set(planNode.id, columns);
+    }
+    const { schemas } = propagateWorkflowPlanSchemas(
+      plan,
+      (planNode) => inputSchemas.get(planNode.id) ?? null
+    );
+    const schema = schemas.get(node.id);
+    return schema?.known ? schema.columns : null;
   }
   async getWorkflowNodeColumnValues(
     input: DataPreviewWorkflowNodeInput & { column: string }
@@ -322,4 +367,15 @@ export class WorkflowNodePreviewService {
     }
     return tableNameFromId(`workflow_${node.type}`, node.id);
   }
+}
+
+/** Plan-inferred columns carry optional types; unknowns stay absent so field selectors render the same "?" state as before. */
+function toColumnTypeInfos(columns: PlanColumn[] | null): DataColumnTypeInfo[] {
+  return (columns ?? [])
+    .filter((column) => isDataFieldType(column.type))
+    .map((column) => ({
+      name: column.name,
+      type: column.type as DataFieldType,
+      storageType: column.type ?? '',
+    }));
 }

@@ -142,7 +142,9 @@ describe('data task architecture regressions', () => {
       nodeType: selectedNode.type,
       nodeConfig: { ...selectedNode.config, columns: ['value'] },
     });
-    expect(previewAfterSave.columns).toEqual([]);
+    // The stale cache is gone; the schema falls back to plan inference using
+    // the new executable config rather than showing the old cached columns.
+    expect(previewAfterSave.columns).toEqual(['value']);
   });
 
   it('rejects unknown operator types at validation and normalization boundaries', () => {

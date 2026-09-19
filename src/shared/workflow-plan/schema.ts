@@ -33,8 +33,20 @@ export function validateWorkflowPlanSchemas(
   plan: WorkflowPlan,
   resolveInputSchema: PlanInputSchemaResolver
 ): WorkflowPlanDiagnostic[] {
+  return propagateWorkflowPlanSchemas(plan, resolveInputSchema).diagnostics;
+}
+
+/**
+ * Propagates each node's output schema along the plan graph and returns the
+ * resolved schema per node id alongside the diagnostics raised while
+ * validating. Downstream consumers (field selectors, column-type lookups) can
+ * read `schemas.get(nodeId)` without depending on materialized preview tables.
+ */
+export function propagateWorkflowPlanSchemas(
+  plan: WorkflowPlan,
+  resolveInputSchema: PlanInputSchemaResolver
+): { schemas: Map<string, PlanSchema>; diagnostics: WorkflowPlanDiagnostic[] } {
   const diagnostics: WorkflowPlanDiagnostic[] = [];
-  const nodeById = new Map(plan.nodes.map((node) => [node.id, node]));
   const incoming = new Map<string, { sourceId: string; handle: string }[]>();
   for (const edge of plan.edges) {
     incoming.set(edge.targetNodeId, [
@@ -54,8 +66,7 @@ export function validateWorkflowPlanSchemas(
     const schema = validateNode(node, left ?? UNKNOWN, right, resolveInputSchema, diagnostics);
     schemas.set(node.id, schema);
   }
-  void nodeById;
-  return diagnostics;
+  return { schemas, diagnostics };
 }
 
 function topologicalOrder(plan: WorkflowPlan): WorkflowPlanNode[] {

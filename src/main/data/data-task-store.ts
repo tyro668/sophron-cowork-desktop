@@ -111,7 +111,14 @@ export class DataTaskStore {
       compiler,
       binding
     );
-    const nodePreview = new WorkflowNodePreviewService(this.ctx, tasks, datasets, caches, compiler);
+    const nodePreview = new WorkflowNodePreviewService(
+      this.ctx,
+      tasks,
+      datasets,
+      caches,
+      compiler,
+      workflows
+    );
     const commitCoordinator = new OutputCommitCoordinator(
       this.ctx,
       tasks,

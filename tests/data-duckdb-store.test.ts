@@ -457,6 +457,66 @@ describe('DuckDB data task store', () => {
     ]);
   });
 
+  it('infers downstream node columns and types from the plan before any run', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'));
+    stores.push(store);
+
+    const csvPath = path.join(tempRoot, 'typed-source.csv');
+    fs.writeFileSync(csvPath, 'id,name,amount\n1,Alice,10\n2,Bob,20\n', 'utf8');
+    const imported = await store.importDataset({ filePath: csvPath, name: 'Typed source' });
+
+    const task = await store.createTask({ name: 'Schema inference task' });
+    const parsed = parsePrepDsl(`
+      input source dataset "${imported.id}" as src
+
+      from src
+        | select [id], [amount]
+        | filter [amount] > 0
+        | output table "inferred_output" mode replace
+    `);
+    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    const selectNode = saved.nodes.find((node) => node.type === 'field_select');
+    expect(filterNode).toBeTruthy();
+    expect(selectNode).toBeTruthy();
+
+    // No run happened — types propagate through the plan instead of preview tables.
+    const filterColumns = await store.getWorkflowNodeColumns({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(filterColumns).toEqual(['id', 'amount']);
+
+    const filterTypes = await store.getWorkflowNodeColumnTypes({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(filterTypes.map((column) => column.name).sort()).toEqual(['amount', 'id']);
+    expect(filterTypes.every((column) => column.type.length > 0)).toBe(true);
+
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    expect(preview.columns).toEqual(['id', 'amount']);
+    expect(preview.rows).toEqual([]);
+    expect(preview.totalRows).toBe(0);
+  });
+
   it('lists Excel input tables without reading the source workbook', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
@@ -1238,6 +1298,7 @@ describe('DuckDB data task store', () => {
       nodeConfig: filterNode!.config,
     });
     expect(beforeRun.totalRows).toBe(0);
+    // No materialized table yet — columns resolve through plan inference.
     await expect(
       store.getWorkflowNodeColumns({
         taskId: task.id,
@@ -1245,7 +1306,7 @@ describe('DuckDB data task store', () => {
         nodeType: filterNode!.type,
         nodeConfig: filterNode!.config,
       })
-    ).resolves.toEqual([]);
+    ).resolves.toEqual(['order_id', 'revenue']);
 
     await store.runTask(task.id);
     await expect(
@@ -1332,7 +1393,8 @@ describe('DuckDB data task store', () => {
       nodeConfig: filterNode!.config,
     });
     expect(expiredPreview.totalRows).toBe(0);
-    expect(expiredPreview.columns).toEqual([]);
+    // Rows are gone, but the plan-inferred schema still describes the node.
+    expect(expiredPreview.columns).toEqual(['order_id', 'revenue']);
   });
 
   it('previews input table data and columns before a task run', async () => {
