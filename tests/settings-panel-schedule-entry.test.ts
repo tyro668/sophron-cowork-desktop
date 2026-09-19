@@ -28,7 +28,7 @@ describe('Automation workspace', () => {
       "import { SettingsSchedule } from './settings/SettingsSchedule';"
     );
     expect(automationSource).toContain('<SettingsSchedule isActive={isActive} />');
-    expect(automationSource).toContain('max-w-[1120px]');
+    expect(automationSource).toContain('max-w-[1500px]');
     expect(settingsPanelSource).not.toContain("id: 'schedule' as TabId");
   });
 

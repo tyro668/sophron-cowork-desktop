@@ -24,7 +24,7 @@ describe('ChatView layout', () => {
   it('uses a quieter header treatment without a left app-name label', () => {
     const source = readChatView();
     expect(source).toContain('<div aria-hidden="true" />');
-    expect(source).toContain('glass-panel-header relative grid h-12');
+    expect(source).toContain('glass-panel-header titlebar-drag relative grid h-12');
     expect(source).not.toContain('tracking-[0.08em] uppercase text-text-muted');
   });
 

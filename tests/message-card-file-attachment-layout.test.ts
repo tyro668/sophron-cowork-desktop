@@ -22,6 +22,6 @@ describe('message card file attachment layout', () => {
     const source = readMessageCard();
     expect(source).toContain('max-w-full min-w-0');
     expect(source).toContain('overflow-hidden');
-    expect(source).toContain('text-[13px] text-text-primary truncate');
+    expect(source).toContain('truncate text-[13px] font-medium leading-5 text-text-primary');
   });
 });

@@ -20,7 +20,7 @@ describe('App layout scroll lock', () => {
   it('uses a full-height root app container instead of viewport-sized screen classes', () => {
     expect(appContent).not.toContain('h-screen w-screen');
     expect(appContent).toContain(
-      'className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary"'
+      'className="h-full w-full min-h-0 flex overflow-hidden bg-background text-text-primary"'
     );
   });
 });
