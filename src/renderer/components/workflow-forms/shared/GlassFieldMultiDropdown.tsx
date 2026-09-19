@@ -119,7 +119,6 @@ export function GlassFieldMultiDropdown({
           onRemove={removeSelected}
           disabled={disabled}
           placeholder={placeholder}
-          variant="field"
           missing={missingValues}
           missingTitle={missingTitle}
         />

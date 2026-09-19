@@ -238,7 +238,6 @@ describe('FormDeduplicate — 组件结构检查', () => {
     );
     expect(dropdownSrc).toContain('GlassOverflowTagList');
     expect(dropdownSrc).toContain('values={selected}');
-    expect(dropdownSrc).toContain('variant="field"');
   });
 
   it('去重字段标签的左侧、顶部和底部使用相同的留白', () => {

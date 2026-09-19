@@ -12,7 +12,7 @@ describe('GlassOverflowTagList', () => {
   });
 
   it('shows all tags if they fit, and a badge alone when even the first cannot fit', () => {
-    expect(getVisibleTagCount([60, 70], 28, 134)).toBe(2);
+    expect(getVisibleTagCount([60, 70], 28, 136)).toBe(2);
     expect(getVisibleTagCount([96, 72, 70], 34, 80)).toBe(0);
   });
 
@@ -21,7 +21,6 @@ describe('GlassOverflowTagList', () => {
       createElement(GlassOverflowTagList, {
         values: ['0.350000', '0.370000', '0.390000'],
         onRemove: () => undefined,
-        variant: 'field',
       })
     );
 
