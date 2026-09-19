@@ -28,33 +28,68 @@ export function createDataAgentRuntimeExtension(
       // The full catalog stays registered every turn so packs can be activated
       // later without rebuilding the session; only the subset is exposed.
       const catalog = createDataCustomTools(dataToolService, dataContext);
+      const toolContexts = [
+        {
+          tools: catalog.map((tool) => tool.name),
+          stablePrompt: buildDataToolStablePrompt(),
+          statePrompt: buildDataToolStatePrompt(dataContext),
+        },
+      ];
       const hasPendingReceipts = dataToolService.hasPendingAnalysis(context.session.id);
       const intent = detectDataIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
         hasPendingReceipts,
+        hasSelectedTask: !!dataContext.selectedDataTaskId,
       });
       if (!intent.active) {
-        return { customTools: catalog, activateTools: [], toolPacks: DATA_TOOL_PACKS };
+        activations.clear(context.session.id);
+        return {
+          customTools: catalog,
+          activateTools: [],
+          toolPacks: DATA_TOOL_PACKS,
+          toolContexts,
+        };
       }
 
-      // A pending requirement analysis must keep data.authoring exposed —
-      // otherwise the "确认" follow-up turn would lose generate_task.
-      const packs = activations.activate(context.session.id, [
-        'data.core',
-        ...(intent.file ? (['data.tables'] as const) : []),
-        ...(intent.normalizer ? (['data.normalizer'] as const) : []),
-        ...(intent.cloud ? (['data.cloud'] as const) : []),
-        ...(intent.authoring || hasPendingReceipts ? (['data.authoring'] as const) : []),
-      ]);
-      const activateTools = [...packs].flatMap(
-        (pack) => DATA_TOOL_PACKS[pack as keyof typeof DATA_TOOL_PACKS]?.tools ?? []
-      );
+      const previous = activations.activePacks(context.session.id);
+      const packNames =
+        intent.continuation && previous.size > 0
+          ? [...previous]
+          : [
+              intent.generate ? 'data.generate' : intent.run ? 'data.run' : 'data.core',
+              ...(intent.file ? ['data.tables'] : []),
+              ...(intent.normalizer ? ['data.normalizer'] : []),
+              ...(intent.cloud ? ['data.cloud'] : []),
+              ...(intent.authoring ? ['data.authoring'] : []),
+            ];
+      const packs = activations.activate(context.session.id, packNames);
+      let activateTools = [
+        ...new Set(
+          [...packs].flatMap(
+            (pack) => DATA_TOOL_PACKS[pack as keyof typeof DATA_TOOL_PACKS]?.tools ?? []
+          )
+        ),
+      ];
+      if (hasPendingReceipts && intent.continuation) {
+        activateTools = ['data_generate_task_from_requirement'];
+      } else if (
+        intent.run &&
+        !intent.authoring &&
+        (/taskId\s*[=:]/i.test(context.prompt) ||
+          (dataContext.selectedDataTaskId &&
+            /当前|这个|该任务|它|再(?:次|运行|执行)|重跑|再跑|current|this|again/i.test(
+              context.prompt
+            )))
+      ) {
+        activateTools = ['data_run_task'];
+      }
       return {
-        stablePrompt: buildDataToolStablePrompt(),
-        statePrompt: buildDataToolStatePrompt(dataContext),
+        stablePrompt: toolContexts[0].stablePrompt,
+        statePrompt: toolContexts[0].statePrompt,
         customTools: catalog,
         activateTools,
         toolPacks: DATA_TOOL_PACKS,
+        toolContexts,
       };
     },
     async onSessionDeleted({ sessionId }): Promise<void> {

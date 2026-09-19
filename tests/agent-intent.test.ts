@@ -50,6 +50,12 @@ describe('data intent routing', () => {
     expect(detectDataIntent(ctx('然后呢', messages), noSticky).active).toBe(true);
   });
 
+  it('does not reactivate old work for an unrelated prompt, even with pending receipts', () => {
+    const pending = { stickyActive: true, hasPendingReceipts: true };
+    expect(detectDataIntent(ctx('写一首秋天的诗'), pending).active).toBe(false);
+    expect(detectAutomationIntent(ctx('写一首秋天的诗'), pending).active).toBe(false);
+  });
+
   it('stays active on sticky packs or pending receipts without keyword expansion', () => {
     const intent = detectDataIntent(ctx('继续'), {
       stickyActive: true,
@@ -76,13 +82,13 @@ describe('automation intent routing', () => {
 });
 
 describe('SessionPackActivation', () => {
-  it('accumulates packs per session and clears on delete', () => {
+  it('replaces packs per intent and clears on delete', () => {
     const activations = new SessionPackActivation();
     activations.activate('s1', ['data.core']);
     activations.activate('s1', ['data.cloud']);
     activations.activate('s2', ['data.authoring']);
 
-    expect([...activations.activePacks('s1')].sort()).toEqual(['data.cloud', 'data.core']);
+    expect([...activations.activePacks('s1')].sort()).toEqual(['data.cloud']);
     expect([...activations.activePacks('s2')]).toEqual(['data.authoring']);
 
     activations.clear('s1');

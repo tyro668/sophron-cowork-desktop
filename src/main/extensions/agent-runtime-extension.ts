@@ -37,9 +37,11 @@ export interface BeforeSessionRunContext {
 }
 
 export interface BeforeSessionRunResult {
+  /** Context available to tools discovered mid-run, without exposing it to unrelated requests. */
+  toolContexts?: Array<{ tools: string[]; stablePrompt?: string; statePrompt?: string }>;
   /**
-   * Stable domain rules. Injected at most once per session (fingerprint-deduped
-   * by the runner, re-sent on cold starts); not appended to every user turn.
+   * Stable domain rules, composed into the request's system context once.
+   * Never appended to conversation history; available again after compaction.
    */
   stablePrompt?: string;
   /**

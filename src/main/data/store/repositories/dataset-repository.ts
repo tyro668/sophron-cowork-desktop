@@ -208,6 +208,16 @@ export class DatasetRepository {
     );
     return rows[0] ? mapOutputTableRow(rows[0]) : null;
   }
+
+  async findOutputTableByPhysicalName(tableName: string): Promise<DataOutputTable | null> {
+    await this.ctx.ensureMetadataReady();
+    const rows = await this.ctx.metaQueryRows<{ id: string }>(
+      `SELECT id FROM data_datasets WHERE table_name = $tableName
+       AND ${outputTableConfigPredicateSql()} ORDER BY id LIMIT 1`,
+      { tableName }
+    );
+    return rows[0] ? this.getOutputTable(rows[0].id) : null;
+  }
   async requireOutputTable(id: string): Promise<DataOutputTable> {
     const outputTable = await this.getOutputTable(id);
     if (!outputTable) {

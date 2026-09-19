@@ -468,6 +468,8 @@ export interface WorkflowNodeRunStat {
 
 export interface RunTaskResult {
   task: DataCleaningTask;
+  /** User-managed output resource ID, never the physical DuckDB table name. */
+  outputTableId?: string;
   preview?: DataInputTablePreview;
   diagnostics?: PrepDiagnostic[];
   nodeStats?: WorkflowNodeRunStat[];
@@ -512,6 +514,7 @@ export interface GetRunResultCommand {
 
 export interface RunResult {
   task: DataCleaningTask;
+  outputTableId?: string;
   preview?: DataInputTablePreview;
 }
 

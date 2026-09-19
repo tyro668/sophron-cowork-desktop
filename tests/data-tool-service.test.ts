@@ -1,3 +1,4 @@
+import { ModelResultStore } from '../src/main/agent/model-result-store';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentToolResult, ExtensionContext } from '@mariozechner/pi-coding-agent';
 import type { DataToolDefinition } from '../src/main/data/data-tool-types';
@@ -704,6 +705,16 @@ describe('DataToolService', () => {
     const persisted = await service.runTask({ taskId: task.id, mode: 'persisted' });
     expect(persisted.content[0]?.text).toContain('mode=persisted');
     expect(persisted.content[0]?.text).toContain('commit=committed');
+    expect(persisted.content[0]?.text).toContain('physicalTableName=');
+    expect(persisted.content[0]?.text).not.toContain('#/data/output-tables/output_1');
+    runTask.mockResolvedValueOnce({
+      task,
+      preview: undefined,
+      diagnostics: [],
+      outputTableId: 'actual-resource-id',
+    } as never);
+    const linked = await service.runTask({ taskId: task.id, mode: 'persisted' });
+    expect(linked.content[0]?.text).toContain('#/data/output-tables/actual-resource-id');
   });
 
   it('never promotes listed resources to the current selection', async () => {
@@ -750,6 +761,35 @@ describe('DataToolService', () => {
     resolved = await service.resolveConversationContext(context);
     expect(resolved.selectedDataTaskId).toBe('task_b');
 
+    // A previously selected resource appearing later in a list must not regain selection.
+    service.rememberResolvedResources(
+      'session_1',
+      'data_get_task_workflow',
+      { taskId: 'task_a' },
+      { task: { id: 'task_a', name: 'A' } }
+    );
+    service.rememberResolvedResources(
+      'session_1',
+      'data_get_task_workflow',
+      { taskId: 'task_b' },
+      { task: { id: 'task_b', name: 'B' } }
+    );
+    service.rememberResolvedResources(
+      'session_1',
+      'data_list_tasks',
+      {},
+      { tasks: [{ id: 'task_b' }, { id: 'task_a' }] }
+    );
+    expect((await service.resolveConversationContext(context)).selectedDataTaskId).toBe('task_b');
+    for (let i = 0; i < 12; i++)
+      service.rememberResolvedResources(
+        'session_1',
+        'data_list_tasks',
+        {},
+        { tasks: [{ id: `other_${i}` }] }
+      );
+    expect((await service.resolveConversationContext(context)).selectedDataTaskId).toBe('task_b');
+
     // Listing again afterwards must not demote the explicit selection.
     service.rememberResolvedResources(
       'session_1',
@@ -766,7 +806,7 @@ describe('DataToolService', () => {
     expect(resolved.selectedDataTaskId).toBe('task_b');
   });
 
-  it('bounds preview content by columns and total size', async () => {
+  it('bounds the model-facing preview without losing columns from the retrievable result', async () => {
     const preview: DataInputTablePreview = {
       columns: Array.from({ length: 100 }, (_, i) => `col_${i}`),
       columnTypes: Array.from({ length: 100 }, (_, i) => ({
@@ -795,10 +835,23 @@ describe('DataToolService', () => {
       limit: 5,
       includeRows: true,
     });
-    const text = result.content[0]?.text ?? '';
-    // 5 rows x 100 columns previously produced ~120k chars; bounded now.
-    expect(text.length).toBeLessThan(6000);
-    expect(text).toContain('column(s) omitted');
-    expect(text).not.toContain('col_99');
+    const store = new ModelResultStore();
+    const bounded = store.bound(result);
+    const text = bounded.content[0]?.type === 'text' ? bounded.content[0].text : '';
+    expect(text.length).toBeLessThanOrEqual(6000);
+    const page = JSON.parse(text);
+    expect(page.truncated).toBe(true);
+    expect(page.resultRef).toMatch(/^result_/);
+    const recovered = await store
+      .createReadTool()
+      .execute(
+        'read',
+        { resultRef: page.resultRef, contains: 'value_4_99' },
+        undefined,
+        undefined,
+        undefined as never
+      );
+    expect(JSON.stringify(recovered.content)).toContain('value_4_99');
+    expect(bounded.details).toBe(result.details);
   });
 });

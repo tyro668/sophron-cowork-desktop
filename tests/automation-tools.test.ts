@@ -4,7 +4,10 @@ import type { Automation } from '../src/shared/automation/types';
 import { compileAutomationSchedule } from '../src/main/automation/tools/schedule-compiler';
 import { AutomationToolService } from '../src/main/automation/tools/service';
 import { AutomationDraftReceiptStore } from '../src/main/automation/tools/draft-receipt-store';
-import { createAutomationCustomTools } from '../src/main/automation/tools';
+import {
+  createAutomationAgentRuntimeExtension,
+  createAutomationCustomTools,
+} from '../src/main/automation/tools';
 import {
   AutomationPrepareParametersSchema,
   AutomationPrepareScheduleUpdateParametersSchema,
@@ -153,6 +156,57 @@ describe('automation conversation tools', () => {
       'automation_prepare_schedule_update',
       'automation_update_schedule',
     ]);
+  });
+
+  it('exposes only the pending draft commit and releases automation tools on topic changes', async () => {
+    const { service } = createServiceFixture();
+    const extension = createAutomationAgentRuntimeExtension(service);
+    const session = {
+      id: 'session-1',
+      title: 'test',
+      status: 'idle' as const,
+      cwd: '/tmp',
+      mountedPaths: [],
+      allowedTools: [],
+      memoryEnabled: false,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    const run = (prompt: string) =>
+      extension.beforeSessionRun!({ session, prompt, existingMessages: [], isColdStart: false });
+    const draft = await service.prepare(
+      {
+        name: 'Daily',
+        schedule: { kind: 'daily', times: ['09:00'] },
+        action: { kind: 'data_task', taskId: 'task-1' },
+      },
+      { sessionId: session.id }
+    );
+    expect(service.pendingDraftKinds(session.id)).toEqual(['create']);
+    expect((await run('确认'))?.activateTools).toEqual(['automation_create']);
+    expect((await run('写一首诗'))?.activateTools).toEqual([]);
+    const created = await service.create(
+      { draftId: (draft.details as { draftId: string }).draftId, confirmed: true },
+      { sessionId: session.id }
+    );
+    expect(service.pendingDraftKinds(session.id)).toEqual([]);
+    const automationId = (created.details as { automation: { id: string } }).automation.id;
+    const update = service.prepareScheduleUpdate(
+      { automationId, schedule: { kind: 'daily', times: ['10:00'] } },
+      { sessionId: session.id }
+    );
+    expect(service.pendingDraftKinds(session.id)).toEqual(['update']);
+    expect((await run('确认'))?.activateTools).toEqual(['automation_update_schedule']);
+    service.updateSchedule(
+      { draftId: (update.details as { draftId: string }).draftId, confirmed: true },
+      { sessionId: session.id }
+    );
+    expect(service.pendingDraftKinds(session.id)).toEqual([]);
+    expect((await run('列出自动化'))?.activateTools).toEqual([
+      'automation_list',
+      'automation_set_enabled',
+    ]);
+    expect((await run('写一首诗'))?.activateTools).toEqual([]);
   });
 
   it('validates enable and disable tool input', () => {

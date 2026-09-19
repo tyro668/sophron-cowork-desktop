@@ -3,9 +3,8 @@
  *
  * No routing LLM: a domain activates when the current prompt matches domain
  * keywords, when the user attached domain resources, when earlier turns already
- * used that domain's tools, or when the domain holds a pending receipt
- * (unconfirmed analysis / uncommitted draft). Once activated, packs stay
- * registered for the session so multi-turn flows do not lose tools mid-task.
+ * used that domain's tools AND the user explicitly continues that work.
+ * Catalog registration survives topic changes; model exposure does not.
  */
 import type { Message } from '../../shared/contracts';
 
@@ -14,7 +13,10 @@ const DATA_PROMPT_PATTERN =
 const DATA_FILE_PATTERN = /文件|文件夹|excel|csv|导入|上传|file\b|folder\b|import\b|upload/i;
 const DATA_CLOUD_PATTERN = /云|个人分析|云端|cloud|space\b|project\b/i;
 const DATA_AUTHORING_PATTERN =
-  /工作流|流程|节点|算子|dsl\b|plan\b|多表|多源|join\b|编排|修改流程|编辑流程|workflow|创建.{0,8}任务|新建.{0,8}任务|生成.{0,8}任务|需求|create.{0,20}task|new.{0,10}task|generate.{0,20}task|requirement/i;
+  /工作流|流程|节点|算子|dsl\b|plan\b|多表|多源|join\b|编排|修改流程|编辑流程|workflow/i;
+const DATA_GENERATION_PATTERN =
+  /创建.{0,8}任务|新建.{0,8}任务|生成.{0,8}任务|需求|create.{0,20}task|new.{0,10}task|generate.{0,20}task|requirement/i;
+const DATA_RUN_PATTERN = /运行|执行|重跑|再跑|run\b|execute\b/i;
 const DATA_NORMALIZER_PATTERN = /标准化|归一化|清洗规则|normaliz|规则引擎/i;
 const AUTOMATION_PROMPT_PATTERN =
   /自动化|定时|调度|周期|每天|每日|每周|每小时|每月|明天|稍后|提醒|cron|schedule[ds]?\b|automat|reschedule|改期|暂停|启用|停用/i;
@@ -30,6 +32,9 @@ export interface DataIntentSignals {
   file: boolean;
   cloud: boolean;
   authoring: boolean;
+  generate: boolean;
+  run: boolean;
+  continuation: boolean;
   normalizer: boolean;
 }
 
@@ -37,30 +42,30 @@ export interface AutomationIntentSignals {
   active: boolean;
   create: boolean;
   update: boolean;
+  continuation: boolean;
 }
 
-function lastUserText(context: { prompt: string; existingMessages: Message[] }): string {
-  const attachmentText = context.existingMessages
-    .slice(-3)
-    .flatMap((message) => message.content)
-    .filter((block) => block.type === 'cloud_table_attachment')
-    .map(() => 'cloud table attachment')
-    .join(' ');
-  return `${context.prompt}\n${attachmentText}`;
+/** Bare follow-ups inherit only the immediately preceding operation. */
+export function isOperationContinuation(prompt: string): boolean {
+  return /^(继续(?:处理|执行)?|然后呢|再来一次|再试一次|重试|确认(?:执行|创建|修改)?|好的?|可以|就用这个|按这个来|continue|retry|try again|confirm|yes|go ahead)[。.!！?？\s]*$/i.test(
+    prompt.trim()
+  );
 }
 
 function sessionUsedToolsWithPrefix(
   existingMessages: Message[],
   prefixes: readonly string[]
 ): boolean {
-  for (const message of existingMessages.slice(-TOOL_USE_SCAN_LIMIT)) {
-    for (const block of message.content) {
-      if (block.type === 'tool_use' && prefixes.some((prefix) => block.name.startsWith(prefix))) {
-        return true;
-      }
-    }
-  }
-  return false;
+  const lastAssistant = existingMessages
+    .slice(-TOOL_USE_SCAN_LIMIT)
+    .reverse()
+    .find((m) => m.role === 'assistant');
+  return (
+    lastAssistant?.content.some(
+      (block) =>
+        block.type === 'tool_use' && prefixes.some((prefix) => block.name.startsWith(prefix))
+    ) ?? false
+  );
 }
 
 function hasCloudTableAttachment(existingMessages: Message[]): boolean {
@@ -70,51 +75,60 @@ function hasCloudTableAttachment(existingMessages: Message[]): boolean {
 
 export function detectDataIntent(
   context: { prompt: string; existingMessages: Message[] },
-  options: { stickyActive: boolean; hasPendingReceipts: boolean }
+  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedTask?: boolean }
 ): DataIntentSignals {
-  const text = lastUserText(context);
+  const text = context.prompt;
+  const continuation = isOperationContinuation(text);
   const promptHit = DATA_PROMPT_PATTERN.test(text);
   const cloudAttachment = hasCloudTableAttachment(context.existingMessages);
   const historyHit = sessionUsedToolsWithPrefix(context.existingMessages, ['data_']);
-  // Sticky/pending state keeps the domain active but does not expand packs —
-  // previously activated packs come from SessionPackActivation, not keywords.
+  const run = DATA_RUN_PATTERN.test(text);
   const active =
     promptHit ||
     cloudAttachment ||
-    historyHit ||
-    options.stickyActive ||
-    options.hasPendingReceipts;
+    (run &&
+      (/taskId\s*[=:]|任务|task\b/i.test(text) ||
+        (options.hasSelectedTask &&
+          /当前|这个|该任务|它|再(?:次|运行|执行)|重跑|再跑|current|this|again/i.test(text)))) ||
+    (continuation && (historyHit || options.stickyActive || options.hasPendingReceipts));
   return {
     active,
     file: DATA_FILE_PATTERN.test(text),
     cloud: DATA_CLOUD_PATTERN.test(text) || cloudAttachment,
     authoring: DATA_AUTHORING_PATTERN.test(text),
+    generate: DATA_GENERATION_PATTERN.test(text),
+    run,
+    continuation,
     normalizer: DATA_NORMALIZER_PATTERN.test(text),
   };
 }
 
 export function detectAutomationIntent(
   context: { prompt: string; existingMessages: Message[] },
-  options: { stickyActive: boolean; hasPendingReceipts: boolean }
+  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedTask?: boolean }
 ): AutomationIntentSignals {
-  const text = lastUserText(context);
+  const text = context.prompt;
+  const continuation = isOperationContinuation(text);
   const promptHit = AUTOMATION_PROMPT_PATTERN.test(text);
   const historyHit = sessionUsedToolsWithPrefix(context.existingMessages, ['automation_']);
-  const active = promptHit || historyHit || options.stickyActive || options.hasPendingReceipts;
+  const active =
+    promptHit ||
+    (continuation && (historyHit || options.stickyActive || options.hasPendingReceipts));
   const update = AUTOMATION_UPDATE_PATTERN.test(text);
   // Scheduling phrasing ("每天早上9点自动运行") implies create even without an
-  // explicit create verb; list-only intents still get the small prepare/create pack.
-  const create = AUTOMATION_CREATE_PATTERN.test(text) || (promptHit && !update);
-  return { active, create, update };
+  // explicit create verb. List-only intents expose the core read/control tools.
+  const create =
+    AUTOMATION_CREATE_PATTERN.test(text) ||
+    (promptHit && !update && !/列出|列表|有哪些|查看|list\b|show\b/i.test(text));
+  return { active, create, update, continuation };
 }
 
-/** Per-session sticky pack activation shared by domain extensions. */
+/** Last operation context; each explicit intent replaces, rather than expands, it. */
 export class SessionPackActivation {
   private readonly packs = new Map<string, Set<string>>();
 
   activate(sessionId: string, packNames: Iterable<string>): Set<string> {
-    const existing = this.packs.get(sessionId) ?? new Set<string>();
-    for (const name of packNames) existing.add(name);
+    const existing = new Set(packNames);
     this.packs.set(sessionId, existing);
     return existing;
   }

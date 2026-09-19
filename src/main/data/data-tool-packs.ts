@@ -3,7 +3,7 @@ import type { AgentToolPack } from '../extensions/agent-runtime-extension';
 /**
  * Data tool catalog split into intent-scoped packs. Everything stays
  * registered in the session; only activated packs are exposed to the model.
- * `data.core` covers the analyze -> confirm -> generate -> run business flow;
+ * Business generation and expert editing are separate;
  * the rest activate on keyword/resource signals or via `capabilities_search`.
  */
 export const DATA_TOOL_PACKS = {
@@ -50,12 +50,23 @@ export const DATA_TOOL_PACKS = {
       'data_upload_table_to_cloud',
     ],
   },
-  'data.authoring': {
-    description:
-      'Task authoring: requirement analysis, confirmed task generation, task update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
+  'data.run': {
+    description: 'Resolve and run an existing data task',
+    tools: ['data_list_tasks', 'data_run_task'],
+  },
+  'data.generate': {
+    description: 'Analyze requirements and generate a data task after confirmation',
     tools: [
+      'data_list_input_tables',
+      'data_list_output_tables',
       'data_analyze_task_requirement',
       'data_generate_task_from_requirement',
+    ],
+  },
+  'data.authoring': {
+    description:
+      'Expert workflow editing: task update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
+    tools: [
       'data_update_task',
       'data_get_workflow_capability_manifest',
       'data_apply_workflow_plan',

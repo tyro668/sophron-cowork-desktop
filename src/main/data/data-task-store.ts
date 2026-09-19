@@ -206,6 +206,9 @@ export class DataTaskStore {
   getOutputTableRecord(id: string): Promise<DataOutputTable | null> {
     return this.datasets.getOutputTableRecord(id);
   }
+  findOutputTableByPhysicalName(tableName: string): Promise<DataOutputTable | null> {
+    return this.datasets.findOutputTableByPhysicalName(tableName);
+  }
 
   // ---- normalizer artifacts ----
   saveInputTableNormalizerDraft(

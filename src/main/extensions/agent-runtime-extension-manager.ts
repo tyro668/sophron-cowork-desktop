@@ -39,6 +39,7 @@ export class AgentRuntimeExtensionManager {
     const customTools: AgentRuntimeCustomTool[] = [];
     const activateTools = new Set<string>();
     const toolPacks: BeforeSessionRunResult['toolPacks'] = {};
+    const toolContexts: NonNullable<BeforeSessionRunResult['toolContexts']> = [];
 
     for (const extension of this.extensions) {
       if (!extension.beforeSessionRun) {
@@ -49,10 +50,10 @@ export class AgentRuntimeExtensionManager {
         if (!result) {
           continue;
         }
-        if (result.stablePrompt?.trim()) {
+        if (!result.toolContexts?.length && result.stablePrompt?.trim()) {
           stablePrompts.push(result.stablePrompt.trim());
         }
-        if (result.statePrompt?.trim()) {
+        if (!result.toolContexts?.length && result.statePrompt?.trim()) {
           statePrompts.push(result.statePrompt.trim());
         }
         if (result.customTools?.length) {
@@ -70,6 +71,7 @@ export class AgentRuntimeExtensionManager {
         if (result.toolPacks) {
           Object.assign(toolPacks, result.toolPacks);
         }
+        toolContexts.push(...(result.toolContexts ?? []));
       } catch (error) {
         logError(
           `[AgentRuntimeExtensionManager] beforeSessionRun failed for ${extension.name}:`,
@@ -84,6 +86,7 @@ export class AgentRuntimeExtensionManager {
       customTools: mergeCustomTools(customTools),
       activateTools: [...activateTools],
       toolPacks,
+      toolContexts,
     };
   }
 

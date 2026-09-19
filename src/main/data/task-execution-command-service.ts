@@ -69,7 +69,12 @@ export class TaskExecutionCommandService {
       undefined,
       input.offset
     );
-    return { task, preview };
+    return { task, preview, outputTableId: await this.resolveOutputTableId(task) };
+  }
+
+  private async resolveOutputTableId(task: DataCleaningTask): Promise<string | undefined> {
+    if (!task.outputTable) return undefined;
+    return (await this.store.findOutputTableByPhysicalName(task.outputTable))?.id;
   }
 
   private async runTaskUnlocked(input: RunTaskCommand): Promise<RunTaskResult> {
@@ -107,6 +112,8 @@ export class TaskExecutionCommandService {
       if (outputMode === 'persisted') this.options.onTaskCompleted?.(task);
       return {
         task,
+        outputTableId:
+          outputMode === 'persisted' ? await this.resolveOutputTableId(task) : undefined,
         preview: await this.preview.previewTaskOutput(
           input.taskId,
           task,

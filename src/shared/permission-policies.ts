@@ -29,6 +29,8 @@ export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
   { tool: 'find', action: 'allow' },
   { tool: 'data_get_workflow_dsl_reference', action: 'allow' },
   { tool: 'data_list_input_tables', action: 'allow' },
+  { tool: 'capabilities_search', action: 'allow' },
+  { tool: 'tool_result_read', action: 'allow' },
   { tool: 'data_list_output_tables', action: 'allow' },
   { tool: 'data_list_tasks', action: 'allow' },
   { tool: 'data_analyze_task_requirement', action: 'allow' },

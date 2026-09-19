@@ -50,18 +50,28 @@ export function buildMcpCustomTools(mcpManager: MCPManager): ToolDefinition[] {
  * servers can add dozens of schemas that should not ship in every request.
  */
 export function buildMcpToolPacks(mcpManager: MCPManager): Record<string, AgentToolPack> {
-  const byServer = new Map<string, string[]>();
+  const byServer = new Map<string, AgentToolPack>();
   for (const tool of mcpManager.getTools()) {
-    const key = `mcp.${tool.serverName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-    const list = byServer.get(key) ?? [];
-    list.push(tool.name);
-    byServer.set(key, list);
+    const key = `mcp.${encodeURIComponent(tool.serverId)}`;
+    const pack = byServer.get(key) ?? {
+      description: `MCP tools from connected server ${JSON.stringify(tool.serverName)}`,
+      tools: [],
+    };
+    pack.tools.push(tool.name);
+    byServer.set(key, pack);
   }
-  return Object.fromEntries(
-    [...byServer.entries()].map(([name, tools]) => [
-      name,
-      { description: `MCP tools from connected server "${name.slice(4)}"`, tools },
-    ])
+  return Object.fromEntries(byServer);
+}
+
+/** Recompute exposure every turn; previous discovery never implies a new intent. */
+export function selectActiveToolsForTurn(
+  current: string[],
+  registered: Set<string>,
+  scopedCatalog: Set<string>,
+  requested: Iterable<string>
+): string[] {
+  return [...new Set([...current.filter((name) => !scopedCatalog.has(name)), ...requested])].filter(
+    (name) => registered.has(name)
   );
 }
 

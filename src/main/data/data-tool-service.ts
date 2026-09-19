@@ -87,6 +87,7 @@ interface SessionResourceLedger {
   InputTable: Map<string, SessionResourceEntry>;
   OutputTable: Map<string, SessionResourceEntry>;
   Task: Map<string, SessionResourceEntry>;
+  current: Partial<Record<(typeof SESSION_RESOURCE_KINDS)[number], { id: string; name?: string }>>;
 }
 
 export class DataToolService {
@@ -145,13 +146,14 @@ export class DataToolService {
       InputTable: new Map<string, SessionResourceEntry>(),
       OutputTable: new Map<string, SessionResourceEntry>(),
       Task: new Map<string, SessionResourceEntry>(),
+      current: {},
     };
     this.sessionResources.set(sessionId, ledger);
 
     // `listed` marks candidates that only appeared in a list result — they are
     // surfaced as choices but never become the current selected resource.
     const remember = (
-      kind: keyof SessionResourceLedger,
+      kind: (typeof SESSION_RESOURCE_KINDS)[number],
       id: unknown,
       name?: unknown,
       listed = false
@@ -164,6 +166,9 @@ export class DataToolService {
         name: typeof name === 'string' && name ? name : previous?.name,
         selected: previous?.selected === true || !listed,
       });
+      // List order and candidate eviction must never change the current selection.
+      if (!listed) ledger.current[kind] = { id, name: bucket.get(id)?.name };
+      else if (ledger.current[kind]?.id === id) ledger.current[kind]!.name = bucket.get(id)?.name;
       while (bucket.size > SESSION_RESOURCE_LIMIT) {
         bucket.delete(bucket.keys().next().value as string);
       }
@@ -193,10 +198,11 @@ export class DataToolService {
       const task = entity(d.task ?? (d.workflow as Record<string, unknown> | undefined)?.task);
       const inputTable = entity(d.inputTable);
       const outputTable = entity(d.outputTable);
+      remember('OutputTable', d.outputTableId);
       remember('Task', task.id, task.name);
       remember('InputTable', inputTable.id, inputTable.name);
       remember('OutputTable', outputTable.id, outputTable.name);
-      const lists: Array<[keyof SessionResourceLedger, unknown]> = [
+      const lists: Array<[(typeof SESSION_RESOURCE_KINDS)[number], unknown]> = [
         ['InputTable', d.inputTables],
         ['OutputTable', d.outputTables],
         ['Task', d.tasks],
@@ -215,11 +221,7 @@ export class DataToolService {
     context: BeforeSessionRunContext
   ): Promise<DataToolPromptContext> {
     const ledger = this.sessionResources.get(context.session.id);
-    const latest = (kind: keyof SessionResourceLedger) => {
-      const entries = ledger ? [...ledger[kind].entries()] : [];
-      const last = entries.filter(([, entry]) => entry.selected).pop();
-      return last ? { id: last[0], name: last[1].name } : undefined;
-    };
+    const latest = (kind: (typeof SESSION_RESOURCE_KINDS)[number]) => ledger?.current[kind];
     const selectedIds = new Set(
       (['Task', 'InputTable', 'OutputTable'] as const)
         .map((kind) => latest(kind)?.id)
@@ -267,7 +269,7 @@ export class DataToolService {
 
   async listInputTables(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listInputTables(input);
-    const lines = formatBoundedList(result.inputTables, formatInputTable);
+    const lines = formatList(result.inputTables, formatInputTable);
     return toolResult(
       lines.length
         ? `Found ${result.inputTables.length} of ${result.total} input table(s):\n${lines.join('\n')}`
@@ -353,7 +355,7 @@ export class DataToolService {
 
   async listOutputTables(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listOutputTables(input);
-    const lines = formatBoundedList(result.outputTables, formatOutputTable);
+    const lines = formatList(result.outputTables, formatOutputTable);
     return toolResult(
       lines.length
         ? `Found ${result.outputTables.length} of ${result.total} output table(s):\n${lines.join('\n')}`
@@ -405,7 +407,7 @@ export class DataToolService {
 
   async listCloudSpaces(input: ListCloudSpacesCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudSpaces(input);
-    const lines = formatBoundedList(result.spaces, formatCloudSpace);
+    const lines = formatList(result.spaces, formatCloudSpace);
     return toolResult(
       lines.length
         ? `Found ${result.spaces.length} cloud space(s):\n${lines.join('\n')}`
@@ -416,7 +418,7 @@ export class DataToolService {
 
   async listCloudProjects(input: ListCloudProjectsCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudProjects(input);
-    const lines = formatBoundedList(result.projects, formatCloudProject);
+    const lines = formatList(result.projects, formatCloudProject);
     return toolResult(
       lines.length
         ? `Found ${result.projects.length} cloud project(s):\n${lines.join('\n')}`
@@ -427,7 +429,7 @@ export class DataToolService {
 
   async listCloudTables(input: ListCloudTablesCommand): Promise<DataToolResult> {
     const result = await this.commandService.listCloudTables(input);
-    const lines = formatBoundedList(result.tables, formatCloudTable);
+    const lines = formatList(result.tables, formatCloudTable);
     return toolResult(
       lines.length
         ? `Found ${result.tables.length} cloud table(s) on page ${result.page} of ${result.total} total:\n${lines.join('\n')}`
@@ -488,7 +490,7 @@ export class DataToolService {
     input: ListInputTableNormalizerVersionsCommand
   ): Promise<DataToolResult> {
     const result = await this.commandService.listInputTableNormalizerVersions(input);
-    const lines = formatBoundedList(
+    const lines = formatList(
       result.versions,
       (version) =>
         `- v${version.version} id=${version.id} status=${version.status} files=${version.files.length} updatedAt=${version.updatedAt}`
@@ -501,7 +503,7 @@ export class DataToolService {
 
   async listTasks(input: ListInputTablesInput): Promise<DataToolResult> {
     const result = await this.commandService.listTasks(input);
-    const lines = formatBoundedList(result.tasks, formatTask);
+    const lines = formatList(result.tasks, formatTask);
     return toolResult(
       lines.length
         ? `Found ${result.tasks.length} of ${result.total} data task(s):\n${lines.join('\n')}`
@@ -784,7 +786,7 @@ export class DataToolService {
       ]
         .filter(Boolean)
         .join('\n\n'),
-      result
+      { ...result, mode: input.mode ?? 'temporary', committed: input.mode === 'persisted' }
     );
   }
 
@@ -793,7 +795,7 @@ export class DataToolService {
     return toolResult(
       [
         `Run result for ${formatTask(result.task)}`,
-        formatOutputEvidence(result.task, result.preview),
+        formatOutputEvidence(result.task, result.preview, result.outputTableId),
         formatPreview(result.preview),
       ]
         .filter(Boolean)
@@ -976,20 +978,23 @@ function formatRunEvidence(input: RunTaskCommand, result: RunTaskResult): string
   const lines = [
     `Run: mode=${persisted ? 'persisted' : 'temporary'} commit=${persisted ? 'committed' : 'not_committed (validation only)'}`,
   ];
-  const output = formatOutputEvidence(result.task, result.preview);
+  const output = formatOutputEvidence(result.task, result.preview, result.outputTableId);
   if (output) lines.push(output);
   return lines.join('\n');
 }
 
 function formatOutputEvidence(
   task: DataCleaningTask,
-  preview: DataInputTablePreview | undefined
+  preview: DataInputTablePreview | undefined,
+  outputTableId?: string
 ): string {
   const parts: string[] = [];
-  if (task.outputTable) {
+  if (outputTableId) {
     parts.push(
-      `outputTable=${formatDataResourceLink('output_table', task.outputTable, task.outputTable)}`
+      `outputTableId=${outputTableId} outputTable=${formatDataResourceLink('output_table', outputTableId, task.outputTable || outputTableId)}`
     );
+  } else if (task.outputTable) {
+    parts.push(`physicalTableName=${JSON.stringify(task.outputTable)}`);
   }
   if (preview) {
     parts.push(`outputRows=${preview.totalRows}`);
@@ -1058,83 +1063,23 @@ function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
   return `- ${node.id} type=${node.type}${details.length ? ` ${details.join(' ')}` : ''}`;
 }
 
-const MAX_PREVIEW_CELL_CHARS = 160;
-const MAX_PREVIEW_COLUMNS = 16;
-const MAX_PREVIEW_ROWS_CHARS = 4000;
-
-function truncateCellValue(value: unknown): unknown {
-  if (typeof value === 'string' && value.length > MAX_PREVIEW_CELL_CHARS) {
-    return `${value.slice(0, MAX_PREVIEW_CELL_CHARS)}…[+${value.length - MAX_PREVIEW_CELL_CHARS} chars]`;
-  }
-  if (Array.isArray(value)) {
-    const serialized = JSON.stringify(value);
-    return serialized.length > MAX_PREVIEW_CELL_CHARS
-      ? `${serialized.slice(0, MAX_PREVIEW_CELL_CHARS)}…[+${serialized.length - MAX_PREVIEW_CELL_CHARS} chars]`
-      : value;
-  }
-  return value;
-}
-
-/**
- * Bounded model-visible preview: caps columns, per-cell text and the total
- * serialized row payload, then reports what was truncated. The details payload
- * still carries the full preview for the UI — this only bounds `content`.
- */
+/** Full model-readable snapshot. The runner's shared result budget keeps a
+ * bounded page and a retrievable reference; never lose fields before that layer. */
 function formatPreview(preview: DataInputTablePreview | undefined, includeRows = true): string {
-  if (!preview) {
-    return '';
-  }
-  const shownColumns = preview.columns.slice(0, MAX_PREVIEW_COLUMNS);
-  const shownColumnSet = new Set(shownColumns);
-  const omittedColumns = preview.columns.length - shownColumns.length;
-  const requestedRows = includeRows ? preview.rows.slice(0, preview.limit) : [];
-  const rows: Record<string, unknown>[] = [];
-  let rowsChars = 0;
-  for (const row of requestedRows) {
-    const bounded = Object.fromEntries(
-      Object.entries(row)
-        .filter(([key]) => shownColumnSet.has(key))
-        .map(([key, value]) => [key, truncateCellValue(value)])
-    );
-    const serialized = JSON.stringify(bounded);
-    if (rows.length > 0 && rowsChars + serialized.length > MAX_PREVIEW_ROWS_CHARS) break;
-    rows.push(bounded);
-    rowsChars += serialized.length;
-  }
-  const truncation: string[] = [];
-  if (requestedRows.length > rows.length) {
-    truncation.push(`${requestedRows.length - rows.length} row(s) omitted by size budget`);
-  }
-  if (omittedColumns > 0) {
-    truncation.push(`${omittedColumns} column(s) omitted`);
-  }
-  const typeSummary = preview.columnTypes.length
-    ? ` types=${preview.columnTypes
-        .slice(0, MAX_PREVIEW_COLUMNS)
-        .map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`)
-        .join(', ')}`
-    : '';
-  const summary = includeRows
-    ? `Preview rows=${rows.length}/${preview.totalRows}`
-    : `Table schema totalRows=${preview.totalRows}`;
+  if (!preview) return '';
+  const types = preview.columnTypes
+    .map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`)
+    .join(', ');
   return [
-    `${summary} columns=${shownColumns.join(', ') || '(none)'}${typeSummary}`,
-    truncation.length ? `Truncated: ${truncation.join('; ')}.` : '',
-    includeRows && rows.length ? JSON.stringify(rows) : '',
+    `${includeRows ? 'Preview' : 'Table schema'} totalRows=${preview.totalRows} columns=${preview.columns.join(', ') || '(none)'}${types ? ` types=${types}` : ''}`,
+    includeRows && preview.rows.length ? JSON.stringify(preview.rows.slice(0, preview.limit)) : '',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-const MAX_LIST_LINES = 20;
-
-/** Renders at most MAX_LIST_LINES entries plus an explicit "+N more" tail. */
-function formatBoundedList<T>(items: T[], format: (item: T) => string): string[] {
-  const lines = items.slice(0, MAX_LIST_LINES).map(format);
-  if (items.length > MAX_LIST_LINES) {
-    lines.push(`- … +${items.length - MAX_LIST_LINES} more (narrow the query or paginate)`);
-  }
-  return lines;
+function formatList<T>(items: T[], format: (item: T) => string): string[] {
+  return items.map(format);
 }
 
 function withAgentResultPreviewLimit<T extends { previewRows?: number }>(input: T): T {

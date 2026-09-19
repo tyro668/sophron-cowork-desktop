@@ -309,6 +309,10 @@ export class AutomationToolService {
     return this.formatScheduleUpdatedResult(updated, receipt, 'updated');
   }
 
+  pendingDraftKinds(sessionId: string): Array<'create' | 'update'> {
+    return this.receiptStore.pendingKindsForSession(sessionId);
+  }
+
   hasPendingDrafts(sessionId: string): boolean {
     return this.receiptStore.hasPendingForSession(sessionId);
   }

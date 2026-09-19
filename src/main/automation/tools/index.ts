@@ -43,34 +43,55 @@ export function createAutomationAgentRuntimeExtension(
       };
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const catalog = createAutomationCustomTools(service, executionContext);
-      const hasPendingDrafts = service.hasPendingDrafts(context.session.id);
+      const pendingKinds = service.pendingDraftKinds(context.session.id);
+      const hasPendingDrafts = pendingKinds.length > 0;
+      const toolContexts = [
+        {
+          tools: catalog.map((tool) => tool.name),
+          stablePrompt: buildAutomationToolStablePrompt(),
+          statePrompt: buildAutomationToolStatePrompt({ now: Date.now(), timezone }),
+        },
+      ];
       const intent = detectAutomationIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
         hasPendingReceipts: hasPendingDrafts,
       });
       if (!intent.active) {
+        activations.clear(context.session.id);
         return {
           customTools: catalog,
           activateTools: [],
           toolPacks: AUTOMATION_TOOL_PACKS,
+          toolContexts,
         };
       }
-      // Pending drafts must keep their commit tools exposed — a bare "确认"
-      // follow-up carries no create/update keywords.
-      const packs = activations.activate(context.session.id, [
-        'automation.core',
-        ...(intent.create || hasPendingDrafts ? (['automation.create'] as const) : []),
-        ...(intent.update || hasPendingDrafts ? (['automation.update'] as const) : []),
-      ]);
-      const activateTools = [...packs].flatMap(
-        (pack) => AUTOMATION_TOOL_PACKS[pack as keyof typeof AUTOMATION_TOOL_PACKS]?.tools ?? []
+      const previous = activations.activePacks(context.session.id);
+      const packs = activations.activate(
+        context.session.id,
+        intent.continuation && previous.size > 0
+          ? previous
+          : [
+              'automation.core',
+              ...(intent.create ? ['automation.create'] : []),
+              ...(intent.update ? ['automation.update'] : []),
+            ]
       );
+      const activateTools =
+        hasPendingDrafts && intent.continuation
+          ? pendingKinds.map((kind) =>
+              kind === 'create' ? 'automation_create' : 'automation_update_schedule'
+            )
+          : [...packs].flatMap(
+              (pack) =>
+                AUTOMATION_TOOL_PACKS[pack as keyof typeof AUTOMATION_TOOL_PACKS]?.tools ?? []
+            );
       return {
-        stablePrompt: buildAutomationToolStablePrompt(),
-        statePrompt: buildAutomationToolStatePrompt({ now: Date.now(), timezone }),
+        stablePrompt: toolContexts[0].stablePrompt,
+        statePrompt: toolContexts[0].statePrompt,
         customTools: catalog,
         activateTools,
         toolPacks: AUTOMATION_TOOL_PACKS,
+        toolContexts,
       };
     },
     async onSessionDeleted({ sessionId }): Promise<void> {

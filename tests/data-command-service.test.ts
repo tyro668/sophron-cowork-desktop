@@ -788,6 +788,11 @@ function main() {
       previewRows: 2,
     });
     expect(persistedRun.task.status).toBe('completed');
+    expect(persistedRun.outputTableId).toBe(output.outputTable.id);
+    expect((await service.getRunResult({ taskId: task.task.id })).outputTableId).toBe(
+      output.outputTable.id
+    );
+    expect(temporaryRun.outputTableId).toBeUndefined();
     expect(persistedRun.task.sourceDatasetId).toBe(input.inputTable.id);
     expect(persistedRun.preview?.totalRows).toBe(2);
     expect(onTaskCompleted).toHaveBeenCalledTimes(1);
