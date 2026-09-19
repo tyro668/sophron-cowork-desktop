@@ -499,6 +499,13 @@
       "formatDsl": "格式化",
       "firstZeroOutputHere": "该节点首先将输出降为 0 行，请检查其条件",
       "firstZeroOutputUpstream": "上游「{{name}}」已先将输出降为 0 行",
+      "expectFailureTitle": "质量断言失败",
+      "expectFailureRows": "「{{node}}」{{rejected}}/{{total}} 行不符合断言",
+      "expectFailureRowCount": "「{{node}}」行数 {{total}} 不满足 rows {{op}} {{value}}",
+      "expectViewSample": "查看样本",
+      "expectLocateNode": "定位节点",
+      "expectTechDetails": "技术详情",
+      "expectSampleTitle": "断言违规样本",
       "ruleSummary": "规则摘要",
       "syntaxOk": "语法正常",
       "syntaxInvalid": "语法异常",
@@ -910,8 +917,12 @@
           "setOpDistinct": "去重",
           "setOpByName": "按名称",
           "setOpByPosition": "按位置",
-          "setOpAllTip": "将两个表的数据全部合并，包括重复的行",
-          "setOpDistinctTip": "合并后自动去除重复的行",
+          "setOpUnionAllTip": "合并两表全部记录，包括重复行",
+          "setOpUnionDistinctTip": "合并两表记录并去除重复行",
+          "setOpIntersectAllTip": "保留两表共有的记录，重复行按两侧共有次数保留",
+          "setOpIntersectDistinctTip": "保留两表共有的记录并去除重复行",
+          "setOpExceptAllTip": "左表记录按右表出现次数逐条扣除",
+          "setOpExceptDistinctTip": "排除左表中在右表出现过的记录并去重",
           "setOpByNameTip": "根据列名自动匹配，列数或顺序不一致时自动对齐",
           "setOpByPositionTip": "按列的顺序位置匹配，两表列数必须一致",
           "setOpConnection": "集合方式"
@@ -1048,6 +1059,15 @@
           "calcFieldFrameExcludeTies": "排除其他同行值",
           "calcFieldFrameExcludeGroup": "排除所有同行值",
           "calcFieldConflictWarning": "字段名已存在于上游数据",
+          "calcFieldErrValueRequired": "请选择值字段",
+          "calcFieldErrOrderRequired": "该函数需要至少一个排序字段",
+          "calcFieldErrParamNumeric": "参数「{{name}}」需要为数字",
+          "calcFieldErrParamRequired": "请填写参数「{{name}}」",
+          "calcFieldErrParamInteger": "参数「{{name}}」需要为整数",
+          "calcFieldErrParamRange": "参数「{{name}}」超出允许范围",
+          "calcFieldErrRangeNeedsOrder": "RANGE 偏移需要恰好一个排序字段",
+          "calcFieldErrTimeAggStar": "该聚合方式不接受 *",
+          "calcFieldErrInvalidConfig": "当前配置不完整，无法生成表达式",
           "noFieldsSelected": "暂未选择字段",
           "calculateFieldIncompleteField": "请至少配置一个计算字段"
         },
@@ -1187,7 +1207,9 @@
           "noMatch": "无匹配字段",
           "clearAll": "清空",
           "selectField": "选择字段",
-          "noFields": "暂无可用字段"
+          "noFields": "暂无可用字段",
+          "fieldNotFound": "字段不存在",
+          "fieldPendingInference": "待推导"
         },
         "valueInput": {
           "noMatchValue": "无匹配值",
@@ -1258,6 +1280,10 @@
         "median_fill": "中位数填充",
         "mode_fill": "众数填充",
         "drop": "删除"
+      },
+      "ruleMethodTips": {
+        "forward_fill": "按当前行顺序，用上方最近的非空值填充；作用于整列、不区分组",
+        "backward_fill": "按当前行顺序，用下方最近的非空值填充；作用于整列、不区分组"
       },
       "summaryLabels": {
         "inputTable": "输入表",

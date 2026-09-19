@@ -238,12 +238,24 @@ export default function FormFieldSelect({
               {
                 flex: 'flex-[1]',
                 header: '',
-                render: (field: string) => (
-                  <div className="flex min-w-0 items-center gap-2">
-                    <DataTypeIcon type={columnTypes?.[field]} />
-                    <span className="min-w-0 truncate text-text-primary">{field}</span>
-                  </div>
-                ),
+                render: (field: string) => {
+                  const missing = !fieldCompletions.includes(field);
+                  const missingTitle = fieldCompletions.length
+                    ? tr('fieldPicker.fieldNotFound')
+                    : tr('fieldPicker.fieldPendingInference');
+                  return (
+                    <div className="flex min-w-0 items-center gap-2">
+                      <DataTypeIcon type={columnTypes?.[field]} />
+                      <span
+                        title={missing ? missingTitle : undefined}
+                        className={`min-w-0 truncate ${missing ? 'text-error' : 'text-text-primary'}`}
+                      >
+                        {field}
+                        {missing ? ' (?)' : ''}
+                      </span>
+                    </div>
+                  );
+                },
               },
             ]}
           />

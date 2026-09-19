@@ -6,6 +6,7 @@ import type {
   DataWorkflowNode,
   DataCleaningTask,
   DataPreviewWorkflowNodeInput,
+  DataWorkflowSaveInput,
 } from '../../../../shared/contracts';
 import { isDataFieldType } from '../../../../shared/data-field-types';
 import { parseFieldRefExact } from '../../../../shared/prep-dsl';
@@ -74,7 +75,7 @@ export class WorkflowNodePreviewService {
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // No materialized table yet — surface the plan-inferred schema so the
       // data tab still shows the expected columns instead of a blank grid.
-      const inferred = await this.inferWorkflowNodeSchema(task, node);
+      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
       return {
         columns: (inferred ?? []).map((column) => column.name),
         columnTypes: toColumnTypeInfos(inferred),
@@ -137,7 +138,11 @@ export class WorkflowNodePreviewService {
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
-      return (await this.inferWorkflowNodeSchema(task, node))?.map((column) => column.name) ?? [];
+      return (
+        (await this.inferWorkflowNodeSchema(task, node, input.workflow))?.map(
+          (column) => column.name
+        ) ?? []
+      );
     }
 
     return this.ctx.getTableColumns(tableName);
@@ -172,7 +177,7 @@ export class WorkflowNodePreviewService {
 
     const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
-      return toColumnTypeInfos(await this.inferWorkflowNodeSchema(task, node));
+      return toColumnTypeInfos(await this.inferWorkflowNodeSchema(task, node, input.workflow));
     }
 
     return this.ctx.getTableColumnTypes(tableName);
@@ -180,15 +185,42 @@ export class WorkflowNodePreviewService {
 
   /**
    * Plan-level schema fallback: propagates input-source column types through
-   * the saved workflow graph so downstream field selectors keep type info
-   * before any run materializes preview tables. The queried node's current
-   * (possibly unsaved) config is overlaid onto its saved counterpart.
+   * the workflow graph so downstream field selectors keep type info before any
+   * run materializes preview tables. The queried node's current (possibly
+   * unsaved) config is overlaid onto its counterpart. `draftWorkflow` — the
+   * live canvas graph — wins over the saved workflow when provided, so
+   * unsaved topology edits are reflected as well.
    */
   private async inferWorkflowNodeSchema(
     task: DataCleaningTask,
-    node: DataWorkflowNode
+    node: DataWorkflowNode,
+    draftWorkflow?: DataWorkflowSaveInput | null
   ): Promise<PlanColumn[] | null> {
-    const runtime = await this.workflows.getRuntimeWorkflow(task.id);
+    const draft = draftWorkflow?.nodes?.length ? draftWorkflow : null;
+    const runtime = draft
+      ? {
+          nodes: draft.nodes.map((item) => ({
+            id: item.id,
+            taskId: task.id,
+            type: item.type,
+            label: item.label ?? '',
+            x: item.x ?? 0,
+            y: item.y ?? 0,
+            config: item.config ?? {},
+            createdAt: 0,
+            updatedAt: 0,
+          })),
+          edges: draft.edges.map((item) => ({
+            id: item.id,
+            taskId: task.id,
+            sourceNodeId: item.sourceNodeId,
+            targetNodeId: item.targetNodeId,
+            sourceHandle: item.sourceHandle ?? null,
+            targetHandle: item.targetHandle ?? null,
+            createdAt: 0,
+          })),
+        }
+      : await this.workflows.getRuntimeWorkflow(task.id);
     if (runtime.nodes.length === 0) return null;
     const overlaid = runtime.nodes.map((item) =>
       item.id === node.id ? { ...item, type: node.type, config: node.config } : item

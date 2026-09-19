@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 import type { OperatorFormProps } from './types';
+import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
@@ -58,41 +59,42 @@ export default function FormExpect({
     <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
       <div className="space-y-3">
         <div>
-          <GlassFormLabel>{tr('kind.label')}</GlassFormLabel>
+          <GlassFormLabel>{tr('expect.kind.label')}</GlassFormLabel>
           <GlassSegmentedControl
             value={kind}
             options={[
-              { value: 'expression', label: tr('kind.expression') },
-              { value: 'unique', label: tr('kind.unique') },
-              { value: 'row_count', label: tr('kind.rowCount') },
+              { value: 'expression', label: tr('expect.kind.expression') },
+              { value: 'unique', label: tr('expect.kind.unique') },
+              { value: 'row_count', label: tr('expect.kind.rowCount') },
             ]}
             onChange={setKind}
-            ariaLabel={tr('kind.label')}
+            ariaLabel={tr('expect.kind.label')}
           />
         </div>
 
         {kind === 'expression' && (
           <div>
-            <GlassFormLabel>{tr('expression.label')}</GlassFormLabel>
-            <GlassFormTextInput
+            <GlassFormLabel>{tr('expect.expression.label')}</GlassFormLabel>
+            <GlassExpressionInput
               value={expression}
               onChange={(value) =>
                 updateConfig((cfg) => ({ ...cfg, expression: value || undefined }))
               }
-              placeholder={tr('expression.placeholder')}
-              className="w-full font-mono"
+              fieldCompletions={fieldCompletions}
+              columnTypes={columnTypes}
+              placeholder={tr('expect.expression.placeholder')}
             />
           </div>
         )}
 
         {kind === 'unique' && (
           <div>
-            <GlassFormLabel>{tr('unique.label')}</GlassFormLabel>
+            <GlassFormLabel>{tr('expect.unique.label')}</GlassFormLabel>
             <GlassFieldMultiDropdown
               columns={fieldCompletions}
               selected={columns}
               onChange={commitColumns}
-              placeholder={tr('unique.placeholder')}
+              placeholder={tr('expect.unique.placeholder')}
               columnTypes={columnTypes}
               className="w-full"
             />
@@ -102,7 +104,7 @@ export default function FormExpect({
         {kind === 'row_count' && (
           <div className="flex items-end gap-2">
             <div className="w-28">
-              <GlassFormLabel>{tr('rows.operatorLabel')}</GlassFormLabel>
+              <GlassFormLabel>{tr('expect.rows.operatorLabel')}</GlassFormLabel>
               <GlassOptionSingleSelect
                 value={operator}
                 groups={[
@@ -116,7 +118,7 @@ export default function FormExpect({
               />
             </div>
             <div className="min-w-0 flex-1">
-              <GlassFormLabel>{tr('rows.valueLabel')}</GlassFormLabel>
+              <GlassFormLabel>{tr('expect.rows.valueLabel')}</GlassFormLabel>
               <GlassFormTextInput
                 value={value === undefined || value === null ? '' : String(value)}
                 onChange={(raw) => {
@@ -137,7 +139,7 @@ export default function FormExpect({
 
         {kind !== 'row_count' && (
           <div>
-            <GlassFormLabel>{tr('reject.label')}</GlassFormLabel>
+            <GlassFormLabel>{tr('expect.reject.label')}</GlassFormLabel>
             <GlassFormTextInput
               value={rejectStream}
               onChange={(raw) =>
@@ -146,7 +148,7 @@ export default function FormExpect({
                   rejectStream: raw.trim() || undefined,
                 }))
               }
-              placeholder={tr('reject.placeholder')}
+              placeholder={tr('expect.reject.placeholder')}
               className="w-full font-mono"
             />
           </div>

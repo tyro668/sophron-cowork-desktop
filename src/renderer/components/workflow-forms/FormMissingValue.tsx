@@ -233,6 +233,16 @@ export default function FormMissingValue({
     [t]
   );
 
+  // Ordered fills run over the physical row order across the whole column —
+  // the tooltip states that scope so users can tell fill direction.
+  const methodTip = useCallback(
+    (key: string) =>
+      ORDERED_METHODS.some((m) => m.value === key)
+        ? t(`data.workflow.ruleMethodTips.${key}`)
+        : undefined,
+    [t]
+  );
+
   return (
     <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
       <div className="flex items-center gap-2">
@@ -332,6 +342,7 @@ export default function FormMissingValue({
                         items: availableMethods.map((m) => ({
                           value: m.value,
                           label: methodLabel(m.value),
+                          title: methodTip(m.value),
                         })),
                       },
                     ]}

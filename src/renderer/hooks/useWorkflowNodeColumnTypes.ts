@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { dataClient } from '../features/data/api/data-client';
+import { useWorkflowDataContext } from './workflow-data-context';
 
 interface UseColumnTypesInput {
   taskId?: string;
@@ -11,6 +12,7 @@ export function useWorkflowNodeColumnTypes({
   sourceNode,
 }: UseColumnTypesInput): Record<string, string> {
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const { version, workflow } = useWorkflowDataContext();
 
   useEffect(() => {
     if (!taskId || !sourceNode?.id) return;
@@ -22,6 +24,7 @@ export function useWorkflowNodeColumnTypes({
         nodeId: sourceNode.id,
         nodeType: sourceNode.type as never,
         nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
+        workflow,
       })
       .then((types: Array<{ name: string; type: string }>) => {
         if (cancelled) return;
@@ -40,7 +43,7 @@ export function useWorkflowNodeColumnTypes({
     return () => {
       cancelled = true;
     };
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config]);
+  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, version, workflow]);
 
   return columnTypes;
 }

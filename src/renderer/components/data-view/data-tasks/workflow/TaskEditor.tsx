@@ -10,10 +10,12 @@ import {
   Save,
   Upload,
   Workflow,
+  X,
 } from 'lucide-react';
 import type {
   DataCleaningTask,
   DataDataset,
+  DataInputTablePreview,
   DataOutputTable,
   DataRunTaskInput,
   DataTaskWorkflow,
@@ -29,6 +31,7 @@ import {
   parsePrepDsl,
 } from '../../../../../shared/prep-dsl';
 import { dataClient } from '../../../../features/data/api/data-client';
+import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
 import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
@@ -38,8 +41,9 @@ import { OPERATOR_CATALOG, getOperatorCatalog, isWorkflowOperatorType } from './
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
-import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
+import { WorkflowDslDialog, WorkflowNodeDataPreview, WorkflowOperatorPalette } from './WorkflowUi';
 import { Button } from '../../../ui/button';
+import { Dialog } from '../../../ui/dialog';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import {
   connectWorkflowNodes as connectWorkflowGraphNodes,
@@ -60,6 +64,7 @@ export function TaskEditor({
   outputTables,
   actionId,
   runNodeStats,
+  lastRunFailure,
   onBack,
   onRun,
   onWorkflowSaved,
@@ -68,6 +73,7 @@ export function TaskEditor({
   outputTables: DataOutputTable[];
   actionId: string | null;
   runNodeStats?: WorkflowNodeRunStat[];
+  lastRunFailure?: { message: string; at: number; temporary?: boolean } | null;
   onBack: () => void;
   onRun: (task: DataCleaningTask, payload?: DataRunTaskInput) => void | Promise<void>;
   onWorkflowSaved: () => void | Promise<void>;
@@ -193,6 +199,31 @@ export function TaskEditor({
   const workflowSignature = useMemo(
     () => (workflowSaveInput ? JSON.stringify(workflowSaveInput) : null),
     [workflowSaveInput]
+  );
+  // Schema inference ignores node positions — keep the draft graph handed to
+  // field/type lookups referentially stable while nodes are dragged.
+  const workflowStructureSignature = useMemo(
+    () =>
+      JSON.stringify([
+        nodes.map((node) => [node.id, node.type, node.config]),
+        edges.map((edge) => [
+          edge.id,
+          edge.sourceNodeId,
+          edge.targetNodeId,
+          edge.sourceHandle,
+          edge.targetHandle,
+        ]),
+      ]),
+    [nodes, edges]
+  );
+  const draftWorkflowInput = useMemo(
+    () => workflowSaveInput,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workflowStructureSignature]
+  );
+  const workflowDataContext = useMemo(
+    () => ({ version: nodeDataRefreshVersion, workflow: draftWorkflowInput }),
+    [draftWorkflowInput, nodeDataRefreshVersion]
   );
   const isWorkflowDirty =
     Boolean(workflowSignature) &&
@@ -648,6 +679,64 @@ export function TaskEditor({
     return map;
   }, [runNodeStats, persistedNodeStats]);
 
+  // Structured expect-failure card: the executor names the offending node and
+  // the violation counts in the failure message; the persisted stat (when the
+  // run was persisted) carries the violating-row samples.
+  const failedExpectRun = useMemo(() => {
+    if (!lastRunFailure) return null;
+    const match = /Expect failed at node ([^:]+): (.+)$/.exec(lastRunFailure.message);
+    if (!match) return null;
+    const [, nodeId, detail] = match;
+    const stat = lastRunFailure.temporary ? undefined : runStatsByNode.get(nodeId);
+    return {
+      nodeId,
+      detail,
+      stat: stat?.nodeType === 'expect' ? stat : undefined,
+      node: nodes.find((item) => item.id === nodeId) ?? null,
+    };
+  }, [lastRunFailure, nodes, runStatsByNode]);
+  const failedExpectSummary = useMemo(() => {
+    if (!failedExpectRun) return null;
+    const nodeLabel = failedExpectRun.node?.label ?? failedExpectRun.nodeId;
+    const rowsMatch = /(\d+) of (\d+) row/.exec(failedExpectRun.detail);
+    if (rowsMatch) {
+      return t('data.workflow.expectFailureRows', {
+        node: nodeLabel,
+        rejected: Number(rowsMatch[1]),
+        total: Number(rowsMatch[2]),
+      });
+    }
+    const countMatch = /row count (\d+) does not satisfy rows (\S+) (\d+)/.exec(
+      failedExpectRun.detail
+    );
+    if (countMatch) {
+      return t('data.workflow.expectFailureRowCount', {
+        node: nodeLabel,
+        total: Number(countMatch[1]),
+        op: countMatch[2],
+        value: Number(countMatch[3]),
+      });
+    }
+    return `${nodeLabel}: ${failedExpectRun.detail}`;
+  }, [failedExpectRun, t]);
+  const [expectCardDismissedAt, setExpectCardDismissedAt] = useState<number | null>(null);
+  const [expectSampleOpen, setExpectSampleOpen] = useState(false);
+  const [expectDetailsOpen, setExpectDetailsOpen] = useState(false);
+  const expectSamplePreview = useMemo<DataInputTablePreview | null>(() => {
+    const sample = failedExpectRun?.stat?.sample;
+    if (!sample?.length) return null;
+    const columns = [...new Set(sample.flatMap((row) => Object.keys(row)))];
+    return {
+      columns,
+      columnTypes: columns.map((name) => ({ name, type: 'text' })),
+      rows: sample as Record<string, string | number | boolean | null>[],
+      fileCount: 1,
+      limit: sample.length,
+      offset: 0,
+      totalRows: failedExpectRun?.stat?.rejectedRows ?? sample.length,
+    };
+  }, [failedExpectRun]);
+
   const invalidNodeIds = useMemo(() => {
     const ids = new Set(planErrorNodeIds);
     if (!configIssuesVisible) return ids;
@@ -1068,25 +1157,27 @@ export function TaskEditor({
               onReconnectEdge={reconnectWorkflowEdge}
               onRemoveEdge={removeWorkflowEdge}
             />
-            <WorkflowInspector
-              node={selectedNode}
-              workflowNodes={nodes}
-              workflowEdges={edges}
-              inputTables={inputTableChoices}
-              isInputTablesLoading={inputTableChoicesLoading}
-              outputTables={outputTableChoices}
-              activeTab={activeInspectorTab}
-              onActiveTabChange={setActiveInspectorTab}
-              onNodeChange={updateSelectedNode}
-              onApplyOperatorDsl={applyAndRunOperatorDsl}
-              isRunningOperatorDsl={actionId === task.id}
-              nodeDataRefreshVersion={nodeDataRefreshVersion}
-              runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
-              firstZeroOutputNode={firstZeroOutputNode}
-              isWorkflowDirty={isWorkflowDirty}
-              onPreviewToHere={() => void previewNodeToHere()}
-              isPreviewRunning={actionId === task.id}
-            />
+            <WorkflowDataContext.Provider value={workflowDataContext}>
+              <WorkflowInspector
+                node={selectedNode}
+                workflowNodes={nodes}
+                workflowEdges={edges}
+                inputTables={inputTableChoices}
+                isInputTablesLoading={inputTableChoicesLoading}
+                outputTables={outputTableChoices}
+                activeTab={activeInspectorTab}
+                onActiveTabChange={setActiveInspectorTab}
+                onNodeChange={updateSelectedNode}
+                onApplyOperatorDsl={applyAndRunOperatorDsl}
+                isRunningOperatorDsl={actionId === task.id}
+                nodeDataRefreshVersion={nodeDataRefreshVersion}
+                runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
+                firstZeroOutputNode={firstZeroOutputNode}
+                isWorkflowDirty={isWorkflowDirty}
+                onPreviewToHere={() => void previewNodeToHere()}
+                isPreviewRunning={actionId === task.id}
+              />
+            </WorkflowDataContext.Provider>
           </div>
         </div>
       )}
@@ -1101,15 +1192,114 @@ export function TaskEditor({
           onClose={closeDslDialog}
         />
       )}
-      {localError && (
-        <div
-          role="alert"
-          onClick={() => setLocalError(null)}
-          className="absolute bottom-4 left-1/2 z-40 flex max-w-[min(90%,32rem)] -translate-x-1/2 cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-surface px-3.5 py-2.5 text-[13px] text-error shadow-card"
-        >
-          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <span>{localError}</span>
+      {((failedExpectRun && lastRunFailure) || localError) && (
+        <div className="absolute bottom-4 left-1/2 z-40 flex w-[min(92%,36rem)] -translate-x-1/2 flex-col items-center gap-2">
+          {failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at && (
+            <div
+              role="alert"
+              className="w-full rounded-lg border border-error/30 bg-surface px-3.5 py-3 text-[13px] shadow-card"
+            >
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-error" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-error">
+                    {t('data.workflow.expectFailureTitle')}
+                  </div>
+                  <div className="mt-0.5 text-text-secondary">{failedExpectSummary}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {expectSamplePreview && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setExpectSampleOpen(true)}
+                        className="h-7 text-[11px]"
+                      >
+                        {t('data.workflow.expectViewSample')}
+                      </Button>
+                    )}
+                    {failedExpectRun.node && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedNodeId(failedExpectRun.node!.id);
+                          setActiveInspectorTab('data');
+                        }}
+                        className="h-7 text-[11px]"
+                      >
+                        {t('data.workflow.expectLocateNode')}
+                      </Button>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setExpectDetailsOpen((open) => !open)}
+                      className="h-7 text-[11px]"
+                    >
+                      {t('data.workflow.expectTechDetails')}
+                    </Button>
+                  </div>
+                  {expectDetailsOpen && (
+                    <pre className="scrollbar-hover mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border-muted/60 bg-background p-2 font-mono text-[10.5px] leading-4 text-text-muted">
+                      {lastRunFailure.message}
+                    </pre>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpectCardDismissedAt(lastRunFailure.at)}
+                  aria-label={t('common.close')}
+                  className="flex-shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-surface hover:text-text-secondary"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+          {localError && (
+            <div
+              role="alert"
+              onClick={() => setLocalError(null)}
+              className="flex max-w-full cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-surface px-3.5 py-2.5 text-[13px] text-error shadow-card"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{localError}</span>
+            </div>
+          )}
         </div>
+      )}
+      {expectSamplePreview && (
+        <Dialog
+          open={expectSampleOpen}
+          onOpenChange={setExpectSampleOpen}
+          ariaLabel={t('data.workflow.expectSampleTitle')}
+          overlayClassName="operator-ui bg-black/15 px-4 py-6 dark:bg-black/50"
+          className="h-[28rem] w-[56rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
+        >
+          <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
+            <div className="text-[14px] font-semibold text-text-primary">
+              {t('data.workflow.expectSampleTitle')}
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setExpectSampleOpen(false)}
+              className="text-[11px]"
+            >
+              <X className="h-3.5 w-3.5" />
+              {t('common.close')}
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 p-3">
+            <WorkflowNodeDataPreview
+              preview={expectSamplePreview}
+              isLoading={false}
+              error={null}
+              currentPage={1}
+              onPageChange={() => {}}
+            />
+          </div>
+        </Dialog>
       )}
     </section>
   );

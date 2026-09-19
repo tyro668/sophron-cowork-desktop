@@ -73,6 +73,15 @@ export function GlassFieldSingleSelect({
     [filteredOptions, value]
   );
 
+  // A configured value absent from the options stays visible with a missing
+  // marker — pending inference when no options resolved, otherwise not found.
+  const missingValue = Boolean(value) && !options.includes(value);
+  const missingTitle = missingValue
+    ? options.length === 0
+      ? t('data.workflow.formLabels.fieldPicker.fieldPendingInference')
+      : t('data.workflow.formLabels.fieldPicker.fieldNotFound')
+    : undefined;
+
   const optionTexts = useMemo(() => options.map(extractFieldName), [options]);
 
   useEffect(() => {
@@ -207,10 +216,22 @@ export function GlassFieldSingleSelect({
           showType ? (
             <>
               <DataTypeIcon type={columnTypes[value]} />
-              <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+              <span
+                title={missingTitle}
+                className={`flex-1 min-w-0 truncate text-left ${missingValue ? 'text-error' : ''}`}
+              >
+                {displayLabel || value}
+                {missingValue ? ' (?)' : ''}
+              </span>
             </>
           ) : (
-            <span className="flex-1 min-w-0 truncate text-left">{displayLabel || value}</span>
+            <span
+              title={missingTitle}
+              className={`flex-1 min-w-0 truncate text-left ${missingValue ? 'text-error' : ''}`}
+            >
+              {displayLabel || value}
+              {missingValue ? ' (?)' : ''}
+            </span>
           )
         ) : (
           <span className="flex-1 min-w-0 truncate text-left text-text-muted">{placeholder}</span>

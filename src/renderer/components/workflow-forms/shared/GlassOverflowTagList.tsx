@@ -28,22 +28,30 @@ function Tag({
   label,
   variant,
   disabled,
+  missing,
+  missingTitle,
   onRemove,
 }: {
   label: string;
   variant: 'compact' | 'field';
   disabled?: boolean;
+  missing?: boolean;
+  missingTitle?: string;
   onRemove?: () => void;
 }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded bg-accent-muted font-medium text-accent ${
+      title={missing ? missingTitle : undefined}
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded font-medium ${
+        missing ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
+      } ${
         variant === 'compact'
           ? 'h-5 max-w-[132px] px-1.5 text-[11px] leading-none'
           : 'min-h-6 max-w-[180px] px-1 py-0.5 text-[12px]'
       }`}
     >
       <span className="min-w-0 truncate">{label}</span>
+      {missing && <span className="shrink-0 text-[9px]">?</span>}
       {onRemove && (
         <button
           type="button"
@@ -76,6 +84,8 @@ export function GlassOverflowTagList({
   trailing,
   trailingReserve = 0,
   variant = 'compact',
+  missing,
+  missingTitle,
 }: {
   values: string[];
   onRemove?: (index: number) => void;
@@ -84,6 +94,9 @@ export function GlassOverflowTagList({
   trailing?: ReactNode;
   trailingReserve?: number;
   variant?: 'compact' | 'field';
+  /** Selected values absent from the option list — rendered with an error marker. */
+  missing?: ReadonlySet<string>;
+  missingTitle?: string;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -127,6 +140,8 @@ export function GlassOverflowTagList({
             label={label}
             variant={variant}
             disabled={disabled}
+            missing={missing?.has(label)}
+            missingTitle={missingTitle}
             onRemove={onRemove ? () => onRemove(index) : undefined}
           />
         ))}

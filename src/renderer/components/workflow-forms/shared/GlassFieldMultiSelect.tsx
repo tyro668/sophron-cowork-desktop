@@ -100,6 +100,15 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
     });
   }, [columns, columnTypes, dataTypeLabel, search]);
 
+  // Selected values absent from the option list stay listed (and removable)
+  // so stale config can be repaired instead of silently dropped.
+  const filteredMissing = useMemo(() => {
+    const missing = selected.filter((c) => !columns.includes(c));
+    const lower = search.toLowerCase().trim();
+    return lower ? missing.filter((c) => c.toLowerCase().includes(lower)) : missing;
+  }, [columns, search, selected]);
+  const missingLabel = columns.length === 0 ? tr('fieldPendingInference') : tr('fieldNotFound');
+
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.includes(c));
   const someFilteredSelected = filtered.some((c) => selected.includes(c));
   const selectAllIndeterminate = someFilteredSelected && !allFilteredSelected;
@@ -195,7 +204,30 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
         className={`scrollbar-hover overflow-y-auto ${isGlass ? '' : 'flex-1 min-h-0'}`}
         style={{ maxHeight }}
       >
-        {filtered.length === 0 ? (
+        {filteredMissing.map((col) => (
+          <label
+            key={`missing-${col}`}
+            title={missingLabel}
+            className={`flex min-h-8 cursor-pointer items-center gap-2 border-b border-border-subtle px-2.5 transition-colors hover:bg-surface-hover ${
+              isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
+            } text-error`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              lockScrollTop();
+            }}
+          >
+            <input
+              type={selectionMode === 'single' ? 'radio' : 'checkbox'}
+              name="glass-field-select"
+              checked
+              onChange={() => selectItem(col)}
+              className="h-3.5 w-3.5 flex-shrink-0 accent-accent"
+            />
+            <span className="flex-1 min-w-0 truncate">{columnLabel?.(col) ?? col}</span>
+            <span className="shrink-0 rounded bg-error/10 px-1 text-[10px]">{missingLabel}</span>
+          </label>
+        ))}
+        {filtered.length === 0 && filteredMissing.length === 0 ? (
           <div
             className={`px-3 text-center text-[12px] text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
           >

@@ -18,6 +18,7 @@ import {
 import { INPUT_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { dataClient } from '../../../../features/data/api/data-client';
+import { useWorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { WorkflowOperatorConfigPanel } from '../../WorkflowOperatorConfigPanel';
 import { getOperatorCatalog } from './operator-catalog';
 import { getWorkflowConfigSummary } from './workflow-summary';
@@ -102,6 +103,7 @@ export function WorkflowInspector({
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);
+  const workflowData = useWorkflowDataContext();
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
   const operatorFieldSourceNode = useMemo(
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
@@ -164,6 +166,7 @@ export function WorkflowInspector({
             nodeId: candidate.id,
             nodeType: candidate.type,
             nodeConfig: candidate.config,
+            workflow: workflowData.workflow,
           });
           if (requestSeq !== operatorFieldsRequestSeq.current) return;
           if (columns.length > 0) {
@@ -178,7 +181,7 @@ export function WorkflowInspector({
         setOperatorFieldCompletions([]);
       }
     })();
-  }, [node, operatorFieldSourceCandidates, usesOperatorDsl]);
+  }, [node, operatorFieldSourceCandidates, usesOperatorDsl, workflowData]);
 
   useEffect(() => {
     if (!operatorDslStatus) return undefined;
@@ -219,6 +222,7 @@ export function WorkflowInspector({
         nodeId: node.id,
         nodeType: node.type,
         nodeConfig: node.config,
+        workflow: workflowData.workflow,
         limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
         offset: (nodePreviewPage - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
       })
@@ -239,7 +243,7 @@ export function WorkflowInspector({
           setNodePreviewLoading(false);
         }
       });
-  }, [activeTab, node, nodeDataRefreshVersion, nodePreviewPage, t]);
+  }, [activeTab, node, nodeDataRefreshVersion, nodePreviewPage, t, workflowData]);
 
   useEffect(() => {
     if (!isEditingNodeTitle) return;

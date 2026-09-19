@@ -64,6 +64,21 @@ export default function FormSetOp({
     [tr]
   );
 
+  // ALL preserves multiplicity, non-ALL dedupes — the wording differs per
+  // operation, so mode tips are looked up by the selected operation.
+  const modeTips = useMemo(() => {
+    const tips: Record<SetOperation, { all: string; distinct: string }> = {
+      union: { all: tr('setOpUnionAllTip'), distinct: tr('setOpUnionDistinctTip') },
+      intersect: {
+        all: tr('setOpIntersectAllTip'),
+        distinct: tr('setOpIntersectDistinctTip'),
+      },
+      except: { all: tr('setOpExceptAllTip'), distinct: tr('setOpExceptDistinctTip') },
+    };
+    const key = operation in tips ? (operation as SetOperation) : 'union';
+    return tips[key];
+  }, [operation, tr]);
+
   function opBoxClass() {
     return 'flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3';
   }
@@ -123,8 +138,8 @@ export default function FormSetOp({
         <GlassSegmentedControl
           value={mode}
           options={[
-            { value: 'all', label: tr('setOpAll'), tip: tr('setOpAllTip') },
-            { value: 'distinct', label: tr('setOpDistinct'), tip: tr('setOpDistinctTip') },
+            { value: 'all', label: tr('setOpAll'), tip: modeTips.all },
+            { value: 'distinct', label: tr('setOpDistinct'), tip: modeTips.distinct },
           ]}
           onChange={(value) => updateConfig((config) => ({ ...config, mode: value }))}
           ariaLabel={tr('setOpDedupMode')}

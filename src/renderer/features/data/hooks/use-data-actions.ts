@@ -69,9 +69,32 @@ export function useDataActions(deps: DataActionsDeps) {
           current?.id === result.task.id ? result.task : current
         );
         dashboard.setRunNodeStats(result.nodeStats ?? []);
+        dashboard.setLastRunFailure(null);
         await loadDashboard();
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        dashboard.setLastRunFailure({
+          message,
+          at: Date.now(),
+          temporary: payload?.outputMode === 'temporary',
+        });
+        // Pull the failed run's persisted stats so the canvas and the editor's
+        // structured failure card can show where the stream broke (expect
+        // failures persist rejectedRows + violating samples). Temporary runs
+        // never persist stats — fetching would return the previous run's.
+        if (payload?.outputMode !== 'temporary') {
+          try {
+            dashboard.setRunNodeStats(await dataClient.getTaskNodeStats(task.id));
+          } catch {
+            // Node stats are best-effort — the failure message still stands.
+          }
+        }
+        // Inside the editor the structured card replaces the page-level banner
+        // for assertion failures; other failures still surface as a banner.
+        const isExpectFailure = /Expect failed at node [^:]+:/.test(message);
+        if (editors.editingTaskId !== task.id || !isExpectFailure) {
+          ui.setError(message);
+        }
         await loadDashboard({ preserveError: true });
       } finally {
         ui.setActionId(null);

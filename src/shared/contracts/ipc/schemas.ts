@@ -285,6 +285,7 @@ const dataPreviewWorkflowNodeInput = z.looseObject({
   nodeId: str,
   nodeType: str,
   nodeConfig: objOpt,
+  workflow: dataWorkflowSaveInput.nullish(),
   limit: numOpt,
   offset: numOpt,
 });

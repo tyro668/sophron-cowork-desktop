@@ -146,7 +146,7 @@ export default function FormCalculateField({
           <div className="flex w-full items-center gap-1">
             {calculation.action === 'replace' ? (
               <GlassFieldSingleSelect
-                value={fieldCompletions.includes(calculation.field) ? calculation.field : ''}
+                value={calculation.field}
                 options={fieldCompletions}
                 columnTypes={columnTypes}
                 showType

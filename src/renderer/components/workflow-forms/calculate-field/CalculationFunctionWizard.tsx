@@ -4,6 +4,7 @@ import {
   calculationFunctionsByCategory,
   CALCULATION_FUNCTION_CATEGORIES,
   getCalculationFunction,
+  MAX_CALCULATION_WINDOW_SIZE,
   usesTemporalCalculationRangeUnit,
   type CalculationFunctionCategory,
   type CalculationFunctionInput,
@@ -37,7 +38,7 @@ interface CalculationFunctionWizardProps {
   columnTypes?: Record<string, string>;
   initialInput?: CalculationFunctionInput;
   onInsert: (expression: string) => void;
-  tr: (key: string) => string;
+  tr: (key: string, params?: Record<string, unknown>) => string;
 }
 
 const CATEGORY_LABEL_KEYS: Record<CalculationFunctionCategory, string> = {
@@ -166,6 +167,66 @@ export function CalculationFunctionWizard({
   ]);
 
   const preview = useMemo(() => {
+    const localizedError = (): string => {
+      if (definition.valueArgument !== 'none' && !value.trim()) {
+        return tr('calcFieldErrValueRequired');
+      }
+      if (definition.order === 'required' && configuredOrderBy.length === 0) {
+        return tr('calcFieldErrOrderRequired');
+      }
+      const extra = definition.extraParameter;
+      if (extra && extra.kind !== 'text') {
+        const raw = effectiveExtraParameter.trim();
+        const name = tr(extra.labelKey);
+        if (!/^\d+(?:\.\d+)?$/.test(raw)) {
+          return tr('calcFieldErrParamNumeric', { name });
+        }
+        const parsed = Number(raw);
+        if (
+          !Number.isFinite(parsed) ||
+          (extra.kind === 'integer' && !Number.isSafeInteger(parsed)) ||
+          (extra.min !== undefined && parsed < extra.min) ||
+          (extra.max !== undefined && parsed > extra.max)
+        ) {
+          return tr('calcFieldErrParamRange', { name });
+        }
+      }
+      for (const parameter of definition.parameters ?? []) {
+        const raw = (effectiveParameterValues[parameter.key] ?? '').trim();
+        const name = tr(parameter.labelKey);
+        if (parameter.kind === 'temporal-field' && !raw) {
+          return tr('calcFieldErrParamRequired', { name });
+        }
+        if (parameter.kind === 'integer') {
+          if (!/^\d+$/.test(raw)) {
+            return tr('calcFieldErrParamInteger', { name });
+          }
+          const parsed = Number(raw);
+          if (
+            !Number.isSafeInteger(parsed) ||
+            parsed < (parameter.min ?? 1) ||
+            parsed > (parameter.max ?? MAX_CALCULATION_WINDOW_SIZE)
+          ) {
+            return tr('calcFieldErrParamRange', { name });
+          }
+        }
+      }
+      if (usesRangeOffset && configuredOrderBy.length !== 1) {
+        return tr('calcFieldErrRangeNeedsOrder');
+      }
+      if (
+        definition.category === 'time_intelligence' &&
+        value.trim() === '*' &&
+        effectiveParameterValues.aggregation !== 'count'
+      ) {
+        return tr('calcFieldErrTimeAggStar');
+      }
+      return '';
+    };
+    const error = localizedError();
+    if (error) {
+      return { expression: '', error };
+    }
     try {
       return {
         expression: buildCalculationFunctionDslExpression({
@@ -179,19 +240,19 @@ export function CalculationFunctionWizard({
         }),
         error: '',
       };
-    } catch (error) {
-      return {
-        expression: '',
-        error: error instanceof Error ? error.message : String(error),
-      };
+    } catch {
+      return { expression: '', error: tr('calcFieldErrInvalidConfig') };
     }
   }, [
-    definition.id,
+    configuredOrderBy.length,
+    definition,
     effectiveExtraParameter,
     effectiveParameterValues,
     frame,
     orderBy,
     partitionBy,
+    tr,
+    usesRangeOffset,
     value,
   ]);
 

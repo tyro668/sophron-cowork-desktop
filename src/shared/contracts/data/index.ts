@@ -573,6 +573,11 @@ export interface DataPreviewWorkflowNodeInput {
   nodeId: string;
   nodeType: DataWorkflowOperatorType;
   nodeConfig?: Record<string, unknown>;
+  /**
+   * Live (possibly unsaved) canvas graph. When present, schema inference uses
+   * it instead of the saved workflow so field/type lookups reflect draft edits.
+   */
+  workflow?: DataWorkflowSaveInput | null;
   limit?: number;
   offset?: number;
 }

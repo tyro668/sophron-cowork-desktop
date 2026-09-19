@@ -137,10 +137,13 @@ export class WorkflowExecutor {
     const rejectedRows = await this.countRejectRows(input, violation);
     const rejectStream = typeof config.rejectStream === 'string' ? config.rejectStream.trim() : '';
     if (rejectedRows > 0 && !rejectStream) {
+      // Keep the message short — violating rows are persisted via node stats
+      // and rendered by the UI's structured assertion-failure panel.
+      const inputRows = await this.ctx.countRows(inputRelation);
       return {
         rejectedRows,
         sample,
-        failure: `Expect failed at node ${node.id}: ${rejectedRows} row(s) violate the assertion; sample: ${JSON.stringify(sample)}`,
+        failure: `Expect failed at node ${node.id}: ${rejectedRows} of ${inputRows} row(s) violate the assertion`,
       };
     }
     await this.ctx.runSql(

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
+import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 import { GlassFieldMultiSelect } from './GlassFieldMultiSelect';
 import { GlassOverflowTagList } from './GlassOverflowTagList';
@@ -82,6 +83,16 @@ export function GlassFieldMultiDropdown({
     [onChange, selected]
   );
 
+  const tr = useFormTranslation('fieldPicker');
+  // Configured values absent from the option list stay visible as flagged
+  // tags — "pending inference" when no columns resolved yet, otherwise
+  // "not found" so stale config can be repaired instead of silently dropped.
+  const missingValues = useMemo(
+    () => new Set(selected.filter((value) => !columns.includes(value))),
+    [columns, selected]
+  );
+  const missingTitle = columns.length === 0 ? tr('fieldPendingInference') : tr('fieldNotFound');
+
   return (
     <>
       <div
@@ -109,6 +120,8 @@ export function GlassFieldMultiDropdown({
           disabled={disabled}
           placeholder={placeholder}
           variant="field"
+          missing={missingValues}
+          missingTitle={missingTitle}
         />
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}

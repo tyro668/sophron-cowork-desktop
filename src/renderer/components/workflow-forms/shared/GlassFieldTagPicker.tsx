@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ChevronDown, Trash2, X } from 'lucide-react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { GlassFieldMultiSelect, type SelectionMode } from './GlassFieldMultiSelect';
@@ -43,6 +43,13 @@ export function GlassFieldTagPicker({
   listClassName = '',
 }: GlassFieldTagPickerProps) {
   const tr = useFormTranslation('fieldPicker');
+  // Selected values absent from `columns` stay visible with a missing marker —
+  // the same two states as the list: pending inference vs not found.
+  const missingValues = useMemo(
+    () => new Set(selected.filter((item) => !columns.includes(item))),
+    [columns, selected]
+  );
+  const missingTitle = columns.length === 0 ? tr('fieldPendingInference') : tr('fieldNotFound');
 
   return (
     <div className={`grid min-w-0 gap-0 ${className}`}>
@@ -72,9 +79,13 @@ export function GlassFieldTagPicker({
             {selected.map((item, index) => (
               <span
                 key={`${item}-${index}`}
-                className="inline-flex min-h-6 max-w-[180px] shrink-0 items-center gap-0.5 rounded bg-accent-muted px-1 py-0.5 text-[12px] font-medium text-accent"
+                title={missingValues.has(item) ? missingTitle : undefined}
+                className={`inline-flex min-h-6 max-w-[180px] shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[12px] font-medium ${
+                  missingValues.has(item) ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
+                }`}
               >
                 <span className="truncate">{item}</span>
+                {missingValues.has(item) && <span className="shrink-0 text-[9px]">?</span>}
                 <button
                   type="button"
                   onClick={() => onRemove(item)}

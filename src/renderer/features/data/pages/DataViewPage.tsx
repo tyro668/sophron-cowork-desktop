@@ -221,6 +221,7 @@ export function DataViewPage() {
             outputTables={dashboard.dashboard.outputTables}
             actionId={actionId}
             runNodeStats={dashboard.runNodeStats}
+            lastRunFailure={dashboard.lastRunFailure}
             onBack={actions.handleCloseTaskEditor}
             onRun={actions.handleRunTask}
             onWorkflowSaved={() => dashboard.loadDashboard({ preserveError: true })}

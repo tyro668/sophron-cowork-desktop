@@ -28,7 +28,9 @@ export default function FormUnpivot({
     () =>
       mode === 'except'
         ? fieldCompletions.filter((c) => !rawColumns.includes(c))
-        : rawColumns.filter((c) => fieldCompletions.includes(c)),
+        : // Keep configured columns even when unresolved — the picker flags
+          // them as missing/pending instead of silently dropping the config.
+          rawColumns,
     [mode, rawColumns, fieldCompletions]
   );
 

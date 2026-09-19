@@ -499,6 +499,13 @@
       "formatDsl": "Format",
       "firstZeroOutputHere": "This node first reduced output to 0 rows — check its conditions",
       "firstZeroOutputUpstream": "Upstream \"{{name}}\" already reduced output to 0 rows",
+      "expectFailureTitle": "Quality assertion failed",
+      "expectFailureRows": "\"{{node}}\": {{rejected}} of {{total}} row(s) violate the assertion",
+      "expectFailureRowCount": "\"{{node}}\": row count {{total}} does not satisfy rows {{op}} {{value}}",
+      "expectViewSample": "View samples",
+      "expectLocateNode": "Locate node",
+      "expectTechDetails": "Technical details",
+      "expectSampleTitle": "Assertion violation samples",
       "ruleSummary": "Rule summary",
       "syntaxOk": "Syntax OK",
       "syntaxInvalid": "Syntax issue",
@@ -910,8 +917,12 @@
           "setOpDistinct": "Deduplicate",
           "setOpByName": "By name",
           "setOpByPosition": "By position",
-          "setOpAllTip": "Keep all rows, including duplicates",
-          "setOpDistinctTip": "Remove duplicate rows after merge",
+          "setOpUnionAllTip": "Keep all rows from both tables, including duplicates",
+          "setOpUnionDistinctTip": "Combine both tables and remove duplicate rows",
+          "setOpIntersectAllTip": "Keep rows present in both tables, preserving duplicate counts",
+          "setOpIntersectDistinctTip": "Keep rows present in both tables, deduplicated",
+          "setOpExceptAllTip": "Subtract right-table occurrences from left-table rows",
+          "setOpExceptDistinctTip": "Drop left-table rows found in the right table, deduplicated",
           "setOpByNameTip": "Match columns by name, auto-align mismatched columns",
           "setOpByPositionTip": "Match columns by position, both tables must have same column count",
           "setOpConnection": "Set operation"
@@ -1048,6 +1059,15 @@
           "calcFieldFrameExcludeTies": "Other peer rows",
           "calcFieldFrameExcludeGroup": "All peer rows",
           "calcFieldConflictWarning": "Field name already exists in upstream data",
+          "calcFieldErrValueRequired": "Select a value field",
+          "calcFieldErrOrderRequired": "This function requires at least one order field",
+          "calcFieldErrParamNumeric": "Parameter \"{{name}}\" must be numeric",
+          "calcFieldErrParamRequired": "Fill in parameter \"{{name}}\"",
+          "calcFieldErrParamInteger": "Parameter \"{{name}}\" must be an integer",
+          "calcFieldErrParamRange": "Parameter \"{{name}}\" is outside the allowed range",
+          "calcFieldErrRangeNeedsOrder": "A RANGE offset requires exactly one order field",
+          "calcFieldErrTimeAggStar": "This aggregation does not accept *",
+          "calcFieldErrInvalidConfig": "The current configuration is incomplete",
           "noFieldsSelected": "No fields selected",
           "calculateFieldIncompleteField": "Please add at least one calculation"
         },
@@ -1187,7 +1207,9 @@
           "noMatch": "No match",
           "clearAll": "Clear all",
           "selectField": "Select field",
-          "noFields": "No fields available"
+          "noFields": "No fields available",
+          "fieldNotFound": "Field not found",
+          "fieldPendingInference": "Pending inference"
         },
         "valueInput": {
           "noMatchValue": "No matching values",
@@ -1258,6 +1280,10 @@
         "median_fill": "Median fill",
         "mode_fill": "Mode fill",
         "drop": "Drop"
+      },
+      "ruleMethodTips": {
+        "forward_fill": "Fill each null with the nearest non-null value above it, in current row order; applies to the whole column without grouping",
+        "backward_fill": "Fill each null with the nearest non-null value below it, in current row order; applies to the whole column without grouping"
       },
       "summaryLabels": {
         "inputTable": "Input table",

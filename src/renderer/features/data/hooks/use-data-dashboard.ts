@@ -30,6 +30,14 @@ export interface LoadDashboardOptions {
   tab?: DataTab;
 }
 
+/** Failure from the most recent run — rendered as a structured card by the task editor. */
+export interface DataRunFailure {
+  message: string;
+  at: number;
+  /** Temporary (preview) runs never persist node stats — samples/stat lookups are stale. */
+  temporary?: boolean;
+}
+
 export function useDataDashboard(deps: {
   activeTab: DataTab;
   searchQuery: string;
@@ -40,6 +48,7 @@ export function useDataDashboard(deps: {
   const { activeTab, searchQuery, setError, setLoadingTab, setPendingNavigationTab } = deps;
   const [dashboard, setDashboard] = useState<DataDashboard>(EMPTY_DASHBOARD);
   const [runNodeStats, setRunNodeStats] = useState<WorkflowNodeRunStat[]>([]);
+  const [lastRunFailure, setLastRunFailure] = useState<DataRunFailure | null>(null);
   const [taskPage, setTaskPage] = useState(1);
   const [outputPage, setOutputPage] = useState(1);
   const dashboardRequestSeq = useRef(0);
@@ -149,12 +158,14 @@ export function useDataDashboard(deps: {
   return {
     dashboard,
     runNodeStats,
+    lastRunFailure,
     taskPage,
     outputPage,
     loadDashboard,
     invalidateRequests,
     prependTask,
     prependOutputTable,
+    setLastRunFailure,
     setRunNodeStats,
     setTaskPage,
     setOutputPage,
