@@ -43,8 +43,9 @@ export function exportPrepWorkflowDsl(
   edges: PrepFlowEdgeLike[]
 ): string {
   const sources = nodes.filter((node) => node.type === 'input_source');
+  const sourceAliases = allocateSourceAliases(sources);
   const sourceLines = sources.map((node) => {
-    const line = formatInputSource(node);
+    const line = formatInputSource(node, sourceAliases.get(node.id) ?? 'src');
     if (!line) {
       throw new Error(
         `Cannot export incomplete input_source node${node.id ? ` (${node.id})` : ''}`
@@ -56,7 +57,7 @@ export function exportPrepWorkflowDsl(
     sourceLines.push('input source task as src');
   }
 
-  const { chains, streamNames, rightInputs } = decomposeIntoChains(nodes, edges);
+  const { chains, streamNames, rightInputs } = decomposeIntoChains(nodes, edges, sourceAliases);
   if (chains.length === 0) {
     return [...sourceLines, '', 'from src', '  | output table "result" mode replace'].join('\n');
   }
@@ -73,7 +74,7 @@ export function exportPrepWorkflowDsl(
       !chain.named &&
       firstEmitted &&
       sources.length === 1 &&
-      inputName === (getAlias(sources[0]) ?? 'src');
+      inputName === sourceAliases.get(sources[0].id);
     if (!compactHeader) {
       lines.push('', chain.named ? `step ${chain.name} = ${inputName}` : `from ${inputName}`);
     }
@@ -192,7 +193,8 @@ interface DecomposeResult {
 
 function decomposeIntoChains(
   nodes: PrepFlowNodeLike[],
-  edges: PrepFlowEdgeLike[]
+  edges: PrepFlowEdgeLike[],
+  sourceAliases: Map<string, string>
 ): DecomposeResult {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const outgoing = new Map<string, PrepFlowEdgeLike[]>();
@@ -296,7 +298,7 @@ function decomposeIntoChains(
   const streamNames = new Map<string, string>();
   const usedNames = new Set<string>();
   for (const source of nodes.filter((item) => item.type === 'input_source')) {
-    const alias = getAlias(source) ?? 'src';
+    const alias = sourceAliases.get(source.id) ?? 'src';
     streamNames.set(source.id, alias);
     usedNames.add(alias.toLowerCase());
   }
@@ -498,7 +500,30 @@ function topologicalOrder(
   return ordered;
 }
 
-function formatInputSource(node: PrepFlowNodeLike): string | null {
+/**
+ * Assigns every input source a unique, stable stream alias. Explicit aliases
+ * are kept; duplicates (or missing aliases, which default to `src`) are
+ * deduplicated in node order with a deterministic `_2`, `_3`, … suffix so the
+ * emitted DSL never binds two sources to the same stream name.
+ */
+function allocateSourceAliases(sources: PrepFlowNodeLike[]): Map<string, string> {
+  const aliases = new Map<string, string>();
+  const used = new Set<string>();
+  for (const source of sources) {
+    const base = getAlias(source) ?? 'src';
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate.toLowerCase())) {
+      candidate = `${base}_${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate.toLowerCase());
+    aliases.set(source.id, candidate);
+  }
+  return aliases;
+}
+
+function formatInputSource(node: PrepFlowNodeLike, alias: string): string | null {
   const config = node.config ?? {};
   const hasStructured = Boolean(
     stringValue(config.datasetId) ||
@@ -508,7 +533,6 @@ function formatInputSource(node: PrepFlowNodeLike): string | null {
     stringValue(config.name)
   );
   if (!hasStructured && isString(config.dsl)) return config.dsl;
-  const alias = getAlias(node) ?? 'src';
   const source = isString(config.source)
     ? config.source
     : isString(config.datasetId)

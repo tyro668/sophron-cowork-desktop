@@ -173,6 +173,78 @@ describe('workflow DSL round-trip', () => {
     );
     expect(compiled.diagnostics.map((d) => d.code)).toContain('duplicateStepName');
   });
+
+  it('assigns unique aliases to input sources without explicit aliases', () => {
+    const nodes = [
+      {
+        id: 'a',
+        type: 'input_source' as const,
+        config: { source: 'dataset', datasetId: 'orders' },
+      },
+      {
+        id: 'b',
+        type: 'input_source' as const,
+        config: { source: 'dataset', datasetId: 'customers' },
+      },
+      {
+        id: 'j',
+        type: 'join' as const,
+        config: {
+          joinType: 'left',
+          conditions: [{ left: 'a.id', right: 'b.id', operator: '=' }],
+        },
+      },
+      { id: 'o', type: 'output' as const, config: { table: 't', mode: 'replace' } },
+    ];
+    const edges = [
+      { sourceNodeId: 'a', targetNodeId: 'j', targetHandle: 'left' },
+      { sourceNodeId: 'b', targetNodeId: 'j', targetHandle: 'right' },
+      { sourceNodeId: 'j', targetNodeId: 'o', targetHandle: 'input' },
+    ];
+    const dsl = exportPrepWorkflowDsl(nodes, edges);
+    expect(dsl).toContain('input source dataset "orders" as src');
+    expect(dsl).toContain('input source dataset "customers" as src_2');
+    expect(dsl).toContain('join left src_2 on [src].[id] = [src_2].[id]');
+    // The exported DSL parses cleanly and re-exports byte-stably: imported
+    // sources carry the generated aliases explicitly.
+    const reparsed = compile(dsl);
+    expect(exportPrepWorkflowDsl(reparsed.nodes, reparsed.edges)).toBe(dsl);
+  });
+
+  it('deduplicates colliding explicit source aliases deterministically', () => {
+    const nodes = [
+      {
+        id: 'a',
+        type: 'input_source' as const,
+        config: { source: 'dataset', datasetId: 'orders', alias: 'shared' },
+      },
+      {
+        id: 'b',
+        type: 'input_source' as const,
+        config: { source: 'dataset', datasetId: 'customers', alias: 'shared' },
+      },
+      {
+        id: 'j',
+        type: 'join' as const,
+        config: {
+          joinType: 'inner',
+          conditions: [{ left: 'x.k', right: 'y.k', operator: '=' }],
+        },
+      },
+      { id: 'o', type: 'output' as const, config: { table: 't', mode: 'replace' } },
+    ];
+    const edges = [
+      { sourceNodeId: 'a', targetNodeId: 'j', targetHandle: 'left' },
+      { sourceNodeId: 'b', targetNodeId: 'j', targetHandle: 'right' },
+      { sourceNodeId: 'j', targetNodeId: 'o', targetHandle: 'input' },
+    ];
+    const dsl = exportPrepWorkflowDsl(nodes, edges);
+    expect(dsl).toContain('input source dataset "orders" as shared');
+    expect(dsl).toContain('input source dataset "customers" as shared_2');
+    expect(dsl).toContain('join inner shared_2 on [shared].[k] = [shared_2].[k]');
+    const reparsed = compile(dsl);
+    expect(exportPrepWorkflowDsl(reparsed.nodes, reparsed.edges)).toBe(dsl);
+  });
 });
 
 describe('export rejects inexpressible graphs', () => {
