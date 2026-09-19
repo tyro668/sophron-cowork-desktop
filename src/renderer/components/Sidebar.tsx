@@ -94,6 +94,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  const isMac = rendererPlatform === 'darwin';
   const persistedProjectNames = useMemo(() => {
     return buildProjectNameLookup(projects, rendererPlatform);
   }, [projects, rendererPlatform]);
@@ -677,7 +678,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   if (sidebarCollapsed) {
     return (
-      <aside className="glass-surface mr-3 w-[4.25rem] rounded-2xl flex flex-col overflow-hidden">
+      <aside className="flex h-full w-[4.25rem] shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+        {/* macOS traffic lights overlay the top of the rail — keep the strip clear + draggable */}
+        {isMac && <div className="titlebar-drag h-8 shrink-0" />}
         <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
           {!forceCollapsed && (
             <button
@@ -800,46 +803,49 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   }
 
   return (
-    <aside className="glass-surface mr-3 w-[19rem] rounded-2xl flex flex-col overflow-hidden">
-      <div className="px-3.5 pt-4 pb-3.5 border-b border-border-subtle">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex items-center gap-3">
-            <BrandMark
-              variant={settings.logoVariant}
-              label={t('common.appLogoAlt')}
-              className="h-10 w-10 transition-colors"
-            />
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <h1 className="min-w-0 truncate text-[1.08rem] leading-none font-semibold tracking-normal text-text-primary">
-                  {t('common.appName')}
-                </h1>
-                {hasAvailableUpdate && (
-                  <button
-                    type="button"
-                    onClick={() => void handleUpdateBadgeClick()}
-                    className="h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent-muted px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
-                    title={updateBadgeTitle}
-                  >
-                    {t('general.updateAvailableBadge')}
-                  </button>
-                )}
-              </div>
+    <aside className="flex h-full w-[19rem] shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+      {/* Brand row doubles as the window drag region; macOS traffic lights overlay its left edge */}
+      <div
+        className={`titlebar-drag flex items-start justify-between gap-3 px-3.5 pb-3 pt-4 ${isMac ? 'pl-[76px]' : ''}`}
+      >
+        <div className="min-w-0 flex items-center gap-3">
+          <BrandMark
+            variant={settings.logoVariant}
+            label={t('common.appLogoAlt')}
+            className="h-10 w-10 transition-colors"
+          />
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h1 className="min-w-0 truncate text-[1.08rem] leading-none font-semibold tracking-normal text-text-primary">
+                {t('common.appName')}
+              </h1>
+              {hasAvailableUpdate && (
+                <button
+                  type="button"
+                  onClick={() => void handleUpdateBadgeClick()}
+                  className="titlebar-no-drag h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent-muted px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
+                  title={updateBadgeTitle}
+                >
+                  {t('general.updateAvailableBadge')}
+                </button>
+              )}
             </div>
           </div>
-          <button
-            onClick={toggleSidebar}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary flex-shrink-0"
-            title={t('context.collapsePanel')}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
         </div>
+        <button
+          onClick={toggleSidebar}
+          className="titlebar-no-drag w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary flex-shrink-0"
+          title={t('context.collapsePanel')}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      </div>
 
+      <div className="px-3.5 pb-3.5 border-b border-border-subtle">
         <Button
           variant="primary"
           onClick={handleNewSession}
-          className="mt-3 h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft"
+          className="h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft"
         >
           <Plus className="w-4 h-4 flex-shrink-0" />
           <span className="text-[13px]">{t('sidebar.newTask')}</span>

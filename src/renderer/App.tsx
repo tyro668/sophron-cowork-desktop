@@ -54,17 +54,13 @@ const AutomationView = lazy(() =>
 );
 
 function MainPanelFallback() {
-  return (
-    <div className="flex-1 min-h-0 px-3 py-3">
-      <div className="app-main-panel h-full" />
-    </div>
-  );
+  return <div className="app-main-panel h-full min-h-0 flex-1" />;
 }
 
 function ContextPanelFallback() {
   return (
     <div
-      className="ml-2 hidden w-[340px] shrink-0 rounded-2xl border border-border-subtle bg-surface xl:block"
+      className="hidden w-[340px] shrink-0 border-l border-border-subtle bg-surface xl:block"
       aria-hidden="true"
     />
   );
@@ -262,55 +258,56 @@ function App() {
 
   return (
     <ConfirmDialogProvider>
-      <div className="h-full w-full min-h-0 flex flex-col overflow-hidden bg-[var(--app-backdrop)] text-text-primary">
-        {/* Titlebar - draggable region */}
-        <Titlebar />
+      <div className="h-full w-full min-h-0 flex overflow-hidden bg-background text-text-primary">
+        {/* Sidebar - flush to the window edge; its top row is the macOS drag zone */}
+        <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
+          <Sidebar forceCollapsed={showSettings} />
+        </PanelErrorBoundary>
 
-        {/* Main Content */}
-        <div className="flex-1 min-h-0 flex overflow-hidden px-3 pb-3">
-          {/* Sidebar */}
-          <PanelErrorBoundary name="Sidebar" fallback={<div className="w-0" />}>
-            <Sidebar forceCollapsed={showSettings} />
-          </PanelErrorBoundary>
+        {/* Right column: slim drag strip over the main area + content row */}
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+          <Titlebar />
 
-          {/* Main Content Area */}
-          <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-            {mainPanelRoutes
-              .filter((route) => route.mounted)
-              .map((route) => (
-                <div
-                  key={route.id}
-                  className={
-                    activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'
-                  }
-                >
-                  <PanelErrorBoundary
-                    name={route.name}
-                    resetKey={route.resetKey}
-                    fallback={<MainPanelFallback />}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            {/* Main Content Area */}
+            <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+              {mainPanelRoutes
+                .filter((route) => route.mounted)
+                .map((route) => (
+                  <div
+                    key={route.id}
+                    className={
+                      activeMainRouteId === route.id ? 'flex h-full min-h-0 w-full' : 'hidden'
+                    }
                   >
-                    <Suspense fallback={<MainPanelFallback />}>{route.element}</Suspense>
-                  </PanelErrorBoundary>
-                </div>
-              ))}
+                    <PanelErrorBoundary
+                      name={route.name}
+                      resetKey={route.resetKey}
+                      fallback={<MainPanelFallback />}
+                    >
+                      <Suspense fallback={<MainPanelFallback />}>{route.element}</Suspense>
+                    </PanelErrorBoundary>
+                  </div>
+                ))}
 
-            {activeMainRouteId === 'welcome' && <WelcomeView />}
-          </main>
+              {activeMainRouteId === 'welcome' && <WelcomeView />}
+            </main>
 
-          {/* Context Panel - only show when in session and not in settings */}
-          {activeSessionId && mountedMainRouteIds.has('chat') && (
-            <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
-              <PanelErrorBoundary
-                name="ContextPanel"
-                resetKey={activeSessionId}
-                fallback={<ContextPanelFallback />}
-              >
-                <Suspense fallback={<ContextPanelFallback />}>
-                  <ContextPanel />
-                </Suspense>
-              </PanelErrorBoundary>
-            </div>
-          )}
+            {/* Context Panel - only show when in session and not in settings */}
+            {activeSessionId && mountedMainRouteIds.has('chat') && (
+              <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
+                <PanelErrorBoundary
+                  name="ContextPanel"
+                  resetKey={activeSessionId}
+                  fallback={<ContextPanelFallback />}
+                >
+                  <Suspense fallback={<ContextPanelFallback />}>
+                    <ContextPanel />
+                  </Suspense>
+                </PanelErrorBoundary>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Permission Dialog */}

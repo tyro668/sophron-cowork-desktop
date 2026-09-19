@@ -22,26 +22,20 @@ export function Titlebar() {
   };
 
   return (
-    <div
-      className={`h-8 bg-transparent flex items-center titlebar-drag shrink-0 ${
-        isMac ? 'justify-start pl-20' : 'justify-end'
-      }`}
-    >
-      {/* macOS: Traffic lights are positioned by trafficLightPosition, we just need left padding */}
-      
-      {/* Window Controls (for Windows/Linux - macOS uses native traffic lights) */}
+    <div className="titlebar-drag flex h-10 shrink-0 items-center justify-end border-b border-border-subtle bg-[var(--glass-panel)]">
+      {/* Window Controls (for Windows/Linux - macOS uses native traffic lights over the sidebar) */}
       {!isMac && (
         <div className="flex items-center titlebar-no-drag h-full">
           <button
             onClick={handleMinimize}
-            className="w-12 h-full flex items-center justify-center hover:bg-surface transition-colors"
+            className="w-12 h-full flex items-center justify-center hover:bg-surface-hover transition-colors"
             title={t('window.minimize')}
           >
             <Minus className="w-4 h-4 text-text-secondary" />
           </button>
           <button
             onClick={handleMaximize}
-            className="w-12 h-full flex items-center justify-center hover:bg-surface transition-colors"
+            className="w-12 h-full flex items-center justify-center hover:bg-surface-hover transition-colors"
             title={isMaximized ? t('window.restore') : t('window.maximize')}
           >
             {isMaximized ? (
