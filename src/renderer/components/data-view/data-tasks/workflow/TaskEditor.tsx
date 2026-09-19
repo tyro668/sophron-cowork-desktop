@@ -51,6 +51,7 @@ import {
 import {
   getWorkflowSaveInputSignature,
   toWorkflowSaveInput,
+  WORKFLOW_NODE_HEIGHT,
   type WorkflowInspectorTab,
 } from './workflow-model';
 
@@ -306,6 +307,126 @@ export function TaskEditor({
       });
     },
     [t, task.id]
+  );
+
+  /**
+   * Palette click/keyboard insertion: places the operator downstream of the
+   * selected node. When the anchor has exactly one `output` edge, the new node
+   * is spliced into it (anchor → new → old target); with no outgoing edge it
+   * simply links anchor → new. Fan-out anchors (2+ output edges) get an
+   * unconnected placement so no branch is chosen implicitly.
+   */
+  const addOperatorAfterSelected = useCallback(
+    (type: DataWorkflowOperatorType) => {
+      const catalog = getOperatorCatalog(type);
+      const createdAt = Date.now();
+      const id = makeLocalId('node');
+      const ports = getOperatorDefinition(type)?.ports ?? { inputs: ['input'], outputs: [] };
+      const primaryInput = ports.inputs[0];
+      setSelectedNodeId(id);
+      setActiveInspectorTab('config');
+      setWorkflow((current) => {
+        if (!current) return current;
+        const anchor = current.nodes.find((node) => node.id === selectedNode?.id) ?? null;
+        const anchorOutputs = anchor
+          ? (getOperatorDefinition(anchor.type)?.ports.outputs ?? [])
+          : [];
+        const outEdges = anchor
+          ? current.edges.filter(
+              (edge) =>
+                edge.sourceNodeId === anchor.id && (edge.sourceHandle ?? 'output') === 'output'
+            )
+          : [];
+        const spliceEdge = outEdges.length === 1 ? outEdges[0] : undefined;
+        const spliceTarget = spliceEdge
+          ? current.nodes.find((node) => node.id === spliceEdge.targetNodeId)
+          : undefined;
+        const canLink = Boolean(anchor && primaryInput && anchorOutputs.includes('output'));
+        // Splicing requires the new node to re-emit on `output`; a sink added
+        // mid-chain would otherwise sever the existing downstream edge.
+        const canSplice = Boolean(spliceEdge && ports.outputs.includes('output'));
+
+        const fallback = getNextWorkflowNodePosition(current.nodes.length);
+        const x = Math.max(
+          0,
+          Math.round(
+            anchor && spliceTarget ? (anchor.x + spliceTarget.x) / 2 : (anchor?.x ?? fallback.x)
+          )
+        );
+        const y = Math.max(
+          0,
+          Math.round(
+            anchor && spliceTarget
+              ? (anchor.y + spliceTarget.y) / 2
+              : anchor
+                ? anchor.y + WORKFLOW_NODE_HEIGHT + 56
+                : fallback.y
+          )
+        );
+        const nextNode: DataWorkflowNode = {
+          id,
+          taskId: task.id,
+          type,
+          label: t(catalog.labelKey),
+          x,
+          y,
+          config: getOperatorDefinition(type)?.createDefaultConfig() ?? {},
+          createdAt,
+          updatedAt: createdAt,
+        };
+        let next: DataTaskWorkflow = { ...current, nodes: [...current.nodes, nextNode] };
+        if (canLink && anchor && (canSplice || outEdges.length <= 1)) {
+          const newEdge = (targetNodeId: string, targetHandle: string): DataWorkflowEdge => ({
+            id: makeLocalId('edge'),
+            taskId: task.id,
+            sourceNodeId: anchor.id,
+            targetNodeId,
+            sourceHandle: 'output',
+            targetHandle,
+            createdAt,
+          });
+          if (spliceEdge && canSplice) {
+            next = removeWorkflowGraphEdge(next, spliceEdge.id);
+            next = connectWorkflowGraphNodes(
+              next,
+              {
+                sourceNodeId: anchor.id,
+                targetNodeId: id,
+                sourceHandle: 'output',
+                targetHandle: primaryInput!,
+              },
+              newEdge(id, primaryInput!)
+            );
+            next = connectWorkflowGraphNodes(
+              next,
+              {
+                sourceNodeId: id,
+                targetNodeId: spliceEdge.targetNodeId,
+                sourceHandle: 'output',
+                targetHandle: spliceEdge.targetHandle ?? 'input',
+              },
+              {
+                ...newEdge(spliceEdge.targetNodeId, spliceEdge.targetHandle ?? 'input'),
+                sourceNodeId: id,
+              }
+            );
+          } else {
+            next = connectWorkflowGraphNodes(
+              next,
+              {
+                sourceNodeId: anchor.id,
+                targetNodeId: id,
+                sourceHandle: 'output',
+                targetHandle: primaryInput!,
+              },
+              newEdge(id, primaryInput!)
+            );
+          }
+        }
+        return next;
+      });
+    },
+    [selectedNode, t, task.id]
   );
 
   const moveNode = useCallback((nodeId: string, x: number, y: number) => {
@@ -566,6 +687,116 @@ export function TaskEditor({
     setNodeDataRefreshVersion((current) => current + 1);
   }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput, flagPlanDiagnostics]);
 
+  /**
+   * "Preview up to this step": runs a temporary execution scoped to the
+   * selected node's upstream subgraph, appending a synthetic output sink so
+   * only the ancestors needed for the preview are materialized. Nothing is
+   * committed — temp caches expire on their own.
+   */
+  const previewNodeToHere = useCallback(async () => {
+    if (!workflowSaveInput || !selectedNode || !workflow) return;
+    const upstream = new Set<string>([selectedNode.id]);
+    const pending = [selectedNode.id];
+    while (pending.length > 0) {
+      const nodeId = pending.pop()!;
+      for (const edge of edges) {
+        if (edge.targetNodeId === nodeId && !upstream.has(edge.sourceNodeId)) {
+          upstream.add(edge.sourceNodeId);
+          pending.push(edge.sourceNodeId);
+        }
+      }
+    }
+    const scopedNodes = workflowSaveInput.nodes.filter((node) => upstream.has(node.id));
+    const scopedEdges = workflowSaveInput.edges.filter(
+      (edge) => upstream.has(edge.sourceNodeId) && upstream.has(edge.targetNodeId)
+    );
+    const previewInput: DataWorkflowSaveInput = {
+      nodes: [...scopedNodes],
+      edges: [...scopedEdges],
+    };
+    if (selectedNode.type !== 'output') {
+      const sinkId = makeLocalId('preview_sink');
+      previewInput.nodes.push({
+        id: sinkId,
+        type: 'output',
+        label: t('data.workflow.previewToThisStep'),
+        x: 0,
+        y: 0,
+        config: {},
+      });
+      previewInput.edges.push({
+        id: makeLocalId('edge'),
+        sourceNodeId: selectedNode.id,
+        targetNodeId: sinkId,
+        sourceHandle: 'output',
+        targetHandle: 'input',
+      });
+    }
+    const incompleteMessageKey = flagIncompleteNodes(nodes.filter((node) => upstream.has(node.id)));
+    if (incompleteMessageKey) {
+      setLocalError(t(incompleteMessageKey));
+      return;
+    }
+    setLocalError(null);
+    const planError = await flagPlanDiagnostics(previewInput);
+    if (planError) {
+      setLocalError(planError);
+      return;
+    }
+    await onRun(task, {
+      workflow: previewInput,
+      outputMode: 'temporary',
+    });
+    setNodeDataRefreshVersion((current) => current + 1);
+  }, [
+    workflowSaveInput,
+    selectedNode,
+    workflow,
+    edges,
+    nodes,
+    t,
+    flagIncompleteNodes,
+    flagPlanDiagnostics,
+    onRun,
+    task,
+  ]);
+
+  /**
+   * Earliest node in flow order whose last-run output was zero rows — the
+   * first place the stream dried up, which explains empty downstream previews.
+   */
+  const firstZeroOutputNode = useMemo(() => {
+    if (runStatsByNode.size === 0) return null;
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const inDegree = new Map(nodes.map((node) => [node.id, 0]));
+    const outgoing = new Map<string, string[]>();
+    for (const edge of edges) {
+      if (!nodeById.has(edge.sourceNodeId) || !nodeById.has(edge.targetNodeId)) continue;
+      inDegree.set(edge.targetNodeId, (inDegree.get(edge.targetNodeId) ?? 0) + 1);
+      outgoing.set(edge.sourceNodeId, [
+        ...(outgoing.get(edge.sourceNodeId) ?? []),
+        edge.targetNodeId,
+      ]);
+    }
+    const queue = nodes.filter((node) => (inDegree.get(node.id) ?? 0) === 0).map((node) => node.id);
+    const ordered: string[] = [];
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      ordered.push(nodeId);
+      for (const targetId of outgoing.get(nodeId) ?? []) {
+        const next = (inDegree.get(targetId) ?? 0) - 1;
+        inDegree.set(targetId, next);
+        if (next === 0) queue.push(targetId);
+      }
+    }
+    for (const nodeId of ordered) {
+      if (runStatsByNode.get(nodeId)?.outputRows === 0) {
+        return nodeById.get(nodeId) ?? null;
+      }
+    }
+    return null;
+  }, [nodes, edges, runStatsByNode]);
+
   const handleSaveAndRun = useCallback(async () => {
     if (!validateWorkflowBeforeRun()) return;
     const saved = await saveWorkflow();
@@ -816,7 +1047,10 @@ export function TaskEditor({
         </div>
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
-          <WorkflowOperatorPalette operators={OPERATOR_CATALOG} />
+          <WorkflowOperatorPalette
+            operators={OPERATOR_CATALOG}
+            onAddOperator={addOperatorAfterSelected}
+          />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
             <WorkflowCanvas
               nodes={nodes}
@@ -847,6 +1081,11 @@ export function TaskEditor({
               onApplyOperatorDsl={applyAndRunOperatorDsl}
               isRunningOperatorDsl={actionId === task.id}
               nodeDataRefreshVersion={nodeDataRefreshVersion}
+              runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
+              firstZeroOutputNode={firstZeroOutputNode}
+              isWorkflowDirty={isWorkflowDirty}
+              onPreviewToHere={() => void previewNodeToHere()}
+              isPreviewRunning={actionId === task.id}
             />
           </div>
         </div>

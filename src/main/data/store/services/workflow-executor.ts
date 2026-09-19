@@ -441,14 +441,17 @@ export class WorkflowExecutor {
     const collectNodeStat = async (
       node: DataWorkflowNode,
       outputRelation: string,
-      inputRelations: string[]
+      inputRelations: Array<{ handle: string; relation: string }>
     ) => {
       const outputRows = await this.ctx.countRows(outputRelation);
+      const inputRowsByHandle: Record<string, number> = {};
+      for (const { handle, relation } of inputRelations) {
+        inputRowsByHandle[handle] =
+          (inputRowsByHandle[handle] ?? 0) + (await this.ctx.countRows(relation));
+      }
       const inputRows =
         inputRelations.length > 0
-          ? (
-              await Promise.all(inputRelations.map((relation) => this.ctx.countRows(relation)))
-            ).reduce((total, count) => total + count, 0)
+          ? Object.values(inputRowsByHandle).reduce((total, count) => total + count, 0)
           : null;
       const stat: WorkflowNodeRunStat = {
         nodeId: node.id,
@@ -456,6 +459,11 @@ export class WorkflowExecutor {
         inputRows,
         outputRows,
       };
+      // Multi-input operators (join/set_op) report each side separately so a
+      // "left + right → output" reading never collapses into one ambiguous sum.
+      if (inputRelations.length > 1) {
+        stat.inputRowsByHandle = inputRowsByHandle;
+      }
       if (
         inputRows !== null &&
         ['filter', 'deduplicate', 'limit', 'expect'].includes(node.type) &&
@@ -614,8 +622,13 @@ export class WorkflowExecutor {
         );
         const inputRelations = edges
           .filter((edge) => edge.targetNodeId === node.id)
-          .map((edge) => relationByNode.get(relationKeyOf(edge.sourceNodeId, edge.sourceHandle)))
-          .filter((relation): relation is string => Boolean(relation));
+          .map((edge) => ({
+            handle: edge.targetHandle ?? 'input',
+            relation: relationByNode.get(relationKeyOf(edge.sourceNodeId, edge.sourceHandle)),
+          }))
+          .filter((entry): entry is { handle: string; relation: string } =>
+            Boolean(entry.relation)
+          );
         await collectNodeStat(node, outputRelation, inputRelations);
         return outputRelation;
       } finally {

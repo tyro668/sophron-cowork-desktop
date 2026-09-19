@@ -421,6 +421,8 @@ export interface WorkflowNodeRunStat {
   nodeId: string;
   nodeType: string;
   inputRows: number | null;
+  /** Per-input-handle row counts for multi-input operators (e.g. join/set_op left+right). */
+  inputRowsByHandle?: Record<string, number>;
   outputRows: number;
   droppedRows?: number;
   rejectedRows?: number;

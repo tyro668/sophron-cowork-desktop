@@ -16,14 +16,17 @@ export class RunStatsRepository {
     for (const stat of stats) {
       await this.ctx.metaRunSql(
         `INSERT INTO data_task_node_run_stats
-           (task_id, run_id, node_id, node_type, input_rows, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
-         VALUES ($taskId, $runId, $nodeId, $nodeType, $inputRows, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
+           (task_id, run_id, node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
+         VALUES ($taskId, $runId, $nodeId, $nodeType, $inputRows, $inputRowsByHandleJson, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
         {
           taskId,
           runId,
           nodeId: stat.nodeId,
           nodeType: stat.nodeType,
           inputRows: stat.inputRows,
+          inputRowsByHandleJson: stat.inputRowsByHandle
+            ? JSON.stringify(stat.inputRowsByHandle)
+            : null,
           outputRows: stat.outputRows,
           droppedRows: stat.droppedRows ?? 0,
           rejectedRows: stat.rejectedRows ?? 0,
@@ -40,12 +43,13 @@ export class RunStatsRepository {
       node_id: string;
       node_type: string;
       input_rows: number | null;
+      input_rows_by_handle_json: string | null;
       output_rows: number;
       dropped_rows: number;
       rejected_rows: number;
       sample_json: string | null;
     }>(
-      `SELECT node_id, node_type, input_rows, output_rows, dropped_rows, rejected_rows, sample_json
+      `SELECT node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json
        FROM data_task_node_run_stats WHERE task_id = $taskId ORDER BY node_id`,
       { taskId }
     );
@@ -53,6 +57,9 @@ export class RunStatsRepository {
       nodeId: row.node_id,
       nodeType: row.node_type,
       inputRows: row.input_rows === null ? null : Number(row.input_rows),
+      inputRowsByHandle: row.input_rows_by_handle_json
+        ? (JSON.parse(row.input_rows_by_handle_json) as Record<string, number>)
+        : undefined,
       outputRows: Number(row.output_rows),
       droppedRows: Number(row.dropped_rows) || undefined,
       rejectedRows: Number(row.rejected_rows) || undefined,

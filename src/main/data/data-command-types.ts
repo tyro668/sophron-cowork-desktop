@@ -438,6 +438,8 @@ export interface WorkflowNodeRunStat {
   nodeType: string;
   /** Rows the node consumed; null when the input is not a materialized table. */
   inputRows: number | null;
+  /** Per-input-handle row counts for multi-input operators (e.g. join/set_op left+right). */
+  inputRowsByHandle?: Record<string, number>;
   /** Rows the node produced on its main output. */
   outputRows: number;
   /** inputRows - outputRows for row-reducing operators (filter/dedup/limit/expect). */

@@ -400,6 +400,22 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'table_commit_journal',
     up: (ctx) => createTableCommitJournal(ctx),
   },
+  {
+    version: 6,
+    name: 'node_run_stats_input_rows_by_handle',
+    up: async (ctx) => {
+      // PRAGMA table_info works on both metadata engines (SQLite + DuckDB);
+      // the column may already exist when a current DB lost its ledger.
+      const columns = await ctx.metaQueryRows<{ name: string }>(
+        'PRAGMA table_info(data_task_node_run_stats)'
+      );
+      if (!columns.some((column) => column.name === 'input_rows_by_handle_json')) {
+        await ctx.metaRunSql(
+          'ALTER TABLE data_task_node_run_stats ADD COLUMN input_rows_by_handle_json VARCHAR'
+        );
+      }
+    },
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

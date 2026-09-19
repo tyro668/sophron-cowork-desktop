@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, PencilLine, X } from 'lucide-react';
+import { ChevronDown, PencilLine, Play, X } from 'lucide-react';
 import type {
   DataDataset,
   DataInputTablePreview,
   DataOutputTable,
   DataWorkflowEdge,
   DataWorkflowNode,
+  WorkflowNodeRunStat,
 } from '../../../../types';
 import {
   exportPrepOperatorDsl,
@@ -27,6 +28,26 @@ import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import { getWorkflowFieldSourceCandidates } from './workflow-field-candidates';
 import type { WorkflowInspectorTab } from './workflow-model';
 
+function formatNodeRunStatLine(
+  stat: WorkflowNodeRunStat,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  const input = stat.inputRowsByHandle
+    ? `${t('data.workflow.runStatLeft', { count: stat.inputRowsByHandle.left ?? '—' })} ${t(
+        'data.workflow.runStatRight',
+        { count: stat.inputRowsByHandle.right ?? '—' }
+      )}`
+    : t('data.workflow.runStatInput', { count: stat.inputRows ?? '—' });
+  const parts = [input, t('data.workflow.runStatOutput', { count: stat.outputRows ?? '—' })];
+  if (stat.droppedRows != null) {
+    parts.push(t('data.workflow.runStatDropped', { count: stat.droppedRows }));
+  }
+  if (stat.rejectedRows != null) {
+    parts.push(t('data.workflow.runStatRejected', { count: stat.rejectedRows }));
+  }
+  return parts.join(' · ');
+}
+
 export function WorkflowInspector({
   node,
   workflowNodes,
@@ -40,6 +61,11 @@ export function WorkflowInspector({
   onApplyOperatorDsl,
   isRunningOperatorDsl,
   nodeDataRefreshVersion,
+  runStat,
+  firstZeroOutputNode,
+  isWorkflowDirty,
+  onPreviewToHere,
+  isPreviewRunning,
 }: {
   node: DataWorkflowNode | null;
   workflowNodes: DataWorkflowNode[];
@@ -53,6 +79,11 @@ export function WorkflowInspector({
   onApplyOperatorDsl: (nodeId: string, config: Record<string, unknown>) => Promise<void>;
   isRunningOperatorDsl: boolean;
   nodeDataRefreshVersion: number;
+  runStat?: WorkflowNodeRunStat;
+  firstZeroOutputNode?: DataWorkflowNode | null;
+  isWorkflowDirty?: boolean;
+  onPreviewToHere?: () => void;
+  isPreviewRunning?: boolean;
 }) {
   const { t } = useTranslation();
   const [operatorDsl, setOperatorDsl] = useState('');
@@ -67,6 +98,7 @@ export function WorkflowInspector({
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
   const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
   const [nodePreviewPage, setNodePreviewPage] = useState(1);
+  const [nodePreviewFetchedAt, setNodePreviewFetchedAt] = useState<number | null>(null);
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);
@@ -161,6 +193,7 @@ export function WorkflowInspector({
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
+    setNodePreviewFetchedAt(null);
   }, [node?.id]);
 
   useEffect(() => {
@@ -192,6 +225,7 @@ export function WorkflowInspector({
       .then((preview) => {
         if (requestSeq === nodePreviewRequestSeq.current) {
           setNodePreviewData(preview);
+          setNodePreviewFetchedAt(Date.now());
         }
       })
       .catch((err) => {
@@ -402,13 +436,55 @@ export function WorkflowInspector({
               {t('data.workflow.noLogs')}
             </div>
           ) : resolvedTab === 'data' ? (
-            <WorkflowNodeDataPreview
-              preview={nodePreviewData}
-              isLoading={nodePreviewLoading}
-              error={nodePreviewError}
-              currentPage={nodePreviewPage}
-              onPageChange={setNodePreviewPage}
-            />
+            <div className="flex h-full min-h-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <button
+                  type="button"
+                  onClick={onPreviewToHere}
+                  disabled={!onPreviewToHere || isPreviewRunning}
+                  title={t('data.workflow.previewToThisStepHint')}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Play className="h-3 w-3" />
+                  {isPreviewRunning ? t('common.loading') : t('data.workflow.previewToThisStep')}
+                </button>
+                {runStat ? (
+                  <span className="text-[11px] text-text-muted">
+                    {formatNodeRunStatLine(runStat, t)}
+                  </span>
+                ) : null}
+                {nodePreviewFetchedAt ? (
+                  <span className="text-[11px] text-text-muted">
+                    {t('data.workflow.nodeDataUpdatedAt', {
+                      time: new Date(nodePreviewFetchedAt).toLocaleTimeString(),
+                    })}
+                  </span>
+                ) : null}
+                {isWorkflowDirty ? (
+                  <span className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                    {t('data.workflow.nodeDataStale')}
+                  </span>
+                ) : null}
+              </div>
+              {firstZeroOutputNode && nodePreviewData && nodePreviewData.totalRows === 0 ? (
+                <div className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
+                  {firstZeroOutputNode.id === node?.id
+                    ? t('data.workflow.firstZeroOutputHere')
+                    : t('data.workflow.firstZeroOutputUpstream', {
+                        name: firstZeroOutputNode.label || firstZeroOutputNode.id,
+                      })}
+                </div>
+              ) : null}
+              <div className="min-h-0 flex-1">
+                <WorkflowNodeDataPreview
+                  preview={nodePreviewData}
+                  isLoading={nodePreviewLoading}
+                  error={nodePreviewError}
+                  currentPage={nodePreviewPage}
+                  onPageChange={setNodePreviewPage}
+                />
+              </div>
+            </div>
           ) : usesOperatorDsl ? (
             <WorkflowOperatorConfigPanel
               mode={resolvedTab === 'dsl' ? 'dsl' : 'form'}

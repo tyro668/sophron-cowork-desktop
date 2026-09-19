@@ -1005,6 +1005,15 @@ describe('DuckDB data task store', () => {
     expect(completed.outputTable).toBe('orders_joined');
     expect(completed.rowCount).toBe(2);
 
+    const stats = await store.getTaskNodeStats(task.id);
+    const joinStat = stats.find((stat) => stat.nodeType === 'join');
+    expect(joinStat?.inputRows).toBe(5);
+    expect(joinStat?.inputRowsByHandle).toEqual({ left: 3, right: 2 });
+    const filterStat = stats.find((stat) => stat.nodeType === 'filter');
+    expect(filterStat?.inputRows).toBe(3);
+    expect(filterStat?.inputRowsByHandle).toBeUndefined();
+    expect(filterStat?.droppedRows).toBe(1);
+
     stores.pop()?.close();
     const instance = await DuckDBInstance.create(dbPath);
     const connection = await instance.connect();

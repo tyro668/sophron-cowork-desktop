@@ -38,6 +38,7 @@ interface WorkflowDslDialogProps {
 
 interface WorkflowOperatorPaletteProps {
   operators: WorkflowOperatorCatalogItem[];
+  onAddOperator?: (type: DataWorkflowOperatorType) => void;
 }
 
 export function WorkflowDslDialog({
@@ -126,7 +127,10 @@ export function WorkflowDslDialog({
   );
 }
 
-export function WorkflowOperatorPalette({ operators }: WorkflowOperatorPaletteProps) {
+export function WorkflowOperatorPalette({
+  operators,
+  onAddOperator,
+}: WorkflowOperatorPaletteProps) {
   const { t } = useTranslation();
   const handleDragStart = useCallback(
     (event: DragEvent<HTMLButtonElement>, type: DataWorkflowOperatorType) => {
@@ -145,6 +149,9 @@ export function WorkflowOperatorPalette({ operators }: WorkflowOperatorPalettePr
             type="button"
             draggable
             onDragStart={(event) => handleDragStart(event, type)}
+            onClick={() => onAddOperator?.(type)}
+            title={t('data.workflow.addOperatorToCanvas')}
+            aria-label={`${t(labelKey)} — ${t('data.workflow.addOperatorToCanvas')}`}
             className="flex h-9 w-full cursor-grab items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent active:cursor-grabbing"
           >
             <span
@@ -164,6 +171,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   data,
   selected,
 }: NodeProps<WorkflowFlowNode>) {
+  const { t } = useTranslation();
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   // Edge endpoints declared by the operator registry (empty => no handles).
@@ -239,7 +247,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
         </span>
         {runStat ? (
           <span className="truncate text-[9px] leading-none text-text-muted">
-            {formatRunStat(runStat)}
+            {formatRunStat(runStat, t)}
           </span>
         ) : null}
       </span>
@@ -247,13 +255,23 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   );
 });
 
-function formatRunStat(stat: {
-  inputRows: number | null;
-  outputRows: number;
-  droppedRows?: number;
-  rejectedRows?: number;
-}): string {
-  const inRows = stat.inputRows === null ? '—' : String(stat.inputRows);
+function formatRunStat(
+  stat: {
+    inputRows: number | null;
+    inputRowsByHandle?: Record<string, number>;
+    outputRows: number;
+    droppedRows?: number;
+    rejectedRows?: number;
+  },
+  t: (key: string, options?: Record<string, unknown>) => string
+): string {
+  const byHandle = stat.inputRowsByHandle;
+  const inRows =
+    byHandle && (byHandle.left !== undefined || byHandle.right !== undefined)
+      ? `${t('data.workflow.runStatLeft', { count: byHandle.left ?? 0 })} ${t('data.workflow.runStatRight', { count: byHandle.right ?? 0 })}`
+      : stat.inputRows === null
+        ? '—'
+        : String(stat.inputRows);
   const extras = [
     stat.droppedRows ? `-${stat.droppedRows}` : '',
     stat.rejectedRows ? `✗${stat.rejectedRows}` : '',
