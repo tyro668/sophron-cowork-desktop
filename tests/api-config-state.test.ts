@@ -171,15 +171,16 @@ describe('api config state helpers', () => {
       'https://dashscope.aliyuncs.com/compatible-mode/v1'
     );
     expect(FALLBACK_PROVIDER_PRESETS.aliyun.models.map((item) => item.id)).toEqual([
-      'qwen3-max',
+      'qwen3.8-max',
+      'qwen3.7-max',
       'deepseek-v4-pro',
-      'glm-5.1',
-      'kimi-k2.6',
+      'glm-5.2',
+      'kimi-k2.7-code',
     ]);
-    expect(getModelInputGuidance('aliyun').placeholder).toContain('qwen3-max');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('qwen3.8-max');
     expect(getModelInputGuidance('aliyun').placeholder).toContain('deepseek-v4-pro');
-    expect(getModelInputGuidance('aliyun').placeholder).toContain('glm-5.1');
-    expect(getModelInputGuidance('aliyun').placeholder).toContain('kimi-k2.6');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('glm-5.2');
+    expect(getModelInputGuidance('aliyun').placeholder).toContain('kimi-k2.7-code');
 
     expect(FALLBACK_PROVIDER_PRESETS.zai.baseUrl).toBe('https://api.z.ai/api/paas/v4');
     expect(FALLBACK_PROVIDER_PRESETS.zai.models.map((item) => item.id)).toContain('glm-5.1');
@@ -298,18 +299,19 @@ describe('api config state helpers', () => {
   });
 
   it('keeps pristine custom openai profile in manual input mode', () => {
+    const pristineModel = FALLBACK_PROVIDER_PRESETS.openai.models[0]?.id || '';
     const config = {
       provider: 'custom',
       customProtocol: 'openai',
       activeProfileKey: 'custom:openai',
       apiKey: '',
       baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-5.4',
+      model: pristineModel,
       profiles: {
         'custom:openai': {
           apiKey: '',
           baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-5.4',
+          model: pristineModel,
         },
       },
       isConfigured: false,
@@ -318,7 +320,7 @@ describe('api config state helpers', () => {
     const snapshot = buildApiConfigSnapshot(config, FALLBACK_PROVIDER_PRESETS);
     expect(snapshot.profiles['custom:openai'].useCustomModel).toBe(true);
     expect(snapshot.profiles['custom:openai'].customModel).toBe('');
-    expect(snapshot.profiles['custom:openai'].model).toBe('gpt-5.4');
+    expect(snapshot.profiles['custom:openai'].model).toBe(pristineModel);
   });
 
   it('exposes updated preset lists and custom guidance', () => {
@@ -334,9 +336,9 @@ describe('api config state helpers', () => {
       'gemini-3.1-pro-preview'
     );
     expect(FALLBACK_PROVIDER_PRESETS.custom.models.map((item) => item.id)).toContain(
-      'kimi-k2-thinking'
+      'kimi-k2.7-code'
     );
-    expect(FALLBACK_PROVIDER_PRESETS.custom.models.map((item) => item.id)).toContain('glm-5');
+    expect(FALLBACK_PROVIDER_PRESETS.custom.models.map((item) => item.id)).toContain('glm-5.2');
     expect(FALLBACK_PROVIDER_PRESETS.custom.models.map((item) => item.id)).toContain(
       'MiniMax-M2.5'
     );
@@ -347,7 +349,7 @@ describe('api config state helpers', () => {
       'mistral-large-latest'
     );
 
-    expect(getModelInputGuidance('custom', 'openai').placeholder).toContain('deepseek-chat');
+    expect(getModelInputGuidance('custom', 'openai').placeholder).toContain('deepseek-v4-pro');
     expect(getModelInputGuidance('custom', 'openai').placeholder).not.toContain('kimi');
     expect(getModelInputGuidance('custom', 'openai').hint).toContain(
       'selected protocol or endpoint'

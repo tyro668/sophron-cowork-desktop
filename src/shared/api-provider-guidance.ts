@@ -53,7 +53,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'openrouter',
     recommendedProtocol: 'openai',
     recommendedBaseUrl: 'https://openrouter.ai/api/v1',
-    exampleModel: 'anthropic/claude-sonnet-4-6',
+    exampleModel: 'anthropic/claude-sonnet-5',
     protocolLabel: 'OpenRouter',
     preferProviderTab: 'openrouter',
     matcher: {
@@ -98,7 +98,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'aliyun',
     recommendedProtocol: 'openai',
     recommendedBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    exampleModel: 'qwen3-max',
+    exampleModel: 'qwen3.8-max',
     protocolLabel: 'Aliyun',
     preferProviderTab: 'aliyun',
     matcher: {
@@ -113,7 +113,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'custom',
     recommendedProtocol: 'anthropic',
     recommendedBaseUrl: 'https://api.kimi.com/coding',
-    exampleModel: 'kimi-k2-thinking',
+    exampleModel: 'kimi-k2.7-code',
     matcher: {
       hosts: ['api.kimi.com'],
       pathPrefixes: ['/coding', '/coding/v1'],
@@ -126,7 +126,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'custom',
     recommendedProtocol: 'anthropic',
     recommendedBaseUrl: 'https://open.bigmodel.cn/api/anthropic',
-    exampleModel: 'glm-5',
+    exampleModel: 'glm-5.2',
     matcher: {
       hosts: ['open.bigmodel.cn'],
       pathIncludes: ['/api/anthropic'],
@@ -139,7 +139,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'zai',
     recommendedProtocol: 'openai',
     recommendedBaseUrl: 'https://api.z.ai/api/paas/v4',
-    exampleModel: 'glm-5',
+    exampleModel: 'glm-5.2',
     protocolLabel: 'Z.AI',
     preferProviderTab: 'zai',
     matcher: {
@@ -170,7 +170,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'custom',
     recommendedProtocol: 'gemini',
     recommendedBaseUrl: 'https://generativelanguage.googleapis.com',
-    exampleModel: 'gemini-2.5-flash',
+    exampleModel: 'gemini-3.8-flash',
     matcher: {
       hosts: ['generativelanguage.googleapis.com'],
     },
@@ -196,7 +196,7 @@ export const COMMON_PROVIDER_SETUPS: CommonProviderSetup[] = [
     applyProvider: 'custom',
     recommendedProtocol: 'openai',
     recommendedBaseUrl: 'https://your-provider.example/v1',
-    exampleModel: 'deepseek-chat',
+    exampleModel: 'deepseek-v4-flash',
   },
 ];
 

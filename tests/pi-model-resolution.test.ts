@@ -400,7 +400,7 @@ describe('pi model resolution helpers', () => {
     expect(reasoner.reasoning).toBe(true);
 
     // Non-reasoning models should default to false
-    const gpt = buildSyntheticPiModel('gpt-5.4', 'openai', 'openai');
+    const gpt = buildSyntheticPiModel('gpt-4.1', 'openai', 'openai');
     expect(gpt.reasoning).toBe(false);
 
     const llama = buildSyntheticPiModel('llama-4-scout', 'meta', 'openai');

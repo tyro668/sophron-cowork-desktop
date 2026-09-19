@@ -43,7 +43,12 @@ export function TaskActivity({
       (step) =>
         step.type === 'tool_call' && step.status === 'running' && step.parentId === activeTurnStepId
     );
-  const liveOutput = activeTool ? outputs[activeTool.id] : undefined;
+  const showingInput = activeTool?.toolPhase === 'preparing' || activeTool?.toolPhase === 'ready';
+  const liveOutput = showingInput
+    ? activeTool?.toolInputPreview
+    : activeTool
+      ? outputs[activeTool.id]
+      : undefined;
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
   const expanded = Boolean(activeTool && expandedToolId === activeTool.id);
   const outputId = useId();
@@ -56,7 +61,14 @@ export function TaskActivity({
   }, [expanded, liveOutput?.text]);
 
   const status = activeTool
-    ? t('chat.activity.runningTool', { tool: activeTool.title })
+    ? t(
+        activeTool.toolPhase === 'preparing'
+          ? 'chat.activity.preparingTool'
+          : activeTool.toolPhase === 'ready'
+            ? 'chat.activity.readyTool'
+            : 'chat.activity.runningTool',
+        { tool: activeTool.title }
+      )
     : hasStreamingText
       ? t('chat.activity.responding')
       : t('chat.activity.waitingModel');
@@ -85,8 +97,8 @@ export function TaskActivity({
           aria-controls={expanded ? outputId : undefined}
         >
           <Terminal className="h-3 w-3 shrink-0" aria-hidden="true" />
-          <span>{t('chat.activity.liveOutput')}</span>
-          {liveOutput?.text && (
+          <span>{t(showingInput ? 'chat.activity.inputPreview' : 'chat.activity.liveOutput')}</span>
+          {!showingInput && liveOutput?.text && (
             <span className="min-w-0 truncate text-text-muted">
               {liveOutput.text.split('\n').at(-1)}
             </span>
@@ -115,13 +127,15 @@ export function TaskActivity({
               </pre>
               {liveOutput.truncated && (
                 <p className="mt-1 text-[11px] text-text-muted">
-                  {t('chat.activity.outputTruncated')}
+                  {t(
+                    showingInput ? 'chat.activity.inputTruncated' : 'chat.activity.outputTruncated'
+                  )}
                 </p>
               )}
             </>
           ) : (
             <p className="px-1 py-1 text-[11px] text-text-muted">
-              {t('chat.activity.noOutputYet')}
+              {t(showingInput ? 'chat.activity.noInputYet' : 'chat.activity.noOutputYet')}
             </p>
           )}
         </div>

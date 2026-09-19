@@ -100,6 +100,7 @@ export class AgentRunEventBridge {
   firstStreamEventAt: number | undefined;
   toolCallCount = 0;
   toolErrorCount = 0;
+  private toolInputSentAt = new Map<string, number>();
   private liveToolOutputSent = new Map<string, { text: string; sentAt: number }>();
 
   // ── Loop guard: protect against runaway tool-call loops ──
@@ -264,7 +265,11 @@ export class AgentRunEventBridge {
       if (event.type === 'message_update') {
         const updateType = event.assistantMessageEvent.type;
         this.recordStreamEvent(updateType);
-        if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {
+        if (
+          updateType !== 'text_delta' &&
+          updateType !== 'thinking_delta' &&
+          updateType !== 'toolcall_delta'
+        ) {
           log(`[AgentRunner] Event: ${event.type} → ${updateType}`);
         }
       } else if (event.type === 'message_start') {
@@ -368,11 +373,38 @@ export class AgentRunEventBridge {
               status: 'running',
               title: toolDisplayName,
               toolName,
+              toolPhase: 'preparing',
               toolInput:
                 toolContent?.type === 'toolCall'
                   ? sanitizeTraceInput(toolContent.arguments || {})
                   : undefined,
               timestamp: Date.now(),
+            });
+          } else if (ame.type === 'toolcall_delta' || ame.type === 'toolcall_end') {
+            this.markFirstStreamEvent(ame.type);
+            const tool =
+              ame.type === 'toolcall_end' ? ame.toolCall : ame.partial.content[ame.contentIndex];
+            if (tool?.type !== 'toolCall') break;
+            const now = Date.now();
+            const previous = this.toolInputSentAt.get(tool.id);
+            // Even unchanged/bounded previews carry activity. Always flush the final snapshot.
+            if (ame.type === 'toolcall_delta' && previous !== undefined && now - previous < 150)
+              break;
+            if (ame.type === 'toolcall_end') this.toolInputSentAt.delete(tool.id);
+            else this.toolInputSentAt.set(tool.id, now);
+            const input = sanitizeTraceInput(tool.arguments || {});
+            const inputText = JSON.stringify(input, null, 2);
+            const preview = buildLiveToolOutputSnapshot(inputText);
+            if (preview && inputText.includes('…[truncated]')) preview.truncated = true;
+            this.ctx.sendTraceUpdate(this.ctx.session.id, tool.id, {
+              turnId: this.ctx.turnId,
+              parentId: this.ctx.thinkingStepId,
+              type: 'tool_call',
+              status: 'running',
+              title: this.ctx.getToolDisplayName(tool.name),
+              toolName: tool.name,
+              toolPhase: ame.type === 'toolcall_end' ? 'ready' : 'preparing',
+              toolInputPreview: preview ?? undefined,
             });
           } else if (ame.type === 'done') {
             // Some providers emit 'done' via message_update — we handle it
@@ -592,6 +624,7 @@ export class AgentRunEventBridge {
           logCtx(`[AgentRunner] Tool execution start: ${event.toolName}`);
           const toolCallId = event.toolCallId;
           const startedAt = Date.now();
+          this.toolInputSentAt.delete(toolCallId);
           this.ctx.toolStartedAt.set(`${this.ctx.session.id}:${toolCallId}`, startedAt);
           if (!this.ctx.seenToolCallIds.has(toolCallId)) {
             this.ctx.seenToolCallIds.add(toolCallId);
@@ -607,6 +640,8 @@ export class AgentRunEventBridge {
             title: this.ctx.getToolDisplayName(event.toolName),
             toolName: event.toolName,
             toolInput: sanitizeTraceInput(event.args),
+            toolPhase: 'executing',
+            toolInputPreview: undefined,
           });
           // ── Loop guard layer 2: per-tool cumulative frequency ──
           this.handleLoopGuardDecision(

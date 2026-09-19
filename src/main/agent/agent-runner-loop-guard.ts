@@ -355,7 +355,7 @@ export class LoopGuard {
 export const LOOP_GUARD_GUIDANCE =
   '\n\n**Suggestions:**\n' +
   '- Enable "Thinking" mode in settings and retry, especially for models like gemini-3.1-pro that tend to fall into empty loops when thinking is disabled\n' +
-  '- Switch to a model with built-in reasoning capabilities (e.g., claude-sonnet-4-6)\n' +
+  '- Switch to a model with built-in reasoning capabilities (e.g., claude-sonnet-5)\n' +
   '- Break complex tasks into smaller subtasks and send them separately';
 
 /** Steering message injected to the model when warn threshold is crossed. */

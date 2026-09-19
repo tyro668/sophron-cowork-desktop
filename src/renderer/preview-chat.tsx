@@ -145,7 +145,7 @@ const session: Session = {
   mountedPaths: [],
   allowedTools: [],
   memoryEnabled: false,
-  model: 'claude-sonnet-4-5',
+  model: 'claude-sonnet-5',
   createdAt: Date.now() - 3600000,
   updatedAt: Date.now(),
 };
@@ -153,7 +153,7 @@ const session: Session = {
 const appConfig: AppConfig = {
   provider: 'anthropic',
   apiKey: 'preview',
-  model: 'claude-sonnet-4-5',
+  model: 'claude-sonnet-5',
   activeProfileKey: 'anthropic',
   profiles: {},
   activeConfigSetId: 'preview',

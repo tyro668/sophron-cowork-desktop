@@ -227,7 +227,7 @@ describe('ConfigStore config sets', () => {
     expect(blankSet?.enableThinking).toBe(false);
     expect(blankSet?.profiles['custom:openai']?.apiKey).toBe('');
     expect(blankSet?.profiles['custom:openai']?.baseUrl).toBe('https://api.openai.com/v1');
-    expect(blankSet?.profiles['custom:openai']?.model).toBe('gpt-5.4');
+    expect(blankSet?.profiles['custom:openai']?.model).toBe('gpt-5.6-sol');
     // A blank set is never usable and its projection stays unconfigured.
     expect(store.hasUsableCredentialsForActiveSet()).toBe(true);
     // The projection still reflects the unchanged default set.
@@ -267,7 +267,7 @@ describe('ConfigStore config sets', () => {
     expect(blankSet?.provider).toBe('');
     expect(blankSet?.profiles.gemini?.apiKey).toBe('');
     expect(blankSet?.profiles.gemini?.baseUrl).toBe('https://generativelanguage.googleapis.com');
-    expect(blankSet?.profiles.gemini?.model).toBe('gemini-2.5-flash');
+    expect(blankSet?.profiles.gemini?.model).toBe('gemini-3.8-flash');
   });
 
   it('persists theme preference across config mutations', () => {

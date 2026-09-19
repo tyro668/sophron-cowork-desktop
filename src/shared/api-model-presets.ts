@@ -60,14 +60,14 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     models: [
-      { id: 'anthropic/claude-opus-4-6', name: 'anthropic/claude-opus-4-6' },
-      { id: 'anthropic/claude-sonnet-4-6', name: 'anthropic/claude-sonnet-4-6' },
-      { id: 'anthropic/claude-haiku-4-5', name: 'anthropic/claude-haiku-4-5' },
-      { id: 'openai/gpt-5.4', name: 'openai/gpt-5.4' },
-      { id: 'openai/gpt-5.3-codex', name: 'openai/gpt-5.3-codex' },
+      { id: 'anthropic/claude-fable-5.1', name: 'anthropic/claude-fable-5.1' },
+      { id: 'anthropic/claude-opus-5', name: 'anthropic/claude-opus-5' },
+      { id: 'anthropic/claude-sonnet-5', name: 'anthropic/claude-sonnet-5' },
+      { id: 'anthropic/claude-haiku-4.5', name: 'anthropic/claude-haiku-4.5' },
+      { id: 'openai/gpt-6-astra', name: 'openai/gpt-6-astra' },
+      { id: 'openai/gpt-5.6-sol', name: 'openai/gpt-5.6-sol' },
+      { id: 'google/gemini-3.8-flash', name: 'google/gemini-3.8-flash' },
       { id: 'google/gemini-3.1-pro-preview', name: 'google/gemini-3.1-pro-preview' },
-      { id: 'google/gemini-3-flash-preview', name: 'google/gemini-3-flash-preview' },
-      { id: 'google/gemini-2.5-flash', name: 'google/gemini-2.5-flash' },
     ],
     keyPlaceholder: 'sk-or-v1-...',
     keyHint: '从 openrouter.ai/keys 获取',
@@ -76,11 +76,12 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'Anthropic',
     baseUrl: 'https://api.anthropic.com',
     models: [
-      { id: 'claude-opus-4-6', name: 'claude-opus-4-6' },
-      { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' },
+      { id: 'claude-fable-5-1', name: 'claude-fable-5-1' },
+      { id: 'claude-opus-5', name: 'claude-opus-5' },
+      { id: 'claude-sonnet-5', name: 'claude-sonnet-5' },
       { id: 'claude-haiku-4-5', name: 'claude-haiku-4-5' },
-      { id: 'claude-sonnet-4-5', name: 'claude-sonnet-4-5' },
-      { id: 'claude-3-7-sonnet-latest', name: 'claude-3-7-sonnet-latest' },
+      { id: 'claude-opus-4-8', name: 'claude-opus-4-8' },
+      { id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6' },
     ],
     keyPlaceholder: 'sk-ant-...',
     keyHint: '从 console.anthropic.com 获取',
@@ -89,13 +90,14 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     models: [
+      { id: 'gpt-6-astra', name: 'gpt-6-astra' },
+      { id: 'gpt-5.6-sol', name: 'gpt-5.6-sol' },
+      { id: 'gpt-5.6-terra', name: 'gpt-5.6-terra' },
+      { id: 'gpt-5.6-luna', name: 'gpt-5.6-luna' },
       { id: 'gpt-5.4', name: 'gpt-5.4' },
-      { id: 'gpt-5.4-pro', name: 'gpt-5.4-pro' },
       { id: 'gpt-5.4-mini', name: 'gpt-5.4-mini' },
       { id: 'gpt-5.4-nano', name: 'gpt-5.4-nano' },
       { id: 'gpt-5.3-codex', name: 'gpt-5.3-codex' },
-      { id: 'o3', name: 'o3' },
-      { id: 'o4-mini', name: 'o4-mini' },
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 platform.openai.com 获取',
@@ -126,12 +128,10 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'Moonshot',
     baseUrl: 'https://api.moonshot.ai/v1',
     models: [
+      { id: 'kimi-k3', name: 'kimi-k3' },
+      { id: 'kimi-k2.7-code', name: 'kimi-k2.7-code' },
       { id: 'kimi-k2.6', name: 'kimi-k2.6' },
       { id: 'kimi-k2.5', name: 'kimi-k2.5' },
-      { id: 'kimi-k2-thinking', name: 'kimi-k2-thinking' },
-      { id: 'moonshot-v1-128k', name: 'moonshot-v1-128k' },
-      { id: 'moonshot-v1-32k', name: 'moonshot-v1-32k' },
-      { id: 'moonshot-v1-8k', name: 'moonshot-v1-8k' },
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 platform.kimi.ai / platform.moonshot.ai 获取',
@@ -140,10 +140,11 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'Aliyun',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
-      { id: 'qwen3-max', name: 'Qwen3-Max' },
+      { id: 'qwen3.8-max', name: 'Qwen3.8-Max' },
+      { id: 'qwen3.7-max', name: 'Qwen3.7-Max' },
       { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
-      { id: 'glm-5.1', name: 'GLM-5.1' },
-      { id: 'kimi-k2.6', name: 'Kimi-K2.6' },
+      { id: 'glm-5.2', name: 'GLM-5.2' },
+      { id: 'kimi-k2.7-code', name: 'Kimi-K2.7-Code' },
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从阿里云百炼控制台 / DashScope 获取',
@@ -152,11 +153,11 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'Z.AI',
     baseUrl: 'https://api.z.ai/api/paas/v4',
     models: [
+      { id: 'glm-5.3', name: 'glm-5.3' },
+      { id: 'glm-5.3-flash', name: 'glm-5.3-flash' },
+      { id: 'glm-5.2', name: 'glm-5.2' },
       { id: 'glm-5.1', name: 'glm-5.1' },
       { id: 'glm-5', name: 'glm-5' },
-      { id: 'glm-4.5', name: 'glm-4.5' },
-      { id: 'glm-4.5-air', name: 'glm-4.5-air' },
-      { id: 'glm-4.5-flash', name: 'glm-4.5-flash' },
     ],
     keyPlaceholder: 'sk-...',
     keyHint: '从 docs.z.ai / Z.AI Open Platform 获取',
@@ -172,12 +173,11 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com',
     models: [
+      { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash' },
+      { id: 'gemini-3.5-flash', name: 'gemini-3.5-flash' },
       { id: 'gemini-3.1-pro-preview', name: 'gemini-3.1-pro-preview' },
-      { id: 'gemini-3-flash-preview', name: 'gemini-3-flash-preview' },
-      { id: 'gemini-3.1-flash-lite-preview', name: 'gemini-3.1-flash-lite-preview' },
-      { id: 'gemini-2.5-pro', name: 'gemini-2.5-pro' },
+      { id: 'gemini-3.1-flash-lite', name: 'gemini-3.1-flash-lite' },
       { id: 'gemini-2.5-flash', name: 'gemini-2.5-flash' },
-      { id: 'gemini-2.5-flash-lite', name: 'gemini-2.5-flash-lite' },
     ],
     keyPlaceholder: 'AIza...',
     keyHint: '从 aistudio.google.com 获取',
@@ -187,8 +187,8 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     baseUrl: 'http://localhost:11434/v1',
     models: [
       { id: 'qwen3.5:0.8b', name: 'qwen3.5:0.8b' },
-      { id: 'llama3.2:latest', name: 'llama3.2:latest' },
-      { id: 'deepseek-r1:latest', name: 'deepseek-r1:latest' },
+      { id: 'llama3.3:latest', name: 'llama3.3:latest' },
+      { id: 'gpt-oss:20b', name: 'gpt-oss:20b' },
     ],
     keyPlaceholder: '可留空',
     keyHint: '多数 Ollama 部署可留空；如果你的代理层要求鉴权，也可以填写 Key',
@@ -197,13 +197,12 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: '更多模型',
     baseUrl: '',
     models: [
-      { id: 'deepseek-chat', name: 'deepseek-chat' },
-      { id: 'deepseek-reasoner', name: 'deepseek-reasoner' },
       { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro' },
-      { id: 'kimi-k2-thinking', name: 'kimi-k2-thinking' },
-      { id: 'glm-5', name: 'glm-5' },
+      { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash' },
+      { id: 'kimi-k2.7-code', name: 'kimi-k2.7-code' },
+      { id: 'glm-5.2', name: 'glm-5.2' },
       { id: 'MiniMax-M2.5', name: 'MiniMax-M2.5' },
-      { id: 'qwen-max', name: 'qwen-max' },
+      { id: 'qwen3.8-max', name: 'qwen3.8-max' },
       { id: 'grok-code-fast-1', name: 'grok-code-fast-1' },
       { id: 'mistral-large-latest', name: 'mistral-large-latest' },
     ],
@@ -216,36 +215,38 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
   openrouter: {
     piProvider: 'openrouter',
     pick: [
-      'anthropic/claude-opus-4-6',
-      'anthropic/claude-sonnet-4-6',
-      'anthropic/claude-haiku-4-5',
-      'openai/gpt-5.4',
-      'openai/gpt-5.3-codex',
+      'anthropic/claude-fable-5.1',
+      'anthropic/claude-opus-5',
+      'anthropic/claude-sonnet-5',
+      'anthropic/claude-haiku-4.5',
+      'openai/gpt-6-astra',
+      'openai/gpt-5.6-sol',
+      'google/gemini-3.8-flash',
       'google/gemini-3.1-pro-preview',
-      'google/gemini-3-flash-preview',
-      'google/gemini-2.5-flash',
     ],
   },
   anthropic: {
     piProvider: 'anthropic',
     pick: [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
+      'claude-fable-5-1',
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-haiku-4-5',
-      'claude-sonnet-4-5',
-      'claude-3-7-sonnet-latest',
+      'claude-opus-4-8',
+      'claude-sonnet-4-6',
     ],
   },
   openai: {
     piProvider: 'openai',
     pick: [
+      'gpt-6-astra',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
       'gpt-5.4',
-      'gpt-5.4-pro',
       'gpt-5.4-mini',
       'gpt-5.4-nano',
       'gpt-5.3-codex',
-      'o3',
-      'o4-mini',
     ],
   },
   'openai-codex': {
@@ -258,21 +259,20 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
   },
   zai: {
     piProvider: 'zai',
-    pick: ['glm-5', 'glm-4.5', 'glm-4.5-air'],
+    pick: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2', 'glm-5.1', 'glm-5'],
   },
   aliyun: {
     piProvider: 'aliyun',
-    pick: ['qwen3-max', 'deepseek-v4-pro', 'glm-5.1', 'kimi-k2.6'],
+    pick: ['qwen3.8-max', 'qwen3.7-max', 'deepseek-v4-pro', 'glm-5.2', 'kimi-k2.7-code'],
   },
   gemini: {
     piProvider: 'google',
     pick: [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
       'gemini-3.1-pro-preview',
-      'gemini-3-flash-preview',
-      'gemini-3.1-flash-lite-preview',
-      'gemini-2.5-pro',
+      'gemini-3.1-flash-lite',
       'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
     ],
   },
 };
@@ -283,35 +283,35 @@ export function getModelInputGuidance(
 ): ModelInputGuidance {
   if (provider === 'openrouter') {
     return {
-      placeholder: 'openai/gpt-5.4, anthropic/claude-sonnet-4-6, google/gemini-3-flash-preview',
+      placeholder: 'openai/gpt-6-astra, anthropic/claude-sonnet-5, google/gemini-3.8-flash',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'custom' && customProtocol === 'openai') {
     return {
-      placeholder: 'deepseek-chat, deepseek-reasoner, qwen-max, gpt-5.4-mini',
+      placeholder: 'deepseek-v4-pro, deepseek-v4-flash, qwen3.8-max, gpt-5.4-mini',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'custom' && customProtocol === 'gemini') {
     return {
-      placeholder: 'gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-2.5-flash',
+      placeholder: 'gemini-3.8-flash, gemini-3.1-pro-preview, gemini-2.5-flash',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'custom') {
     return {
-      placeholder: 'glm-5, kimi-k2-thinking, claude-sonnet-4-6',
+      placeholder: 'glm-5.2, kimi-k2.7-code, claude-sonnet-5',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'openai') {
     return {
-      placeholder: 'gpt-5.4, gpt-5.4-mini, o3',
+      placeholder: 'gpt-6-astra, gpt-5.6-sol, gpt-5.4-mini',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
@@ -332,21 +332,21 @@ export function getModelInputGuidance(
 
   if (provider === 'moonshot') {
     return {
-      placeholder: 'kimi-k2.6, kimi-k2.5, kimi-k2-thinking',
+      placeholder: 'kimi-k3, kimi-k2.7-code, kimi-k2.6',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'aliyun') {
     return {
-      placeholder: 'qwen3-max, deepseek-v4-pro, glm-5.1, kimi-k2.6',
+      placeholder: 'qwen3.8-max, qwen3.7-max, deepseek-v4-pro, glm-5.2, kimi-k2.7-code',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   if (provider === 'zai') {
     return {
-      placeholder: 'glm-5.1, glm-5, glm-4.5',
+      placeholder: 'glm-5.3, glm-5.2, glm-5.1',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
@@ -360,20 +360,20 @@ export function getModelInputGuidance(
 
   if (provider === 'ollama') {
     return {
-      placeholder: 'qwen3.5:0.8b, llama3.2:latest, deepseek-r1:latest',
+      placeholder: 'qwen3.5:0.8b, llama3.3:latest, gpt-oss:20b',
       hint: 'Use the exact model ID returned by your Ollama server.',
     };
   }
 
   if (provider === 'gemini') {
     return {
-      placeholder: 'gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-2.5-flash',
+      placeholder: 'gemini-3.8-flash, gemini-3.5-flash, gemini-3.1-pro-preview',
       hint: 'Use the exact model ID for the selected protocol or endpoint.',
     };
   }
 
   return {
-    placeholder: 'claude-sonnet-4-6, claude-opus-4-6',
+    placeholder: 'claude-sonnet-5, claude-opus-5',
     hint: 'Use the exact model ID for the selected protocol or endpoint.',
   };
 }

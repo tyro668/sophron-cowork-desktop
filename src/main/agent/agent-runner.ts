@@ -652,7 +652,7 @@ export class AgentRunner {
   private getCurrentModelString(preferredModel?: string): string {
     const routeModel = preferredModel?.trim();
     const configuredModel = configStore.get('model')?.trim();
-    const model = routeModel || configuredModel || 'anthropic/claude-sonnet-4-6';
+    const model = routeModel || configuredModel || 'anthropic/claude-sonnet-5';
     logCtx('[AgentRunner] Current model:', model);
     logCtx(
       '[AgentRunner] Model source:',

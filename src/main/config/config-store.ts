@@ -112,17 +112,17 @@ const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> =
   openrouter: {
     apiKey: '',
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'anthropic/claude-sonnet-4-6',
+    model: 'anthropic/claude-sonnet-5',
   },
   anthropic: {
     apiKey: '',
     baseUrl: 'https://api.anthropic.com',
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
   },
   openai: {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-5.4',
+    model: 'gpt-5.6-sol',
   },
   'openai-codex': {
     apiKey: '',
@@ -142,12 +142,12 @@ const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> =
   aliyun: {
     apiKey: '',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'qwen3-max',
+    model: 'qwen3.8-max',
   },
   zai: {
     apiKey: '',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    model: 'glm-5',
+    model: 'glm-5.2',
   },
   ollama: {
     apiKey: '',
@@ -157,22 +157,22 @@ const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> =
   gemini: {
     apiKey: '',
     baseUrl: 'https://generativelanguage.googleapis.com',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
   },
   'custom:anthropic': {
     apiKey: '',
     baseUrl: 'https://open.bigmodel.cn/api/anthropic',
-    model: 'glm-5',
+    model: 'glm-5.2',
   },
   'custom:openai': {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-5.4',
+    model: 'gpt-5.6-sol',
   },
   'custom:gemini': {
     apiKey: '',
     baseUrl: 'https://generativelanguage.googleapis.com',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
   },
 };
 
@@ -280,17 +280,19 @@ export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
       const registryModels = getModels(curated.piProvider);
       if (!registryModels || registryModels.length === 0) continue;
 
-      const registryIds = new Set(registryModels.map((m) => m.id));
-      const picked = curated.pick
-        .filter((id) => registryIds.has(id))
-        .map((id) => {
-          const reg = registryModels.find((m) => m.id === id);
-          return { id, name: reg?.name || id };
-        });
+      // Static preset stays authoritative for membership — the bundled pi-ai
+      // registry can lag behind current provider lineups, so intersection alone
+      // would silently drop newly released models. The registry only enriches
+      // display names for picked ids.
+      const pickedIds = new Set(curated.pick);
+      const registryNameById = new Map(registryModels.map((m) => [m.id, m.name]));
+      const models = preset.models.map((entry) =>
+        pickedIds.has(entry.id) && registryNameById.get(entry.id)
+          ? { id: entry.id, name: registryNameById.get(entry.id) as string }
+          : entry
+      );
 
-      if (picked.length > 0) {
-        result[providerKey] = { ...preset, models: picked };
-      }
+      result[providerKey] = { ...preset, models };
     }
 
     cachedDynamicPresets = result as unknown as typeof PROVIDER_PRESETS;
@@ -621,6 +623,33 @@ export class ConfigStore {
         /^(anthropic\/claude-(?:sonnet|opus|haiku)-\d+)-(\d+)/,
         '$1.$2'
       );
+      // Retired on OpenRouter too: claude-3.7-sonnet was retired 2026-02-19.
+      if (/^anthropic\/claude-3[.-]7-sonnet/.test(orProfile.model)) {
+        orProfile.model = 'anthropic/claude-sonnet-5';
+      }
+    }
+    // Migrate retired model IDs to current replacements (Anthropic retired
+    // claude-3-7-sonnet on 2026-02-19; DeepSeek removed deepseek-chat /
+    // deepseek-reasoner from its model list).
+    const anthropicProfile = config.profiles?.anthropic;
+    if (anthropicProfile?.model && /^claude-3-7-sonnet/.test(anthropicProfile.model)) {
+      anthropicProfile.model = 'claude-sonnet-5';
+    }
+    const deepseekProfile = config.profiles?.deepseek;
+    if (deepseekProfile?.model === 'deepseek-chat') {
+      deepseekProfile.model = 'deepseek-v4-flash';
+    } else if (deepseekProfile?.model === 'deepseek-reasoner') {
+      deepseekProfile.model = 'deepseek-v4-pro';
+    }
+    if (config.provider === 'anthropic' && /^claude-3-7-sonnet/.test(config.model || '')) {
+      config.model = 'claude-sonnet-5';
+    }
+    if (config.provider === 'deepseek') {
+      if (config.model === 'deepseek-chat') {
+        config.model = 'deepseek-v4-flash';
+      } else if (config.model === 'deepseek-reasoner') {
+        config.model = 'deepseek-v4-pro';
+      }
     }
     // Also fix the flat model field (legacy compat)
     if (config.model?.startsWith('gemini/')) {

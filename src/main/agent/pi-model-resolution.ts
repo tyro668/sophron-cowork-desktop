@@ -14,7 +14,7 @@ const OPENAI_COMPATIBLE_ROUTE_PROVIDERS = new Set([
   'ollama',
 ]);
 const REASONING_MODEL_PATTERN =
-  /\bthinking\b|\breasoner\b|deepseek-r1|deepseek-v4|kimi-k2|qwen3(?:\.5)?(?=[:/-]|$)/i;
+  /\bthinking\b|\breasoner\b|claude-|gpt-[56]|o[0-9]+|deepseek-r1|deepseek-v4|kimi-k\d|qwen3(?:\.\d+)?(?=[:/-]|$)|glm-[45]|gemini-[23]/i;
 const DEEPSEEK_MODEL_PATTERN = /(?:^|\/)deepseek(?:$|[/_.-])/i;
 type PiRegistryProvider = Parameters<typeof getModel>[0];
 
@@ -114,6 +114,15 @@ const DEEPSEEK_CONTEXT_WINDOW = 1_000_000;
  * Used as a middle layer between user config overrides and the hardcoded default.
  */
 const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: number }> = {
+  'claude-fable-5': { contextWindow: 1_000_000, maxTokens: 131_072 },
+  'claude-mythos-5': { contextWindow: 1_000_000, maxTokens: 131_072 },
+  'claude-opus-5': { contextWindow: 1_000_000, maxTokens: 131_072 },
+  'claude-sonnet-5': { contextWindow: 1_000_000, maxTokens: 131_072 },
+  'kimi-k': { contextWindow: 262_144, maxTokens: 32768 },
+  'glm-5': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 131_072 },
+  'gemini-3': { contextWindow: 1_000_000, maxTokens: 65536 },
+  'qwen3.8': { contextWindow: 1_000_000, maxTokens: 65536 },
+  'qwen3.7': { contextWindow: 1_000_000, maxTokens: 65536 },
   'qwen3.5': { contextWindow: 258048, maxTokens: 32768 },
   'qwen3-max': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
   qwen3: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 8192 },
@@ -243,7 +252,7 @@ export function resolveSyntheticPiModelFallback(
 export function resolvePiModelString(input: PiModelStringInput): string {
   const model = input.model?.trim();
   if (!model) {
-    return input.defaultModel || 'anthropic/claude-sonnet-4-6';
+    return input.defaultModel || 'anthropic/claude-sonnet-5';
   }
   if (model.includes('/')) {
     return model;

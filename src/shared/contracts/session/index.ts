@@ -150,6 +150,8 @@ export interface TraceStep {
   content?: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
+  toolPhase?: 'preparing' | 'ready' | 'executing';
+  toolInputPreview?: { text: string; truncated: boolean };
   toolOutput?: string;
   toolOutputTruncated?: boolean;
   toolOutputLength?: number;

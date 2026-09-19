@@ -887,7 +887,7 @@ async function callVisionAPI(
     process.env.CLAUDE_MODEL ||
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
     process.env.OPENAI_MODEL ||
-    'claude-sonnet-4-6';
+    'claude-sonnet-5';
   // Get enableThinking from configStore
   // const enableThinking = configStore.get('enableThinking') ?? false;
   // writeMCPLog(`[Vision] configStore: ${JSON.stringify(configStore.getAll())}`);
