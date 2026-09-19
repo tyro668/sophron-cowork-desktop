@@ -416,6 +416,20 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       }
     },
   },
+  {
+    version: 7,
+    name: 'workflow_node_cache_signature',
+    up: async (ctx) => {
+      const columns = await ctx.metaQueryRows<{ name: string }>(
+        'PRAGMA table_info(data_workflow_node_caches)'
+      );
+      if (!columns.some((column) => column.name === 'workflow_signature')) {
+        await ctx.metaRunSql(
+          'ALTER TABLE data_workflow_node_caches ADD COLUMN workflow_signature VARCHAR'
+        );
+      }
+    },
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

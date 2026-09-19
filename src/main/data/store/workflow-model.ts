@@ -42,6 +42,7 @@ export interface DataWorkflowNodeCacheRow {
   node_type: string;
   table_name: string;
   cache_scope: string;
+  workflow_signature?: string | null;
   expires_at: number | string | null;
   created_at: number | string;
   updated_at: number | string;

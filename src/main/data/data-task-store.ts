@@ -117,7 +117,8 @@ export class DataTaskStore {
       datasets,
       caches,
       compiler,
-      workflows
+      workflows,
+      journal
     );
     const commitCoordinator = new OutputCommitCoordinator(
       this.ctx,

@@ -1,5 +1,6 @@
 /** Commits validated staging outputs with journaled rollback + recovery. */
 import type { DataCleaningTask, DataWorkflowSaveInput } from '../../../../shared/contracts';
+import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import { quoteIdentifier, toNumber } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
@@ -60,6 +61,7 @@ export class OutputCommitCoordinator {
       }
       interface SinkPlan {
         journalId: string;
+        nodeId: string;
         stagingTable: string;
         target: ResolvedTarget;
         backupTable: string;
@@ -176,6 +178,7 @@ export class OutputCommitCoordinator {
               incomingCount;
         sinks.push({
           journalId: index === 0 ? commitId : `${commitId}__${index}`,
+          nodeId: sink.nodeId,
           stagingTable: sink.stagingTable,
           target,
           backupTable: tableNameFromId(
@@ -205,6 +208,11 @@ export class OutputCommitCoordinator {
             outputDatasetId: sink.target.outputDatasetId ?? null,
             rowCount: sink.finalRowCount,
             nodeCount: runtimeWorkflow.nodes.length,
+            // Persisted provenance: the committed output stays attributable to
+            // the upstream config that generated it (preview staleness).
+            workflowSignature: sink.nodeId
+              ? getWorkflowUpstreamSignature(workflow, sink.nodeId)
+              : null,
             completedAt,
           }),
           at: completedAt,

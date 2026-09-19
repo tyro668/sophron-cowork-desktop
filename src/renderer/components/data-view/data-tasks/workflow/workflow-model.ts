@@ -56,30 +56,6 @@ export function getWorkflowSaveInputSignature(workflow: DataTaskWorkflow): strin
   return JSON.stringify(toWorkflowSaveInput(workflow));
 }
 
-/**
- * Signature of the subgraph that determines one node's preview: the node
- * itself plus every upstream ancestor (config, types, edge topology). Node
- * positions/labels are excluded — they don't affect preview data. Used to
- * bind a materialized preview to the config that generated it.
- */
-export function getWorkflowUpstreamSignature(input: DataWorkflowSaveInput, nodeId: string): string {
-  const upstream = new Set<string>([nodeId]);
-  const pending = [nodeId];
-  while (pending.length > 0) {
-    const id = pending.pop()!;
-    for (const edge of input.edges) {
-      if (edge.targetNodeId === id && !upstream.has(edge.sourceNodeId)) {
-        upstream.add(edge.sourceNodeId);
-        pending.push(edge.sourceNodeId);
-      }
-    }
-  }
-  return JSON.stringify({
-    nodes: input.nodes
-      .filter((node) => upstream.has(node.id))
-      .map((node) => [node.id, node.type, node.config]),
-    edges: input.edges
-      .filter((edge) => upstream.has(edge.sourceNodeId) && upstream.has(edge.targetNodeId))
-      .map((edge) => [edge.sourceNodeId, edge.targetNodeId, edge.sourceHandle, edge.targetHandle]),
-  });
-}
+// The upstream-subgraph signature lives in shared/workflow-plan so the main
+// process can stamp node caches with the same value the renderer compares.
+export { getWorkflowUpstreamSignature } from '../../../../../shared/workflow-plan';

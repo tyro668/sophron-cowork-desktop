@@ -6,6 +6,7 @@ import { DuckDBInstance } from '@duckdb/node-api';
 import * as XLSX from 'xlsx';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
+import { getWorkflowUpstreamSignature } from '../src/shared/workflow-plan';
 
 const tempRoots: string[] = [];
 const stores: DataTaskStore[] = [];
@@ -1438,6 +1439,75 @@ describe('DuckDB data task store', () => {
     });
     expect(reopenedPreview.columns).toEqual(['order_id', 'revenue']);
     expect(reopenedPreview.totalRows).toBe(2);
+  });
+
+  it('stamps node caches with the generating upstream signature and timestamp', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
+    tempRoots.push(tempRoot);
+    const dbPath = path.join(tempRoot, 'workspace.duckdb');
+    const ordersPath = path.join(tempRoot, 'signature-orders.csv');
+    fs.writeFileSync(ordersPath, 'order_id,revenue\n1,20\n2,5\n3,30\n', 'utf8');
+
+    const store = createDataTaskStore(dbPath, {
+      now: () => 1_780_000_000_000,
+    });
+    stores.push(store);
+    const task = await store.createTask({ name: 'Cache signature', sourcePath: ordersPath });
+    const parsed = parsePrepDsl(`
+      input source task as orders
+
+      from orders
+        | filter [revenue] > 10
+        | output table "signature_output" mode replace
+    `);
+    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const saved = await store.saveTaskWorkflow(task.id, {
+      nodes: compiled.nodes,
+      edges: compiled.edges,
+    });
+    const filterNode = saved.nodes.find((node) => node.type === 'filter');
+    const outputNode = saved.nodes.find((node) => node.type === 'output');
+    expect(filterNode).toBeTruthy();
+    expect(outputNode).toBeTruthy();
+
+    await store.runTask(task.id);
+
+    const preview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: filterNode!.id,
+      nodeType: filterNode!.type,
+      nodeConfig: filterNode!.config,
+    });
+    const signatureInput = { nodes: saved.nodes, edges: saved.edges };
+    const filterSignature = getWorkflowUpstreamSignature(signatureInput, filterNode!.id);
+    expect(preview.generatedAt).toBe(1_780_000_000_000);
+    expect(preview.workflowSignature).toBe(filterSignature);
+
+    // Output sinks carry a signature too — their preview is the staged result.
+    const outputPreview = await store.previewWorkflowNode({
+      taskId: task.id,
+      nodeId: outputNode!.id,
+      nodeType: outputNode!.type,
+      nodeConfig: outputNode!.config,
+    });
+    expect(outputPreview.workflowSignature).toBe(
+      getWorkflowUpstreamSignature(signatureInput, outputNode!.id)
+    );
+
+    // Editing the upstream config changes the signature — the persisted cache
+    // signature no longer matches, which is exactly what the stale badge needs.
+    const mutatedSignature = getWorkflowUpstreamSignature(
+      {
+        nodes: saved.nodes.map((node) =>
+          node.id === filterNode!.id
+            ? { ...node, config: { ...node.config, condition: 'order_id > 1' } }
+            : node
+        ),
+        edges: saved.edges,
+      },
+      outputNode!.id
+    );
+    expect(mutatedSignature).not.toBe(outputPreview.workflowSignature);
   });
 
   it('keeps temporary workflow node caches for one day then expires them', async () => {

@@ -20,7 +20,8 @@ export class CacheRepository {
     node: DataWorkflowNode,
     tableName: string,
     cacheScope: WorkflowCacheScope,
-    expiresAt: number | null
+    expiresAt: number | null,
+    workflowSignature: string | null = null
   ): Promise<void> {
     const timestamp = this.ctx.now();
     const id = tableNameFromId('cache', `${node.taskId}_${node.id}_${tableName}`);
@@ -37,11 +38,11 @@ export class CacheRepository {
       `
           INSERT INTO data_workflow_node_caches (
             id, task_id, node_id, node_type, table_name, cache_scope,
-            expires_at, created_at, updated_at
+            workflow_signature, expires_at, created_at, updated_at
           )
           VALUES (
             $id, $taskId, $nodeId, $nodeType, $tableName, $cacheScope,
-            $expiresAt, $createdAt, $updatedAt
+            $workflowSignature, $expiresAt, $createdAt, $updatedAt
           )
         `,
       {
@@ -51,13 +52,19 @@ export class CacheRepository {
         nodeType: node.type,
         tableName,
         cacheScope,
+        workflowSignature,
         expiresAt,
         createdAt: timestamp,
         updatedAt: timestamp,
       }
     );
   }
-  async findWorkflowNodeCacheTable(taskId: string, nodeId: string): Promise<string | null> {
+  /** Newest live cache row for the node — metadata rides along so callers can
+   *  tell WHEN and under WHICH upstream config the table was materialized. */
+  async findWorkflowNodeCache(
+    taskId: string,
+    nodeId: string
+  ): Promise<{ tableName: string; generatedAt: number; workflowSignature: string | null } | null> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(
       `
           SELECT *
@@ -73,13 +80,21 @@ export class CacheRepository {
     for (const row of rows) {
       const tableName = String(row.table_name);
       if (await this.ctx.physicalTableExists(tableName)) {
-        return tableName;
+        return {
+          tableName,
+          generatedAt: Number(row.created_at),
+          workflowSignature:
+            typeof row.workflow_signature === 'string' ? row.workflow_signature : null,
+        };
       }
       await this.ctx.metaRunSql('DELETE FROM data_workflow_node_caches WHERE id = $id', {
         id: String(row.id),
       });
     }
     return null;
+  }
+  async findWorkflowNodeCacheTable(taskId: string, nodeId: string): Promise<string | null> {
+    return (await this.findWorkflowNodeCache(taskId, nodeId))?.tableName ?? null;
   }
   async cleanupExpiredWorkflowNodeCaches(): Promise<void> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(

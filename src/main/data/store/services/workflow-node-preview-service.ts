@@ -27,6 +27,7 @@ import {
 } from '../input-source';
 import { CacheRepository } from '../repositories/cache-repository';
 import { DatasetRepository } from '../repositories/dataset-repository';
+import { OutputCommitJournal } from '../repositories/output-commit-journal';
 import { TaskRepository } from '../repositories/task-repository';
 import { WorkflowRepository } from '../repositories/workflow-repository';
 import { stringConfigValue } from '../workflow-model';
@@ -39,7 +40,8 @@ export class WorkflowNodePreviewService {
     private readonly datasets: DatasetRepository,
     private readonly caches: CacheRepository,
     private readonly compiler: WorkflowCompiler,
-    private readonly workflows: WorkflowRepository
+    private readonly workflows: WorkflowRepository,
+    private readonly outputCommits: OutputCommitJournal
   ) {}
   async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> {
     // Node previews may materialize cache/preview tables — physical writes
@@ -70,7 +72,8 @@ export class WorkflowNodePreviewService {
       createdAt: 0,
       updatedAt: 0,
     };
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    const previewSource = await this.resolveWorkflowNodePreviewTable(task, node);
+    const tableName = previewSource?.tableName ?? null;
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // No materialized table yet — surface the plan-inferred schema so the
@@ -102,6 +105,8 @@ export class WorkflowNodePreviewService {
       limit,
       offset,
       totalRows: toNumber(countRows[0]?.count),
+      generatedAt: previewSource?.generatedAt ?? null,
+      workflowSignature: previewSource?.workflowSignature ?? null,
     };
   }
   async getWorkflowNodeColumns(input: DataPreviewWorkflowNodeInput): Promise<string[]> {
@@ -144,7 +149,7 @@ export class WorkflowNodePreviewService {
       }
     }
 
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       return (
@@ -186,7 +191,7 @@ export class WorkflowNodePreviewService {
 
     // Same precedence as column names: draft-inferred schema first, cache
     // table only fills types the plan cannot determine.
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
     const tableExists = tableName ? await this.ctx.physicalTableExists(tableName) : false;
     if (input.workflow?.nodes?.length) {
       const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
@@ -289,7 +294,7 @@ export class WorkflowNodePreviewService {
       updatedAt: 0,
     };
 
-    let tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    let tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // 缓存表不存在，尝试从源文件加载数据创建临时表
       if (node.type !== 'input_source' || node.config.disabled === true) {
@@ -357,7 +362,7 @@ export class WorkflowNodePreviewService {
       createdAt: 0,
       updatedAt: 0,
     };
-    const tableName = await this.resolveWorkflowNodePreviewTable(task, node);
+    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       return 0;
     }
@@ -368,10 +373,17 @@ export class WorkflowNodePreviewService {
     );
     return rows[0]?.cnt ?? 0;
   }
+  /** Resolves the physical preview table. Cache-sourced tables also carry the
+   *  generation timestamp and the upstream signature they were built under —
+   *  the renderer needs both for the stale-preview badge and "updated at". */
   async resolveWorkflowNodePreviewTable(
     task: DataCleaningTask,
     node: DataWorkflowNode
-  ): Promise<string | null> {
+  ): Promise<{
+    tableName: string;
+    generatedAt?: number;
+    workflowSignature?: string | null;
+  } | null> {
     if (node.config.disabled === true) {
       return null;
     }
@@ -393,31 +405,45 @@ export class WorkflowNodePreviewService {
           return null;
         }
         const dataset = await this.datasets.findDatasetByReference(datasetRef);
-        return dataset?.tableName ?? null;
+        return dataset?.tableName ? { tableName: dataset.tableName } : null;
       }
     }
-    const cachedTableName = await this.caches.findWorkflowNodeCacheTable(task.id, node.id);
-    if (cachedTableName) {
-      return cachedTableName;
+    const cache = await this.caches.findWorkflowNodeCache(task.id, node.id);
+    if (cache) {
+      return {
+        tableName: cache.tableName,
+        generatedAt: cache.generatedAt,
+        workflowSignature: cache.workflowSignature,
+      };
     }
     if (node.type === 'input_source') {
-      return tableNameFromId('workflow_source', node.id);
+      return { tableName: tableNameFromId('workflow_source', node.id) };
     }
     if (node.type === 'output') {
       const outputDatasetId =
         stringConfigValue(node.config.outputDatasetId) ||
         stringConfigValue(node.config.outputTableId);
-      if (outputDatasetId) {
-        const outputTable = await this.datasets.getOutputTable(outputDatasetId);
-        return outputTable?.tableName ?? null;
+      const outputTableName = outputDatasetId
+        ? (await this.datasets.getOutputTable(outputDatasetId))?.tableName
+        : stringConfigValue(node.config.table) ||
+          task.outputTable ||
+          tableNameFromId('clean_task', task.id);
+      if (!outputTableName) {
+        return null;
       }
-      return (
-        stringConfigValue(node.config.table) ||
-        task.outputTable ||
-        tableNameFromId('clean_task', task.id)
+      // The sink's cache row dies with its staging table post-commit; the
+      // commit journal keeps the generating signature + timestamp instead.
+      const provenance = await this.outputCommits.findLatestCommittedForTarget(
+        task.id,
+        outputTableName
       );
+      return {
+        tableName: outputTableName,
+        generatedAt: provenance?.generatedAt,
+        workflowSignature: provenance?.workflowSignature ?? null,
+      };
     }
-    return tableNameFromId(`workflow_${node.type}`, node.id);
+    return { tableName: tableNameFromId(`workflow_${node.type}`, node.id) };
   }
 }
 

@@ -40,6 +40,35 @@ export class OutputCommitJournal {
       `SELECT * FROM data_output_commits WHERE state NOT IN ('completed', 'failed')`
     );
   }
+  /** Latest commit that actually wrote the target table — its metadata JSON
+   *  carries the upstream signature the output was generated under. */
+  async findLatestCommittedForTarget(
+    taskId: string,
+    targetTable: string
+  ): Promise<{ generatedAt: number; workflowSignature: string | null } | null> {
+    const rows = await this.ctx.metaQueryRows<DataOutputCommitRow>(
+      `SELECT * FROM data_output_commits
+       WHERE task_id = $taskId
+         AND target_table = $targetTable
+         AND state NOT IN ('prepared', 'failed')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      { taskId, targetTable }
+    );
+    const row = rows[0];
+    if (!row) return null;
+    let workflowSignature: string | null = null;
+    try {
+      const metadata = JSON.parse(String(row.intended_metadata_json)) as {
+        workflowSignature?: unknown;
+      };
+      workflowSignature =
+        typeof metadata.workflowSignature === 'string' ? metadata.workflowSignature : null;
+    } catch {
+      workflowSignature = null;
+    }
+    return { generatedAt: Number(row.created_at), workflowSignature };
+  }
   async updateOutputCommitState(id: string, state: string, error: string | null = null) {
     await this.ctx.metaRunSql(
       `UPDATE data_output_commits

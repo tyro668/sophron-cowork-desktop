@@ -292,3 +292,68 @@ function diagnostic(
     nodeType: node?.type,
   };
 }
+
+/**
+ * Minimal structural graph shape for upstream signatures — satisfied by both
+ * `DataWorkflowSaveInput` (renderer draft) and runtime node/edge rows (main).
+ */
+export interface WorkflowSignatureInput {
+  nodes: ReadonlyArray<{ id: string; type: string; config?: Record<string, unknown> }>;
+  edges: ReadonlyArray<{
+    sourceNodeId: string;
+    targetNodeId: string;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  }>;
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sortKeysDeep(record[key])])
+    );
+  }
+  return value;
+}
+
+/**
+ * Signature of the subgraph that determines one node's preview: the node
+ * itself plus every upstream ancestor (config, types, edge topology). Node
+ * positions/labels are excluded — they don't affect preview data. Keys are
+ * sorted so a DB round-trip of the same config cannot churn the signature.
+ * Used to bind a materialized preview to the config that generated it.
+ */
+export function getWorkflowUpstreamSignature(
+  input: WorkflowSignatureInput,
+  nodeId: string
+): string {
+  const upstream = new Set<string>([nodeId]);
+  const pending = [nodeId];
+  while (pending.length > 0) {
+    const id = pending.pop()!;
+    for (const edge of input.edges) {
+      if (edge.targetNodeId === id && !upstream.has(edge.sourceNodeId)) {
+        upstream.add(edge.sourceNodeId);
+        pending.push(edge.sourceNodeId);
+      }
+    }
+  }
+  const tuples = (entries: ReadonlyArray<readonly unknown[]>) =>
+    entries.map((entry) => JSON.stringify(sortKeysDeep(entry))).sort();
+  return `{${[
+    `"nodes":[${tuples(
+      input.nodes
+        .filter((node) => upstream.has(node.id))
+        .map((node) => [node.id, node.type, node.config])
+    ).join(',')}]`,
+    `"edges":[${tuples(
+      input.edges
+        .filter((edge) => upstream.has(edge.sourceNodeId) && upstream.has(edge.targetNodeId))
+        .map((edge) => [edge.sourceNodeId, edge.targetNodeId, edge.sourceHandle, edge.targetHandle])
+    ).join(',')}]`,
+  ].join(',')}}`;
+}

@@ -65,6 +65,7 @@ export function WorkflowInspector({
   runStat,
   firstZeroOutputNode,
   isPreviewStale,
+  upstreamSignature,
   onPreviewToHere,
   isPreviewRunning,
 }: {
@@ -83,6 +84,8 @@ export function WorkflowInspector({
   runStat?: WorkflowNodeRunStat;
   firstZeroOutputNode?: DataWorkflowNode | null;
   isPreviewStale?: boolean;
+  /** Current draft's upstream-subgraph signature for the selected node. */
+  upstreamSignature?: string | null;
   onPreviewToHere?: () => void;
   isPreviewRunning?: boolean;
 }) {
@@ -104,6 +107,14 @@ export function WorkflowInspector({
   const nodePreviewRequestSeq = useRef(0);
   const operatorFieldsRequestSeq = useRef(0);
   const workflowData = useWorkflowDataContext();
+  // The cache row stamps the upstream signature + generation time of the run
+  // that produced it — authoritative basis for staleness and "updated at".
+  // Signature-less sources (bound dataset/output tables, pre-migration rows)
+  // fall back to the loaded-workflow comparison passed in via isPreviewStale.
+  const nodePreviewStale = nodePreviewData?.workflowSignature
+    ? nodePreviewData.workflowSignature !== upstreamSignature
+    : (isPreviewStale ?? false);
+  const nodePreviewGeneratedAt = nodePreviewData?.generatedAt ?? nodePreviewFetchedAt;
   const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
   const operatorFieldSourceNode = useMemo(
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
@@ -457,14 +468,14 @@ export function WorkflowInspector({
                     {formatNodeRunStatLine(runStat, t)}
                   </span>
                 ) : null}
-                {nodePreviewFetchedAt ? (
+                {nodePreviewGeneratedAt ? (
                   <span className="text-[11px] text-text-muted">
                     {t('data.workflow.nodeDataUpdatedAt', {
-                      time: new Date(nodePreviewFetchedAt).toLocaleTimeString(),
+                      time: new Date(nodePreviewGeneratedAt).toLocaleTimeString(),
                     })}
                   </span>
                 ) : null}
-                {isPreviewStale ? (
+                {nodePreviewStale ? (
                   <span className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                     {t('data.workflow.nodeDataStale')}
                   </span>

@@ -6,6 +6,7 @@ import type {
   DataRunTaskInput,
 } from '../../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
+import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import {
   quoteIdentifier,
@@ -425,6 +426,20 @@ export class WorkflowExecutor {
     const cacheRunId = uuidv4();
     const cacheExpiresAt =
       cacheScope === 'temporary' ? this.ctx.now() + WORKFLOW_TEMP_CACHE_TTL_MS : null;
+    // Cache rows carry the upstream-subgraph signature they were materialized
+    // under — the renderer compares it against the live draft to flag stale
+    // previews, and it survives editor reopens (unlike in-memory run basis).
+    const signatureInput = {
+      nodes: nodes.map((node) => ({ id: node.id, type: node.type, config: node.config })),
+      edges: edges.map((edge) => ({
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      })),
+    };
+    const upstreamSignatureFor = (nodeId: string) =>
+      getWorkflowUpstreamSignature(signatureInput, nodeId);
     await this.ctx.dropTableIfExists(outputTable);
 
     const relationKeyOf = (nodeId: string, sourceHandle?: string | null) =>
@@ -511,7 +526,13 @@ export class WorkflowExecutor {
             watermarkUpdates
           );
           relationByNode.set(node.id, relation);
-          await this.caches.registerWorkflowNodeCache(node, relation, cacheScope, cacheExpiresAt);
+          await this.caches.registerWorkflowNodeCache(
+            node,
+            relation,
+            cacheScope,
+            cacheExpiresAt,
+            upstreamSignatureFor(node.id)
+          );
           await collectNodeStat(node, relation, []);
           return relation;
         }
@@ -582,7 +603,8 @@ export class WorkflowExecutor {
             node,
             outputRelation,
             cacheScope,
-            cacheExpiresAt
+            cacheExpiresAt,
+            upstreamSignatureFor(node.id)
           );
           return outputRelation;
         }
@@ -621,7 +643,8 @@ export class WorkflowExecutor {
           node,
           outputRelation,
           cacheScope,
-          cacheExpiresAt
+          cacheExpiresAt,
+          upstreamSignatureFor(node.id)
         );
         const inputRelations = edges
           .filter((edge) => edge.targetNodeId === node.id)
@@ -665,7 +688,8 @@ export class WorkflowExecutor {
           sinkNode,
           stagingTable,
           cacheScope,
-          cacheExpiresAt
+          cacheExpiresAt,
+          upstreamSignatureFor(sinkNode.id)
         );
         nodeStats.push({
           nodeId: sinkNode.id,

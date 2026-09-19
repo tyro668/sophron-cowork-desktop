@@ -84,15 +84,13 @@ export function TaskEditor({
   const { confirm, confirmDelete } = useConfirmDialog();
   const [workflow, setWorkflow] = useState<DataTaskWorkflow | null>(null);
   const [savedWorkflowSignature, setSavedWorkflowSignature] = useState<string | null>(null);
-  // The workflow as loaded — immutable proxy for the config that produced the
-  // persisted run stats/caches. Saving later must NOT update it: stale means
-  // "config differs from what generated the preview", not "unsaved changes".
+  // The workflow as loaded — fallback basis for staleness on signature-less
+  // resolutions (legacy caches, bound dataset/output tables). Cache-backed
+  // previews carry their own workflow_signature so saving must NOT update
+  // this: stale means "config differs from what generated the preview".
   const [loadedWorkflowInput, setLoadedWorkflowInput] = useState<DataWorkflowSaveInput | null>(
     null
   );
-  // Per-node upstream-config signature captured at each in-session run — the
-  // authoritative basis for preview staleness once a run happened.
-  const [runBasisByNode, setRunBasisByNode] = useState<ReadonlyMap<string, string>>(new Map());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [activeInspectorTab, setActiveInspectorTab] = useState<WorkflowInspectorTab>('config');
   const [saving, setSaving] = useState(false);
@@ -121,7 +119,6 @@ export function TaskEditor({
       setWorkflow(nextWorkflow);
       setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
       setLoadedWorkflowInput(toWorkflowSaveInput(nextWorkflow));
-      setRunBasisByNode(new Map());
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
@@ -246,9 +243,10 @@ export function TaskEditor({
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
   );
-  // Preview staleness = current upstream config ≠ config at the run that
-  // materialized the preview (in-session run basis wins; before any run the
-  // loaded workflow stands in for the persisted caches).
+  // Preview staleness compares the current upstream config against the
+  // signature stamped on the cache row that produced the preview (persisted,
+  // per-node, only updated for nodes that actually materialized). For
+  // signature-less sources the loaded workflow stands in as the basis.
   const selectedUpstreamSignature = useMemo(
     () =>
       selectedNode && workflowSaveInput
@@ -257,24 +255,12 @@ export function TaskEditor({
     [selectedNode, workflowSaveInput]
   );
   const isPreviewStale = useMemo(() => {
-    if (!selectedNode || !selectedUpstreamSignature) return false;
-    const basis =
-      runBasisByNode.get(selectedNode.id) ??
-      (loadedWorkflowInput
-        ? getWorkflowUpstreamSignature(loadedWorkflowInput, selectedNode.id)
-        : null);
-    return basis !== null && basis !== selectedUpstreamSignature;
-  }, [selectedNode, selectedUpstreamSignature, runBasisByNode, loadedWorkflowInput]);
-  const stampRunBasis = useCallback((saveInput: DataWorkflowSaveInput) => {
-    setRunBasisByNode((previous) => {
-      const next = new Map(previous);
-      for (const node of saveInput.nodes) {
-        if (node.type === 'output') continue;
-        next.set(node.id, getWorkflowUpstreamSignature(saveInput, node.id));
-      }
-      return next;
-    });
-  }, []);
+    if (!selectedNode || !selectedUpstreamSignature || !loadedWorkflowInput) return false;
+    return (
+      getWorkflowUpstreamSignature(loadedWorkflowInput, selectedNode.id) !==
+      selectedUpstreamSignature
+    );
+  }, [selectedNode, selectedUpstreamSignature, loadedWorkflowInput]);
   const isBusy = saving || renamingTask || actionId === task.id;
 
   useEffect(() => {
@@ -829,16 +815,8 @@ export function TaskEditor({
       workflow: workflowSaveInput,
       outputMode: 'temporary',
     });
-    stampRunBasis(workflowSaveInput);
     setNodeDataRefreshVersion((current) => current + 1);
-  }, [
-    onRun,
-    task,
-    validateWorkflowBeforeRun,
-    workflowSaveInput,
-    flagPlanDiagnostics,
-    stampRunBasis,
-  ]);
+  }, [onRun, task, validateWorkflowBeforeRun, workflowSaveInput, flagPlanDiagnostics]);
 
   /**
    * "Preview up to this step": runs a temporary execution scoped to the
@@ -900,7 +878,6 @@ export function TaskEditor({
       workflow: previewInput,
       outputMode: 'temporary',
     });
-    stampRunBasis(previewInput);
     setNodeDataRefreshVersion((current) => current + 1);
   }, [
     workflowSaveInput,
@@ -913,7 +890,6 @@ export function TaskEditor({
     flagPlanDiagnostics,
     onRun,
     task,
-    stampRunBasis,
   ]);
 
   /**
@@ -973,9 +949,8 @@ export function TaskEditor({
       workflow: savedInput,
       outputMode: 'persisted',
     });
-    stampRunBasis(savedInput);
     setNodeDataRefreshVersion((current) => current + 1);
-  }, [onRun, saveWorkflow, task, validateWorkflowBeforeRun, stampRunBasis]);
+  }, [onRun, saveWorkflow, task, validateWorkflowBeforeRun]);
 
   const applyAndRunOperatorDsl = useCallback(
     async (nodeId: string, config: Record<string, unknown>) => {
@@ -1011,10 +986,9 @@ export function TaskEditor({
         workflow: nextInput,
         outputMode: 'temporary',
       });
-      stampRunBasis(nextInput);
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics, stampRunBasis]
+    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics]
   );
 
   const openImportDsl = useCallback(() => {
@@ -1256,6 +1230,7 @@ export function TaskEditor({
                 runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
                 firstZeroOutputNode={firstZeroOutputNode}
                 isPreviewStale={isPreviewStale}
+                upstreamSignature={selectedUpstreamSignature}
                 onPreviewToHere={() => void previewNodeToHere()}
                 isPreviewRunning={actionId === task.id}
               />

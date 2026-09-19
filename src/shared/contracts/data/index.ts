@@ -600,6 +600,10 @@ export interface DataInputTablePreview {
   limit: number;
   offset: number;
   totalRows: number;
+  /** Epoch ms the materialized table was generated at (cache created_at). */
+  generatedAt?: number | null;
+  /** Upstream-subgraph signature the materialized table was produced under. */
+  workflowSignature?: string | null;
 }
 
 export interface DataInputTableSourceSelection {
