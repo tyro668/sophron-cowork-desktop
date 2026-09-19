@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { X } from 'lucide-react';
 
 import type { OperatorFormProps } from './types';
-import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
+import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
@@ -89,12 +89,12 @@ export default function FormDeduplicate({
           ariaLabel={tr('dedupBasis')}
         />
         <div className="min-w-0 flex-1">
-          <GlassFieldMultiPicker
-            columns={fieldCompletions}
+          <GlassOptionMultiSelect
+            options={fieldCompletions}
             selected={columns}
             onChange={commitColumns}
             placeholder={tr('fieldPicker.selectField')}
-            columnTypes={columnTypes}
+            optionTypes={columnTypes}
             disabled={strategy === 'all_columns'}
             className="w-full"
           />

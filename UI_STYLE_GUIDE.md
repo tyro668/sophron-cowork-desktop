@@ -67,7 +67,7 @@
 - Tab 选中态使用深色文字、浅薄荷底或细主色指示线，不使用高饱和实心色块。
 - 方案按钮、操作栏和算子表单保持紧凑；按钮高度一般为 `32px` 到 `36px`。
 - 操作图标使用 Lucide 图标库，尺寸和描边保持一致，不使用文本符号代替图标。
-- 多选字段控件统一为 `workflow-forms/shared/GlassFieldMultiPicker`（已合并 GlassFieldMultiDropdown/GlassFieldTagPicker）：`overflow`（collapse/scroll）、`dropdown`（portal/inline）、`onClear`、受控 `open`/`onToggle` 覆盖两种旧形态；已选值标签统一渲染 `GlassValueChip`（h-6、rounded-md、accent 描边、error 缺失态），数值输入经 `GlassOverflowTagList` 复用，禁止内联复刻 chip 标记——`glass-overflow-tag-list.test.ts` 有源码级断言兜底。
+- 多选字段控件统一为 `workflow-forms/shared/GlassOptionMultiSelect`（已合并 GlassFieldMultiDropdown/GlassFieldTagPicker）：`overflow`（collapse/scroll）、`dropdown`（portal/inline）、`onClear`、受控 `open`/`onToggle` 覆盖两种旧形态；已选值标签统一渲染 `GlassValueChip`（h-6、rounded-md、accent 描边、error 缺失态），数值输入经 `GlassOverflowTagList` 复用，禁止内联复刻 chip 标记——`glass-overflow-tag-list.test.ts` 有源码级断言兜底。
 
 ## 6. 页面规则
 

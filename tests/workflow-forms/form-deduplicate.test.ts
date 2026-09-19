@@ -224,7 +224,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('去重字段使用下拉多选组件', () => {
-    expect(src).toContain('GlassFieldMultiPicker');
+    expect(src).toContain('GlassOptionMultiSelect');
     expect(src).toContain('columnTypes');
   });
 
@@ -232,7 +232,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
     const dropdownSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiPicker.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassOptionMultiSelect.tsx'
       ),
       'utf-8'
     );
@@ -244,7 +244,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
     const dropdownSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiPicker.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassOptionMultiSelect.tsx'
       ),
       'utf-8'
     );
@@ -253,7 +253,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('字段选择支持全选/半选', () => {
-    expect(src).toContain('GlassFieldMultiPicker');
+    expect(src).toContain('GlassOptionMultiSelect');
     // 全选/半选由下拉面板内的 GlassFieldMultiSelect 处理
     const multiSrc = readFileSync(
       resolve(

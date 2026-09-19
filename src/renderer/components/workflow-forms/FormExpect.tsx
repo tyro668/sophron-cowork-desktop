@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 
 import type { OperatorFormProps } from './types';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
-import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
+import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -90,12 +90,12 @@ export default function FormExpect({
         {kind === 'unique' && (
           <div>
             <GlassFormLabel>{tr('expect.unique.label')}</GlassFormLabel>
-            <GlassFieldMultiPicker
-              columns={fieldCompletions}
+            <GlassOptionMultiSelect
+              options={fieldCompletions}
               selected={columns}
               onChange={commitColumns}
               placeholder={tr('expect.unique.placeholder')}
-              columnTypes={columnTypes}
+              optionTypes={columnTypes}
               className="w-full"
             />
           </div>

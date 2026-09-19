@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { OperatorFormProps } from './types';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
+import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -47,8 +47,8 @@ export default function FormUnpivot({
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('unpivotDimensionsLabel')}</GlassFormLabel>
         <div className="min-w-0 flex-1">
-          <GlassFieldMultiPicker
-            columns={fieldCompletions}
+          <GlassOptionMultiSelect
+            options={fieldCompletions}
             selected={columns}
             onChange={(selected) =>
               updateConfig((cfg) => ({
@@ -57,7 +57,7 @@ export default function FormUnpivot({
                 columns: selected,
               }))
             }
-            columnTypes={columnTypes}
+            optionTypes={columnTypes}
             placeholder={tr('common.selectColumns')}
             maxHeight="300px"
           />

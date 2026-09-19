@@ -8,15 +8,16 @@ import { GlassFieldMultiSelect, type SelectionMode } from './GlassFieldMultiSele
 import { GlassOverflowTagList } from './GlassOverflowTagList';
 import { GlassValueChip } from './GlassValueChip';
 
-interface GlassFieldMultiPickerProps {
-  columns: string[];
+interface GlassOptionMultiSelectProps {
+  options: string[];
   selected: string[];
   onChange: (selected: string[]) => void;
   /** Per-value remove override; defaults to dropping the value via onChange. */
   onRemove?: (item: string) => void;
   /** Renders the clear-all button when provided. */
   onClear?: () => void;
-  columnTypes?: Record<string, string>;
+  /** Type badge per option (field type names); rendered by the option list. */
+  optionTypes?: Record<string, string>;
   placeholder?: string;
   disabled?: boolean;
   maxHeight?: string;
@@ -32,23 +33,24 @@ interface GlassFieldMultiPickerProps {
   dropdown?: 'portal' | 'inline';
   selectionMode?: SelectionMode;
   variant?: 'flat' | 'glass';
-  itemExtras?: (column: string) => ReactNode;
-  columnLabel?: (column: string) => string;
+  itemExtras?: (option: string) => ReactNode;
+  optionLabel?: (option: string) => string;
   className?: string;
 }
 
 /**
- * The single multi-field picker: bordered h-8 trigger (optional clear-all,
- * GlassValueChip row, segmented chevron) plus a GlassFieldMultiSelect list
- * rendered either as a floating portal panel or inline below the trigger.
+ * The single multi-select control — generic counterpart of
+ * GlassOptionSingleSelect: bordered h-8 trigger (optional clear-all,
+ * GlassValueChip row, segmented chevron) plus an option list rendered either
+ * as a floating portal panel or inline below the trigger.
  */
-export function GlassFieldMultiPicker({
-  columns,
+export function GlassOptionMultiSelect({
+  options,
   selected,
   onChange,
   onRemove,
   onClear,
-  columnTypes,
+  optionTypes,
   placeholder,
   disabled = false,
   maxHeight = '220px',
@@ -59,9 +61,9 @@ export function GlassFieldMultiPicker({
   selectionMode,
   variant,
   itemExtras,
-  columnLabel,
+  optionLabel,
   className = '',
-}: GlassFieldMultiPickerProps) {
+}: GlassOptionMultiSelectProps) {
   const tr = useFormTranslation('fieldPicker');
   const internal = useDropdown<HTMLDivElement>();
   const isControlled = open !== undefined;
@@ -70,7 +72,7 @@ export function GlassFieldMultiPicker({
   const updatePosition = useCallback(() => {
     const rect = internal.triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const contentWidth = measureMaxTextWidth(columns);
+    const contentWidth = measureMaxTextWidth(options);
     const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
     const placement = computeDropdownPlacement(rect);
     internal.setMaxHeight(placement.maxHeight);
@@ -81,7 +83,7 @@ export function GlassFieldMultiPicker({
       width: rect.width,
       ...dropdownWidth,
     });
-  }, [columns, internal]);
+  }, [options, internal]);
 
   const toggle = useCallback(() => {
     if (disabled) return;
@@ -113,26 +115,26 @@ export function GlassFieldMultiPicker({
   );
 
   // Configured values absent from the option list stay visible as flagged
-  // chips — "pending inference" when no columns resolved yet, otherwise
+  // chips — "pending inference" when no options resolved yet, otherwise
   // "not found" so stale config can be repaired instead of silently dropped.
   const missingValues = useMemo(
-    () => new Set(selected.filter((value) => !columns.includes(value))),
-    [columns, selected]
+    () => new Set(selected.filter((value) => !options.includes(value))),
+    [options, selected]
   );
-  const missingTitle = columns.length === 0 ? tr('fieldPendingInference') : tr('fieldNotFound');
+  const missingTitle = options.length === 0 ? tr('fieldPendingInference') : tr('fieldNotFound');
 
   const list = (
     <GlassFieldMultiSelect
-      columns={columns}
+      columns={options}
       selected={selected}
       onChange={onChange}
-      columnTypes={columnTypes}
+      columnTypes={optionTypes}
       maxHeight={maxHeight}
       selectionMode={selectionMode}
       variant={variant}
       borderless={dropdown === 'portal'}
       itemExtras={itemExtras}
-      columnLabel={columnLabel}
+      columnLabel={optionLabel}
       className={dropdown === 'inline' ? '-mt-px rounded-t-none' : ''}
     />
   );

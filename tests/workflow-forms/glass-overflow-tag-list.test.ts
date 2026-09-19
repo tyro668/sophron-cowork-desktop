@@ -36,7 +36,7 @@ describe('GlassOverflowTagList', () => {
   it('keeps every multi-select surface on the single GlassValueChip markup', () => {
     const sharedDir = resolve(__dirname, '../../src/renderer/components/workflow-forms/shared');
     const tagListSrc = readFileSync(resolve(sharedDir, 'GlassOverflowTagList.tsx'), 'utf-8');
-    const pickerSrc = readFileSync(resolve(sharedDir, 'GlassFieldMultiPicker.tsx'), 'utf-8');
+    const pickerSrc = readFileSync(resolve(sharedDir, 'GlassOptionMultiSelect.tsx'), 'utf-8');
 
     // The chip class signature lives in GlassValueChip only — no inline copies.
     expect(tagListSrc).toContain('GlassValueChip');

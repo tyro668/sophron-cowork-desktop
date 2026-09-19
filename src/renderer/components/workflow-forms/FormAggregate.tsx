@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
-import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
+import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
@@ -189,14 +189,14 @@ export default function FormAggregate({
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('aggregateDimensionsLabel')}</GlassFormLabel>
         <div className="min-w-0 flex-1">
-          <GlassFieldMultiPicker
-            columns={fieldCompletions}
+          <GlassOptionMultiSelect
+            options={fieldCompletions}
             selected={groupBy}
             onChange={handleGroupByChange}
-            columnTypes={columnTypes}
+            optionTypes={columnTypes}
             placeholder={tr('common.selectColumns')}
             maxHeight="300px"
-            columnLabel={(col) => {
+            optionLabel={(col) => {
               const gran = dateGranularity[col];
               if (gran && isTemporalDataFieldType(columnTypes[col])) {
                 const opt = GRANULARITY_OPTIONS.find((o) => o.value === gran);
