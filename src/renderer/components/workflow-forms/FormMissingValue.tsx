@@ -4,7 +4,7 @@ import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import type { OperatorFormProps } from './types';
-import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
+import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
 import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassRowList } from './shared/GlassRowList';
@@ -278,7 +278,7 @@ export default function FormMissingValue({
           <div className="flex items-center gap-2">
             <GlassFormLabel>{tr('missingJudgeFields')}</GlassFormLabel>
             <div className="min-w-0 flex-1">
-              <GlassFieldMultiDropdown
+              <GlassFieldMultiPicker
                 columns={fieldCompletions}
                 selected={rowColumns}
                 onChange={handleRowsColumnsChange}

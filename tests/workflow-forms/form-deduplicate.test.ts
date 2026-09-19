@@ -224,7 +224,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
   });
 
   it('去重字段使用下拉多选组件', () => {
-    expect(src).toContain('GlassFieldMultiDropdown');
+    expect(src).toContain('GlassFieldMultiPicker');
     expect(src).toContain('columnTypes');
   });
 
@@ -232,7 +232,7 @@ describe('FormDeduplicate — 组件结构检查', () => {
     const dropdownSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiDropdown.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiPicker.tsx'
       ),
       'utf-8'
     );
@@ -240,19 +240,20 @@ describe('FormDeduplicate — 组件结构检查', () => {
     expect(dropdownSrc).toContain('values={selected}');
   });
 
-  it('去重字段标签的左侧、顶部和底部使用相同的留白', () => {
+  it('去重字段标签的左侧留白与上下居中留白一致', () => {
     const dropdownSrc = readFileSync(
       resolve(
         __dirname,
-        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiDropdown.tsx'
+        '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiPicker.tsx'
       ),
       'utf-8'
     );
-    expect(dropdownSrc).toContain('py-[5px] pl-[5px] pr-2');
+    expect(dropdownSrc).toContain('pl-[5px]');
+    expect(dropdownSrc).toContain('items-center');
   });
 
   it('字段选择支持全选/半选', () => {
-    expect(src).toContain('GlassFieldMultiDropdown');
+    expect(src).toContain('GlassFieldMultiPicker');
     // 全选/半选由下拉面板内的 GlassFieldMultiSelect 处理
     const multiSrc = readFileSync(
       resolve(

@@ -3,7 +3,7 @@ import type { OperatorFormProps } from './types';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
+import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type RowAction } from './shared/GlassRowList';
@@ -207,7 +207,7 @@ export default function FormPivot({
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('pivotGroupByLabel')}</GlassFormLabel>
         <div className="min-w-0 flex-1">
-          <GlassFieldMultiDropdown
+          <GlassFieldMultiPicker
             columns={fieldCompletions}
             selected={groupBy}
             onChange={handleGroupByChange}

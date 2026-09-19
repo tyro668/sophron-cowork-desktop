@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
-import { GlassFieldMultiDropdown } from './shared/GlassFieldMultiDropdown';
+import { GlassFieldMultiPicker } from './shared/GlassFieldMultiPicker';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
@@ -189,7 +189,7 @@ export default function FormAggregate({
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('aggregateDimensionsLabel')}</GlassFormLabel>
         <div className="min-w-0 flex-1">
-          <GlassFieldMultiDropdown
+          <GlassFieldMultiPicker
             columns={fieldCompletions}
             selected={groupBy}
             onChange={handleGroupByChange}

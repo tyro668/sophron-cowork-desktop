@@ -27,7 +27,7 @@ import { useDragReorder } from '../../../hooks/useDragReorder';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
-import { GlassFieldTagPicker } from '../shared/GlassFieldTagPicker';
+import { GlassFieldMultiPicker } from '../shared/GlassFieldMultiPicker';
 import { GlassFormTextInput } from '../shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from '../shared/GlassOptionSingleSelect';
 import { GlassRowList } from '../shared/GlassRowList';
@@ -442,16 +442,15 @@ export function CalculationFunctionWizard({
                   <span className="text-[11px] font-medium text-text-muted">
                     {tr('calcFieldPartitionBy')}
                   </span>
-                  <GlassFieldTagPicker
+                  <GlassFieldMultiPicker
                     columns={fieldCompletions}
                     selected={partitionBy}
                     onChange={setPartitionBy}
-                    onRemove={(field) =>
-                      setPartitionBy((current) => current.filter((item) => item !== field))
-                    }
                     onClear={() => setPartitionBy([])}
                     open={partitionOpen}
                     onToggle={() => setPartitionOpen((current) => !current)}
+                    dropdown="inline"
+                    overflow="scroll"
                     columnTypes={columnTypes}
                     maxHeight="132px"
                     variant="flat"
