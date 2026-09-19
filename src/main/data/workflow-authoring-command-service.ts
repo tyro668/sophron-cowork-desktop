@@ -17,6 +17,7 @@ import {
   type ConfigureOutputOperatorCommand,
   type ExportWorkflowDslCommand,
   type GetTaskWorkflowCommand,
+  type GetWorkflowCapabilityManifestCommand,
   type TextResult,
   type WorkflowResult,
   type WorkflowSaveShape,
@@ -51,12 +52,7 @@ export class WorkflowAuthoringCommandService {
     return { workflow: await this.store.getTaskWorkflow(input.taskId) };
   }
 
-  async getWorkflowCapabilityManifest(
-    input: {
-      inputTableIds?: string[];
-      outputTableIds?: string[];
-    } = {}
-  ) {
+  async getWorkflowCapabilityManifest(input: GetWorkflowCapabilityManifestCommand = {}) {
     const inputs = await Promise.all(
       (input.inputTableIds ?? []).map(async (id) => {
         const table = await this.resources.requireInputTable(id);

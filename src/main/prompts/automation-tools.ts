@@ -1,11 +1,14 @@
 import automationToolsRoutingPrompt from './automation-tools-routing.txt?raw';
 import { renderPromptTemplate } from './template';
 
-export function buildAutomationToolPrompt(input: { now: number; timezone: string }): string {
-  return renderPromptTemplate(automationToolsRoutingPrompt, {
-    CURRENT_DESKTOP_TIME: formatSystemRfc3339(input.now),
-    DESKTOP_TIMEZONE: input.timezone,
-  });
+/** Stable automation rules — delivered once per session, not per user turn. */
+export function buildAutomationToolStablePrompt(): string {
+  return renderPromptTemplate(automationToolsRoutingPrompt, {});
+}
+
+/** Per-turn dynamic state: desktop clock used to resolve relative times. */
+export function buildAutomationToolStatePrompt(input: { now: number; timezone: string }): string {
+  return `Current desktop time: ${formatSystemRfc3339(input.now)}. Desktop timezone: ${input.timezone}.`;
 }
 
 function formatSystemRfc3339(timestamp: number): string {

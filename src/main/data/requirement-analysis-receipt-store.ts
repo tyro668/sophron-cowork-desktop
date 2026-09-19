@@ -77,6 +77,15 @@ export class RequirementAnalysisReceiptStore {
     return updated;
   }
 
+  /** Unconfirmed analyses keep the data domain active for follow-up turns. */
+  hasPendingForSession(sessionId: string): boolean {
+    this.deleteExpired();
+    for (const receipt of this.receipts.values()) {
+      if (receipt.sessionId === sessionId && !receipt.generatedResult) return true;
+    }
+    return false;
+  }
+
   deleteExpired(): void {
     const now = this.now();
     for (const [id, receipt] of this.receipts) {

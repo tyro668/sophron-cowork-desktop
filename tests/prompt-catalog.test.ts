@@ -4,7 +4,8 @@ import {
   DATA_TOOL_COPY,
   DEFAULT_MEMORY_PROMPTS,
   MEMORY_RETRIEVAL_EVAL_SYSTEM_PROMPT,
-  buildAutomationToolPrompt,
+  buildAutomationToolStablePrompt,
+  buildAutomationToolStatePrompt,
   buildGuiActionPlanPrompt,
   buildGuiGroundingBoxPrompt,
   buildGuiOperationVerificationPrompt,
@@ -33,15 +34,16 @@ describe('central prompt catalog', () => {
   });
 
   it('renders dynamic automation time context without unresolved placeholders', () => {
-    const prompt = buildAutomationToolPrompt({
+    const state = buildAutomationToolStatePrompt({
       now: new Date(2026, 7, 20, 10, 30, 0).getTime(),
       timezone: 'Asia/Shanghai',
     });
+    const stable = buildAutomationToolStablePrompt();
 
-    expect(prompt).toContain('Desktop timezone: Asia/Shanghai');
-    expect(prompt).toContain('2026-08-20T10:30:00');
-    expect(prompt).toContain('automation_set_enabled');
-    expect(prompt).not.toContain('{{');
+    expect(state).toContain('Desktop timezone: Asia/Shanghai');
+    expect(state).toContain('2026-08-20T10:30:00');
+    expect(stable).toContain('automation_set_enabled');
+    expect(stable).not.toContain('{{');
   });
 
   it('builds data-workflow system and user prompts from the catalog', () => {

@@ -2,10 +2,14 @@ import type { DataToolPromptContext } from '../data/data-tool-types';
 import dataToolsRoutingPrompt from './data-tools-routing.txt?raw';
 import { renderPromptTemplate } from './template';
 
-export function buildDataToolPrompt(context: DataToolPromptContext): string {
-  return renderPromptTemplate(dataToolsRoutingPrompt, {
-    CURRENT_DATA_CONTEXT: buildCurrentContextSection(context),
-  });
+/** Stable domain rules — delivered once per session, not per user turn. */
+export function buildDataToolStablePrompt(): string {
+  return renderPromptTemplate(dataToolsRoutingPrompt, {});
+}
+
+/** Short per-turn state: selected/recent resources and workspace. */
+export function buildDataToolStatePrompt(context: DataToolPromptContext): string {
+  return buildCurrentContextSection(context);
 }
 
 function buildCurrentContextSection(context: DataToolPromptContext): string {
@@ -24,6 +28,12 @@ function buildCurrentContextSection(context: DataToolPromptContext): string {
     lines.push(
       `- currentOutputTable: ${context.selectedOutputTableId}${formatName(context.selectedOutputTableName)}`
     );
+  }
+  for (const ref of context.recentResources ?? []) {
+    lines.push(`- recent${ref.kind}: ${ref.id}${formatName(ref.name)}`);
+  }
+  for (const table of context.attachedCloudTables ?? []) {
+    lines.push(`- attachedCloudTable: ${table.id}${formatName(table.name)}`);
   }
   if (lines.length === 1) {
     lines.push(

@@ -110,6 +110,18 @@ export class AutomationDraftReceiptStore {
     return updated;
   }
 
+  /** Uncommitted drafts keep the automation domain active for follow-up turns. */
+  hasPendingForSession(sessionId: string): boolean {
+    this.deleteExpired();
+    for (const receipt of this.receipts.values()) {
+      if (receipt.sessionId === sessionId && !receipt.createdAutomationId) return true;
+    }
+    for (const receipt of this.scheduleUpdateReceipts.values()) {
+      if (receipt.sessionId === sessionId && !receipt.updatedAutomation) return true;
+    }
+    return false;
+  }
+
   deleteExpired(): void {
     const now = this.now();
     for (const [id, receipt] of this.receipts) {

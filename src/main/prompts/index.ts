@@ -1,5 +1,8 @@
-export { buildAutomationToolPrompt } from './automation-tools';
-export { buildDataToolPrompt } from './data-tools';
+export {
+  buildAutomationToolStablePrompt,
+  buildAutomationToolStatePrompt,
+} from './automation-tools';
+export { buildDataToolStablePrompt, buildDataToolStatePrompt } from './data-tools';
 export { buildMainAgentSystemPrompt } from './main-agent';
 export { buildCloudTableAttachmentPrompt, buildFileAttachmentPrompt } from './conversation-context';
 export {

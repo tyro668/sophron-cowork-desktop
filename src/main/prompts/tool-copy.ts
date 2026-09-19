@@ -114,7 +114,8 @@ export const DATA_TOOL_COPY = {
   },
   data_get_task_workflow: {
     label: 'Get task workflow',
-    description: 'Read the saved workflow nodes and edges for a data task.',
+    description:
+      'Read the saved workflow for a data task. view=summary (default) returns task meta and node types; view=graph returns full editable node configs and edges; view=node returns one node config plus touching edges (requires nodeId).',
   },
   data_get_workflow_dsl_reference: {
     label: 'Get workflow DSL reference',
@@ -124,7 +125,7 @@ export const DATA_TOOL_COPY = {
   data_get_workflow_capability_manifest: {
     label: 'Get workflow capability manifest',
     description:
-      'Versioned capability manifest for constrained workflow plans: plan JSON Schema, per-operator config schemas, resource binding contract, runtime semantics, stable diagnostic codes, and the apply->trial-run repair loop. Pass table ids to include real column snapshots.',
+      'Versioned capability manifest for constrained workflow plans: plan JSON Schema, resource binding contract, runtime semantics, stable diagnostic codes, and the apply->trial-run repair loop. Default response omits per-operator config schemas; pass sections=["operators"] with operatorTypes to fetch only the schemas needed. Pass table ids to include real column snapshots.',
   },
   data_apply_workflow_plan: {
     label: 'Apply workflow plan',

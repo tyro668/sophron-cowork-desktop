@@ -7,7 +7,10 @@ import {
   type RequirementCapabilityContract,
 } from '../data/workflow/requirement-capability-registry';
 import { getWorkflowExpressionCapabilityPrompt } from '../data/workflow/workflow-expression-registry';
-import { getWorkflowJavascriptCapabilityPrompt } from '../data/workflow/workflow-ir-operation-registry';
+import {
+  getWorkflowJavascriptCapabilityPrompt,
+  getWorkflowOperationTypeList,
+} from '../data/workflow/workflow-ir-operation-registry';
 import {
   indexJavaScriptFunctions,
   indexJavaScriptFunctionsBestEffort,
@@ -18,7 +21,9 @@ import { renderPromptTemplate } from './template';
 
 export function buildRequirementAnalysisSystemPrompt(): string {
   return renderPromptTemplate(requirementAnalysisSystemPrompt, {
-    WORKFLOW_CAPABILITIES: getWorkflowJavascriptCapabilityPrompt(),
+    // Analysis classifies against capability ids — operation type names are
+    // enough; JS payload signatures belong to generation only.
+    WORKFLOW_CAPABILITIES: getWorkflowOperationTypeList(),
     REQUIREMENT_CAPABILITIES: getRequirementCapabilityPrompt(),
     WORKFLOW_EXPRESSION_CAPABILITIES: getWorkflowExpressionCapabilityPrompt(),
   });
@@ -31,9 +36,12 @@ export function buildRequirementAnalysisUserPrompt(input: {
   return JSON.stringify(input, null, 2);
 }
 
-export function buildWorkflowGenerationSystemPrompt(): string {
+export function buildWorkflowGenerationSystemPrompt(input?: {
+  /** Confirmed requirement contract — limits the payload doc to approved ops. */
+  operationTypes?: readonly string[];
+}): string {
   return renderPromptTemplate(workflowGenerationSystemPrompt, {
-    WORKFLOW_CAPABILITIES: getWorkflowJavascriptCapabilityPrompt(),
+    WORKFLOW_CAPABILITIES: getWorkflowJavascriptCapabilityPrompt(input?.operationTypes),
     WORKFLOW_EXPRESSION_CAPABILITIES: getWorkflowExpressionCapabilityPrompt(),
   });
 }

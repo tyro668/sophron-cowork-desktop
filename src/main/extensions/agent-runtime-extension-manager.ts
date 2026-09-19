@@ -34,8 +34,11 @@ export class AgentRuntimeExtensionManager {
   }
 
   async beforeSessionRun(context: BeforeSessionRunContext): Promise<BeforeSessionRunResult> {
-    const promptPrefixes: string[] = [];
+    const stablePrompts: string[] = [];
+    const statePrompts: string[] = [];
     const customTools: AgentRuntimeCustomTool[] = [];
+    const activateTools = new Set<string>();
+    const toolPacks: BeforeSessionRunResult['toolPacks'] = {};
 
     for (const extension of this.extensions) {
       if (!extension.beforeSessionRun) {
@@ -46,11 +49,26 @@ export class AgentRuntimeExtensionManager {
         if (!result) {
           continue;
         }
-        if (result.promptPrefix?.trim()) {
-          promptPrefixes.push(result.promptPrefix.trim());
+        if (result.stablePrompt?.trim()) {
+          stablePrompts.push(result.stablePrompt.trim());
+        }
+        if (result.statePrompt?.trim()) {
+          statePrompts.push(result.statePrompt.trim());
         }
         if (result.customTools?.length) {
           customTools.push(...result.customTools);
+          // Extensions that declare a catalog without an activation subset keep
+          // every tool exposed — restricting is opt-in via activateTools.
+          for (const toolName of result.activateTools ?? result.customTools.map((t) => t.name)) {
+            activateTools.add(toolName);
+          }
+        } else if (result.activateTools?.length) {
+          for (const toolName of result.activateTools) {
+            activateTools.add(toolName);
+          }
+        }
+        if (result.toolPacks) {
+          Object.assign(toolPacks, result.toolPacks);
         }
       } catch (error) {
         logError(
@@ -61,8 +79,11 @@ export class AgentRuntimeExtensionManager {
     }
 
     return {
-      promptPrefix: promptPrefixes.join('\n\n').trim() || undefined,
+      stablePrompt: stablePrompts.join('\n\n').trim() || undefined,
+      statePrompt: statePrompts.join('\n\n').trim() || undefined,
       customTools: mergeCustomTools(customTools),
+      activateTools: [...activateTools],
+      toolPacks,
     };
   }
 

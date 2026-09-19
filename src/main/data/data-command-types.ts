@@ -354,6 +354,22 @@ export interface TaskResult {
 
 export interface GetTaskWorkflowCommand {
   taskId: string;
+  /**
+   * summary (default): task meta + node type/binding lines.
+   * graph: full editable node configs and edges.
+   * node: single node config plus its touching edges (requires nodeId).
+   */
+  view?: 'summary' | 'graph' | 'node';
+  nodeId?: string;
+}
+
+export interface GetWorkflowCapabilityManifestCommand {
+  inputTableIds?: string[];
+  outputTableIds?: string[];
+  /** Restrict returned operator config schemas to these operator types. */
+  operatorTypes?: string[];
+  /** Manifest sections to include: plan | operators | runtime | bindings. */
+  sections?: string[];
 }
 
 export interface WorkflowResult {

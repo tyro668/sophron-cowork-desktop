@@ -17,14 +17,20 @@ import {
   parseAutomationSetEnabledInput,
   parseAutomationUpdateScheduleInput,
 } from './contract';
-import { buildAutomationToolPrompt } from '../../prompts/automation-tools';
+import {
+  buildAutomationToolStablePrompt,
+  buildAutomationToolStatePrompt,
+} from '../../prompts/automation-tools';
 import { AUTOMATION_TOOL_COPY } from '../../prompts/tool-copy';
+import { detectAutomationIntent, SessionPackActivation } from '../../extensions/agent-intent';
+import { AUTOMATION_TOOL_PACKS } from '../../data/data-tool-packs';
 import type { AutomationToolService } from './service';
 import type { AutomationToolExecutionContext } from './contract';
 
 export function createAutomationAgentRuntimeExtension(
   service: AutomationToolService
 ): AgentRuntimeExtension {
+  const activations = new SessionPackActivation();
   return {
     name: 'automation-tools',
     async beforeSessionRun(context): Promise<BeforeSessionRunResult> {
@@ -36,12 +42,36 @@ export function createAutomationAgentRuntimeExtension(
         currentUserMessageId: currentUserMessage?.id,
       };
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const catalog = createAutomationCustomTools(service, executionContext);
+      const intent = detectAutomationIntent(context, {
+        stickyActive: activations.activePacks(context.session.id).size > 0,
+        hasPendingReceipts: service.hasPendingDrafts(context.session.id),
+      });
+      if (!intent.active) {
+        return {
+          customTools: catalog,
+          activateTools: [],
+          toolPacks: AUTOMATION_TOOL_PACKS,
+        };
+      }
+      const packs = activations.activate(context.session.id, [
+        'automation.core',
+        ...(intent.create ? (['automation.create'] as const) : []),
+        ...(intent.update ? (['automation.update'] as const) : []),
+      ]);
+      const activateTools = [...packs].flatMap(
+        (pack) => AUTOMATION_TOOL_PACKS[pack as keyof typeof AUTOMATION_TOOL_PACKS]?.tools ?? []
+      );
       return {
-        promptPrefix: buildAutomationToolPrompt({ now: Date.now(), timezone }),
-        customTools: createAutomationCustomTools(service, executionContext),
+        stablePrompt: buildAutomationToolStablePrompt(),
+        statePrompt: buildAutomationToolStatePrompt({ now: Date.now(), timezone }),
+        customTools: catalog,
+        activateTools,
+        toolPacks: AUTOMATION_TOOL_PACKS,
       };
     },
     async onSessionDeleted({ sessionId }): Promise<void> {
+      activations.clear(sessionId);
       service.clearConversationContext(sessionId);
     },
   };

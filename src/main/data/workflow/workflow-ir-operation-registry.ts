@@ -183,15 +183,28 @@ export const WORKFLOW_IR_OPERATION_TYPES = new Set<WorkflowIrOperationType>(
   ).map((definition) => definition.irType)
 );
 
-export function getWorkflowJavascriptCapabilityPrompt(): string {
+export function getWorkflowJavascriptCapabilityPrompt(operationTypes?: readonly string[]): string {
+  const scope = operationTypes ? new Set(operationTypes) : undefined;
+  const definitions = WORKFLOW_IR_OPERATION_REGISTRY.filter(
+    (definition) =>
+      isAiPrepDslOperationEnabled(definition.irType) && (!scope || scope.has(definition.irType))
+  );
   return [
-    WORKFLOW_IR_OPERATION_REGISTRY.filter((definition) =>
-      isAiPrepDslOperationEnabled(definition.irType)
-    )
-      .map((definition) => definition.promptSignature)
-      .join(', '),
-    getWorkflowAggregateCapabilityPrompt(),
-  ].join('. ');
+    definitions.map((definition) => definition.promptSignature).join(', '),
+    // Aggregate signatures are only meaningful when the contract approves them.
+    !scope || scope.has('aggregate') ? getWorkflowAggregateCapabilityPrompt() : '',
+  ]
+    .filter(Boolean)
+    .join('. ');
+}
+
+/** Compact operation-type list for prompts that must not carry payload signatures. */
+export function getWorkflowOperationTypeList(): string {
+  return WORKFLOW_IR_OPERATION_REGISTRY.filter((definition) =>
+    isAiPrepDslOperationEnabled(definition.irType)
+  )
+    .map((definition) => definition.irType)
+    .join(', ');
 }
 
 export function getWorkflowIrOperationDefinition(

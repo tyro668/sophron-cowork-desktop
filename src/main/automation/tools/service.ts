@@ -309,6 +309,10 @@ export class AutomationToolService {
     return this.formatScheduleUpdatedResult(updated, receipt, 'updated');
   }
 
+  hasPendingDrafts(sessionId: string): boolean {
+    return this.receiptStore.hasPendingForSession(sessionId);
+  }
+
   clearConversationContext(sessionId: string): void {
     this.receiptStore.deleteForSession(sessionId);
   }

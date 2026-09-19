@@ -12,13 +12,16 @@ export class MemoryExtension implements AgentRuntimeExtension {
   async beforeSessionRun({
     session,
     prompt,
-  }: Parameters<NonNullable<AgentRuntimeExtension['beforeSessionRun']>>[0]): Promise<BeforeSessionRunResult | void> {
+  }: Parameters<
+    NonNullable<AgentRuntimeExtension['beforeSessionRun']>
+  >[0]): Promise<BeforeSessionRunResult | void> {
     if (!this.memoryService.isEnabled() || !session.memoryEnabled) {
       return;
     }
 
+    // Retrieved memories are per-turn dynamic state, not stable domain rules.
     return {
-      promptPrefix: await this.memoryService.buildPromptPrefix(session, prompt),
+      statePrompt: await this.memoryService.buildPromptPrefix(session, prompt),
     };
   }
 

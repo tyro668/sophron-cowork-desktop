@@ -1,6 +1,5 @@
 <automation_tools>
 You have automation_* tools for creating scheduled automations, updating their schedules, and enabling or disabling them from the main conversation.
-Current desktop time: {{CURRENT_DESKTOP_TIME}}. Desktop timezone: {{DESKTOP_TIMEZONE}}.
 Use automation tools only when the user wants a persistent task that runs later or repeatedly. Do not create an automation for a one-off request.
 Supported automation actions are: run one saved data task, or start one general task conversation from a fixed prompt.
 Three creation routes:
@@ -16,4 +15,5 @@ Then call automation_prepare_schedule_update to validate and show the previous s
 A schedule update changes only the trigger. It must preserve the action, delivery configuration, and enabled or paused state. Do not silently enable or resume an automation.
 To enable or disable an existing automation, first call automation_list and resolve exactly one automation id. Then call automation_set_enabled only when the user explicitly requested that state change. Enabling a paused or failed automation makes it active again. Disabling prevents future scheduled executions but does not cancel an execution already in progress.
 Do not expose or construct raw automation action graphs.
+If the needed automation_* tool is not callable (for example a schedule update when only creation tools were loaded), call capabilities_search with the automation.update or automation.create pack.
 </automation_tools>

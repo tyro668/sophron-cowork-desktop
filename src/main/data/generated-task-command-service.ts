@@ -124,8 +124,16 @@ export class GeneratedTaskCommandService {
       throw error;
     }
     if (!reusableTask) createdTaskId = task.id;
+    const usageAttribution = {
+      source: 'data_generate_task_from_requirement',
+      analysisId: normalizeOptionalName(
+        typeof input.analysisId === 'string' ? input.analysisId : undefined
+      ),
+      inputTableId: preparedInput.inputTable.id,
+      outputTableId: outputTable.id,
+    };
     const onModelUsage = (event: WorkflowModelUsageEvent): void => {
-      this.recordWorkflowModelUsage(generationId, task.id, event);
+      this.recordWorkflowModelUsage(generationId, task.id, event, usageAttribution);
     };
     try {
       return await this.locks.withKeyedLock(`task:${task.id}`, async () => {
@@ -271,6 +279,10 @@ export class GeneratedTaskCommandService {
           feature: 'data_task_requirement_analysis',
           phase: 'requirement_analysis',
           result,
+          metadata: {
+            source: 'data_analyze_task_requirement',
+            inputTableId: preparedInput.inputTable.id,
+          },
         });
       },
     });
@@ -517,10 +529,12 @@ export class GeneratedTaskCommandService {
   private recordWorkflowModelUsage(
     generationId: string,
     taskId: string,
-    event: WorkflowModelUsageEvent
+    event: WorkflowModelUsageEvent,
+    attribution?: Record<string, unknown>
   ): void {
-    const metadata =
-      event.phase === 'repair'
+    const metadata = {
+      ...attribution,
+      ...(event.phase === 'repair'
         ? {
             repairStrategy: event.repairStrategy,
             attempt: event.attempt,
@@ -530,7 +544,8 @@ export class GeneratedTaskCommandService {
             operationType: event.operationType,
             repairOutcome: event.repairOutcome,
           }
-        : undefined;
+        : {}),
+    };
     this.recordOneShotUsage({
       generationId,
       feature: 'data_task_generation',

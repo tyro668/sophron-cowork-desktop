@@ -35,6 +35,7 @@ import {
 } from './workflow-failure';
 import { computeWorkflowIrSemanticHash } from './workflow-ir';
 import {
+  getRequirementCapabilityContractOperationTypes,
   validateWorkflowIrAgainstRequirementCapabilityContract,
   type RequirementCapabilityContract,
 } from './requirement-capability-registry';
@@ -241,7 +242,11 @@ export async function generateDataTaskWorkflowFromRequirement({
         columns,
         requirementContract,
       }),
-      buildWorkflowGenerationSystemPrompt(),
+      buildWorkflowGenerationSystemPrompt({
+        operationTypes: requirementContract
+          ? getRequirementCapabilityContractOperationTypes(requirementContract)
+          : undefined,
+      }),
       config,
       { temperature: 0, maxTokens: 4_000, signal }
     );
@@ -393,7 +398,11 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           repairFunctionName,
           repairStrategy,
         }),
-        buildWorkflowGenerationSystemPrompt(),
+        buildWorkflowGenerationSystemPrompt({
+          operationTypes: requirementContract
+            ? getRequirementCapabilityContractOperationTypes(requirementContract)
+            : undefined,
+        }),
         config,
         { temperature: 0, maxTokens: maxOutputTokens, signal }
       );

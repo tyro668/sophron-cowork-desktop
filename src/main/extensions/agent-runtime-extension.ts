@@ -4,6 +4,23 @@ import type { AgentRuntimeConfig, Message, Session } from '../../shared/contract
 
 export type AgentRuntimeCustomTool = ToolDefinition<TSchema, unknown>;
 
+/**
+ * A named, discoverable bundle of related tools. Packs stay registered in the
+ * session catalog but are only exposed to the model when activated — either by
+ * the extension's per-turn `activateTools` decision or on demand through the
+ * `capabilities_search` tool.
+ */
+export interface AgentToolPack {
+  /** One-line purpose surfaced by the discovery tool. */
+  description: string;
+  tools: string[];
+}
+
+export interface ToolActivationResult {
+  activated: string[];
+  unknown: string[];
+}
+
 export interface BeforeSessionRunContext {
   session: Session;
   prompt: string;
@@ -11,11 +28,38 @@ export interface BeforeSessionRunContext {
   isColdStart: boolean;
   /** Resolved execution-only model config. Extensions must not serialize it into prompts. */
   runtimeConfig?: AgentRuntimeConfig;
+  /**
+   * Activate already-registered tools by name for subsequent model requests.
+   * Wired by the runner to the live SDK session — calling it inside a tool's
+   * execute() takes effect on the next provider request within the same run.
+   */
+  activateTools?(toolNames: string[]): ToolActivationResult;
 }
 
 export interface BeforeSessionRunResult {
-  promptPrefix?: string;
+  /**
+   * Stable domain rules. Injected at most once per session (fingerprint-deduped
+   * by the runner, re-sent on cold starts); not appended to every user turn.
+   */
+  stablePrompt?: string;
+  /**
+   * Short dynamic state for THIS turn (current time, selected resources,
+   * pending operations). Replaces the previous turn's block rather than
+   * accumulating full guides in history.
+   */
+  statePrompt?: string;
+  /**
+   * This extension's tool catalog. Tools are kept registered for later
+   * activation even when not currently exposed.
+   */
   customTools?: AgentRuntimeCustomTool[];
+  /**
+   * Tool names to expose to the model this turn. When the extension returns
+   * customTools but omits this, all of its tools stay exposed (legacy default).
+   */
+  activateTools?: string[];
+  /** Discoverable packs for the runner-owned `capabilities_search` tool. */
+  toolPacks?: Record<string, AgentToolPack>;
 }
 
 export interface AfterSessionRunContext {

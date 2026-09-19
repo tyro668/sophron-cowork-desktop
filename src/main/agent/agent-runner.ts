@@ -93,6 +93,9 @@ import { AgentRunEventBridge } from './agent-runner-event-bridge';
 import { safeStringify, toErrorText } from './agent-runner-log-utils';
 import { buildMcpCustomTools } from './agent-runner-tools';
 import { AgentRunnerSkills } from './agent-runner-skills';
+import { createCapabilitiesSearchTool } from './agent-capabilities-tool';
+import type { ToolActivationResult } from '../extensions/agent-runtime-extension';
+import { createHash } from 'node:crypto';
 
 // Virtual workspace path shown to the model (hides real sandbox path)
 interface AgentRunnerOptions {
@@ -154,6 +157,11 @@ export class AgentRunner {
   private activeEvaluationMetrics: Map<string, TraceEvaluationMetrics> = new Map();
   private toolStartedAt: Map<string, number> = new Map();
   private piSessions: Map<string, CachedPiSession> = new Map();
+  /**
+   * Stable domain rules are injected once per session — this records the
+   * fingerprint of what was delivered so warm turns only get state deltas.
+   */
+  private readonly stablePromptFingerprints: Map<string, string> = new Map();
   private toolDisplayNameCache: Map<string, string> = new Map();
   private static readonly MAX_CACHED_SESSIONS = 50;
 
@@ -175,6 +183,7 @@ export class AgentRunner {
         logWarn('[AgentRunner] dispose error:', e);
       }
       this.piSessions.delete(sessionId);
+      this.stablePromptFingerprints.delete(sessionId);
       log('[AgentRunner] Disposed pi session for:', sessionId);
     }
   }
@@ -183,6 +192,32 @@ export class AgentRunner {
     for (const sessionId of Array.from(this.piSessions.keys())) {
       this.clearSdkSession(sessionId);
     }
+  }
+
+  /**
+   * Re-register this turn's customTools on a reused session. The SDK captures
+   * customTools at creation; we refresh its internal registry so tools added
+   * after the first turn (new MCP servers, rebuilt extension defs) take effect
+   * on warm starts. Falls back to a warning when SDK internals are absent —
+   * matching the historical behavior of tools staying unavailable until the
+   * session is recreated.
+   */
+  private syncSessionToolRegistry(piSession: PiAgentSession, customTools: ToolDefinition[]): void {
+    const internals = piSession as unknown as {
+      _customTools?: ToolDefinition[];
+      _refreshToolRegistry?: () => void;
+    };
+    if (
+      typeof internals._refreshToolRegistry !== 'function' ||
+      !Array.isArray(internals._customTools)
+    ) {
+      logWarn(
+        '[AgentRunner] SDK session does not support tool registry refresh; newly added tools stay unavailable until the session is recreated'
+      );
+      return;
+    }
+    internals._customTools = [...customTools];
+    internals._refreshToolRegistry();
   }
 
   /** Call after the user installs / removes a skill so the next query re-links everything. */
@@ -1025,6 +1060,27 @@ export class AgentRunner {
         cachedSession = undefined;
       }
 
+      // Mid-run tool activation: capabilities_search and future domain tools
+      // call back through this to expose registered-but-hidden packs. Calls
+      // made before the session resolves (none today — tools execute inside
+      // the loop) are queued and applied right after resolution.
+      const runSessionRef: { current?: PiAgentSession } = {};
+      const queuedToolActivations = new Set<string>();
+      const activateToolsForRun = (toolNames: string[]): ToolActivationResult => {
+        const target = runSessionRef.current;
+        if (!target) {
+          toolNames.forEach((name) => queuedToolActivations.add(name));
+          return { activated: [...toolNames], unknown: [] };
+        }
+        const registered = new Set(target.getAllTools().map((tool) => tool.name));
+        const unknown = toolNames.filter((name) => !registered.has(name));
+        const valid = toolNames.filter((name) => registered.has(name));
+        if (valid.length > 0) {
+          target.setActiveToolsByName([...new Set([...target.getActiveToolNames(), ...valid])]);
+        }
+        return { activated: valid, unknown };
+      };
+
       const extensionResult = this.extensionManager
         ? await this.extensionManager.beforeSessionRun({
             session,
@@ -1032,8 +1088,9 @@ export class AgentRunner {
             existingMessages,
             isColdStart: !cachedSession,
             runtimeConfig,
+            activateTools: activateToolsForRun,
           })
-        : { promptPrefix: undefined, customTools: [] };
+        : { customTools: [] };
 
       let contextualPrompt = prompt;
       let coldStartHistory: PiMessage[] = [];
@@ -1088,8 +1145,24 @@ export class AgentRunner {
         // Reusing session — SDK already has the full conversation context
         logCtx('[AgentRunner] Reusing existing SDK session for:', session.id);
       }
-      if (extensionResult.promptPrefix?.trim()) {
-        contextualPrompt = `${extensionResult.promptPrefix.trim()}\n\n${contextualPrompt}`;
+      // Prompt composition: stable domain rules are injected once per session
+      // (fingerprint-deduped, re-sent after cold starts); the short per-turn
+      // state block replaces the previous copy instead of accumulating guides.
+      const promptPrefixParts: string[] = [];
+      const stablePrompt = extensionResult.stablePrompt?.trim();
+      if (stablePrompt) {
+        const stableFingerprint = createHash('sha256').update(stablePrompt).digest('hex');
+        if (!cachedSession || this.stablePromptFingerprints.get(session.id) !== stableFingerprint) {
+          promptPrefixParts.push(stablePrompt);
+          this.stablePromptFingerprints.set(session.id, stableFingerprint);
+        }
+      }
+      const statePrompt = extensionResult.statePrompt?.trim();
+      if (statePrompt) {
+        promptPrefixParts.push(statePrompt);
+      }
+      if (promptPrefixParts.length > 0) {
+        contextualPrompt = `${promptPrefixParts.join('\n\n')}\n\n${contextualPrompt}`;
       }
 
       logTiming('before building MCP servers config', runStartTime);
@@ -1262,7 +1335,11 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // Re-read every query so newly added/removed MCP servers take effect immediately.
       const mcpCustomTools = this.mcpManager ? buildMcpCustomTools(this.mcpManager) : [];
       const extensionCustomTools = extensionResult.customTools || [];
-      const customTools = [...mcpCustomTools, ...extensionCustomTools];
+      const capabilitiesTool = createCapabilitiesSearchTool({
+        getPacks: () => extensionResult.toolPacks ?? {},
+        activateTools: activateToolsForRun,
+      });
+      const customTools = [...mcpCustomTools, ...extensionCustomTools, capabilitiesTool];
       if (mcpCustomTools.length > 0) {
         log(
           `[AgentRunner] Registered ${mcpCustomTools.length} MCP tools as customTools:`,
@@ -1501,6 +1578,36 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
         logTiming('agent session created', runStartTime);
       }
+
+      runSessionRef.current = piSession;
+      // SDK sessions capture customTools at creation — sync the registry on
+      // warm starts so tools connected after the first turn (new MCP servers,
+      // rebuilt extension defs) actually register.
+      if (cachedSession) {
+        this.syncSessionToolRegistry(piSession, customTools);
+      }
+      // Registration != exposure: only this turn's activated subset is
+      // serialized for the model. Everything else stays registered and can be
+      // pulled in mid-run via capabilities_search.
+      const extensionCatalogNames = new Set(extensionCustomTools.map((tool) => tool.name));
+      const allowedExtensionTools = new Set(
+        extensionResult.activateTools ?? [...extensionCatalogNames]
+      );
+      const nextActiveTools = piSession
+        .getActiveToolNames()
+        .filter((name) => !extensionCatalogNames.has(name) || allowedExtensionTools.has(name));
+      for (const name of allowedExtensionTools) {
+        if (!nextActiveTools.includes(name)) nextActiveTools.push(name);
+      }
+      for (const name of queuedToolActivations) {
+        if (!nextActiveTools.includes(name)) nextActiveTools.push(name);
+      }
+      queuedToolActivations.clear();
+      piSession.setActiveToolsByName(nextActiveTools);
+      log(
+        `[AgentRunner] Active tools this turn (${nextActiveTools.length}):`,
+        nextActiveTools.join(', ')
+      );
 
       evaluationMetrics.provider = piModel.provider || provider;
       evaluationMetrics.model = piModel.id;

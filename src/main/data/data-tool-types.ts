@@ -4,6 +4,12 @@ import type { AgentRuntimeConfig } from '../../shared/contracts';
 
 export type DataToolDefinition = ToolDefinition<TSchema, unknown>;
 
+export interface DataResourceRef {
+  kind: 'InputTable' | 'OutputTable' | 'Task';
+  id: string;
+  name?: string;
+}
+
 export interface DataToolPromptContext {
   sessionId: string;
   workspacePath?: string;
@@ -13,6 +19,10 @@ export interface DataToolPromptContext {
   selectedInputTableName?: string;
   selectedOutputTableId?: string;
   selectedOutputTableName?: string;
+  /** Resources resolved/created by earlier tool calls in this session. */
+  recentResources?: DataResourceRef[];
+  /** Cloud tables attached to the current user message. */
+  attachedCloudTables?: Array<{ id: string; name?: string }>;
   capabilities: {
     canCreateInputTable: boolean;
     canCreateOutputTable: boolean;

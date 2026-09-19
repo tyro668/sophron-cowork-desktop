@@ -17,6 +17,7 @@ import type {
   GenerateTaskFromRequirementResult,
   GetRunResultCommand,
   GetTaskWorkflowCommand,
+  GetWorkflowCapabilityManifestCommand,
   ImportCloudTableCommand,
   ListCloudProjectsCommand,
   ListCloudSpacesCommand,
@@ -27,6 +28,7 @@ import type {
   PreviewInputTableNormalizerVersionCommand,
   PublishInputTableNormalizerVersionCommand,
   RunTaskCommand,
+  RunTaskResult,
   SummarizeInputTableSourceCommand,
   UpdateInputTableCommand,
   UpdateOutputTableCommand,
@@ -49,6 +51,7 @@ import type {
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
 import { hashColumns, normalizeColumnSnapshot } from './workflow';
 import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-reference';
+import { sliceWorkflowCapabilityManifest } from './workflow/workflow-capability-manifest';
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
 import { dataFieldTypeLabel } from '../../shared/data-field-types';
 import type {
@@ -65,12 +68,23 @@ import type {
 } from '../../shared/personal-analysis-types';
 import { TOOL_RESULT_GUIDANCE } from '../prompts/tool-copy';
 
+/** Resources confirmed during a session — reused across turns so resolved ids do not need re-listing. */
+const SESSION_RESOURCE_KINDS = ['InputTable', 'OutputTable', 'Task'] as const;
+const SESSION_RESOURCE_LIMIT = 8;
+
+interface SessionResourceLedger {
+  InputTable: Map<string, string | undefined>;
+  OutputTable: Map<string, string | undefined>;
+  Task: Map<string, string | undefined>;
+}
+
 export class DataToolService {
   private readonly generationInFlight = new Map<string, Promise<DataToolResult>>();
   private readonly executionContexts = new Map<
     string,
     Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>
   >();
+  private readonly sessionResources = new Map<string, SessionResourceLedger>();
 
   constructor(
     private readonly commandService: DataCommandService,
@@ -97,14 +111,117 @@ export class DataToolService {
   clearConversationContext(sessionId: string): void {
     this.executionContexts.delete(sessionId);
     this.analysisReceipts.deleteForSession(sessionId);
+    this.sessionResources.delete(sessionId);
+  }
+
+  hasPendingAnalysis(sessionId: string): boolean {
+    return this.analysisReceipts.hasPendingForSession(sessionId);
+  }
+
+  /**
+   * Record resource ids the model already resolved (tool params) or the
+   * backend confirmed (result details). Later turns reuse these ids directly;
+   * the server still re-validates existence and permissions at execution time.
+   */
+  rememberResolvedResources(
+    sessionId: string | undefined,
+    toolName: string,
+    params: unknown,
+    details: unknown
+  ): void {
+    if (!sessionId) return;
+    const ledger = this.sessionResources.get(sessionId) ?? {
+      InputTable: new Map<string, string | undefined>(),
+      OutputTable: new Map<string, string | undefined>(),
+      Task: new Map<string, string | undefined>(),
+    };
+    this.sessionResources.set(sessionId, ledger);
+
+    const remember = (kind: keyof SessionResourceLedger, id: unknown, name?: unknown) => {
+      if (typeof id !== 'string' || !id) return;
+      const bucket = ledger[kind];
+      bucket.delete(id);
+      bucket.set(id, typeof name === 'string' && name ? name : undefined);
+      while (bucket.size > SESSION_RESOURCE_LIMIT) {
+        bucket.delete(bucket.keys().next().value as string);
+      }
+    };
+
+    const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+    remember('Task', record.taskId);
+    remember('InputTable', record.inputTableId);
+    remember('OutputTable', record.outputTableId);
+    if (typeof record.id === 'string') {
+      if (toolName.includes('input_table')) remember('InputTable', record.id);
+      else if (toolName.includes('output_table')) remember('OutputTable', record.id);
+      else if (toolName.includes('task')) remember('Task', record.id);
+    }
+    for (const id of Object.values(
+      (record.inputResources as Record<string, unknown> | undefined) ?? {}
+    )) {
+      remember('InputTable', id);
+    }
+
+    if (details && typeof details === 'object') {
+      const d = details as Record<string, unknown>;
+      const entity = (value: unknown): { id?: unknown; name?: unknown } =>
+        value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+      const task = entity(d.task ?? (d.workflow as Record<string, unknown> | undefined)?.task);
+      const inputTable = entity(d.inputTable);
+      const outputTable = entity(d.outputTable);
+      remember('Task', task.id, task.name);
+      remember('InputTable', inputTable.id, inputTable.name);
+      remember('OutputTable', outputTable.id, outputTable.name);
+      const lists: Array<[keyof SessionResourceLedger, unknown]> = [
+        ['InputTable', d.inputTables],
+        ['OutputTable', d.outputTables],
+        ['Task', d.tasks],
+      ];
+      for (const [kind, list] of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const item of list.slice(0, 3)) {
+          const entry = entity(item);
+          remember(kind, entry.id, entry.name);
+        }
+      }
+    }
   }
 
   async resolveConversationContext(
     context: BeforeSessionRunContext
   ): Promise<DataToolPromptContext> {
+    const ledger = this.sessionResources.get(context.session.id);
+    const latest = (kind: keyof SessionResourceLedger) => {
+      const entries = ledger ? [...ledger[kind].entries()] : [];
+      const last = entries[entries.length - 1];
+      return last ? { id: last[0], name: last[1] } : undefined;
+    };
+    const recentResources = ledger
+      ? SESSION_RESOURCE_KINDS.flatMap((kind) =>
+          [...ledger[kind].entries()].slice(-3).map(([id, name]) => ({ kind, id, name }))
+        )
+      : [];
+    const attachedCloudTables = [...context.existingMessages]
+      .reverse()
+      .find((message) => message.role === 'user')
+      ?.content.filter((block) => block.type === 'cloud_table_attachment')
+      .flatMap((block) =>
+        block.tables.map((table) => ({ id: table.tableId, name: table.tableName }))
+      );
+    const selectedTask = latest('Task');
+    const selectedInput = latest('InputTable');
+    const selectedOutput = latest('OutputTable');
     return {
       sessionId: context.session.id,
       workspacePath: context.session.cwd,
+      selectedDataTaskId: selectedTask?.id,
+      selectedDataTaskName: selectedTask?.name,
+      selectedInputTableId: selectedInput?.id,
+      selectedInputTableName: selectedInput?.name,
+      selectedOutputTableId: selectedOutput?.id,
+      selectedOutputTableName: selectedOutput?.name,
+      recentResources,
+      attachedCloudTables,
       capabilities: {
         canCreateInputTable: true,
         canCreateOutputTable: true,
@@ -504,6 +621,41 @@ export class DataToolService {
 
   async getTaskWorkflow(input: GetTaskWorkflowCommand): Promise<DataToolResult> {
     const result = await this.commandService.getTaskWorkflow(input);
+    const view = input.view ?? 'summary';
+    if (view === 'node') {
+      const node = result.workflow.nodes.find((item) => item.id === input.nodeId);
+      if (!node) {
+        throw new DataCommandError(
+          'RESOURCE_NOT_FOUND',
+          `Node ${input.nodeId ?? '(missing)'} not found in task ${input.taskId}`
+        );
+      }
+      return toolResult(
+        compactJson({
+          task: { id: result.workflow.task.id, name: result.workflow.task.name },
+          node: { id: node.id, type: node.type, label: node.label, config: node.config },
+          edges: result.workflow.edges
+            .filter((edge) => edge.sourceNodeId === node.id || edge.targetNodeId === node.id)
+            .map(formatWorkflowEdge),
+        }),
+        result
+      );
+    }
+    if (view === 'graph') {
+      return toolResult(
+        compactJson({
+          task: { id: result.workflow.task.id, name: result.workflow.task.name },
+          nodes: result.workflow.nodes.map((node) => ({
+            id: node.id,
+            type: node.type,
+            label: node.label,
+            config: node.config,
+          })),
+          edges: result.workflow.edges.map(formatWorkflowEdge),
+        }),
+        result
+      );
+    }
     return toolResult(formatWorkflow('Read data task workflow', result.workflow), result);
   }
 
@@ -544,13 +696,10 @@ export class DataToolService {
   }
 
   async getWorkflowCapabilityManifest(
-    input: { inputTableIds?: string[]; outputTableIds?: string[] } = {}
+    input: GetWorkflowCapabilityManifestCommand = {}
   ): Promise<DataToolResult> {
     const manifest = await this.commandService.getWorkflowCapabilityManifest(input);
-    return toolResult(
-      `Workflow capability manifest ${manifest.manifestVersion} (plan ${manifest.planVersion}, dsl ${manifest.dslVersion})`,
-      manifest
-    );
+    return toolResult(compactJson(sliceWorkflowCapabilityManifest(manifest, input)), manifest);
   }
 
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<DataToolResult> {
@@ -593,6 +742,7 @@ export class DataToolService {
     return toolResult(
       [
         `Ran data task: ${formatTask(result.task)}`,
+        formatRunEvidence(input, result),
         formatRunTaskSafetyNotes(input),
         formatPreview(result.preview),
         formatNodeStats(result.nodeStats),
@@ -607,7 +757,11 @@ export class DataToolService {
   async getRunResult(input: GetRunResultCommand): Promise<DataToolResult> {
     const result = await this.commandService.getRunResult(withAgentResultPreviewLimit(input));
     return toolResult(
-      [`Run result for ${formatTask(result.task)}`, formatPreview(result.preview)]
+      [
+        `Run result for ${formatTask(result.task)}`,
+        formatOutputEvidence(result.task, result.preview),
+        formatPreview(result.preview),
+      ]
         .filter(Boolean)
         .join('\n\n'),
       result
@@ -777,6 +931,36 @@ function formatTask(task: DataCleaningTask): string {
   return `${formatDataResourceLink('task', task.id, task.name)} (${task.id}) status=${task.status} nodes=${task.nodeCount} rows=${rows} columns=${columns}`;
 }
 
+/**
+ * Model-visible execution evidence: commit status + output identity, so a
+ * successful run does not require a follow-up data_get_run_result round-trip.
+ */
+function formatRunEvidence(input: RunTaskCommand, result: RunTaskResult): string {
+  const persisted = (input.mode ?? 'persisted') === 'persisted';
+  const lines = [
+    `Run: mode=${persisted ? 'persisted' : 'temporary'} commit=${persisted ? 'committed' : 'not_committed (validation only)'}`,
+  ];
+  const output = formatOutputEvidence(result.task, result.preview);
+  if (output) lines.push(output);
+  return lines.join('\n');
+}
+
+function formatOutputEvidence(
+  task: DataCleaningTask,
+  preview: DataInputTablePreview | undefined
+): string {
+  const parts: string[] = [];
+  if (task.outputTable) {
+    parts.push(
+      `outputTable=${formatDataResourceLink('output_table', task.outputTable, task.outputTable)}`
+    );
+  }
+  if (preview) {
+    parts.push(`outputRows=${preview.totalRows}`);
+  }
+  return parts.length ? `Output: ${parts.join(' ')}` : '';
+}
+
 function formatRunTaskSafetyNotes(input: RunTaskCommand): string {
   const notes: string[] = [];
   if (input.mode !== 'persisted') {
@@ -810,6 +994,19 @@ function formatWorkflow(title: string, workflow: DataTaskWorkflow): string {
     .join('\n');
 }
 
+function compactJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function formatWorkflowEdge(edge: DataTaskWorkflow['edges'][number]) {
+  return {
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    sourceHandle: edge.sourceHandle ?? undefined,
+    targetHandle: edge.targetHandle ?? undefined,
+  };
+}
+
 function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
   const config = node.config ?? {};
   const details = [
@@ -825,11 +1022,24 @@ function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
   return `- ${node.id} type=${node.type}${details.length ? ` ${details.join(' ')}` : ''}`;
 }
 
+const MAX_PREVIEW_CELL_CHARS = 200;
+
+function truncateCellValue(value: unknown): unknown {
+  if (typeof value === 'string' && value.length > MAX_PREVIEW_CELL_CHARS) {
+    return `${value.slice(0, MAX_PREVIEW_CELL_CHARS)}…[+${value.length - MAX_PREVIEW_CELL_CHARS} chars]`;
+  }
+  return value;
+}
+
 function formatPreview(preview: DataInputTablePreview | undefined, includeRows = true): string {
   if (!preview) {
     return '';
   }
-  const rows = preview.rows.slice(0, preview.limit);
+  const rows = preview.rows
+    .slice(0, preview.limit)
+    .map((row) =>
+      Object.fromEntries(Object.entries(row).map(([key, value]) => [key, truncateCellValue(value)]))
+    );
   const typeSummary = preview.columnTypes.length
     ? ` types=${preview.columnTypes.map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`).join(', ')}`
     : '';

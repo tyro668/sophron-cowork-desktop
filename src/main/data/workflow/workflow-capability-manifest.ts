@@ -164,3 +164,86 @@ export function buildWorkflowCapabilityManifest(
       : {}),
   };
 }
+
+export type WorkflowCapabilityManifest = ReturnType<typeof buildWorkflowCapabilityManifest>;
+
+export const WORKFLOW_CAPABILITY_MANIFEST_SECTIONS = [
+  'plan',
+  'operators',
+  'runtime',
+  'bindings',
+] as const;
+export type WorkflowCapabilityManifestSection =
+  (typeof WORKFLOW_CAPABILITY_MANIFEST_SECTIONS)[number];
+
+/**
+ * Slice the full manifest into the model-visible payload. The complete manifest
+ * stays in `details` for UI/debugging; model `content` receives only the
+ * requested sections so the operator schema catalog is fetched per task.
+ *
+ * Default slice: plan envelope + ports/handles + binding rules + runtime
+ * semantics + bound resource snapshots + the operator type index. Per-operator
+ * config schemas are included only when the `operators` section is requested
+ * (optionally narrowed by `operatorTypes`).
+ */
+export function sliceWorkflowCapabilityManifest(
+  manifest: WorkflowCapabilityManifest,
+  options: { sections?: readonly string[]; operatorTypes?: readonly string[] } = {}
+): Record<string, unknown> {
+  const sections = new Set<WorkflowCapabilityManifestSection>(
+    (options.sections?.filter((section): section is WorkflowCapabilityManifestSection =>
+      (WORKFLOW_CAPABILITY_MANIFEST_SECTIONS as readonly string[]).includes(section)
+    ) ?? []) as WorkflowCapabilityManifestSection[]
+  );
+  const includeAll = options.sections === undefined || options.sections.length === 0;
+
+  const requestedOperatorTypes = (options.operatorTypes ?? []).filter((type) =>
+    (OPERATOR_TYPES as readonly string[]).includes(type)
+  );
+  const operatorSchemas = (() => {
+    // Operator payload schemas are the expensive part — they ship only on an
+    // explicit `operators` section request, never in the default slice.
+    if (!sections.has('operators')) return undefined;
+    const all = manifest.plan.operatorConfigSchemas as Record<string, unknown>;
+    if (requestedOperatorTypes.length === 0) return all;
+    return Object.fromEntries(
+      requestedOperatorTypes.filter((type) => type in all).map((type) => [type, all[type]])
+    );
+  })();
+
+  const slice: Record<string, unknown> = {
+    manifestVersion: manifest.manifestVersion,
+    planVersion: manifest.planVersion,
+    dslVersion: manifest.dslVersion,
+    capabilityProfileVersion: manifest.capabilityProfileVersion,
+    operatorTypes: [...OPERATOR_TYPES],
+  };
+  if (includeAll || sections.has('plan')) {
+    slice.plan = {
+      description: manifest.plan.description,
+      schema: manifest.plan.schema,
+      ports: manifest.plan.ports,
+      handles: manifest.plan.handles,
+    };
+    slice.resources = manifest.resources;
+    slice.diagnostics = manifest.diagnostics;
+    slice.repairLoop = manifest.repairLoop;
+  }
+  if (operatorSchemas) {
+    slice.operatorConfigSchemas = operatorSchemas;
+    if (requestedOperatorTypes.length > 0) {
+      slice.operatorSchemaScope = requestedOperatorTypes;
+    }
+  } else {
+    slice.operatorConfigSchemas =
+      'Not included in this slice. Re-request with sections:["operators"] and operatorTypes:["<type>",...] to fetch per-operator config JSON Schemas.';
+  }
+  if (includeAll || sections.has('runtime')) {
+    slice.runtime = manifest.runtime;
+  }
+  const bindings = (manifest as { bindings?: unknown }).bindings;
+  if (bindings && (includeAll || sections.has('bindings'))) {
+    slice.bindings = bindings;
+  }
+  return slice;
+}

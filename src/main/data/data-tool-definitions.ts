@@ -85,7 +85,20 @@ export function createDataCustomTools(
   context?: DataToolPromptContext,
   executionContext?: DataToolExecutionContext
 ): DataToolDefinition[] {
-  return [
+  const rememberResources = (tool: DataToolDefinition): DataToolDefinition => ({
+    ...tool,
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const result = await tool.execute(toolCallId, params, signal, onUpdate, ctx);
+      dataToolService.rememberResolvedResources(
+        executionContext?.sessionId ?? context?.sessionId,
+        tool.name,
+        params,
+        (result as { details?: unknown } | undefined)?.details
+      );
+      return result;
+    },
+  });
+  const toolDefinitions: DataToolDefinition[] = [
     {
       name: 'data_list_input_tables',
       ...DATA_TOOL_COPY.data_list_input_tables,
@@ -443,6 +456,15 @@ export function createDataCustomTools(
       ...DATA_TOOL_COPY.data_get_task_workflow,
       parameters: Type.Object({
         taskId: Type.String({ minLength: 1 }),
+        view: Type.Optional(
+          Type.Union([Type.Literal('summary'), Type.Literal('graph'), Type.Literal('node')], {
+            description:
+              'summary (default): task meta + node types. graph: full editable node configs and edges. node: one node config + touching edges (requires nodeId).',
+          })
+        ),
+        nodeId: Type.Optional(
+          Type.String({ minLength: 1, description: 'Required when view="node"' })
+        ),
       }),
       execute: async (_toolCallId, params) => dataToolService.getTaskWorkflow(params as never),
     },
@@ -478,6 +500,26 @@ export function createDataCustomTools(
           Type.Array(Type.String({ minLength: 1 }), {
             description: 'Output table ids to include real column snapshots for',
           })
+        ),
+        operatorTypes: Type.Optional(
+          Type.Array(Type.String({ minLength: 1 }), {
+            description:
+              'Operator types whose config JSON Schemas to include (e.g. ["join","aggregate"]). Requires the operators section.',
+          })
+        ),
+        sections: Type.Optional(
+          Type.Array(
+            Type.Union([
+              Type.Literal('plan'),
+              Type.Literal('operators'),
+              Type.Literal('runtime'),
+              Type.Literal('bindings'),
+            ]),
+            {
+              description:
+                'Manifest sections to return. Default: plan+runtime+bindings without per-operator schemas.',
+            }
+          )
         ),
       }),
       execute: async (_toolCallId, params) =>
@@ -632,6 +674,7 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.getRunResult(params as never),
     },
   ];
+  return toolDefinitions.map(rememberResources);
 }
 
 function resolveLocalSourcePathParams(
