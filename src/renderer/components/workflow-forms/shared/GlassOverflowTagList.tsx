@@ -2,22 +2,24 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 const TAG_GAP = 4;
+const TAG_GAPS: Record<'compact' | 'field', number> = { compact: 4, field: 6 };
 
 export function getVisibleTagCount(
   tagWidths: number[],
   badgeWidth: number,
-  availableWidth: number
+  availableWidth: number,
+  tagGap: number = TAG_GAP
 ): number {
   const totalWidth = tagWidths.reduce(
-    (width, tagWidth, index) => width + tagWidth + (index > 0 ? TAG_GAP : 0),
+    (width, tagWidth, index) => width + tagWidth + (index > 0 ? tagGap : 0),
     0
   );
   if (totalWidth <= availableWidth) return tagWidths.length;
 
   let usedWidth = 0;
   for (let index = 0; index < tagWidths.length; index += 1) {
-    const nextWidth = tagWidths[index] + (index > 0 ? TAG_GAP : 0);
-    const badgeReserve = index < tagWidths.length - 1 ? TAG_GAP + badgeWidth : 0;
+    const nextWidth = tagWidths[index] + (index > 0 ? tagGap : 0);
+    const badgeReserve = index < tagWidths.length - 1 ? tagGap + badgeWidth : 0;
     if (usedWidth + nextWidth + badgeReserve > availableWidth) return index;
     usedWidth += nextWidth;
   }
@@ -42,12 +44,14 @@ function Tag({
   return (
     <span
       title={missing ? missingTitle : undefined}
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded font-medium ${
-        missing ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border font-medium ${
+        missing
+          ? 'border-error/25 bg-error/10 text-error'
+          : 'border-accent/20 bg-accent-muted text-accent'
       } ${
         variant === 'compact'
           ? 'h-5 max-w-[132px] px-1.5 text-[11px] leading-none'
-          : 'min-h-6 max-w-[180px] px-1 py-0.5 text-[12px]'
+          : 'h-6 max-w-[180px] px-2 text-[12px]'
       }`}
     >
       <span className="min-w-0 truncate">{label}</span>
@@ -65,9 +69,9 @@ function Tag({
             onRemove();
           }}
           aria-label={label}
-          className={`ml-0.5 inline-flex items-center justify-center rounded-full outline-none hover:bg-accent-muted focus-visible:ring-2 focus-visible:ring-accent/30 ${
-            variant === 'compact' ? 'h-4 w-4' : 'h-5 w-5'
-          }`}
+          className={`inline-flex items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+            missing ? 'hover:bg-error/15' : 'hover:bg-accent/15'
+          } ${variant === 'compact' ? 'h-3.5 w-3.5' : 'h-4 w-4'}`}
         >
           <X className={variant === 'compact' ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
         </button>
@@ -112,7 +116,7 @@ export function GlassOverflowTagList({
       const tagWidths = parts.slice(0, values.length).map((part) => part.offsetWidth);
       const badgeWidth = parts[values.length]?.offsetWidth ?? 0;
       const availableWidth = Math.max(0, box.clientWidth - trailingReserve);
-      const count = getVisibleTagCount(tagWidths, badgeWidth, availableWidth);
+      const count = getVisibleTagCount(tagWidths, badgeWidth, availableWidth, TAG_GAPS[variant]);
       setVisibleCount((previous) => (previous === count ? previous : count));
     };
 
@@ -130,7 +134,11 @@ export function GlassOverflowTagList({
       ref={boxRef}
       className="relative flex w-full min-w-0 flex-1 items-center gap-1 whitespace-nowrap"
     >
-      <div className="flex min-w-0 flex-shrink items-center gap-1 overflow-hidden">
+      <div
+        className={`flex min-w-0 flex-shrink items-center overflow-hidden ${
+          variant === 'compact' ? 'gap-1' : 'gap-1.5'
+        }`}
+      >
         {values.length === 0 && placeholder && (
           <span className="truncate text-[12px] italic text-text-muted">{placeholder}</span>
         )}
@@ -161,7 +169,9 @@ export function GlassOverflowTagList({
         <div
           ref={measureRef}
           aria-hidden
-          className="pointer-events-none absolute -left-[9999px] top-0 flex items-center gap-1"
+          className={`pointer-events-none absolute -left-[9999px] top-0 flex items-center ${
+            variant === 'compact' ? 'gap-1' : 'gap-1.5'
+          }`}
         >
           {values.map((label, index) => (
             <Tag

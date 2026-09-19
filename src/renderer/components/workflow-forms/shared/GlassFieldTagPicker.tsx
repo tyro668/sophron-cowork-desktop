@@ -75,13 +75,15 @@ export function GlassFieldTagPicker({
             </span>
           )}
 
-          <div className="scrollbar-hover flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <div className="scrollbar-hover flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {selected.map((item, index) => (
               <span
                 key={`${item}-${index}`}
                 title={missingValues.has(item) ? missingTitle : undefined}
-                className={`inline-flex min-h-6 max-w-[180px] shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[12px] font-medium ${
-                  missingValues.has(item) ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
+                className={`inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium ${
+                  missingValues.has(item)
+                    ? 'border-error/25 bg-error/10 text-error'
+                    : 'border-accent/20 bg-accent-muted text-accent'
                 }`}
               >
                 <span className="truncate">{item}</span>
@@ -89,7 +91,9 @@ export function GlassFieldTagPicker({
                 <button
                   type="button"
                   onClick={() => onRemove(item)}
-                  className="ml-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full outline-none hover:bg-accent-muted focus-visible:ring-2 focus-visible:ring-accent/30"
+                  className={`inline-flex h-4 w-4 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+                    missingValues.has(item) ? 'hover:bg-error/15' : 'hover:bg-accent/15'
+                  }`}
                   aria-label={tr('removeField')}
                 >
                   <X className="h-2.5 w-2.5" />
