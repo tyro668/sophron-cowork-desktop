@@ -627,7 +627,7 @@ const exprHighlightStyle = HighlightStyle.define([
 
 const exprTheme = EditorView.theme({
   '&': {
-    border: '1px solid rgba(148, 163, 184, 0.44)',
+    border: '1px solid var(--color-border-muted)',
     borderRadius: '0.5rem',
     backgroundColor: 'transparent',
     fontSize: '13px',
@@ -637,7 +637,7 @@ const exprTheme = EditorView.theme({
   '&.cm-focused': {
     outline: 'none',
     borderColor: 'var(--color-accent)',
-    boxShadow: '0 0 0 2px rgba(25, 169, 154, 0.15)',
+    boxShadow: '0 0 0 2px rgb(var(--color-accent-rgb) / 0.15)',
   },
   '.cm-scroller': {
     fontFamily:
@@ -650,10 +650,10 @@ const exprTheme = EditorView.theme({
     boxSizing: 'border-box',
     minHeight: '80px',
     padding: '0.5rem 0.625rem',
-    caretColor: '#334155',
+    caretColor: 'var(--color-text-primary)',
   },
   '.cm-line': { padding: '0' },
-  '.cm-placeholder': { color: '#94a3b8' },
+  '.cm-placeholder': { color: 'var(--color-text-muted)' },
 });
 
 function sortFields(fields: string[], query: string): string[] {

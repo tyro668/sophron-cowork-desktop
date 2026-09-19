@@ -1054,13 +1054,13 @@
 
   .workflow-react-flow {
     --xy-background-color: var(--color-background);
-    --xy-edge-stroke-default: rgba(93, 125, 109, 0.62);
+    --xy-edge-stroke-default: var(--workflow-edge);
     --xy-edge-stroke-selected-default: var(--color-accent);
     --xy-connectionline-stroke-default: var(--color-accent);
     --xy-connectionline-stroke-width-default: 1.8;
     --xy-handle-background-color-default: var(--color-background);
-    --xy-handle-border-color-default: rgba(138, 169, 154, 0.72);
-    --xy-minimap-background-color-default: rgba(98, 201, 154, 0.08);
+    --xy-handle-border-color-default: var(--workflow-edge);
+    --xy-minimap-background-color-default: rgb(var(--color-accent-rgb) / 0.08);
     --xy-controls-button-background-color-default: var(--color-background);
     --xy-controls-button-background-color-hover-default: var(--color-surface-hover);
     --xy-controls-button-color-default: var(--color-text-secondary);

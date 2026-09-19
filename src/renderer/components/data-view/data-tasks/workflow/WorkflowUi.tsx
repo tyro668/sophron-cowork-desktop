@@ -320,7 +320,7 @@ export function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAli
         line.orientation === 'vertical' ? (
           <div
             key={line.id}
-            className="workflow-alignment-guide absolute border-l border-dashed border-accent/75 shadow-[0_0_0_1px_rgba(25,169,154,0.16)]"
+            className="workflow-alignment-guide absolute border-l border-dashed border-accent/75 shadow-[0_0_0_1px_rgb(var(--color-accent-rgb)/0.16)]"
             style={{
               left: line.x,
               top: line.y1,
@@ -330,7 +330,7 @@ export function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAli
         ) : (
           <div
             key={line.id}
-            className="workflow-alignment-guide absolute border-t border-dashed border-accent/75 shadow-[0_0_0_1px_rgba(25,169,154,0.16)]"
+            className="workflow-alignment-guide absolute border-t border-dashed border-accent/75 shadow-[0_0_0_1px_rgb(var(--color-accent-rgb)/0.16)]"
             style={{
               left: line.x1,
               top: line.y,
