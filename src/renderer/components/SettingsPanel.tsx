@@ -130,11 +130,11 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
-      <div className="flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-surface px-3 py-2 sm:px-4">
+      <div className="titlebar-drag flex flex-shrink-0 items-center justify-end border-b border-border-subtle bg-surface px-3 py-2 sm:px-4">
         <button
           onClick={onClose}
           aria-label={t('common.close')}
-          className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+          className="titlebar-no-drag p-2 rounded-lg hover:bg-surface-hover transition-colors"
         >
           <X className="w-5 h-5 text-text-secondary" />
         </button>

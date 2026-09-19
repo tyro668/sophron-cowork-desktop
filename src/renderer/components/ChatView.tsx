@@ -875,7 +875,7 @@ export function ChatView() {
       {/* Header */}
       <div
         ref={headerRef}
-        className="glass-panel-header relative grid h-12 grid-cols-[1fr_auto_1fr] items-center px-4 lg:px-8"
+        className="glass-panel-header titlebar-drag relative grid h-12 grid-cols-[1fr_auto_1fr] items-center px-4 lg:px-8"
       >
         <div aria-hidden="true" />
         <h2
