@@ -38,6 +38,7 @@ import type {
   WorkflowNodeRunStat,
 } from '../../../../types';
 import { DataToolbarButton } from '../../shared';
+import { useSystemDarkMode, useThemeSetting } from '../../../../store/selectors';
 import { getWorkflowAlignmentSnap, getWorkflowConnectionDropTarget } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
 import { canConnectWorkflowNodes } from './workflow-graph-operations';
@@ -169,6 +170,9 @@ function WorkflowCanvasContent({
 }) {
   const { t } = useTranslation();
   const { screenToFlowPosition } = useReactFlow();
+  const themeSetting = useThemeSetting();
+  const systemDarkMode = useSystemDarkMode();
+  const colorMode = themeSetting === 'system' ? (systemDarkMode ? 'dark' : 'light') : themeSetting;
   const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const selectedNode = useMemo(
@@ -504,6 +508,7 @@ function WorkflowCanvasContent({
           reconnectRadius={6}
           isValidConnection={isValidWorkflowConnection}
           defaultEdgeOptions={WORKFLOW_DEFAULT_EDGE_OPTIONS}
+          colorMode={colorMode}
           className="workflow-react-flow bg-transparent"
         >
           <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />

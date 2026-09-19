@@ -99,8 +99,10 @@
     --glass-inset-highlight: rgba(255, 255, 255, 0.05);
   }
 
-  /* Light theme — selected “Mint Workbench” direction. */
-  .light {
+  /* Light theme — selected “Mint Workbench” direction.
+     Scoped to :root so embedded .light classes (e.g. React Flow's colorMode
+     wrapper) don't re-declare these variables inside their subtree. */
+  :root.light {
     color-scheme: light;
     --app-backdrop: #f4f8f5;
     --glass-panel: #fbfdfb;
