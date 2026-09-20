@@ -38,7 +38,11 @@ import {
   validateEnabledActionNodes,
 } from './schedule/model';
 import { AutomationListPanel, AutomationRunLogPanel, getRunSortTime } from './schedule/listPanels';
-import { underlineTabTriggerClass } from '../data-view/shared';
+import {
+  underlineTabBarClass,
+  underlineTabListClass,
+  underlineTabTriggerClass,
+} from '../data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   ActionChainSection,
@@ -566,8 +570,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           onValueChange={(v) => setActiveListTab(v as ListTab)}
           className="contents"
         >
-          <div className="mb-2 flex min-h-10 flex-shrink-0 items-end gap-5">
-            <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
+          <div className={underlineTabBarClass}>
+            <TabsList className={underlineTabListClass}>
               <TabsTrigger value="automations" className={underlineTabTriggerClass}>
                 {tr('schedule.tabs.automations', '自动化')}
               </TabsTrigger>

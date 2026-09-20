@@ -12,6 +12,8 @@ interface GlassSegmentedControlProps<T extends string> {
   options: readonly SegmentedOption<T>[];
   onChange: (value: T) => void;
   ariaLabel?: string;
+  /** Stretch the group across its container, giving every option equal width. */
+  fill?: boolean;
 }
 
 export function GlassSegmentedControl<T extends string>({
@@ -19,12 +21,15 @@ export function GlassSegmentedControl<T extends string>({
   options,
   onChange,
   ariaLabel,
+  fill = false,
 }: GlassSegmentedControlProps<T>) {
   return (
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-border-muted bg-surface p-0.5"
+      className={`${
+        fill ? 'flex w-full' : 'inline-flex'
+      } h-8 shrink-0 items-center gap-0.5 rounded-md border border-border-muted bg-surface p-0.5`}
     >
       {options.map((opt) => (
         <button
@@ -33,7 +38,9 @@ export function GlassSegmentedControl<T extends string>({
           title={opt.tip}
           aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
-          className={`inline-flex h-[27px] items-center gap-1.5 rounded px-3 text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+          className={`inline-flex h-[27px] items-center justify-center gap-1.5 whitespace-nowrap rounded px-3 text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/30 ${
+            fill ? 'min-w-0 flex-1' : ''
+          } ${
             value === opt.value
               ? 'bg-surface-active font-medium text-accent-text'
               : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'

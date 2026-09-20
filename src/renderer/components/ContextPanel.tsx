@@ -297,7 +297,7 @@ export function ContextPanel() {
   return (
     <div className="flex w-80 shrink-0 flex-col overflow-hidden border-l border-border-subtle bg-surface text-sm">
       {/* Header */}
-      <div className="titlebar-drag px-3 h-10 flex items-center gap-2 border-b border-border-subtle shrink-0 bg-surface">
+      <div className="titlebar-drag px-3 h-12 flex items-center gap-2 border-b border-border-subtle shrink-0 bg-surface">
         <button
           onClick={toggleContextPanel}
           className="titlebar-no-drag w-6 h-6 rounded-md flex items-center justify-center hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"

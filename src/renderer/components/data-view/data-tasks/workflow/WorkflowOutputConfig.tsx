@@ -163,7 +163,7 @@ export function WorkflowOutputConfig({
   );
 
   return (
-    <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
+    <div className="grid gap-x-3 gap-y-2.5 sm:col-span-2 sm:grid-cols-2">
       <div>
         <span className="mb-1.5 block text-xs font-medium text-text-secondary">
           {t('data.workflow.outputStrategy')}
@@ -219,11 +219,12 @@ export function WorkflowOutputConfig({
         </label>
       )}
 
-      <div>
+      <div className="sm:col-span-2">
         <span className="mb-1.5 block text-xs font-medium text-text-secondary">
           {t('data.workflow.outputMode')}
         </span>
         <GlassSegmentedControl
+          fill
           value={mode}
           onChange={handleModeChange}
           options={[

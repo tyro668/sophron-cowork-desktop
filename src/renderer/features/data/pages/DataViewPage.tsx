@@ -20,7 +20,11 @@ import {
   OutputTablesPanel,
   UploadOutputTableToCloudDialog,
 } from '../../../components/data-view/output-tables';
-import { underlineTabTriggerClass } from '../../../components/data-view/shared';
+import {
+  underlineTabBarClass,
+  underlineTabListClass,
+  underlineTabTriggerClass,
+} from '../../../components/data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
@@ -254,14 +258,14 @@ export function DataViewPage() {
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <section className="flex min-h-0 flex-1 flex-col">
+            <section className="mt-3 flex min-h-0 flex-1 flex-col">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => handleTabChange(v as DataTab)}
                 className="contents"
               >
-                <div className="mb-2 flex min-h-10 flex-shrink-0 flex-col gap-2.5 sm:flex-row sm:items-end sm:justify-between">
-                  <TabsList className="inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0">
+                <div className={underlineTabBarClass}>
+                  <TabsList className={underlineTabListClass}>
                     {(
                       [
                         ['tasks', 'data.tabs.tasks'],

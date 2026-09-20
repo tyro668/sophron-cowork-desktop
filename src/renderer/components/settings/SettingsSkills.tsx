@@ -31,6 +31,8 @@ import {
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
+  underlineTabBarClass,
+  underlineTabListClass,
   underlineTabTriggerClass,
 } from '../data-view/shared';
 import { useConfirmDialog } from '../ConfirmDialog';
@@ -578,8 +580,8 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           }}
           className="contents"
         >
-          <div className="flex h-9 flex-shrink-0 items-end gap-3 border-b border-border-subtle">
-            <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
+          <div className={underlineTabBarClass}>
+            <TabsList className={underlineTabListClass}>
               <TabsTrigger value="installed" className={underlineTabTriggerClass}>
                 {t('skills.workspace.installedTab')}
               </TabsTrigger>
@@ -593,7 +595,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           </div>
 
           <TabsContent value={activeWorkspaceTab} forceMount className="contents">
-            <div className="mt-3 flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 flex-1 items-center">
                 <DataTableSearch
                   value={searchQuery}

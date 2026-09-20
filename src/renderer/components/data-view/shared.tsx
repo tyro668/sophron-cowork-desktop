@@ -43,6 +43,16 @@ export const underlineTabTriggerClass =
   'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-px ' +
   'after:w-full after:rounded-full data-[state=active]:after:bg-accent';
 
+/**
+ * Shared underline-tab bar chrome for the main workspace pages (data, skills,
+ * automation): a fixed-height row with a baseline border that the active
+ * trigger underline sits on. Keeps tab height/spacing identical across pages.
+ */
+export const underlineTabBarClass =
+  'mb-3 flex h-10 flex-shrink-0 items-end border-b border-border-subtle';
+export const underlineTabListClass =
+  'inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0';
+
 export function DataToolbarButton({
   icon,
   label,
