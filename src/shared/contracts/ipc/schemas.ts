@@ -543,6 +543,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'memory.listFiles': [],
   'memory.readFile': [str],
   'memory.inspectSession': [str, strOpt],
+  'memory.listInjections': [numOpt],
   'memory.setEnabled': [bool],
   // data workspace
   'data.getDashboard': [

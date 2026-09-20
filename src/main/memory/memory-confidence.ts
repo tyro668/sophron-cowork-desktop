@@ -1,4 +1,8 @@
-import type { MemoryConfidenceSignals, MemoryConfidenceSourceType } from './memory-types';
+import type {
+  MemoryConfidenceSignals,
+  MemoryConfidenceSourceType,
+  MemoryEvidenceRef,
+} from './memory-types';
 
 const CONFIDENCE_CALCULATION_VERSION = 1;
 
@@ -58,13 +62,17 @@ export function normalizeConfidenceSignals(value: unknown): MemoryConfidenceSign
         : typeof source.last_verified_at === 'string'
           ? source.last_verified_at
           : undefined,
+    verifiedValueHash:
+      typeof source.verifiedValueHash === 'string' && source.verifiedValueHash
+        ? source.verifiedValueHash
+        : typeof source.verified_value_hash === 'string' && source.verified_value_hash
+          ? source.verified_value_hash
+          : undefined,
     calculationVersion:
       normalizeCount(source.calculationVersion ?? source.calculation_version) ||
       CONFIDENCE_CALCULATION_VERSION,
     reason:
-      typeof source.reason === 'string' && source.reason.trim()
-        ? source.reason.trim()
-        : undefined,
+      typeof source.reason === 'string' && source.reason.trim() ? source.reason.trim() : undefined,
   };
 }
 
@@ -79,6 +87,7 @@ export function confidenceSignalsToFileRecord(
     contradiction_count: signals.contradictionCount,
     user_verified: signals.userVerified,
     last_verified_at: signals.lastVerifiedAt ?? '',
+    verified_value_hash: signals.verifiedValueHash ?? '',
     calculation_version: signals.calculationVersion,
     reason: signals.reason ?? '',
   };
@@ -92,6 +101,7 @@ export function buildConfidenceSignals(input: {
   contradictionCount?: number;
   userVerified?: boolean;
   lastVerifiedAt?: string;
+  verifiedValueHash?: string;
   reason?: string;
 }): MemoryConfidenceSignals {
   const extractionConfidence = normalizeConfidence(input.extractionConfidence);
@@ -106,6 +116,7 @@ export function buildConfidenceSignals(input: {
     contradictionCount: input.contradictionCount ?? 0,
     userVerified: input.userVerified ?? false,
     lastVerifiedAt: input.lastVerifiedAt,
+    verifiedValueHash: input.userVerified ? input.verifiedValueHash : undefined,
     calculationVersion: CONFIDENCE_CALCULATION_VERSION,
     reason: input.reason,
   };
@@ -127,20 +138,55 @@ export function calculateMemoryConfidence(signals: MemoryConfidenceSignals): num
   );
 }
 
+export type MemoryMergeResolution = 'equivalent' | 'conflict' | 'correction';
+
+export function memoryValuesEquivalent(a: string, b: string): boolean {
+  const normalize = (value: string) =>
+    value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  return normalize(a) === normalize(b);
+}
+
+export function countIndependentEvidenceSessions(evidence: MemoryEvidenceRef[]): number {
+  return new Set(evidence.map((item) => item.sessionId).filter(Boolean)).size;
+}
+
 export function mergeConfidenceSignals(
   existing: MemoryConfidenceSignals | undefined,
-  incoming: MemoryConfidenceSignals
+  incoming: MemoryConfidenceSignals,
+  options?: { resolution?: MemoryMergeResolution; independentEvidence?: boolean }
 ): MemoryConfidenceSignals {
   if (!existing) {
     return incoming;
   }
+  const resolution = options?.resolution ?? 'equivalent';
+  if (resolution !== 'equivalent') {
+    return {
+      ...incoming,
+      evidenceCount: Math.max(existing.evidenceCount, incoming.evidenceCount),
+      corroborationCount: incoming.corroborationCount,
+      contradictionCount:
+        resolution === 'conflict'
+          ? existing.contradictionCount + 1
+          : Math.max(existing.contradictionCount, incoming.contradictionCount),
+      userVerified: incoming.userVerified,
+      lastVerifiedAt: incoming.lastVerifiedAt,
+      // On 'conflict' the stored value is unchanged, so its verification hash
+      // stays valid; on 'correction' the value was replaced and the incoming
+      // signals carry their own (empty) hash — the new value is unverified.
+      verifiedValueHash:
+        resolution === 'conflict' ? existing.verifiedValueHash : incoming.verifiedValueHash,
+    };
+  }
   return {
     ...incoming,
     evidenceCount: Math.max(existing.evidenceCount, incoming.evidenceCount),
-    corroborationCount: Math.max(existing.corroborationCount + 1, incoming.corroborationCount),
+    corroborationCount: options?.independentEvidence
+      ? Math.max(existing.corroborationCount + 1, incoming.corroborationCount)
+      : Math.max(existing.corroborationCount, incoming.corroborationCount),
     contradictionCount: Math.max(existing.contradictionCount, incoming.contradictionCount),
     userVerified: existing.userVerified || incoming.userVerified,
     lastVerifiedAt: incoming.lastVerifiedAt ?? existing.lastVerifiedAt,
+    verifiedValueHash: existing.verifiedValueHash ?? incoming.verifiedValueHash,
   };
 }
 

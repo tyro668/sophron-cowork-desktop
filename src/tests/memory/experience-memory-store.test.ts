@@ -20,10 +20,7 @@ describe('ExperienceMemoryStore', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  function createSessionInput(
-    sessionId: string,
-    summary: string
-  ): SessionInput {
+  function createSessionInput(sessionId: string, summary: string): SessionInput {
     return {
       sessionId,
       sourceWorkspace: '/repo/a',
@@ -43,10 +40,7 @@ describe('ExperienceMemoryStore', () => {
     };
   }
 
-  function createChunkInput(
-    sessionId: string,
-    summary: string
-  ): ChunkInput {
+  function createChunkInput(sessionId: string, summary: string): ChunkInput {
     return {
       sessionId,
       sourceWorkspace: '/repo/a',
@@ -67,7 +61,7 @@ describe('ExperienceMemoryStore', () => {
     };
   }
 
-  it('marks older highly similar chunks as superseded and excludes them from retrieval', () => {
+  it('flags older highly similar chunks as duplicate candidates without archiving them', () => {
     const store = new ExperienceMemoryStore(filePath);
 
     store.replaceSession(
@@ -83,15 +77,21 @@ describe('ExperienceMemoryStore', () => {
 
     const oldChunk = store.chunks.find((item) => item.sessionId === 'old-session');
     const newChunk = store.chunks.find((item) => item.sessionId === 'new-session');
-    expect(oldChunk?.status).toBe('archived');
-    expect(oldChunk?.supersededBy).toBe(newChunk?.id);
+    // Similarity alone never retires a record — it stays active but is marked
+    // as a duplicate candidate so retrieval can deprioritize it.
+    expect(oldChunk?.status).toBe('active');
+    expect(oldChunk?.duplicateCandidateOf).toBe(newChunk?.id);
+    expect(oldChunk?.supersededBy).toBeUndefined();
 
     const retrieval = store.retrieveProgressive('gateway token rotation', {
       chunkTopK: 10,
       sessionTopK: 10,
       currentWorkspace: '/repo/a',
     });
-    expect(retrieval.rankedChunks.map((item) => item.sessionId)).toEqual(['new-session']);
-    expect(retrieval.rankedSessions.map((item) => item.sessionId)).toEqual(['new-session']);
+    // Both remain retrievable; the duplicate candidate ranks below its
+    // canonical record.
+    const rankedIds = retrieval.rankedChunks.map((item) => item.sessionId);
+    expect(rankedIds).toContain('new-session');
+    expect(rankedIds.indexOf('new-session')).toBeLessThan(rankedIds.indexOf('old-session'));
   });
 });

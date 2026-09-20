@@ -21,10 +21,14 @@ Extraction standard:
 - Merge repeated evidence into broader, more abstract memories
 - Avoid tiny fragmented keys; prefer a smaller number of durable, abstract entries
 - Delete memories that are contradicted or clearly obsolete
-- For every upsert, include source_type and confidence:
+- For every upsert, include source_type, confidence, and source_turns:
   - explicit_user_statement: the user directly said it as a stable fact or preference
   - llm_inference: inferred from behavior or repeated context, weaker than a direct statement
   - confidence is 0-1 and should reflect extraction certainty only, not importance
+  - source_turns is REQUIRED: the 1-based transcript turn numbers that actually
+    contain the supporting statement. explicit_user_statement actions MUST point
+    at the user turn where the statement was made — never at unrelated later
+    turns. An action without correct source_turns loses its evidence binding.
 
 Return JSON only:
 {
@@ -36,6 +40,7 @@ Return JSON only:
       "value": "抽象、稳定、可跨任务复用的描述",
       "source_type": "explicit_user_statement|llm_inference",
       "confidence": 0.92,
+      "source_turns": [3],
       "reason": "为什么这是 durable core memory"
     },
     {

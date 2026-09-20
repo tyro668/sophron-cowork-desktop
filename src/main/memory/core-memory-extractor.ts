@@ -1,6 +1,10 @@
 import { CORE_MEMORY_UPDATE_SYSTEM_PROMPT } from './memory-prompts';
 import type { MemoryLLMClientLike } from './memory-llm-client';
-import type { CoreMemoryActionInput, MemoryTranscriptTurn } from './memory-types';
+import type {
+  CoreMemoryActionInput,
+  MemoryExtractionOutcome,
+  MemoryTranscriptTurn,
+} from './memory-types';
 import { normalizeConfidence, normalizeConfidenceSourceType } from './memory-confidence';
 import { compactTranscript, extractJson } from './memory-utils';
 
@@ -15,10 +19,11 @@ export class CoreMemoryExtractor {
     sessionDate?: string;
     turns: MemoryTranscriptTurn[];
     existingCorePromptBlock: string;
-  }): Promise<CoreMemoryActionInput[]> {
+    signal?: AbortSignal;
+  }): Promise<MemoryExtractionOutcome<CoreMemoryActionInput[]>> {
     const conversationText = compactTranscript(params.turns);
     if (!conversationText.trim()) {
-      return [];
+      return { kind: 'no_memory' };
     }
 
     const response = await this.llm.complete({
@@ -36,16 +41,23 @@ export class CoreMemoryExtractor {
         .join('\n'),
       temperature: 0,
       maxTokens: 16_000,
+      signal: params.signal,
     });
 
     const payload = extractJson(response.text);
-    if (!payload || typeof payload !== 'object') {
-      return [];
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return { kind: 'failure', reason: 'memory.extraction.malformedResponse' };
     }
 
     const actions = (payload as { actions?: unknown }).actions;
+    if (actions === undefined) {
+      return { kind: 'failure', reason: 'memory.extraction.missingActions' };
+    }
     if (!Array.isArray(actions)) {
-      return [];
+      return { kind: 'failure', reason: 'memory.extraction.invalidActions' };
+    }
+    if (!actions.length) {
+      return { kind: 'no_memory' };
     }
 
     const normalized = actions
@@ -62,6 +74,8 @@ export class CoreMemoryExtractor {
           sourceType?: unknown;
           source_type?: unknown;
           reason?: unknown;
+          sourceTurns?: unknown;
+          source_turns?: unknown;
         };
         const op = typeof input.op === 'string' ? input.op.toLowerCase().trim() : '';
         if (op !== 'add' && op !== 'update' && op !== 'upsert' && op !== 'delete') {
@@ -76,6 +90,24 @@ export class CoreMemoryExtractor {
         if (op !== 'delete' && (!sourceType || confidence === null)) {
           return null;
         }
+        // Per-action evidence binding: 1-based indices into the provided
+        // transcript. Out-of-range references are dropped — an action with no
+        // verifiable support turns keeps working but can never supersede a
+        // manual overlay (its support time is unknown).
+        const rawTurns = input.sourceTurns ?? input.source_turns;
+        const sourceTurns = Array.isArray(rawTurns)
+          ? [
+              ...new Set(
+                rawTurns.filter(
+                  (turn): turn is number =>
+                    typeof turn === 'number' &&
+                    Number.isInteger(turn) &&
+                    turn >= 1 &&
+                    turn <= params.turns.length
+                )
+              ),
+            ]
+          : undefined;
         return {
           op,
           category:
@@ -87,10 +119,14 @@ export class CoreMemoryExtractor {
           confidence: confidence ?? undefined,
           sourceType: sourceType ?? undefined,
           reason: typeof input.reason === 'string' ? input.reason.trim() : undefined,
+          sourceTurns: sourceTurns?.length ? sourceTurns : undefined,
         } satisfies CoreMemoryActionInput;
       })
       .filter((item): item is CoreMemoryActionInput => Boolean(item));
 
-    return normalized;
+    if (!normalized.length) {
+      return { kind: 'failure', reason: 'memory.extraction.allActionsInvalid' };
+    }
+    return { kind: 'success', value: normalized };
   }
 }

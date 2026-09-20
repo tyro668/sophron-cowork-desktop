@@ -108,7 +108,21 @@ export function loadJsonFile<T>(filePath: string, defaultValue: T): T {
     }
     return JSON.parse(raw) as T;
   } catch {
+    // A corrupt file is quarantined instead of silently treated as empty —
+    // otherwise the next save would overwrite the original data and destroy
+    // any chance of manual recovery or diagnosis.
+    quarantineCorruptFile(filePath);
     return defaultValue;
+  }
+}
+
+function quarantineCorruptFile(filePath: string): void {
+  try {
+    const quarantinePath = `${filePath}.corrupt-${Date.now()}`;
+    fs.renameSync(filePath, quarantinePath);
+    console.warn(`[memory] Quarantined corrupt JSON file: ${filePath} -> ${quarantinePath}`);
+  } catch {
+    // Best effort: never let quarantine itself break a load.
   }
 }
 
@@ -204,7 +218,104 @@ export function messagesToTranscript(messages: Message[]): MemoryTranscriptTurn[
 }
 
 export function compactTranscript(turns: MemoryTranscriptTurn[]): string {
-  return turns.map((turn) => `${turn.role}: ${turn.content.trim()}`).join('\n');
+  return turns
+    .map(
+      (turn, index) => `[${index + 1}] ${turn.role}: ${redactSensitiveContent(turn.content.trim())}`
+    )
+    .join('\n');
+}
+
+/**
+ * Prompt-assembly budget, expressed in characters (~4 chars/token for the
+ * mixed CJK/English content these prompts carry). Layer caps sum below the
+ * total so each layer keeps headroom for its own markers.
+ */
+export const MEMORY_PROMPT_BUDGET = {
+  totalChars: 16_000, // ~4k tokens
+  coreChars: 3_200, // ~800
+  projectChars: 4_800, // ~1200
+  experienceChars: 8_000, // ~2k
+} as const;
+
+const SENSITIVE_PATTERNS: RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|authorization|credential)s?\s*[:=]\s*["'`]?[^\s"'`,;]{6,}/gi,
+  /\b(?:sk|pk|xox[baprs]|ghp|gho|ghu|ghs|ghr|github_pat|glpat|hf|Bearer|eyJ)[-_A-Za-z0-9.]{10,}\b/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+];
+
+/** Best-effort redaction applied before transcripts reach the LLM or disk. */
+export function redactSensitiveContent(text: string): string {
+  let output = text;
+  for (const pattern of SENSITIVE_PATTERNS) {
+    output = output.replace(pattern, '[redacted]');
+  }
+  return output;
+}
+
+/** True when the value is essentially a credential — never persist these. */
+export function containsSensitiveContent(text: string): boolean {
+  return SENSITIVE_PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
+/** Truncate at a line boundary and append a visible truncation marker. */
+export function truncateAtLineBoundary(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const cut = text.slice(0, maxChars);
+  const lastNewline = cut.lastIndexOf('\n');
+  const head = lastNewline > maxChars * 0.5 ? cut.slice(0, lastNewline) : cut;
+  return `${head}\n… [memory truncated to fit budget]`;
+}
+
+export function hashTranscriptTurns(turns: MemoryTranscriptTurn[]): string {
+  const hash = crypto.createHash('sha1');
+  for (const turn of turns) {
+    hash.update(turn.messageId || '');
+    hash.update('');
+    hash.update(turn.role);
+    hash.update('');
+    hash.update(turn.content);
+    hash.update('');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Per-message cursor fingerprint — (id, content hash). Unlike an id-only
+ * cursor, this detects in-place edits where a message keeps its id but its
+ * content changed (history rewrite, edit-and-resend).
+ */
+export interface MessageCursorFingerprint {
+  id: string;
+  hash: string;
+}
+
+export function fingerprintMessage(message: Message): MessageCursorFingerprint {
+  const hash = crypto
+    .createHash('sha1')
+    .update(message.role)
+    .update('')
+    .update(extractTextFromContent(message.content))
+    .digest('hex')
+    .slice(0, 16);
+  return { id: message.id, hash };
+}
+
+/** Combined hash of a fingerprint run — used to guard the pre-window prefix. */
+export function hashMessageFingerprints(prints: MessageCursorFingerprint[]): string {
+  const hash = crypto.createHash('sha1');
+  for (const print of prints) {
+    hash.update(print.id);
+    hash.update('');
+    hash.update(print.hash);
+    hash.update('');
+  }
+  return hash.digest('hex');
 }
 
 export function summarizeText(text: string, maxLength = 220): string {

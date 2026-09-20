@@ -112,6 +112,14 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
       request.systemPrompt.includes('memory extraction system')
     ) {
       const transcript = request.userPrompt;
+      // source_turns must index the actual transcript — the extractor rejects
+      // out-of-range references, so derive the count from the prompt.
+      const turnCount = Math.max(
+        1,
+        (transcript.split('Session transcript:')[1] || '').split('\n').filter((line) => line.trim())
+          .length
+      );
+      const allTurns = Array.from({ length: turnCount }, (_, index) => index + 1);
       if (transcript.includes('gateway token rotation')) {
         return {
           text: JSON.stringify({
@@ -123,7 +131,7 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
                 summary: '实现 gateway token rotation 的主要改动',
                 details: '记录了 gateway token rotation 的实现细节，并同步 remote gateway 行为。',
                 keywords: ['gateway', 'rotation', 'remote'],
-                source_turns: [1, 2, 3, 4],
+                source_turns: allTurns,
                 confidence: 0.82,
               },
             ],
@@ -141,7 +149,7 @@ class MockMemoryLLMClient implements MemoryLLMClientLike {
               summary: '用户声明希望用中文回答',
               details: '对话中明确要求默认使用中文交流。',
               keywords: ['中文', '偏好'],
-              source_turns: [1, 2],
+              source_turns: allTurns,
               confidence: 0.88,
             },
           ],
@@ -440,8 +448,8 @@ describe('MemoryService', () => {
     expect(coreEntry).toBeTruthy();
     expect(projectEntry).toBeTruthy();
 
-    expect(service.deleteCoreEntry(coreEntry!.combinedKey).success).toBe(true);
-    expect(service.deleteProjectEntry(projectEntry.id).success).toBe(true);
+    expect((await service.deleteCoreEntry(coreEntry!.combinedKey)).success).toBe(true);
+    expect((await service.deleteProjectEntry(projectEntry.id)).success).toBe(true);
 
     expect(service.listCoreEntries().some((entry) => entry.combinedKey === 'identity.name')).toBe(
       false

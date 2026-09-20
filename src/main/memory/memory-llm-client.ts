@@ -15,6 +15,8 @@ export interface MemoryCompletionRequest {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  /** Cooperative cancellation — aborts the underlying request when honored. */
+  signal?: AbortSignal;
 }
 
 export interface MemoryCompletionResponse {
@@ -23,7 +25,7 @@ export interface MemoryCompletionResponse {
 
 export interface MemoryLLMClientLike {
   complete(request: MemoryCompletionRequest): Promise<MemoryCompletionResponse>;
-  embed(text: string): Promise<number[]>;
+  embed(text: string, signal?: AbortSignal): Promise<number[]>;
 }
 
 interface MemoryModelConfig {
@@ -96,6 +98,14 @@ export class MemoryLLMClient implements MemoryLLMClientLike {
       appConfig.model
     );
     const controller = new AbortController();
+    // Caller-supplied cancellation (prompt-assembly deadline, run abort) is
+    // linked into the internal timeout controller.
+    const onExternalAbort = () => controller.abort();
+    if (request.signal?.aborted) {
+      controller.abort();
+    } else {
+      request.signal?.addEventListener('abort', onExternalAbort, { once: true });
+    }
     let timeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
@@ -124,11 +134,15 @@ export class MemoryLLMClient implements MemoryLLMClientLike {
       if (timeout) {
         clearTimeout(timeout);
       }
+      request.signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 
-  async embed(text: string): Promise<number[]> {
+  async embed(text: string, signal?: AbortSignal): Promise<number[]> {
     const trimmed = text.trim();
+    if (signal?.aborted) {
+      return [];
+    }
     if (!trimmed) {
       return [];
     }
@@ -178,10 +192,13 @@ export class MemoryLLMClient implements MemoryLLMClientLike {
       baseURL: resolved?.baseUrl || normalizeOpenAICompatibleBaseUrl(embedConfig.baseUrl),
       timeout: embedConfig.timeoutMs,
     });
-    const response = await client.embeddings.create({
-      model: embedConfig.model,
-      input: trimmed,
-    });
+    const response = await client.embeddings.create(
+      {
+        model: embedConfig.model,
+        input: trimmed,
+      },
+      { signal }
+    );
     return response.data[0]?.embedding || [];
   }
 }

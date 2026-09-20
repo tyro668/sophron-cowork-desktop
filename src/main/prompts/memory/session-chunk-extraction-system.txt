@@ -22,7 +22,7 @@ Chunking policy:
 - Merge adjacent turns when they support the same reusable unit
 - Split only when there are truly different reusable units
 - A session may have 1-8 chunks; do not over-fragment
-- source_turns are 1-based and every turn must be covered by at least one chunk
+- source_turns are 1-based; every entry must be a valid index into the given transcript — never emit a turn number beyond the transcript length
 
 Write retrieval-friendly content:
 - session_summary: the overall purpose and result of the session
@@ -46,3 +46,8 @@ Return JSON only:
     }
   ]
 }
+
+If the session contains nothing worth preserving as future-useful memory, return exactly:
+{"no_memory": true}
+
+Do not return an empty object or a response missing session_summary/session_confidence — responses that omit required fields are rejected and retried.

@@ -37,7 +37,9 @@ import type {
   ProjectMemoryEntry,
   MemoryDebugFileInfo,
   MemoryDebugFileContent,
+  MemoryInjectionRecord,
   MemoryInspectSessionResult,
+  MemoryRebuildResult,
   DataCleaningTask,
   DataColumnTypeInfo,
   DataCreateOutputTableInput,
@@ -496,28 +498,17 @@ export interface ElectronApi {
       updates: { key?: string; value?: string; confidence?: number; status?: MemoryItemStatus }
     ) => Promise<ProjectMemoryEntry | null>;
     deleteProjectEntry: (id: string) => Promise<{ success: boolean }>;
-    rebuildWorkspace: (cwd: string) => Promise<{
-      success: boolean;
-      workspaceKey: string;
-      sessionCount: number;
-      succeededSessionCount: number;
-      failedSessionCount: number;
-    }>;
+    rebuildWorkspace: (cwd: string) => Promise<MemoryRebuildResult & { workspaceKey: string }>;
     clearWorkspace: (cwd: string) => Promise<{ success: boolean; workspaceKey: string }>;
     clearCoreMemory: () => Promise<{ success: boolean }>;
-    rebuildAll: () => Promise<{
-      success: boolean;
-      workspaceCount: number;
-      sessionCount: number;
-      succeededSessionCount: number;
-      failedSessionCount: number;
-    }>;
+    rebuildAll: () => Promise<MemoryRebuildResult & { workspaceCount: number }>;
     listFiles: () => Promise<MemoryDebugFileInfo[]>;
     readFile: (filePath: string) => Promise<MemoryDebugFileContent>;
     inspectSession: (
       sessionId: string,
       workspaceKey?: string
     ) => Promise<MemoryInspectSessionResult | null>;
+    listInjections: (limit?: number) => Promise<MemoryInjectionRecord[]>;
     setEnabled: (enabled: boolean) => Promise<{ success: boolean; enabled: boolean }>;
   };
 }

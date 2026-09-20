@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Activity,
-  BrainCircuit,
+  Check,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   FileText,
-  FolderOpen,
+  RefreshCw,
   Search,
-  ShieldCheck,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import type {
   CoreMemoryEntry,
   MemoryConfidenceSignals,
   MemoryEvidenceRef,
+  MemoryInjectionRecord,
   MemoryOverview,
   ProjectMemoryEntry,
 } from '../../types';
@@ -24,6 +21,7 @@ import { useAppStore } from '../../store';
 import { GlassSwitch } from '../GlassSwitch';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { underlineTabTriggerClass } from '../data-view/shared';
 
 type ManagedMemoryEntry = CoreMemoryEntry | ProjectMemoryEntry;
 type MemoryTab = 'all' | 'core' | 'project';
@@ -41,7 +39,7 @@ interface MemoryRecord {
   raw: ManagedMemoryEntry;
 }
 
-const MEMORY_PAGE_SIZE = 3;
+const MEMORY_PAGE_SIZE = 5;
 
 export function SettingsMemory() {
   const { t } = useTranslation();
@@ -56,6 +54,7 @@ export function SettingsMemory() {
   const hasWorkspace = Boolean(currentWorkspace);
 
   const [overview, setOverview] = useState<MemoryOverview | null>(null);
+  const [injections, setInjections] = useState<MemoryInjectionRecord[]>([]);
   const [coreEntries, setCoreEntries] = useState<CoreMemoryEntry[]>([]);
   const [projectEntries, setProjectEntries] = useState<ProjectMemoryEntry[]>([]);
   const [isBusy, setIsBusy] = useState(false);
@@ -70,6 +69,11 @@ export function SettingsMemory() {
   const refreshOverview = async () => {
     const nextOverview = await window.electronAPI.memory.getOverview(currentWorkspace || undefined);
     setOverview(nextOverview);
+    try {
+      setInjections(await window.electronAPI.memory.listInjections(1));
+    } catch {
+      setInjections([]);
+    }
   };
 
   const refreshMemoryEntries = async () => {
@@ -89,15 +93,18 @@ export function SettingsMemory() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [nextOverview, nextCoreEntries, nextProjectEntries] = await Promise.all([
-          window.electronAPI.memory.getOverview(currentWorkspace || undefined),
-          window.electronAPI.memory.listCoreEntries(),
-          window.electronAPI.memory.listProjectEntries(currentWorkspace || undefined),
-        ]);
+        const [nextOverview, nextCoreEntries, nextProjectEntries, nextInjections] =
+          await Promise.all([
+            window.electronAPI.memory.getOverview(currentWorkspace || undefined),
+            window.electronAPI.memory.listCoreEntries(),
+            window.electronAPI.memory.listProjectEntries(currentWorkspace || undefined),
+            window.electronAPI.memory.listInjections(1),
+          ]);
         if (!cancelled) {
           setOverview(nextOverview);
           setCoreEntries(nextCoreEntries);
           setProjectEntries(nextProjectEntries);
+          setInjections(nextInjections);
         }
       } catch (error) {
         if (!cancelled) {
@@ -180,6 +187,27 @@ export function SettingsMemory() {
     });
   };
 
+  const handleConfirm = (record: MemoryRecord) => {
+    void runBusyAction(async () => {
+      const updates = { confidence: 1, status: 'active' as const };
+      const updated =
+        record.kind === 'core'
+          ? await window.electronAPI.memory.updateCoreEntry(
+              (record.raw as CoreMemoryEntry).combinedKey,
+              updates
+            )
+          : await window.electronAPI.memory.updateProjectEntry(
+              (record.raw as ProjectMemoryEntry).id,
+              updates
+            );
+      if (!updated) {
+        throw new Error(t('memory.deleteEntryNotFound', '记忆不存在，可能已经被删除'));
+      }
+      await refreshAll();
+      setStatus(t('memory.confirmSuccess', '该记忆已确认'));
+    });
+  };
+
   const handleDelete = (record: MemoryRecord) => {
     void (async () => {
       const confirmed = await confirmDelete({
@@ -228,13 +256,27 @@ export function SettingsMemory() {
       await runBusyAction(async () => {
         const result = await window.electronAPI.memory.rebuildWorkspace(currentWorkspace);
         await refreshAll();
+        // Three honest outcomes: a commit-layer failure, a fully abandoned
+        // candidate (nothing was applied — the old generation is intact), or
+        // success. `succeededSessionCount` counts committed sessions only, so
+        // an abandoned rebuild must never claim sessions were rebuilt.
         setStatus(
-          result.failedSessionCount > 0
-            ? t('memory.rebuildPartialSuccess', {
-                defaultValue: `已重建 ${result.succeededSessionCount} 个会话，${result.failedSessionCount} 个会话失败`,
-                succeeded: result.succeededSessionCount,
-                failed: result.failedSessionCount,
-              })
+          result.commitError || !result.success
+            ? result.commitError
+              ? t('memory.rebuildCommitFailed', {
+                  defaultValue: `重建提交失败：${result.commitError}`,
+                  error: result.commitError,
+                })
+              : result.committedSessionCount > 0
+                ? t('memory.rebuildPartialSuccess', {
+                    defaultValue: `已重建 ${result.committedSessionCount} 个会话，${result.failedSessionCount} 个会话失败`,
+                    succeeded: result.committedSessionCount,
+                    failed: result.failedSessionCount,
+                  })
+                : t('memory.rebuildAborted', {
+                    defaultValue: `重建未完成，原有记忆未受影响（${result.failedSessionCount} 个会话提取失败）`,
+                    failed: result.failedSessionCount,
+                  })
             : t('memory.rebuildSuccess')
         );
       });
@@ -243,30 +285,10 @@ export function SettingsMemory() {
 
   return (
     <div className="flex h-full min-h-[34rem] flex-col gap-3">
-      <section className="glass-card flex min-h-[3.75rem] items-center justify-between gap-3 rounded-xl px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-              enabled ? 'bg-accent-muted text-accent' : 'bg-surface-muted text-text-muted'
-            }`}
-          >
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-text-primary">
-                {t('memory.policyTitle', '启用记忆')}
-              </h3>
-              <span
-                className={`inline-flex h-5 items-center rounded-full px-2 text-[11px] font-semibold ${
-                  enabled ? 'bg-accent-muted text-accent' : 'bg-surface-muted text-text-secondary'
-                }`}
-              >
-                {enabled ? t('memory.enabled', '已启用') : t('memory.disabled', '已停用')}
-              </span>
-            </div>
-          </div>
-        </div>
+      <section className="glass-card flex items-center justify-between gap-3 rounded-xl px-4 py-3">
+        <h3 className="text-[13px] font-semibold text-text-primary">
+          {t('memory.policyTitle', '启用记忆')}
+        </h3>
         <GlassSwitch
           checked={enabled}
           onCheckedChange={() => handleToggle()}
@@ -277,40 +299,49 @@ export function SettingsMemory() {
 
       {enabled ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <section className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-            <MemoryMetricCard
-              icon={BrainCircuit}
+          <section className="glass-card grid grid-cols-2 rounded-xl xl:grid-cols-4">
+            <MemoryStat
               label={t('memory.longTermMemory', '长期记忆')}
               value={overview?.coreCount ?? 0}
               unit={t('memory.itemUnit', '条')}
-              description={t('memory.longTermMemoryDesc', '核心能力与经验知识')}
             />
-            <MemoryMetricCard
-              icon={FolderOpen}
+            <MemoryStat
               label={t('memory.projectMemoryMetric', '项目记忆')}
               value={overview?.projectCount ?? 0}
               unit={t('memory.itemUnitShort', '个')}
-              description={t('memory.projectMemoryDesc', '关联项目上下文')}
             />
-            <MemoryMetricCard
-              icon={Activity}
+            <MemoryStat
               label={t('memory.recentActive', '最近活跃')}
               value={activeRecentCount}
               unit={t('memory.itemUnit', '条')}
-              description={t('memory.recentActiveDesc', '7 天内被使用')}
             />
-            <MemoryMetricCard
-              icon={ShieldCheck}
+            <MemoryStat
               label={t('memory.health')}
               value={
-                overview?.failedSessionCount ? t('memory.risky', '异常') : t('memory.good', '良好')
-              }
-              description={
                 overview?.failedSessionCount
-                  ? t('memory.failedSessions', { count: overview.failedSessionCount })
-                  : t('memory.noRisk', '无异常风险')
+                  ? `${t('memory.risky', '异常')} · ${overview.failedSessionCount}`
+                  : t('memory.good', '良好')
               }
+              tone={overview?.failedSessionCount ? 'error' : 'default'}
             />
+            {injections[0] ? (
+              <div className="col-span-2 border-t border-border-subtle px-4 py-2 text-[11px] font-medium text-text-muted xl:col-span-4">
+                {t(
+                  'memory.lastInjection',
+                  '上次注入 {{time}} · 核心 {{core}} · 项目 {{project}} · 经验 {{experience}} · {{chars}} 字符',
+                  {
+                    time: formatDate(injections[0].timestamp),
+                    core: injections[0].coreKeys.length,
+                    project: injections[0].projectKeys.length,
+                    experience:
+                      injections[0].experienceChunkIds.length +
+                      injections[0].experienceSessionIds.length,
+                    chars: injections[0].totalChars.toLocaleString(),
+                  }
+                )}
+                {injections[0].truncated ? ` · ${t('memory.injectionTruncated', '已截断')}` : ''}
+              </div>
+            ) : null}
           </section>
 
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
@@ -320,29 +351,27 @@ export function SettingsMemory() {
                 onValueChange={(v) => setActiveTab(v as MemoryTab)}
                 className="contents"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <TabsList className="inline-flex rounded-full border-0 bg-surface p-1 shadow-soft ring-1 ring-border-subtle">
-                    <TabsTrigger value="all" className={memoryTabTriggerClass}>
+                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border-subtle">
+                  <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
+                    <TabsTrigger value="all" className={underlineTabTriggerClass}>
                       {t('memory.allTab', '全部')}
                     </TabsTrigger>
-                    <TabsTrigger value="core" className={memoryTabTriggerClass}>
+                    <TabsTrigger value="core" className={underlineTabTriggerClass}>
                       {t('memory.coreCapabilityTab', '核心能力')}
                     </TabsTrigger>
-                    <TabsTrigger value="project" className={memoryTabTriggerClass}>
+                    <TabsTrigger value="project" className={underlineTabTriggerClass}>
                       {t('memory.projectContextTab', '项目上下文')}
                     </TabsTrigger>
                   </TabsList>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleRebuildWorkspace}
-                      disabled={!hasWorkspace || isBusy}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      {t('memory.organizeAction', '整理')}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRebuildWorkspace}
+                    disabled={!hasWorkspace || isBusy}
+                    className="mb-1.5 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    {t('memory.organizeAction', '整理')}
+                  </button>
                 </div>
 
                 <TabsContent value={activeTab} forceMount className="contents">
@@ -365,6 +394,7 @@ export function SettingsMemory() {
                           selected={selectedRecord?.id === record.id}
                           isBusy={isBusy}
                           onSelect={() => setSelectedId(record.id)}
+                          onConfirm={() => handleConfirm(record)}
                           onDelete={() => handleDelete(record)}
                         />
                       ))
@@ -408,7 +438,11 @@ export function SettingsMemory() {
               </Tabs>
             </div>
 
-            <MemoryDetailPanel record={selectedRecord} />
+            <MemoryDetailPanel
+              record={selectedRecord}
+              isBusy={isBusy}
+              onConfirm={() => selectedRecord && handleConfirm(selectedRecord)}
+            />
           </section>
 
           {status && (
@@ -417,40 +451,49 @@ export function SettingsMemory() {
             </div>
           )}
 
-          <section className="mt-auto flex-shrink-0">
-            <h3 className="mb-2 text-[13px] font-semibold text-text-primary">
-              {t('memory.suggestionTitle', '建议与整理')}
-            </h3>
-            <div className="grid gap-2.5 xl:grid-cols-2">
-              <MemorySuggestionCard
-                icon={Sparkles}
-                title={t('memory.duplicateMemoryTitle', '发现冗余记忆')}
-                description={t('memory.duplicateMemoryDesc', '检测到 {{count}} 条可能重复的记忆', {
-                  count: duplicateCount,
-                })}
-                actionLabel={t('memory.organizeDuplicateAction', '去整理')}
-                disabled={duplicateCount === 0 || isBusy}
-                onClick={handleRebuildWorkspace}
-              />
-              <MemorySuggestionCard
-                icon={FileText}
-                title={t('memory.lowConfidenceTitle', '待确认记忆')}
-                description={t('memory.lowConfidenceDesc', '{{count}} 条记忆需要继续验证', {
-                  count: pendingConfidenceCount,
-                })}
-                actionLabel={t('memory.optimizeAction', '去优化')}
-                disabled={pendingConfidenceCount === 0 || isBusy}
-                onClick={() => {
-                  setActiveTab('all');
-                  setQuery('');
-                  const lowConfidence = memoryRecords.find((record) => record.confidence < 0.65);
-                  if (lowConfidence) {
-                    setSelectedId(lowConfidence.id);
-                  }
-                }}
-              />
-            </div>
-          </section>
+          {duplicateCount > 0 || pendingConfidenceCount > 0 ? (
+            <section className="glass-card flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5">
+              {duplicateCount > 0 ? (
+                <span className="flex items-center gap-2 text-xs text-text-secondary">
+                  {t('memory.duplicateMemoryDesc', '检测到 {{count}} 条可能重复的记忆', {
+                    count: duplicateCount,
+                  })}
+                  <button
+                    type="button"
+                    onClick={handleRebuildWorkspace}
+                    disabled={isBusy}
+                    className="inline-flex h-6 items-center rounded-md border border-border-muted bg-surface px-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {t('memory.organizeDuplicateAction', '去整理')}
+                  </button>
+                </span>
+              ) : null}
+              {pendingConfidenceCount > 0 ? (
+                <span className="flex items-center gap-2 text-xs text-text-secondary">
+                  {t('memory.lowConfidenceDesc', '{{count}} 条记忆需要继续验证', {
+                    count: pendingConfidenceCount,
+                  })}
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    className="inline-flex h-6 items-center rounded-md border border-border-muted bg-surface px-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                    onClick={() => {
+                      setActiveTab('all');
+                      setQuery('');
+                      const lowConfidence = memoryRecords.find(
+                        (record) => record.confidence < 0.65
+                      );
+                      if (lowConfidence) {
+                        setSelectedId(lowConfidence.id);
+                      }
+                    }}
+                  >
+                    {t('memory.optimizeAction', '去查看')}
+                  </button>
+                </span>
+              ) : null}
+            </section>
+          ) : null}
         </div>
       ) : null}
 
@@ -463,65 +506,61 @@ export function SettingsMemory() {
   );
 }
 
-function MemoryMetricCard({
-  icon: Icon,
+function MemoryStat({
   label,
   value,
   unit,
-  description,
+  tone = 'default',
 }: {
-  icon: typeof BrainCircuit;
   label: string;
   value: string | number;
   unit?: string;
-  description: string;
+  tone?: 'default' | 'error';
 }) {
   return (
-    <article className="glass-card flex h-[4.75rem] items-center gap-2.5 rounded-xl px-3">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
-        <Icon className="h-5 w-5" />
+    <div className="min-w-0 border-border-subtle px-4 py-3 even:border-l [&:nth-child(n+3)]:border-t xl:[&:nth-child(n+2)]:border-l xl:[&:nth-child(n+3)]:border-t-0">
+      <p className="text-[11px] font-medium text-text-muted">{label}</p>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span
+          className={`truncate text-[17px] font-semibold leading-none ${
+            tone === 'error' ? 'text-error' : 'text-text-primary'
+          }`}
+        >
+          {value}
+        </span>
+        {unit ? <span className="text-[11px] font-medium text-text-muted">{unit}</span> : null}
       </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium text-text-muted">{label}</p>
-        <div className="mt-0.5 flex items-end gap-1">
-          <span className="truncate text-[19px] font-semibold leading-none text-text-primary">
-            {value}
-          </span>
-          {unit ? (
-            <span className="pb-0.5 text-[12px] font-medium text-text-secondary">{unit}</span>
-          ) : null}
-        </div>
-        <p className="mt-0.5 truncate text-[11px] text-text-muted">{description}</p>
-      </div>
-    </article>
+    </div>
   );
 }
 
-const memoryTabTriggerClass =
-  'h-7 rounded-full px-3 text-xs shadow-none data-[state=active]:bg-accent ' +
-  'data-[state=active]:text-accent-foreground data-[state=active]:shadow-soft';
+function isRecordConfirmable(record: MemoryRecord): boolean {
+  return getConfidenceLevel(record.confidence) === 'pending' || record.raw.status === 'pending';
+}
 
 function MemoryListItem({
   record,
   selected,
   isBusy,
   onSelect,
+  onConfirm,
   onDelete,
 }: {
   record: MemoryRecord;
   selected: boolean;
   isBusy: boolean;
   onSelect: () => void;
+  onConfirm: () => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const confidenceLevel = getConfidenceLevel(record.confidence);
-  const confidenceTone =
+  const confidenceDot =
     confidenceLevel === 'high'
-      ? 'bg-accent-muted text-accent'
+      ? 'bg-accent'
       : confidenceLevel === 'medium'
-        ? 'bg-warning/10 text-warning'
-        : 'bg-error/10 text-error';
+        ? 'bg-warning'
+        : 'bg-error';
 
   return (
     <button
@@ -533,24 +572,35 @@ function MemoryListItem({
           : 'border-border-muted bg-surface hover:border-accent/25 hover:bg-surface-hover/50'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-[13px] font-semibold text-text-primary">{record.title}</h4>
-          <p className="mt-0.5 line-clamp-1 text-[12px] leading-4 text-text-secondary">
-            {record.summary}
-          </p>
-        </div>
-        <div className="flex flex-shrink-0 flex-col items-end">
-          <span
-            className={`inline-flex h-6 items-center rounded-full px-2 text-[11px] font-semibold ${confidenceTone}`}
-          >
-            {getConfidenceLevelLabel(confidenceLevel, t)}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text-primary">
+          {record.title}
+        </h4>
+        <span className="flex flex-shrink-0 items-center gap-1.5 text-[11px] font-medium text-text-muted">
+          <span className={`h-1.5 w-1.5 rounded-full ${confidenceDot}`} />
+          {getConfidenceLevelLabel(confidenceLevel, t)}
+        </span>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+      <p className="mt-0.5 line-clamp-1 text-[12px] leading-4 text-text-secondary">
+        {record.summary}
+      </p>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
         <MemoryTags tags={record.tags} />
-        <div className="flex items-center gap-1.5 text-text-muted">
+        <div className="flex flex-shrink-0 items-center gap-0.5">
+          {isRecordConfirmable(record) ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onConfirm();
+              }}
+              disabled={isBusy}
+              aria-label={t('memory.confirmAction', '确认')}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-accent/10 hover:text-accent focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={(event) => {
@@ -558,7 +608,8 @@ function MemoryListItem({
               onDelete();
             }}
             disabled={isBusy}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-45"
+            aria-label={t('memory.deleteEntryConfirm', '删除该记忆')}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -568,7 +619,15 @@ function MemoryListItem({
   );
 }
 
-function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
+function MemoryDetailPanel({
+  record,
+  isBusy,
+  onConfirm,
+}: {
+  record: MemoryRecord | null;
+  isBusy: boolean;
+  onConfirm: () => void;
+}) {
   const { t } = useTranslation();
 
   if (!record) {
@@ -597,38 +656,35 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
       <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold text-text-primary">
         {record.title}
       </h3>
-      <p className="mt-2 line-clamp-2 text-[12px] leading-5 text-text-secondary">
+      <p className="mt-1.5 line-clamp-3 text-[12px] leading-5 text-text-secondary">
         {record.summary}
       </p>
-      <div className="mt-2">
-        <MemoryTags tags={record.tags} />
-      </div>
 
       <div className="mt-4">
         <div className="flex items-center justify-between text-[12px] font-semibold text-text-primary">
           <span>{t('memory.confidenceLabel', '可信等级')}</span>
           <span className="text-accent">{getConfidenceLevelLabel(confidenceLevel, t)}</span>
         </div>
-        <div className="mt-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
-          <p>{confidenceReason}</p>
-          <p className="mt-1 text-text-muted">
-            {t(
-              'memory.confidenceEvidenceMeta',
-              '证据 {{evidence}} 条 · 复验 {{corroboration}} 次',
-              {
-                evidence: record.confidenceSignals.evidenceCount,
-                corroboration: record.confidenceSignals.corroborationCount,
-              }
-            )}
-          </p>
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-muted">
+          <div
+            className="h-full rounded-full bg-accent"
+            style={{ width: `${Math.round(record.confidence * 100)}%` }}
+          />
         </div>
+        <p className="mt-1.5 text-[11px] leading-4 text-text-muted">{confidenceReason}</p>
+        <p className="mt-0.5 text-[11px] leading-4 text-text-muted">
+          {t('memory.confidenceEvidenceMeta', '证据 {{evidence}} 条 · 复验 {{corroboration}} 次', {
+            evidence: record.confidenceSignals.evidenceCount,
+            corroboration: record.confidenceSignals.corroborationCount,
+          })}
+        </p>
       </div>
 
-      <div className="mt-4 border-b border-border-muted pb-3">
+      <div className="mt-4 border-t border-border-subtle pt-3">
         <h4 className="text-[12px] font-semibold text-text-primary">
           {t('memory.source', '来源')}
         </h4>
-        <div className="mt-2 flex items-center gap-2 text-[12px] font-medium text-text-secondary">
+        <div className="mt-1.5 flex items-center gap-2 text-[12px] font-medium text-text-secondary">
           <FileText className="h-4 w-4 text-text-muted" />
           <span className="truncate">
             {firstEvidence?.sourceSessionTitle || record.sourceLabel || '-'}
@@ -636,7 +692,7 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-4 border-t border-border-subtle pt-3">
         <h4 className="text-[12px] font-semibold text-text-primary">
           {t('memory.recentUsage', '最近使用')}
         </h4>
@@ -663,43 +719,21 @@ function MemoryDetailPanel({ record }: { record: MemoryRecord | null }) {
           )}
         </div>
       </div>
-    </aside>
-  );
-}
 
-function MemorySuggestionCard({
-  icon: Icon,
-  title,
-  description,
-  actionLabel,
-  disabled,
-  onClick,
-}: {
-  icon: typeof Sparkles;
-  title: string;
-  description: string;
-  actionLabel: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div className="glass-card flex min-h-[3.75rem] items-center gap-2.5 rounded-xl px-3 py-2">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <h4 className="truncate text-[13px] font-semibold text-text-primary">{title}</h4>
-        <p className="mt-0.5 truncate text-[12px] text-text-muted">{description}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className="inline-flex h-7 items-center rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        {actionLabel}
-      </button>
-    </div>
+      {isRecordConfirmable(record) ? (
+        <div className="mt-auto flex justify-end border-t border-border-subtle pt-3">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isBusy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-accent-foreground shadow-soft transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            <Check className="h-3.5 w-3.5" />
+            {t('memory.confirmAction', '确认')}
+          </button>
+        </div>
+      ) : null}
+    </aside>
   );
 }
 

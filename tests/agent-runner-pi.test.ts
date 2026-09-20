@@ -55,9 +55,8 @@ describe('AgentRunner sophron SDK integration', () => {
 
   it('summarizes noisy SDK message updates instead of logging every text delta', () => {
     expect(bridgeContent).toContain('streamEventCounts = new Map<string, number>();');
-    expect(bridgeContent).toContain(
-      "if (updateType !== 'text_delta' && updateType !== 'thinking_delta') {"
-    );
+    expect(bridgeContent).toContain("updateType !== 'text_delta'");
+    expect(bridgeContent).toContain("updateType !== 'thinking_delta'");
     expect(bridgeContent).toContain("'[AgentRunner] Event: message_end'");
     expect(bridgeContent).toContain('messageUpdateCounts: this.getStreamEventSummary()');
     expect(bridgeContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");

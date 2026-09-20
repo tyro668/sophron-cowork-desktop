@@ -29,6 +29,12 @@ export interface BeforeSessionRunContext {
   /** Resolved execution-only model config. Extensions must not serialize it into prompts. */
   runtimeConfig?: AgentRuntimeConfig;
   /**
+   * Run-scoped cancellation — fires when the run is aborted. Extensions doing
+   * network work (retrieval, memory injection) should pass it through so a
+   * cancelled run never waits on stale context assembly.
+   */
+  signal?: AbortSignal;
+  /**
    * Activate already-registered tools by name for subsequent model requests.
    * Wired by the runner to the live SDK session — calling it inside a tool's
    * execute() takes effect on the next provider request within the same run.

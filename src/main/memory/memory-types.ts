@@ -1,29 +1,35 @@
 import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
 import type { TSchema } from '@sinclair/typebox';
 import type { Message, Session } from '../../shared/contracts';
+import type * as SharedMemory from '../../shared/contracts/memory';
+
+// Cross-process DTOs have a single canonical definition in
+// src/shared/contracts/memory — these aliases keep main-internal imports
+// working while making divergence a compile error instead of silent drift.
+export type MemorySearchScope = SharedMemory.MemorySearchScope;
+export type MemorySearchKind = SharedMemory.MemorySearchKind;
+export type MemoryItemStatus = SharedMemory.MemoryItemStatus;
+export type MemoryConfidenceSourceType = SharedMemory.MemoryConfidenceSourceType;
+export type MemoryTranscriptTurn = SharedMemory.MemoryTranscriptTurn;
+export type MemoryEvidenceRef = SharedMemory.MemoryEvidenceRef;
+export type MemoryConfidenceSignals = SharedMemory.MemoryConfidenceSignals;
+export type CoreMemoryEntry = SharedMemory.CoreMemoryEntry;
+export type ProjectMemoryEntry = SharedMemory.ProjectMemoryEntry;
+export type ChunkMemoryItem = SharedMemory.ChunkMemoryItem;
+export type SessionMemoryItem = SharedMemory.SessionMemoryItem;
+export type MemorySearchResult = SharedMemory.MemorySearchResult;
+export type MemoryReadResult = SharedMemory.MemoryReadResult;
+export type MemoryDebugFileInfo = SharedMemory.MemoryDebugFileInfo;
+export type MemoryDebugFileContent = SharedMemory.MemoryDebugFileContent;
+export type MemoryInspectSessionResult = SharedMemory.MemoryInspectSessionResult;
+export type MemoryOverview = SharedMemory.MemoryOverview;
+export type MemoryInjectionRecord = SharedMemory.MemoryInjectionRecord;
+
+// ---------------------------------------------------------------------------
+// Main-process internals below — never cross the IPC boundary.
 
 export type CoreMemoryCategory = 'identity' | 'preferences' | 'skills' | 'interests';
-export type MemorySearchScope = 'workspace' | 'global' | 'all';
-export type MemorySearchKind =
-  | 'core'
-  | 'project'
-  | 'experience_session'
-  | 'experience_chunk'
-  | 'raw_session';
 export type MemoryNavigationActionType = 'expand_chunk' | 'expand_session' | 'get_raw_session';
-export type MemoryItemStatus = 'active' | 'pending' | 'rejected' | 'archived';
-export type MemoryConfidenceSourceType =
-  | 'explicit_user_statement'
-  | 'conversation_summary'
-  | 'llm_inference'
-  | 'manual_edit';
-
-export interface MemoryTranscriptTurn {
-  role: string;
-  content: string;
-  messageId?: string;
-  timestamp?: number;
-}
 
 export interface CoreMemoryActionInput {
   op: 'add' | 'update' | 'upsert' | 'delete';
@@ -33,6 +39,13 @@ export interface CoreMemoryActionInput {
   reason?: string;
   confidence?: number;
   sourceType?: MemoryConfidenceSourceType;
+  /**
+   * 1-based transcript turns that support THIS action — the evidence binding
+   * that decides whether an explicit statement may supersede a manual
+   * overlay. Without it an action has no verifiable support time and must
+   * never outrank human-authored state.
+   */
+  sourceTurns?: number[];
 }
 
 export interface AppliedCoreMemoryAction {
@@ -41,99 +54,6 @@ export interface AppliedCoreMemoryAction {
   key: string;
   value?: string | null;
   combinedKey: string;
-}
-
-export interface MemoryEvidenceRef {
-  sessionId: string;
-  sourceWorkspace?: string | null;
-  sourceSessionTitle?: string;
-  sourceTurns?: number[];
-  excerpt?: string;
-  createdAt?: string;
-}
-
-export interface MemoryConfidenceSignals {
-  sourceType: MemoryConfidenceSourceType;
-  extractionConfidence: number;
-  evidenceCount: number;
-  corroborationCount: number;
-  contradictionCount: number;
-  userVerified: boolean;
-  lastVerifiedAt?: string;
-  calculationVersion: number;
-  reason?: string;
-}
-
-export interface CoreMemoryEntry {
-  combinedKey: string;
-  category?: CoreMemoryCategory;
-  key: string;
-  value: string;
-  confidence: number;
-  confidenceSignals: MemoryConfidenceSignals;
-  status: MemoryItemStatus;
-  evidence: MemoryEvidenceRef[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProjectMemoryEntry {
-  id: string;
-  workspaceKey: string;
-  workspaceLabel?: string;
-  key: string;
-  value: string;
-  confidence: number;
-  confidenceSignals: MemoryConfidenceSignals;
-  status: MemoryItemStatus;
-  evidence: MemoryEvidenceRef[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ChunkMemoryItem {
-  id: string;
-  sessionId: string;
-  sourceWorkspace?: string | null;
-  sourceWorkspaceLabel?: string;
-  sourceSessionId: string;
-  sourceSessionTitle?: string;
-  sourceSessionDate?: string;
-  summary: string;
-  details: string;
-  keywords: string[];
-  sourceTurns: number[];
-  rawText: string;
-  sessionDate: string;
-  createdAt: string;
-  ingestedAt: string;
-  embedding: number[];
-  confidence: number;
-  confidenceSignals: MemoryConfidenceSignals;
-  status: MemoryItemStatus;
-  supersededBy?: string;
-}
-
-export interface SessionMemoryItem {
-  id: string;
-  sessionId: string;
-  sourceWorkspace?: string | null;
-  sourceWorkspaceLabel?: string;
-  sourceSessionId: string;
-  sourceSessionTitle?: string;
-  sourceSessionDate?: string;
-  summary: string;
-  keywords: string[];
-  chunkIds: string[];
-  rawSession: MemoryTranscriptTurn[];
-  sessionDate: string;
-  createdAt: string;
-  ingestedAt: string;
-  embedding: number[];
-  confidence: number;
-  confidenceSignals: MemoryConfidenceSignals;
-  status: MemoryItemStatus;
-  supersededBy?: string;
 }
 
 export interface ProgressiveSummaryItem {
@@ -204,40 +124,6 @@ export interface MemorySearchParams {
   limit?: number;
 }
 
-export interface MemorySearchResult {
-  id: string;
-  recordId: string;
-  kind: MemorySearchKind;
-  title: string;
-  summary: string;
-  contentPreview: string;
-  workspaceKey?: string;
-  sourceWorkspace?: string | null;
-  sourceWorkspaceLabel?: string;
-  sourceSessionId?: string;
-  sourceSessionTitle?: string;
-  sessionId?: string;
-  sessionTitle?: string;
-  category?: CoreMemoryCategory;
-  confidence?: number;
-  confidenceSignals?: MemoryConfidenceSignals;
-  status?: MemoryItemStatus;
-  score: number;
-  createdAt: number;
-  updatedAt?: number;
-  keywords?: string[];
-  sourceFile?: string;
-}
-
-export interface MemoryReadResult extends MemorySearchResult {
-  rawText?: string;
-  details?: string;
-  rawSession?: MemoryTranscriptTurn[];
-  sourceTurns?: number[];
-  chunkIds?: string[];
-  sourceExcerpt?: string;
-}
-
 export interface MemoryIngestionInput {
   session: Session;
   prompt: string;
@@ -248,65 +134,32 @@ export interface MemorySessionStateRecord {
   sessionId: string;
   sourceWorkspace?: string | null;
   lastProcessedMessageCount: number;
+  lastMessageIds?: string[];
+  /**
+   * Per-message (id, content-hash) cursor for the trailing window — detects
+   * in-place content edits that an id-only prefix comparison misses.
+   */
+  lastMessageFingerprints?: Array<{ id: string; hash: string }>;
+  /** Hash of all fingerprints preceding the trailing window — guards edits before it. */
+  lastMessagePrefixHash?: string;
+  lastTranscriptHash?: string;
   lastIngestedAt?: number | null;
   lastError?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface MemoryDebugFileInfo {
-  kind: 'core' | 'project' | 'experience' | 'state' | 'artifacts';
-  label: string;
-  filePath: string;
-  exists: boolean;
-  sizeBytes: number;
-  updatedAt: number | null;
-  sessionCount?: number;
-  chunkCount?: number;
-}
+export type MemoryExtractionOutcome<T> =
+  | { kind: 'success'; value: T }
+  | { kind: 'no_memory' }
+  | { kind: 'failure'; reason: string };
 
-export interface MemoryDebugFileContent {
-  kind: MemoryDebugFileInfo['kind'];
-  filePath: string;
-  text: string;
-  parsed: unknown | null;
-  sizeBytes: number;
-  updatedAt: number | null;
-}
-
-export interface MemoryInspectSessionResult {
-  sourceWorkspace?: string | null;
-  filePath: string;
-  session: SessionMemoryItem;
-  chunks: ChunkMemoryItem[];
-}
-
-export interface MemoryOverview {
-  enabled: boolean;
-  storageRoot: string;
-  coreFilePath: string;
-  projectFilePath: string;
-  experienceFilePath: string;
-  stateFilePath: string;
-  coreCount: number;
-  projectCount: number;
-  experienceSessionCount: number;
-  experienceChunkCount: number;
-  sourceWorkspaceCount: number;
-  failedSessionCount: number;
-  latestIngestionAt: number | null;
-  latestError: string | null;
-  currentWorkspace?: {
-    workspaceKey: string;
-    projectCount: number;
-    experienceSessionCount: number;
-    experienceChunkCount: number;
-  };
-  topSourceWorkspaces: Array<{
-    workspaceKey: string;
-    sessionCount: number;
-    chunkCount: number;
-  }>;
+export interface MemoryTombstone {
+  kind: 'core' | 'project';
+  identity: string;
+  valueHash: string;
+  sourceSessionIds: string[];
+  createdAt: string;
 }
 
 export interface ExperienceSessionExtract {

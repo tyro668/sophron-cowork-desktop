@@ -89,6 +89,14 @@ export async function cleanupSandboxResources(): Promise<void> {
     logError('[App] Error shutting down MCP servers:', error);
   }
 
+  // Drain queued memory ingestion so its job state stays consistent —
+  // anything still pending after the deadline is replayed on next launch.
+  try {
+    await withTimeout(appContext.memoryService?.drain() ?? Promise.resolve(), 5000, 'Memory drain');
+  } catch (error) {
+    logError('[App] Error draining memory ingestion:', error);
+  }
+
   try {
     appContext.dataTaskStore?.close();
   } catch (error) {

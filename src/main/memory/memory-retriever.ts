@@ -46,19 +46,23 @@ export class MemoryRetriever {
     const defaultWorkspace = normalizeWorkspaceKey(params.workspaceKey ?? params.cwd ?? null);
     const explicitSourceWorkspace =
       params.sourceWorkspace !== undefined ? normalizeWorkspaceKey(params.sourceWorkspace) : null;
-    const scope = params.scope || (defaultWorkspace ? 'workspace' : 'all');
+    // Scope policy: a missing workspace never widens to "all" implicitly —
+    // scoped searches without a resolvable workspace match nothing, and the
+    // default without a workspace is global (core) memory only.
+    const scope = params.scope || (defaultWorkspace ? 'workspace' : 'global');
     const experienceWorkspace =
       explicitSourceWorkspace ?? (scope === 'workspace' ? defaultWorkspace : null);
+    const workspaceScoped = scope === 'workspace' && !experienceWorkspace;
     const limit = Math.min(Math.max(params.limit || 8, 1), 50);
     const results: MemorySearchResult[] = [];
 
     if (scope !== 'workspace') {
       results.push(...this.searchCore(query));
     }
-    if (scope !== 'global') {
+    if (scope !== 'global' && !workspaceScoped) {
       results.push(...this.searchProject(query, experienceWorkspace));
     }
-    if (scope !== 'global') {
+    if (scope !== 'global' && !workspaceScoped) {
       results.push(...this.searchExperience(query, experienceWorkspace));
     }
 
@@ -218,35 +222,15 @@ export class MemoryRetriever {
   private searchExperience(query: string, sourceWorkspace: string | null): MemorySearchResult[] {
     const store = this.deps.getExperienceStore();
     const results: MemorySearchResult[] = [];
+    // Shares the store's unified scoring (lexical + recency + confidence +
+    // workspace boost + duplicate penalty) with prompt-assembly retrieval.
+    const ranked = store.rankForSearch(query, sourceWorkspace);
 
-    for (const item of store.sessions) {
-      if (item.status !== 'active' || item.supersededBy) {
-        continue;
-      }
-      if (sourceWorkspace && item.sourceWorkspace !== sourceWorkspace) {
-        continue;
-      }
-      const score = lexicalScore(query, [item.summary, ...item.keywords].join(' '));
-      if (score <= 0) {
-        continue;
-      }
-      results.push(this.mapSessionResult(item, score + confidenceBoost(item.confidence) + 0.08));
+    for (const { record, score } of ranked.sessions) {
+      results.push(this.mapSessionResult(record, score + 0.08));
     }
 
-    for (const item of store.chunks) {
-      if (item.status !== 'active' || item.supersededBy) {
-        continue;
-      }
-      if (sourceWorkspace && item.sourceWorkspace !== sourceWorkspace) {
-        continue;
-      }
-      const score = lexicalScore(
-        query,
-        [item.summary, item.details, item.rawText, ...item.keywords].join(' ')
-      );
-      if (score <= 0) {
-        continue;
-      }
+    for (const { record: item, score } of ranked.chunks) {
       results.push({
         id: buildSearchId('experience_chunk', item.id),
         recordId: item.id,
@@ -261,7 +245,7 @@ export class MemoryRetriever {
         sourceSessionTitle: item.sourceSessionTitle,
         sessionId: item.sessionId,
         sessionTitle: this.deps.getSessionTitle(item.sessionId),
-        score: score + confidenceBoost(item.confidence) + 0.1,
+        score: score + 0.1,
         createdAt: Date.parse(item.createdAt) || Date.now(),
         updatedAt: Date.parse(item.ingestedAt) || undefined,
         keywords: item.keywords,

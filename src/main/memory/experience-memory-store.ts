@@ -67,7 +67,9 @@ function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
   const sourceTurns = Array.isArray(item.source_turns)
     ? item.source_turns.filter((turn): turn is number => typeof turn === 'number')
     : [];
-  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  const confidenceSignals = normalizeConfidenceSignals(
+    item.confidenceSignals ?? item.confidence_signals
+  );
   if (!confidenceSignals) {
     return null;
   }
@@ -101,6 +103,9 @@ function normalizeChunk(item: Record<string, unknown>): ChunkMemoryItem | null {
     confidenceSignals,
     status: normalizeStatus(item.status),
     supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
+    embeddingModel: typeof item.embedding_model === 'string' ? item.embedding_model : undefined,
+    duplicateCandidateOf:
+      typeof item.duplicate_candidate_of === 'string' ? item.duplicate_candidate_of : undefined,
   };
 }
 
@@ -136,7 +141,9 @@ function normalizeSession(item: Record<string, unknown>): SessionMemoryItem | nu
         .filter((turn): turn is MemoryTranscriptTurn => Boolean(turn))
     : [];
 
-  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  const confidenceSignals = normalizeConfidenceSignals(
+    item.confidenceSignals ?? item.confidence_signals
+  );
   if (!confidenceSignals) {
     return null;
   }
@@ -164,6 +171,9 @@ function normalizeSession(item: Record<string, unknown>): SessionMemoryItem | nu
     confidenceSignals,
     status: normalizeStatus(item.status),
     supersededBy: typeof item.superseded_by === 'string' ? item.superseded_by : undefined,
+    embeddingModel: typeof item.embedding_model === 'string' ? item.embedding_model : undefined,
+    duplicateCandidateOf:
+      typeof item.duplicate_candidate_of === 'string' ? item.duplicate_candidate_of : undefined,
   };
 }
 
@@ -189,6 +199,8 @@ function chunkToFileRecord(item: ChunkMemoryItem): Record<string, unknown> {
     confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     superseded_by: item.supersededBy ?? '',
+    embedding_model: item.embeddingModel ?? '',
+    duplicate_candidate_of: item.duplicateCandidateOf ?? '',
   };
 }
 
@@ -213,6 +225,8 @@ function sessionToFileRecord(item: SessionMemoryItem): Record<string, unknown> {
     confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
     superseded_by: item.supersededBy ?? '',
+    embedding_model: item.embeddingModel ?? '',
+    duplicate_candidate_of: item.duplicateCandidateOf ?? '',
   };
 }
 
@@ -328,12 +342,18 @@ export class ExperienceMemoryStore {
       'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'
     > &
       Partial<
-        Pick<SessionMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'>
+        Pick<
+          SessionMemoryItem,
+          'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'
+        >
       >,
     chunkInputs: Array<
       Omit<ChunkMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'> &
         Partial<
-          Pick<ChunkMemoryItem, 'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'>
+          Pick<
+            ChunkMemoryItem,
+            'id' | 'confidence' | 'confidenceSignals' | 'status' | 'supersededBy'
+          >
         >
     >
   ): SessionMemoryItem {
@@ -357,7 +377,7 @@ export class ExperienceMemoryStore {
       };
       return chunk;
     });
-    this.markSupersededChunks(chunks);
+    this.markDuplicateCandidateChunks(chunks);
     for (const chunk of chunks) {
       this.chunks.push(chunk);
       this.chunkIndex.set(chunk.id, chunk);
@@ -379,7 +399,7 @@ export class ExperienceMemoryStore {
       confidenceSignals: sessionConfidenceSignals,
       status: sessionInput.status ?? 'active',
     };
-    this.markSupersededSessions(session);
+    this.markDuplicateCandidateSessions(session);
     this.sessions.push(session);
     this.sessionIndex.set(session.sessionId, session);
     this.save();
@@ -435,6 +455,9 @@ export class ExperienceMemoryStore {
       chunkTopK?: number;
       sessionTopK?: number;
       queryEmbedding?: number[];
+      /** Embeddings only compare within the same model — mismatch falls back
+       *  to lexical scoring instead of silently mixing vector spaces. */
+      queryEmbeddingModel?: string;
       currentWorkspace?: string | null;
     }
   ): ProgressiveRetrievalResult {
@@ -442,6 +465,7 @@ export class ExperienceMemoryStore {
     const sessionTopK = options?.sessionTopK ?? 5;
     const currentWorkspace = normalizeWorkspaceKey(options?.currentWorkspace || null);
     const queryEmbedding = options?.queryEmbedding;
+    const queryEmbeddingModel = options?.queryEmbeddingModel;
 
     const activeChunks = this.chunks.filter((item) => isActiveMemoryItem(item));
     const activeSessions = this.sessions.filter((item) => isActiveMemoryItem(item));
@@ -451,6 +475,7 @@ export class ExperienceMemoryStore {
       activeChunks,
       chunkTopK,
       queryEmbedding,
+      queryEmbeddingModel,
       currentWorkspace,
       (item) =>
         [
@@ -467,6 +492,7 @@ export class ExperienceMemoryStore {
       activeSessions,
       sessionTopK,
       queryEmbedding,
+      queryEmbeddingModel,
       currentWorkspace,
       (item) =>
         [
@@ -554,33 +580,46 @@ export class ExperienceMemoryStore {
   private rankItems<
     T extends {
       embedding: number[];
+      embeddingModel?: string;
       ingestedAt: string;
+      sessionDate?: string;
+      createdAt?: string;
       sourceWorkspace?: string | null;
       confidence?: number;
       status?: MemoryItemStatus;
       supersededBy?: string;
+      duplicateCandidateOf?: string;
     },
   >(
     query: string,
     items: T[],
     topK: number,
     queryEmbedding: number[] | undefined,
+    queryEmbeddingModel: string | undefined,
     currentWorkspace: string | null,
     textSelector: (item: T) => string
   ): Array<{ record: T; score: number }> {
     return items
       .map((record) => {
         const lexical = lexicalScore(query, textSelector(record));
+        // Vector spaces only compare within the same embedding model.
         const embedding =
-          queryEmbedding && queryEmbedding.length && record.embedding.length
+          queryEmbedding &&
+          queryEmbedding.length &&
+          record.embedding.length &&
+          record.embeddingModel &&
+          record.embeddingModel === queryEmbeddingModel
             ? cosineSimilarity(queryEmbedding, record.embedding)
             : 0;
         const evidenceScore = lexical + embedding;
         const score =
           evidenceScore +
           workspaceBoost(currentWorkspace, record.sourceWorkspace) +
-          recencyBoost(record.ingestedAt) +
-          confidenceBoost(record.confidence);
+          // Recency follows the fact's time, not when it was last re-ingested.
+          recencyBoost(record.sessionDate || record.createdAt || record.ingestedAt) +
+          confidenceBoost(record.confidence) +
+          // Similar-but-unproven duplicates stay retrievable but rank lower.
+          (record.duplicateCandidateOf ? -0.05 : 0);
         return { record, score, evidenceScore };
       })
       .filter((item) => item.evidenceScore > 0)
@@ -588,7 +627,63 @@ export class ExperienceMemoryStore {
       .slice(0, topK);
   }
 
-  private markSupersededChunks(newChunks: ChunkMemoryItem[]): void {
+  /**
+   * Flat ranked search used by MemoryRetriever — shares the exact scoring of
+   * retrieveProgressive (lexical + recency + confidence + workspace boost +
+   * duplicate penalty) so the two retrieval paths can never drift apart.
+   */
+  rankForSearch(
+    query: string,
+    sourceWorkspace: string | null,
+    topK = 50
+  ): {
+    sessions: Array<{ record: SessionMemoryItem; score: number }>;
+    chunks: Array<{ record: ChunkMemoryItem; score: number }>;
+  } {
+    const inScope = (workspace?: string | null) =>
+      !sourceWorkspace || workspace === sourceWorkspace;
+    const sessions = this.rankItems(
+      query,
+      this.sessions.filter((item) => isActiveMemoryItem(item) && inScope(item.sourceWorkspace)),
+      topK,
+      undefined,
+      undefined,
+      sourceWorkspace,
+      (item) =>
+        [
+          item.summary,
+          ...item.keywords,
+          item.sourceWorkspace || '',
+          item.sourceSessionTitle || '',
+        ].join(' ')
+    );
+    const chunks = this.rankItems(
+      query,
+      this.chunks.filter((item) => isActiveMemoryItem(item) && inScope(item.sourceWorkspace)),
+      topK,
+      undefined,
+      undefined,
+      sourceWorkspace,
+      (item) =>
+        [
+          item.summary,
+          item.details,
+          item.rawText,
+          ...item.keywords,
+          item.sourceWorkspace || '',
+          item.sourceSessionTitle || '',
+        ].join(' ')
+    );
+    return {
+      sessions: sessions.map(({ record, score }) => ({ record, score })),
+      chunks: chunks.map(({ record, score }) => ({ record, score })),
+    };
+  }
+
+  // Similarity alone never retires a record: near-duplicates are flagged as
+  // candidates (staying active but deprioritized), while true supersede only
+  // happens through same-session replacement or explicit correction.
+  private markDuplicateCandidateChunks(newChunks: ChunkMemoryItem[]): void {
     for (const newChunk of newChunks) {
       const newText = [newChunk.summary, newChunk.details, newChunk.rawText, ...newChunk.keywords]
         .join(' ')
@@ -599,7 +694,8 @@ export class ExperienceMemoryStore {
       for (const oldChunk of this.chunks) {
         if (
           !isActiveMemoryItem(oldChunk) ||
-          oldChunk.sourceWorkspace !== newChunk.sourceWorkspace
+          oldChunk.sourceWorkspace !== newChunk.sourceWorkspace ||
+          oldChunk.duplicateCandidateOf
         ) {
           continue;
         }
@@ -609,15 +705,13 @@ export class ExperienceMemoryStore {
         const sameSummary =
           normalizeDedupeText(oldChunk.summary) === normalizeDedupeText(newChunk.summary);
         if (oldText && (sameSummary || lexicalScore(newText, oldText) >= 0.72)) {
-          oldChunk.status = 'archived';
-          oldChunk.supersededBy = newChunk.id;
-          oldChunk.ingestedAt = newChunk.ingestedAt;
+          oldChunk.duplicateCandidateOf = newChunk.id;
         }
       }
     }
   }
 
-  private markSupersededSessions(newSession: SessionMemoryItem): void {
+  private markDuplicateCandidateSessions(newSession: SessionMemoryItem): void {
     const newText = [newSession.summary, ...newSession.keywords].join(' ').trim();
     if (!newText) {
       return;
@@ -625,7 +719,8 @@ export class ExperienceMemoryStore {
     for (const oldSession of this.sessions) {
       if (
         !isActiveMemoryItem(oldSession) ||
-        oldSession.sourceWorkspace !== newSession.sourceWorkspace
+        oldSession.sourceWorkspace !== newSession.sourceWorkspace ||
+        oldSession.duplicateCandidateOf
       ) {
         continue;
       }
@@ -633,9 +728,7 @@ export class ExperienceMemoryStore {
       const sameSummary =
         normalizeDedupeText(oldSession.summary) === normalizeDedupeText(newSession.summary);
       if (oldText && (sameSummary || lexicalScore(newText, oldText) >= 0.76)) {
-        oldSession.status = 'archived';
-        oldSession.supersededBy = newSession.sessionId;
-        oldSession.ingestedAt = newSession.ingestedAt;
+        oldSession.duplicateCandidateOf = newSession.sessionId;
       }
     }
   }

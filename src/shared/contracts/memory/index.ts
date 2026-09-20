@@ -47,6 +47,8 @@ export interface MemoryEvidenceRef {
   sourceWorkspace?: string | null;
   sourceSessionTitle?: string;
   sourceTurns?: number[];
+  /** Stable message-level identity for the evidenced turns. */
+  messageIds?: string[];
   excerpt?: string;
   createdAt?: string;
 }
@@ -59,6 +61,9 @@ export interface MemoryConfidenceSignals {
   contradictionCount: number;
   userVerified: boolean;
   lastVerifiedAt?: string;
+  /** Hash of the value the verification was made on — verification never
+   *  transfers to a different value. */
+  verifiedValueHash?: string;
   calculationVersion: number;
   reason?: string;
 }
@@ -107,10 +112,14 @@ export interface ChunkMemoryItem {
   createdAt: string;
   ingestedAt: string;
   embedding: number[];
+  /** Model that produced `embedding`; mismatched models never compare. */
+  embeddingModel?: string;
   confidence: number;
   confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
+  /** Similar-but-unproven duplicate — stays active, mildly deprioritized. */
+  duplicateCandidateOf?: string;
 }
 
 export interface SessionMemoryItem {
@@ -129,10 +138,14 @@ export interface SessionMemoryItem {
   createdAt: string;
   ingestedAt: string;
   embedding: number[];
+  /** Model that produced `embedding`; mismatched models never compare. */
+  embeddingModel?: string;
   confidence: number;
   confidenceSignals: MemoryConfidenceSignals;
   status: MemoryItemStatus;
   supersededBy?: string;
+  /** Similar-but-unproven duplicate — stays active, mildly deprioritized. */
+  duplicateCandidateOf?: string;
 }
 
 export interface MemoryDebugFileInfo {
@@ -175,6 +188,12 @@ export interface MemoryOverview {
   experienceChunkCount: number;
   sourceWorkspaceCount: number;
   failedSessionCount: number;
+  /** Ingestion jobs still queued (including backoff-waiting retries). */
+  pendingJobCount?: number;
+  /** Jobs that exhausted retries and need attention. */
+  deadJobCount?: number;
+  /** Current store generation — bumps on every clear/rebuild. */
+  generation?: number;
   latestIngestionAt: number | null;
   latestError: string | null;
   currentWorkspace?: {
@@ -188,6 +207,23 @@ export interface MemoryOverview {
     sessionCount: number;
     chunkCount: number;
   }>;
+}
+
+/**
+ * Result of a workspace/full rebuild. `success` is authoritative — a commit
+ * that failed to land reports `commitError` even when every extraction
+ * succeeded; `committedSessionCount` counts only sessions that actually
+ * landed in the live generation (0 when the candidate was discarded).
+ * `preparedSessionCount` reports how far the candidate build got.
+ */
+export interface MemoryRebuildResult {
+  success: boolean;
+  sessionCount: number;
+  committedSessionCount: number;
+  preparedSessionCount: number;
+  failedSessionCount: number;
+  /** Commit-layer failure, distinct from per-session extraction failures. */
+  commitError?: string;
 }
 
 export interface MemorySearchResult {
@@ -206,12 +242,31 @@ export interface MemorySearchResult {
   sessionTitle?: string;
   category?: 'identity' | 'preferences' | 'skills' | 'interests';
   confidence?: number;
+  confidenceSignals?: MemoryConfidenceSignals;
   status?: MemoryItemStatus;
   score: number;
   createdAt: number;
   updatedAt?: number;
   keywords?: string[];
   sourceFile?: string;
+}
+
+/**
+ * Provenance record for one memory-context injection — which entries were
+ * surfaced into a prompt, when, and whether budgets clipped the output.
+ */
+export interface MemoryInjectionRecord {
+  timestamp: string;
+  workspaceKey?: string | null;
+  promptChars: number;
+  coreKeys: string[];
+  projectKeys: string[];
+  experienceChunkIds: string[];
+  experienceSessionIds: string[];
+  /** Final prefix size in characters after budget enforcement. */
+  totalChars: number;
+  /** True when any layer was truncated to fit its budget. */
+  truncated: boolean;
 }
 
 export interface MemoryReadResult extends MemorySearchResult {

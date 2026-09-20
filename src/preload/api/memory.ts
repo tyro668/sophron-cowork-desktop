@@ -3,10 +3,12 @@ import type {
   CoreMemoryEntry,
   MemoryDebugFileContent,
   MemoryDebugFileInfo,
+  MemoryInjectionRecord,
   MemoryInspectSessionResult,
   MemoryItemStatus,
   MemoryOverview,
   MemoryReadResult,
+  MemoryRebuildResult,
   MemorySearchResult,
   MemorySearchScope,
   ProjectMemoryEntry,
@@ -42,26 +44,14 @@ export function createMemoryApi(): ElectronApi['memory'] {
       ipcRenderer.invoke('memory.updateProjectEntry', id, updates),
     deleteProjectEntry: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('memory.deleteProjectEntry', id),
-    rebuildWorkspace: (
-      cwd: string
-    ): Promise<{
-      success: boolean;
-      workspaceKey: string;
-      sessionCount: number;
-      succeededSessionCount: number;
-      failedSessionCount: number;
-    }> => ipcRenderer.invoke('memory.rebuildWorkspace', cwd),
+    rebuildWorkspace: (cwd: string): Promise<MemoryRebuildResult & { workspaceKey: string }> =>
+      ipcRenderer.invoke('memory.rebuildWorkspace', cwd),
     clearWorkspace: (cwd: string): Promise<{ success: boolean; workspaceKey: string }> =>
       ipcRenderer.invoke('memory.clearWorkspace', cwd),
     clearCoreMemory: (): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('memory.clearCoreMemory'),
-    rebuildAll: (): Promise<{
-      success: boolean;
-      workspaceCount: number;
-      sessionCount: number;
-      succeededSessionCount: number;
-      failedSessionCount: number;
-    }> => ipcRenderer.invoke('memory.rebuildAll'),
+    rebuildAll: (): Promise<MemoryRebuildResult & { workspaceCount: number }> =>
+      ipcRenderer.invoke('memory.rebuildAll'),
     listFiles: (): Promise<MemoryDebugFileInfo[]> => ipcRenderer.invoke('memory.listFiles'),
     readFile: (filePath: string): Promise<MemoryDebugFileContent> =>
       ipcRenderer.invoke('memory.readFile', filePath),
@@ -70,6 +60,8 @@ export function createMemoryApi(): ElectronApi['memory'] {
       workspaceKey?: string
     ): Promise<MemoryInspectSessionResult | null> =>
       ipcRenderer.invoke('memory.inspectSession', sessionId, workspaceKey),
+    listInjections: (limit?: number): Promise<MemoryInjectionRecord[]> =>
+      ipcRenderer.invoke('memory.listInjections', limit),
     setEnabled: (enabled: boolean): Promise<{ success: boolean; enabled: boolean }> =>
       ipcRenderer.invoke('memory.setEnabled', enabled),
   };

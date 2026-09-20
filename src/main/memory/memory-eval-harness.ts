@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import type { MemoryService } from './memory-service';
+import type { DatabaseInstance } from '../db/database';
+import { MemoryService } from './memory-service';
 import type { MemoryLLMClientLike } from './memory-llm-client';
 import { MemoryLLMClient } from './memory-llm-client';
 import { extractJson, loadJsonFile, normalizeWorkspaceKey, saveJsonFile } from './memory-utils';
@@ -164,6 +166,23 @@ function scorePromptPrefix(
 }
 
 export class MemoryEvalHarness {
+  /**
+   * Builds a harness bound to a dedicated MemoryService rooted at its own
+   * storage dir — eval ingestion can never pollute live memory stores.
+   */
+  static createIsolated(
+    db: DatabaseInstance,
+    options?: { llm?: MemoryLLMClientLike; storageRoot?: string }
+  ): MemoryEvalHarness {
+    const storageRoot =
+      options?.storageRoot || fs.mkdtempSync(path.join(os.tmpdir(), 'memory-eval-'));
+    const llm = options?.llm || new MemoryLLMClient();
+    return new MemoryEvalHarness(
+      new MemoryService(db, { llmClient: llm, storageRootOverride: storageRoot }),
+      llm
+    );
+  }
+
   constructor(
     private readonly service: MemoryService,
     private readonly llm: MemoryLLMClientLike = new MemoryLLMClient()

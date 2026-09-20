@@ -9,12 +9,18 @@ import {
   buildConfidenceSignals,
   calculateMemoryConfidence,
   confidenceSignalsToFileRecord,
+  countIndependentEvidenceSessions,
+  memoryValuesEquivalent,
   mergeConfidenceSignals,
   normalizeConfidence,
   normalizeConfidenceSourceType,
   normalizeConfidenceSignals,
 } from './memory-confidence';
+import { hashMemoryValue, type MemoryTombstoneGate } from './memory-tombstone-store';
+import { evidenceToFileRecord, mergeEvidenceRefs, normalizeEvidenceList } from './memory-evidence';
+import type { MemoryManualOverlay } from './memory-manual-overlay-store';
 import {
+  containsSensitiveContent,
   coreMemoryToPromptBlock,
   isoNow,
   loadJsonFile,
@@ -39,51 +45,7 @@ function normalizeStatus(value: unknown): MemoryItemStatus {
 }
 
 function normalizeEvidence(value: unknown): MemoryEvidenceRef[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item): MemoryEvidenceRef | null => {
-      if (!item || typeof item !== 'object') {
-        return null;
-      }
-      const source = item as Record<string, unknown>;
-      if (typeof source.sessionId !== 'string' && typeof source.session_id !== 'string') {
-        return null;
-      }
-      const evidence: MemoryEvidenceRef = {
-        sessionId: String(source.sessionId || source.session_id),
-      };
-      if (typeof source.sourceWorkspace === 'string') {
-        evidence.sourceWorkspace = source.sourceWorkspace;
-      } else if (typeof source.source_workspace === 'string') {
-        evidence.sourceWorkspace = source.source_workspace;
-      }
-      if (typeof source.sourceSessionTitle === 'string') {
-        evidence.sourceSessionTitle = source.sourceSessionTitle;
-      } else if (typeof source.source_session_title === 'string') {
-        evidence.sourceSessionTitle = source.source_session_title;
-      }
-      if (Array.isArray(source.sourceTurns)) {
-        evidence.sourceTurns = source.sourceTurns.filter(
-          (turn): turn is number => typeof turn === 'number'
-        );
-      } else if (Array.isArray(source.source_turns)) {
-        evidence.sourceTurns = source.source_turns.filter(
-          (turn): turn is number => typeof turn === 'number'
-        );
-      }
-      if (typeof source.excerpt === 'string') {
-        evidence.excerpt = source.excerpt;
-      }
-      if (typeof source.createdAt === 'string') {
-        evidence.createdAt = source.createdAt;
-      } else if (typeof source.created_at === 'string') {
-        evidence.createdAt = source.created_at;
-      }
-      return evidence;
-    })
-    .filter((item): item is MemoryEvidenceRef => Boolean(item));
+  return normalizeEvidenceList(value);
 }
 
 function normalizeStructuredEntry(item: Record<string, unknown>): CoreMemoryEntry | null {
@@ -107,7 +69,9 @@ function normalizeStructuredEntry(item: Record<string, unknown>): CoreMemoryEntr
   }
   const now = isoNow();
   const evidence = normalizeEvidence(item.evidence);
-  const confidenceSignals = normalizeConfidenceSignals(item.confidenceSignals ?? item.confidence_signals);
+  const confidenceSignals = normalizeConfidenceSignals(
+    item.confidenceSignals ?? item.confidence_signals
+  );
   if (!confidenceSignals) {
     return null;
   }
@@ -142,14 +106,7 @@ function entryToFileRecord(item: CoreMemoryEntry): Record<string, unknown> {
     confidence: item.confidence,
     confidence_signals: confidenceSignalsToFileRecord(item.confidenceSignals),
     status: item.status,
-    evidence: item.evidence.map((evidence) => ({
-      session_id: evidence.sessionId,
-      source_workspace: evidence.sourceWorkspace ?? null,
-      source_session_title: evidence.sourceSessionTitle ?? '',
-      source_turns: evidence.sourceTurns ?? [],
-      excerpt: evidence.excerpt ?? '',
-      created_at: evidence.createdAt ?? '',
-    })),
+    evidence: item.evidence.map((evidence) => evidenceToFileRecord(evidence)),
     created_at: item.createdAt,
     updated_at: item.updatedAt,
   };
@@ -159,23 +116,7 @@ function mergeEvidence(
   existing: MemoryEvidenceRef[],
   additions: MemoryEvidenceRef[]
 ): MemoryEvidenceRef[] {
-  const seen = new Set<string>();
-  const merged: MemoryEvidenceRef[] = [];
-  for (const item of [...additions, ...existing]) {
-    const key = [
-      item.sessionId,
-      item.sourceWorkspace || '',
-      item.sourceSessionTitle || '',
-      (item.sourceTurns || []).join(','),
-      item.excerpt || '',
-    ].join('|');
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged.slice(0, 8);
+  return mergeEvidenceRefs(existing, additions, 8);
 }
 
 export class CoreMemoryStore {
@@ -183,7 +124,8 @@ export class CoreMemoryStore {
 
   constructor(
     private readonly filePath: string,
-    private readonly maxItems = 24
+    private readonly maxItems = 24,
+    private readonly tombstones?: MemoryTombstoneGate
   ) {
     const raw = loadJsonFile<unknown>(filePath, {});
     if (raw && typeof raw === 'object' && Array.isArray((raw as CoreMemoryFile).entries)) {
@@ -216,13 +158,63 @@ export class CoreMemoryStore {
     });
   }
 
+  getEntry(combinedKey: string): CoreMemoryEntry | undefined {
+    return this.entries.get(combinedKey);
+  }
+
+  removeEvidenceWhere(predicate: (evidence: MemoryEvidenceRef) => boolean): CoreMemoryEntry[] {
+    const removed: CoreMemoryEntry[] = [];
+    const now = isoNow();
+    let changed = false;
+    for (const [key, entry] of this.entries) {
+      const remaining = entry.evidence.filter((item) => !predicate(item));
+      if (remaining.length === entry.evidence.length) {
+        continue;
+      }
+      changed = true;
+      if (!remaining.length && !entry.confidenceSignals.userVerified) {
+        removed.push(entry);
+        this.entries.delete(key);
+        continue;
+      }
+      const confidenceSignals: typeof entry.confidenceSignals = {
+        ...entry.confidenceSignals,
+        evidenceCount: remaining.length,
+        corroborationCount: Math.min(
+          entry.confidenceSignals.corroborationCount,
+          countIndependentEvidenceSessions(remaining)
+        ),
+      };
+      this.entries.set(key, {
+        ...entry,
+        evidence: remaining,
+        confidence: calculateMemoryConfidence(confidenceSignals),
+        confidenceSignals,
+        updatedAt: now,
+      });
+    }
+    if (changed) {
+      this.save();
+    }
+    return removed;
+  }
+
   getActiveEntries(): CoreMemoryEntry[] {
     return this.getEntries().filter((entry) => entry.status === ACTIVE_STATUS);
   }
 
   applyActions(
     actions: CoreMemoryActionInput[],
-    evidence: MemoryEvidenceRef[] = []
+    evidence: MemoryEvidenceRef[] = [],
+    options?: {
+      /**
+       * Epoch-ms of the user turn supporting each action (from its verified
+       * `sourceTurns`). Required to lift a tombstone: a deletion marker is
+       * only revoked by a newer explicit re-assertion, never by replaying the
+       * old evidence it was created against.
+       */
+      supportTimeOf?: (action: CoreMemoryActionInput) => number | undefined;
+    }
   ): AppliedCoreMemoryAction[] {
     const applied: AppliedCoreMemoryAction[] = [];
     const now = isoNow();
@@ -256,7 +248,9 @@ export class CoreMemoryStore {
       }
 
       const value = typeof action.value === 'string' ? action.value.trim() : '';
-      if (!value) {
+      // Values that are essentially credentials must never be persisted —
+      // the extractor occasionally surfaces api keys/tokens as "facts".
+      if (!value || containsSensitiveContent(value)) {
         continue;
       }
       const sourceType = normalizeConfidenceSourceType(action.sourceType);
@@ -264,15 +258,94 @@ export class CoreMemoryStore {
       if (!sourceType || extractionConfidence === null) {
         continue;
       }
+      const tombstone = this.tombstones?.findMatch({
+        kind: 'core',
+        identity: combinedKey,
+        valueHash: hashMemoryValue(value),
+        sessionId: evidence[0]?.sessionId ?? null,
+      });
+      if (tombstone) {
+        // An explicit re-assertion whose supporting user turn postdates the
+        // deletion revokes the tombstone; old-evidence replays stay blocked.
+        const supportAt = options?.supportTimeOf?.(action);
+        const authoritative =
+          sourceType === 'explicit_user_statement' || sourceType === 'manual_edit';
+        const tombstoneAt = Date.parse(tombstone.createdAt);
+        if (
+          !authoritative ||
+          supportAt === undefined ||
+          !Number.isFinite(tombstoneAt) ||
+          tombstoneAt >= supportAt
+        ) {
+          continue;
+        }
+        this.tombstones?.remove(tombstone);
+      }
       const incomingSignals = buildConfidenceSignals({
         sourceType,
         extractionConfidence,
         evidenceCount: evidence.length,
-        corroborationCount: existing ? 1 : 0,
+        corroborationCount: 0,
         reason: action.reason,
       });
+      const valueChanged = existing ? !memoryValuesEquivalent(existing.value, value) : false;
+      const independentEvidence =
+        !existing ||
+        evidence.some(
+          (item) => !existing.evidence.some((recorded) => recorded.sessionId === item.sessionId)
+        );
+
+      // An authoritative correction — an explicit user statement or a manual
+      // edit — may replace even a verified value; inferred sources may not.
+      const authoritativeCorrection =
+        sourceType === 'explicit_user_statement' || sourceType === 'manual_edit';
+      // Verification is bound to a value, not a key: entries whose recorded
+      // verifiedValueHash no longer matches their value are treated as
+      // unverified (legacy entries without a hash keep their flag).
+      const verifiedValueIntact = existing
+        ? existing.confidenceSignals.userVerified &&
+          (!existing.confidenceSignals.verifiedValueHash ||
+            existing.confidenceSignals.verifiedValueHash === hashMemoryValue(existing.value))
+        : false;
+      if (existing && valueChanged && verifiedValueIntact && !authoritativeCorrection) {
+        // userVerified is bound to the confirmed value: a conflicting
+        // auto-extraction records a contradiction instead of overwriting it,
+        // and the kept value retains its verification.
+        const conflictedSignals = mergeConfidenceSignals(
+          existing.confidenceSignals,
+          incomingSignals,
+          { resolution: 'conflict', independentEvidence }
+        );
+        conflictedSignals.userVerified = true;
+        conflictedSignals.lastVerifiedAt = existing.confidenceSignals.lastVerifiedAt;
+        conflictedSignals.verifiedValueHash =
+          existing.confidenceSignals.verifiedValueHash ?? hashMemoryValue(existing.value);
+        this.entries.set(combinedKey, {
+          ...existing,
+          confidence: calculateMemoryConfidence(conflictedSignals),
+          confidenceSignals: conflictedSignals,
+          updatedAt: now,
+        });
+        applied.push({
+          op: action.op,
+          category: parsed.category,
+          key: parsed.key,
+          value: existing.value,
+          combinedKey,
+        });
+        appliedKeys.add(combinedKey);
+        continue;
+      }
+
       const confidenceSignals = existing?.confidenceSignals
-        ? mergeConfidenceSignals(existing.confidenceSignals, incomingSignals)
+        ? mergeConfidenceSignals(existing.confidenceSignals, incomingSignals, {
+            resolution: valueChanged
+              ? authoritativeCorrection
+                ? 'correction'
+                : 'conflict'
+              : 'equivalent',
+            independentEvidence,
+          })
         : incomingSignals;
 
       this.entries.set(combinedKey, {
@@ -333,10 +406,20 @@ export class CoreMemoryStore {
           userVerified: true,
           lastVerifiedAt: isoNow(),
           reason: 'Manually adjusted confidence',
-        })
+        }),
+        {
+          resolution: memoryValuesEquivalent(existing.value, nextValue)
+            ? 'equivalent'
+            : 'correction',
+        }
       );
       nextConfidence = calculateMemoryConfidence(nextConfidenceSignals);
     }
+    // Verification binds to the value it was made on — bind the hash whenever
+    // the entry is verified, clear it when verification is absent.
+    nextConfidenceSignals = nextConfidenceSignals.userVerified
+      ? { ...nextConfidenceSignals, verifiedValueHash: hashMemoryValue(nextValue) }
+      : { ...nextConfidenceSignals, verifiedValueHash: undefined };
     const updated: CoreMemoryEntry = {
       ...existing,
       ...parsed,
@@ -361,6 +444,68 @@ export class CoreMemoryStore {
     this.entries.delete(combinedKey);
     this.save();
     return { success: true };
+  }
+
+  /**
+   * Re-apply a persisted human override onto a (possibly freshly rebuilt)
+   * generation. Manual state wins over re-derived content: the overlay value,
+   * status, and verification flags replace whatever extraction produced for
+   * the same identity, and 'delete' removes a resurrected entry outright.
+   */
+  applyManualOverride(overlay: MemoryManualOverlay): void {
+    const combinedKey = overlay.identity;
+    if (!combinedKey) {
+      return;
+    }
+    if (overlay.action === 'delete') {
+      if (this.entries.delete(combinedKey)) {
+        this.save();
+      }
+      return;
+    }
+    const value = typeof overlay.value === 'string' ? overlay.value.trim() : '';
+    if (!value) {
+      return;
+    }
+    const existing = this.entries.get(combinedKey);
+    // Idempotent replay: overlays are re-applied on every ingest commit, so a
+    // no-op reapplication must not churn the file's updatedAt/save.
+    if (
+      existing &&
+      memoryValuesEquivalent(existing.value, value) &&
+      existing.status === (overlay.status ?? existing.status) &&
+      existing.confidenceSignals.userVerified === (overlay.userVerified === true)
+    ) {
+      return;
+    }
+    const parsed = parseCoreCombinedKey(combinedKey);
+    const now = isoNow();
+    const userVerified = overlay.userVerified === true;
+    const confidenceSignals = buildConfidenceSignals({
+      sourceType: 'manual_edit',
+      extractionConfidence: overlay.confidence ?? existing?.confidence ?? 0.95,
+      evidenceCount: existing?.evidence.length ?? 0,
+      corroborationCount: existing?.confidenceSignals.corroborationCount ?? 0,
+      contradictionCount: existing?.confidenceSignals.contradictionCount ?? 0,
+      userVerified,
+      lastVerifiedAt:
+        existing?.confidenceSignals.lastVerifiedAt ?? (userVerified ? now : undefined),
+      verifiedValueHash: userVerified
+        ? (overlay.verifiedValueHash ?? hashMemoryValue(value))
+        : undefined,
+      reason: 'Manual edit restored across rebuild',
+    });
+    this.entries.set(combinedKey, {
+      ...parsed,
+      value,
+      confidence: calculateMemoryConfidence(confidenceSignals),
+      confidenceSignals,
+      status: overlay.status ?? existing?.status ?? ACTIVE_STATUS,
+      evidence: existing?.evidence ?? [],
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    });
+    this.save();
   }
 
   clear(): void {

@@ -12,7 +12,8 @@ export class MemoryNavigator {
   async decide(
     question: string,
     questionDate: string | undefined,
-    visibleContext: string
+    visibleContext: string,
+    signal?: AbortSignal
   ): Promise<NavigationDecision> {
     const response = await this.llm.complete({
       systemPrompt: this.systemPrompt,
@@ -25,6 +26,7 @@ export class MemoryNavigator {
       ].join('\n'),
       temperature: 0,
       maxTokens: 2_000,
+      signal,
     });
     const payload = extractJson(response.text);
     if (!payload || typeof payload !== 'object') {
@@ -53,7 +55,11 @@ export class MemoryNavigator {
               sessionId?: unknown;
             };
             const type = typeof input.type === 'string' ? input.type : '';
-            if (type !== 'expand_chunk' && type !== 'expand_session' && type !== 'get_raw_session') {
+            if (
+              type !== 'expand_chunk' &&
+              type !== 'expand_session' &&
+              type !== 'get_raw_session'
+            ) {
               return null;
             }
             const normalized: NavigationAction = { type };

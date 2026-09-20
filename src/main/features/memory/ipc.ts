@@ -152,6 +152,13 @@ export function registerMemoryIpc(): void {
     return appContext.memoryService.inspectSession(sessionId, workspaceKey);
   });
 
+  handleIpc('memory.listInjections', (_event, limit?: number) => {
+    if (!appContext.memoryService) {
+      throw new Error('Memory service not initialized');
+    }
+    return appContext.memoryService.listInjections(limit);
+  });
+
   handleIpc('memory.setEnabled', (_event, enabled: boolean) => {
     if (!appContext.memoryService) {
       throw new Error('Memory service not initialized');

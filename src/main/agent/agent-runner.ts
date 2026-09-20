@@ -1095,6 +1095,7 @@ export class AgentRunner {
             existingMessages,
             isColdStart: !cachedSession,
             runtimeConfig,
+            signal: controller.signal,
             activateTools: activateToolsForRun,
           })
         : { customTools: [] };
