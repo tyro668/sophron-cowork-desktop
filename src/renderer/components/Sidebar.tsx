@@ -20,6 +20,7 @@ import {
   Clock3,
   ListChecks,
   Check,
+  Minus,
   MoreHorizontal,
   PencilLine,
   Folder,
@@ -30,7 +31,7 @@ import {
 } from 'lucide-react';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
-import { Button } from './ui';
+import { Badge, Button } from './ui';
 import { BrandMark } from './BrandMark';
 import {
   buildSessionProjectGroups,
@@ -485,6 +486,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   const allVisibleSelected =
     visibleSessionIds.length > 0 && visibleSessionIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected =
+    !allVisibleSelected && visibleSessionIds.some((id) => selectedIds.has(id));
 
   const toggleSelectAll = useCallback(() => {
     if (allVisibleSelected) {
@@ -863,10 +866,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   return (
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
-      {/* Brand row doubles as the window drag region; macOS traffic lights overlay its left edge */}
-      <div
-        className={`titlebar-drag flex items-start gap-3 px-3.5 pb-3 pt-4 ${isMac ? 'pl-[76px]' : ''}`}
-      >
+      {/* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */}
+      <div className="titlebar-drag flex items-start gap-3 px-3.5 pb-3 pt-12">
         <div className="min-w-0 flex items-center gap-3">
           <BrandMark
             variant={settings.logoVariant}
@@ -930,7 +931,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               }`}
               title={t('sidebar.manage')}
             >
-              <ListChecks className="w-3.5 h-3.5" />
+              {isSelectMode ? (
+                <X className="w-3.5 h-3.5" />
+              ) : (
+                <ListChecks className="w-3.5 h-3.5" />
+              )}
             </button>
           </div>
         )}
@@ -1142,13 +1147,13 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                             >
                               {isSelectMode && (
                                 <div
-                                  className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                                  className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
                                     isSelected
-                                      ? 'bg-accent text-accent-foreground'
-                                      : 'border border-border-muted bg-background'
+                                      ? 'border-accent bg-accent text-accent-foreground'
+                                      : 'border-border-muted bg-surface group-hover:border-accent/50'
                                   }`}
                                 >
-                                  {isSelected && <Check className="w-2.5 h-2.5" />}
+                                  {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
@@ -1180,54 +1185,70 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       </div>
 
       {isSelectMode ? (
-        <div className="px-3 py-3 border-t border-border-subtle">
+        <div className="border-t border-border-subtle bg-surface px-3 py-3">
           {showDeleteConfirm ? (
-            <div className="border border-error/30 bg-error/10 rounded-lg px-3 py-3">
-              <p className="text-[13px] text-text-primary mb-3">
-                {t('sidebar.batchDeleteConfirm', { count: selectedIds.size })}
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
+            <div className="rounded-xl border border-error/25 bg-error/10 px-3 py-2.5">
+              <div className="flex items-start gap-2">
+                <Trash2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-error" />
+                <p className="min-w-0 flex-1 text-[12px] leading-4 text-text-primary">
+                  {t('sidebar.batchDeleteConfirm', { count: selectedIds.size })}
+                </p>
+              </div>
+              <div className="mt-2.5 flex items-center justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
                   {t('sidebar.cancel')}
                 </Button>
-                <Button variant="danger" size="sm" className="flex-1" onClick={handleBatchDelete}>
+                <Button variant="danger" size="sm" onClick={handleBatchDelete}>
                   {t('sidebar.confirmDelete')}
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between px-0.5">
                 <button
                   onClick={toggleSelectAll}
-                  className="text-[12px] font-medium text-accent hover:text-accent/80 transition-colors"
+                  className="group flex items-center gap-2 text-[12px] font-medium text-text-secondary transition-colors hover:text-text-primary"
                 >
+                  <span
+                    aria-hidden
+                    className={`flex h-4 w-4 items-center justify-center rounded-md border transition-colors ${
+                      allVisibleSelected || someVisibleSelected
+                        ? 'border-accent bg-accent text-accent-foreground'
+                        : 'border-border-muted bg-surface group-hover:border-accent/50'
+                    }`}
+                  >
+                    {allVisibleSelected ? (
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    ) : someVisibleSelected ? (
+                      <Minus className="h-3 w-3" strokeWidth={3} />
+                    ) : null}
+                  </span>
                   {allVisibleSelected ? t('sidebar.deselectAll') : t('sidebar.selectAll')}
                 </button>
-                <span className="text-[12px] text-text-muted">
+                <Badge tone={selectedIds.size > 0 ? 'accent' : 'default'}>
                   {t('sidebar.nSelected', { count: selectedIds.size })}
-                </span>
+                </Badge>
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <Button
+                  variant="secondary"
+                  size="md"
+                  className="flex-1 rounded-xl"
                   onClick={exitSelectMode}
-                  className="flex-1 px-3 py-2 rounded-xl text-[13px] font-medium text-text-secondary hover:bg-surface-hover transition-colors"
                 >
                   {t('sidebar.cancel')}
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
+                  className="flex-1 rounded-xl"
                   disabled={selectedIds.size === 0}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium bg-error text-error-foreground hover:bg-error/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={() => setShowDeleteConfirm(true)}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="h-3.5 w-3.5" />
                   {t('common.delete')}
-                </button>
+                </Button>
               </div>
             </div>
           )}

@@ -53,10 +53,8 @@ export const DEFAULT_PERMISSION_RULES: PermissionRule[] = [
 ];
 
 export const AUTO_REVIEW_PERMISSION_RULES: PermissionRule[] = [
-  // Static allows stay identical to default permissions. The final ask rule
-  // invokes a narrow, structured per-call reviewer in the main process;
-  // it never promotes shell, write/edit, or other mutating calls.
-  ...DEFAULT_PERMISSION_RULES.map((rule) => ({ ...rule })),
+  // Review every call, including ordinary writes and commands. Explicit
+  // user-defined rules can still precede this risk-based fallback.
   { tool: '*', action: 'ask' },
 ];
 

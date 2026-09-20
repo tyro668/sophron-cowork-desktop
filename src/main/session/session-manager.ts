@@ -116,7 +116,10 @@ export class SessionManager {
     Array<{ prompt: string; content?: ContentBlock[]; options?: SessionRunOptions }>
   > = new Map();
   private idleWaiters: Map<string, Set<() => void>> = new Map();
-  private pendingPermissions: Map<string, (result: PermissionResult) => void> = new Map();
+  private pendingPermissions = new Map<
+    string,
+    { sessionId: string; resolve: (result: PermissionResult) => void }
+  >();
   private pendingSudoPasswords: Map<
     string,
     { sessionId: string; resolve: (password: string | null) => void }
@@ -181,8 +184,9 @@ export class SessionManager {
           sessionId: string,
           toolUseId: string,
           toolName: string,
-          input: Record<string, unknown>
-        ) => this.requestPermission(sessionId, toolUseId, toolName, input),
+          input: Record<string, unknown>,
+          signal?: AbortSignal
+        ) => this.requestPermission(sessionId, toolUseId, toolName, input, signal),
       },
       this.pathResolver,
       this.mcpManager,
@@ -1087,6 +1091,9 @@ export class SessionManager {
     log('[SessionManager] Stopping session:', sessionId);
     this.titleGenerationTokens.delete(sessionId);
     this.agentRunner.cancel(sessionId);
+    for (const entry of this.pendingPermissions.values()) {
+      if (entry.sessionId === sessionId) entry.resolve('deny');
+    }
     // Cancel any pending sudo password requests for this session
     for (const [toolUseId, entry] of this.pendingSudoPasswords) {
       if (entry.sessionId === sessionId) {
@@ -1365,11 +1372,7 @@ export class SessionManager {
 
   // Handle permission response
   handlePermissionResponse(toolUseId: string, result: PermissionResult): void {
-    const resolver = this.pendingPermissions.get(toolUseId);
-    if (resolver) {
-      resolver(result);
-      this.pendingPermissions.delete(toolUseId);
-    }
+    this.pendingPermissions.get(toolUseId)?.resolve(result);
   }
 
   // Request permission for a tool
@@ -1377,18 +1380,22 @@ export class SessionManager {
     sessionId: string,
     toolUseId: string,
     toolName: string,
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
+    signal?: AbortSignal
   ): Promise<PermissionResult> {
+    if (signal?.aborted) return 'deny';
+    this.pendingPermissions.get(toolUseId)?.resolve('deny');
     return new Promise((resolve) => {
-      const timeoutId = setTimeout(() => {
+      const settle = (result: PermissionResult) => {
+        if (!this.pendingPermissions.has(toolUseId)) return;
         this.pendingPermissions.delete(toolUseId);
-        resolve('deny');
-        this.sendToRenderer({ type: 'permission.dismiss', payload: { toolUseId } });
-      }, 60_000);
-      this.pendingPermissions.set(toolUseId, (result: PermissionResult) => {
-        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         resolve(result);
-      });
+        this.sendToRenderer({ type: 'permission.dismiss', payload: { toolUseId } });
+      };
+      const onAbort = () => settle('deny');
+      this.pendingPermissions.set(toolUseId, { sessionId, resolve: settle });
+      signal?.addEventListener('abort', onAbort, { once: true });
       this.sendToRenderer({
         type: 'permission.request',
         payload: { toolUseId, toolName, input, sessionId },

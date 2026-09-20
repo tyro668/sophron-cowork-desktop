@@ -123,6 +123,7 @@ interface AppState {
 
   // Permission
   pendingPermission: PermissionRequest | null;
+  pendingPermissionQueue: PermissionRequest[];
 
   // Sudo password
   pendingSudoPassword: SudoPasswordRequest | null;
@@ -202,6 +203,7 @@ interface AppState {
   setDesktopAuthStatus: (status: DesktopAuthStatus) => void;
 
   setPendingPermission: (permission: PermissionRequest | null) => void;
+  dismissPermission: (toolUseId: string) => void;
 
   setPendingSudoPassword: (request: SudoPasswordRequest | null) => void;
 
@@ -288,6 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsTab: null,
   desktopAuthStatus: { authenticated: false, updatedAt: 0 },
   pendingPermission: null,
+  pendingPermissionQueue: [],
   pendingSudoPassword: null,
   settings: defaultSettings,
   appConfig: null,
@@ -702,7 +705,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   setDesktopAuthStatus: (status) => set({ desktopAuthStatus: status }),
 
   // Permission actions
-  setPendingPermission: (permission) => set({ pendingPermission: permission }),
+  setPendingPermission: (permission) =>
+    set((state) => {
+      const pending = state.pendingPermission
+        ? [state.pendingPermission, ...state.pendingPermissionQueue]
+        : state.pendingPermissionQueue;
+      const next = permission
+        ? pending.some((item) => item.toolUseId === permission.toolUseId)
+          ? pending.map((item) => (item.toolUseId === permission.toolUseId ? permission : item))
+          : [...pending, permission]
+        : pending.slice(1);
+      return { pendingPermission: next[0] ?? null, pendingPermissionQueue: next.slice(1) };
+    }),
+  dismissPermission: (toolUseId) =>
+    set((state) => {
+      const next = [state.pendingPermission, ...state.pendingPermissionQueue].filter(
+        (item): item is PermissionRequest => item !== null && item.toolUseId !== toolUseId
+      );
+      return { pendingPermission: next[0] ?? null, pendingPermissionQueue: next.slice(1) };
+    }),
 
   // Sudo password actions
   setPendingSudoPassword: (request) => set({ pendingSudoPassword: request }),

@@ -129,7 +129,9 @@ export function decidePermission(
 export function evaluatePermission(
   sessionId: string,
   toolName: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  reviewToolName = toolName,
+  cwd?: string
 ): PermissionEvaluation {
   const lowered = toolName.toLowerCase();
 
@@ -149,7 +151,7 @@ export function evaluatePermission(
     // auto-review wildcard delegates to the structured per-call reviewer.
     if (decision === 'ask' && rule.tool === '*' && policy === 'auto_review') {
       try {
-        const reviewed = reviewAutoPermission(lowered, input);
+        const reviewed = reviewAutoPermission(reviewToolName.toLowerCase(), input, cwd);
         return { ...reviewed, source: 'auto_review' };
       } catch {
         return { decision: 'ask', source: 'auto_review', reason: 'arguments_need_confirmation' };

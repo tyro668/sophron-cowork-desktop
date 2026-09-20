@@ -267,10 +267,7 @@ export function useIPC() {
             break;
 
           case 'permission.dismiss': {
-            const currentPermission = useAppStore.getState().pendingPermission;
-            if (currentPermission?.toolUseId === event.payload.toolUseId) {
-              store.setPendingPermission(null);
-            }
+            store.dismissPermission(event.payload.toolUseId);
             break;
           }
 
@@ -424,7 +421,7 @@ export function useIPC() {
   const updateSession = useAppStore((s) => s.updateSession);
   const addMessage = useAppStore((s) => s.addMessage);
   const setLoading = useAppStore((s) => s.setLoading);
-  const setPendingPermission = useAppStore((s) => s.setPendingPermission);
+  const dismissPermission = useAppStore((s) => s.dismissPermission);
   const clearActiveTurn = useAppStore((s) => s.clearActiveTurn);
   const activateNextTurn = useAppStore((s) => s.activateNextTurn);
   const clearPendingTurns = useAppStore((s) => s.clearPendingTurns);
@@ -839,9 +836,9 @@ export function useIPC() {
         type: 'permission.response',
         payload: { toolUseId, result },
       });
-      setPendingPermission(null);
+      dismissPermission(toolUseId);
     },
-    [send, setPendingPermission]
+    [send, dismissPermission]
   );
 
   const setPendingSudoPassword = useAppStore((s) => s.setPendingSudoPassword);

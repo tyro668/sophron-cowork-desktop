@@ -158,7 +158,7 @@ describe('RemoteManager interaction lifecycle', () => {
     expect(asInternals(manager).interactionTimers.has('question-1')).toBe(false);
   });
 
-  it('denies a permission request and clears all interaction state on timeout', async () => {
+  it('keeps permission pending without a deadline and accepts a late reply', async () => {
     vi.useFakeTimers();
     const gateway = createGateway();
     configureRemoteSession(manager, gateway);
@@ -172,11 +172,14 @@ describe('RemoteManager interaction lifecycle', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(asInternals(manager).pendingInteractions.has('tool-use-1')).toBe(true);
-    expect(asInternals(manager).interactionTimers.has('tool-use-1')).toBe(true);
-
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
-
-    await expect(permissionPromise).resolves.toEqual({ allow: false });
+    expect(asInternals(manager).interactionTimers.has('tool-use-1')).toBe(false);
+    const settled = vi.fn();
+    void permissionPromise.then(settled);
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    expect(settled).not.toHaveBeenCalled();
+    expect(asInternals(manager).pendingInteractions.has('tool-use-1')).toBe(true);
+    await manager.handlePotentialInteractionResponse('feishu', 'chat-1', 'user-1', '允许');
+    await expect(permissionPromise).resolves.toEqual({ allow: true });
     expect(asInternals(manager).pendingInteractions.has('tool-use-1')).toBe(false);
     expect(asInternals(manager).interactionResolvers.has('tool-use-1')).toBe(false);
     expect(asInternals(manager).interactionTimers.has('tool-use-1')).toBe(false);

@@ -68,7 +68,7 @@ export interface RemoteInteraction {
   }>;
   input?: Record<string, unknown>;
   createdAt: number;
-  expiresAt: number;
+  expiresAt: number | null;
 }
 
 interface RemoteResponseBuffer {
@@ -846,7 +846,7 @@ export class RemoteManager extends EventEmitter {
       toolName,
       input,
       createdAt: Date.now(),
-      expiresAt: Date.now() + INTERACTION_TIMEOUT_MS,
+      expiresAt: null,
     };
     let resolveResponse!: (response: string) => void;
     const responsePromise = new Promise<string>((resolve) => {
@@ -903,6 +903,9 @@ export class RemoteManager extends EventEmitter {
 
       this.pendingInteractions.set(id, interaction);
       this.interactionResolvers.set(id, resolver);
+      // Permissions wait for an explicit answer or lifecycle cancellation.
+      // Questions retain their existing timeout behavior.
+      if (interaction.expiresAt === null) return true;
       const timer = setTimeout(
         () => {
           void this.expirePendingInteraction(id).catch((error) => {

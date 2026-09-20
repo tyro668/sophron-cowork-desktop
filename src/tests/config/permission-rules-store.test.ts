@@ -92,21 +92,21 @@ describe('permission-rules-store', () => {
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('allow');
     });
 
-    it('asks before high-risk tools in auto-review mode and allows known read-only tools', () => {
+    it('auto-reviews routine work while keeping consequential operations behind confirmation', () => {
       setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
 
       expect(decidePermission(SESSION_A, 'read', { path: '/tmp/in.txt' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'data_list_tasks', {})).toBe('allow');
-      expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('ask');
-      expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('ask');
-      expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('ask');
+      expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('allow');
+      expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'automation_create', {})).toBe('ask');
       expect(decidePermission(SESSION_A, 'automation_update_schedule', {})).toBe('ask');
-      expect(decidePermission(SESSION_A, 'data_generate_task_from_requirement', {})).toBe('ask');
+      expect(decidePermission(SESSION_A, 'data_generate_task_from_requirement', {})).toBe('allow');
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
     });
 
-    it('makes default and auto-review different only for validated read-only calls', () => {
+    it('keeps structured read-only argument validation in auto-review', () => {
       const manifestArgs = { inputTableIds: ['table-1'] };
       const versionArgs = { artifactId: 'artifact-1' };
       setPermissionRules(getPermissionRulesForPolicy('default'), 'default');
@@ -163,17 +163,9 @@ describe('permission-rules-store', () => {
       ).toBe('ask');
     });
 
-    it('never approves shell, writes, code execution, unknown tools, or explicit asks', () => {
+    it('preserves explicit asks and requires confirmation for unclassified tools', () => {
       setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
-      for (const tool of [
-        'bash',
-        'write',
-        'edit',
-        'data_preview_input_table_normalizer_version',
-        'unknown_tool',
-      ]) {
-        expect(decidePermission(SESSION_A, tool, { command: 'ls' })).toBe('ask');
-      }
+      expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
       setSessionPermissionRules(
         SESSION_A,
         [

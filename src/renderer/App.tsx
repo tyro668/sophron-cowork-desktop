@@ -311,7 +311,9 @@ function App() {
         </div>
 
         {/* Permission Dialog */}
-        {pendingPermission && <PermissionDialog permission={pendingPermission} />}
+        {pendingPermission && (
+          <PermissionDialog key={pendingPermission.toolUseId} permission={pendingPermission} />
+        )}
 
         {/* Sudo Password Dialog */}
         {pendingSudoPassword && <SudoPasswordDialog request={pendingSudoPassword} />}

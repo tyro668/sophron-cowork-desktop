@@ -220,8 +220,29 @@ export class AgentRunEventBridge {
   // Activity-based timeout: reset the 5-min timer whenever the SDK sends events
   PROMPT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   activityTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  private permissionWaitCount = 0;
+
+  /** Human approval has no deadline. Other SDK events must not restart the
+   * inactivity watchdog until every pending permission has been answered. */
+  pauseForPermission = (): (() => void) => {
+    this.permissionWaitCount += 1;
+    if (this.activityTimeoutId) clearTimeout(this.activityTimeoutId);
+    this.activityTimeoutId = undefined;
+    let resumed = false;
+    return () => {
+      if (resumed) return;
+      resumed = true;
+      this.permissionWaitCount -= 1;
+      if (!this.permissionWaitCount && !this.ctx.controller.signal.aborted) {
+        this.resetActivityTimeout();
+      }
+    };
+  };
+
   resetActivityTimeout = () => {
     if (this.activityTimeoutId) clearTimeout(this.activityTimeoutId);
+    this.activityTimeoutId = undefined;
+    if (this.permissionWaitCount || this.ctx.controller.signal.aborted) return;
     this.activityTimeoutId = setTimeout(() => {
       logWarn('[AgentRunner] Prompt timed out (no activity for 5 min), aborting');
       this.ctx.onTimeoutAbort();

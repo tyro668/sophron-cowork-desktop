@@ -43,6 +43,8 @@ import type {
 } from '../../shared/contracts';
 import { v4 as uuidv4 } from 'uuid';
 import { evaluatePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
+import { completePermissionReview } from '../config/permission-model-review';
+import { runPiAiOneShot } from './pi-ai-one-shot';
 import { PathResolver } from '../sandbox/path-resolver';
 import { MCPManager } from '../mcp/mcp-manager';
 import { mcpConfigStore } from '../mcp/mcp-config-store';
@@ -116,7 +118,8 @@ interface AgentRunnerOptions {
     sessionId: string,
     toolUseId: string,
     toolName: string,
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
+    signal?: AbortSignal
   ) => Promise<'allow' | 'deny' | 'allow_always'>;
 }
 
@@ -155,7 +158,8 @@ export class AgentRunner {
     sessionId: string,
     toolUseId: string,
     toolName: string,
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
+    signal?: AbortSignal
   ) => Promise<'allow' | 'deny' | 'allow_always'>;
   private pathResolver: PathResolver;
   private mcpManager?: MCPManager;
@@ -163,6 +167,11 @@ export class AgentRunner {
   private activeControllers: Map<string, AbortController> = new Map();
   private activeTurnIds: Map<string, string> = new Map();
   private activeEvaluationMetrics: Map<string, TraceEvaluationMetrics> = new Map();
+  private activeEventBridges = new Map<string, AgentRunEventBridge>();
+  private activePermissionContexts = new Map<
+    string,
+    { cwd: string; config: AgentRuntimeConfig; task: string }
+  >();
   private toolStartedAt: Map<string, number> = new Map();
   private piSessions: Map<string, CachedPiSession> = new Map();
   private toolDisplayNameCache: Map<string, string> = new Map();
@@ -284,10 +293,8 @@ export class AgentRunner {
    *  - 'deny'  → return { block: true, reason } (SDK treats as tool error)
    *  - 'ask'   → await requestPermission() IPC round-trip to PermissionDialog
    *
-   * Known limitation: the async requestPermission wait (user dialog) causes
-   * the renderer to miss UI update events. The tool executes correctly on
-   * the backend, but the renderer's loading spinner may not clear. This is
-   * a renderer-side issue tracked as a follow-up.
+   * Human confirmation pauses the activity watchdog and remains pending until
+   * answered or explicitly cancelled with the task.
    */
   private installPermissionHook(piSession: PiAgentSession, sessionId: string): void {
     if (!this.requestPermission) {
@@ -321,7 +328,33 @@ export class AgentRunner {
         const toolName: string = ctx.toolCall?.name ?? '';
         const input: Record<string, unknown> = ctx.args ?? {};
 
-        const evaluation = evaluatePermission(sessionId, toolName, input);
+        const reviewContext = this.activePermissionContexts.get(sessionId);
+        const mcpTool = this.mcpManager?.getTool(toolName);
+        const permissionSignal = signal ?? this.activeControllers.get(sessionId)?.signal;
+        let evaluation = evaluatePermission(
+          sessionId,
+          toolName,
+          input,
+          mcpTool?.originalName ?? toolName,
+          reviewContext?.cwd
+        );
+        if (reviewContext) {
+          evaluation = await completePermissionReview(evaluation, {
+            toolName: mcpTool?.originalName ?? toolName,
+            toolDescription: mcpTool?.description,
+            input,
+            cwd: reviewContext.cwd,
+            task: reviewContext.task,
+            signal: permissionSignal,
+            complete: (prompt, systemPrompt, reviewSignal) =>
+              runPiAiOneShot(prompt, systemPrompt, reviewContext.config, {
+                temperature: 0,
+                maxTokens: 128,
+                signal: reviewSignal,
+              }),
+          });
+        }
+        if (permissionSignal?.aborted) return { block: true, reason: 'Task cancelled.' };
         const { decision } = evaluation;
         const reviewReason = evaluation.source === 'auto_review' ? evaluation.reason : undefined;
         // Human-readable name for prompts/messages (e.g. MCP sanitized
@@ -383,11 +416,18 @@ export class AgentRunner {
             timestamp: permissionStartedAt,
           });
           let result: 'allow' | 'deny' | 'allow_always';
+          const resumeActivity = this.activeEventBridges.get(sessionId)?.pauseForPermission();
           try {
             // Send the display name to the renderer so the dialog shows a
             // human-readable tool name; canonical `toolName` is still used
             // for rule matching above and "always allow" memory below.
-            result = await requestPermission(sessionId, toolUseId, displayName, input);
+            result = await requestPermission(
+              sessionId,
+              toolUseId,
+              displayName,
+              input,
+              permissionSignal
+            );
           } catch (permErr) {
             const endedAt = Date.now();
             if (evaluationMetrics) {
@@ -412,13 +452,15 @@ export class AgentRunner {
               block: true,
               reason: `Permission request failed for '${displayName}'; tool not executed.`,
             };
+          } finally {
+            resumeActivity?.();
           }
 
           if (evaluationMetrics) {
             evaluationMetrics.permissionWaitMs += Date.now() - permissionStartedAt;
           }
 
-          if (result === 'deny') {
+          if (result === 'deny' || permissionSignal?.aborted) {
             const endedAt = Date.now();
             this.sendTraceUpdate(sessionId, permissionStepId, {
               status: 'error',
@@ -918,6 +960,11 @@ export class AgentRunner {
       const imageCapable = true; // pi-ai models generally support images; let the model handle unsupported cases
       const effectiveCwd =
         useSandboxIsolation && sandboxPath ? sandboxPath : workingDir || process.cwd();
+      this.activePermissionContexts.set(session.id, {
+        cwd: effectiveCwd,
+        config: runtimeConfig,
+        task: prompt,
+      });
 
       // Use app-specific agent config directory to avoid conflicts with user settings
       // SDK uses CLAUDE_CONFIG_DIR to locate skills
@@ -1658,6 +1705,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         },
       });
       const unsubscribe = eventBridge.subscribe();
+      this.activeEventBridges.set(session.id, eventBridge);
 
       // Execute the prompt — unsubscribe in finally to prevent event listener leak
       try {
@@ -1737,6 +1785,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           }
         }
       } finally {
+        this.activeEventBridges.delete(session.id);
         if (modelClock.startedAt) {
           evaluationMetrics.modelDurationMs += Date.now() - modelClock.startedAt;
           modelClock.startedAt = undefined;
@@ -1876,6 +1925,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       }
     } finally {
       this.activeControllers.delete(session.id);
+      this.activePermissionContexts.delete(session.id);
       this.pathResolver.unregisterSession(session.id);
 
       const recordSandboxSyncFailure = (message: string): void => {
