@@ -6,7 +6,6 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -14,11 +13,23 @@ import {
   removeRowAt,
 } from './shared/rowListOperations';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
-import { useDragReorder } from '../../hooks/useDragReorder';
+import { useDragReorder, getReorderTargetIndex } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { ChevronDown, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
+import { DropdownMenuSeparator } from '../ui';
+import {
+  ChevronDown,
+  Copy,
+  Ellipsis,
+  GripVertical,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   normalizePivotAxes,
   togglePivotAxisValue,
@@ -157,14 +168,22 @@ export default function FormPivot({
     handleDragEnd: handleMetricDragEnd,
     handleKeyboardMove: handleMetricKeyboardMove,
     isDragging: isMetricDragging,
+    resetDrag: resetMetricDrag,
     dragIndexRef: metricDragIndexRef,
   } = useDragReorder(using, handleUsingChange);
 
+  useEffect(() => {
+    if (!isMetricDragging) resetMetricDrag();
+  }, [using, isMetricDragging, resetMetricDrag]);
+
+  const canAddMetric = canAppendRow(activeMetrics.length, MAX_USING_COUNT);
+  const listRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto px-3 py-2">
       <div className="flex items-start gap-2">
         <GlassFormLabel>{tr('pivotFieldsLabel')}</GlassFormLabel>
-        <div className="grid min-w-0 flex-1 gap-2">
+        <div className="grid min-w-0 flex-1 gap-0.5">
           {axes.map((axis, index) => (
             <PivotAxisCard
               key={`${axis.field}-${index}`}
@@ -176,6 +195,8 @@ export default function FormPivot({
               taskId={taskId}
               sourceNode={sourceNode}
               tr={tr}
+              canAdd={canAppendRow(axes.length, MAX_ON_COUNT)}
+              onAddAfter={() => addAxisAfter(index)}
               onFieldChange={(field) => handleAxisFieldChange(index, field)}
               onValuesChange={(values) => updateAxis(index, { values })}
               onCustomValueAdd={(values, customValues) =>
@@ -196,7 +217,7 @@ export default function FormPivot({
             type="button"
             disabled={!canAppendRow(axes.length, MAX_ON_COUNT)}
             onClick={() => addAxisAfter(axes.length - 1)}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-muted text-[12px] text-text-secondary transition-colors hover:border-accent/50 hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-6 w-fit items-center gap-1 text-[12px] font-medium text-accent transition-colors hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
             {tr('pivotAddAxis')}
@@ -218,75 +239,137 @@ export default function FormPivot({
         </div>
       </div>
 
-      <div className="flex items-start gap-2">
-        <GlassFormLabel>{tr('pivotMeasuresLabel')}</GlassFormLabel>
-        <div className="min-w-0 flex-1">
-          <GlassRowList
-            items={activeMetrics}
-            getKey={(metric, index) => metric.id ?? `metric-${index}`}
-            columns={[
-              {
-                flex: 'flex-[0.8]',
-                header: tr('aggregateFns.aggregateFunction'),
-                render: (metric: PivotMetric, index: number) => (
-                  <GlassOptionSingleSelect
-                    value={metric.function}
-                    groups={fnGroups}
-                    onChange={(value) =>
-                      updateMetric(index, { function: value as PivotMetric['function'] })
-                    }
-                    variant="highlight"
-                    className="h-8 w-full text-[12px] [&>span]:text-left"
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[1.6]',
-                header: tr('expression.expressionLabel'),
-                render: (metric: PivotMetric, index: number) => (
-                  <GlassExpressionInput
-                    value={metric.expression}
-                    onChange={(value) => updateMetric(index, { expression: value })}
-                    fieldCompletions={fieldCompletions}
-                    columnTypes={columnTypes}
-                    placeholder={tr('pivotExpressionPlaceholder')}
-                  />
-                ),
-              },
-              {
-                flex: 'flex-[1]',
-                header: tr('pivotSuffixLabel'),
-                render: (metric: PivotMetric, index: number) => (
-                  <GlassFormTextInput
-                    value={metric.alias ?? ''}
-                    onChange={(value) => updateMetric(index, { alias: value })}
-                    placeholder={tr('pivotDefaultSuffix', {
-                      suffix: getPivotMetricDefaultSuffix(metric.function),
-                    })}
-                    className="h-8 w-full px-2 text-[12px]"
-                  />
-                ),
-              },
-            ]}
-            actions={['add', 'copy', 'remove']}
-            onAdd={addMetricAfter}
-            onCopy={copyMetric}
-            onRemove={removeMetric}
-            canAct={(action: RowAction) =>
-              action === 'remove' || canAppendRow(using.length, MAX_USING_COUNT)
-            }
-            addTitle={tr('pivotAddMetric')}
-            copyTitle={tr('rowList.copyRow')}
-            removeTitle={tr('pivotRemoveMetric')}
-            draggable
-            onDragStart={handleMetricDragStart}
-            onDragOver={handleMetricDragOver}
-            onDragEnd={handleMetricDragEnd}
-            onKeyboardMove={handleMetricKeyboardMove}
-            getRowOpacity={(i) => !!(isMetricDragging && metricDragIndexRef.current === i)}
-            dragTitle={tr('rowList.dragToReorder')}
-          />
+      <div className="border-t border-border-subtle" />
+
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] text-text-secondary">{tr('pivotMeasuresLabel')}</span>
+        <button
+          type="button"
+          onClick={() => addMetricAfter(activeMetrics.length - 1)}
+          disabled={!canAddMetric}
+          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {tr('pivotAddMetric')}
+        </button>
+      </div>
+
+      <div ref={listRef} className="overflow-hidden rounded-lg border border-border-muted">
+        <div className="flex h-7 items-center gap-2 border-b border-border-muted bg-[var(--data-grid-header-surface)] px-2 text-[12px] font-medium text-text-muted">
+          <span className="w-6 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-[0.8] truncate px-2">
+            {tr('aggregateFns.aggregateFunction')}
+          </span>
+          <span className="min-w-0 flex-[1.6] truncate px-2">
+            {tr('aggregate.aggregateExpressionColumn')}
+          </span>
+          <span className="min-w-0 flex-[1] truncate px-2">{tr('pivotSuffixLabel')}</span>
+          <span className="w-8 shrink-0" aria-hidden="true" />
         </div>
+        {activeMetrics.map((metric, index) => (
+          <div
+            key={metric.id ?? `metric-${index}`}
+            className={`flex items-center gap-2 border-b border-border-subtle px-2 py-1 transition-colors last:border-b-0 hover:bg-surface-hover/40 ${
+              isMetricDragging && metricDragIndexRef.current === index ? 'opacity-50' : ''
+            }`}
+            onDragOver={(event) => handleMetricDragOver(event, index)}
+          >
+            <button
+              type="button"
+              draggable
+              onDragStart={() => handleMetricDragStart(index)}
+              onDragEnd={handleMetricDragEnd}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                event.preventDefault();
+                const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+                const targetIndex = getReorderTargetIndex(activeMetrics.length, index, direction);
+                if (targetIndex === null) return;
+                handleMetricKeyboardMove(index, direction);
+                requestAnimationFrame(() => {
+                  const handles =
+                    listRef.current?.querySelectorAll<HTMLButtonElement>('[data-row-drag-handle]');
+                  handles?.[targetIndex]?.focus();
+                });
+              }}
+              className="flex h-8 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
+              title={tr('rowList.dragToReorder')}
+              aria-label={tr('rowList.dragToReorder')}
+              aria-keyshortcuts="ArrowUp ArrowDown"
+              data-row-drag-handle
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+            <div className="min-w-0 flex-[0.8]">
+              <GlassOptionSingleSelect
+                value={metric.function}
+                groups={fnGroups}
+                onChange={(value) =>
+                  updateMetric(index, { function: value as PivotMetric['function'] })
+                }
+                className="h-8 w-full text-[12px] [&>span]:text-left"
+              />
+            </div>
+            <div className="min-w-0 flex-[1.6]">
+              <GlassExpressionInput
+                value={metric.expression}
+                onChange={(value) => updateMetric(index, { expression: value })}
+                fieldCompletions={fieldCompletions}
+                columnTypes={columnTypes}
+                placeholder={tr('pivotExpressionPlaceholder')}
+              />
+            </div>
+            <div className="min-w-0 flex-[1]">
+              <GlassFormTextInput
+                value={metric.alias ?? ''}
+                onChange={(value) => updateMetric(index, { alias: value })}
+                placeholder={tr('pivotDefaultSuffix', {
+                  suffix: getPivotMetricDefaultSuffix(metric.function),
+                })}
+                className="h-8 w-full px-2 text-[12px]"
+              />
+            </div>
+            <div className="flex w-8 flex-shrink-0 justify-center">
+              <GlassDropdownMenu
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30"
+                    title={tr('aggregate.aggregateMetricActions')}
+                    aria-label={tr('aggregate.aggregateMetricActions')}
+                  >
+                    <Ellipsis className="h-4 w-4" />
+                  </button>
+                }
+                align="end"
+                side="bottom"
+              >
+                <GlassMenuItem
+                  icon={<Plus className="h-3.5 w-3.5" />}
+                  disabled={!canAddMetric}
+                  onSelect={() => addMetricAfter(index)}
+                >
+                  {tr('pivotAddMetric')}
+                </GlassMenuItem>
+                <GlassMenuItem
+                  icon={<Copy className="h-3.5 w-3.5" />}
+                  disabled={!canAddMetric}
+                  onSelect={() => copyMetric(index)}
+                >
+                  {tr('rowList.copyRow')}
+                </GlassMenuItem>
+                <DropdownMenuSeparator />
+                <GlassMenuItem
+                  icon={<Trash2 className="h-3.5 w-3.5" />}
+                  danger
+                  onSelect={() => removeMetric(index)}
+                >
+                  {tr('pivotRemoveMetric')}
+                </GlassMenuItem>
+              </GlassDropdownMenu>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -312,6 +395,8 @@ interface PivotAxisCardProps {
   onValuesChange: (values: PivotLiteral[]) => void;
   onCustomValueAdd: (values: PivotLiteral[], customValues: PivotLiteral[]) => void;
   onCustomValueRemove: (display: string) => void;
+  canAdd: boolean;
+  onAddAfter: () => void;
   onToggle: () => void;
   onRemove: () => void;
 }
@@ -325,6 +410,8 @@ function PivotAxisCard({
   taskId,
   sourceNode,
   tr,
+  canAdd,
+  onAddAfter,
   onFieldChange,
   onValuesChange,
   onCustomValueAdd,
@@ -359,7 +446,7 @@ function PivotAxisCard({
 
   return (
     <div>
-      <div className="grid h-11 grid-cols-[minmax(0,1fr)_88px_32px] items-center gap-2 rounded-lg px-2 transition-colors hover:bg-surface-hover/40">
+      <div className="flex items-center gap-2 py-1 transition-colors">
         <GlassFieldSingleSelect
           value={axis.field}
           options={fieldCompletions}
@@ -368,32 +455,55 @@ function PivotAxisCard({
           disabledOptions={disabledFields}
           placeholder={tr('pivotAxisFieldPlaceholder')}
           searchPlaceholder={tr('fieldPicker.searchField')}
-          className="h-8 min-w-0"
+          className="h-8 min-w-0 flex-1"
         />
         <button
           type="button"
           disabled={!axis.field}
           onClick={handleToggle}
-          className="flex h-8 items-center justify-center gap-1 rounded-md text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
+          className="flex h-8 w-[88px] shrink-0 items-center justify-between gap-1 rounded-md border border-border-muted bg-surface px-2.5 text-[12px] text-text-secondary transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-35"
           aria-expanded={expanded}
         >
-          {tr('pivotSelectedValues', {
-            selected: selectionSummary.selected ?? '—',
-            total: selectionSummary.total ?? '—',
-          })}
+          <span className="truncate">
+            {axis.values.length === 0 && loaded
+              ? tr('pivotAllValuesShort')
+              : tr('pivotSelectedValues', {
+                  selected: selectionSummary.selected ?? '—',
+                  total: selectionSummary.total ?? '—',
+                })}
+          </span>
           <ChevronDown
-            className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
           />
         </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-          title={tr('pivotRemoveAxis')}
-          aria-label={tr('pivotRemoveAxis')}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex w-8 flex-shrink-0 justify-center">
+          <GlassDropdownMenu
+            trigger={
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30"
+                title={tr('aggregate.aggregateMetricActions')}
+                aria-label={tr('aggregate.aggregateMetricActions')}
+              >
+                <Ellipsis className="h-4 w-4" />
+              </button>
+            }
+            align="end"
+            side="bottom"
+          >
+            <GlassMenuItem
+              icon={<Plus className="h-3.5 w-3.5" />}
+              disabled={!canAdd}
+              onSelect={onAddAfter}
+            >
+              {tr('pivotAddAxis')}
+            </GlassMenuItem>
+            <DropdownMenuSeparator />
+            <GlassMenuItem icon={<Trash2 className="h-3.5 w-3.5" />} danger onSelect={onRemove}>
+              {tr('pivotRemoveAxis')}
+            </GlassMenuItem>
+          </GlassDropdownMenu>
+        </div>
       </div>
       {expanded && (
         <PivotValueList
@@ -620,40 +730,58 @@ function PivotValueList({
           >
             {tr('pivotValuesLoadFailed')}
           </button>
-        ) : visibleValues.length === 0 ? (
-          <div className="flex h-16 items-center justify-center text-[12px] text-text-muted">
-            {tr('pivotValuesEmpty')}
-          </div>
         ) : (
-          visibleValues.map((value) => {
-            return (
-              <div
-                key={value.display}
-                className="flex h-8 items-center gap-2 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
+          <>
+            <div className="flex h-8 items-center gap-2 border-b border-border-subtle/70 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover">
+              <label
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5"
+                title={tr('pivotAllValues')}
               >
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selectedDisplays.has(value.display)}
-                    onChange={() => toggleValue(value.raw, value.display)}
-                    className="h-3.5 w-3.5 flex-none accent-accent"
-                  />
-                  <span className="min-w-0 truncate">{value.display}</span>
-                </label>
-                {removableCustomDisplays.has(value.display) && (
-                  <button
-                    type="button"
-                    onClick={() => onCustomValueRemove(value.display)}
-                    className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-                    title={tr('pivotRemoveCustomValue')}
-                    aria-label={tr('pivotRemoveCustomValue')}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                <input
+                  type="checkbox"
+                  checked={values.length === 0}
+                  onChange={() => onChange([])}
+                  className="h-3.5 w-3.5 flex-none accent-accent"
+                />
+                <span className="min-w-0 truncate">{tr('pivotAllValuesOption')}</span>
+              </label>
+            </div>
+            {visibleValues.length === 0 ? (
+              <div className="flex h-16 items-center justify-center text-[12px] text-text-muted">
+                {tr('pivotValuesEmpty')}
               </div>
-            );
-          })
+            ) : (
+              visibleValues.map((value) => {
+                return (
+                  <div
+                    key={value.display}
+                    className="flex h-8 items-center gap-2 px-3 text-[13px] text-text-primary transition-colors hover:bg-surface-hover"
+                  >
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isValueSelected(value.display)}
+                        onChange={() => toggleValue(value.raw, value.display)}
+                        className="h-3.5 w-3.5 flex-none accent-accent"
+                      />
+                      <span className="min-w-0 truncate">{value.display}</span>
+                    </label>
+                    {removableCustomDisplays.has(value.display) && (
+                      <button
+                        type="button"
+                        onClick={() => onCustomValueRemove(value.display)}
+                        className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error"
+                        title={tr('pivotRemoveCustomValue')}
+                        aria-label={tr('pivotRemoveCustomValue')}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </>
         )}
       </div>
     </div>

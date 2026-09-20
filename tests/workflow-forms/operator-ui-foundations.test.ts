@@ -98,9 +98,8 @@ describe('operator UI foundations', () => {
 
       expect(source).toContain('GlassFormLabel');
       expect(source).toContain('GlassOptionMultiSelect');
-      expect(source).toContain(
-        'scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3'
-      );
+      expect(source).toContain('scrollbar-hover flex h-full min-h-0 flex-col');
+      expect(source).toContain('overflow-y-auto');
     }
   );
 });

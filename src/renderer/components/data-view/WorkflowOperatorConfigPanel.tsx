@@ -95,7 +95,7 @@ export function WorkflowOperatorConfigPanel({
   if (mode === 'form') {
     return (
       <>
-        <div className="operator-ui h-full min-h-0 overflow-y-auto px-2 py-2">
+        <div className="operator-ui h-full min-h-0 overflow-y-auto px-2 py-1">
           <OperatorFormWrapper
             key={`${node.id}-form`}
             node={node}

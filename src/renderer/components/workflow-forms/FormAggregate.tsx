@@ -188,7 +188,7 @@ export default function FormAggregate({
   const listRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
+    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto px-3 py-2">
       <div className="flex items-center gap-2">
         <GlassFormLabel>{tr('aggregateDimensionsLabel')}</GlassFormLabel>
         <div className="min-w-0 flex-1">
@@ -241,12 +241,10 @@ export default function FormAggregate({
         </div>
       </div>
 
-      <div className="my-1 border-t border-border-subtle" />
+      <div className="border-t border-border-subtle" />
 
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium text-text-primary">
-          {tr('aggregateMeasuresLabel')}
-        </span>
+        <span className="text-[13px] text-text-secondary">{tr('aggregateMeasuresLabel')}</span>
         <button
           type="button"
           onClick={() => addMetricAfter(activeMetrics.length - 1)}
@@ -259,7 +257,7 @@ export default function FormAggregate({
       </div>
 
       <div ref={listRef} className="overflow-hidden rounded-lg border border-border-muted">
-        <div className="flex h-8 items-center gap-2 border-b border-border-muted bg-[var(--data-grid-header-surface)] px-2 text-[12px] font-medium text-text-muted">
+        <div className="flex h-7 items-center gap-2 border-b border-border-muted bg-[var(--data-grid-header-surface)] px-2 text-[12px] font-medium text-text-muted">
           <span className="w-6 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-[0.8] truncate px-2">
             {tr('aggregateFns.aggregateFunction')}
@@ -273,7 +271,7 @@ export default function FormAggregate({
         {activeMetrics.map((metric, index) => (
           <div
             key={metric.id ?? `metric-${index}`}
-            className={`flex items-center gap-2 border-b border-border-subtle px-2 py-1.5 transition-colors last:border-b-0 hover:bg-surface-hover/40 ${
+            className={`flex items-center gap-2 border-b border-border-subtle px-2 py-1 transition-colors last:border-b-0 hover:bg-surface-hover/40 ${
               isDragging && dragIndexRef.current === index ? 'opacity-50' : ''
             }`}
             onDragOver={(event) => handleDragOver(event, index)}
