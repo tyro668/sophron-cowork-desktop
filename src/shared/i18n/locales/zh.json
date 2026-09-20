@@ -731,15 +731,17 @@
         },
         "aggregate": {
           "aggregateFieldWithGranularity": "{{field}}（{{granularity}}）",
-          "aggregateDimensionsLabel": "分组",
+          "aggregateDimensionsLabel": "分组字段",
           "aggregateDimensionsHint": "按所选字段分组",
-          "aggregateMeasuresLabel": "度量",
+          "aggregateMeasuresLabel": "聚合字段",
           "aggregateMeasuresHint": "每条规则定义一个聚合计算",
-          "aggregateAlias": "别名",
-          "aggregateAliasPlaceholder": "请输入别名",
+          "aggregateAlias": "输出名称",
+          "aggregateAliasPlaceholder": "请输入输出名称",
+          "aggregateExpressionColumn": "字段 / 表达式",
+          "aggregateMetricActions": "更多操作",
           "aggregateExpressionPlaceholder": "输入聚合表达式",
-          "aggregateAddMetric": "添加指标",
-          "aggregateRemoveMetric": "删除配置",
+          "aggregateAddMetric": "添加聚合",
+          "aggregateRemoveMetric": "删除",
           "granularitySelect": "日期粒度",
           "granularityNone": "不处理",
           "granularityYear": "按年",
@@ -1175,7 +1177,7 @@
           "approx_count_distinct": "近似去重计数",
           "approx_quantile": "近似分位数",
           "approx_top_k": "近似Top K",
-          "aggregateFunction": "函数"
+          "aggregateFunction": "聚合函数"
         },
         "sortKeys": {
           "asc": "升序",

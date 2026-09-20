@@ -731,15 +731,17 @@
         },
         "aggregate": {
           "aggregateFieldWithGranularity": "{{field}} ({{granularity}})",
-          "aggregateDimensionsLabel": "Groups",
+          "aggregateDimensionsLabel": "Group by fields",
           "aggregateDimensionsHint": "Group rows by the selected fields",
-          "aggregateMeasuresLabel": "Measures",
+          "aggregateMeasuresLabel": "Aggregate fields",
           "aggregateMeasuresHint": "Each rule defines one aggregate calculation",
-          "aggregateAlias": "Alias",
-          "aggregateAliasPlaceholder": "Enter alias",
+          "aggregateAlias": "Output name",
+          "aggregateAliasPlaceholder": "Enter output name",
+          "aggregateExpressionColumn": "Field / expression",
+          "aggregateMetricActions": "More actions",
           "aggregateExpressionPlaceholder": "Enter aggregate expression",
-          "aggregateAddMetric": "Add metric",
-          "aggregateRemoveMetric": "Delete config",
+          "aggregateAddMetric": "Add aggregate",
+          "aggregateRemoveMetric": "Remove",
           "granularitySelect": "Date granularity",
           "granularityNone": "None",
           "granularityYear": "By year",
@@ -1175,7 +1177,7 @@
           "approx_count_distinct": "Approx count distinct",
           "approx_quantile": "Approx quantile",
           "approx_top_k": "Approx top K",
-          "aggregateFunction": "Function"
+          "aggregateFunction": "Aggregate function"
         },
         "sortKeys": {
           "asc": "Asc",

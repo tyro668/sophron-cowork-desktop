@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { Pencil, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
+import { SquareFunction, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
@@ -848,15 +848,15 @@ export function GlassExpressionInput({
         onClick={() => setOpen(true)}
         className="relative h-8 w-full cursor-pointer rounded-md border border-border-muted bg-surface text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
       >
-        <span className="block truncate px-1.5 leading-7">
+        <span className="block truncate px-1.5 pr-6 leading-7">
           {value || (
             <span className="text-text-muted">
               {placeholderProp ?? tr('expressionPlaceholder')}
             </span>
           )}
         </span>
-        <span className="absolute bottom-0 right-0 flex h-4 w-4 items-center justify-center rounded-tl bg-surface text-text-muted opacity-50 hover:opacity-100 transition-opacity">
-          <Pencil className="h-3 w-3" />
+        <span className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-text-muted opacity-60 transition-opacity hover:opacity-100">
+          <SquareFunction className="h-3.5 w-3.5" />
         </span>
       </div>
     );
