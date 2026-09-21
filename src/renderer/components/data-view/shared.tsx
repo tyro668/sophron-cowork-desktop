@@ -88,10 +88,12 @@ export function DataToolbarButton({
 export function DataTableSearch({
   value,
   placeholder,
+  disabled,
   onChange,
 }: {
   value: string;
   placeholder: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -101,6 +103,7 @@ export function DataTableSearch({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         className="pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft"
       />
     </div>

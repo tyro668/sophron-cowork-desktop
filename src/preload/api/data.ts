@@ -36,17 +36,24 @@ import type {
   DataWorkflowSaveInput,
   ImportCloudTableInput,
   ImportCloudTableResult,
+  ListCloudDriveFilesInput,
+  ListCloudDriveFilesResult,
   ListCloudProjectsInput,
   ListCloudProjectsResult,
   ListCloudSpacesInput,
   ListCloudSpacesResult,
   ListCloudTablesInput,
   ListCloudTablesResult,
+  PreviewCloudDriveFileInput,
+  PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
   RunTaskResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
+  RunOutputTableCloudActionInput,
+  RunOutputTableCloudActionResult,
+  SetOutputTableCloudActionInput,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   WorkflowNodeRunStat,
@@ -197,5 +204,19 @@ export function createDataApi(): ElectronApi['data'] {
       payload: UploadDataTableToCloudInput
     ): Promise<UploadDataTableToCloudResult> =>
       invokeDataCommand('data.uploadDataTableToCloud', payload),
+    listCloudDriveFiles: (payload: ListCloudDriveFilesInput): Promise<ListCloudDriveFilesResult> =>
+      invokeDataCommand('data.listCloudDriveFiles', payload),
+    previewCloudDriveFile: (
+      payload: PreviewCloudDriveFileInput
+    ): Promise<PreviewCloudDriveFileResult> =>
+      invokeDataCommand('data.previewCloudDriveFile', payload),
+    setOutputTableCloudAction: (
+      payload: SetOutputTableCloudActionInput
+    ): Promise<{ outputTable: DataOutputTable | null }> =>
+      invokeDataCommand('data.setOutputTableCloudAction', payload),
+    runOutputTableCloudAction: (
+      payload: RunOutputTableCloudActionInput
+    ): Promise<RunOutputTableCloudActionResult> =>
+      invokeDataCommand('data.runOutputTableCloudAction', payload),
   };
 }

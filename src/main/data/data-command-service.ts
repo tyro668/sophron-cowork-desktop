@@ -1,5 +1,5 @@
 import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
-import type { DataCleaningTask } from '../../shared/contracts';
+import type { DataCleaningTask, DataOutputTable } from '../../shared/contracts';
 import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,
@@ -32,6 +32,8 @@ import {
   type ImportCloudTableCommand,
   type ImportCloudTableResult,
   type InputTableResult,
+  type ListCloudDriveFilesCommand,
+  type ListCloudDriveFilesResult,
   type ListCloudProjectsCommand,
   type ListCloudProjectsResult,
   type ListCloudSpacesCommand,
@@ -45,6 +47,8 @@ import {
   type ListOutputTablesResult,
   type ListTasksResult,
   type OutputTableResult,
+  type PreviewCloudDriveFileCommand,
+  type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
   type PreviewInputTableNormalizerVersionCommand,
@@ -60,6 +64,9 @@ import {
   type RunTaskResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
+  type RunOutputTableCloudActionCommand,
+  type RunOutputTableCloudActionResult,
+  type SetOutputTableCloudActionCommand,
   type SummarizeInputTableSourceCommand,
   type SummarizeInputTableSourceResult,
   type TaskResult,
@@ -125,6 +132,10 @@ export class DataCommandService {
       getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
       createInputTable: (input) => this.createInputTable(input),
     });
+    store.setOutputCommitListener((outputDatasetIds) =>
+      this.cloudAnalysis.runCommittedOutputActions(outputDatasetIds)
+    );
+    void this.cloudAnalysis.ensureActionTimersArmed();
 
     const locks = new DataCommandLockCoordinator();
     this.resources = new DataCommandResources(store);
@@ -299,6 +310,28 @@ export class DataCommandService {
     input: UploadDataTableToCloudCommand
   ): Promise<UploadDataTableToCloudResult> {
     return this.cloudAnalysis.uploadDataTableToCloud(input);
+  }
+
+  async listCloudDriveFiles(input: ListCloudDriveFilesCommand): Promise<ListCloudDriveFilesResult> {
+    return this.cloudAnalysis.listCloudDriveFiles(input);
+  }
+
+  async previewCloudDriveFile(
+    input: PreviewCloudDriveFileCommand
+  ): Promise<PreviewCloudDriveFileResult> {
+    return this.cloudAnalysis.previewCloudDriveFile(input);
+  }
+
+  async setOutputTableCloudAction(
+    input: SetOutputTableCloudActionCommand
+  ): Promise<{ outputTable: DataOutputTable }> {
+    return this.cloudAnalysis.setOutputTableCloudAction(input);
+  }
+
+  async runOutputTableCloudAction(
+    input: RunOutputTableCloudActionCommand
+  ): Promise<RunOutputTableCloudActionResult> {
+    return this.cloudAnalysis.runOutputTableCloudAction(input);
   }
 
   async listTasks(input: ListInputTablesInput = {}): Promise<ListTasksResult> {

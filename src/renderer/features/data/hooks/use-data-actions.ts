@@ -501,9 +501,6 @@ export function useDataActions(deps: DataActionsDeps) {
         if (editors.editingOutputTableId === outputTable.id) {
           editors.setEditingOutputTableId(null);
         }
-        if (editors.uploadCloudOutputTable?.id === outputTable.id) {
-          editors.setUploadCloudOutputTable(null);
-        }
         await loadDashboard({ preserveError: true, tab: 'output_tables' });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));

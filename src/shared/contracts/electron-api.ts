@@ -88,16 +88,23 @@ import type {
   DesktopAuthStatus,
   ImportCloudTableInput,
   ImportCloudTableResult,
+  ListCloudDriveFilesInput,
+  ListCloudDriveFilesResult,
   ListCloudProjectsInput,
   ListCloudProjectsResult,
   ListCloudSpacesInput,
   ListCloudSpacesResult,
   ListCloudTablesInput,
   ListCloudTablesResult,
+  PreviewCloudDriveFileInput,
+  PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
+  RunOutputTableCloudActionInput,
+  RunOutputTableCloudActionResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
+  SetOutputTableCloudActionInput,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   CodexAuthStatus,
@@ -225,6 +232,16 @@ export interface ElectronApi {
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ) => Promise<UploadDataTableToCloudResult>;
+    listCloudDriveFiles: (payload: ListCloudDriveFilesInput) => Promise<ListCloudDriveFilesResult>;
+    previewCloudDriveFile: (
+      payload: PreviewCloudDriveFileInput
+    ) => Promise<PreviewCloudDriveFileResult>;
+    setOutputTableCloudAction: (
+      payload: SetOutputTableCloudActionInput
+    ) => Promise<{ outputTable: DataOutputTable | null }>;
+    runOutputTableCloudAction: (
+      payload: RunOutputTableCloudActionInput
+    ) => Promise<RunOutputTableCloudActionResult>;
   };
   config: {
     get: () => Promise<AppConfig>;

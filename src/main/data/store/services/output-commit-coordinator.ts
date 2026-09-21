@@ -15,6 +15,9 @@ import { WorkflowBindingResolver } from './workflow-binding-resolver';
 import { v4 as uuidv4 } from 'uuid';
 
 export class OutputCommitCoordinator {
+  /** Called after a commit with the dataset ids of every committed output table. */
+  onOutputsCommitted?: (outputDatasetIds: string[]) => void;
+
   constructor(
     private readonly ctx: DataStoreContext,
     private readonly tasks: TaskRepository,
@@ -340,6 +343,16 @@ export class OutputCommitCoordinator {
         await this.journal
           .updateOutputCommitState(sink.journalId, 'completed')
           .catch(() => undefined);
+      }
+      const committedDatasetIds = sinks
+        .map((sink) => sink.target.outputDatasetId)
+        .filter((datasetId): datasetId is string => Boolean(datasetId));
+      if (committedDatasetIds.length > 0) {
+        try {
+          this.onOutputsCommitted?.(committedDatasetIds);
+        } catch {
+          // Listener errors must never fail the commit.
+        }
       }
       return this.tasks.requireTask(id);
     }, `commitValidatedTaskOutput:${id}`);

@@ -2,6 +2,11 @@ import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analys
 import type {
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDatasource,
+  PersonalAnalysisDriveFile,
+  PersonalAnalysisDriveFileListResult,
+  PersonalAnalysisDriveFilePreview,
+  PersonalAnalysisDriveFileSearchParams,
+  PersonalAnalysisDriveSyncResult,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
@@ -32,6 +37,14 @@ interface HiResponse<T> {
 interface PaginatedTableApiResult {
   items?: PersonalAnalysisTable[];
   tables?: PersonalAnalysisTable[];
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  hasMore?: boolean;
+}
+
+interface PaginatedDriveFileApiResult {
+  items?: PersonalAnalysisDriveFile[];
   page?: number;
   pageSize?: number;
   total?: number;
@@ -121,6 +134,76 @@ export class PersonalAnalysisClient {
     );
 
     return parsePaginatedTableResult(result, params, 'Cloud table search API');
+  }
+
+  async listDriveFiles(
+    spaceId: string,
+    projectId: string,
+    params: PersonalAnalysisDriveFileSearchParams = {}
+  ): Promise<PersonalAnalysisDriveFileListResult> {
+    const query = new URLSearchParams();
+    if (params.keyword?.trim()) query.set('keyword', params.keyword.trim());
+    if (params.fileType) query.set('fileType', params.fileType);
+    query.set('page', String(params.page ?? 1));
+    query.set('pageSize', String(params.pageSize ?? 20));
+    const result = await this.apiJson<PaginatedDriveFileApiResult | PersonalAnalysisDriveFile[]>(
+      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files?${query.toString()}`
+    );
+
+    return parsePaginatedDriveFileResult(result, params, 'Cloud drive file list API');
+  }
+
+  async previewDriveFile(
+    spaceId: string,
+    projectId: string,
+    fileId: string,
+    sheetName?: string
+  ): Promise<PersonalAnalysisDriveFilePreview> {
+    const query = sheetName?.trim() ? `?sheetName=${encodeURIComponent(sheetName.trim())}` : '';
+    const result = await this.apiJson<
+      PersonalAnalysisDriveFile & { sheetName?: string; rows?: unknown[][] }
+    >(
+      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files/${encodeURIComponent(fileId)}${query}`
+    );
+    const { rows, sheetName: resolvedSheetName, ...file } = result;
+    return {
+      file: file as PersonalAnalysisDriveFile,
+      sheetName: resolvedSheetName ?? file.sheets?.[0]?.name ?? '',
+      rows: Array.isArray(rows) ? rows : [],
+    };
+  }
+
+  async syncDriveCsv(
+    spaceId: string,
+    projectId: string,
+    input: {
+      fileId?: string;
+      outputId?: string;
+      fileName?: string;
+      expectedVersion?: number;
+      csvContent: string;
+    }
+  ): Promise<PersonalAnalysisDriveSyncResult> {
+    if (!input.fileId?.trim() && !input.outputId?.trim()) {
+      throw new Error('Drive CSV sync requires fileId or outputId');
+    }
+    const file = await this.apiJson<PersonalAnalysisDriveFile & { created?: boolean }>(
+      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files/sync`,
+      {
+        method: 'POST',
+        body: {
+          ...(input.fileId?.trim() ? { fileId: input.fileId.trim() } : {}),
+          ...(input.outputId?.trim() ? { outputId: input.outputId.trim() } : {}),
+          ...(input.fileName?.trim() ? { fileName: input.fileName.trim() } : {}),
+          ...(typeof input.expectedVersion === 'number'
+            ? { expectedVersion: input.expectedVersion }
+            : {}),
+          csvContent: input.csvContent,
+        },
+      }
+    );
+    const { created, ...rest } = file;
+    return { file: rest as PersonalAnalysisDriveFile, created: created === true };
   }
 
   async findTable(
@@ -407,6 +490,47 @@ function parsePaginatedTableResult(
 
   return {
     tables,
+    page,
+    pageSize,
+    total: result.total,
+    hasMore: result.hasMore,
+  };
+}
+
+function parsePaginatedDriveFileResult(
+  result: PaginatedDriveFileApiResult | PersonalAnalysisDriveFile[],
+  params: PersonalAnalysisDriveFileSearchParams,
+  label: string
+): PersonalAnalysisDriveFileListResult {
+  if (Array.isArray(result)) {
+    return {
+      files: result,
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? result.length,
+      total: result.length,
+      hasMore: false,
+    };
+  }
+
+  if (!result || typeof result !== 'object' || !Array.isArray(result.items)) {
+    throw new Error(`${label} response must include an items array.`);
+  }
+
+  const page = result.page ?? params.page;
+  const pageSize = result.pageSize ?? params.pageSize;
+  if (
+    typeof page !== 'number' ||
+    typeof pageSize !== 'number' ||
+    typeof result.total !== 'number' ||
+    typeof result.hasMore !== 'boolean'
+  ) {
+    throw new Error(
+      `${label} response must include numeric page/pageSize/total and boolean hasMore.`
+    );
+  }
+
+  return {
+    files: result.items,
     page,
     pageSize,
     total: result.total,

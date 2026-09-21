@@ -1,3 +1,5 @@
+import type { ScheduleConfig } from './contracts/schedule';
+
 export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
@@ -39,6 +41,7 @@ export interface PersonalAnalysisDatasource {
 export interface PersonalAnalysisTable {
   tableId: string;
   sheetId?: string;
+  kind?: 'base' | 'analysis';
   tableName: string;
   spaceId?: string;
   projectId: string;
@@ -93,3 +96,82 @@ export interface PersonalAnalysisUploadResult {
   status: string;
   table?: PersonalAnalysisTable;
 }
+
+export interface PersonalAnalysisDriveFileSheet {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+}
+
+export interface PersonalAnalysisDriveFile {
+  fileId: string;
+  projectId: string;
+  spaceId?: string;
+  fileName: string;
+  fileType: 'csv' | 'excel';
+  extension: 'csv' | 'xlsx';
+  mimeType?: string;
+  writable?: boolean;
+  size?: number;
+  sheets?: PersonalAnalysisDriveFileSheet[];
+  version?: number;
+  updatedAt?: string;
+}
+
+export interface PersonalAnalysisDriveFileSearchParams {
+  keyword?: string;
+  fileType?: 'csv' | 'excel';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PersonalAnalysisDriveFileListResult {
+  files: PersonalAnalysisDriveFile[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PersonalAnalysisDriveFilePreview {
+  file: PersonalAnalysisDriveFile;
+  sheetName: string;
+  rows: unknown[][];
+}
+
+export interface PersonalAnalysisDriveSyncInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+  projectId: string;
+  fileId?: string;
+  outputId?: string;
+  fileName?: string;
+  expectedVersion?: number;
+  csvContent: string;
+}
+
+export interface PersonalAnalysisDriveSyncResult {
+  file: PersonalAnalysisDriveFile;
+  created: boolean;
+}
+
+export type CloudOutputActionType = 'cloud_table' | 'drive_file';
+
+export type CloudOutputActionTrigger = 'on_change' | 'schedule';
+
+export interface CloudOutputAction {
+  type: CloudOutputActionType;
+  trigger: CloudOutputActionTrigger;
+  schedule?: ScheduleConfig;
+  spaceId: string;
+  projectId: string;
+  fileId?: string;
+  fileName?: string;
+  version?: number;
+  tableId?: string;
+  tableName?: string;
+  writeMode?: 'CREATE' | 'REPLACE';
+  lastRunAt?: number;
+  lastError?: string;
+}
+
+export type CloudOutputActionSpec = Omit<CloudOutputAction, 'version' | 'lastRunAt' | 'lastError'>;

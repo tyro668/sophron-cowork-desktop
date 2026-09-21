@@ -1,10 +1,14 @@
 import type {
   ImportCloudTableInput,
+  ListCloudDriveFilesInput,
   ListCloudProjectsInput,
   ListCloudSpacesInput,
   ListCloudTablesInput,
+  PreviewCloudDriveFileInput,
   PreviewCloudTableInput,
   SearchCloudTablesInput,
+  RunOutputTableCloudActionInput,
+  SetOutputTableCloudActionInput,
   UploadDataTableToCloudInput,
 } from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
@@ -76,4 +80,46 @@ export function registerCloudAnalysisIpc({
       throw error;
     }
   });
+
+  handleIpc('data.listCloudDriveFiles', async (_event, payload: ListCloudDriveFilesInput) => {
+    try {
+      return await requireDataCommandService().listCloudDriveFiles(payload);
+    } catch (error) {
+      logError('[Data] Error listing cloud drive files:', error);
+      throw error;
+    }
+  });
+
+  handleIpc('data.previewCloudDriveFile', async (_event, payload: PreviewCloudDriveFileInput) => {
+    try {
+      return await requireDataCommandService().previewCloudDriveFile(payload);
+    } catch (error) {
+      logError('[Data] Error previewing cloud drive file:', error);
+      throw error;
+    }
+  });
+
+  handleIpc(
+    'data.setOutputTableCloudAction',
+    async (_event, payload: SetOutputTableCloudActionInput) => {
+      try {
+        return await requireDataCommandService().setOutputTableCloudAction(payload);
+      } catch (error) {
+        logError('[Data] Error setting output table cloud action:', error);
+        throw error;
+      }
+    }
+  );
+
+  handleIpc(
+    'data.runOutputTableCloudAction',
+    async (_event, payload: RunOutputTableCloudActionInput) => {
+      try {
+        return await requireDataCommandService().runOutputTableCloudAction(payload);
+      } catch (error) {
+        logError('[Data] Error running output table cloud action:', error);
+        throw error;
+      }
+    }
+  );
 }

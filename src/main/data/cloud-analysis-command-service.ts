@@ -8,16 +8,23 @@ import {
   type ImportCloudTableCommand,
   type ImportCloudTableResult,
   type InputTableResult,
+  type ListCloudDriveFilesCommand,
+  type ListCloudDriveFilesResult,
   type ListCloudProjectsCommand,
   type ListCloudProjectsResult,
   type ListCloudSpacesCommand,
   type ListCloudSpacesResult,
   type ListCloudTablesCommand,
   type ListCloudTablesResult,
+  type PreviewCloudDriveFileCommand,
+  type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
+  type RunOutputTableCloudActionCommand,
+  type RunOutputTableCloudActionResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
+  type SetOutputTableCloudActionCommand,
   type UploadDataTableToCloudCommand,
   type UploadDataTableToCloudResult,
 } from './data-command-types';
@@ -26,13 +33,22 @@ import {
   type PersonalAnalysisClient,
 } from './personal-analysis-client';
 import type {
+  CloudOutputAction,
+  CloudOutputActionSpec,
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDatasource,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
+import type { DataInputTablePreview, DataOutputTable } from '../../shared/contracts';
+import type { ScheduleConfig } from '../../shared/contracts/schedule';
+import {
+  computeNextRunAtFromScheduleConfig,
+  normalizeScheduleConfig,
+} from '../schedule/scheduled-task-manager';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
+const MAX_ACTION_TIMER_DELAY_MS = 6 * 60 * 60 * 1000;
 
 export interface CloudAnalysisCommandServiceOptions {
   getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
@@ -40,6 +56,11 @@ export interface CloudAnalysisCommandServiceOptions {
 }
 
 export class CloudAnalysisCommandService {
+  private readonly outputActionQueues = new Map<string, Promise<unknown>>();
+  private readonly pendingOutputActions = new Map<string, CloudOutputAction>();
+  private readonly outputActionTimers = new Map<string, NodeJS.Timeout>();
+  private actionTimersArmed = false;
+
   constructor(
     private readonly store: DataTaskStore,
     private readonly getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig,
@@ -165,6 +186,267 @@ export class CloudAnalysisCommandService {
     }
   }
 
+  async listCloudDriveFiles(input: ListCloudDriveFilesCommand): Promise<ListCloudDriveFilesResult> {
+    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
+    const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
+    try {
+      return await this.createPersonalAnalysisClient(input).listDriveFiles(spaceId, projectId, {
+        keyword: input.keyword,
+        fileType: input.fileType,
+        page: input.page,
+        pageSize: input.pageSize,
+      });
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async previewCloudDriveFile(
+    input: PreviewCloudDriveFileCommand
+  ): Promise<PreviewCloudDriveFileResult> {
+    const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
+    const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
+    const fileId = normalizeRequiredName(input.fileId, 'Cloud fileId is required');
+    try {
+      const result = await this.createPersonalAnalysisClient(input).previewDriveFile(
+        spaceId,
+        projectId,
+        fileId,
+        input.sheetName
+      );
+      return { file: result.file, preview: driveFilePreviewToDataPreview(result) };
+    } catch (error) {
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  async setOutputTableCloudAction(
+    input: SetOutputTableCloudActionCommand
+  ): Promise<{ outputTable: DataOutputTable }> {
+    const outputTableId = normalizeRequiredName(input.outputTableId, 'outputTableId is required');
+    const action = input.action ? this.normalizeOutputAction(input.action) : null;
+    return this.enqueueOutputAction(outputTableId, async () => {
+      try {
+        const outputTable = await this.store.updateOutputTableCloudAction(outputTableId, action);
+        this.pendingOutputActions.delete(outputTableId);
+        this.rearmActionTimer(outputTableId, action);
+        return { outputTable };
+      } catch (error) {
+        throw toCommandError(error, 'RUN_FAILED');
+      }
+    });
+  }
+
+  async runOutputTableCloudAction(
+    input: RunOutputTableCloudActionCommand
+  ): Promise<RunOutputTableCloudActionResult> {
+    const outputTableId = normalizeRequiredName(input.outputTableId, 'outputTableId is required');
+    return this.enqueueOutputAction(outputTableId, () =>
+      this.executeOutputAction(outputTableId, input)
+    );
+  }
+
+  /**
+   * Post-commit hook: run every committed output table's cloud action whose
+   * trigger is `on_change`. Best-effort — failures persist lastError on the
+   * action and never fail the task run.
+   */
+  runCommittedOutputActions(outputDatasetIds: string[]): void {
+    void this.ensureActionTimersArmed();
+    for (const outputTableId of outputDatasetIds) {
+      void this.enqueueOutputAction(outputTableId, async () => {
+        const outputTable = await this.store.getOutputTableRecord(outputTableId);
+        if (outputTable?.cloudAction?.trigger !== 'on_change') return;
+        await this.executeOutputAction(outputTableId, {});
+      }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Arms interval timers for output tables whose cloud action runs on a
+   * schedule. Idempotent; resolves once the metadata store is ready.
+   */
+  async ensureActionTimersArmed(): Promise<void> {
+    if (this.actionTimersArmed) return;
+    this.actionTimersArmed = true;
+    try {
+      const bound = await this.store.listOutputTableCloudActions();
+      for (const { id, action } of bound) {
+        this.rearmActionTimer(id, action);
+      }
+    } catch (error) {
+      this.actionTimersArmed = false;
+      console.warn('[Data] Failed to arm cloud action timers:', error);
+    }
+  }
+
+  private normalizeOutputAction(spec: CloudOutputActionSpec): CloudOutputAction {
+    const spaceId = normalizeRequiredName(spec.spaceId, 'Cloud spaceId is required');
+    const projectId = normalizeRequiredName(spec.projectId, 'Cloud projectId is required');
+    const schedule =
+      spec.trigger === 'schedule' ? normalizeScheduleConfig(spec.schedule ?? null) : null;
+    if (spec.trigger === 'schedule' && !schedule) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'schedule is required for scheduled actions');
+    }
+    if (spec.type === 'drive_file') {
+      return {
+        type: 'drive_file',
+        trigger: spec.trigger,
+        ...(schedule ? { schedule } : {}),
+        spaceId,
+        projectId,
+        ...(spec.fileId?.trim() ? { fileId: spec.fileId.trim() } : {}),
+        ...(spec.fileName?.trim() ? { fileName: spec.fileName.trim() } : {}),
+      };
+    }
+    return {
+      type: 'cloud_table',
+      trigger: spec.trigger,
+      ...(schedule ? { schedule } : {}),
+      spaceId,
+      projectId,
+      ...(spec.tableId?.trim() ? { tableId: spec.tableId.trim() } : {}),
+      ...(spec.tableName?.trim() ? { tableName: spec.tableName.trim() } : {}),
+    };
+  }
+
+  private rearmActionTimer(outputTableId: string, action: CloudOutputAction | null): void {
+    const existing = this.outputActionTimers.get(outputTableId);
+    if (existing) {
+      clearTimeout(existing);
+      this.outputActionTimers.delete(outputTableId);
+    }
+    const schedule = action?.trigger === 'schedule' ? action.schedule : null;
+    if (!schedule) return;
+
+    const arm = () => {
+      const nextRunAt = computeNextRunAtFromScheduleConfig(schedule, Date.now());
+      if (nextRunAt === null) {
+        this.outputActionTimers.delete(outputTableId);
+        return;
+      }
+      const delay = Math.min(Math.max(nextRunAt - Date.now(), 0), MAX_ACTION_TIMER_DELAY_MS);
+      const timer = setTimeout(() => {
+        this.outputActionTimers.delete(outputTableId);
+        if (Date.now() >= nextRunAt - 1000) {
+          void this.enqueueOutputAction(outputTableId, () =>
+            this.executeOutputAction(outputTableId, {})
+          ).catch(() => undefined);
+        }
+        arm();
+      }, delay);
+      timer.unref?.();
+      this.outputActionTimers.set(outputTableId, timer);
+    };
+    arm();
+  }
+
+  private enqueueOutputAction<T>(outputTableId: string, run: () => Promise<T>): Promise<T> {
+    const queued = (this.outputActionQueues.get(outputTableId) ?? Promise.resolve()).then(run, run);
+    this.outputActionQueues.set(
+      outputTableId,
+      queued.catch(() => undefined)
+    );
+    return queued;
+  }
+
+  private async executeOutputAction(
+    outputTableId: string,
+    connection: PersonalAnalysisConnectionInput
+  ): Promise<RunOutputTableCloudActionResult> {
+    // Recover a successful remote write before issuing another versioned request.
+    const pending = this.pendingOutputActions.get(outputTableId);
+    if (pending) {
+      try {
+        await this.store.updateOutputTableCloudAction(outputTableId, pending);
+        this.pendingOutputActions.delete(outputTableId);
+      } catch (error) {
+        throw toCommandError(error, 'RUN_FAILED');
+      }
+    }
+    const outputTable = await this.store.getOutputTableRecord(outputTableId);
+    if (!outputTable) {
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${outputTableId}`);
+    }
+    const action = outputTable.cloudAction;
+    if (!action) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        `Output table ${outputTableId} has no cloud action`
+      );
+    }
+
+    const persistAction = async (updates: Partial<CloudOutputAction>) => {
+      const nextAction = { ...action, ...updates };
+      this.pendingOutputActions.set(outputTableId, nextAction);
+      await this.store.updateOutputTableCloudAction(outputTableId, nextAction);
+      this.pendingOutputActions.delete(outputTableId);
+    };
+
+    try {
+      const exported = await this.store.exportDatasetCsv({
+        tableKind: 'output',
+        id: outputTableId,
+      });
+      const client = this.createPersonalAnalysisClient(connection);
+      if (action.type === 'drive_file') {
+        const result = await client.syncDriveCsv(action.spaceId, action.projectId, {
+          fileId: action.fileId,
+          outputId: `cowork-output-${outputTableId}`,
+          fileName: action.fileId
+            ? undefined
+            : action.fileName || `${sanitizeFileName(outputTable.name)}.csv`,
+          expectedVersion: action.fileId ? action.version : undefined,
+          csvContent: exported.csv,
+        });
+        await persistAction({
+          fileId: result.file.fileId,
+          fileName: result.file.fileName,
+          version: result.file.version,
+          lastRunAt: Date.now(),
+          lastError: undefined,
+        });
+      } else {
+        const tableName =
+          normalizeOptionalName(action.tableName) || outputTable.name || exported.id;
+        const datasourceId = await this.resolveUploadDatasourceId(client, undefined);
+        const upload = await client.uploadCsv({
+          ...connection,
+          writeMode: action.tableId ? 'REPLACE' : 'CREATE',
+          datasourceId,
+          spaceId: action.spaceId,
+          projectId: action.projectId,
+          tableId: action.tableId,
+          fileName: `${sanitizeFileName(tableName)}.csv`,
+          tableName,
+          csv: exported.csv,
+        });
+        await persistAction({
+          tableId: upload.tableId,
+          tableName: upload.table?.tableName ?? tableName,
+          lastRunAt: Date.now(),
+          lastError: undefined,
+        });
+      }
+      const refreshed = await this.store.getOutputTableRecord(outputTableId);
+      return { outputTable: refreshed ?? outputTable, ranAt: Date.now() };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const nextAction = {
+        ...(this.pendingOutputActions.get(outputTableId) ?? action),
+        lastError: message,
+      };
+      this.pendingOutputActions.set(outputTableId, nextAction);
+      try {
+        await this.store.updateOutputTableCloudAction(outputTableId, nextAction);
+        this.pendingOutputActions.delete(outputTableId);
+      } catch (persistError) {
+        console.warn('[Data] Failed to persist cloud action status:', persistError);
+      }
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
   async uploadDataTableToCloud(
     input: UploadDataTableToCloudCommand
   ): Promise<UploadDataTableToCloudResult> {
@@ -266,6 +548,43 @@ export class CloudAnalysisCommandService {
         .join(', ')}. Pass datasourceId for this upload.`
     );
   }
+}
+
+function driveFilePreviewToDataPreview(result: {
+  file: { sheets?: Array<{ name: string; rowCount: number; columnCount: number }> };
+  sheetName: string;
+  rows: unknown[][];
+}): DataInputTablePreview {
+  const sheet =
+    result.file.sheets?.find((item) => item.name === result.sheetName) ?? result.file.sheets?.[0];
+  const headerRow = Array.isArray(result.rows[0]) ? result.rows[0] : [];
+  const columnCount = sheet?.columnCount ?? headerRow.length;
+  const columns = Array.from(
+    { length: columnCount },
+    (_, index) => String(headerRow[index] ?? '').trim() || `col_${index + 1}`
+  );
+  const dataRows = result.rows.slice(1);
+  return {
+    columns,
+    columnTypes: columns.map((name) => ({ name, type: 'text', storageType: 'VARCHAR' })),
+    rows: dataRows.map((row) => {
+      const record: Record<string, string | number | boolean | null> = {};
+      columns.forEach((name, index) => {
+        const value = Array.isArray(row) ? row[index] : null;
+        record[name] =
+          value === null || value === undefined
+            ? null
+            : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+              ? value
+              : String(value);
+      });
+      return record;
+    }),
+    fileCount: 1,
+    limit: dataRows.length,
+    offset: 0,
+    totalRows: dataRows.length,
+  };
 }
 
 async function writeCloudCsvTempFile(tableId: string, csv: string): Promise<string> {

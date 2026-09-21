@@ -4,7 +4,12 @@
  */
 import type { DataColumnTypeInfo } from '../../data-field-types';
 import type {
+  CloudOutputAction,
+  CloudOutputActionSpec,
   PersonalAnalysisConnectionInput,
+  PersonalAnalysisDriveFile,
+  PersonalAnalysisDriveFileListResult,
+  PersonalAnalysisDriveFileSearchParams,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
@@ -16,9 +21,17 @@ import type { DataWorkflowOperatorType } from '../../data-workflow-types';
 export type { DataColumnTypeInfo, DataFieldType } from '../../data-field-types';
 
 export type {
+  CloudOutputAction,
+  CloudOutputActionSpec,
+  CloudOutputActionTrigger,
+  CloudOutputActionType,
   PersonalAnalysisConfig,
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDatasource,
+  PersonalAnalysisDriveFile,
+  PersonalAnalysisDriveFileListResult,
+  PersonalAnalysisDriveFileSearchParams,
+  PersonalAnalysisDriveSyncResult,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
@@ -364,6 +377,7 @@ export interface DataOutputTable {
   relatedTaskNames: string[];
   createdAt: number;
   updatedAt: number;
+  cloudAction?: CloudOutputAction | null;
 }
 
 export interface DataDashboardSummary {
@@ -752,4 +766,38 @@ export interface UploadDataTableToCloudResult {
     status: string;
     table?: PersonalAnalysisTable;
   };
+}
+
+export interface ListCloudDriveFilesInput
+  extends PersonalAnalysisConnectionInput, PersonalAnalysisDriveFileSearchParams {
+  spaceId: string;
+  projectId: string;
+}
+
+export type ListCloudDriveFilesResult = PersonalAnalysisDriveFileListResult;
+
+export interface PreviewCloudDriveFileInput extends PersonalAnalysisConnectionInput {
+  spaceId: string;
+  projectId: string;
+  fileId: string;
+  sheetName?: string;
+}
+
+export interface PreviewCloudDriveFileResult {
+  file: PersonalAnalysisDriveFile;
+  preview: DataInputTablePreview;
+}
+
+export interface SetOutputTableCloudActionInput {
+  outputTableId: string;
+  action: CloudOutputActionSpec | null;
+}
+
+export interface RunOutputTableCloudActionInput extends PersonalAnalysisConnectionInput {
+  outputTableId: string;
+}
+
+export interface RunOutputTableCloudActionResult {
+  outputTable: DataOutputTable;
+  ranAt: number;
 }

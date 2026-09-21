@@ -33,9 +33,6 @@ export function useDataViewEditors(deps: {
   const [focusedInputTable, setFocusedInputTable] = useState<DataDataset | null>(null);
   const [editingOutputTableId, setEditingOutputTableId] = useState<string | null>(null);
   const [focusedOutputTable, setFocusedOutputTable] = useState<DataOutputTable | null>(null);
-  const [uploadCloudOutputTable, setUploadCloudOutputTable] = useState<DataOutputTable | null>(
-    null
-  );
   const [outputEditorInputTables, setOutputEditorInputTables] = useState<DataDataset[]>([]);
   const [outputEditorInputTablesLoading, setOutputEditorInputTablesLoading] = useState(false);
 
@@ -68,7 +65,6 @@ export function useDataViewEditors(deps: {
     setEditingInputTableDraftId(null);
     setEditingInputTableDatasetId(null);
     setEditingOutputTableId(null);
-    setUploadCloudOutputTable(null);
   }, []);
 
   // Load the input-table choices the output editor binds from, once per
@@ -123,7 +119,6 @@ export function useDataViewEditors(deps: {
     editingInputTableDraftId,
     editingInputTableDatasetId,
     editingOutputTableId,
-    uploadCloudOutputTable,
     outputEditorInputTables,
     outputEditorInputTablesLoading,
     setEditingTaskId,
@@ -133,7 +128,6 @@ export function useDataViewEditors(deps: {
     setFocusedInputTable,
     setEditingOutputTableId,
     setFocusedOutputTable,
-    setUploadCloudOutputTable,
     resetWorkspace,
   };
 }

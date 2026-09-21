@@ -15,11 +15,7 @@ import {
   InputTablePreviewDialog,
   InputTablesPanel,
 } from '../../../components/data-view/input-tables';
-import {
-  OutputTableEditor,
-  OutputTablesPanel,
-  UploadOutputTableToCloudDialog,
-} from '../../../components/data-view/output-tables';
+import { OutputTableEditor, OutputTablesPanel } from '../../../components/data-view/output-tables';
 import {
   underlineTabBarClass,
   underlineTabListClass,
@@ -255,6 +251,9 @@ export function DataViewPage() {
             isBusy={actionId === editors.editingOutputTable.id}
             onBack={() => editors.setEditingOutputTableId(null)}
             onSave={actions.handleUpdateOutputTable}
+            onCloudActionChanged={() =>
+              dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
+            }
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -340,7 +339,6 @@ export function DataViewPage() {
                     }
                     onPageChange={handleOutputPageChange}
                     onPreview={preview.previewOutputTable}
-                    onUpload={(outputTable) => editors.setUploadCloudOutputTable(outputTable)}
                     onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
                     onDelete={actions.handleDeleteOutputTable}
                     onDeleteAll={actions.handleDeleteAllOutputTables}
@@ -366,12 +364,6 @@ export function DataViewPage() {
                   }
                 }}
                 onClose={preview.close}
-              />
-            )}
-            {editors.uploadCloudOutputTable && (
-              <UploadOutputTableToCloudDialog
-                outputTable={editors.uploadCloudOutputTable}
-                onClose={() => editors.setUploadCloudOutputTable(null)}
               />
             )}
           </div>

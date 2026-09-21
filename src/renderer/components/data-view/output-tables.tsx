@@ -1,25 +1,31 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowUpDown,
-  Cloud,
   Eye,
+  FolderSync,
   Info,
   LogIn,
   PencilLine,
+  Play,
   Plus,
   RefreshCw,
   Repeat2,
   Save,
   Settings,
   Trash2,
+  Unlink,
   UploadCloud,
-  X,
 } from 'lucide-react';
 import type {
+  CloudOutputAction,
+  CloudOutputActionSpec,
+  CloudOutputActionTrigger,
+  CloudOutputActionType,
   DataDataset,
   DataOutputTable,
+  PersonalAnalysisDriveFile,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
@@ -32,7 +38,6 @@ import {
   DataToolbarButton,
   EmptyState,
   InputTableFormLabel,
-  InputTableInfo,
   InputTableSelect,
   InputTableStatusBadge,
   LoadingState,
@@ -42,8 +47,8 @@ import {
 } from './shared';
 import { dataClient } from '../../features/data/api/data-client';
 import { Button } from '../ui/button';
-import { Dialog } from '../ui/dialog';
 import { Input } from '../ui/input';
+import { GlassSelect } from '../GlassSelect';
 
 export function OutputTablesPanel({
   outputTables,
@@ -58,7 +63,6 @@ export function OutputTablesPanel({
   onRefresh,
   onPageChange,
   onPreview,
-  onUpload,
   onEdit,
   onDelete,
   onDeleteAll,
@@ -75,7 +79,6 @@ export function OutputTablesPanel({
   onRefresh: () => void;
   onPageChange: (page: number) => void;
   onPreview: (outputTable: DataOutputTable) => void;
-  onUpload: (outputTable: DataOutputTable) => void;
   onEdit: (outputTable: DataOutputTable) => void;
   onDelete: (outputTable: DataOutputTable) => void;
   onDeleteAll: () => void;
@@ -137,16 +140,6 @@ export function OutputTablesPanel({
             onClick={() => {
               if (selectedOutputTable) {
                 onEdit(selectedOutputTable);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<UploadCloud className="h-3.5 w-3.5" />}
-            label={t('data.outputTables.uploadToCloud.action')}
-            disabled={!selectedOutputTable || selectedBusy || bulkBusy}
-            onClick={() => {
-              if (selectedOutputTable) {
-                onUpload(selectedOutputTable);
               }
             }}
           />
@@ -299,567 +292,438 @@ export function OutputTablesPanel({
   );
 }
 
-export function UploadOutputTableToCloudDialog({
-  outputTable,
-  onClose,
+const CLOUD_ACTION_INTERVALS = [1, 15, 30, 60, 360, 1440];
+
+function CloudActionOptionGroup<T extends string>({
+  value,
+  options,
+  disabled,
+  onChange,
 }: {
-  outputTable: DataOutputTable;
-  onClose: () => void;
+  value: T;
+  options: Array<{ value: T; label: string; icon?: ReactNode }>;
+  disabled?: boolean;
+  onChange: (value: T) => void;
 }) {
+  return (
+    <div
+      role="radiogroup"
+      className="flex min-w-0 flex-1 divide-x divide-border-muted overflow-hidden rounded-lg border border-border-muted bg-surface-muted"
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+            className={`inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-[12px] font-medium transition-colors duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-60 ${
+              active
+                ? 'bg-accent text-accent-foreground'
+                : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            {option.icon}
+            <span className="truncate">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: () => void) {
   const { t } = useTranslation();
   const appConfig = useAppStore((state) => state.appConfig);
   const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
   const setDesktopAuthStatus = useAppStore((state) => state.setDesktopAuthStatus);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
+  const [boundAction, setBoundAction] = useState<CloudOutputAction | null>(
+    outputTable.cloudAction ?? null
+  );
+  const hasCloudConnection = Boolean(
+    (appConfig?.personalAnalysis?.apiOrigin && appConfig?.personalAnalysis?.apiKey) ||
+    (desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin)
+  );
+
+  const [actionType, setActionType] = useState<CloudOutputActionType>(
+    boundAction?.type ?? 'cloud_table'
+  );
+  const [trigger, setTrigger] = useState<CloudOutputActionTrigger>(
+    boundAction?.trigger ?? 'on_change'
+  );
+  const [intervalMinutes, setIntervalMinutes] = useState(boundAction?.intervalMinutes ?? 60);
+  const [spaceId, setSpaceId] = useState(boundAction?.spaceId ?? '');
+  const [projectId, setProjectId] = useState(boundAction?.projectId ?? '');
+  const [targetFileId, setTargetFileId] = useState(
+    boundAction?.type === 'drive_file' ? (boundAction.fileId ?? '') : ''
+  );
+  const [fileName, setFileName] = useState(boundAction?.fileName ?? `${outputTable.name}.csv`);
+  const [writeMode, setWriteMode] = useState<'CREATE' | 'REPLACE'>(
+    boundAction?.type === 'cloud_table' && boundAction.tableId ? 'REPLACE' : 'CREATE'
+  );
+  const [targetTableId, setTargetTableId] = useState(
+    boundAction?.type === 'cloud_table' ? (boundAction.tableId ?? '') : ''
+  );
+  const [tableName, setTableName] = useState(
+    boundAction?.type === 'cloud_table' && boundAction.tableName
+      ? boundAction.tableName
+      : outputTable.name
+  );
   const [spaces, setSpaces] = useState<PersonalAnalysisSpace[]>([]);
   const [projects, setProjects] = useState<PersonalAnalysisProject[]>([]);
+  const [driveFiles, setDriveFiles] = useState<PersonalAnalysisDriveFile[]>([]);
   const [cloudTables, setCloudTables] = useState<PersonalAnalysisTable[]>([]);
-  const [spaceId, setSpaceId] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [targetTableId, setTargetTableId] = useState('');
-  const [writeMode, setWriteMode] = useState<'CREATE' | 'REPLACE'>('CREATE');
-  const [tableName, setTableName] = useState(outputTable.name);
   const [loadingSpaces, setLoadingSpaces] = useState(false);
   const [loadingProjects, setLoadingProjects] = useState(false);
-  const [loadingTables, setLoadingTables] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [loginBusy, setLoginBusy] = useState(false);
+  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [busy, setBusy] = useState<'save' | 'remove' | 'run' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const spaceRequestSeq = useRef(0);
-  const projectRequestSeq = useRef(0);
-  const tableRequestSeq = useRef(0);
-  const storedConnection = appConfig?.personalAnalysis;
-  const hasStoredConnection = Boolean(storedConnection?.apiOrigin && storedConnection?.apiKey);
-  const hasDesktopAuthConnection = Boolean(
-    desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
+  const [notice, setNotice] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const spaceSeq = useRef(0);
+  const projectSeq = useRef(0);
+  const targetSeq = useRef(0);
+
+  useEffect(() => {
+    const action = outputTable.cloudAction ?? null;
+    setBoundAction(action);
+    setActionType(action?.type ?? 'cloud_table');
+    setTrigger(action?.trigger ?? 'on_change');
+    setIntervalMinutes(action?.intervalMinutes ?? 60);
+    setSpaceId(action?.spaceId ?? '');
+    setProjectId(action?.projectId ?? '');
+    setTargetFileId(action?.type === 'drive_file' ? (action.fileId ?? '') : '');
+    setFileName(action?.fileName ?? `${outputTable.name}.csv`);
+    setWriteMode(action?.type === 'cloud_table' && action.tableId ? 'REPLACE' : 'CREATE');
+    setTargetTableId(action?.type === 'cloud_table' ? (action.tableId ?? '') : '');
+    setTableName(
+      action?.type === 'cloud_table' && action.tableName ? action.tableName : outputTable.name
+    );
+    setError(null);
+    setNotice(null);
+  }, [outputTable.id, outputTable.cloudAction, outputTable.name]);
+
+  useEffect(() => {
+    const requestId = ++spaceSeq.current;
+    if (!hasCloudConnection || !dataClient.has('listCloudSpaces')) {
+      setSpaces([]);
+      return;
+    }
+    setLoadingSpaces(true);
+    dataClient
+      .listCloudSpaces({})
+      .then((result) => {
+        if (requestId !== spaceSeq.current) return;
+        setSpaces(result.spaces);
+        setSpaceId((current) =>
+          result.spaces.some((space) => space.spaceId === current) ? current : ''
+        );
+      })
+      .catch((err) => {
+        if (requestId === spaceSeq.current) setError(getPersonalAnalysisErrorMessage(err, t));
+      })
+      .finally(() => {
+        if (requestId === spaceSeq.current) setLoadingSpaces(false);
+      });
+  }, [hasCloudConnection, t]);
+
+  useEffect(() => {
+    const requestId = ++projectSeq.current;
+    if (!spaceId || !dataClient.has('listCloudProjects')) {
+      setProjects([]);
+      return;
+    }
+    setLoadingProjects(true);
+    dataClient
+      .listCloudProjects({ spaceId })
+      .then((result) => {
+        if (requestId !== projectSeq.current) return;
+        setProjects(result.projects);
+        setProjectId((current) =>
+          result.projects.some((project) => project.projectId === current) ? current : ''
+        );
+      })
+      .catch((err) => {
+        if (requestId === projectSeq.current) {
+          setProjects([]);
+          setError(getPersonalAnalysisErrorMessage(err, t));
+        }
+      })
+      .finally(() => {
+        if (requestId === projectSeq.current) setLoadingProjects(false);
+      });
+  }, [spaceId, t]);
+
+  useEffect(() => {
+    const requestId = ++targetSeq.current;
+    if (!spaceId || !projectId) {
+      setDriveFiles([]);
+      setCloudTables([]);
+      return;
+    }
+    setLoadingTargets(true);
+    const load =
+      actionType === 'drive_file'
+        ? dataClient
+            .listCloudDriveFiles({ spaceId, projectId, fileType: 'csv', page: 1, pageSize: 50 })
+            .then((result) => {
+              setDriveFiles(result.files.filter((file) => file.fileType === 'csv'));
+            })
+        : dataClient
+            .listCloudTables({ spaceId, projectId, page: 1, pageSize: 50 })
+            .then((result) => {
+              setCloudTables(result.tables);
+            });
+    load
+      .catch((err) => {
+        if (requestId === targetSeq.current) setError(getPersonalAnalysisErrorMessage(err, t));
+      })
+      .finally(() => {
+        if (requestId === targetSeq.current) setLoadingTargets(false);
+      });
+  }, [actionType, spaceId, projectId, t]);
+
+  const normalizedFileName = useMemo(() => {
+    const name = fileName.trim();
+    if (!name) return '';
+    return name.toLowerCase().endsWith('.csv') ? name : `${name}.csv`;
+  }, [fileName]);
+
+  const resolvedTableName =
+    writeMode === 'REPLACE'
+      ? tableName.trim() ||
+        cloudTables.find((table) => table.tableId === targetTableId)?.tableName ||
+        outputTable.name
+      : tableName.trim();
+
+  const spec = useMemo<CloudOutputActionSpec | null>(() => {
+    if (!spaceId || !projectId) return null;
+    const base = {
+      trigger,
+      intervalMinutes: trigger === 'schedule' ? intervalMinutes : undefined,
+      spaceId,
+      projectId,
+    };
+    if (actionType === 'drive_file') {
+      return {
+        ...base,
+        type: 'drive_file',
+        ...(targetFileId ? { fileId: targetFileId } : {}),
+        ...(!targetFileId && normalizedFileName ? { fileName: normalizedFileName } : {}),
+      };
+    }
+    return {
+      ...base,
+      type: 'cloud_table',
+      writeMode,
+      ...(writeMode === 'REPLACE' && targetTableId ? { tableId: targetTableId } : {}),
+      ...(resolvedTableName ? { tableName: resolvedTableName } : {}),
+    };
+  }, [
+    actionType,
+    intervalMinutes,
+    normalizedFileName,
+    projectId,
+    resolvedTableName,
+    spaceId,
+    targetFileId,
+    targetTableId,
+    trigger,
+    writeMode,
+  ]);
+
+  const actionChanged = useMemo(() => {
+    if (!spec) return Boolean(boundAction);
+    if (!boundAction) return true;
+    return (
+      boundAction.type !== spec.type ||
+      boundAction.trigger !== spec.trigger ||
+      (boundAction.intervalMinutes ?? 0) !== (spec.intervalMinutes ?? 0) ||
+      boundAction.spaceId !== spec.spaceId ||
+      boundAction.projectId !== spec.projectId ||
+      (boundAction.fileId ?? '') !== (spec.fileId ?? '') ||
+      (!spec.fileId && (boundAction.fileName ?? '') !== (spec.fileName ?? '')) ||
+      (boundAction.tableId ?? '') !== (spec.tableId ?? '') ||
+      (boundAction.tableName ?? '') !== (spec.tableName ?? '')
+    );
+  }, [boundAction, spec]);
+
+  const specValid = Boolean(
+    spec &&
+    (actionType === 'drive_file'
+      ? targetFileId || normalizedFileName
+      : resolvedTableName && (writeMode === 'CREATE' || targetTableId))
   );
-  const hasCloudConnection = hasStoredConnection || hasDesktopAuthConnection;
-  const authDisplayName =
-    desktopAuthStatus.user?.displayName?.trim() ||
-    desktopAuthStatus.user?.username?.trim() ||
-    desktopAuthStatus.user?.userId?.trim() ||
-    t('data.outputTables.uploadToCloud.currentAccount');
-  const accessModeLabel = hasStoredConnection
-    ? desktopAuthStatus.authenticated
-      ? t('data.outputTables.uploadToCloud.apiKeyModeWithAccount', { account: authDisplayName })
-      : t('data.outputTables.uploadToCloud.apiKeyMode')
-    : t('data.outputTables.uploadToCloud.accountMode', { account: authDisplayName });
-  const connectionLabel =
-    storedConnection?.apiOrigin || desktopAuthStatus.apiOrigin || t('cloudData.notConnected');
 
-  const openApiKeySettings = useCallback(() => {
-    setSettingsTab('personal-analysis');
-    setShowSettings(true);
-    onClose();
-  }, [onClose, setSettingsTab, setShowSettings]);
+  const applySavedAction = (action: CloudOutputAction | null) => {
+    setBoundAction(action);
+    if (action?.type === 'drive_file') {
+      setTargetFileId(action.fileId ?? '');
+      if (action.fileName) setFileName(action.fileName);
+    }
+    if (action?.type === 'cloud_table') {
+      setTargetTableId(action.tableId ?? '');
+      if (action.tableName) setTableName(action.tableName);
+      if (action.tableId) setWriteMode('REPLACE');
+    }
+  };
 
-  const handleLoginAndContinue = useCallback(async () => {
+  const saveAction = useCallback(async (): Promise<boolean> => {
+    setBusy('save');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await dataClient.setOutputTableCloudAction({
+        outputTableId: outputTable.id,
+        action: spec,
+      });
+      applySavedAction(result.outputTable?.cloudAction ?? null);
+      onPersisted?.();
+      return true;
+    } catch (err) {
+      setError(getPersonalAnalysisErrorMessage(err, t));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }, [outputTable.id, spec, t, onPersisted]);
+
+  const handleRemove = useCallback(async () => {
+    if (busy) return;
+    setBusy('remove');
+    setError(null);
+    setNotice(null);
+    try {
+      await dataClient.setOutputTableCloudAction({ outputTableId: outputTable.id, action: null });
+      setBoundAction(null);
+      setSpaceId('');
+      setProjectId('');
+      setTargetFileId('');
+      setTargetTableId('');
+      setNotice(t('data.outputTables.cloudAction.removeSuccess'));
+      onPersisted?.();
+    } catch (err) {
+      setError(getPersonalAnalysisErrorMessage(err, t));
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, outputTable.id, t, onPersisted]);
+
+  const handleRun = useCallback(async () => {
+    if (busy) return;
+    setBusy('run');
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await dataClient.runOutputTableCloudAction({ outputTableId: outputTable.id });
+      applySavedAction(result.outputTable.cloudAction ?? null);
+      setNotice(
+        t('data.outputTables.cloudAction.runSuccess', { time: formatDateTime(result.ranAt) })
+      );
+      onPersisted?.();
+    } catch (err) {
+      setError(getPersonalAnalysisErrorMessage(err, t));
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, outputTable.id, t, onPersisted]);
+
+  const handleLogin = useCallback(async () => {
     if (!dataClient.hasAuth() || loginBusy) return;
-
     setLoginBusy(true);
     setError(null);
-    setSuccess(null);
     try {
       const status = await dataClient.authLogin();
       setDesktopAuthStatus(status);
       if (!status.authenticated) {
-        setError(t('data.outputTables.uploadToCloud.loginNotCompleted'));
+        setError(t('data.outputTables.cloudAction.loginNotCompleted'));
       }
     } catch (err) {
       const isCancelled = err instanceof Error && err.message === 'Login cancelled';
       setError(
         isCancelled
-          ? t('data.outputTables.uploadToCloud.loginCancelled')
+          ? t('data.outputTables.cloudAction.loginCancelled')
           : err instanceof Error
             ? err.message
-            : t('data.outputTables.uploadToCloud.loginFailed')
+            : t('data.outputTables.cloudAction.loginFailed')
       );
     } finally {
       setLoginBusy(false);
     }
   }, [loginBusy, setDesktopAuthStatus, t]);
 
-  useEffect(() => {
-    const requestId = ++spaceRequestSeq.current;
-    const loadSpaces = async () => {
-      if (!hasCloudConnection || !dataClient.has('listCloudSpaces')) {
-        setSpaces([]);
-        setSpaceId('');
-        return;
-      }
-      setLoadingSpaces(true);
-      setError(null);
-      try {
-        const result = await dataClient.listCloudSpaces({});
-        if (requestId !== spaceRequestSeq.current) return;
-        setSpaces(result.spaces);
-        const firstSpace = result.spaces[0];
-        setSpaceId(firstSpace?.spaceId ?? '');
-      } catch (err) {
-        if (requestId === spaceRequestSeq.current) {
-          setError(getPersonalAnalysisErrorMessage(err, t));
-        }
-      } finally {
-        if (requestId === spaceRequestSeq.current) {
-          setLoadingSpaces(false);
-        }
-      }
-    };
+  const openApiKeySettings = useCallback(() => {
+    setSettingsTab('personal-analysis');
+    setShowSettings(true);
+  }, [setSettingsTab, setShowSettings]);
 
-    void loadSpaces();
-    return () => {
-      if (requestId === spaceRequestSeq.current) {
-        spaceRequestSeq.current += 1;
-      }
-    };
-  }, [hasCloudConnection, t]);
-
-  useEffect(() => {
-    const requestId = ++projectRequestSeq.current;
-    const loadProjects = async () => {
-      if (!spaceId || !dataClient.has('listCloudProjects')) {
-        setProjects([]);
-        setProjectId('');
-        return;
-      }
-      setLoadingProjects(true);
-      setError(null);
-      try {
-        const result = await dataClient.listCloudProjects({ spaceId });
-        if (requestId !== projectRequestSeq.current) return;
-        setProjects(result.projects);
-        setProjectId((current) =>
-          result.projects.some((project) => project.projectId === current)
-            ? current
-            : (result.projects[0]?.projectId ?? '')
-        );
-      } catch (err) {
-        if (requestId === projectRequestSeq.current) {
-          setProjects([]);
-          setProjectId('');
-          setError(getPersonalAnalysisErrorMessage(err, t));
-        }
-      } finally {
-        if (requestId === projectRequestSeq.current) {
-          setLoadingProjects(false);
-        }
-      }
-    };
-
-    void loadProjects();
-    return () => {
-      if (requestId === projectRequestSeq.current) {
-        projectRequestSeq.current += 1;
-      }
-    };
-  }, [spaceId, t]);
-
-  useEffect(() => {
-    const requestId = ++tableRequestSeq.current;
-    const loadTables = async () => {
-      if (!spaceId || !projectId || !dataClient.has('listCloudTables')) {
-        setCloudTables([]);
-        setTargetTableId('');
-        return;
-      }
-      setLoadingTables(true);
-      if (writeMode === 'REPLACE') {
-        setError(null);
-      }
-      try {
-        const result = await dataClient.listCloudTables({
-          spaceId,
-          projectId,
-          page: 1,
-          pageSize: 10,
-        });
-        if (requestId !== tableRequestSeq.current) return;
-        setCloudTables(result.tables);
-        setTargetTableId((current) =>
-          result.tables.some((table: PersonalAnalysisTable) => table.tableId === current)
-            ? current
-            : (result.tables[0]?.tableId ?? '')
-        );
-      } catch (err) {
-        if (requestId === tableRequestSeq.current) {
-          setCloudTables([]);
-          setTargetTableId('');
-          if (writeMode === 'REPLACE') {
-            setError(getPersonalAnalysisErrorMessage(err, t));
-          }
-        }
-      } finally {
-        if (requestId === tableRequestSeq.current) {
-          setLoadingTables(false);
-        }
-      }
-    };
-
-    void loadTables();
-    return () => {
-      if (requestId === tableRequestSeq.current) {
-        tableRequestSeq.current += 1;
-      }
-    };
-  }, [projectId, spaceId, t, writeMode]);
-
-  useEffect(() => {
-    setTableName(outputTable.name);
-    setTargetTableId('');
-    setWriteMode('CREATE');
-    setSuccess(null);
-    setError(null);
-  }, [outputTable.id, outputTable.name]);
-
-  const selectedProject = projects.find((project) => project.projectId === projectId) ?? null;
-  const selectedCloudTable = cloudTables.find((table) => table.tableId === targetTableId) ?? null;
-  const resolvedTableName =
-    writeMode === 'REPLACE'
-      ? tableName.trim() || selectedCloudTable?.tableName || outputTable.name
-      : tableName.trim();
-  const canUpload = Boolean(
-    spaceId &&
-    projectId &&
-    resolvedTableName &&
-    !uploading &&
-    (writeMode === 'CREATE' || targetTableId)
-  );
-
-  const handleUpload = async () => {
-    if (!dataClient.has('uploadDataTableToCloud') || !canUpload) return;
-    setUploading(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const result = await dataClient.uploadDataTableToCloud({
-        tableKind: 'output',
-        id: outputTable.id,
-        writeMode,
-        spaceId,
-        projectId,
-        folderId: selectedProject?.folderId,
-        tableId: writeMode === 'REPLACE' ? targetTableId : undefined,
-        tableName: resolvedTableName,
-        waitForDone: true,
-      });
-      setSuccess(
+  const statusLabel = boundAction
+    ? [
         t(
-          writeMode === 'REPLACE'
-            ? 'data.outputTables.uploadToCloud.replaceSuccess'
-            : 'data.outputTables.uploadToCloud.success',
-          {
-            name: resolvedTableName,
-            tableId: result.upload.tableId,
-          }
-        )
-      );
-    } catch (err) {
-      setError(getPersonalAnalysisErrorMessage(err, t));
-    } finally {
-      setUploading(false);
-    }
+          boundAction.type === 'drive_file'
+            ? 'data.outputTables.cloudAction.typeDriveFile'
+            : 'data.outputTables.cloudAction.typeCloudTable'
+        ),
+        boundAction.type === 'drive_file'
+          ? boundAction.fileName || boundAction.fileId || boundAction.projectId
+          : boundAction.tableName || boundAction.tableId || boundAction.projectId,
+        boundAction.lastRunAt
+          ? t('data.outputTables.cloudAction.lastRun', {
+              time: formatDateTime(boundAction.lastRunAt),
+            })
+          : t('data.outputTables.cloudAction.neverRun'),
+      ].join(' · ')
+    : t('data.outputTables.cloudAction.notConfigured');
+
+  return {
+    hasCloudConnection,
+    boundAction,
+    statusLabel,
+    actionType,
+    setActionType,
+    trigger,
+    setTrigger,
+    intervalMinutes,
+    setIntervalMinutes,
+    spaceId,
+    setSpaceId,
+    projectId,
+    setProjectId,
+    targetFileId,
+    setTargetFileId,
+    fileName,
+    setFileName,
+    writeMode,
+    setWriteMode,
+    targetTableId,
+    setTargetTableId,
+    tableName,
+    setTableName,
+    spaces,
+    projects,
+    driveFiles,
+    cloudTables,
+    loadingSpaces,
+    loadingProjects,
+    loadingTargets,
+    busy,
+    error,
+    notice,
+    loginBusy,
+    handleLogin,
+    openApiKeySettings,
+    actionChanged,
+    spec,
+    specValid,
+    saveAction,
+    handleRemove,
+    handleRun,
   };
-
-  if (!hasCloudConnection) {
-    return (
-      <Dialog
-        open
-        onOpenChange={onClose}
-        busy={loginBusy}
-        ariaLabel={t('data.outputTables.uploadToCloud.connectTitle')}
-        overlayClassName="bg-black/18 px-5 py-5"
-        className="max-w-[520px] gap-0 overflow-hidden rounded-xl bg-background p-0"
-      >
-        <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
-          <div className="min-w-0">
-            <div className="truncate text-[14px] font-semibold text-text-primary">
-              {t('data.outputTables.uploadToCloud.connectTitle')}
-            </div>
-            <div className="truncate text-[11px] text-text-muted">
-              {t('data.outputTables.uploadToCloud.connectSubtitle', {
-                name: outputTable.name,
-              })}
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-text-muted"
-            aria-label={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="space-y-4 px-4 py-4">
-          <InputTableInfo>{t('data.outputTables.uploadToCloud.connectInfo')}</InputTableInfo>
-
-          <div className="rounded-lg border border-border-subtle bg-surface px-3 py-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                <Cloud className="h-[18px] w-[18px]" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[13px] font-medium text-text-primary">
-                  {t('data.outputTables.uploadToCloud.connectPrimaryTitle')}
-                </div>
-                <div className="mt-1 text-[12px] leading-5 text-text-muted">
-                  {t('data.outputTables.uploadToCloud.connectPrimaryDescription')}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-shrink-0 flex-col gap-2 border-t border-border-subtle px-4 py-3 sm:flex-row sm:justify-end">
-          <Button
-            variant="secondary"
-            onClick={openApiKeySettings}
-            disabled={loginBusy}
-            className="text-[12px]"
-          >
-            <Settings className="h-3.5 w-3.5" />
-            {t('data.outputTables.uploadToCloud.connectWithApiKey')}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => void handleLoginAndContinue()}
-            loading={loginBusy}
-            className="text-[12px] shadow-soft"
-          >
-            {loginBusy ? (
-              t('data.outputTables.uploadToCloud.loggingIn')
-            ) : (
-              <>
-                <LogIn className="h-3.5 w-3.5" />
-                {t('data.outputTables.uploadToCloud.loginAndContinue')}
-              </>
-            )}
-          </Button>
-        </div>
-      </Dialog>
-    );
-  }
-
-  return (
-    <Dialog
-      open
-      onOpenChange={onClose}
-      busy={uploading}
-      ariaLabel={t('data.outputTables.uploadToCloud.title')}
-      overlayClassName="bg-black/18 px-5 py-5"
-      className="max-w-[560px] gap-0 overflow-hidden rounded-xl bg-background p-0"
-    >
-      <div className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle px-4">
-        <div className="min-w-0">
-          <div className="truncate text-[14px] font-semibold text-text-primary">
-            {t('data.outputTables.uploadToCloud.title')}
-          </div>
-          <div className="truncate text-[11px] text-text-muted">
-            {t('data.outputTables.uploadToCloud.accessMode', {
-              mode: accessModeLabel,
-              host: connectionLabel,
-            })}
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          disabled={uploading}
-          className="text-text-muted"
-          aria-label={t('common.close')}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        <InputTableInfo>{t('data.outputTables.uploadToCloud.info')}</InputTableInfo>
-        <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] leading-5 text-text-secondary">
-          <div className="font-medium text-text-primary">
-            {t('data.outputTables.uploadToCloud.accessIdentity')}
-          </div>
-          <div className="mt-1 text-text-muted">
-            {t('data.outputTables.uploadToCloud.accessMode', {
-              mode: accessModeLabel,
-              host: connectionLabel,
-            })}
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1.5">
-            <InputTableFormLabel>{t('data.outputTables.uploadToCloud.space')}</InputTableFormLabel>
-            <InputTableSelect
-              value={spaceId}
-              disabled={loadingSpaces || uploading || spaces.length === 0}
-              onChange={setSpaceId}
-              options={
-                spaces.length
-                  ? spaces.map((space) => ({ value: space.spaceId, label: space.spaceName }))
-                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noSpaces') }]
-              }
-            />
-          </label>
-
-          <label className="space-y-1.5">
-            <InputTableFormLabel>
-              {t('data.outputTables.uploadToCloud.project')}
-            </InputTableFormLabel>
-            <InputTableSelect
-              value={projectId}
-              disabled={loadingProjects || uploading || projects.length === 0}
-              onChange={setProjectId}
-              options={
-                projects.length
-                  ? projects.map((project) => ({
-                      value: project.projectId,
-                      label: project.projectName,
-                    }))
-                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noProjects') }]
-              }
-            />
-          </label>
-        </div>
-
-        <div className="space-y-1.5">
-          <InputTableFormLabel>
-            {t('data.outputTables.uploadToCloud.writeMode')}
-          </InputTableFormLabel>
-          <div className="inline-flex rounded-lg border border-border-muted/55 bg-surface p-0.5">
-            {(['CREATE', 'REPLACE'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  setWriteMode(mode);
-                  setSuccess(null);
-                  setError(null);
-                }}
-                disabled={uploading}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  writeMode === mode
-                    ? 'bg-background text-accent shadow-soft'
-                    : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'
-                }`}
-              >
-                {mode === 'CREATE' ? (
-                  <Plus className="h-3.5 w-3.5" />
-                ) : (
-                  <Repeat2 className="h-3.5 w-3.5" />
-                )}
-                {t(
-                  mode === 'CREATE'
-                    ? 'data.outputTables.uploadToCloud.writeModeCreateShort'
-                    : 'data.outputTables.uploadToCloud.writeModeReplaceShort'
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {writeMode === 'REPLACE' && (
-          <label className="block space-y-1.5">
-            <InputTableFormLabel>
-              {t('data.outputTables.uploadToCloud.targetTable')}
-            </InputTableFormLabel>
-            <InputTableSelect
-              value={targetTableId}
-              disabled={loadingTables || uploading || cloudTables.length === 0}
-              onChange={(value) => {
-                setTargetTableId(value);
-                const target = cloudTables.find((table) => table.tableId === value);
-                if (target) {
-                  setTableName(target.tableName);
-                }
-              }}
-              options={
-                cloudTables.length
-                  ? cloudTables.map((table) => ({
-                      value: table.tableId,
-                      label: `${table.tableName} · ${table.tableId}`,
-                    }))
-                  : [{ value: '', label: t('data.outputTables.uploadToCloud.noTables') }]
-              }
-            />
-          </label>
-        )}
-
-        <label className="block space-y-1.5">
-          <InputTableFormLabel>
-            {t('data.outputTables.uploadToCloud.tableName')}
-          </InputTableFormLabel>
-          <Input
-            value={tableName}
-            disabled={uploading}
-            onChange={(event) => setTableName(event.target.value)}
-            className="h-10 px-3 font-medium"
-            placeholder={t('data.outputTables.uploadToCloud.tableNamePlaceholder')}
-          />
-        </label>
-
-        <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[12px] text-text-secondary">
-          <div className="font-medium text-text-primary">
-            {t(
-              writeMode === 'REPLACE'
-                ? 'data.outputTables.uploadToCloud.writeModeReplace'
-                : 'data.outputTables.uploadToCloud.writeModeCreate'
-            )}
-          </div>
-          <div className="mt-1 text-text-muted">
-            {t(
-              writeMode === 'REPLACE'
-                ? 'data.outputTables.uploadToCloud.writeModeReplaceHint'
-                : 'data.outputTables.uploadToCloud.writeModeCreateHint'
-            )}
-          </div>
-        </div>
-
-        {error && (
-          <div className="rounded-lg border border-error/25 bg-error/10 px-3 py-2 text-[13px] text-error">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="rounded-lg border border-success/25 bg-accent-muted px-3 py-2 text-[13px] text-success">
-            {success}
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border-subtle px-4 py-3">
-        <Button variant="secondary" onClick={onClose} disabled={uploading} className="text-[12px]">
-          {t('common.cancel')}
-        </Button>
-        <Button
-          variant="primary"
-          onClick={() => void handleUpload()}
-          loading={uploading}
-          disabled={!canUpload}
-          className="text-[12px] shadow-soft"
-        >
-          {uploading ? (
-            t('data.outputTables.uploadToCloud.uploading')
-          ) : (
-            <>
-              <UploadCloud className="h-3.5 w-3.5" />
-              {t('data.outputTables.uploadToCloud.confirm')}
-            </>
-          )}
-        </Button>
-      </div>
-    </Dialog>
-  );
 }
 
 export function OutputTableEditor({
@@ -869,6 +733,7 @@ export function OutputTableEditor({
   isBusy,
   onBack,
   onSave,
+  onCloudActionChanged,
 }: {
   outputTable: DataOutputTable;
   inputTables: DataDataset[];
@@ -880,18 +745,35 @@ export function OutputTableEditor({
     name: string,
     sourceDatasetId: string | null
   ) => void | Promise<void>;
+  onCloudActionChanged?: () => void;
 }) {
   const { t } = useTranslation();
   const [localName, setLocalName] = useState(outputTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceDatasetId, setSourceDatasetId] = useState(outputTable.sourceDatasetId ?? '');
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const cloud = useOutputCloudActionForm(outputTable, onCloudActionChanged);
+  const busy = isBusy || Boolean(cloud.busy);
   const trimmedName = localName.trim();
+  const actionSavable = !cloud.actionChanged || !cloud.spec || cloud.specValid;
   const canSave = Boolean(
     trimmedName &&
-    !isBusy &&
-    (trimmedName !== outputTable.name || (sourceDatasetId || null) !== outputTable.sourceDatasetId)
+    !busy &&
+    actionSavable &&
+    (trimmedName !== outputTable.name ||
+      (sourceDatasetId || null) !== outputTable.sourceDatasetId ||
+      cloud.actionChanged)
   );
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    if (cloud.actionChanged) {
+      const saved = await cloud.saveAction();
+      if (!saved) return;
+    }
+    await onSave(outputTable, localName, sourceDatasetId || null);
+  };
+
   const inputTableOptions = useMemo(() => {
     const options = inputTables.map((dataset) => ({
       value: dataset.id,
@@ -946,7 +828,7 @@ export function OutputTableEditor({
                     setIsNameEditing(false);
                   }
                 }}
-                disabled={isBusy}
+                disabled={busy}
                 maxLength={50}
                 aria-label={t('data.outputTables.editor.name')}
                 className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
@@ -963,7 +845,7 @@ export function OutputTableEditor({
             <button
               type="button"
               onClick={() => setIsNameEditing(true)}
-              disabled={isBusy || isNameEditing}
+              disabled={busy || isNameEditing}
               className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
               aria-label={t('common.edit')}
               title={t('common.edit')}
@@ -974,12 +856,12 @@ export function OutputTableEditor({
         </div>
         <button
           type="button"
-          onClick={() => void onSave(outputTable, localName, sourceDatasetId || null)}
+          onClick={() => void handleSave()}
           disabled={!canSave}
           className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
-          {isBusy ? t('common.saving') : t('common.save')}
+          {busy ? t('common.saving') : t('common.save')}
         </button>
       </div>
 
@@ -994,9 +876,283 @@ export function OutputTableEditor({
           <InputTableSelect
             value={sourceDatasetId}
             options={inputTableOptions}
-            disabled={isBusy || isInputTablesLoading}
+            disabled={busy || isInputTablesLoading}
             onChange={setSourceDatasetId}
           />
+
+          <div className="col-span-full border-t border-border-subtle" />
+
+          <InputTableFormLabel>{t('data.outputTables.cloudAction.title')}</InputTableFormLabel>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="truncate text-[12px] text-text-secondary">{cloud.statusLabel}</span>
+            {cloud.boundAction && (
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void cloud.handleRun()}
+                  disabled={busy}
+                  className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-accent transition-colors hover:bg-accent-muted disabled:opacity-50"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  {t('data.outputTables.cloudAction.runNow')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cloud.handleRemove()}
+                  disabled={busy}
+                  className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                >
+                  <Unlink className="h-3.5 w-3.5" />
+                  {t('data.outputTables.cloudAction.remove')}
+                </button>
+              </span>
+            )}
+          </div>
+
+          {!cloud.hasCloudConnection ? (
+            <>
+              <span />
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-muted">
+                  {t('data.outputTables.cloudAction.connectPrompt')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void cloud.handleLogin()}
+                  disabled={cloud.loginBusy}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-accent-muted px-2.5 text-[12px] font-medium text-accent transition-colors hover:bg-accent/15 disabled:opacity-50"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  {cloud.loginBusy
+                    ? t('data.outputTables.cloudAction.loggingIn')
+                    : t('data.outputTables.cloudAction.loginAndContinue')}
+                </button>
+                <button
+                  type="button"
+                  onClick={cloud.openApiKeySettings}
+                  className="inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[12px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  {t('data.outputTables.cloudAction.connectWithApiKey')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <InputTableFormLabel>{t('data.outputTables.cloudAction.space')}</InputTableFormLabel>
+              <InputTableSelect
+                value={cloud.spaceId}
+                disabled={cloud.loadingSpaces || busy}
+                onChange={cloud.setSpaceId}
+                options={[
+                  { value: '', label: t('data.outputTables.cloudAction.none') },
+                  ...cloud.spaces.map((space) => ({
+                    value: space.spaceId,
+                    label: space.spaceName,
+                  })),
+                ]}
+              />
+
+              {cloud.spaceId && (
+                <>
+                  <InputTableFormLabel>
+                    {t('data.outputTables.cloudAction.project')}
+                  </InputTableFormLabel>
+                  <InputTableSelect
+                    value={cloud.projectId}
+                    disabled={cloud.loadingProjects || busy}
+                    onChange={cloud.setProjectId}
+                    options={[
+                      { value: '', label: t('data.outputTables.cloudAction.selectProject') },
+                      ...cloud.projects.map((project) => ({
+                        value: project.projectId,
+                        label: project.projectName,
+                      })),
+                    ]}
+                  />
+                </>
+              )}
+
+              {cloud.spaceId && cloud.projectId && (
+                <>
+                  <InputTableFormLabel>
+                    {t('data.outputTables.cloudAction.typeLabel')}
+                  </InputTableFormLabel>
+                  <CloudActionOptionGroup
+                    value={cloud.actionType}
+                    disabled={busy}
+                    onChange={cloud.setActionType}
+                    options={[
+                      {
+                        value: 'cloud_table',
+                        label: t('data.outputTables.cloudAction.typeCloudTable'),
+                        icon: <UploadCloud className="h-3.5 w-3.5" />,
+                      },
+                      {
+                        value: 'drive_file',
+                        label: t('data.outputTables.cloudAction.typeDriveFile'),
+                        icon: <FolderSync className="h-3.5 w-3.5" />,
+                      },
+                    ]}
+                  />
+
+                  {cloud.actionType === 'drive_file' ? (
+                    <>
+                      <InputTableFormLabel>
+                        {t('data.outputTables.cloudAction.targetFile')}
+                      </InputTableFormLabel>
+                      <InputTableSelect
+                        value={cloud.targetFileId}
+                        disabled={cloud.loadingTargets || busy}
+                        onChange={cloud.setTargetFileId}
+                        options={[
+                          {
+                            value: '',
+                            label: t('data.outputTables.cloudAction.createNewFile'),
+                          },
+                          ...cloud.driveFiles.map((file) => ({
+                            value: file.fileId,
+                            label: `${file.fileName} · ${file.fileId}`,
+                          })),
+                        ]}
+                      />
+                      {!cloud.targetFileId && (
+                        <>
+                          <InputTableFormLabel>
+                            {t('data.outputTables.cloudAction.fileName')}
+                          </InputTableFormLabel>
+                          <Input
+                            value={cloud.fileName}
+                            disabled={busy}
+                            onChange={(event) => cloud.setFileName(event.target.value)}
+                            className="h-9 px-3"
+                            placeholder={`${outputTable.name}.csv`}
+                          />
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <InputTableFormLabel>
+                        {t('data.outputTables.cloudAction.writeMode')}
+                      </InputTableFormLabel>
+                      <CloudActionOptionGroup
+                        value={cloud.writeMode}
+                        disabled={busy}
+                        onChange={cloud.setWriteMode}
+                        options={[
+                          {
+                            value: 'CREATE',
+                            label: t('data.outputTables.cloudAction.writeModeCreate'),
+                            icon: <Plus className="h-3.5 w-3.5" />,
+                          },
+                          {
+                            value: 'REPLACE',
+                            label: t('data.outputTables.cloudAction.writeModeReplace'),
+                            icon: <Repeat2 className="h-3.5 w-3.5" />,
+                          },
+                        ]}
+                      />
+                      {cloud.writeMode === 'REPLACE' && (
+                        <>
+                          <InputTableFormLabel>
+                            {t('data.outputTables.cloudAction.targetTable')}
+                          </InputTableFormLabel>
+                          <InputTableSelect
+                            value={cloud.targetTableId}
+                            disabled={
+                              cloud.loadingTargets || busy || cloud.cloudTables.length === 0
+                            }
+                            onChange={(value) => {
+                              cloud.setTargetTableId(value);
+                              const target = cloud.cloudTables.find(
+                                (table) => table.tableId === value
+                              );
+                              if (target) cloud.setTableName(target.tableName);
+                            }}
+                            options={
+                              cloud.cloudTables.length
+                                ? cloud.cloudTables.map((table) => ({
+                                    value: table.tableId,
+                                    label: `${table.tableName} · ${table.tableId}`,
+                                  }))
+                                : [
+                                    {
+                                      value: '',
+                                      label: t('data.outputTables.cloudAction.noTables'),
+                                    },
+                                  ]
+                            }
+                          />
+                        </>
+                      )}
+                      <InputTableFormLabel>
+                        {t('data.outputTables.cloudAction.tableName')}
+                      </InputTableFormLabel>
+                      <Input
+                        value={cloud.tableName}
+                        disabled={busy}
+                        onChange={(event) => cloud.setTableName(event.target.value)}
+                        className="h-9 px-3"
+                        placeholder={outputTable.name}
+                      />
+                    </>
+                  )}
+
+                  <InputTableFormLabel>
+                    {t('data.outputTables.cloudAction.triggerLabel')}
+                  </InputTableFormLabel>
+                  <div className="flex items-center gap-2">
+                    <CloudActionOptionGroup
+                      value={cloud.trigger}
+                      disabled={busy}
+                      onChange={cloud.setTrigger}
+                      options={[
+                        {
+                          value: 'on_change',
+                          label: t('data.outputTables.cloudAction.triggerOnChange'),
+                        },
+                        {
+                          value: 'schedule',
+                          label: t('data.outputTables.cloudAction.triggerSchedule'),
+                        },
+                      ]}
+                    />
+                    {cloud.trigger === 'schedule' && (
+                      <GlassSelect
+                        value={String(cloud.intervalMinutes)}
+                        disabled={busy}
+                        onValueChange={(value) => cloud.setIntervalMinutes(Number(value))}
+                        triggerClassName="!h-7 w-28 rounded-lg bg-surface px-2.5 text-[12px] font-medium text-text-secondary"
+                        options={CLOUD_ACTION_INTERVALS.map((minutes) => ({
+                          value: String(minutes),
+                          label: t(`data.outputTables.cloudAction.interval${minutes}`),
+                        }))}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {(cloud.error || cloud.notice || cloud.boundAction?.lastError) && (
+            <>
+              <span />
+              <div className="min-w-0">
+                {(cloud.error || cloud.boundAction?.lastError) && (
+                  <div className="rounded-md border border-error/25 bg-error/10 px-3 py-1.5 text-[12px] text-error">
+                    {cloud.error ?? cloud.boundAction?.lastError}
+                  </div>
+                )}
+                {cloud.notice && !(cloud.error || cloud.boundAction?.lastError) && (
+                  <div className="rounded-md border border-success/25 bg-accent-muted px-3 py-1.5 text-[12px] text-success">
+                    {cloud.notice}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </section>

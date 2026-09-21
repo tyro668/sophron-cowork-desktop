@@ -121,6 +121,14 @@ export const dataClient = {
     dataApi().importCloudTable(...args),
   uploadDataTableToCloud: (...args: Parameters<DataApi['uploadDataTableToCloud']>) =>
     dataApi().uploadDataTableToCloud(...args),
+  listCloudDriveFiles: (...args: Parameters<DataApi['listCloudDriveFiles']>) =>
+    dataApi().listCloudDriveFiles(...args),
+  previewCloudDriveFile: (...args: Parameters<DataApi['previewCloudDriveFile']>) =>
+    dataApi().previewCloudDriveFile(...args),
+  setOutputTableCloudAction: (...args: Parameters<DataApi['setOutputTableCloudAction']>) =>
+    dataApi().setOutputTableCloudAction(...args),
+  runOutputTableCloudAction: (...args: Parameters<DataApi['runOutputTableCloudAction']>) =>
+    dataApi().runOutputTableCloudAction(...args),
 
   // ---- host pickers / auth used by the data feature ----
   selectFiles: () => window.electronAPI?.selectFiles?.() ?? Promise.resolve([]),

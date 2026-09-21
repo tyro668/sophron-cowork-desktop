@@ -12,6 +12,7 @@
  *   store/services/*        — workflow/dataset/normalizer application logic
  */
 import type {
+  CloudOutputAction,
   DataCleaningTask,
   DataColumnTypeInfo,
   DataCreateOutputTableInput,
@@ -194,8 +195,29 @@ export class DataTaskStore {
   createOutputTable(input: DataCreateOutputTableInput = {}): Promise<DataOutputTable> {
     return this.datasets.createOutputTable(input);
   }
-  updateOutputTable(input: DataUpdateOutputTableInput): Promise<DataOutputTable> {
-    return this.inputTables.updateOutputTable(input);
+  async updateOutputTable(input: DataUpdateOutputTableInput): Promise<DataOutputTable> {
+    const previous = await this.datasets.getOutputTableRecord(input.id);
+    const updated = await this.inputTables.updateOutputTable(input);
+    if (updated.sourceDatasetId && updated.sourceDatasetId !== previous?.sourceDatasetId) {
+      try {
+        this.commitCoordinator.onOutputsCommitted?.([updated.id]);
+      } catch {
+        // Listener errors must never fail the update.
+      }
+    }
+    return updated;
+  }
+  updateOutputTableCloudAction(
+    id: string,
+    action: CloudOutputAction | null
+  ): Promise<DataOutputTable> {
+    return this.datasets.updateOutputTableCloudAction(id, action);
+  }
+  listOutputTableCloudActions(): Promise<Array<{ id: string; action: CloudOutputAction }>> {
+    return this.datasets.listOutputTableCloudActions();
+  }
+  setOutputCommitListener(listener: (outputDatasetIds: string[]) => void): void {
+    this.commitCoordinator.onOutputsCommitted = listener;
   }
   getInputTableRecord(id: string): Promise<DataDataset | null> {
     return this.datasets.getInputTableRecord(id);

@@ -1,4 +1,5 @@
 import type {
+  CloudOutputAction,
   DataCleaningTask,
   DataDataset,
   DataInputTableNormalizerArtifact,
@@ -7,6 +8,7 @@ import type {
   DataNormalizerLanguage,
   DataOutputTable,
 } from '../../../shared/contracts';
+import type { ScheduleConfig, ScheduleWeekday } from '../../../shared/contracts/schedule';
 import type { DatabaseInstance } from '../../db/database';
 import { normalizeStatus, toNumber } from '../operators';
 import {
@@ -254,6 +256,7 @@ export function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
     relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
+    cloudAction: config.kind === OUTPUT_TABLE_CONFIG_KIND ? config.cloudAction : null,
   };
 }
 
@@ -285,20 +288,147 @@ export function normalizeNormalizerVersionStatus(
 export function parseOutputTableConfig(value: string | null): {
   kind: string | null;
   sourceDatasetId: string | null;
+  cloudAction: CloudOutputAction | null;
 } {
-  if (!value) return { kind: null, sourceDatasetId: null };
+  const empty = { kind: null, sourceDatasetId: null, cloudAction: null };
+  if (!value) return empty;
   try {
-    const parsed = JSON.parse(value) as { kind?: unknown; sourceDatasetId?: unknown };
+    const parsed = JSON.parse(value) as {
+      kind?: unknown;
+      sourceDatasetId?: unknown;
+      cloudAction?: unknown;
+      cloudDriveTarget?: unknown;
+    };
     return {
       kind: typeof parsed.kind === 'string' && parsed.kind.trim() ? parsed.kind.trim() : null,
       sourceDatasetId:
         typeof parsed.sourceDatasetId === 'string' && parsed.sourceDatasetId.trim()
           ? parsed.sourceDatasetId.trim()
           : null,
+      cloudAction:
+        parseCloudOutputAction(parsed.cloudAction) ??
+        parseLegacyCloudDriveTarget(parsed.cloudDriveTarget),
     };
   } catch {
-    return { kind: null, sourceDatasetId: null };
+    return empty;
   }
+}
+
+export function parseCloudOutputAction(value: unknown): CloudOutputAction | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const spaceId = typeof raw.spaceId === 'string' ? raw.spaceId.trim() : '';
+  const projectId = typeof raw.projectId === 'string' ? raw.projectId.trim() : '';
+  const type = raw.type === 'cloud_table' || raw.type === 'drive_file' ? raw.type : null;
+  const trigger = raw.trigger === 'on_change' || raw.trigger === 'schedule' ? raw.trigger : null;
+  if (!spaceId || !projectId || !type || !trigger) return null;
+  const result: CloudOutputAction = { type, trigger, spaceId, projectId };
+  const schedule = parseCloudActionSchedule(raw.schedule);
+  if (schedule) {
+    result.schedule = schedule;
+  } else if (
+    typeof raw.intervalMinutes === 'number' &&
+    Number.isFinite(raw.intervalMinutes) &&
+    raw.intervalMinutes > 0
+  ) {
+    result.schedule = { kind: 'daily', times: ['09:00'] };
+  }
+  if (typeof raw.fileId === 'string' && raw.fileId.trim()) {
+    result.fileId = raw.fileId.trim();
+  }
+  if (typeof raw.fileName === 'string' && raw.fileName.trim()) {
+    result.fileName = raw.fileName.trim();
+  }
+  if (typeof raw.version === 'number' && Number.isFinite(raw.version)) {
+    result.version = raw.version;
+  }
+  if (typeof raw.tableId === 'string' && raw.tableId.trim()) {
+    result.tableId = raw.tableId.trim();
+  }
+  if (typeof raw.tableName === 'string' && raw.tableName.trim()) {
+    result.tableName = raw.tableName.trim();
+  }
+  if (raw.writeMode === 'CREATE' || raw.writeMode === 'REPLACE') {
+    result.writeMode = raw.writeMode;
+  }
+  if (typeof raw.lastRunAt === 'number' && Number.isFinite(raw.lastRunAt)) {
+    result.lastRunAt = raw.lastRunAt;
+  }
+  if (typeof raw.lastError === 'string' && raw.lastError.trim()) {
+    result.lastError = raw.lastError;
+  }
+  return result;
+}
+
+function parseCloudActionSchedule(value: unknown): ScheduleConfig | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const times = Array.isArray(raw.times)
+    ? Array.from(
+        new Set(
+          raw.times.filter(
+            (time): time is string =>
+              typeof time === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(time)
+          )
+        )
+      ).sort()
+    : [];
+  if (times.length === 0) return null;
+  if (raw.kind === 'daily') {
+    return { kind: 'daily', times };
+  }
+  if (raw.kind === 'weekly') {
+    const weekdays = Array.isArray(raw.weekdays)
+      ? Array.from(
+          new Set(
+            raw.weekdays.filter(
+              (day): day is ScheduleWeekday =>
+                Number.isInteger(day) && (day as number) >= 0 && (day as number) <= 6
+            )
+          )
+        ).sort((a, b) => a - b)
+      : [];
+    return weekdays.length ? { kind: 'weekly', weekdays, times } : null;
+  }
+  if (raw.kind === 'monthly') {
+    const daysOfMonth = Array.isArray(raw.daysOfMonth)
+      ? Array.from(
+          new Set(
+            raw.daysOfMonth.filter(
+              (day): day is number =>
+                Number.isInteger(day) && (day as number) >= 1 && (day as number) <= 31
+            )
+          )
+        ).sort((a, b) => a - b)
+      : [];
+    const includeLastDay = raw.includeLastDay === true;
+    if (!daysOfMonth.length && !includeLastDay) return null;
+    return { kind: 'monthly', daysOfMonth, includeLastDay, times };
+  }
+  return null;
+}
+
+function parseLegacyCloudDriveTarget(value: unknown): CloudOutputAction | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const spaceId = typeof raw.spaceId === 'string' ? raw.spaceId.trim() : '';
+  const projectId = typeof raw.projectId === 'string' ? raw.projectId.trim() : '';
+  if (!spaceId || !projectId) return null;
+  const action: CloudOutputAction = {
+    type: 'drive_file',
+    trigger: 'on_change',
+    spaceId,
+    projectId,
+  };
+  if (typeof raw.fileId === 'string' && raw.fileId.trim()) action.fileId = raw.fileId.trim();
+  if (typeof raw.fileName === 'string' && raw.fileName.trim())
+    action.fileName = raw.fileName.trim();
+  if (typeof raw.version === 'number' && Number.isFinite(raw.version)) action.version = raw.version;
+  if (typeof raw.lastSyncAt === 'number' && Number.isFinite(raw.lastSyncAt)) {
+    action.lastRunAt = raw.lastSyncAt;
+  }
+  if (typeof raw.lastError === 'string' && raw.lastError.trim()) action.lastError = raw.lastError;
+  return action;
 }
 
 export function parseRelatedTaskNames(value: string | null | undefined): string[] {
@@ -330,12 +460,22 @@ export function outputTableConfigPredicateSql(alias?: string): string {
   `;
 }
 
-export function outputTableConfigJson(sourceDatasetId?: string | null): string {
-  const config: { kind: string; sourceDatasetId?: string } = {
+export function outputTableConfigJson(
+  sourceDatasetId?: string | null,
+  cloudAction?: CloudOutputAction | null
+): string {
+  const config: {
+    kind: string;
+    sourceDatasetId?: string;
+    cloudAction?: CloudOutputAction;
+  } = {
     kind: OUTPUT_TABLE_CONFIG_KIND,
   };
   if (sourceDatasetId) {
     config.sourceDatasetId = sourceDatasetId;
+  }
+  if (cloudAction) {
+    config.cloudAction = cloudAction;
   }
   return JSON.stringify(config);
 }

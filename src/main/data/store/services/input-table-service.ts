@@ -200,7 +200,7 @@ export class InputTableService {
               id: outputTable.id,
               name: nextName,
               sourcePath: `input-table://${sourceDataset.id}`,
-              configJson: outputTableConfigJson(sourceDataset.id),
+              configJson: outputTableConfigJson(sourceDataset.id, outputTable.cloudAction),
               rowCount,
               columnCount,
               updatedAt: this.ctx.now(),
@@ -218,7 +218,7 @@ export class InputTableService {
         id: outputTable.id,
         name: nextName,
         sourcePath: `duckdb://outputs/${outputTable.tableName}`,
-        configJson: outputTableConfigJson(),
+        configJson: outputTableConfigJson(undefined, outputTable.cloudAction),
         updatedAt: this.ctx.now(),
       });
       return this.datasets.requireOutputTable(input.id);

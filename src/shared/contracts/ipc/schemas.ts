@@ -704,4 +704,42 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       waitForDone: boolOpt,
     }),
   ],
+  'data.listCloudDriveFiles': [
+    personalAnalysisConnection.extend({
+      spaceId: str,
+      projectId: str,
+      keyword: strOpt,
+      fileType: z.enum(['csv', 'excel']).optional(),
+      page: numOpt,
+      pageSize: numOpt,
+    }),
+  ],
+  'data.previewCloudDriveFile': [
+    personalAnalysisConnection.extend({
+      spaceId: str,
+      projectId: str,
+      fileId: str,
+      sheetName: strOpt,
+    }),
+  ],
+  'data.setOutputTableCloudAction': [
+    z.looseObject({
+      outputTableId: str,
+      action: z
+        .looseObject({
+          type: z.enum(['cloud_table', 'drive_file']),
+          trigger: z.enum(['on_change', 'schedule']),
+          schedule: scheduleConfig,
+          spaceId: str,
+          projectId: str,
+          fileId: strOpt,
+          fileName: strOpt,
+          tableId: strOpt,
+          tableName: strOpt,
+          writeMode: z.enum(['CREATE', 'REPLACE']).optional(),
+        })
+        .nullable(),
+    }),
+  ],
+  'data.runOutputTableCloudAction': [personalAnalysisConnection.extend({ outputTableId: str })],
 };

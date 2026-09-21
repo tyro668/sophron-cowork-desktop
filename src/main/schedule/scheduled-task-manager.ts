@@ -374,7 +374,7 @@ function normalizeRepeatUnit(
   return null;
 }
 
-function normalizeScheduleConfig(
+export function normalizeScheduleConfig(
   value: ScheduledTaskScheduleConfig | null | undefined
 ): ScheduledTaskScheduleConfig | null {
   if (!value) {
@@ -476,7 +476,7 @@ function toTimeMinutes(value: string): number {
   return hour * 60 + minute;
 }
 
-function computeNextRunAtFromScheduleConfig(
+export function computeNextRunAtFromScheduleConfig(
   scheduleConfig: ScheduledTaskScheduleConfig,
   now: number
 ): number | null {
