@@ -732,13 +732,13 @@ export function CloudSourceTableSelector({
     { value: '', label: tr('schedule.cloudTablePlaceholder', '选择云表') },
     ...tables.map((table) => ({
       value: table.tableId,
-      label: `${table.tableName} (${table.tableId})`,
+      label: table.tableName,
     })),
   ];
   if (source.tableId && !tableOptions.some((option) => option.value === source.tableId)) {
     tableOptions.push({
       value: source.tableId,
-      label: `${source.tableName || source.tableId} (${source.tableId})`,
+      label: source.tableName || source.tableId,
     });
   }
 
@@ -1001,7 +1001,7 @@ export function CloudReplaceTargetSelector({
       .filter((table) => table.tableId !== source.tableId)
       .map((table) => ({
         value: table.tableId,
-        label: `${table.tableName} (${table.tableId})`,
+        label: table.tableName,
       })),
   ];
   if (selectedTargetId && !options.some((option) => option.value === selectedTargetId)) {

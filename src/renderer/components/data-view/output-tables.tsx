@@ -1072,7 +1072,7 @@ export function OutputTableEditor({
                           },
                           ...cloud.driveFiles.map((file) => ({
                             value: file.fileId,
-                            label: `${file.fileName} · ${file.fileId}`,
+                            label: file.fileName,
                           })),
                         ]}
                       />
@@ -1134,7 +1134,7 @@ export function OutputTableEditor({
                               cloud.cloudTables.length
                                 ? cloud.cloudTables.map((table) => ({
                                     value: table.tableId,
-                                    label: `${table.tableName} · ${table.tableId}`,
+                                    label: table.tableName,
                                   }))
                                 : [
                                     {

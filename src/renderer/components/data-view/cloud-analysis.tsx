@@ -13,9 +13,11 @@ import {
   FolderKanban,
   KeyRound,
   ListChecks,
+  ListPlus,
   LogIn,
   Loader2,
   MessageSquarePlus,
+  MoreVertical,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -38,6 +40,7 @@ import {
   getPersonalAnalysisErrorMessage,
 } from '../../../shared/personal-analysis';
 import { InputTablePreviewDialog } from './input-tables';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import {
   DataMoreMenu,
   DataToolbarButton,
@@ -897,18 +900,13 @@ export function CloudAnalysisPanel() {
       setSelectedFileIds([]);
       resetTableResults({ cancelRequests: true });
       resetFileResults({ cancelRequests: true });
-      const hasCachedTables = tableCacheRef.current.has(
-        getProjectListCacheKey(target, connectionPayload, 'tables')
-      );
-      const hasCachedFiles = fileCacheRef.current.has(
-        getProjectListCacheKey(target, connectionPayload, 'files')
-      );
-      setTableLookupStarted(hasCachedTables);
-      setDriveFileLookupStarted(hasCachedFiles);
-      if (hasCachedTables) {
+      const hasCachedLists =
+        tableCacheRef.current.has(getProjectListCacheKey(target, connectionPayload, 'tables')) ||
+        fileCacheRef.current.has(getProjectListCacheKey(target, connectionPayload, 'files'));
+      setTableLookupStarted(hasCachedLists);
+      setDriveFileLookupStarted(hasCachedLists);
+      if (hasCachedLists) {
         void loadTables(target, connectionPayload);
-      }
-      if (hasCachedFiles) {
         void loadDriveFiles(target, connectionPayload);
       }
     },
@@ -941,6 +939,11 @@ export function CloudAnalysisPanel() {
     [connectionPayload, getProjectListCacheKey]
   );
 
+  const startProjectLookup = useCallback(() => {
+    setTableLookupStarted(true);
+    setDriveFileLookupStarted(true);
+  }, []);
+
   const refreshProjectTables = useCallback(
     (target: SelectedProject) => {
       const isActiveProject =
@@ -948,12 +951,10 @@ export function CloudAnalysisPanel() {
         selectedProjectRef.current?.projectId === target.projectId;
       evictProjectListCaches(target);
       if (isActiveProject) {
-        if (listTab === 'tables' || tableLookupStartedRef.current) {
-          void loadTables(target, connectionPayload, { forceRefresh: true });
-        }
-        if (listTab === 'files' || driveFileLookupStartedRef.current) {
-          void loadDriveFiles(target, connectionPayload, { forceRefresh: true });
-        }
+        setTableLookupStarted(true);
+        setDriveFileLookupStarted(true);
+        void loadTables(target, connectionPayload, { forceRefresh: true });
+        void loadDriveFiles(target, connectionPayload, { forceRefresh: true });
         return;
       }
       setSelectedProject(target);
@@ -961,13 +962,12 @@ export function CloudAnalysisPanel() {
       setSelectedFileIds([]);
       resetTableResults({ cancelRequests: true });
       resetFileResults({ cancelRequests: true });
-      setTableLookupStarted(listTab === 'tables');
-      setDriveFileLookupStarted(listTab === 'files');
+      setTableLookupStarted(true);
+      setDriveFileLookupStarted(true);
     },
     [
       connectionPayload,
       evictProjectListCaches,
-      listTab,
       loadDriveFiles,
       loadTables,
       resetFileResults,
@@ -1288,6 +1288,7 @@ export function CloudAnalysisPanel() {
 
   const showTableLocator = !selectedProject || !tableLookupStarted;
   const showFileLocator = !selectedProject || !driveFileLookupStarted;
+  const showListLocator = showTableLocator && showFileLocator;
 
   const singleSelectedTable = selectedTables.length === 1 ? selectedTables[0] : null;
   const singleSelectedFile = selectedFiles.length === 1 ? selectedFiles[0] : null;
@@ -1390,29 +1391,37 @@ export function CloudAnalysisPanel() {
                 <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
                   {t('cloudData.spaceProject')}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => void loadCatalog({ forceRefresh: true })}
-                  disabled={loadingCatalog}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label={t('cloudData.refreshTables')}
-                  title={t('cloudData.refreshTables')}
+                <GlassDropdownMenu
+                  align="end"
+                  contentClassName="w-44"
+                  trigger={
+                    <button
+                      type="button"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                      aria-label={t('data.actions.more')}
+                      title={t('data.actions.more')}
+                    >
+                      {loadingCatalog ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  }
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loadingCatalog ? 'animate-spin' : ''}`} />
-                </button>
+                  <GlassMenuItem
+                    icon={<RefreshCw className="h-3.5 w-3.5" />}
+                    disabled={loadingCatalog}
+                    onSelect={() => void loadCatalog({ forceRefresh: true })}
+                  >
+                    {t('data.actions.refresh')}
+                  </GlassMenuItem>
+                </GlassDropdownMenu>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto p-2">
                 {spaces.length === 0 && !loadingCatalog ? (
                   <div className="px-2 py-6 text-[13px] text-text-muted">
                     <div>{t('cloudData.noSpaces')}</div>
-                    <button
-                      type="button"
-                      onClick={() => void loadCatalog({ forceRefresh: true })}
-                      className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent-muted"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      {t('cloudData.refreshTables')}
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1467,7 +1476,7 @@ export function CloudAnalysisPanel() {
                                   const active =
                                     selectedProject?.spaceId === space.spaceId &&
                                     selectedProject.projectId === project.projectId;
-                                  const refreshing = active && loadingTables;
+                                  const refreshing = active && (loadingTables || loadingDriveFiles);
                                   return (
                                     <div
                                       key={project.projectId}
@@ -1496,27 +1505,43 @@ export function CloudAnalysisPanel() {
                                           {project.projectName}
                                         </span>
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          refreshProjectTables({
-                                            spaceId: space.spaceId,
-                                            projectId: project.projectId,
-                                          });
-                                        }}
-                                        className={`mr-1.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-all hover:bg-surface-active hover:text-accent ${
-                                          refreshing
-                                            ? 'opacity-100'
-                                            : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
-                                        }`}
-                                        aria-label={t('cloudData.refreshProjectTables')}
-                                        title={t('cloudData.refreshProjectTables')}
+                                      <GlassDropdownMenu
+                                        align="start"
+                                        side="right"
+                                        sideOffset={4}
+                                        contentClassName="w-44"
+                                        trigger={
+                                          <button
+                                            type="button"
+                                            className={`mr-1.5 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-all hover:bg-surface-active hover:text-accent ${
+                                              refreshing
+                                                ? 'opacity-100'
+                                                : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100'
+                                            }`}
+                                            aria-label={t('data.actions.more')}
+                                            title={t('data.actions.more')}
+                                          >
+                                            {refreshing ? (
+                                              <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                              <MoreVertical className="h-3 w-3" />
+                                            )}
+                                          </button>
+                                        }
                                       >
-                                        <RefreshCw
-                                          className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`}
-                                        />
-                                      </button>
+                                        <GlassMenuItem
+                                          icon={<RefreshCw className="h-3.5 w-3.5" />}
+                                          disabled={refreshing}
+                                          onSelect={() =>
+                                            refreshProjectTables({
+                                              spaceId: space.spaceId,
+                                              projectId: project.projectId,
+                                            })
+                                          }
+                                        >
+                                          {t('data.actions.refresh')}
+                                        </GlassMenuItem>
+                                      </GlassDropdownMenu>
                                     </div>
                                   );
                                 })
@@ -1605,13 +1630,6 @@ export function CloudAnalysisPanel() {
                 />
                 <DataMoreMenu
                   items={[
-                    {
-                      key: 'refresh',
-                      label: t('data.actions.refresh'),
-                      icon: <RefreshCw className="h-3.5 w-3.5" />,
-                      disabled: loadingCatalog,
-                      onClick: () => void loadCatalog({ forceRefresh: true }),
-                    },
                     ...(canSwitchConnectionMode
                       ? [
                           {
@@ -1636,371 +1654,308 @@ export function CloudAnalysisPanel() {
                   ]}
                 />
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
-                {listTab === 'files' ? (
-                  showFileLocator ? (
-                    <div className="flex min-h-full flex-col justify-center">
-                      <EmptyState
-                        label={
-                          selectedProject
-                            ? t('cloudData.locateFilesInProjectTitle')
-                            : t('cloudData.locateFilesTitle')
-                        }
-                        description={
-                          selectedProject
-                            ? t('cloudData.locateTablesInProjectDesc', {
-                                project: selectedProjectRecord?.projectName ?? '',
-                              })
-                            : t('cloudData.locateTablesDesc')
-                        }
-                        action={
-                          selectedProject ? (
-                            <Button
-                              variant="primary"
-                              className="shadow-soft"
-                              onClick={() => setDriveFileLookupStarted(true)}
-                            >
-                              <FileText className="h-4 w-4" />
-                              {t('cloudData.loadFileList')}
-                            </Button>
-                          ) : undefined
-                        }
-                      />
-                    </div>
-                  ) : loadingDriveFiles ? (
-                    <LoadingState label={t('cloudData.loadingFiles')} />
-                  ) : driveFiles.length === 0 ? (
-                    <EmptyState
-                      label={t('cloudData.noFiles')}
-                      action={
-                        selectedProject ? (
-                          <Button
-                            variant="secondary"
-                            onClick={() =>
-                              void loadDriveFiles(selectedProject, connectionPayload, {
-                                forceRefresh: true,
-                              })
-                            }
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            {t('cloudData.refreshFiles')}
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  ) : (
-                    <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                          <th className="w-12 px-4">
-                            <span className="sr-only">{t('cloudData.selection')}</span>
-                          </th>
-                          <th className="whitespace-nowrap px-2">{t('cloudData.fileName')}</th>
-                          <th className="w-[13%] whitespace-nowrap px-2">
-                            {t('cloudData.fileType')}
-                          </th>
-                          <th className="w-[12%] whitespace-nowrap px-2">
-                            {t('cloudData.fileSize')}
-                          </th>
-                          <th className="w-[20%] whitespace-nowrap px-2">
-                            {t('data.columns.updatedAt')}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {driveFiles.map((file) => {
-                          const isSelected = selectedFileIdSet.has(file.fileId);
-                          const fileMeta = getDriveFileMeta(file);
-                          const updatedAt = file.updatedAt ? Date.parse(file.updatedAt) : NaN;
-
-                          return (
-                            <tr
-                              key={file.fileId}
-                              onClick={() => handleFileRowSelect(file.fileId)}
-                              className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                                isSelected
-                                  ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                                  : 'hover:bg-surface-hover/35'
-                              }`}
-                            >
-                              <td className="px-4">
-                                <input
-                                  type="radio"
-                                  name="cloud-file-selection"
-                                  checked={isSelected}
-                                  onChange={() => handleFileRowSelect(file.fileId)}
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="h-3.5 w-3.5 accent-accent"
-                                  aria-label={file.fileName}
-                                />
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <div
-                                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${fileMeta.badgeClassName}`}
-                                  >
-                                    <fileMeta.Icon className="h-4 w-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="truncate text-[13px] font-medium text-text-secondary">
-                                      {file.fileName}
-                                    </div>
-                                    <div className="truncate text-[11px] text-text-muted">
-                                      {file.fileId}
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-2">
-                                <span
-                                  className={`inline-flex h-6 max-w-full items-center rounded-md px-2 text-xs font-medium ${fileMeta.badgeClassName}`}
-                                >
-                                  <span className="truncate">{fileMeta.label}</span>
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                                {formatFileSize(file.size)}
-                              </td>
-                              <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                                {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )
-                ) : showTableLocator ? (
-                  <div className="flex min-h-full flex-col justify-center">
-                    <EmptyState
-                      label={
-                        selectedProject
-                          ? t('cloudData.locateTablesInProjectTitle')
-                          : t('cloudData.locateTablesTitle')
-                      }
-                      description={
-                        selectedProject
-                          ? t('cloudData.locateTablesInProjectDesc', {
-                              project: selectedProjectRecord?.projectName ?? '',
-                            })
-                          : t('cloudData.locateTablesDesc')
-                      }
-                      action={
-                        selectedProject ? (
-                          <Button
-                            variant="primary"
-                            className="shadow-soft"
-                            onClick={() => setTableLookupStarted(true)}
-                          >
-                            <Table2 className="h-4 w-4" />
-                            {t('cloudData.loadTableList')}
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                ) : loadingTables ? (
-                  <LoadingState label={t('cloudData.loadingTables')} />
-                ) : tables.length === 0 ? (
+              {showListLocator ? (
+                <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto">
                   <EmptyState
-                    label={t('cloudData.noTables')}
+                    label={
+                      selectedProject ? t('cloudData.listNotLoaded') : t('cloudData.locateTitle')
+                    }
+                    description={
+                      selectedProject
+                        ? t('cloudData.locateTablesInProjectDesc', {
+                            project: selectedProjectRecord?.projectName ?? '',
+                          })
+                        : t('cloudData.locateTablesDesc')
+                    }
                     action={
                       selectedProject ? (
                         <Button
-                          variant="secondary"
-                          onClick={() =>
-                            void loadTables(selectedProject, connectionPayload, {
-                              forceRefresh: true,
-                            })
-                          }
+                          variant="primary"
+                          className="shadow-soft"
+                          onClick={startProjectLookup}
                         >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          {t('cloudData.refreshTables')}
+                          <ListPlus className="h-4 w-4" />
+                          {t('cloudData.loadList')}
                         </Button>
                       ) : undefined
                     }
                   />
-                ) : (
-                  <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                        <th className="w-12 px-4">
-                          {batchSelectMode ? (
-                            <input
-                              type="checkbox"
-                              checked={allVisibleTablesSelected}
-                              onChange={toggleAllVisibleTables}
-                              className="h-3.5 w-3.5 accent-accent"
-                              aria-label={t('cloudData.selectAllTables')}
-                              title={t('cloudData.selectAllTables')}
-                            />
-                          ) : (
-                            <span className="sr-only">{t('cloudData.selection')}</span>
-                          )}
-                        </th>
-                        <th className="whitespace-nowrap px-2">{t('cloudData.tableName')}</th>
-                        <th className="w-[13%] whitespace-nowrap px-2">
-                          {t('cloudData.sourceType')}
-                        </th>
-                        <th className="w-[12%] whitespace-nowrap px-2">{t('cloudData.rows')}</th>
-                        <th className="w-[20%] whitespace-nowrap px-2">
-                          {t('data.columns.updatedAt')}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tables.map((table) => {
-                        const isSelected = selectedTableIdSet.has(table.tableId);
-                        const sourceType = getCloudTableSourceType(
-                          table,
-                          t('cloudData.unknownSourceType')
-                        );
-                        const kindLabel =
-                          table.kind === 'base'
-                            ? t('cloudData.kindBase')
-                            : table.kind === 'analysis'
-                              ? t('cloudData.kindAnalysis')
-                              : null;
-                        const updatedAt = table.updatedAt ? Date.parse(table.updatedAt) : NaN;
+                </div>
+              ) : (
+                <>
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    {listTab === 'files' ? (
+                      loadingDriveFiles ? (
+                        <LoadingState label={t('cloudData.loadingFiles')} />
+                      ) : driveFiles.length === 0 ? (
+                        <EmptyState label={t('cloudData.noFiles')} />
+                      ) : (
+                        <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
+                          <thead className="sticky top-0 z-10">
+                            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
+                              <th className="w-12 px-4">
+                                <span className="sr-only">{t('cloudData.selection')}</span>
+                              </th>
+                              <th className="whitespace-nowrap px-2">{t('cloudData.fileName')}</th>
+                              <th className="w-[13%] whitespace-nowrap px-2">
+                                {t('cloudData.fileType')}
+                              </th>
+                              <th className="w-[12%] whitespace-nowrap px-2">
+                                {t('cloudData.fileSize')}
+                              </th>
+                              <th className="w-[20%] whitespace-nowrap px-2">
+                                {t('data.columns.updatedAt')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {driveFiles.map((file) => {
+                              const isSelected = selectedFileIdSet.has(file.fileId);
+                              const fileMeta = getDriveFileMeta(file);
+                              const updatedAt = file.updatedAt ? Date.parse(file.updatedAt) : NaN;
 
-                        return (
-                          <tr
-                            key={table.tableId}
-                            onClick={() => handleTableRowSelect(table.tableId)}
-                            className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                              isSelected
-                                ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                                : 'hover:bg-surface-hover/35'
-                            }`}
-                          >
-                            <td className="px-4">
-                              <input
-                                type={batchSelectMode ? 'checkbox' : 'radio'}
-                                name="cloud-table-selection"
-                                checked={isSelected}
-                                onChange={() => handleTableRowSelect(table.tableId)}
-                                onClick={(event) => event.stopPropagation()}
-                                className="h-3.5 w-3.5 accent-accent"
-                                aria-label={table.tableName}
-                              />
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <div className="flex min-w-0 items-center gap-3">
-                                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                                  <Table2 className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="truncate text-[13px] font-medium text-text-secondary">
-                                    {table.tableName}
-                                  </div>
-                                  <div className="truncate text-[11px] text-text-muted">
-                                    {kindLabel ? `${kindLabel} · ${table.tableId}` : table.tableId}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-2">
-                              <span className="inline-flex h-6 max-w-full items-center rounded-md bg-accent-muted px-2 text-xs font-medium text-accent">
-                                <span className="truncate">{sourceType}</span>
-                              </span>
-                            </td>
-                            <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                              {typeof table.rowCount === 'number'
-                                ? table.rowCount.toLocaleString()
-                                : '-'}
-                            </td>
-                            <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                              {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
-                            </td>
+                              return (
+                                <tr
+                                  key={file.fileId}
+                                  onClick={() => handleFileRowSelect(file.fileId)}
+                                  className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                                    isSelected
+                                      ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
+                                      : 'hover:bg-surface-hover/35'
+                                  }`}
+                                >
+                                  <td className="px-4">
+                                    <input
+                                      type="radio"
+                                      name="cloud-file-selection"
+                                      checked={isSelected}
+                                      onChange={() => handleFileRowSelect(file.fileId)}
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="h-3.5 w-3.5 accent-accent"
+                                      aria-label={file.fileName}
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div
+                                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${fileMeta.badgeClassName}`}
+                                      >
+                                        <fileMeta.Icon className="h-4 w-4" />
+                                      </div>
+                                      <div className="truncate text-[13px] font-medium text-text-secondary">
+                                        {file.fileName}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-2">
+                                    <span
+                                      className={`inline-flex h-6 max-w-full items-center rounded-md px-2 text-xs font-medium ${fileMeta.badgeClassName}`}
+                                    >
+                                      <span className="truncate">{fileMeta.label}</span>
+                                    </span>
+                                  </td>
+                                  <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                                    {formatFileSize(file.size)}
+                                  </td>
+                                  <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                                    {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )
+                    ) : loadingTables ? (
+                      <LoadingState label={t('cloudData.loadingTables')} />
+                    ) : tables.length === 0 ? (
+                      <EmptyState label={t('cloudData.noTables')} />
+                    ) : (
+                      <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
+                            <th className="w-12 px-4">
+                              {batchSelectMode ? (
+                                <input
+                                  type="checkbox"
+                                  checked={allVisibleTablesSelected}
+                                  onChange={toggleAllVisibleTables}
+                                  className="h-3.5 w-3.5 accent-accent"
+                                  aria-label={t('cloudData.selectAllTables')}
+                                  title={t('cloudData.selectAllTables')}
+                                />
+                              ) : (
+                                <span className="sr-only">{t('cloudData.selection')}</span>
+                              )}
+                            </th>
+                            <th className="whitespace-nowrap px-2">{t('cloudData.tableName')}</th>
+                            <th className="w-[13%] whitespace-nowrap px-2">
+                              {t('cloudData.sourceType')}
+                            </th>
+                            <th className="w-[12%] whitespace-nowrap px-2">
+                              {t('cloudData.rows')}
+                            </th>
+                            <th className="w-[20%] whitespace-nowrap px-2">
+                              {t('data.columns.updatedAt')}
+                            </th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-              {listTab === 'tables' && !showTableLocator && (
-                <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
-                  <span>
-                    {t('cloudData.tableCountLoaded', {
-                      count: tables.length,
-                      total: tablePageInfo.total,
-                    })}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    {selectedTables.length > 0 && (
-                      <span>
-                        {t('cloudData.selectedTableCount', { count: selectedTables.length })}
-                      </span>
-                    )}
-                    {tablePageInfo.hasMore && (
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        onClick={loadMoreTables}
-                        disabled={loadingMoreTables}
-                        className="text-text-secondary shadow-soft"
-                      >
-                        {loadingMoreTables ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        {t('cloudData.loadMoreTables')}
-                      </Button>
+                        </thead>
+                        <tbody>
+                          {tables.map((table) => {
+                            const isSelected = selectedTableIdSet.has(table.tableId);
+                            const sourceType = getCloudTableSourceType(
+                              table,
+                              t('cloudData.unknownSourceType')
+                            );
+                            const kindLabel =
+                              table.kind === 'base'
+                                ? t('cloudData.kindBase')
+                                : table.kind === 'analysis'
+                                  ? t('cloudData.kindAnalysis')
+                                  : null;
+                            const updatedAt = table.updatedAt ? Date.parse(table.updatedAt) : NaN;
+
+                            return (
+                              <tr
+                                key={table.tableId}
+                                onClick={() => handleTableRowSelect(table.tableId)}
+                                className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+                                  isSelected
+                                    ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
+                                    : 'hover:bg-surface-hover/35'
+                                }`}
+                              >
+                                <td className="px-4">
+                                  <input
+                                    type={batchSelectMode ? 'checkbox' : 'radio'}
+                                    name="cloud-table-selection"
+                                    checked={isSelected}
+                                    onChange={() => handleTableRowSelect(table.tableId)}
+                                    onClick={(event) => event.stopPropagation()}
+                                    className="h-3.5 w-3.5 accent-accent"
+                                    aria-label={table.tableName}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+                                      <Table2 className="h-4 w-4" />
+                                    </div>
+                                    <div className="truncate text-[13px] font-medium text-text-secondary">
+                                      {table.tableName}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-2">
+                                  <span
+                                    className={`inline-flex h-6 max-w-full items-center rounded-md px-2 text-xs font-medium ${
+                                      table.kind === 'base'
+                                        ? 'bg-surface-active text-text-secondary'
+                                        : 'bg-accent-muted text-accent'
+                                    }`}
+                                  >
+                                    <span className="truncate">{kindLabel ?? sourceType}</span>
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                                  {typeof table.rowCount === 'number'
+                                    ? table.rowCount.toLocaleString()
+                                    : '-'}
+                                </td>
+                                <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+                                  {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     )}
                   </div>
-                </div>
-              )}
-              {listTab === 'files' && !showFileLocator && (
-                <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
-                  <span>
-                    {t('cloudData.fileCountLoaded', {
-                      count: driveFiles.length,
-                      total: driveFilePageInfo.total,
-                    })}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    {selectedFiles.length > 0 && (
+                  {listTab === 'tables' && !showTableLocator && (
+                    <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
                       <span>
-                        {t('cloudData.selectedFileCount', { count: selectedFiles.length })}
+                        {t('cloudData.tableCountLoaded', {
+                          count: tables.length,
+                          total: tablePageInfo.total,
+                        })}
                       </span>
-                    )}
-                    {driveFilePageInfo.hasMore && (
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        onClick={loadMoreFiles}
-                        disabled={loadingMoreDriveFiles}
-                        className="text-text-secondary shadow-soft"
-                      >
-                        {loadingMoreDriveFiles ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-3">
+                        {selectedTables.length > 0 && (
+                          <span>
+                            {t('cloudData.selectedTableCount', { count: selectedTables.length })}
+                          </span>
                         )}
-                        {t('cloudData.loadMoreFiles')}
-                      </Button>
-                    )}
+                        {tablePageInfo.hasMore && (
+                          <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={loadMoreTables}
+                            disabled={loadingMoreTables}
+                            className="text-text-secondary shadow-soft"
+                          >
+                            {loadingMoreTables ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            {t('cloudData.loadMoreTables')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {listTab === 'files' && !showFileLocator && (
+                    <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                      <span>
+                        {t('cloudData.fileCountLoaded', {
+                          count: driveFiles.length,
+                          total: driveFilePageInfo.total,
+                        })}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {selectedFiles.length > 0 && (
+                          <span>
+                            {t('cloudData.selectedFileCount', { count: selectedFiles.length })}
+                          </span>
+                        )}
+                        {driveFilePageInfo.hasMore && (
+                          <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={loadMoreFiles}
+                            disabled={loadingMoreDriveFiles}
+                            className="text-text-secondary shadow-soft"
+                          >
+                            {loadingMoreDriveFiles ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            {t('cloudData.loadMoreFiles')}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex h-10 flex-shrink-0 items-center gap-1 border-t border-border-muted px-2">
+                    {(['tables', 'files'] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setListTab(tab)}
+                        className={`h-7 rounded-md px-3 text-xs font-medium transition-colors ${
+                          listTab === tab
+                            ? 'bg-accent-muted text-accent'
+                            : 'text-text-secondary hover:bg-surface-hover/50'
+                        }`}
+                      >
+                        {t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
+                      </button>
+                    ))}
                   </div>
-                </div>
+                </>
               )}
-              <div className="flex h-10 flex-shrink-0 items-center gap-1 border-t border-border-muted px-2">
-                {(['tables', 'files'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setListTab(tab)}
-                    className={`h-7 rounded-md px-3 text-xs font-medium transition-colors ${
-                      listTab === tab
-                        ? 'bg-accent-muted text-accent'
-                        : 'text-text-secondary hover:bg-surface-hover/50'
-                    }`}
-                  >
-                    {t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
-                  </button>
-                ))}
-              </div>
             </section>
           </div>
         </div>
