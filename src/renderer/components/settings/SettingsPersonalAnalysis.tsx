@@ -6,6 +6,7 @@ import { showToast } from '../../utils/toast';
 import type { PersonalAnalysisConfig } from '../../types';
 import {
   EMPTY_PERSONAL_ANALYSIS_CONFIG,
+  hasPersonalAnalysisConnection,
   getPersonalAnalysisErrorMessage,
   validatePersonalAnalysisConnection,
 } from '../../../shared/personal-analysis';
@@ -43,11 +44,11 @@ export function SettingsPersonalAnalysis() {
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
     [appConfig?.personalAnalysis]
   );
-  const isConnected = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
+  const isConnected = hasPersonalAnalysisConnection(storedConnection);
 
   useEffect(() => {
     setForm(storedConnection);
-    setIsEditing(!storedConnection.apiOrigin || !storedConnection.apiKey);
+    setIsEditing(!hasPersonalAnalysisConnection(storedConnection));
   }, [storedConnection]);
 
   const updateField = (field: PersonalAnalysisFormField, value: string) => {
@@ -73,6 +74,14 @@ export function SettingsPersonalAnalysis() {
     setIsTesting(true);
     try {
       const result = await window.electronAPI.data.listCloudSpaces(connection);
+      if (
+        storedConnection.connectionStatus === 'disconnected' &&
+        connection.apiOrigin === storedConnection.apiOrigin &&
+        connection.apiKey === storedConnection.apiKey
+      ) {
+        const saved = await window.electronAPI.config.save({ personalAnalysis: connection });
+        setAppConfig(saved.config);
+      }
       showToast('success', t('cloudData.testSuccess', { count: result.spaces.length }));
     } catch (testError) {
       showToast('error', getPersonalAnalysisErrorMessage(testError, t));

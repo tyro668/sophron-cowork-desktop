@@ -35,7 +35,6 @@ import type {
   DataWorkflowEdge,
   DataWorkflowNode,
   DataWorkflowOperatorType,
-  WorkflowNodeRunStat,
 } from '../../../../types';
 import { DataToolbarButton } from '../../shared';
 import { useSystemDarkMode, useThemeSetting } from '../../../../store/selectors';
@@ -78,7 +77,6 @@ export function WorkflowCanvas({
   nodes,
   edges,
   invalidNodeIds,
-  runStatsByNode,
   selectedNodeId,
   onSelectNode,
   onDuplicateNode,
@@ -93,7 +91,6 @@ export function WorkflowCanvas({
   nodes: DataWorkflowNode[];
   edges: DataWorkflowEdge[];
   invalidNodeIds?: ReadonlySet<string>;
-  runStatsByNode?: ReadonlyMap<string, WorkflowNodeRunStat>;
   selectedNodeId: string | null;
   onSelectNode: (id: string) => void;
   onDuplicateNode: () => void;
@@ -116,7 +113,6 @@ export function WorkflowCanvas({
         nodes={nodes}
         edges={edges}
         invalidNodeIds={invalidNodeIds}
-        runStatsByNode={runStatsByNode}
         selectedNodeId={selectedNodeId}
         onSelectNode={onSelectNode}
         onDuplicateNode={onDuplicateNode}
@@ -136,7 +132,6 @@ function WorkflowCanvasContent({
   nodes,
   edges,
   invalidNodeIds,
-  runStatsByNode,
   selectedNodeId,
   onSelectNode,
   onDuplicateNode,
@@ -166,7 +161,6 @@ function WorkflowCanvasContent({
   ) => void;
   onReconnectEdge: (edgeId: string, connection: Connection) => void;
   onRemoveEdge: (edgeId: string) => void;
-  runStatsByNode?: ReadonlyMap<string, WorkflowNodeRunStat>;
 }) {
   const { t } = useTranslation();
   const { screenToFlowPosition } = useReactFlow();
@@ -199,10 +193,9 @@ function WorkflowCanvasContent({
         data: {
           workflowNode: node,
           invalid: invalidNodeIds?.has(node.id),
-          runStat: runStatsByNode?.get(node.id),
         },
       })),
-    [nodes, selectedNodeId, invalidNodeIds, runStatsByNode]
+    [nodes, selectedNodeId, invalidNodeIds]
   );
   const mappedFlowEdges = useMemo<WorkflowFlowEdge[]>(
     () =>

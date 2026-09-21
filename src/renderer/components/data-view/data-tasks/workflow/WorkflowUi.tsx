@@ -171,7 +171,6 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   data,
   selected,
 }: NodeProps<WorkflowFlowNode>) {
-  const { t } = useTranslation();
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   // Edge endpoints declared by the operator registry (empty => no handles).
@@ -179,7 +178,6 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   const Icon = catalog.Icon;
   const disabled = node.config.disabled === true;
   const invalid = data.invalid === true;
-  const runStat = data.runStat;
   return (
     <div
       data-node-id={node.id}
@@ -245,41 +243,10 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
         >
           {node.label}
         </span>
-        {runStat ? (
-          <span className="truncate text-[9px] leading-none text-text-muted">
-            {formatRunStat(runStat, t)}
-          </span>
-        ) : null}
       </span>
     </div>
   );
 });
-
-function formatRunStat(
-  stat: {
-    inputRows: number | null;
-    inputRowsByHandle?: Record<string, number>;
-    outputRows: number;
-    droppedRows?: number;
-    rejectedRows?: number;
-  },
-  t: (key: string, options?: Record<string, unknown>) => string
-): string {
-  const byHandle = stat.inputRowsByHandle;
-  const inRows =
-    byHandle && (byHandle.left !== undefined || byHandle.right !== undefined)
-      ? `${t('data.workflow.runStatLeft', { count: byHandle.left ?? 0 })} ${t('data.workflow.runStatRight', { count: byHandle.right ?? 0 })}`
-      : stat.inputRows === null
-        ? '—'
-        : String(stat.inputRows);
-  const extras = [
-    stat.droppedRows ? `-${stat.droppedRows}` : '',
-    stat.rejectedRows ? `✗${stat.rejectedRows}` : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return `${inRows}→${stat.outputRows}${extras ? ` ${extras}` : ''}`;
-}
 
 const EDGE_ARROW_ROTATION: Record<Position, number> = {
   [Position.Left]: 0,

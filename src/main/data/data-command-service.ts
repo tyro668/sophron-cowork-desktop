@@ -96,6 +96,7 @@ import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-
 
 export interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
+  onPersonalAnalysisKeyRejected?: (connection: StoredPersonalAnalysisConfig) => void;
   getPersonalAnalysisConnection?: (
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
@@ -132,6 +133,7 @@ export class DataCommandService {
     this.outputTables = new OutputTablesCommandService(store);
     this.cloudAnalysis = new CloudAnalysisCommandService(store, getPersonalAnalysisConfig, {
       getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
+      onPersonalAnalysisKeyRejected: options.onPersonalAnalysisKeyRejected,
       createInputTable: (input) => this.createInputTable(input),
     });
     store.setOutputCommitListener((outputDatasetIds) =>

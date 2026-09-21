@@ -11,6 +11,7 @@ import {
   DataToolbarButton,
   EmptyState,
   InputTableStatusBadge,
+  flatToolbarRowClass,
   LoadingState,
   PaginationFooter,
   TABLE_PAGE_SIZE,
@@ -127,7 +128,7 @@ export function InputTablesPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || visibleRows.length > 0 || searchQuery.trim()) && (
             <button
@@ -218,7 +219,7 @@ export function InputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table flex min-h-0 flex-1 flex-col">
+      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingState label={t('data.inputTables.loading')} />

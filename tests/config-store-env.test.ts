@@ -151,6 +151,18 @@ describe('ConfigStore applyToEnv', () => {
     );
   });
 
+  it('preserves a disconnected API key across reads and re-enables it when saved again', () => {
+    const store = new ConfigStore();
+    const connection = { apiOrigin: 'https://cloud.example', apiKey: 'saved-key' };
+    store.update({ personalAnalysis: { ...connection, connectionStatus: 'disconnected' } });
+    expect(store.getAll().personalAnalysis).toMatchObject({
+      ...connection,
+      connectionStatus: 'disconnected',
+    });
+    store.update({ personalAnalysis: connection });
+    expect(store.getAll().personalAnalysis.connectionStatus).toBeUndefined();
+  });
+
   it('clears stale COWORK_WORKDIR when config value is removed', () => {
     const store = new ConfigStore();
 

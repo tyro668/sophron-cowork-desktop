@@ -474,7 +474,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   if (viewMode === 'detail') {
     return (
-      <div className="flex h-full min-h-0 flex-col gap-3 text-sm text-text-primary">
+      <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
         <EditorHeader
           selectedAutomation={selectedAutomation}
           draft={draft}
@@ -489,7 +489,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           tr={tr}
         />
 
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
           <TaskStatusSection enabled={draft.enabled} onEnabledChange={updateDraftEnabled} tr={tr} />
           <div className="automation-editor-grid grid items-start gap-3">
             <div className="flex min-h-0 flex-col gap-4">
@@ -535,7 +535,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
-      <section className="mt-3 flex min-h-0 flex-1 flex-col">
+      <section className="flex min-h-0 flex-1 flex-col">
         <Tabs
           value={activeListTab}
           onValueChange={(v) => setActiveListTab(v as ListTab)}

@@ -1,3 +1,4 @@
+import { hasPersonalAnalysisConnection } from '../../../shared/personal-analysis';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -48,6 +49,7 @@ import {
   InputTableStatusBadge,
   LoadingState,
   PaginationFooter,
+  flatToolbarRowClass,
   formatDateTime,
   formatOutputTableRelatedTaskNames,
 } from './shared';
@@ -110,7 +112,7 @@ export function OutputTablesPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || outputTables.length > 0 || searchQuery.trim()) && (
             <button
@@ -182,7 +184,7 @@ export function OutputTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table flex min-h-0 flex-1 flex-col">
+      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingState label={t('data.outputTables.loading')} />
@@ -364,7 +366,7 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     outputTable.cloudAction ?? null
   );
   const hasCloudConnection = Boolean(
-    (appConfig?.personalAnalysis?.apiOrigin && appConfig?.personalAnalysis?.apiKey) ||
+    hasPersonalAnalysisConnection(appConfig?.personalAnalysis) ||
     (desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin)
   );
 
@@ -875,7 +877,7 @@ export function OutputTableEditor({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
@@ -938,7 +940,7 @@ export function OutputTableEditor({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border-muted bg-surface p-4 shadow-card">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-4">
         <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
           <InputTableFormLabel>
             <span className="inline-flex items-center gap-1.5">

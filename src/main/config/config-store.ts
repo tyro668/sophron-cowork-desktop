@@ -443,6 +443,9 @@ function normalizePersonalAnalysisConfig(raw: unknown): StoredPersonalAnalysisCo
       typeof value.apiOrigin === 'string'
         ? normalizePersonalAnalysisApiOrigin(value.apiOrigin)
         : defaultConfig.personalAnalysis.apiOrigin,
+    ...(value.connectionStatus === 'disconnected'
+      ? { connectionStatus: 'disconnected' as const }
+      : {}),
     apiKey:
       typeof value.apiKey === 'string'
         ? value.apiKey.trim()
@@ -458,7 +461,11 @@ function personalAnalysisConnectionChanged(
   previous: StoredPersonalAnalysisConfig,
   next: StoredPersonalAnalysisConfig
 ): boolean {
-  return previous.apiOrigin !== next.apiOrigin || previous.apiKey !== next.apiKey;
+  return (
+    previous.apiOrigin !== next.apiOrigin ||
+    previous.apiKey !== next.apiKey ||
+    previous.connectionStatus !== next.connectionStatus
+  );
 }
 
 function profileKeyFromProvider(

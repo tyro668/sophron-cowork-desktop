@@ -30,6 +30,15 @@ describe('getCloudConnectionPayload', () => {
     });
   });
 
+  it('uses the account when the saved API key has been marked disconnected', () => {
+    const config = appConfig();
+    config.personalAnalysis.connectionStatus = 'disconnected';
+    expect(getCloudConnectionPayload(config, auth(true))).toEqual({
+      apiOrigin: ACCOUNT_ORIGIN,
+      connectionMode: 'account',
+    });
+  });
+
   it('uses the API key service standalone while signed out', () => {
     expect(getCloudConnectionPayload(appConfig(), auth(false, ''))).toEqual({
       apiOrigin: ORIGIN,

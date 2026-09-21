@@ -82,6 +82,63 @@ describe('cloud analysis account gate', () => {
     await waitFor(() => expect(listCloudSpaces).toHaveBeenCalledTimes(2));
   });
 
+  it('reloads under the account and changes the mode badge when the key disconnects', async () => {
+    signIn();
+    const config = {
+      ...useAppStore.getState().appConfig,
+      personalAnalysis: { apiOrigin: 'https://key.example', apiKey: 'fixed-key', updatedAt: 1 },
+    } as NonNullable<ReturnType<typeof useAppStore.getState>['appConfig']>;
+    useAppStore.setState({ appConfig: config });
+    listCloudSpaces
+      .mockResolvedValueOnce({ spaces: [{ spaceId: 'api', spaceName: 'API private space' }] })
+      .mockResolvedValueOnce({
+        spaces: [{ spaceId: 'account', spaceName: 'Account private space' }],
+      });
+    render(createElement(CloudAnalysisPanel));
+    await screen.findByText('API private space');
+    expect(screen.getByText(i18n.t('cloudData.apiModeBadge'))).toBeTruthy();
+    act(() =>
+      useAppStore.setState({
+        appConfig: {
+          ...config,
+          personalAnalysis: {
+            ...config.personalAnalysis,
+            connectionStatus: 'disconnected',
+            updatedAt: 2,
+          },
+        },
+      })
+    );
+    await screen.findByText('Account private space');
+    expect(screen.queryByText('API private space')).toBeNull();
+    expect(screen.getByText(i18n.t('cloudData.accountModeBadge'))).toBeTruthy();
+    expect(listCloudSpaces).toHaveBeenLastCalledWith({
+      apiOrigin: 'https://cloud.example',
+      connectionMode: 'account',
+    });
+  });
+
+  it('shows the login page when the key disconnects and no account is logged in', async () => {
+    const config = {
+      ...useAppStore.getState().appConfig,
+      personalAnalysis: { apiOrigin: 'https://key.example', apiKey: 'fixed-key', updatedAt: 1 },
+    } as NonNullable<ReturnType<typeof useAppStore.getState>['appConfig']>;
+    useAppStore.setState({ appConfig: config });
+    render(createElement(CloudAnalysisPanel));
+    await screen.findByText('Private space');
+    act(() =>
+      useAppStore.setState({
+        appConfig: {
+          ...config,
+          personalAnalysis: { ...config.personalAnalysis, connectionStatus: 'disconnected' },
+        },
+      })
+    );
+    expect(screen.queryByText('Private space')).toBeNull();
+    expect(screen.getByText(i18n.t('cloudData.connectTitle'))).toBeTruthy();
+    expect(listCloudSpaces).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores a pending catalog response after logout', async () => {
     let resolve!: (value: unknown) => void;
     listCloudSpaces.mockReturnValueOnce(

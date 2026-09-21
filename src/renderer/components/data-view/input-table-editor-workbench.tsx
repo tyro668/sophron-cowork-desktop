@@ -37,6 +37,7 @@ import {
   InputTableCheckbox,
   InputTableSelect,
   InputTableStatusBadge,
+  flatToolbarRowClass,
   formatDisplayPath,
   getInputTableSourceMeta,
   type TranslateFn,
@@ -553,7 +554,7 @@ export function InputTableEditorWorkbench({
   return (
     <>
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className={`${flatToolbarRowClass} justify-between`}>
           <div className="flex min-w-0 items-center gap-4">
             <button
               onClick={onBack}
@@ -640,7 +641,7 @@ export function InputTableEditorWorkbench({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-muted bg-surface shadow-card">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
           <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
             <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
               <GlassSelect

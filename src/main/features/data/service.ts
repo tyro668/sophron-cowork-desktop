@@ -1,3 +1,4 @@
+import { markPersonalAnalysisKeyDisconnected } from './cloud-connection-state';
 import { app } from 'electron';
 import { join } from 'path';
 import { appContext, desktopAuthService } from '../../app/context';
@@ -31,6 +32,7 @@ export function requireDataCommandService(): DataCommandService {
       () => configStore.get('personalAnalysis'),
       {
         onTaskCompleted: notifyDataTaskCompleted,
+        onPersonalAnalysisKeyRejected: markPersonalAnalysisKeyDisconnected,
         getPersonalAnalysisConnection: (rejectedToken) =>
           desktopAuthService.getPersonalAnalysisConnection(rejectedToken),
         recordLlmUsage: (event) => appContext.recordDataTaskLlmUsage?.(event),

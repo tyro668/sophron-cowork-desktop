@@ -7,15 +7,88 @@ const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data 
 const denied = () =>
   new Response(JSON.stringify({ success: false, code: '61311002' }), { status: 401 });
 afterEach(() => vi.unstubAllGlobals());
-function fixture(resolveAccount = vi.fn()) {
-  return new CloudAnalysisCommandService(
-    {} as DataTaskStore,
-    () => ({ apiOrigin: 'https://key.example', apiKey: 'fixed-key', updatedAt: 0 }),
-    { createInputTable: vi.fn(), getPersonalAnalysisConnection: resolveAccount }
-  );
+function fixture(
+  resolveAccount = vi.fn(),
+  config = { apiOrigin: 'https://key.example', apiKey: 'fixed-key', updatedAt: 0 }
+) {
+  return new CloudAnalysisCommandService({} as DataTaskStore, () => config, {
+    createInputTable: vi.fn(),
+    getPersonalAnalysisConnection: resolveAccount,
+  });
 }
 
 describe('cloud credential isolation', () => {
+  it('reads spaces, projects and tables with the account when no API key is configured', async () => {
+    const account = vi
+      .fn()
+      .mockResolvedValue({ apiOrigin: 'https://account.example', accessToken: 'account-token' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok([{ spaceId: 's', spaceName: 'Space' }]))
+      .mockResolvedValueOnce(ok([{ projectId: 'p', projectName: 'Project' }]))
+      .mockResolvedValueOnce(
+        ok({
+          items: [{ tableId: 't', tableName: 'Table' }],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          hasMore: false,
+        })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const service = fixture(account, { apiOrigin: '', apiKey: '', updatedAt: 0 });
+    expect((await service.listCloudSpaces()).spaces[0].spaceId).toBe('s');
+    expect((await service.listCloudProjects({ spaceId: 's' })).projects[0].projectId).toBe('p');
+    await service.listCloudTables({ spaceId: 's', projectId: 'p' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(url).toContain('https://account.example/api/personal/analysis/v1/');
+      expect(init.headers.Authorization).toBe('Bearer account-token');
+    }
+  });
+
+  it('automatically prefers a configured API key over a logged-in account', async () => {
+    const account = vi
+      .fn()
+      .mockResolvedValue({ apiOrigin: 'https://account.example', accessToken: 'account-token' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ accessToken: 'key-token' }))
+      .mockResolvedValueOnce(ok([]));
+    vi.stubGlobal('fetch', fetchMock);
+    await fixture(account).listCloudSpaces();
+    expect(account).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer key-token');
+  });
+
+  it('uses the account after a saved key is rejected and marked disconnected', async () => {
+    let config: import('../src/shared/personal-analysis-types').StoredPersonalAnalysisConfig = {
+      apiOrigin: 'https://key.example',
+      apiKey: 'fixed-key',
+      updatedAt: 0,
+    };
+    const account = vi
+      .fn()
+      .mockResolvedValue({ apiOrigin: 'https://account.example', accessToken: 'account-token' });
+    const fetchMock = vi.fn().mockResolvedValueOnce(denied()).mockResolvedValueOnce(ok([]));
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new CloudAnalysisCommandService({} as DataTaskStore, () => config, {
+      createInputTable: vi.fn(),
+      getPersonalAnalysisConnection: account,
+      onPersonalAnalysisKeyRejected: () => {
+        config = { ...config, connectionStatus: 'disconnected' };
+      },
+    });
+    await expect(service.listCloudSpaces()).rejects.toThrow();
+    expect(config.connectionStatus).toBe('disconnected');
+    expect(config.apiKey).toBe('fixed-key');
+    await service.listCloudSpaces();
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'https://account.example/api/personal/analysis/v1/spaces'
+    );
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer account-token');
+  });
+
   it('never loads or refreshes the account session for API key mode', async () => {
     const account = vi.fn().mockRejectedValue(new Error('account offline'));
     const fetchMock = vi

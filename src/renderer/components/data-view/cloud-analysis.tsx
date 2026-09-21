@@ -1,3 +1,4 @@
+import { Badge } from '../ui/badge';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import {
@@ -35,6 +36,7 @@ import type {
 } from '../../types';
 import {
   EMPTY_PERSONAL_ANALYSIS_CONFIG,
+  hasPersonalAnalysisConnection,
   getPersonalAnalysisErrorMessage,
 } from '../../../shared/personal-analysis';
 import { InputTablePreviewDialog } from './input-tables';
@@ -266,7 +268,7 @@ export function CloudAnalysisPanel() {
   // API Key 是独立的访问服务：配置后即可使用，不依赖账号登录。
   // 优先级：已配置的 API Key 连接 > 登录账号；断开 API Key 后自动回退账号服务。
   // 两者按配置自动选择，不提供手动切换。
-  const hasStoredConnection = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
+  const hasStoredConnection = hasPersonalAnalysisConnection(storedConnection);
   const hasDesktopAuthConnection = Boolean(
     desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
   );
@@ -1191,6 +1193,7 @@ export function CloudAnalysisPanel() {
     setBatchSelectMode((current) => {
       if (current) {
         setSelectedTableIds((ids) => ids.slice(0, 1));
+        setSelectedFileIds((ids) => ids.slice(0, 1));
       }
       return !current;
     });
@@ -1273,9 +1276,18 @@ export function CloudAnalysisPanel() {
     setPreviewPage(1);
   }, []);
 
-  const handleFileRowSelect = useCallback((fileId: string) => {
-    setSelectedFileIds([fileId]);
-  }, []);
+  const handleFileRowSelect = useCallback(
+    (fileId: string) => {
+      setSelectedFileIds((current) =>
+        batchSelectMode
+          ? current.includes(fileId)
+            ? current.filter((id) => id !== fileId)
+            : [...current, fileId]
+          : [fileId]
+      );
+    },
+    [batchSelectMode]
+  );
 
   const showTableLocator = !selectedProject || !tableLookupStarted;
   const showFileLocator = !selectedProject || !driveFileLookupStarted;
@@ -1292,6 +1304,18 @@ export function CloudAnalysisPanel() {
       allVisibleTablesSelected
         ? current.filter((id) => !visibleTableIds.includes(id))
         : Array.from(new Set([...current, ...visibleTableIds]))
+    );
+  };
+
+  const visibleFileIds = driveFiles.map((file) => file.fileId);
+  const allVisibleFilesSelected =
+    visibleFileIds.length > 0 && visibleFileIds.every((id) => selectedFileIdSet.has(id));
+
+  const toggleAllVisibleFiles = () => {
+    setSelectedFileIds((current) =>
+      allVisibleFilesSelected
+        ? current.filter((id) => !visibleFileIds.includes(id))
+        : Array.from(new Set([...current, ...visibleFileIds]))
     );
   };
 
@@ -1342,12 +1366,17 @@ export function CloudAnalysisPanel() {
           </div>
         </div>
       ) : (
-        <div className="glass-table flex min-h-0 flex-1 flex-col">
+        <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
           <div className="flex min-h-0 flex-1">
             <aside className="flex min-h-0 w-60 flex-shrink-0 flex-col border-r border-border-muted">
               <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2">
                 <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
                   {t('cloudData.spaceProject')}
+                  <Badge tone={usesStoredConnection ? 'accent' : 'success'}>
+                    {t(
+                      usesStoredConnection ? 'cloudData.apiModeBadge' : 'cloudData.accountModeBadge'
+                    )}
+                  </Badge>
                 </span>
                 <GlassDropdownMenu
                   align="end"
@@ -1515,7 +1544,7 @@ export function CloudAnalysisPanel() {
             </aside>
 
             <section className="flex min-w-0 flex-1 flex-col">
-              <div className="flex h-10 flex-shrink-0 items-center justify-end gap-2 border-b border-border-subtle px-2">
+              <div className="flex h-10 flex-shrink-0 items-center justify-end gap-2 border-b border-border-subtle px-3">
                 <DataToolbarButton
                   icon={<Eye className="h-3.5 w-3.5" />}
                   label={t('cloudData.preview')}
@@ -1574,18 +1603,6 @@ export function CloudAnalysisPanel() {
                   disabled={listTab !== 'tables' || selectedTables.length === 0 || addingToChat}
                   onClick={() => void addSelectedTablesToChat()}
                 />
-                <DataToolbarButton
-                  icon={
-                    batchSelectMode ? (
-                      <X className="h-3.5 w-3.5" />
-                    ) : (
-                      <ListChecks className="h-3.5 w-3.5" />
-                    )
-                  }
-                  label={t(batchSelectMode ? 'cloudData.exitBatchSelect' : 'cloudData.batchSelect')}
-                  disabled={listTab !== 'tables' || showTableLocator || tables.length === 0}
-                  onClick={toggleBatchSelectMode}
-                />
                 <DataMoreMenu
                   items={[
                     {
@@ -1636,8 +1653,29 @@ export function CloudAnalysisPanel() {
                         <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
                           <thead className="sticky top-0 z-10">
                             <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                              <th className="w-12 px-4">
-                                <span className="sr-only">{t('cloudData.selection')}</span>
+                              <th className="w-[4.5rem] px-3">
+                                <div className="flex items-center gap-1">
+                                  {batchSelectMode ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={allVisibleFilesSelected}
+                                      onChange={toggleAllVisibleFiles}
+                                      className="h-3.5 w-3.5 accent-accent"
+                                      aria-label={t('cloudData.selectAllTables')}
+                                      title={t('cloudData.selectAllTables')}
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
+                                      onClick={toggleBatchSelectMode}
+                                      title={t('cloudData.batchSelect')}
+                                      aria-label={t('cloudData.batchSelect')}
+                                    >
+                                      <ListChecks className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </th>
                               <th className="whitespace-nowrap px-2">{t('cloudData.fileName')}</th>
                               <th className="w-[13%] whitespace-nowrap px-2">
@@ -1669,7 +1707,7 @@ export function CloudAnalysisPanel() {
                                 >
                                   <td className="px-4">
                                     <input
-                                      type="radio"
+                                      type={batchSelectMode ? 'checkbox' : 'radio'}
                                       name="cloud-file-selection"
                                       checked={isSelected}
                                       onChange={() => handleFileRowSelect(file.fileId)}
@@ -1717,19 +1755,29 @@ export function CloudAnalysisPanel() {
                       <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
                         <thead className="sticky top-0 z-10">
                           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                            <th className="w-12 px-4">
-                              {batchSelectMode ? (
-                                <input
-                                  type="checkbox"
-                                  checked={allVisibleTablesSelected}
-                                  onChange={toggleAllVisibleTables}
-                                  className="h-3.5 w-3.5 accent-accent"
-                                  aria-label={t('cloudData.selectAllTables')}
-                                  title={t('cloudData.selectAllTables')}
-                                />
-                              ) : (
-                                <span className="sr-only">{t('cloudData.selection')}</span>
-                              )}
+                            <th className="w-[4.5rem] px-3">
+                              <div className="flex items-center gap-1">
+                                {batchSelectMode ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={allVisibleTablesSelected}
+                                    onChange={toggleAllVisibleTables}
+                                    className="h-3.5 w-3.5 accent-accent"
+                                    aria-label={t('cloudData.selectAllTables')}
+                                    title={t('cloudData.selectAllTables')}
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
+                                    onClick={toggleBatchSelectMode}
+                                    title={t('cloudData.batchSelect')}
+                                    aria-label={t('cloudData.batchSelect')}
+                                  >
+                                    <ListChecks className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </th>
                             <th className="whitespace-nowrap px-2">{t('cloudData.tableName')}</th>
                             <th className="w-[13%] whitespace-nowrap px-2">
@@ -1816,7 +1864,7 @@ export function CloudAnalysisPanel() {
                     )}
                   </div>
                   {listTab === 'tables' && !showTableLocator && (
-                    <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                    <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
                       <span>
                         {t('cloudData.tableCountLoaded', {
                           count: tables.length,
@@ -1828,6 +1876,17 @@ export function CloudAnalysisPanel() {
                           <span>
                             {t('cloudData.selectedTableCount', { count: selectedTables.length })}
                           </span>
+                        )}
+                        {batchSelectMode && (
+                          <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={toggleBatchSelectMode}
+                            className="text-text-secondary shadow-soft"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {t('cloudData.exitBatchSelect')}
+                          </Button>
                         )}
                         {tablePageInfo.hasMore && (
                           <Button
@@ -1849,7 +1908,7 @@ export function CloudAnalysisPanel() {
                     </div>
                   )}
                   {listTab === 'files' && !showFileLocator && (
-                    <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                    <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
                       <span>
                         {t('cloudData.fileCountLoaded', {
                           count: driveFiles.length,
@@ -1861,6 +1920,17 @@ export function CloudAnalysisPanel() {
                           <span>
                             {t('cloudData.selectedFileCount', { count: selectedFiles.length })}
                           </span>
+                        )}
+                        {batchSelectMode && (
+                          <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={toggleBatchSelectMode}
+                            className="text-text-secondary shadow-soft"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {t('cloudData.exitBatchSelect')}
+                          </Button>
                         )}
                         {driveFilePageInfo.hasMore && (
                           <Button

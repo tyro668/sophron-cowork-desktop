@@ -1,3 +1,4 @@
+import { hasPersonalAnalysisConnection } from '../../shared/personal-analysis';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -48,6 +49,7 @@ const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
 
 export interface CloudAnalysisCommandServiceOptions {
+  onPersonalAnalysisKeyRejected?: (connection: StoredPersonalAnalysisConfig) => void;
   getPersonalAnalysisConnection?: (
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
@@ -517,11 +519,23 @@ export class CloudAnalysisCommandService {
     const configured = this.getPersonalAnalysisConfig();
     const mode =
       input.connectionMode ??
-      (input.accessToken ? 'account' : input.apiKey || configured.apiKey ? 'apiKey' : 'account');
+      (input.accessToken
+        ? 'account'
+        : input.apiKey || hasPersonalAnalysisConnection(configured)
+          ? 'apiKey'
+          : 'account');
     if (mode === 'apiKey') {
       return createPersonalAnalysisClient({
         apiOrigin: input.apiOrigin || configured.apiOrigin,
         apiKey: input.apiKey || configured.apiKey,
+        onApiKeyRejected: () => {
+          if (
+            (!input.apiKey || input.apiKey === configured.apiKey) &&
+            (!input.apiOrigin || input.apiOrigin === configured.apiOrigin)
+          ) {
+            this.options.onPersonalAnalysisKeyRejected?.(configured);
+          }
+        },
       });
     }
     // Account requests never fall back to an API key or its service address.

@@ -4,6 +4,8 @@ export interface PersonalAnalysisConfig {
   apiOrigin: string;
   apiKey: string;
   updatedAt?: number;
+  /** A rejected API key is retained for editing, but no longer used automatically. */
+  connectionStatus?: 'disconnected';
 }
 
 export interface StoredPersonalAnalysisConfig extends PersonalAnalysisConfig {

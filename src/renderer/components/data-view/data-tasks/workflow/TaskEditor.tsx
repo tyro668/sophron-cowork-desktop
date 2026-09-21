@@ -36,7 +36,7 @@ import { showToast } from '../../../../utils/toast';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
-import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
+import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, flatToolbarRowClass, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
 import { OPERATOR_CATALOG, getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
@@ -1086,7 +1086,7 @@ export function TaskEditor({
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
-      <div className="mb-3 flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={() => void handleBack()}
@@ -1188,11 +1188,11 @@ export function TaskEditor({
       </div>
 
       {!workflow ? (
-        <div className="flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-surface text-xs text-text-muted shadow-card">
+        <div className="m-3 flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-surface text-xs text-text-muted shadow-card">
           {t('common.loading')}
         </div>
       ) : (
-        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3">
+        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3 p-3">
           <WorkflowOperatorPalette
             operators={OPERATOR_CATALOG}
             onAddOperator={addOperatorAfterSelected}
@@ -1202,7 +1202,6 @@ export function TaskEditor({
               nodes={nodes}
               edges={edges}
               invalidNodeIds={invalidNodeIds}
-              runStatsByNode={runStatsByNode}
               selectedNodeId={selectedNode?.id ?? null}
               onSelectNode={setSelectedNodeId}
               onDuplicateNode={duplicateSelectedNode}

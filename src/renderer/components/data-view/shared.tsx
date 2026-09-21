@@ -49,9 +49,17 @@ export const underlineTabTriggerClass =
  * trigger underline sits on. Keeps tab height/spacing identical across pages.
  */
 export const underlineTabBarClass =
-  'mb-3 flex h-10 flex-shrink-0 items-end border-b border-border-subtle';
+  'flex h-10 flex-shrink-0 items-end border-b border-border-subtle px-3';
 export const underlineTabListClass =
   'inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0';
+
+/**
+ * Flat full-width header strip for workspace list pages: search/create on the
+ * left, row actions on the right. Replaces the old floating `mb-3` toolbar so
+ * the bar sits flush against the tab underline and the table below it.
+ */
+export const flatToolbarRowClass =
+  'flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-border-subtle px-3 py-1.5';
 
 export function DataToolbarButton({
   icon,
@@ -238,7 +246,7 @@ export function PaginationFooter({
 
   return (
     <div
-      className={`flex min-h-11 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
+      className={`flex min-h-14 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
         embedded ? 'border-t border-border-muted py-1' : 'mt-3'
       }`}
     >

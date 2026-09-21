@@ -15,6 +15,7 @@ import {
 import { normalizeDraftTrigger } from './model';
 import { ConfigRow, SegmentedControl, splitCsv } from './editor-controls';
 import { MonthlyDayPicker, TimesEditor, WeekdayPicker } from './schedule-time-pickers';
+import { flatToolbarRowClass } from '../../data-view/shared';
 
 const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
 
@@ -64,7 +65,7 @@ export function EditorHeader({
   };
 
   return (
-    <div className="flex shrink-0 flex-col gap-2 lg:h-10 lg:flex-row lg:items-center lg:justify-between">
+    <div className={`${flatToolbarRowClass} justify-between`}>
       <div className="flex min-w-0 items-center gap-4">
         <button
           onClick={onBack}

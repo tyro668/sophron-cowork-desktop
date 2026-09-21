@@ -1,3 +1,4 @@
+import { hasPersonalAnalysisConnection } from '../../../../shared/personal-analysis';
 import type {
   AppConfig,
   Automation,
@@ -96,7 +97,7 @@ export function getCloudConnectionPayload(
   const storedConnection = appConfig?.personalAnalysis;
   // API Key 是独立的访问服务：配置后优先使用，不依赖账号登录；
   // 断开 API Key 后回退到登录账号对应的服务。两者按配置自动选择。
-  if (storedConnection?.apiOrigin && storedConnection.apiKey) {
+  if (storedConnection && hasPersonalAnalysisConnection(storedConnection)) {
     return {
       apiOrigin: storedConnection.apiOrigin,
       apiKey: storedConnection.apiKey,

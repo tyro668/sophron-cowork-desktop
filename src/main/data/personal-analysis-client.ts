@@ -70,6 +70,7 @@ export class PersonalAnalysisHttpError extends Error {
 export interface PersonalAnalysisClientOptions extends PersonalAnalysisConnectionInput {
   /** Main-process account session provider; never serialized across IPC. */
   getAccessToken?: (rejectedAccessToken?: string) => Promise<string>;
+  onApiKeyRejected?: () => void;
 }
 
 export class PersonalAnalysisClient {
@@ -381,12 +382,19 @@ export class PersonalAnalysisClient {
     try {
       return await parseHiResponse<T>(response, await response.text(), `${method} ${path}`);
     } catch (error) {
-      if (
-        !this.options.getAccessToken ||
-        !(error instanceof PersonalAnalysisHttpError) ||
-        (error.status !== 401 && error.code !== '61311002')
-      )
-        throw error;
+      if (this.apiKey && isAuthenticationRejection(error)) {
+        // A derived bearer can expire while the fixed API key remains valid.
+        this.accessToken = null;
+        const renewed = await this.getAccessToken();
+        const retried = await request(renewed);
+        try {
+          return await parseHiResponse<T>(retried, await retried.text(), `${method} ${path}`);
+        } catch (retryError) {
+          if (isAuthenticationRejection(retryError)) this.options.onApiKeyRejected?.();
+          throw retryError;
+        }
+      }
+      if (!this.options.getAccessToken || !isAuthenticationRejection(error)) throw error;
       // Only authentication failures are replayed, once; never retry arbitrary writes.
       const renewedToken = await this.options.getAccessToken(token);
       const retried = await request(renewedToken);
@@ -417,7 +425,10 @@ export class PersonalAnalysisClient {
       response,
       await response.text(),
       'POST /api/personal/api-keys/token'
-    );
+    ).catch((error) => {
+      if (isAuthenticationRejection(error)) this.options.onApiKeyRejected?.();
+      throw error;
+    });
     if (!tokenInfo.accessToken) {
       throw new Error('Cloud token exchange did not return accessToken');
     }
@@ -581,4 +592,15 @@ async function retry<T>(
     throw lastError;
   }
   throw new Error(`Timed out waiting for ${label}`);
+}
+
+function isAuthenticationRejection(error: unknown): boolean {
+  if (!(error instanceof PersonalAnalysisHttpError)) return false;
+  if (error.status === 401) return true;
+  // The mock API uses this legacy code for both invalid tokens and missing scopes.
+  return (
+    error.code === '61311002' &&
+    error.status !== 403 &&
+    !/权限|permission|scope|forbidden/i.test(error.message)
+  );
 }

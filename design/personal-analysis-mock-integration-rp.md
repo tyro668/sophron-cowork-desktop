@@ -9,7 +9,7 @@
 - 登录服务地址取自 `SOPHRON_DESKTOP_AUTH_ORIGIN` 或环境默认值，与 API Key 服务地址分开。已有会话继续使用其保存的登录服务地址。
 - 账号在发起请求前按需刷新临近过期的 token；云接口认证失败后刷新并重试一次；并发请求共用一次刷新。临时网络失败保留会话，refresh token 被拒绝才需要重新登录。
 - 账号登录和内置 LLM 均使用真实账号 token，localhost 不再替换成固定的 `mock-token`。
-- API Key 模式只走 API Key 换票接口，失效时不回退账号；账号模式不回退 API Key，也不向 API Key 服务地址发送账号 token。
+- API Key 明确失效时保留配置并持久化标记为未连接，通知页面清除原数据和缓存；已登录时重新以账号身份加载云空间，未登录时显示登录入口。网络失败、资源权限不足不会触发降级。账号模式不向 API Key 服务地址发送账号 token。
 - 当前界面按独立配置选择服务：有 API Key 配置时优先使用该服务，断开后回退已登录账号。配置 API Key 不表示账号已登录。
 
 mock server 的 `POST /api/desktop/auth/token` 支持 `grantType: "refresh_token"`、`refreshToken`、`clientId`，返回轮换后的 accessToken/refreshToken；`POST /api/personal/api-keys/revoke` 通过 `X-API-Key` 撤销 key 及它派生的 bearer，不影响账号。详见 mock server `API_CALLS.md` 与 `npm run test:auth`。
@@ -75,7 +75,7 @@ else
   -> 未连接，引导登录
 ```
 
-页面根据独立配置自动选择访问模式，后续云分析请求显式携带 `connectionMode`。API Key 失效时显示该服务的错误，不自动使用账号绕过。
+页面根据独立配置自动选择访问模式，后续云分析请求显式携带 `connectionMode`。API Key 失效时切换为未连接，并回退已登录账号；标题标签始终标识当前数据的授权模式。
 
 ## 页面状态
 

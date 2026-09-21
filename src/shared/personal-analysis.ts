@@ -65,10 +65,20 @@ export function getPersonalAnalysisErrorMessage(error: unknown, t: Translate): s
   }
 
   if (
+    normalized.includes('api key') ||
+    normalized.includes('apikey') ||
+    normalized.includes('/api/personal/api-keys/token')
+  ) {
+    return t('cloudData.errorApiKey');
+  }
+
+  if (
     normalized.includes('401') ||
     normalized.includes('unauthorized') ||
-    normalized.includes('api key') ||
-    normalized.includes('apikey')
+    normalized.includes('61311002') ||
+    normalized.includes('invalid_grant') ||
+    normalized.includes('please sign in') ||
+    normalized.includes('refresh token')
   ) {
     return t('cloudData.errorAuth');
   }
@@ -88,4 +98,12 @@ export function getPersonalAnalysisErrorMessage(error: unknown, t: Translate): s
   }
 
   return message || t('cloudData.errorUnknown');
+}
+
+export function hasPersonalAnalysisConnection(
+  config: PersonalAnalysisConfig | null | undefined
+): boolean {
+  return Boolean(
+    config?.apiOrigin?.trim() && config.apiKey?.trim() && config.connectionStatus !== 'disconnected'
+  );
 }

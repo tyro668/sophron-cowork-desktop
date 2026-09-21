@@ -18,7 +18,7 @@ import { formatAppDateTime } from '../../../utils/i18n-format';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
 
-import { EmptyState } from '../../data-view/shared';
+import { EmptyState, flatToolbarRowClass } from '../../data-view/shared';
 import { Button } from '../../ui/button';
 
 export function AutomationListPanel({
@@ -58,7 +58,7 @@ export function AutomationListPanel({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="mb-3 flex flex-shrink-0 flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || automations.length > 0 || searchQuery.trim()) && (
             <button
@@ -108,7 +108,7 @@ export function AutomationListPanel({
           />
         </div>
       </div>
-      <div className="glass-table flex min-h-0 flex-1 flex-col">
+      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && automations.length === 0 ? (
             <EmptyState
@@ -172,7 +172,7 @@ export function AutomationRunLogPanel({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className="mb-3 flex flex-shrink-0 justify-end">
+      <div className={`${flatToolbarRowClass} justify-end`}>
         <DataToolbarButton
           icon={<RefreshCw className="h-3.5 w-3.5" />}
           label={tr('schedule.refresh', '刷新')}
@@ -180,7 +180,7 @@ export function AutomationRunLogPanel({
           onClick={onRefresh}
         />
       </div>
-      <div className="glass-table flex min-h-0 flex-1 flex-col">
+      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
         <div className="min-h-0 flex-1 overflow-auto">
           <AutomationRunTable
             entries={entries}
@@ -667,7 +667,7 @@ function PaginationFooter({
 
   return (
     <div
-      className={`flex min-h-11 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
+      className={`flex min-h-14 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
         embedded ? 'border-t border-border-muted py-2.5' : 'mt-3'
       }`}
     >

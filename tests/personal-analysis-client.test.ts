@@ -16,9 +16,7 @@ describe('PersonalAnalysisClient', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new PersonalAnalysisClient();
-    await expect(client.listSpaces()).rejects.toThrow(
-      'Personal Analysis apiOrigin is not configured'
-    );
+    await expect(client.listSpaces()).rejects.toThrow('Cloud Space apiOrigin is not configured');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -27,7 +25,7 @@ describe('PersonalAnalysisClient', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const client = new PersonalAnalysisClient({ apiOrigin: 'http://mock.local' });
-    await expect(client.listSpaces()).rejects.toThrow('Personal Analysis apiKey is not configured');
+    await expect(client.listSpaces()).rejects.toThrow('Cloud Space apiKey is not configured');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -47,7 +45,7 @@ describe('PersonalAnalysisClient', () => {
         csv: 'name\nAlice\n',
         waitForDone: false,
       })
-    ).rejects.toThrow('Personal Analysis datasourceId is required for upload');
+    ).rejects.toThrow('Cloud Space datasourceId is required for upload');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

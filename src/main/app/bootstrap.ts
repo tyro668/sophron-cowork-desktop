@@ -1,3 +1,4 @@
+import { markPersonalAnalysisKeyDisconnected } from '../features/data/cloud-connection-state';
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
 import { join } from 'path';
@@ -160,6 +161,7 @@ export async function bootstrap(): Promise<void> {
     () => configStore.get('personalAnalysis'),
     {
       onTaskCompleted: notifyDataTaskCompleted,
+      onPersonalAnalysisKeyRejected: markPersonalAnalysisKeyDisconnected,
       getPersonalAnalysisConnection: (rejectedToken) =>
         desktopAuthService.getPersonalAnalysisConnection(rejectedToken),
       recordLlmUsage: (event) => appContext.recordDataTaskLlmUsage?.(event),

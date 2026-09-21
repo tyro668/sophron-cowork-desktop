@@ -31,6 +31,7 @@ import {
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
+  flatToolbarRowClass,
   underlineTabBarClass,
   underlineTabListClass,
   underlineTabTriggerClass,
@@ -543,7 +544,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <section className="mt-3 flex min-h-0 flex-1 flex-col">
+      <section className="flex min-h-0 flex-1 flex-col">
         <Tabs
           value={activeWorkspaceTab}
           onValueChange={(v) => {
@@ -567,7 +568,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           </div>
 
           <TabsContent value={activeWorkspaceTab} forceMount className="contents">
-            <div className="flex flex-shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+            <div className={`${flatToolbarRowClass} justify-between`}>
               <div className="flex min-w-0 flex-1 items-center">
                 <DataTableSearch
                   value={searchQuery}
@@ -641,9 +642,9 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             </div>
 
             <div
-              className={`mt-3 grid min-h-0 min-w-0 flex-1 gap-3 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
+              className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
             >
-              <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl">
+              <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-0">
                 <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
                   <span />
                   <span>{t('skills.workspace.table.skill')}</span>
@@ -691,7 +692,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   )}
                 </div>
 
-                <div className="flex min-h-11 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
                   <span className="min-w-0 truncate">
                     {t('skills.workspace.totalCount', {
                       count: tableItems.length,
@@ -734,7 +735,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               </div>
 
               {selectedItem && (
-                <aside className="glass-card hidden min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4 xl:flex">
+                <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-subtle p-4 xl:flex">
                   <>
                     <div className="flex items-start gap-3">
                       <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
