@@ -265,7 +265,11 @@ export function CloudAnalysisPanel() {
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
     [appConfig?.personalAnalysis]
   );
-  const hasStoredConnection = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
+  // Saved API keys are an access mode, not an account login. Keep this page
+  // aligned with the sidebar and never silently reconnect after logout.
+  const hasStoredConnection = Boolean(
+    desktopAuthStatus.authenticated && storedConnection.apiOrigin && storedConnection.apiKey
+  );
   const hasDesktopAuthConnection = Boolean(
     desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
   );
@@ -299,8 +303,11 @@ export function CloudAnalysisPanel() {
   const connectionPayload = useMemo(
     () => ({
       apiOrigin:
-        (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) ||
-        '',
+        (usesDesktopAuthConnection
+          ? desktopAuthStatus.apiOrigin
+          : usesStoredConnection
+            ? storedConnection.apiOrigin
+            : '') || '',
       ...(effectiveConnectionMode ? { connectionMode: effectiveConnectionMode } : {}),
       ...(usesStoredConnection && storedConnection.apiKey
         ? { apiKey: storedConnection.apiKey }
@@ -864,6 +871,7 @@ export function CloudAnalysisPanel() {
     previewRequestSeq.current += 1;
     importRequestSeq.current += 1;
     setPreview(null);
+    setNotice(null);
     setPreviewPage(1);
     setImportingTableId(null);
     setSelectedTableIds([]);
@@ -1365,14 +1373,6 @@ export function CloudAnalysisPanel() {
                   <LogIn className="h-4 w-4" />
                 )}
                 {t('cloudData.startConnect')}
-              </button>
-              <button
-                type="button"
-                onClick={openSettings}
-                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-4 text-[13px] font-medium text-text-primary transition-colors hover:bg-surface-active"
-              >
-                <KeyRound className="h-4 w-4" />
-                {t('cloudData.configureApiKey')}
               </button>
             </div>
 
