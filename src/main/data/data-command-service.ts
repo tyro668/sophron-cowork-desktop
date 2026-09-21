@@ -96,7 +96,9 @@ import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-
 
 export interface DataCommandServiceOptions {
   onTaskCompleted?: (task: DataCleaningTask) => void;
-  getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
+  getPersonalAnalysisConnection?: (
+    rejectedAccessToken?: string
+  ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
   recordLlmUsage?: DataTaskLlmUsageRecorder;
   /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
   exportWorkflowDsl?: typeof exportPrepWorkflowDsl;

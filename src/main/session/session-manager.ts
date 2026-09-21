@@ -96,7 +96,9 @@ interface SessionRunOptions {
   permissionPolicy?: PermissionPolicyId;
 }
 
-type RuntimeConfigResolver = (config?: AgentRuntimeConfig | null) => AgentRuntimeConfig | undefined;
+type RuntimeConfigResolver = (
+  config?: AgentRuntimeConfig | null
+) => AgentRuntimeConfig | undefined | Promise<AgentRuntimeConfig | undefined>;
 
 const WORKSPACE_MOUNT_VIRTUAL_PATH = '/mnt/workspace';
 const TITLE_GENERATION_TIMEOUT_MS = 20000;
@@ -790,7 +792,7 @@ export class SessionManager {
         // may carry an internal model snapshot that should not mutate global app config.
         const storedRuntimeConfig = this.sessionRuntimeConfigs.get(session.id);
         const runtimeConfig = this.resolveRuntimeConfig
-          ? this.resolveRuntimeConfig(storedRuntimeConfig)
+          ? await this.resolveRuntimeConfig(storedRuntimeConfig)
           : storedRuntimeConfig;
         const currentModel = runtimeConfig?.model || configStore.get('model');
         if (currentModel && currentModel !== session.model) {
@@ -952,7 +954,7 @@ export class SessionManager {
   private async generateTitleWithConfig(titlePrompt: string): Promise<string | null> {
     // Always use pi-ai SDK for title generation
     const baseConfig = configStore.getAll();
-    const runtimeConfig = this.resolveRuntimeConfig?.(null);
+    const runtimeConfig = await this.resolveRuntimeConfig?.(null);
     return normalizeGeneratedTitle(
       await generateTitleWithPiAi(
         titlePrompt,

@@ -138,8 +138,11 @@ export function registerConfigIpc(): void {
 
   handleIpc('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
     try {
-      const resolvedPayload = resolveApiTestInputForAuth(payload);
-      return await runConfigApiTest(resolvedPayload, resolveAppConfigForAuth(configStore.getAll()));
+      const resolvedPayload = await resolveApiTestInputForAuth(payload);
+      return await runConfigApiTest(
+        resolvedPayload,
+        await resolveAppConfigForAuth(configStore.getAll())
+      );
     } catch (error) {
       logError('[Config] API test failed:', error);
       return {
@@ -169,7 +172,7 @@ export function registerConfigIpc(): void {
   handleIpc('config.diagnose', async (_event, payload: DiagnosticInput) => {
     try {
       const { runDiagnostics } = await import('../../config/api-diagnostics');
-      return await runDiagnostics(resolveApiTestInputForAuth(payload));
+      return await runDiagnostics(await resolveApiTestInputForAuth(payload));
     } catch (error) {
       logError('[Config] Error running diagnostics:', error);
       throw error;

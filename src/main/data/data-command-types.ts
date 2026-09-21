@@ -31,6 +31,7 @@ import type {
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
 import type {
   CloudOutputActionSpec,
+  PersonalAnalysisConnectionInput,
   PersonalAnalysisDriveFile,
   PersonalAnalysisDriveFileListResult,
   PersonalAnalysisDriveFileSearchParams,
@@ -239,11 +240,7 @@ export interface PreviewTableResult {
   preview: DataInputTablePreview;
 }
 
-export interface PersonalAnalysisConnectionCommand {
-  apiOrigin?: string;
-  apiKey?: string;
-  accessToken?: string;
-}
+export type PersonalAnalysisConnectionCommand = PersonalAnalysisConnectionInput;
 
 export type ListCloudSpacesCommand = PersonalAnalysisConnectionCommand;
 

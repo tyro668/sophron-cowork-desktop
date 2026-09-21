@@ -14,7 +14,9 @@ interface DefaultAutomationActionOptions {
   dataCommandService?: DataCommandService;
   sessionManager: SessionManager;
   resolveProjectCwd?: (projectId: string) => string | null;
-  resolveModelRuntimeConfig?: (configSetId: string) => AgentRuntimeConfig | null;
+  resolveModelRuntimeConfig?: (
+    configSetId: string
+  ) => AgentRuntimeConfig | null | Promise<AgentRuntimeConfig | null>;
   sendSessionUpdate?: (session: Awaited<ReturnType<SessionManager['startSession']>>) => void;
   now?: () => number;
 }
@@ -89,7 +91,7 @@ export function createDefaultAutomationActionRegistry(
           ? config.modelConfigSetId.trim()
           : null;
       const runtimeConfig = modelConfigSetId
-        ? (options.resolveModelRuntimeConfig?.(modelConfigSetId) ?? undefined)
+        ? ((await options.resolveModelRuntimeConfig?.(modelConfigSetId)) ?? undefined)
         : undefined;
       const selectedSkillNames = Array.isArray(config.selectedSkillNames)
         ? config.selectedSkillNames

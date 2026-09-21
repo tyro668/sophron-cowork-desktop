@@ -53,7 +53,7 @@ export function registerDataTasksIpc({
         const modelConfigSetId =
           typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
         const runtimeConfig = modelConfigSetId
-          ? (resolveModelRuntimeConfig(modelConfigSetId) ?? undefined)
+          ? ((await resolveModelRuntimeConfig(modelConfigSetId)) ?? undefined)
           : undefined;
         return await requireDataCommandService().analyzeTaskRequirement({
           ...payload,
@@ -79,7 +79,7 @@ export function registerDataTasksIpc({
         const modelConfigSetId =
           typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
         const runtimeConfig = modelConfigSetId
-          ? (resolveModelRuntimeConfig(modelConfigSetId) ?? undefined)
+          ? ((await resolveModelRuntimeConfig(modelConfigSetId)) ?? undefined)
           : undefined;
         return await requireDataCommandService().generateTaskFromRequirement({
           ...payload,

@@ -50,7 +50,7 @@ export interface InputTableNormalizerProjectGenerator {
 }
 
 export function createLlmInputTableNormalizerProjectGenerator(
-  getConfig: () => AppConfig
+  getConfig: () => AppConfig | Promise<AppConfig>
 ): InputTableNormalizerProjectGenerator {
   return {
     async generate(input) {
@@ -62,7 +62,7 @@ export function createLlmInputTableNormalizerProjectGenerator(
         ...input,
         rulePrompt: buildSkillAwareRulePrompt(input.rulePrompt, input.selectedSkillNames),
       };
-      const runtimeConfig = input.runtimeConfig ?? getConfig();
+      const runtimeConfig = input.runtimeConfig ?? (await getConfig());
       const sourceSummary = compactSourceSummary(input.sourceSummary);
       const analysisProgress = createJsonProgressWriter(input, 'source_analysis', '结构分析输出');
       const analysisResponse = await runWithProgressBlock(

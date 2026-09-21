@@ -16,6 +16,25 @@ import { log, logWarn } from '../utils/logger';
 const CLIENT_ID = 'sophorn-desktop';
 const CALLBACK_PATH = '/callback';
 const LOGIN_TIMEOUT_MS = 2 * 60 * 1000;
+const REFRESH_LEEWAY_MS = 60_000;
+
+class DesktopAuthRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+  }
+}
+
+function isAuthRejection(error: unknown): boolean {
+  return (
+    error instanceof DesktopAuthRequestError &&
+    ([401, 403].includes(error.status) ||
+      ['invalid_grant', 'invalid_token', '61311002'].includes(error.code || ''))
+  );
+}
 
 interface HiResponse<T> {
   success?: boolean;
@@ -114,6 +133,8 @@ interface LoginAttempt {
 export class DesktopAuthService {
   private store: Store<DesktopAuthStoreSchema>;
   private loginAttempt: LoginAttempt | null = null;
+  private refreshInFlight: { token: string; promise: Promise<DesktopAuthSession> } | null = null;
+  private sessionGeneration = 0;
 
   constructor(private readonly resolveApiOrigin: () => string) {
     type DesktopAuthStoreRecord = DesktopAuthStoreSchema & Record<string, unknown>;
@@ -157,6 +178,7 @@ export class DesktopAuthService {
   }
 
   cancelLogin(): DesktopAuthStatus {
+    this.sessionGeneration += 1;
     const attempt = this.loginAttempt;
     this.loginAttempt = null;
     attempt?.cancel(new Error('Login cancelled'));
@@ -169,50 +191,136 @@ export class DesktopAuthService {
     return this.emptyStatus();
   }
 
-  getPersonalAnalysisConnection(): PersonalAnalysisConnectionInput | null {
-    const session = this.store.get('session');
-    if (!session?.accessToken) {
-      return null;
-    }
-
-    if (session.expiresAt && session.expiresAt <= Date.now()) {
-      this.store.set('session', null);
-      return null;
-    }
-
+  async getPersonalAnalysisConnection(
+    rejectedAccessToken?: string
+  ): Promise<PersonalAnalysisConnectionInput | null> {
+    if (!this.store.get('session')?.accessToken) return null;
+    const session = await this.getValidSession(rejectedAccessToken);
     return {
       apiOrigin: session.apiOrigin,
-      accessToken: this.resolvePersonalAnalysisAccessToken(session),
+      accessToken: session.accessToken,
+      connectionMode: 'account',
     };
   }
 
   async getStatus(): Promise<DesktopAuthStatus> {
-    const session = this.store.get('session');
-    if (!session?.accessToken) {
-      return this.emptyStatus();
-    }
-
+    if (!this.store.get('session')?.accessToken) return this.emptyStatus();
+    let checkedToken: string | undefined;
     try {
-      const me = await this.getCurrentUser(session);
-      if (!this.hasRequiredAiScope(me.scope)) {
-        throw new Error('Login token is missing AI scope; please sign in again');
+      let session = await this.getValidSession();
+      checkedToken = session.accessToken;
+      let me: DesktopAuthMeResponse;
+      try {
+        me = await this.getCurrentUser(session);
+      } catch (error) {
+        if (!isAuthRejection(error)) throw error;
+        session = await this.getValidSession(session.accessToken);
+        checkedToken = session.accessToken;
+        me = await this.getCurrentUser(session);
       }
-      const user = this.normalizeUser(me.user, me);
-      const nextSession: DesktopAuthSession = {
+      if (!this.hasRequiredAiScope(me.scope)) {
+        throw new DesktopAuthRequestError(
+          'Login token is missing AI scope; please sign in again',
+          403
+        );
+      }
+      if (this.store.get('session')?.accessToken !== session.accessToken)
+        return this.currentStatus();
+      const nextSession = {
         ...session,
-        user,
+        user: this.normalizeUser(me.user, me),
         expiresAt: me.expiresAt ? Date.parse(me.expiresAt) : session.expiresAt,
         updatedAt: Date.now(),
       };
       this.store.set('session', nextSession);
-      return this.sessionToStatus(nextSession, await this.tryFetchAiCredits(nextSession));
+      const credits = await this.tryFetchAiCredits(nextSession);
+      if (this.store.get('session')?.accessToken !== nextSession.accessToken)
+        return this.currentStatus();
+      return this.sessionToStatus(nextSession, credits);
     } catch (error) {
+      if (
+        isAuthRejection(error) &&
+        checkedToken &&
+        this.store.get('session')?.accessToken === checkedToken
+      )
+        this.store.set('session', null);
       logWarn('[DesktopAuth] Failed to refresh auth status:', error);
-      this.store.set('session', null);
+      // Temporary network/server failures must not destroy a refreshable login.
       return {
-        ...this.emptyStatus(),
+        ...this.currentStatus(),
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  private currentStatus(): DesktopAuthStatus {
+    const session = this.store.get('session');
+    return session ? this.sessionToStatus(session) : this.emptyStatus();
+  }
+
+  private async getValidSession(rejectedAccessToken?: string): Promise<DesktopAuthSession> {
+    const session = this.requireSession();
+    const rejected = rejectedAccessToken === session.accessToken;
+    if (!rejected && (!session.expiresAt || session.expiresAt > Date.now() + REFRESH_LEEWAY_MS))
+      return session;
+    if (!session.refreshToken) {
+      if (rejected || (session.expiresAt && session.expiresAt <= Date.now())) {
+        this.store.set('session', null);
+        throw new Error('Login expired; please sign in again');
+      }
+      return session;
+    }
+    if (this.refreshInFlight?.token === session.accessToken) return this.refreshInFlight.promise;
+    const generation = this.sessionGeneration;
+    const promise = (async () => {
+      try {
+        const token = await this.requestJson<DesktopAuthTokenResponse>(
+          `${session.apiOrigin}/api/desktop/auth/token`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              grantType: 'refresh_token',
+              refreshToken: session.refreshToken,
+              clientId: CLIENT_ID,
+            }),
+          }
+        );
+        if (!token.accessToken) throw new Error('Refresh response is missing accessToken');
+        if (
+          generation !== this.sessionGeneration ||
+          this.store.get('session')?.accessToken !== session.accessToken
+        ) {
+          throw new Error('Login session changed during refresh');
+        }
+        const nextSession: DesktopAuthSession = {
+          ...session,
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken || session.refreshToken,
+          tokenType: token.tokenType || session.tokenType,
+          user: token.user ? this.normalizeUser(token.user, token) : session.user,
+          expiresAt: token.expiresIn ? Date.now() + token.expiresIn * 1000 : undefined,
+          updatedAt: Date.now(),
+        };
+        this.store.set('session', nextSession);
+        return nextSession;
+      } catch (error) {
+        if (
+          isAuthRejection(error) &&
+          generation === this.sessionGeneration &&
+          this.store.get('session')?.accessToken === session.accessToken
+        ) {
+          this.store.set('session', null);
+        }
+        throw error;
+      }
+    })();
+    const flight = { token: session.accessToken, promise };
+    this.refreshInFlight = flight;
+    try {
+      return await promise;
+    } finally {
+      if (this.refreshInFlight === flight) this.refreshInFlight = null;
     }
   }
 
@@ -222,6 +330,8 @@ export class DesktopAuthService {
     attempt?.cancel(new Error('Login cancelled'));
 
     const session = this.store.get('session');
+    this.sessionGeneration += 1;
+    this.store.set('session', null);
     if (session?.accessToken) {
       try {
         await this.requestJson<{ loggedOut?: boolean }>(
@@ -230,7 +340,9 @@ export class DesktopAuthService {
             method: 'POST',
             headers: {
               Authorization: `${session.tokenType || 'Bearer'} ${session.accessToken}`,
+              'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ refreshToken: session.refreshToken }),
           }
         );
       } catch (error) {
@@ -238,29 +350,32 @@ export class DesktopAuthService {
       }
     }
 
-    this.store.set('session', null);
-    return this.emptyStatus();
+    return this.currentStatus();
   }
 
-  getAccessToken(): string | null {
-    return this.store.get('session')?.accessToken ?? null;
+  async getAccessToken(): Promise<string | null> {
+    if (!this.store.get('session')?.accessToken) return null;
+    return (await this.getValidSession()).accessToken;
   }
 
-  requireAccessToken(): string {
-    const token = this.getAccessToken();
+  async requireAccessToken(): Promise<string> {
+    const token = await this.getAccessToken();
     if (!token) {
       throw new Error('Please sign in before using the built-in LLM');
     }
     return token;
   }
 
-  requireLlmAccessToken(): string {
-    const session = this.requireSession();
-    return this.resolveLlmAccessToken(session);
+  async requireLlmAccessToken(): Promise<string> {
+    return (await this.getValidSession()).accessToken;
+  }
+
+  getApiOrigin(): string {
+    return this.store.get('session')?.apiOrigin || this.resolveAuthOrigin();
   }
 
   async listLlmModels(): Promise<ProviderModelInfo[]> {
-    const session = this.requireSession();
+    const session = await this.getValidSession();
     const data = await this.requestJson<DesktopLlmModelsResponse>(
       `${session.apiOrigin}/api/llm/v1/models`,
       {
@@ -291,14 +406,15 @@ export class DesktopAuthService {
   }
 
   async getAiCreditUsage(limit = 50): Promise<AiCreditUsageSummary> {
-    return this.fetchAiCreditUsage(this.requireSession(), limit);
+    return this.fetchAiCreditUsage(await this.getValidSession(), limit);
   }
 
   async getAiCredits(): Promise<AiCreditBalance> {
-    return this.fetchAiCredits(this.requireSession());
+    return this.fetchAiCredits(await this.getValidSession());
   }
 
   private async runLogin(loginCancelled: Promise<never>): Promise<DesktopAuthStatus> {
+    const generation = ++this.sessionGeneration;
     const apiOrigin = this.resolveAuthOrigin();
     const state = crypto.randomBytes(16).toString('hex');
     const callbackServer = await this.createCallbackServer(state);
@@ -349,6 +465,7 @@ export class DesktopAuthService {
         apiOrigin,
         updatedAt: Date.now(),
       };
+      if (generation !== this.sessionGeneration) throw new Error('Login cancelled');
       this.store.set('session', session);
 
       return this.getStatus();
@@ -429,45 +546,7 @@ export class DesktopAuthService {
   }
 
   private buildLlmAuthorization(session: DesktopAuthSession): string {
-    return `Bearer ${this.resolveLlmAccessToken(session)}`;
-  }
-
-  private resolveLlmAccessToken(session: DesktopAuthSession): string {
-    const overrideToken = process.env.SOPHRON_LLM_ACCESS_TOKEN?.trim();
-    if (overrideToken) {
-      return overrideToken;
-    }
-
-    // The local mock server keeps desktop login tokens and API bearer tokens in
-    // separate stores. Its /api/llm/v1/* routes currently accept the documented
-    // default bearer token, while production can use the desktop login token.
-    if (process.env.VITE_DEV_SERVER_URL && this.isLoopbackOrigin(session.apiOrigin)) {
-      return 'mock-token';
-    }
-
-    return session.accessToken;
-  }
-
-  private resolvePersonalAnalysisAccessToken(session: DesktopAuthSession): string {
-    const overrideToken = process.env.SOPHRON_PERSONAL_ANALYSIS_ACCESS_TOKEN?.trim();
-    if (overrideToken) {
-      return overrideToken;
-    }
-
-    if (this.isLoopbackOrigin(session.apiOrigin)) {
-      return 'mock-token';
-    }
-
-    return session.accessToken;
-  }
-
-  private isLoopbackOrigin(origin: string): boolean {
-    try {
-      const hostname = new URL(origin).hostname;
-      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-    } catch {
-      return false;
-    }
+    return `Bearer ${session.accessToken}`;
   }
 
   private async fetchAiCreditUsage(
@@ -569,7 +648,7 @@ export class DesktopAuthService {
   }
 
   private async requestJson<T>(url: string, init: RequestInit): Promise<T> {
-    const response = await fetch(url, init);
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
     const text = await response.text();
     let payload: HiResponse<T>;
     try {
@@ -579,7 +658,11 @@ export class DesktopAuthService {
     }
 
     if (!response.ok || payload.success === false || !payload.data) {
-      throw new Error(payload.message || `Request failed: HTTP ${response.status}`);
+      throw new DesktopAuthRequestError(
+        payload.message || `Request failed: HTTP ${response.status}`,
+        response.status,
+        payload.errorCode || payload.code
+      );
     }
 
     return payload.data;

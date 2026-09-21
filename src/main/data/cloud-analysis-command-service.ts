@@ -48,7 +48,9 @@ const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
 
 export interface CloudAnalysisCommandServiceOptions {
-  getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
+  getPersonalAnalysisConnection?: (
+    rejectedAccessToken?: string
+  ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
   createInputTable: (input: CreateInputTableCommand) => Promise<InputTableResult>;
 }
 
@@ -68,8 +70,9 @@ export class CloudAnalysisCommandService {
 
   async listCloudSpaces(input: ListCloudSpacesCommand = {}): Promise<ListCloudSpacesResult> {
     try {
+      const client = await this.createPersonalAnalysisClient(input);
       return {
-        spaces: await this.createPersonalAnalysisClient(input).listSpaces(),
+        spaces: await client.listSpaces(),
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -79,8 +82,9 @@ export class CloudAnalysisCommandService {
   async listCloudProjects(input: ListCloudProjectsCommand): Promise<ListCloudProjectsResult> {
     const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
     try {
+      const client = await this.createPersonalAnalysisClient(input);
       return {
-        projects: await this.createPersonalAnalysisClient(input).listProjects(spaceId),
+        projects: await client.listProjects(spaceId),
       };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -91,7 +95,8 @@ export class CloudAnalysisCommandService {
     const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
     const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
     try {
-      return await this.createPersonalAnalysisClient(input).listTables(spaceId, projectId, {
+      const client = await this.createPersonalAnalysisClient(input);
+      return await client.listTables(spaceId, projectId, {
         keyword: input.keyword,
         page: input.page,
         pageSize: input.pageSize,
@@ -106,7 +111,8 @@ export class CloudAnalysisCommandService {
   async searchCloudTables(input: SearchCloudTablesCommand): Promise<SearchCloudTablesResult> {
     const keyword = normalizeRequiredName(input.keyword, 'Cloud table search keyword is required');
     try {
-      return await this.createPersonalAnalysisClient(input).searchTables({
+      const client = await this.createPersonalAnalysisClient(input);
+      return await client.searchTables({
         keyword,
         spaceId: input.spaceId,
         projectId: input.projectId,
@@ -123,7 +129,7 @@ export class CloudAnalysisCommandService {
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
     const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
-    const client = this.createPersonalAnalysisClient(input);
+    const client = await this.createPersonalAnalysisClient(input);
     try {
       const cloudTable =
         input.spaceId && input.projectId
@@ -160,7 +166,8 @@ export class CloudAnalysisCommandService {
         ? Math.max(Math.floor(input.offset), 0)
         : 0;
     try {
-      const csv = await this.createPersonalAnalysisClient(input).exportTableCsv(tableId);
+      const client = await this.createPersonalAnalysisClient(input);
+      const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
       const preview = await this.store.previewInputTable({
         filePath: downloadedFilePath,
@@ -189,7 +196,8 @@ export class CloudAnalysisCommandService {
     const spaceId = normalizeRequiredName(input.spaceId, 'Cloud spaceId is required');
     const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
     try {
-      return await this.createPersonalAnalysisClient(input).listDriveFiles(spaceId, projectId, {
+      const client = await this.createPersonalAnalysisClient(input);
+      return await client.listDriveFiles(spaceId, projectId, {
         keyword: input.keyword,
         fileType: input.fileType,
         page: input.page,
@@ -207,12 +215,8 @@ export class CloudAnalysisCommandService {
     const projectId = normalizeRequiredName(input.projectId, 'Cloud projectId is required');
     const fileId = normalizeRequiredName(input.fileId, 'Cloud fileId is required');
     try {
-      const result = await this.createPersonalAnalysisClient(input).previewDriveFile(
-        spaceId,
-        projectId,
-        fileId,
-        input.sheetName
-      );
+      const client = await this.createPersonalAnalysisClient(input);
+      const result = await client.previewDriveFile(spaceId, projectId, fileId, input.sheetName);
       return { file: result.file, preview: driveFilePreviewToDataPreview(result) };
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
@@ -406,7 +410,7 @@ export class CloudAnalysisCommandService {
         tableKind: 'output',
         id: outputTableId,
       });
-      const client = this.createPersonalAnalysisClient(connection);
+      const client = await this.createPersonalAnalysisClient(connection);
       if (action.type === 'drive_file') {
         const result = await client.syncDriveCsv(action.spaceId, action.projectId, {
           fileId: action.fileId,
@@ -484,7 +488,7 @@ export class CloudAnalysisCommandService {
       normalizeOptionalName(input.fileName) || `${sanitizeFileName(tableName || exported.id)}.csv`;
 
     try {
-      const client = this.createPersonalAnalysisClient(input);
+      const client = await this.createPersonalAnalysisClient(input);
       const datasourceId = await this.resolveUploadDatasourceId(client, input.datasourceId);
       const upload = await client.uploadCsv({
         ...input,
@@ -509,34 +513,47 @@ export class CloudAnalysisCommandService {
     }
   }
 
-  private createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
+  private async createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
     const configured = this.getPersonalAnalysisConfig();
-    const authenticated = this.options.getPersonalAnalysisConnection?.() ?? null;
-    const configuredApiKey = configured.apiKey?.trim() || '';
-    const inputApiKey = input.apiKey?.trim() || '';
-    const inputAccessToken = input.accessToken?.trim() || '';
-    const fallbackAccessToken = authenticated?.accessToken?.trim() || '';
-    const connectionMode = input.connectionMode;
-
-    if (connectionMode === 'account') {
+    const mode =
+      input.connectionMode ??
+      (input.accessToken ? 'account' : input.apiKey || configured.apiKey ? 'apiKey' : 'account');
+    if (mode === 'apiKey') {
       return createPersonalAnalysisClient({
-        apiOrigin: input.apiOrigin || authenticated?.apiOrigin || configured.apiOrigin,
-        accessToken: inputAccessToken || fallbackAccessToken,
+        apiOrigin: input.apiOrigin || configured.apiOrigin,
+        apiKey: input.apiKey || configured.apiKey,
       });
     }
-
-    if (connectionMode === 'apiKey') {
+    // Account requests never fall back to an API key or its service address.
+    if (input.accessToken) {
       return createPersonalAnalysisClient({
-        apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
-        apiKey: inputApiKey || configuredApiKey,
+        apiOrigin: input.apiOrigin,
+        accessToken: input.accessToken,
       });
     }
-
+    const resolveConnection = this.options.getPersonalAnalysisConnection;
+    const authenticated = await resolveConnection?.();
+    if (!authenticated?.accessToken || !authenticated.apiOrigin) {
+      throw new DataCommandError('RUN_FAILED', 'Please sign in before accessing cloud analysis');
+    }
+    if (
+      input.apiOrigin &&
+      new URL(input.apiOrigin).origin !== new URL(authenticated.apiOrigin).origin
+    ) {
+      throw new DataCommandError(
+        'RUN_FAILED',
+        'Account service origin does not match the login session'
+      );
+    }
     return createPersonalAnalysisClient({
-      apiOrigin: input.apiOrigin || configured.apiOrigin || authenticated?.apiOrigin,
-      apiKey: inputApiKey || configuredApiKey,
-      accessToken:
-        inputAccessToken || (!inputApiKey && !configuredApiKey ? fallbackAccessToken : undefined),
+      apiOrigin: authenticated.apiOrigin,
+      getAccessToken: async (rejectedAccessToken?: string) => {
+        const connection = await resolveConnection?.(rejectedAccessToken);
+        if (!connection?.accessToken || connection.apiOrigin !== authenticated.apiOrigin) {
+          throw new Error('Login session changed; please reconnect');
+        }
+        return connection.accessToken;
+      },
     });
   }
 

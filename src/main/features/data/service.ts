@@ -31,7 +31,8 @@ export function requireDataCommandService(): DataCommandService {
       () => configStore.get('personalAnalysis'),
       {
         onTaskCompleted: notifyDataTaskCompleted,
-        getPersonalAnalysisConnection: () => desktopAuthService.getPersonalAnalysisConnection(),
+        getPersonalAnalysisConnection: (rejectedToken) =>
+          desktopAuthService.getPersonalAnalysisConnection(rejectedToken),
         recordLlmUsage: (event) => appContext.recordDataTaskLlmUsage?.(event),
       }
     );

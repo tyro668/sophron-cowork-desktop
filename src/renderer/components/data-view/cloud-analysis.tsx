@@ -243,9 +243,6 @@ export function CloudAnalysisPanel() {
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [batchSelectMode, setBatchSelectMode] = useState(false);
   const [addingToChat, setAddingToChat] = useState(false);
-  const [activeConnectionMode, setActiveConnectionMode] = useState<'account' | 'apiKey' | null>(
-    null
-  );
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
@@ -268,27 +265,21 @@ export function CloudAnalysisPanel() {
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
     [appConfig?.personalAnalysis]
   );
-  // Saved API keys are an access mode, not an account login. Keep this page
-  // aligned with the sidebar and never silently reconnect after logout.
-  const hasStoredConnection = Boolean(
-    desktopAuthStatus.authenticated && storedConnection.apiOrigin && storedConnection.apiKey
-  );
+  // API Key 是独立的访问服务：配置后即可使用，不依赖账号登录。
+  // 优先级：已配置的 API Key 连接 > 登录账号；断开 API Key 后自动回退账号服务。
+  // 两者按配置自动选择，不提供手动切换。
+  const hasStoredConnection = Boolean(storedConnection.apiOrigin && storedConnection.apiKey);
   const hasDesktopAuthConnection = Boolean(
     desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin
   );
-  const effectiveConnectionMode =
-    activeConnectionMode &&
-    (activeConnectionMode === 'account' ? hasDesktopAuthConnection : hasStoredConnection)
-      ? activeConnectionMode
-      : hasDesktopAuthConnection
-        ? 'account'
-        : hasStoredConnection
-          ? 'apiKey'
-          : null;
+  const effectiveConnectionMode = hasStoredConnection
+    ? 'apiKey'
+    : hasDesktopAuthConnection
+      ? 'account'
+      : null;
   const usesDesktopAuthConnection = effectiveConnectionMode === 'account';
   const usesStoredConnection = effectiveConnectionMode === 'apiKey';
   const isConnected = usesStoredConnection || usesDesktopAuthConnection;
-  const canSwitchConnectionMode = hasDesktopAuthConnection && hasStoredConnection;
   const authDisplayName =
     desktopAuthStatus.user?.displayName?.trim() ||
     desktopAuthStatus.user?.username?.trim() ||
@@ -303,7 +294,7 @@ export function CloudAnalysisPanel() {
     (usesDesktopAuthConnection ? desktopAuthStatus.apiOrigin : storedConnection.apiOrigin) ||
     t('cloudData.notConnected');
 
-  const connectionPayload = useMemo(
+  const connectionPayload = useMemo<CloudConnection>(
     () => ({
       apiOrigin:
         (usesDesktopAuthConnection
@@ -325,16 +316,6 @@ export function CloudAnalysisPanel() {
       usesStoredConnection,
     ]
   );
-
-  useEffect(() => {
-    if (activeConnectionMode === 'account' && !hasDesktopAuthConnection) {
-      setActiveConnectionMode(hasStoredConnection ? 'apiKey' : null);
-      return;
-    }
-    if (activeConnectionMode === 'apiKey' && !hasStoredConnection) {
-      setActiveConnectionMode(hasDesktopAuthConnection ? 'account' : null);
-    }
-  }, [activeConnectionMode, hasDesktopAuthConnection, hasStoredConnection]);
 
   useEffect(() => {
     if (
@@ -425,11 +406,6 @@ export function CloudAnalysisPanel() {
       setLoginBusy(false);
     }
   }, [loginBusy, setDesktopAuthStatus, t]);
-
-  const switchConnectionMode = useCallback((mode: 'account' | 'apiKey') => {
-    setActiveConnectionMode(mode);
-    setNotice(null);
-  }, []);
 
   const applyTables = useCallback((items: PersonalAnalysisTable[]) => {
     tablesRef.current = items;
@@ -1375,6 +1351,14 @@ export function CloudAnalysisPanel() {
                 )}
                 {t('cloudData.startConnect')}
               </button>
+              <button
+                type="button"
+                onClick={openSettings}
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-4 text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              >
+                <KeyRound className="h-4 w-4" />
+                {t('cloudData.configureApiKey')}
+              </button>
             </div>
 
             <div className="mt-4 flex items-center gap-1.5 text-[12px] text-text-muted">
@@ -1630,21 +1614,6 @@ export function CloudAnalysisPanel() {
                 />
                 <DataMoreMenu
                   items={[
-                    ...(canSwitchConnectionMode
-                      ? [
-                          {
-                            key: 'switch-mode',
-                            label: usesDesktopAuthConnection
-                              ? t('cloudData.switchToApiKeyMode')
-                              : t('cloudData.switchToAccountMode'),
-                            icon: <KeyRound className="h-3.5 w-3.5" />,
-                            onClick: () =>
-                              switchConnectionMode(
-                                usesDesktopAuthConnection ? 'apiKey' : 'account'
-                              ),
-                          },
-                        ]
-                      : []),
                     {
                       key: 'manage',
                       label: t('cloudData.manageConnection'),

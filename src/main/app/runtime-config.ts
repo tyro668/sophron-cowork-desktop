@@ -4,24 +4,26 @@ import { configStore, type AppConfig } from '../config/config-store';
 import { resolveDesktopLlmBaseUrl } from '../config/desktop-auth-config';
 import { desktopAuthService } from './context';
 
-export function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(config: T): T {
+export async function withSophronRuntimeAuth<T extends AppConfig | AgentRuntimeConfig>(
+  config: T
+): Promise<T> {
   if (config.provider !== 'sophron') {
     return config;
   }
 
-  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  const apiOrigin = desktopAuthService.getApiOrigin();
   return {
     ...config,
     provider: 'sophron',
     customProtocol: 'openai',
-    apiKey: desktopAuthService.requireLlmAccessToken(),
+    apiKey: await desktopAuthService.requireLlmAccessToken(),
     baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
   };
 }
 
-export function resolveAgentRuntimeConfigForAuth(
+export async function resolveAgentRuntimeConfigForAuth(
   config?: AgentRuntimeConfig | null
-): AgentRuntimeConfig | undefined {
+): Promise<AgentRuntimeConfig | undefined> {
   const runtimeConfig =
     config ?? configStore.getRuntimeConfigForSet(configStore.get('activeConfigSetId')) ?? undefined;
   if (!runtimeConfig) {
@@ -30,13 +32,13 @@ export function resolveAgentRuntimeConfigForAuth(
   return withSophronRuntimeAuth(runtimeConfig);
 }
 
-export function resolveModelRuntimeConfigForAutomation(
+export async function resolveModelRuntimeConfigForAutomation(
   configSetId: string
-): AgentRuntimeConfig | null {
+): Promise<AgentRuntimeConfig | null> {
   const builtinModel = parseBuiltinLlmConfigSetId(configSetId);
   if (builtinModel) {
     return (
-      resolveAgentRuntimeConfigForAuth({
+      (await resolveAgentRuntimeConfigForAuth({
         provider: 'sophron',
         apiKey: '',
         baseUrl: '',
@@ -44,26 +46,31 @@ export function resolveModelRuntimeConfigForAutomation(
         model: builtinModel,
         enableThinking: false,
         thinkingLevel: 'medium',
-      }) ?? null
+      })) ?? null
     );
   }
 
-  return resolveAgentRuntimeConfigForAuth(configStore.getRuntimeConfigForSet(configSetId)) ?? null;
+  return (
+    (await resolveAgentRuntimeConfigForAuth(configStore.getRuntimeConfigForSet(configSetId))) ??
+    null
+  );
 }
 
-export function resolveAppConfigForAuth(config: AppConfig = configStore.getAll()): AppConfig {
+export async function resolveAppConfigForAuth(
+  config: AppConfig = configStore.getAll()
+): Promise<AppConfig> {
   return withSophronRuntimeAuth(config);
 }
 
-export function resolveApiTestInputForAuth(input: ApiTestInput): ApiTestInput {
+export async function resolveApiTestInputForAuth(input: ApiTestInput): Promise<ApiTestInput> {
   if (input.provider !== 'sophron') {
     return input;
   }
-  const apiOrigin = configStore.get('personalAnalysis')?.apiOrigin;
+  const apiOrigin = desktopAuthService.getApiOrigin();
   return {
     ...input,
     customProtocol: 'openai',
-    apiKey: desktopAuthService.requireLlmAccessToken(),
+    apiKey: await desktopAuthService.requireLlmAccessToken(),
     baseUrl: resolveDesktopLlmBaseUrl(apiOrigin),
   };
 }

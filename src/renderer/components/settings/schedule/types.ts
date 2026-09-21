@@ -1,4 +1,11 @@
-import type { Automation, AutomationRun, AutomationTrigger, Project } from '../../../types';
+import type {
+  AppConfig,
+  Automation,
+  AutomationRun,
+  AutomationTrigger,
+  DesktopAuthStatus,
+  Project,
+} from '../../../types';
 import { getWorkingDirDisplayName } from '../../../utils/working-dir-label';
 import type { PermissionPolicyId } from '../../../../shared/permission-policies';
 
@@ -79,6 +86,27 @@ export function getOutputLocation(config: CloudTableAutomationConfig): DataProce
 export interface CloudConnectionPayload {
   apiOrigin: string;
   apiKey?: string;
+  connectionMode?: 'account' | 'apiKey';
+}
+
+export function getCloudConnectionPayload(
+  appConfig: AppConfig | null,
+  desktopAuthStatus: DesktopAuthStatus
+): CloudConnectionPayload {
+  const storedConnection = appConfig?.personalAnalysis;
+  // API Key 是独立的访问服务：配置后优先使用，不依赖账号登录；
+  // 断开 API Key 后回退到登录账号对应的服务。两者按配置自动选择。
+  if (storedConnection?.apiOrigin && storedConnection.apiKey) {
+    return {
+      apiOrigin: storedConnection.apiOrigin,
+      apiKey: storedConnection.apiKey,
+      connectionMode: 'apiKey',
+    };
+  }
+  if (desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin) {
+    return { apiOrigin: desktopAuthStatus.apiOrigin, connectionMode: 'account' };
+  }
+  return { apiOrigin: storedConnection?.apiOrigin || '', connectionMode: 'account' };
 }
 
 export function getProjectOptionLabel(

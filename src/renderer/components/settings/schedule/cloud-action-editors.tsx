@@ -16,7 +16,6 @@ import type {
   DataAnalyzeTaskRequirementResult,
   DataDashboard,
   DataGenerateTaskFromRequirementInput,
-  DesktopAuthStatus,
   PersonalAnalysisProject,
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
@@ -31,6 +30,7 @@ import {
   type CloudConnectionPayload,
   type CloudTableAutomationConfig,
   type DataProcessLocation,
+  getCloudConnectionPayload,
   getOutputLocation,
   getSourceLocation,
   isElectron,
@@ -1118,20 +1118,6 @@ export function CloudTargetInfoItem({
       </div>
     </div>
   );
-}
-
-export function getCloudConnectionPayload(
-  appConfig: AppConfig | null,
-  desktopAuthStatus: DesktopAuthStatus
-): CloudConnectionPayload {
-  const storedConnection = appConfig?.personalAnalysis;
-  if (desktopAuthStatus.authenticated && desktopAuthStatus.apiOrigin) {
-    return { apiOrigin: desktopAuthStatus.apiOrigin };
-  }
-  if (storedConnection?.apiOrigin && storedConnection.apiKey) {
-    return { apiOrigin: storedConnection.apiOrigin, apiKey: storedConnection.apiKey };
-  }
-  return { apiOrigin: storedConnection?.apiOrigin || '' };
 }
 
 export function formatCloudTargetLocation(

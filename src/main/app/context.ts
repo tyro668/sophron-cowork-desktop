@@ -7,7 +7,6 @@
  * module-level `let` variables while making the dependencies explicit.
  */
 import type { BrowserWindow, Tray } from 'electron';
-import { configStore } from '../config/config-store';
 import { resolveDesktopAuthOrigin } from '../config/desktop-auth-config';
 import { DesktopAuthService } from '../auth/desktop-auth-service';
 import type { DatabaseInstance } from '../db/database';
@@ -70,6 +69,4 @@ export const appContext: AppContext = {
   currentWorkingDir: null,
 };
 
-export const desktopAuthService = new DesktopAuthService(() =>
-  resolveDesktopAuthOrigin(configStore.get('personalAnalysis')?.apiOrigin)
-);
+export const desktopAuthService = new DesktopAuthService(() => resolveDesktopAuthOrigin());

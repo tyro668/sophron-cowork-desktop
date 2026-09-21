@@ -67,12 +67,17 @@ export class PersonalAnalysisHttpError extends Error {
   }
 }
 
+export interface PersonalAnalysisClientOptions extends PersonalAnalysisConnectionInput {
+  /** Main-process account session provider; never serialized across IPC. */
+  getAccessToken?: (rejectedAccessToken?: string) => Promise<string>;
+}
+
 export class PersonalAnalysisClient {
   private readonly apiOrigin: string;
   private readonly apiKey: string;
   private accessToken: string | null;
 
-  constructor(options: PersonalAnalysisConnectionInput = {}) {
+  constructor(private readonly options: PersonalAnalysisClientOptions = {}) {
     this.apiOrigin = normalizePersonalAnalysisApiOrigin(options.apiOrigin);
     this.apiKey = options.apiKey?.trim() || '';
     this.accessToken = options.accessToken?.trim() || null;
@@ -359,22 +364,38 @@ export class PersonalAnalysisClient {
     }
     const token = await this.getAccessToken();
     const method = options.method ?? 'GET';
-    const response = await fetchWithTimeout(
-      `${this.apiOrigin}/api/personal/analysis/v1${path}`,
-      {
-        method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    const request = (bearer: string) =>
+      fetchWithTimeout(
+        `${this.apiOrigin}/api/personal/analysis/v1${path}`,
+        {
+          method,
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined,
         },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-      },
-      `${method} ${path}`
-    );
-    return parseHiResponse<T>(response, await response.text(), `${method} ${path}`);
+        `${method} ${path}`
+      );
+    const response = await request(token);
+    try {
+      return await parseHiResponse<T>(response, await response.text(), `${method} ${path}`);
+    } catch (error) {
+      if (
+        !this.options.getAccessToken ||
+        !(error instanceof PersonalAnalysisHttpError) ||
+        (error.status !== 401 && error.code !== '61311002')
+      )
+        throw error;
+      // Only authentication failures are replayed, once; never retry arbitrary writes.
+      const renewedToken = await this.options.getAccessToken(token);
+      const retried = await request(renewedToken);
+      return parseHiResponse<T>(retried, await retried.text(), `${method} ${path}`);
+    }
   }
 
   private async getAccessToken(): Promise<string> {
+    if (this.options.getAccessToken) return this.options.getAccessToken();
     if (this.accessToken) {
       return this.accessToken;
     }
@@ -406,7 +427,7 @@ export class PersonalAnalysisClient {
 }
 
 export function createPersonalAnalysisClient(
-  input: PersonalAnalysisConnectionInput = {}
+  input: PersonalAnalysisClientOptions = {}
 ): PersonalAnalysisClient {
   return new PersonalAnalysisClient(input);
 }

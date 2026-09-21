@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import './i18n-test';
+import i18n from './i18n-test';
 import { useAppStore } from '../../src/renderer/store';
 import { CloudAnalysisPanel } from '../../src/renderer/components/data-view/cloud-analysis';
 
@@ -17,7 +17,7 @@ beforeEach(() => {
   useAppStore.setState({
     appConfig: {
       ...useAppStore.getState().appConfig,
-      personalAnalysis: { apiOrigin: 'https://cloud.example', apiKey: 'saved-key' },
+      personalAnalysis: { apiOrigin: '', apiKey: '' },
     } as NonNullable<ReturnType<typeof useAppStore.getState>['appConfig']>,
     desktopAuthStatus: { authenticated: false, updatedAt: 1 },
   });
@@ -44,10 +44,26 @@ function signOut() {
 }
 
 describe('cloud analysis account gate', () => {
-  it('does not request cloud data with a saved key while logged out', () => {
+  it('shows login when neither an account nor API key is configured', () => {
     render(createElement(CloudAnalysisPanel));
-    expect(screen.getByText('Sign in to access cloud analysis spaces')).toBeTruthy();
     expect(listCloudSpaces).not.toHaveBeenCalled();
+  });
+
+  it('uses the independent API key configuration while logged out', async () => {
+    useAppStore.setState({
+      appConfig: {
+        ...useAppStore.getState().appConfig,
+        personalAnalysis: { apiOrigin: 'https://key.example', apiKey: 'fixed-key' },
+      } as NonNullable<ReturnType<typeof useAppStore.getState>['appConfig']>,
+    });
+    render(createElement(CloudAnalysisPanel));
+    await screen.findByText('Private space');
+    expect(listCloudSpaces).toHaveBeenCalledWith({
+      apiOrigin: 'https://key.example',
+      apiKey: 'fixed-key',
+      connectionMode: 'apiKey',
+    });
+    expect(useAppStore.getState().desktopAuthStatus.authenticated).toBe(false);
   });
 
   it('loads with the account after login and clears cloud content after logout', async () => {
@@ -60,7 +76,7 @@ describe('cloud analysis account gate', () => {
     });
     signOut();
     expect(screen.queryByText('Private space')).toBeNull();
-    expect(screen.getByText('Sign in to access cloud analysis spaces')).toBeTruthy();
+    expect(screen.getByText(i18n.t('cloudData.connectTitle'))).toBeTruthy();
     expect(listCloudSpaces).toHaveBeenCalledTimes(1);
     signIn();
     await waitFor(() => expect(listCloudSpaces).toHaveBeenCalledTimes(2));

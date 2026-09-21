@@ -1,5 +1,19 @@
 # Personal Analysis Mock Server Integration
 
+## 认证生命周期（2026-09-21 更新）
+
+账号和个人分析 API Key 是独立服务凭证：
+
+- 账号登录仅写入加密的 `desktop-auth` 会话存储（accessToken、refreshToken、服务地址、用户与过期时间），不写入 `personalAnalysis.apiKey`。
+- 个人分析配置仅保存固定 API Key 和该 key 对应的服务地址；更换、清除、撤销 API Key 不改变账号会话。
+- 登录服务地址取自 `SOPHRON_DESKTOP_AUTH_ORIGIN` 或环境默认值，与 API Key 服务地址分开。已有会话继续使用其保存的登录服务地址。
+- 账号在发起请求前按需刷新临近过期的 token；云接口认证失败后刷新并重试一次；并发请求共用一次刷新。临时网络失败保留会话，refresh token 被拒绝才需要重新登录。
+- 账号登录和内置 LLM 均使用真实账号 token，localhost 不再替换成固定的 `mock-token`。
+- API Key 模式只走 API Key 换票接口，失效时不回退账号；账号模式不回退 API Key，也不向 API Key 服务地址发送账号 token。
+- 当前界面按独立配置选择服务：有 API Key 配置时优先使用该服务，断开后回退已登录账号。配置 API Key 不表示账号已登录。
+
+mock server 的 `POST /api/desktop/auth/token` 支持 `grantType: "refresh_token"`、`refreshToken`、`clientId`，返回轮换后的 accessToken/refreshToken；`POST /api/personal/api-keys/revoke` 通过 `X-API-Key` 撤销 key 及它派生的 bearer，不影响账号。详见 mock server `API_CALLS.md` 与 `npm run test:auth`。
+
 ## 目标
 
 打通 cowork 与 Personal Analysis mock server 的本地联调链路，让用户可以在 cowork 中访问云分析空间、导入云端表，并将本地数据结果上传回 Personal Analysis。
@@ -8,7 +22,7 @@
 
 - 默认路径：用户登录后，以当前账号身份访问有权限的分析空间。
 - 高级路径：专业用户、开发者或集成场景可以配置 API Key，访问该 API Key 被授权的数据范围。
-- API Key 是显式高级凭证；当用户同时已登录并配置 API Key 时，默认使用账号模式，并允许用户临时切换为 API Key 模式。
+- API Key 是独立的高级凭证；配置后优先使用 API Key 服务，断开配置后回退已登录账号。
 
 mock server 只用于本地联调。接入真实服务时，应尽量复用 cowork 侧的 client、command service、IPC 和 UI 流程。
 
@@ -53,15 +67,15 @@ API Key
 ### 优先级
 
 ```text
-isLoggedIn
-  -> 账号模式
-else if hasApiKeyConfig
+hasApiKeyConfig
   -> API Key 模式
+else if isLoggedIn
+  -> 账号模式
 else
   -> 未连接，引导登录
 ```
 
-当用户同时已登录并配置了 API Key 时，页面默认处于账号模式，并提供“切换为 API Key 访问”的入口；切换为 API Key 模式后也应提供“切换为账号访问”的入口。切换访问身份不应清空 API Key 配置，只改变当前云分析页面和后续云分析请求的 `connectionMode`。
+页面根据独立配置自动选择访问模式，后续云分析请求显式携带 `connectionMode`。API Key 失效时显示该服务的错误，不自动使用账号绕过。
 
 ## 页面状态
 
@@ -99,31 +113,7 @@ API Key 模式 · 开发者连接 · http://127.0.0.1:3000
 
 ### 已登录 + 有 API Key
 
-账号模式优先，自动加载当前登录账号有权限的云分析空间。
-
-顶部状态示例：
-
-```text
-账号模式 · 测试用户 · http://127.0.0.1:3000
-```
-
-提供：
-
-- `切换为 API Key 访问`
-- `刷新`
-- `管理连接`
-
-用户切换到 API Key 模式后，顶部状态示例：
-
-```text
-API Key 模式 · 已登录：测试用户 · http://127.0.0.1:3000
-```
-
-此时提供：
-
-- `切换为账号访问`
-- `刷新`
-- `管理连接`
+使用配置的 API Key 服务，账号登录状态独立保留。设置中断开 API Key 后，云分析自动回退到账号服务；无需退出或重新登录。
 
 ## 主要能力
 
@@ -262,7 +252,7 @@ connectionMode omitted
   - 账号模式 / API Key 模式状态显示。
   - 云分析空间资源浏览。
   - 表预览与导入。
-  - 临时切换账号访问 / API Key 访问，不清空 API Key 配置。
+  - 按已保存的 API Key 配置和账号会话自动选择服务。
 - `src/renderer/components/settings/SettingsPersonalAnalysis.tsx`
   - API Key 高级连接配置。
   - 测试连接、保存、更换、断开。

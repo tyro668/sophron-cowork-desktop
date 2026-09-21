@@ -88,10 +88,12 @@ function buildAppConfig(base: AppConfig, resolved: ResolvedMemoryModelConfig): A
 }
 
 export class MemoryLLMClient implements MemoryLLMClientLike {
-  constructor(private readonly getConfig: () => AppConfig = () => configStore.getAll()) {}
+  constructor(
+    private readonly getConfig: () => AppConfig | Promise<AppConfig> = () => configStore.getAll()
+  ) {}
 
   async complete(request: MemoryCompletionRequest): Promise<MemoryCompletionResponse> {
-    const appConfig = this.getConfig();
+    const appConfig = await this.getConfig();
     const llmConfig = normalizeModelConfig(
       appConfig,
       appConfig.memoryRuntime?.llm,
@@ -147,7 +149,7 @@ export class MemoryLLMClient implements MemoryLLMClientLike {
       return [];
     }
 
-    const appConfig = this.getConfig();
+    const appConfig = await this.getConfig();
     if (!appConfig.memoryRuntime?.useEmbedding) {
       return [];
     }
