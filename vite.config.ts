@@ -22,7 +22,7 @@ export default defineConfig({
       {
         entry: 'src/main/index.ts',
         onstart(args) {
-          args.startup();
+          args.startup(['.', '--remote-debugging-port=9223']);
         },
         vite: {
           build: {

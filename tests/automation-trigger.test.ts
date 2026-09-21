@@ -11,10 +11,45 @@ function localTimestamp(
   hour: number,
   minute: number
 ): number {
-  return new Date(year, month - 1, day, hour, minute, 0, 0).getTime();
+  return Date.UTC(year, month - 1, day, hour - 8, minute);
 }
 
 describe('automation trigger calculation', () => {
+  it('honors timezone and the next minute rather than skipping a near-future slot', () => {
+    const now = Date.parse('2026-06-06T00:59:30Z');
+    expect(
+      computeNextAutomationRunAt(
+        { kind: 'daily', times: ['09:00'], timezone: 'Asia/Shanghai' },
+        now
+      )
+    ).toBe(Date.parse('2026-06-06T01:00:00Z'));
+    expect(
+      computeNextAutomationRunAt({ kind: 'cron', expression: '0 9 * * *', timezone: 'UTC' }, now)
+    ).toBe(Date.parse('2026-06-06T09:00:00Z'));
+  });
+
+  it('supports cron steps, ranges, last day and end boundaries', () => {
+    const now = Date.parse('2026-06-06T09:14:30Z');
+    expect(
+      computeNextAutomationRunAt(
+        { kind: 'cron', expression: '*/15 9-17 * * *', timezone: 'UTC' },
+        now
+      )
+    ).toBe(Date.parse('2026-06-06T09:15:00Z'));
+    expect(
+      computeNextAutomationRunAt({ kind: 'cron', expression: '0 9 L * *', timezone: 'UTC' }, now)
+    ).toBe(Date.parse('2026-06-30T09:00:00Z'));
+    expect(
+      computeNextAutomationRunAt(
+        { kind: 'daily', times: ['09:15'], timezone: 'UTC', endAt: now },
+        now
+      )
+    ).toBeNull();
+    expect(() =>
+      normalizeAutomationTrigger({ kind: 'cron', expression: 'invalid', timezone: 'UTC' })
+    ).toThrow();
+  });
+
   it('returns a future one-time run and disables overdue one-time runs', () => {
     const now = localTimestamp(2026, 6, 6, 9, 0);
     expect(

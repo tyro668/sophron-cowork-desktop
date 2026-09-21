@@ -40,15 +40,12 @@ import type {
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
 import type { DataInputTablePreview, DataOutputTable } from '../../shared/contracts';
-import type { ScheduleConfig } from '../../shared/contracts/schedule';
-import {
-  computeNextRunAtFromScheduleConfig,
-  normalizeScheduleConfig,
-} from '../schedule/scheduled-task-manager';
+import { calendarCronPatterns } from '../schedule/calendar-schedule';
+import { Cron } from 'croner';
+import { normalizeScheduleConfig } from '../schedule/scheduled-task-manager';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
-const MAX_ACTION_TIMER_DELAY_MS = 6 * 60 * 60 * 1000;
 
 export interface CloudAnalysisCommandServiceOptions {
   getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
@@ -58,8 +55,10 @@ export interface CloudAnalysisCommandServiceOptions {
 export class CloudAnalysisCommandService {
   private readonly outputActionQueues = new Map<string, Promise<unknown>>();
   private readonly pendingOutputActions = new Map<string, CloudOutputAction>();
-  private readonly outputActionTimers = new Map<string, NodeJS.Timeout>();
+  private readonly outputActionJobs = new Map<string, Cron[]>();
   private actionTimersArmed = false;
+  private actionTimersArming: Promise<void> | null = null;
+  private actionTimerRetry: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly store: DataTaskStore,
@@ -263,21 +262,38 @@ export class CloudAnalysisCommandService {
   }
 
   /**
-   * Arms interval timers for output tables whose cloud action runs on a
-   * schedule. Idempotent; resolves once the metadata store is ready.
+   * Arms cron jobs for output tables whose cloud action runs on a schedule.
+   * Idempotent; resolves once the metadata store is ready.
    */
   async ensureActionTimersArmed(): Promise<void> {
     if (this.actionTimersArmed) return;
-    this.actionTimersArmed = true;
-    try {
-      const bound = await this.store.listOutputTableCloudActions();
-      for (const { id, action } of bound) {
-        this.rearmActionTimer(id, action);
+    if (this.actionTimersArming) return this.actionTimersArming;
+    this.actionTimersArming = (async () => {
+      try {
+        const bound = await this.store.listOutputTableCloudActions();
+        for (const { id } of bound) {
+          await this.enqueueOutputAction(id, async () => {
+            const current = await this.store.getOutputTableRecord(id);
+            this.rearmActionTimer(id, current?.cloudAction ?? null);
+          });
+        }
+        this.actionTimersArmed = true;
+        if (this.actionTimerRetry) clearTimeout(this.actionTimerRetry);
+        this.actionTimerRetry = null;
+      } catch (error) {
+        console.warn('[Data] Failed to arm cloud action timers:', error);
+        if (!this.actionTimerRetry) {
+          this.actionTimerRetry = setTimeout(() => {
+            this.actionTimerRetry = null;
+            void this.ensureActionTimersArmed();
+          }, 5000);
+          this.actionTimerRetry.unref?.();
+        }
+      } finally {
+        this.actionTimersArming = null;
       }
-    } catch (error) {
-      this.actionTimersArmed = false;
-      console.warn('[Data] Failed to arm cloud action timers:', error);
-    }
+    })();
+    return this.actionTimersArming;
   }
 
   private normalizeOutputAction(spec: CloudOutputActionSpec): CloudOutputAction {
@@ -311,34 +327,36 @@ export class CloudAnalysisCommandService {
   }
 
   private rearmActionTimer(outputTableId: string, action: CloudOutputAction | null): void {
-    const existing = this.outputActionTimers.get(outputTableId);
-    if (existing) {
-      clearTimeout(existing);
-      this.outputActionTimers.delete(outputTableId);
+    for (const job of this.outputActionJobs.get(outputTableId) ?? []) {
+      job.stop();
     }
+    this.outputActionJobs.delete(outputTableId);
     const schedule = action?.trigger === 'schedule' ? action.schedule : null;
     if (!schedule) return;
 
-    const arm = () => {
-      const nextRunAt = computeNextRunAtFromScheduleConfig(schedule, Date.now());
-      if (nextRunAt === null) {
-        this.outputActionTimers.delete(outputTableId);
-        return;
+    const jobs: Cron[] = [];
+    for (const pattern of calendarCronPatterns(schedule)) {
+      try {
+        jobs.push(
+          new Cron(pattern, { unref: true, protect: true }, () => {
+            return this.enqueueOutputAction(outputTableId, async () => {
+              const current = await this.store.getOutputTableRecord(outputTableId);
+              if (
+                current?.cloudAction?.trigger !== 'schedule' ||
+                JSON.stringify(current.cloudAction.schedule) !== JSON.stringify(schedule)
+              )
+                return;
+              await this.executeOutputAction(outputTableId, {});
+            }).catch(() => undefined);
+          })
+        );
+      } catch (error) {
+        console.warn('[Data] Invalid cloud action cron pattern:', pattern, error);
       }
-      const delay = Math.min(Math.max(nextRunAt - Date.now(), 0), MAX_ACTION_TIMER_DELAY_MS);
-      const timer = setTimeout(() => {
-        this.outputActionTimers.delete(outputTableId);
-        if (Date.now() >= nextRunAt - 1000) {
-          void this.enqueueOutputAction(outputTableId, () =>
-            this.executeOutputAction(outputTableId, {})
-          ).catch(() => undefined);
-        }
-        arm();
-      }, delay);
-      timer.unref?.();
-      this.outputActionTimers.set(outputTableId, timer);
-    };
-    arm();
+    }
+    if (jobs.length) {
+      this.outputActionJobs.set(outputTableId, jobs);
+    }
   }
 
   private enqueueOutputAction<T>(outputTableId: string, run: () => Promise<T>): Promise<T> {

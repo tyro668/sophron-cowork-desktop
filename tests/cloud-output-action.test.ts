@@ -51,10 +51,76 @@ function deferred() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe('cloud output action consistency', () => {
+  it('restores persisted schedules on a fresh service and triggers at the configured time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 6, 8, 59, 59));
+    const { service, store } = fixture();
+    const action: CloudOutputAction = {
+      type: 'drive_file',
+      trigger: 'schedule',
+      spaceId: 's',
+      projectId: 'p',
+      fileId: 'old-file',
+      schedule: { kind: 'daily', times: ['09:00'] },
+    };
+    await store.updateOutputTableCloudAction('out', action);
+    Object.assign(store, {
+      listOutputTableCloudActions: vi.fn(async () => [{ id: 'out', action }]),
+    });
+    await service.ensureActionTimersArmed();
+    await service.ensureActionTimersArmed();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(syncDriveCsv).toHaveBeenCalledTimes(1);
+    await service.setOutputTableCloudAction({ outputTableId: 'out', action: null });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not restore a stale startup schedule after the action is removed', async () => {
+    vi.useFakeTimers();
+    const { service, store } = fixture();
+    const gate = deferred();
+    Object.assign(store, {
+      listOutputTableCloudActions: vi.fn(async () => {
+        await gate.promise;
+        return [
+          {
+            id: 'out',
+            action: {
+              type: 'drive_file',
+              trigger: 'schedule',
+              schedule: { kind: 'daily', times: ['09:00'] },
+            },
+          },
+        ];
+      }),
+    });
+    const restoring = service.ensureActionTimersArmed();
+    await service.setOutputTableCloudAction({ outputTableId: 'out', action: null });
+    gate.resolve();
+    await restoring;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('retries failed startup restoration without requiring an output commit', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { service, store } = fixture();
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('database temporarily unavailable'))
+      .mockResolvedValue([]);
+    Object.assign(store, { listOutputTableCloudActions: list });
+    await service.ensureActionTimersArmed();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('reports persistence failure and recovers the remote version before the next upload', async () => {
     const { service, store, action } = fixture();
     vi.spyOn(console, 'warn').mockImplementation(() => {});

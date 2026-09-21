@@ -359,12 +359,6 @@
         "triggerLabel": "Trigger",
         "triggerOnChange": "On data change",
         "triggerSchedule": "Scheduled",
-        "interval1": "Every 1 min",
-        "interval15": "Every 15 min",
-        "interval30": "Every 30 min",
-        "interval60": "Every 1 hour",
-        "interval360": "Every 6 hours",
-        "interval1440": "Every 24 hours",
         "space": "Analysis space",
         "project": "Project",
         "targetFile": "Target file",
@@ -381,7 +375,14 @@
         "remove": "Remove action",
         "removeSuccess": "Cloud action removed",
         "runNow": "Run now",
-        "runSuccess": "Ran successfully at {{time}}"
+        "runSuccess": "Ran successfully at {{time}}",
+        "frequency": "Frequency",
+        "freqDaily": "Daily",
+        "freqWeekly": "Weekly",
+        "freqMonthly": "Monthly",
+        "weekdays": "Weekdays",
+        "monthDays": "Days of month",
+        "runTimes": "Run times"
       },
       "status": {
         "available": "Available"

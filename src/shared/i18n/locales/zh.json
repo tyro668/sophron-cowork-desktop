@@ -359,12 +359,6 @@
         "triggerLabel": "触发方式",
         "triggerOnChange": "数据变更时",
         "triggerSchedule": "定时执行",
-        "interval1": "每 1 分钟",
-        "interval15": "每 15 分钟",
-        "interval30": "每 30 分钟",
-        "interval60": "每 1 小时",
-        "interval360": "每 6 小时",
-        "interval1440": "每 24 小时",
         "space": "分析空间",
         "project": "项目",
         "targetFile": "目标文件",
@@ -381,7 +375,14 @@
         "remove": "解除动作",
         "removeSuccess": "已解除云端动作",
         "runNow": "立即执行",
-        "runSuccess": "已于 {{time}} 执行完成"
+        "runSuccess": "已于 {{time}} 执行完成",
+        "frequency": "执行频率",
+        "freqDaily": "每天",
+        "freqWeekly": "每周",
+        "freqMonthly": "每月",
+        "weekdays": "执行日",
+        "monthDays": "执行日期",
+        "runTimes": "执行时间"
       },
       "status": {
         "available": "可用"

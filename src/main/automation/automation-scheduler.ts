@@ -21,6 +21,7 @@ export class AutomationScheduler {
   private readonly resolveProjectCwd?: (projectId: string) => string | null;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private ticking = false;
   private readonly fileWatchers = new Map<string, FileWatcherRecord>();
 
   constructor(
@@ -68,7 +69,8 @@ export class AutomationScheduler {
   }
 
   private scheduleNextTick(): void {
-    if (!this.running) return;
+    if (!this.running || this.ticking) return;
+    if (this.timer) clearTimeout(this.timer);
     const nextRunAt = this.service
       .list({ status: 'all' })
       .filter((automation) => automation.enabled && automation.status !== 'paused')
@@ -143,10 +145,23 @@ export class AutomationScheduler {
 
   private async tick(): Promise<void> {
     this.timer = null;
+    if (!this.running || this.ticking) return;
+    this.ticking = true;
+    let failed = false;
     try {
       await this.service.runDueAutomations();
+    } catch (error) {
+      failed = true;
+      console.warn('[Automation] Scheduler tick failed:', error);
     } finally {
-      this.scheduleNextTick();
+      this.ticking = false;
+      if (failed && this.running) {
+        this.timer = setTimeout(() => {
+          void this.tick();
+        }, 5000);
+      } else {
+        this.scheduleNextTick();
+      }
     }
   }
 }

@@ -30,6 +30,12 @@ import type {
   PersonalAnalysisSpace,
   PersonalAnalysisTable,
 } from '../../types';
+import type { ScheduleConfig, ScheduleWeekday } from '../../../shared/contracts/schedule';
+import {
+  MonthlyDayPicker,
+  TimesEditor,
+  WeekdayPicker,
+} from '../settings/schedule/schedule-time-pickers';
 import { getPersonalAnalysisErrorMessage } from '../../../shared/personal-analysis';
 import { useAppStore } from '../../store';
 import {
@@ -48,7 +54,6 @@ import {
 import { dataClient } from '../../features/data/api/data-client';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { GlassSelect } from '../GlassSelect';
 
 export function OutputTablesPanel({
   outputTables,
@@ -292,7 +297,19 @@ export function OutputTablesPanel({
   );
 }
 
-const CLOUD_ACTION_INTERVALS = [1, 15, 30, 60, 360, 1440];
+const DEFAULT_ACTION_TIME = '09:00';
+
+function scheduleKey(schedule: ScheduleConfig | null | undefined): string {
+  if (!schedule) return '';
+  const times = [...schedule.times].sort().join(',');
+  if (schedule.kind === 'weekly') {
+    return `weekly|${[...schedule.weekdays].sort((a, b) => a - b).join(',')}|${times}`;
+  }
+  if (schedule.kind === 'monthly') {
+    return `monthly|${[...schedule.daysOfMonth].sort((a, b) => a - b).join(',')}|${schedule.includeLastDay === true ? 1 : 0}|${times}`;
+  }
+  return `daily|${times}`;
+}
 
 function CloudActionOptionGroup<T extends string>({
   value,
@@ -356,7 +373,21 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
   const [trigger, setTrigger] = useState<CloudOutputActionTrigger>(
     boundAction?.trigger ?? 'on_change'
   );
-  const [intervalMinutes, setIntervalMinutes] = useState(boundAction?.intervalMinutes ?? 60);
+  const [scheduleKind, setScheduleKind] = useState<ScheduleConfig['kind']>(
+    boundAction?.schedule?.kind ?? 'daily'
+  );
+  const [scheduleTimes, setScheduleTimes] = useState<string[]>(
+    boundAction?.schedule?.times ?? [DEFAULT_ACTION_TIME]
+  );
+  const [weekdays, setWeekdays] = useState<ScheduleWeekday[]>(
+    boundAction?.schedule?.kind === 'weekly' ? boundAction.schedule.weekdays : [1]
+  );
+  const [daysOfMonth, setDaysOfMonth] = useState<number[]>(
+    boundAction?.schedule?.kind === 'monthly' ? boundAction.schedule.daysOfMonth : [1]
+  );
+  const [includeLastDay, setIncludeLastDay] = useState(
+    boundAction?.schedule?.kind === 'monthly' ? boundAction.schedule.includeLastDay === true : false
+  );
   const [spaceId, setSpaceId] = useState(boundAction?.spaceId ?? '');
   const [projectId, setProjectId] = useState(boundAction?.projectId ?? '');
   const [targetFileId, setTargetFileId] = useState(
@@ -394,7 +425,13 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     setBoundAction(action);
     setActionType(action?.type ?? 'cloud_table');
     setTrigger(action?.trigger ?? 'on_change');
-    setIntervalMinutes(action?.intervalMinutes ?? 60);
+    setScheduleKind(action?.schedule?.kind ?? 'daily');
+    setScheduleTimes(action?.schedule?.times ?? [DEFAULT_ACTION_TIME]);
+    setWeekdays(action?.schedule?.kind === 'weekly' ? action.schedule.weekdays : [1]);
+    setDaysOfMonth(action?.schedule?.kind === 'monthly' ? action.schedule.daysOfMonth : [1]);
+    setIncludeLastDay(
+      action?.schedule?.kind === 'monthly' ? action.schedule.includeLastDay === true : false
+    );
     setSpaceId(action?.spaceId ?? '');
     setProjectId(action?.projectId ?? '');
     setTargetFileId(action?.type === 'drive_file' ? (action.fileId ?? '') : '');
@@ -501,11 +538,21 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
         outputTable.name
       : tableName.trim();
 
+  const schedule = useMemo<ScheduleConfig>(() => {
+    if (scheduleKind === 'weekly') {
+      return { kind: 'weekly', weekdays, times: scheduleTimes };
+    }
+    if (scheduleKind === 'monthly') {
+      return { kind: 'monthly', daysOfMonth, includeLastDay, times: scheduleTimes };
+    }
+    return { kind: 'daily', times: scheduleTimes };
+  }, [scheduleKind, scheduleTimes, weekdays, daysOfMonth, includeLastDay]);
+
   const spec = useMemo<CloudOutputActionSpec | null>(() => {
     if (!spaceId || !projectId) return null;
     const base = {
       trigger,
-      intervalMinutes: trigger === 'schedule' ? intervalMinutes : undefined,
+      ...(trigger === 'schedule' ? { schedule } : {}),
       spaceId,
       projectId,
     };
@@ -526,10 +573,10 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     };
   }, [
     actionType,
-    intervalMinutes,
     normalizedFileName,
     projectId,
     resolvedTableName,
+    schedule,
     spaceId,
     targetFileId,
     targetTableId,
@@ -543,7 +590,7 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     return (
       boundAction.type !== spec.type ||
       boundAction.trigger !== spec.trigger ||
-      (boundAction.intervalMinutes ?? 0) !== (spec.intervalMinutes ?? 0) ||
+      scheduleKey(boundAction.schedule) !== scheduleKey(spec.schedule) ||
       boundAction.spaceId !== spec.spaceId ||
       boundAction.projectId !== spec.projectId ||
       (boundAction.fileId ?? '') !== (spec.fileId ?? '') ||
@@ -557,7 +604,12 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     spec &&
     (actionType === 'drive_file'
       ? targetFileId || normalizedFileName
-      : resolvedTableName && (writeMode === 'CREATE' || targetTableId))
+      : resolvedTableName && (writeMode === 'CREATE' || targetTableId)) &&
+    (trigger !== 'schedule' ||
+      (scheduleTimes.length > 0 &&
+        (scheduleKind === 'daily' ||
+          (scheduleKind === 'weekly' && weekdays.length > 0) ||
+          (scheduleKind === 'monthly' && (daysOfMonth.length > 0 || includeLastDay)))))
   );
 
   const applySavedAction = (action: CloudOutputAction | null) => {
@@ -688,8 +740,16 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     setActionType,
     trigger,
     setTrigger,
-    intervalMinutes,
-    setIntervalMinutes,
+    scheduleKind,
+    setScheduleKind,
+    scheduleTimes,
+    setScheduleTimes,
+    weekdays,
+    setWeekdays,
+    daysOfMonth,
+    setDaysOfMonth,
+    includeLastDay,
+    setIncludeLastDay,
     spaceId,
     setSpaceId,
     projectId,
@@ -1102,35 +1162,84 @@ export function OutputTableEditor({
                   <InputTableFormLabel>
                     {t('data.outputTables.cloudAction.triggerLabel')}
                   </InputTableFormLabel>
-                  <div className="flex items-center gap-2">
-                    <CloudActionOptionGroup
-                      value={cloud.trigger}
-                      disabled={busy}
-                      onChange={cloud.setTrigger}
-                      options={[
-                        {
-                          value: 'on_change',
-                          label: t('data.outputTables.cloudAction.triggerOnChange'),
-                        },
-                        {
-                          value: 'schedule',
-                          label: t('data.outputTables.cloudAction.triggerSchedule'),
-                        },
-                      ]}
-                    />
-                    {cloud.trigger === 'schedule' && (
-                      <GlassSelect
-                        value={String(cloud.intervalMinutes)}
+                  <CloudActionOptionGroup
+                    value={cloud.trigger}
+                    disabled={busy}
+                    onChange={cloud.setTrigger}
+                    options={[
+                      {
+                        value: 'on_change',
+                        label: t('data.outputTables.cloudAction.triggerOnChange'),
+                      },
+                      {
+                        value: 'schedule',
+                        label: t('data.outputTables.cloudAction.triggerSchedule'),
+                      },
+                    ]}
+                  />
+
+                  {cloud.trigger === 'schedule' && (
+                    <>
+                      <InputTableFormLabel>
+                        {t('data.outputTables.cloudAction.frequency')}
+                      </InputTableFormLabel>
+                      <CloudActionOptionGroup
+                        value={cloud.scheduleKind}
                         disabled={busy}
-                        onValueChange={(value) => cloud.setIntervalMinutes(Number(value))}
-                        triggerClassName="!h-7 w-28 rounded-lg bg-surface px-2.5 text-[12px] font-medium text-text-secondary"
-                        options={CLOUD_ACTION_INTERVALS.map((minutes) => ({
-                          value: String(minutes),
-                          label: t(`data.outputTables.cloudAction.interval${minutes}`),
-                        }))}
+                        onChange={cloud.setScheduleKind}
+                        options={[
+                          {
+                            value: 'daily',
+                            label: t('data.outputTables.cloudAction.freqDaily'),
+                          },
+                          {
+                            value: 'weekly',
+                            label: t('data.outputTables.cloudAction.freqWeekly'),
+                          },
+                          {
+                            value: 'monthly',
+                            label: t('data.outputTables.cloudAction.freqMonthly'),
+                          },
+                        ]}
                       />
-                    )}
-                  </div>
+                      {cloud.scheduleKind === 'weekly' && (
+                        <>
+                          <InputTableFormLabel>
+                            {t('data.outputTables.cloudAction.weekdays')}
+                          </InputTableFormLabel>
+                          <WeekdayPicker
+                            value={cloud.weekdays}
+                            onChange={cloud.setWeekdays}
+                            tr={(key, fallback) => t(key, { defaultValue: fallback })}
+                          />
+                        </>
+                      )}
+                      {cloud.scheduleKind === 'monthly' && (
+                        <>
+                          <InputTableFormLabel>
+                            {t('data.outputTables.cloudAction.monthDays')}
+                          </InputTableFormLabel>
+                          <MonthlyDayPicker
+                            daysOfMonth={cloud.daysOfMonth}
+                            includeLastDay={cloud.includeLastDay}
+                            onChange={(next) => {
+                              cloud.setDaysOfMonth(next.daysOfMonth);
+                              cloud.setIncludeLastDay(next.includeLastDay);
+                            }}
+                            tr={(key, fallback) => t(key, { defaultValue: fallback })}
+                          />
+                        </>
+                      )}
+                      <InputTableFormLabel>
+                        {t('data.outputTables.cloudAction.runTimes')}
+                      </InputTableFormLabel>
+                      <TimesEditor
+                        times={cloud.scheduleTimes}
+                        onChange={cloud.setScheduleTimes}
+                        tr={(key, fallback) => t(key, { defaultValue: fallback })}
+                      />
+                    </>
+                  )}
                 </>
               )}
             </>

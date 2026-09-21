@@ -10,6 +10,9 @@ import type {
   AutomationTriggerWeekly,
 } from '../../shared/automation/types';
 
+import { Cron } from 'croner';
+import { calendarCronPatterns } from '../schedule/calendar-schedule';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function normalizeAutomationTrigger(trigger: AutomationTrigger): AutomationTrigger {
@@ -51,24 +54,18 @@ export function computeNextAutomationRunAt(
     return computeNextIntervalRunAt(trigger, now);
   }
   if (trigger.kind === 'daily') {
-    return findNextScheduledSlot(now, trigger.times, undefined, trigger.startAt, trigger.endAt);
+    return nextCalendarRun(trigger, now);
   }
   if (trigger.kind === 'weekly') {
-    return findNextScheduledSlot(
-      now,
-      trigger.times,
-      trigger.weekdays,
-      trigger.startAt,
-      trigger.endAt
-    );
+    return nextCalendarRun(trigger, now);
   }
   if (trigger.kind === 'monthly') {
-    return findNextMonthlySlot(now, trigger);
+    return nextCalendarRun(trigger, now);
   }
   if (trigger.kind === 'file_change') {
     return null;
   }
-  return computeNextCronRunAt(trigger, now);
+  return nextCalendarRun(trigger, now);
 }
 
 function normalizeManualTrigger(trigger: AutomationTriggerManual): AutomationTriggerManual {
@@ -144,6 +141,11 @@ function normalizeMonthlyTrigger(trigger: AutomationTriggerMonthly): AutomationT
 }
 
 function normalizeCronTrigger(trigger: AutomationTriggerCron): AutomationTriggerCron {
+  const job = new Cron(trigger.expression.trim(), {
+    paused: true,
+    timezone: normalizeTimezone(trigger.timezone),
+  });
+  job.stop();
   return {
     kind: 'cron',
     expression: trigger.expression.trim(),
@@ -188,160 +190,26 @@ function getIntervalMs(every: number, unit: AutomationTriggerInterval['unit']): 
   return every * DAY_MS;
 }
 
-function findNextScheduledSlot(
-  now: number,
-  times: string[],
-  weekdays?: number[],
-  startAt?: number | null,
-  endAt?: number | null
+function nextCalendarRun(
+  trigger:
+    | AutomationTriggerDaily
+    | AutomationTriggerWeekly
+    | AutomationTriggerMonthly
+    | AutomationTriggerCron,
+  now: number
 ): number | null {
-  const normalizedTimes = normalizeTimes(times);
-  if (normalizedTimes.length === 0) return null;
-  const allowedWeekdays = weekdays ? new Set(normalizeWeekdays(weekdays)) : null;
-  const nowDate = new Date(Math.max(now, startAt ?? now));
-
-  for (let dayOffset = 0; dayOffset <= 14; dayOffset += 1) {
-    const candidateDate = new Date(
-      nowDate.getFullYear(),
-      nowDate.getMonth(),
-      nowDate.getDate() + dayOffset,
-      0,
-      0,
-      0,
-      0
-    );
-    if (
-      allowedWeekdays &&
-      !allowedWeekdays.has(candidateDate.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)
-    ) {
-      continue;
+  const patterns = trigger.kind === 'cron' ? [trigger.expression] : calendarCronPatterns(trigger);
+  const after = new Date(Math.max(now, (trigger.startAt ?? now) - 1));
+  const candidates = patterns.flatMap((pattern) => {
+    const job = new Cron(pattern, { paused: true, timezone: trigger.timezone });
+    try {
+      const next = job.nextRun(after)?.getTime();
+      return next === undefined ? [] : [next];
+    } finally {
+      job.stop();
     }
-    for (const time of normalizedTimes) {
-      const [hour, minute] = time.split(':').map(Number);
-      const candidate = new Date(
-        candidateDate.getFullYear(),
-        candidateDate.getMonth(),
-        candidateDate.getDate(),
-        hour,
-        minute,
-        0,
-        0
-      ).getTime();
-      if (candidate > now && candidate >= (startAt ?? 0)) {
-        return withinEnd(candidate, endAt);
-      }
-    }
-  }
-  return null;
-}
-
-function findNextMonthlySlot(now: number, trigger: AutomationTriggerMonthly): number | null {
-  const normalized = normalizeMonthlyTrigger(trigger);
-  if (normalized.times.length === 0) return null;
-  if (normalized.daysOfMonth.length === 0 && !normalized.includeLastDay) return null;
-
-  const nowDate = new Date(Math.max(now, normalized.startAt ?? now));
-  const startMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1, 0, 0, 0, 0);
-
-  for (let monthOffset = 0; monthOffset <= 24; monthOffset += 1) {
-    const monthDate = new Date(
-      startMonth.getFullYear(),
-      startMonth.getMonth() + monthOffset,
-      1,
-      0,
-      0,
-      0,
-      0
-    );
-    const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-    const candidateDays = new Set(normalized.daysOfMonth.filter((day) => day <= lastDay));
-    if (normalized.includeLastDay) {
-      candidateDays.add(lastDay);
-    }
-
-    for (const day of Array.from(candidateDays).sort((left, right) => left - right)) {
-      for (const time of normalized.times) {
-        const [hour, minute] = time.split(':').map(Number);
-        const candidate = new Date(
-          monthDate.getFullYear(),
-          monthDate.getMonth(),
-          day,
-          hour,
-          minute,
-          0,
-          0
-        ).getTime();
-        if (candidate > now && candidate >= (normalized.startAt ?? 0)) {
-          return withinEnd(candidate, normalized.endAt);
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function computeNextCronRunAt(trigger: AutomationTriggerCron, now: number): number | null {
-  // Minimal cron support for the first implementation: five fields with minute/hour
-  // lists or wildcards. More expressive cron can be swapped in without changing storage.
-  const parsed = parseSimpleCron(trigger.expression);
-  if (!parsed) return null;
-  const start = Math.max(now + 60 * 1000, trigger.startAt ?? now);
-  for (let cursor = start; cursor <= start + 366 * DAY_MS; cursor += 60 * 1000) {
-    const date = new Date(cursor);
-    if (
-      parsed.minutes.has(date.getMinutes()) &&
-      parsed.hours.has(date.getHours()) &&
-      parsed.daysOfMonth.has(date.getDate()) &&
-      parsed.months.has(date.getMonth() + 1) &&
-      parsed.weekdays.has(date.getDay())
-    ) {
-      return withinEnd(
-        new Date(
-          date.getFullYear(),
-          date.getMonth(),
-          date.getDate(),
-          date.getHours(),
-          date.getMinutes(),
-          0,
-          0
-        ).getTime(),
-        trigger.endAt
-      );
-    }
-  }
-  return null;
-}
-
-function parseSimpleCron(expression: string): {
-  minutes: Set<number>;
-  hours: Set<number>;
-  daysOfMonth: Set<number>;
-  months: Set<number>;
-  weekdays: Set<number>;
-} | null {
-  const fields = expression.trim().split(/\s+/);
-  if (fields.length !== 5) return null;
-  const minutes = parseCronField(fields[0], 0, 59);
-  const hours = parseCronField(fields[1], 0, 23);
-  const daysOfMonth = parseCronField(fields[2], 1, 31);
-  const months = parseCronField(fields[3], 1, 12);
-  const weekdays = parseCronField(fields[4], 0, 6);
-  if (!minutes || !hours || !daysOfMonth || !months || !weekdays) return null;
-  return { minutes, hours, daysOfMonth, months, weekdays };
-}
-
-function parseCronField(field: string, min: number, max: number): Set<number> | null {
-  const values = new Set<number>();
-  if (field === '*') {
-    for (let value = min; value <= max; value += 1) values.add(value);
-    return values;
-  }
-  for (const part of field.split(',')) {
-    const value = Number(part);
-    if (!Number.isInteger(value) || value < min || value > max) return null;
-    values.add(value);
-  }
-  return values;
+  });
+  return candidates.length ? withinEnd(Math.min(...candidates), trigger.endAt) : null;
 }
 
 function withinEnd(value: number, endAt?: number | null): number | null {
