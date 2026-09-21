@@ -569,7 +569,7 @@ export class CloudAnalysisCommandService {
     const datasources = await client.listDatasources();
     if (datasources.length === 0) {
       throw new Error(
-        'No Personal Analysis datasource is available for upload. Choose a project with an available datasource or pass datasourceId.'
+        'No Cloud Space datasource is available for upload. Choose a project with an available datasource or pass datasourceId.'
       );
     }
 
@@ -578,7 +578,7 @@ export class CloudAnalysisCommandService {
     }
 
     throw new Error(
-      `Multiple Personal Analysis datasources are available: ${datasources
+      `Multiple Cloud Space datasources are available: ${datasources
         .map(formatDatasourceForError)
         .join(', ')}. Pass datasourceId for this upload.`
     );

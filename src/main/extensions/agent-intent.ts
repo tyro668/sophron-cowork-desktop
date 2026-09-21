@@ -11,7 +11,7 @@ import type { Message } from '../../shared/contracts';
 const DATA_PROMPT_PATTERN =
   /数据|数据集|数据表|输入表|输出表|字段|列名|清洗|筛选|过滤|聚合|透视|去重|缺失值|工作流|数据处理|导入|合并表|连接表|table\b|tables\b|dataset|workflow|data ?task|excel|csv|etl\b|pivot|aggregate|dedup|join\b/i;
 const DATA_FILE_PATTERN = /文件|文件夹|excel|csv|导入|上传|file\b|folder\b|import\b|upload/i;
-const DATA_CLOUD_PATTERN = /云|个人分析|云端|cloud|space\b|project\b/i;
+const DATA_CLOUD_PATTERN = /云|云空间|云端|cloud|space\b|project\b/i;
 const DATA_AUTHORING_PATTERN =
   /工作流|流程|节点|算子|dsl\b|plan\b|多表|多源|join\b|编排|修改流程|编辑流程|workflow/i;
 const DATA_GENERATION_PATTERN =

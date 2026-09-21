@@ -268,7 +268,7 @@ export function registerConfigIpc(): void {
       try {
         return await createPersonalAnalysisClient(payload).listDatasources();
       } catch (error) {
-        logError('[Config] Error listing Personal Analysis datasources:', error);
+        logError('[Config] Error listing Cloud Space datasources:', error);
         throw error;
       }
     }

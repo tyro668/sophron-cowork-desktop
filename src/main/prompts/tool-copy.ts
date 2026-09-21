@@ -1,7 +1,7 @@
 type ToolPromptCopy = Readonly<{ label: string; description: string }>;
 
 const CLOUD_CONNECTION_RETRY_GUIDANCE =
-  ' If a previous Personal Analysis authentication or connection error appears in the conversation, do not assume it is still current after the user updates Personal Analysis settings; retry this cloud tool for the new request.';
+  ' If a previous Cloud Space authentication or connection error appears in the conversation, do not assume it is still current after the user updates Cloud Space settings; retry this cloud tool for the new request.';
 
 export const DATA_TOOL_COPY = {
   data_list_input_tables: {
@@ -220,10 +220,9 @@ export const TOOL_SCHEMA_COPY = {
     resourceQuery: 'Search by resource name.',
     resultPreviewRows:
       'Number of result rows returned to the conversation. Defaults to 5 and is capped at 5; use data_preview_table only when the user explicitly requests more row values.',
-    apiOrigin:
-      'Personal analysis API origin. If omitted, the saved Personal Analysis setting is used.',
+    apiOrigin: 'Cloud space API origin. If omitted, the saved Cloud Space setting is used.',
     apiKey:
-      'Personal analysis API key used to exchange an access token. If omitted, the saved Personal Analysis setting is used.',
+      'Cloud space API key used to exchange an access token. If omitted, the saved Cloud Space setting is used.',
     accessToken: 'Optional Bearer token. If omitted, the tool exchanges apiKey for a token.',
     connectionMode:
       'Explicit credential mode. account uses the signed-in desktop account token only; apiKey uses the provided or saved API key only. If omitted, legacy fallback rules apply.',
@@ -235,7 +234,7 @@ export const TOOL_SCHEMA_COPY = {
     cloudSpaceId: 'Optional cloud space id. Pass with projectId to resolve the cloud table name.',
     cloudProjectId: 'Optional cloud project id. Pass with spaceId to resolve the cloud table name.',
     datasourceId:
-      'Personal analysis datasource id used for this upload. If omitted, the tool uses the only available datasource; when multiple datasources are available, ask the user to choose one.',
+      'Cloud space datasource id used for this upload. If omitted, the tool uses the only available datasource; when multiple datasources are available, ask the user to choose one.',
     replaceTableId: 'Required when writeMode=REPLACE. Must be omitted for CREATE.',
     uploadFileName: 'CSV file name sent to the upload API.',
     authorizedFilePath: 'Authorized local file path.',

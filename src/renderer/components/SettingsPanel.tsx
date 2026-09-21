@@ -108,7 +108,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
     },
     {
       id: 'personal-analysis' as TabId,
-      label: t('settings.personalAnalysis', 'Personal Analysis'),
+      label: t('settings.personalAnalysis', 'Cloud Space'),
       icon: Database,
     },
     {

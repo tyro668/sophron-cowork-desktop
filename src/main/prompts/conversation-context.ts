@@ -13,7 +13,7 @@ export function buildFileAttachmentPrompt(
 export function buildCloudTableAttachmentPrompt(payload: unknown): string {
   return [
     '[Cloud analysis tables added to this conversation]',
-    'Use these Personal Analysis table references when answering the user.',
+    'Use these Cloud Space table references when answering the user.',
     'If the user asks to modify or overwrite a cloud table, first import the table into the local cowork data workspace, create or update a local output table, then ask for confirmation before uploading with REPLACE mode.',
     JSON.stringify(payload, null, 2),
   ].join('\n');

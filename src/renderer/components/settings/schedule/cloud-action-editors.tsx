@@ -497,7 +497,7 @@ export function CloudTableProcessActionEditor({
             )}
             {outputLocation === 'local'
               ? tr('schedule.localOutputSection', '输出到本地')
-              : tr('schedule.cloudOutputSection', '输出到云分析')}
+              : tr('schedule.cloudOutputSection', '输出到云空间')}
           </div>
           <SegmentedControl<DataProcessLocation>
             value={outputLocation}
@@ -638,7 +638,7 @@ export function CloudSourceTableSelector({
         setSpacesError(
           loadError instanceof Error
             ? loadError.message
-            : tr('schedule.cloudCatalogLoadFailed', '加载云分析空间失败')
+            : tr('schedule.cloudCatalogLoadFailed', '加载云空间失败')
         );
       })
       .finally(() => {
@@ -671,7 +671,7 @@ export function CloudSourceTableSelector({
         setProjectsError(
           loadError instanceof Error
             ? loadError.message
-            : tr('schedule.cloudProjectsLoadFailed', '加载云分析项目失败')
+            : tr('schedule.cloudProjectsLoadFailed', '加载云空间项目失败')
         );
       })
       .finally(() => {
@@ -713,7 +713,7 @@ export function CloudSourceTableSelector({
         setTablesError(
           loadError instanceof Error
             ? loadError.message
-            : tr('schedule.cloudTablesLoadFailed', '加载云分析表格失败')
+            : tr('schedule.cloudTablesLoadFailed', '加载云空间表格失败')
         );
       })
       .finally(() => {
@@ -887,7 +887,7 @@ export function CloudSourceTableSelector({
 
       {!canBrowseCloud && (
         <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-2 text-[12px] leading-5 text-text-muted">
-          {tr('schedule.cloudConnectRequired', '请先连接云分析空间后再选择云端表。')}
+          {tr('schedule.cloudConnectRequired', '请先连接云空间后再选择云端表。')}
         </div>
       )}
     </div>

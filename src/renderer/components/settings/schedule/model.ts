@@ -111,7 +111,7 @@ export function createCloudTableAutomationDraft(
     ),
     description: tr(
       'schedule.cloudAutomationDescription',
-      '自动导入云分析表，完成数据处理后回写云端'
+      '自动导入云空间表，完成数据处理后回写云端'
     ),
     projectId: '',
     enabled: true,
@@ -446,7 +446,7 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
   ];
 
   return [
-    isLocalSource ? '请执行一个数据表自动处理流程。' : '请执行一个云分析表自动处理流程。',
+    isLocalSource ? '请执行一个数据表自动处理流程。' : '请执行一个云空间表自动处理流程。',
     '',
     ...sourceLines,
     '',

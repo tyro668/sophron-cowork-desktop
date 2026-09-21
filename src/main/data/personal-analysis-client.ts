@@ -273,7 +273,7 @@ export class PersonalAnalysisClient {
   async uploadCsv(input: PersonalAnalysisUploadInput): Promise<PersonalAnalysisUploadResult> {
     const datasourceId = input.datasourceId?.trim();
     if (!datasourceId) {
-      throw new Error('Personal Analysis datasourceId is required for upload');
+      throw new Error('Cloud Space datasourceId is required for upload');
     }
     const uploadInfo = await this.apiJson<{
       uploadTaskId: string;
@@ -360,7 +360,7 @@ export class PersonalAnalysisClient {
     options: { method?: string; body?: Record<string, unknown> } = {}
   ): Promise<T> {
     if (!this.apiOrigin) {
-      throw new Error('Personal Analysis apiOrigin is not configured');
+      throw new Error('Cloud Space apiOrigin is not configured');
     }
     const token = await this.getAccessToken();
     const method = options.method ?? 'GET';
@@ -400,10 +400,10 @@ export class PersonalAnalysisClient {
       return this.accessToken;
     }
     if (!this.apiOrigin) {
-      throw new Error('Personal Analysis apiOrigin is not configured');
+      throw new Error('Cloud Space apiOrigin is not configured');
     }
     if (!this.apiKey) {
-      throw new Error('Personal Analysis apiKey is not configured');
+      throw new Error('Cloud Space apiKey is not configured');
     }
     const response = await fetchWithTimeout(
       `${this.apiOrigin}/api/personal/api-keys/token`,
