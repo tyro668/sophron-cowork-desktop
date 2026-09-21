@@ -18,6 +18,8 @@ import type {
   ProjectMemoryEntry,
 } from '../../types';
 import { useAppStore } from '../../store';
+import type { GlobalNoticeType } from '../../store';
+import { showToast } from '../../utils/toast';
 import { GlassSwitch } from '../GlassSwitch';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -58,7 +60,14 @@ export function SettingsMemory() {
   const [coreEntries, setCoreEntries] = useState<CoreMemoryEntry[]>([]);
   const [projectEntries, setProjectEntries] = useState<ProjectMemoryEntry[]>([]);
   const [isBusy, setIsBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ text: string; tone: GlobalNoticeType } | null>(null);
+
+  useEffect(() => {
+    if (status) {
+      showToast(status.tone, status.text);
+      setStatus(null);
+    }
+  }, [status]);
   const [activeTab, setActiveTab] = useState<MemoryTab>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -108,7 +117,10 @@ export function SettingsMemory() {
         }
       } catch (error) {
         if (!cancelled) {
-          setStatus(error instanceof Error ? error.message : String(error));
+          setStatus({
+            text: error instanceof Error ? error.message : String(error),
+            tone: 'error',
+          });
         }
       }
     };
@@ -170,11 +182,10 @@ export function SettingsMemory() {
 
   const runBusyAction = async (action: () => Promise<void>) => {
     setIsBusy(true);
-    setStatus(null);
     try {
       await action();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      setStatus({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
     } finally {
       setIsBusy(false);
     }
@@ -204,7 +215,7 @@ export function SettingsMemory() {
         throw new Error(t('memory.deleteEntryNotFound', '记忆不存在，可能已经被删除'));
       }
       await refreshAll();
-      setStatus(t('memory.confirmSuccess', '该记忆已确认'));
+      setStatus({ text: t('memory.confirmSuccess', '该记忆已确认'), tone: 'success' });
     });
   };
 
@@ -245,7 +256,7 @@ export function SettingsMemory() {
 
   const handleRebuildWorkspace = () => {
     if (!currentWorkspace) {
-      setStatus(t('memory.noWorkspace', '暂无工作区'));
+      setStatus({ text: t('memory.noWorkspace', '暂无工作区'), tone: 'warning' });
       return;
     }
     void (async () => {
@@ -260,25 +271,27 @@ export function SettingsMemory() {
         // candidate (nothing was applied — the old generation is intact), or
         // success. `succeededSessionCount` counts committed sessions only, so
         // an abandoned rebuild must never claim sessions were rebuilt.
-        setStatus(
-          result.commitError || !result.success
-            ? result.commitError
-              ? t('memory.rebuildCommitFailed', {
-                  defaultValue: `重建提交失败：${result.commitError}`,
-                  error: result.commitError,
-                })
-              : result.committedSessionCount > 0
-                ? t('memory.rebuildPartialSuccess', {
-                    defaultValue: `已重建 ${result.committedSessionCount} 个会话，${result.failedSessionCount} 个会话失败`,
-                    succeeded: result.committedSessionCount,
-                    failed: result.failedSessionCount,
+        setStatus({
+          text:
+            result.commitError || !result.success
+              ? result.commitError
+                ? t('memory.rebuildCommitFailed', {
+                    defaultValue: `重建提交失败：${result.commitError}`,
+                    error: result.commitError,
                   })
-                : t('memory.rebuildAborted', {
-                    defaultValue: `重建未完成，原有记忆未受影响（${result.failedSessionCount} 个会话提取失败）`,
-                    failed: result.failedSessionCount,
-                  })
-            : t('memory.rebuildSuccess')
-        );
+                : result.committedSessionCount > 0
+                  ? t('memory.rebuildPartialSuccess', {
+                      defaultValue: `已重建 ${result.committedSessionCount} 个会话，${result.failedSessionCount} 个会话失败`,
+                      succeeded: result.committedSessionCount,
+                      failed: result.failedSessionCount,
+                    })
+                  : t('memory.rebuildAborted', {
+                      defaultValue: `重建未完成，原有记忆未受影响（${result.failedSessionCount} 个会话提取失败）`,
+                      failed: result.failedSessionCount,
+                    })
+              : t('memory.rebuildSuccess'),
+          tone: result.success ? 'success' : result.commitError ? 'error' : 'warning',
+        });
       });
     })();
   };
@@ -445,12 +458,6 @@ export function SettingsMemory() {
             />
           </section>
 
-          {status && (
-            <div className="rounded-lg border border-border-muted bg-background-secondary/70 px-3 py-2 text-xs text-text-secondary">
-              {status}
-            </div>
-          )}
-
           {duplicateCount > 0 || pendingConfidenceCount > 0 ? (
             <section className="glass-card flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5">
               {duplicateCount > 0 ? (
@@ -496,12 +503,6 @@ export function SettingsMemory() {
           ) : null}
         </div>
       ) : null}
-
-      {!enabled && status && (
-        <div className="rounded-lg border border-border-muted bg-background-secondary/70 px-3 py-2 text-xs text-text-secondary">
-          {status}
-        </div>
-      )}
     </div>
   );
 }

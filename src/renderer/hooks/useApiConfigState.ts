@@ -24,6 +24,7 @@ import {
 } from '../../shared/api-provider-guidance';
 import { apiConfigReducer } from './api-config-reducer';
 import type { ApiConfigState } from './api-config-reducer';
+import { showToast } from '../utils/toast';
 import {
   CONFIG_SET_LIMIT,
   FALLBACK_PROVIDER_PRESETS,
@@ -183,11 +184,16 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     dispatch({ type: 'CLEAR_ERROR' });
   }, []);
 
-  const showErrorKey = useCallback((key: string, values?: Record<string, string | number>) => {
-    dispatch({ type: 'SET_ERROR_KEY', key, values });
-  }, []);
+  const showErrorKey = useCallback(
+    (key: string, values?: Record<string, string | number>) => {
+      showToast('error', t(key, values));
+      dispatch({ type: 'SET_ERROR_KEY', key, values });
+    },
+    [t]
+  );
 
   const showErrorText = useCallback((text: string) => {
+    if (text) showToast('error', text);
     dispatch({ type: 'SET_ERROR_TEXT', text });
   }, []);
 
@@ -195,11 +201,16 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     dispatch({ type: 'CLEAR_SUCCESS' });
   }, []);
 
-  const showSuccessKey = useCallback((key: string, values?: Record<string, string | number>) => {
-    dispatch({ type: 'SET_SUCCESS_KEY', key, values });
-  }, []);
+  const showSuccessKey = useCallback(
+    (key: string, values?: Record<string, string | number>) => {
+      showToast('success', t(key, values));
+      dispatch({ type: 'SET_SUCCESS_KEY', key, values });
+    },
+    [t]
+  );
 
   const showSuccessText = useCallback((text: string) => {
+    if (text) showToast('success', text);
     dispatch({ type: 'SET_SUCCESS_TEXT', text });
   }, []);
 

@@ -1,15 +1,5 @@
 import { useEffect } from 'react';
-import {
-  X,
-  Key,
-  Server,
-  Cpu,
-  CheckCircle,
-  AlertCircle,
-  Edit3,
-  Plug,
-  RefreshCw,
-} from 'lucide-react';
+import { X, Key, Server, Cpu, CheckCircle, Edit3, Plug, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AppConfig, ApiTestResult } from '../types';
 import { useApiConfigState } from '../hooks/useApiConfigState';
@@ -20,6 +10,7 @@ import { Dialog } from './ui/dialog';
 import { Input } from './ui/input';
 import { CommonProviderSetupsCard } from './ProviderGuidance';
 import { VISIBLE_API_PROVIDER_OPTIONS } from '../../shared/api-model-presets';
+import { showToast } from '../utils/toast';
 
 interface ConfigModalProps {
   isOpen: boolean;
@@ -75,8 +66,6 @@ export function ConfigModal({
     currentPreset,
     modelOptions,
     isSaving,
-    error,
-    successMessage,
     lastSaveCompletedAt,
     isTesting,
     isRefreshingModels,
@@ -131,14 +120,6 @@ export function ConfigModal({
     return () => clearTimeout(timer);
   }, [lastSaveCompletedAt, onClose]);
 
-  if (!isOpen) return null;
-
-  const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
-  const isSophronMode = provider === 'sophron';
-  const isCodexMode = provider === 'openai-codex';
-  const showsBaseUrl = provider === 'ollama';
-  const baseUrlPlaceholder = 'http://localhost:11434/v1';
-
   const testErrorMessage = (result: ApiTestResult) => {
     switch (result.errorType) {
       case 'missing_key':
@@ -161,6 +142,32 @@ export function ConfigModal({
         return t('api.testError.unknown');
     }
   };
+
+  useEffect(() => {
+    if (!testResult) return;
+    if (testResult.ok) {
+      showToast(
+        'success',
+        t('api.testSuccess', {
+          ms: typeof testResult.latencyMs === 'number' ? testResult.latencyMs : '--',
+        })
+      );
+    } else {
+      const detail = friendlyTestDetails || testResult.details;
+      showToast(
+        'error',
+        detail ? `${testErrorMessage(testResult)} · ${detail}` : testErrorMessage(testResult)
+      );
+    }
+  }, [testResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!isOpen) return null;
+
+  const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
+  const isSophronMode = provider === 'sophron';
+  const isCodexMode = provider === 'openai-codex';
+  const showsBaseUrl = provider === 'ollama';
+  const baseUrlPlaceholder = 'http://localhost:11434/v1';
 
   return (
     <Dialog
@@ -405,53 +412,10 @@ export function ConfigModal({
             onApplySetup={applyCommonProviderSetup}
           />
         )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-error/10 text-error text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            {error}
-          </div>
-        )}
-
-        {testResult && (
-          <div
-            className={`flex gap-2 px-4 py-3 rounded-xl text-sm ${testResult.ok ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}`}
-          >
-            {testResult.ok ? (
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            )}
-            <div className="flex-1">
-              <div>
-                {testResult.ok
-                  ? t('api.testSuccess', {
-                      ms: typeof testResult.latencyMs === 'number' ? testResult.latencyMs : '--',
-                    })
-                  : testErrorMessage(testResult)}
-              </div>
-              {!testResult.ok && friendlyTestDetails && (
-                <div className="mt-1 text-xs leading-5 text-text-primary">
-                  {friendlyTestDetails}
-                </div>
-              )}
-              {!testResult.ok && testResult.details && (
-                <div className="mt-1 text-xs text-text-muted">{testResult.details}</div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Footer */}
       <div className="glass-panel-header border-b-0 px-6 py-4">
-        {successMessage && (
-          <div className="mb-3 flex items-center gap-2 px-4 py-3 rounded-xl bg-success/10 text-success text-sm">
-            <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            {successMessage}
-          </div>
-        )}
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="secondary"

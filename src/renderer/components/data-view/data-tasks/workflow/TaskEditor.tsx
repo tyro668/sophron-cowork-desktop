@@ -32,6 +32,7 @@ import {
 } from '../../../../../shared/prep-dsl';
 import { dataFieldTypeFromDuckDbType } from '../../../../../shared/data-field-types';
 import { dataClient } from '../../../../features/data/api/data-client';
+import { showToast } from '../../../../utils/toast';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
@@ -131,8 +132,8 @@ export function TaskEditor({
 
   useEffect(() => {
     if (!localError) return;
-    const timer = window.setTimeout(() => setLocalError(null), 3000);
-    return () => window.clearTimeout(timer);
+    showToast('error', localError);
+    setLocalError(null);
   }, [localError]);
 
   useEffect(() => {
@@ -1249,7 +1250,7 @@ export function TaskEditor({
           onClose={closeDslDialog}
         />
       )}
-      {((failedExpectRun && lastRunFailure) || localError) && (
+      {failedExpectRun && lastRunFailure && (
         <div className="absolute bottom-4 left-1/2 z-40 flex w-[min(92%,36rem)] -translate-x-1/2 flex-col items-center gap-2">
           {failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at && (
             <div
@@ -1311,16 +1312,6 @@ export function TaskEditor({
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-            </div>
-          )}
-          {localError && (
-            <div
-              role="alert"
-              onClick={() => setLocalError(null)}
-              className="flex max-w-full cursor-pointer items-start gap-2 whitespace-pre-line rounded-lg border border-error/30 bg-surface px-3.5 py-2.5 text-[13px] text-error shadow-card"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              <span>{localError}</span>
             </div>
           )}
         </div>

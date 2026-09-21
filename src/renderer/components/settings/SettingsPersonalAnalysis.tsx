@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Cloud, KeyRound, PlugZap, Unplug } from 'lucide-react';
+import { Cloud, KeyRound, PlugZap, Unplug } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
+import { showToast } from '../../utils/toast';
 import type { PersonalAnalysisConfig } from '../../types';
 import {
   EMPTY_PERSONAL_ANALYSIS_CONFIG,
@@ -37,8 +38,6 @@ export function SettingsPersonalAnalysis() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
 
   const storedConnection = useMemo(
     () => appConfig?.personalAnalysis || EMPTY_PERSONAL_ANALYSIS_CONFIG,
@@ -53,8 +52,6 @@ export function SettingsPersonalAnalysis() {
 
   const updateField = (field: PersonalAnalysisFormField, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
-    setError('');
-    setSuccessMessage('');
   };
 
   const validateConnectionFields = (): Pick<
@@ -63,7 +60,7 @@ export function SettingsPersonalAnalysis() {
   > | null => {
     const validation = validatePersonalAnalysisConnection(form, t);
     if (!validation.connection) {
-      setError(validation.error || t('cloudData.connectionFailed'));
+      showToast('error', validation.error || t('cloudData.connectionFailed'));
       return null;
     }
 
@@ -74,13 +71,11 @@ export function SettingsPersonalAnalysis() {
     const connection = validateConnectionFields();
     if (!connection) return;
     setIsTesting(true);
-    setError('');
-    setSuccessMessage('');
     try {
       const result = await window.electronAPI.data.listCloudSpaces(connection);
-      setSuccessMessage(t('cloudData.testSuccess', { count: result.spaces.length }));
+      showToast('success', t('cloudData.testSuccess', { count: result.spaces.length }));
     } catch (testError) {
-      setError(getPersonalAnalysisErrorMessage(testError, t));
+      showToast('error', getPersonalAnalysisErrorMessage(testError, t));
     } finally {
       setIsTesting(false);
     }
@@ -90,16 +85,14 @@ export function SettingsPersonalAnalysis() {
     const connection = validateConnectionFields();
     if (!connection) return;
     setIsSaving(true);
-    setError('');
-    setSuccessMessage('');
     try {
       const result = await window.electronAPI.config.save({ personalAnalysis: connection });
       setAppConfig(result.config);
       setForm(result.config.personalAnalysis || connection);
       setIsEditing(false);
-      setSuccessMessage(t('personalAnalysis.saveSuccess'));
+      showToast('success', t('personalAnalysis.saveSuccess'));
     } catch (saveError) {
-      setError(getPersonalAnalysisErrorMessage(saveError, t));
+      showToast('error', getPersonalAnalysisErrorMessage(saveError, t));
     } finally {
       setIsSaving(false);
     }
@@ -107,8 +100,6 @@ export function SettingsPersonalAnalysis() {
 
   const handleDisconnect = async () => {
     setIsSaving(true);
-    setError('');
-    setSuccessMessage('');
     try {
       const result = await window.electronAPI.config.save({
         personalAnalysis: EMPTY_PERSONAL_ANALYSIS_CONFIG,
@@ -116,9 +107,9 @@ export function SettingsPersonalAnalysis() {
       setAppConfig(result.config);
       setForm(EMPTY_PERSONAL_ANALYSIS_CONFIG);
       setIsEditing(true);
-      setSuccessMessage(t('cloudData.disconnected'));
+      showToast('success', t('cloudData.disconnected'));
     } catch (disconnectError) {
-      setError(getPersonalAnalysisErrorMessage(disconnectError, t));
+      showToast('error', getPersonalAnalysisErrorMessage(disconnectError, t));
     } finally {
       setIsSaving(false);
     }
@@ -127,8 +118,6 @@ export function SettingsPersonalAnalysis() {
   const handleCancelEdit = () => {
     setForm(storedConnection);
     setIsEditing(false);
-    setError('');
-    setSuccessMessage('');
   };
 
   return (
@@ -137,16 +126,8 @@ export function SettingsPersonalAnalysis() {
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           <Cloud className="h-4 w-4" />
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-semibold text-text-primary">
-            {t('settings.personalAnalysis')}
-          </h2>
-          <p className="mt-0.5 text-[12px] leading-5 text-text-muted">
-            {t('personalAnalysis.settingsDescription')}
-          </p>
-        </div>
         <span
-          className={`flex h-6 flex-shrink-0 items-center rounded-full px-2 text-[12px] font-medium ${
+          className={`ml-auto flex h-6 flex-shrink-0 items-center rounded-full px-2 text-[12px] font-medium ${
             isConnected ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
           }`}
         >
@@ -189,20 +170,7 @@ export function SettingsPersonalAnalysis() {
         </FieldRow>
       </div>
 
-      {error && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-[13px] text-error">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-      {successMessage && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 px-3 py-2 text-[13px] text-success">
-          <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-          {successMessage}
-        </div>
-      )}
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
         <Button
           variant="secondary"
           onClick={() => void handleTest()}
@@ -214,7 +182,7 @@ export function SettingsPersonalAnalysis() {
           {t('cloudData.testConnection')}
         </Button>
         {isEditing ? (
-          <div className="ml-auto flex items-center gap-2">
+          <>
             {isConnected && (
               <Button variant="ghost" onClick={handleCancelEdit} className="h-8 text-[12px]">
                 {t('common.cancel')}
@@ -229,7 +197,7 @@ export function SettingsPersonalAnalysis() {
               {!isSaving && <KeyRound className="h-3.5 w-3.5" />}
               {t('cloudData.connect')}
             </Button>
-          </div>
+          </>
         ) : (
           <>
             <Button
@@ -248,7 +216,7 @@ export function SettingsPersonalAnalysis() {
               variant="ghost"
               onClick={() => void handleDisconnect()}
               disabled={isSaving}
-              className="ml-auto h-8 text-[12px] text-error hover:bg-error/10 hover:text-error"
+              className="h-8 text-[12px] text-error hover:bg-error/10 hover:text-error"
             >
               <Unplug className="h-3.5 w-3.5" />
               {t('cloudData.disconnect')}

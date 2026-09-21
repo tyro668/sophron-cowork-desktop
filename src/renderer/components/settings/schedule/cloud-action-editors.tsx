@@ -21,6 +21,7 @@ import type {
   PersonalAnalysisTable,
 } from '../../../types';
 import { useAppStore } from '../../../store';
+import { showToast } from '../../../utils/toast';
 import { GlassSelect } from '../../GlassSelect';
 import {
   CLOUD_TARGET_TABLE_PAGE_SIZE,
@@ -83,6 +84,12 @@ export function CloudTableProcessActionEditor({
   const [requirementAnalysis, setRequirementAnalysis] =
     useState<DataAnalyzeTaskRequirementResult | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  useEffect(() => {
+    if (generationError) {
+      showToast('error', generationError);
+      setGenerationError(null);
+    }
+  }, [generationError]);
   const usageTraceIdRef = useRef(createLlmUsageTraceId());
   const resetUsageTraceId = () => {
     usageTraceIdRef.current = createLlmUsageTraceId();
@@ -476,11 +483,6 @@ export function CloudTableProcessActionEditor({
                   ? tr('schedule.parsingAndGeneratingTask', '正在解析并生成')
                   : tr('schedule.parseAndGenerateDataTask', '解析并生成')}
             </button>
-            {generationError && (
-              <div className="w-full rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning">
-                {generationError}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -609,6 +611,10 @@ export function CloudSourceTableSelector({
   const tablesRequestSeq = useRef(0);
   const canBrowseCloud = Boolean(connection.apiOrigin && isElectron && window.electronAPI?.data);
   const error = tablesError ?? projectsError ?? spacesError;
+
+  useEffect(() => {
+    if (error) showToast('error', error);
+  }, [error]);
 
   useEffect(() => {
     if (!canBrowseCloud) {
@@ -884,11 +890,6 @@ export function CloudSourceTableSelector({
           {tr('schedule.cloudConnectRequired', '请先连接云分析空间后再选择云端表。')}
         </div>
       )}
-      {error && (
-        <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] leading-5 text-warning">
-          {error}
-        </div>
-      )}
     </div>
   );
 }
@@ -908,6 +909,12 @@ export function CloudReplaceTargetSelector({
   const [tables, setTables] = useState<PersonalAnalysisTable[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (error) {
+      showToast('error', error);
+      setError(null);
+    }
+  }, [error]);
   const requestSeq = useRef(0);
   const source = config.source;
   const sourceTable = useMemo<PersonalAnalysisTable>(
@@ -1047,12 +1054,6 @@ export function CloudReplaceTargetSelector({
           )}
         </div>
       )}
-      {error && (
-        <div className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-[12px] leading-5 text-warning">
-          {error}
-        </div>
-      )}
-
       {selectedTable && (
         <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-3 text-[12px] leading-5 text-text-secondary">
           <div

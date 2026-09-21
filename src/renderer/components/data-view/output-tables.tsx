@@ -52,6 +52,7 @@ import {
   formatOutputTableRelatedTaskNames,
 } from './shared';
 import { dataClient } from '../../features/data/api/data-client';
+import { showToast } from '../../utils/toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 
@@ -417,6 +418,20 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
   const [notice, setNotice] = useState<string | null>(null);
   const [loginBusy, setLoginBusy] = useState(false);
   const spaceSeq = useRef(0);
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', error);
+      setError(null);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (notice) {
+      showToast('success', notice);
+      setNotice(null);
+    }
+  }, [notice]);
   const projectSeq = useRef(0);
   const targetSeq = useRef(0);
 
@@ -772,8 +787,6 @@ function useOutputCloudActionForm(outputTable: DataOutputTable, onPersisted?: ()
     loadingProjects,
     loadingTargets,
     busy,
-    error,
-    notice,
     loginBusy,
     handleLogin,
     openApiKeySettings,
@@ -1245,20 +1258,13 @@ export function OutputTableEditor({
             </>
           )}
 
-          {(cloud.error || cloud.notice || cloud.boundAction?.lastError) && (
+          {cloud.boundAction?.lastError && (
             <>
               <span />
               <div className="min-w-0">
-                {(cloud.error || cloud.boundAction?.lastError) && (
-                  <div className="rounded-md border border-error/25 bg-error/10 px-3 py-1.5 text-[12px] text-error">
-                    {cloud.error ?? cloud.boundAction?.lastError}
-                  </div>
-                )}
-                {cloud.notice && !(cloud.error || cloud.boundAction?.lastError) && (
-                  <div className="rounded-md border border-success/25 bg-accent-muted px-3 py-1.5 text-[12px] text-success">
-                    {cloud.notice}
-                  </div>
-                )}
+                <div className="rounded-md border border-error/25 bg-error/10 px-3 py-1.5 text-[12px] text-error">
+                  {cloud.boundAction.lastError}
+                </div>
               </div>
             </>
           )}

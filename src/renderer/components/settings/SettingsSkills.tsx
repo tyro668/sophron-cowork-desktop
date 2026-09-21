@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertCircle,
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  CheckCircle,
   CheckCircle2,
   FileText,
   FolderOpen,
@@ -25,6 +23,8 @@ import type { LucideIcon } from 'lucide-react';
 import type { Skill, PluginCatalogItemV2, InstalledPlugin } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
+import { renderLocalizedBannerMessage } from './shared';
+import { showToast } from '../../utils/toast';
 import { getLocalizedSkillDescription } from '../../utils/localized-skill';
 import {
   DataMoreMenu,
@@ -156,14 +156,12 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const pluginPageRef = useRef(0);
   const [hasMorePlugins, setHasMorePlugins] = useState(false);
   const [pluginActionKey, setPluginActionKey] = useState<string | null>(null);
-  const [pluginToastMessage, setPluginToastMessage] = useState('');
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<SkillWorkspaceTab>('installed');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const pluginToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const installedSkillsByKey = useMemo(() => {
     const nextInstalledByKey: Record<string, Skill> = {};
@@ -199,16 +197,19 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }, [skillsStorageChangeEvent, t]);
 
-  function showPluginInstallToast(message: string) {
-    setPluginToastMessage(message);
-    if (pluginToastTimerRef.current) {
-      clearTimeout(pluginToastTimerRef.current);
+  useEffect(() => {
+    if (error) {
+      showToast('error', renderLocalizedBannerMessage(error, t));
+      setError(null);
     }
-    pluginToastTimerRef.current = setTimeout(() => {
-      setPluginToastMessage('');
-      pluginToastTimerRef.current = null;
-    }, 5000);
-  }
+  }, [error, t]);
+
+  useEffect(() => {
+    if (success) {
+      showToast('success', renderLocalizedBannerMessage(success, t));
+      setSuccess(null);
+    }
+  }, [success, t]);
 
   const loadSkills = useCallback(async (silent = false) => {
     try {
@@ -293,21 +294,11 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   useEffect(() => {
     if (!isElectron || !isActive) {
-      return () => {
-        if (pluginToastTimerRef.current) {
-          clearTimeout(pluginToastTimerRef.current);
-        }
-      };
+      return;
     }
 
     void loadSkills();
     void loadPlugins(true);
-
-    return () => {
-      if (pluginToastTimerRef.current) {
-        clearTimeout(pluginToastTimerRef.current);
-      }
-    };
   }, [isActive, loadPlugins, loadSkills]);
 
   useEffect(() => {
@@ -402,20 +393,14 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         const result = await window.electronAPI.skills.installFromSkillHub(slug);
         await loadSkills();
         await loadPlugins();
-        const message = t('skills.skillHubInstallSuccess', { name: result.skill.name });
-        setSuccess({ text: message });
-        showPluginInstallToast(message);
-        setTimeout(() => setSuccess(null), 4000);
+        setSuccess({ text: t('skills.skillHubInstallSuccess', { name: result.skill.name }) });
         return;
       }
 
       const result = await window.electronAPI.plugins.install(installTarget);
       await loadSkills();
       await loadPlugins();
-      const message = t('skills.pluginInstallSuccess', { name: result.plugin.name });
-      setSuccess({ text: message });
-      showPluginInstallToast(message);
-      setTimeout(() => setSuccess(null), 4000);
+      setSuccess({ text: t('skills.pluginInstallSuccess', { name: result.plugin.name }) });
     } catch (err) {
       setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
     } finally {
@@ -558,19 +543,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {error && (
-        <div className="mb-3 flex flex-shrink-0 items-center gap-2 rounded-lg border border-error/20 bg-error/5 px-3 py-2 text-[13px] text-error">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {error.key ? t(error.key) : error.text}
-        </div>
-      )}
-      {success && (
-        <div className="mb-3 flex flex-shrink-0 items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2 text-[13px] text-success">
-          <CheckCircle className="h-4 w-4 flex-shrink-0" />
-          {success.key ? t(success.key) : success.text}
-        </div>
-      )}
-
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <Tabs
           value={activeWorkspaceTab}
@@ -863,15 +835,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           </TabsContent>
         </Tabs>
       </section>
-
-      {pluginToastMessage && (
-        <div className="fixed right-6 bottom-6 z-[80] max-w-md rounded-lg border border-success/30 bg-surface px-4 py-3 shadow-elevated">
-          <div className="flex items-start gap-2 text-success text-sm">
-            <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{pluginToastMessage}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

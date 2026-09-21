@@ -40,11 +40,24 @@ export function GlobalNoticeToast({ notice, onDismiss, onAction }: Props) {
     (notice.action === 'open_api_settings' ? t('api.openSettingsAction') : '');
   const noticeAction = notice.action;
 
+  const handleActionClick = () => {
+    if (notice.onAction) {
+      notice.onAction();
+      onDismiss();
+      return;
+    }
+    if (noticeAction) {
+      onAction(noticeAction);
+    }
+  };
+
   return (
-    <div className="fixed top-4 right-4 left-4 sm:left-auto z-50">
-      <div
-        className={`max-w-sm rounded-[1.4rem] border bg-background shadow-elevated ${tone.border}`}
-      >
+    <div
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[10001] w-max max-w-[calc(100vw-2rem)]"
+      role={notice.type === 'error' || notice.type === 'warning' ? 'alert' : 'status'}
+      aria-live={notice.type === 'error' || notice.type === 'warning' ? 'assertive' : 'polite'}
+    >
+      <div className={`max-w-sm rounded-lg border bg-background shadow-elevated ${tone.border}`}>
         <div className="flex items-start gap-3 px-4 py-3">
           <div className={`flex-1 text-sm leading-relaxed ${tone.text}`}>{message}</div>
           <button
@@ -56,12 +69,12 @@ export function GlobalNoticeToast({ notice, onDismiss, onAction }: Props) {
             <X className="h-4 w-4" />
           </button>
         </div>
-        {noticeAction && actionLabel && (
+        {(noticeAction || notice.onAction) && actionLabel && (
           <div className="px-4 pb-3">
             <button
               type="button"
-              onClick={() => onAction(noticeAction)}
-              className="w-full rounded-xl border border-accent/40 bg-accent-muted px-3 py-2.5 text-sm font-medium text-accent hover:bg-accent-muted transition-colors"
+              onClick={handleActionClick}
+              className="w-full rounded-lg border border-accent/40 bg-accent-muted px-3 py-2.5 text-sm font-medium text-accent hover:bg-accent-muted transition-colors"
             >
               {actionLabel}
             </button>

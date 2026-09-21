@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import {
-  AlertCircle,
   CalendarClock,
   ChevronRight,
-  CheckCircle2,
   Cloud,
   Database,
   Eye,
@@ -49,6 +47,7 @@ import {
   formatDateTime,
 } from './shared';
 import { Button } from '../ui/button';
+import { showToast } from '../../utils/toast';
 import { dataClient } from '../../features/data/api/data-client';
 
 interface SelectedProject {
@@ -243,7 +242,6 @@ export function CloudAnalysisPanel() {
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [batchSelectMode, setBatchSelectMode] = useState(false);
   const [addingToChat, setAddingToChat] = useState(false);
-  const [notice, setNotice] = useState<NoticeState | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const catalogRequestSeq = useRef(0);
@@ -317,18 +315,26 @@ export function CloudAnalysisPanel() {
     ]
   );
 
-  useEffect(() => {
-    if (
-      hasStoredConnection ||
-      notice?.type !== 'error' ||
-      (notice.message !== t('cloudData.errorAuth') &&
-        notice.message !== t('cloudData.errorPermission'))
-    ) {
-      return;
-    }
-
-    setNotice(null);
-  }, [hasStoredConnection, notice, t]);
+  const setNotice = useCallback(
+    (next: NoticeState | null) => {
+      if (!next) return;
+      showToast(
+        next.type,
+        next.message,
+        next.inputTableId
+          ? {
+              actionLabel: t('cloudData.viewInputTable'),
+              onAction: () => {
+                if (next.inputTableId) {
+                  navigateToDataElement({ kind: 'input_table', id: next.inputTableId });
+                }
+              },
+            }
+          : undefined
+      );
+    },
+    [navigateToDataElement, t]
+  );
 
   useEffect(() => {
     selectedProjectRef.current = selectedProject;
@@ -405,7 +411,7 @@ export function CloudAnalysisPanel() {
     } finally {
       setLoginBusy(false);
     }
-  }, [loginBusy, setDesktopAuthStatus, t]);
+  }, [loginBusy, setDesktopAuthStatus, setNotice, t]);
 
   const applyTables = useCallback((items: PersonalAnalysisTable[]) => {
     tablesRef.current = items;
@@ -538,7 +544,7 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [t]
+    [setNotice, t]
   );
 
   const tableLane = useMemo<PagedLane<PersonalAnalysisTable>>(
@@ -673,7 +679,7 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [connectionPayload, projectsBySpace, t]
+    [connectionPayload, projectsBySpace, setNotice, t]
   );
 
   const toggleSpace = useCallback(
@@ -830,7 +836,15 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [connectionPayload, loadDriveFiles, loadTables, resetFileResults, resetTableResults, t]
+    [
+      connectionPayload,
+      loadDriveFiles,
+      loadTables,
+      resetFileResults,
+      resetTableResults,
+      setNotice,
+      t,
+    ]
   );
 
   const resetConnectionState = useCallback(() => {
@@ -867,7 +881,7 @@ export function CloudAnalysisPanel() {
     catalogRequestSeq.current += 1;
     setLoadingCatalog(false);
     resetConnectionState();
-  }, [connectionPayload, loadCatalog, resetConnectionState]);
+  }, [connectionPayload, loadCatalog, resetConnectionState, setNotice]);
 
   const selectProject = useCallback(
     (target: SelectedProject) => {
@@ -1124,7 +1138,7 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [connectionPayload, selectedProject, t]
+    [connectionPayload, selectedProject, setNotice, t]
   );
 
   const startCloudTableAutomation = useCallback(
@@ -1249,6 +1263,7 @@ export function CloudAnalysisPanel() {
     selectedProjectRecord?.projectName,
     selectedSpace?.spaceName,
     selectedTables,
+    setNotice,
     t,
   ]);
 
@@ -1282,47 +1297,6 @@ export function CloudAnalysisPanel() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
-      {notice && (
-        <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-lg border border-border-muted bg-background px-3 py-2 text-[13px] shadow-soft">
-          <div
-            className={`flex min-w-0 items-center gap-2 ${
-              notice.type === 'error'
-                ? 'text-error'
-                : notice.type === 'success'
-                  ? 'text-success'
-                  : 'text-text-secondary'
-            }`}
-          >
-            {notice.type === 'error' ? (
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-            )}
-            <span className="min-w-0 truncate">{notice.message}</span>
-          </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            {notice.inputTableId && (
-              <button
-                type="button"
-                onClick={() =>
-                  navigateToDataElement({ kind: 'input_table', id: notice.inputTableId! })
-                }
-                className="rounded-md px-2 py-1 text-[12px] font-medium text-accent-text transition-colors hover:bg-accent-muted"
-              >
-                {t('cloudData.viewInputTable')}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setNotice(null)}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
       {!isConnected ? (
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
           <div className="flex w-full max-w-[340px] flex-col items-center text-center">

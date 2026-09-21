@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
 import type { PairingRequest, PairedUser } from '../../shared/contracts/remote';
+import { useAppStore } from '../../renderer/store';
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
@@ -56,7 +57,10 @@ it('opens the approval page from the pending notice and moves an approved reques
   expect(screen.getByText(request.userId)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'remote.approve' }));
   await waitFor(() => expect(approvePairing).toHaveBeenCalledWith('feishu', 'test-user'));
-  await screen.findByText('remote.pairingApproved');
+  // Approval feedback is surfaced through the global toast, not an inline banner.
+  await waitFor(() =>
+    expect(useAppStore.getState().globalNotice?.message).toBe('remote.pairingApproved')
+  );
   expect(screen.queryByText(request.code)).toBeNull();
   expect(screen.getByText('Test user')).toBeTruthy();
   expect(screen.getByText('remote.authorizedUsersReady')).toBeTruthy();

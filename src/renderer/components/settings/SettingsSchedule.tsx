@@ -8,8 +8,8 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, X } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { showToast } from '../../utils/toast';
 import type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -164,6 +164,13 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setBanner((current) => (current === nextBanner ? null : current));
     }, durationMs);
   }, []);
+
+  useEffect(() => {
+    if (banner) {
+      showToast(banner.tone, banner.text);
+      setBanner(null);
+    }
+  }, [banner]);
 
   const load = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -465,39 +472,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     await load();
   };
 
-  const bannerContent = banner ? (
-    <div
-      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
-        banner.tone === 'error'
-          ? 'border-error/30 bg-error/10 text-text-primary'
-          : banner.tone === 'warning'
-            ? 'border-warning/30 bg-warning/10 text-warning'
-            : 'border-success/30 bg-success/10 text-success'
-      }`}
-    >
-      <AlertCircle
-        size={14}
-        className={
-          banner.tone === 'error'
-            ? 'text-error'
-            : banner.tone === 'warning'
-              ? 'text-warning'
-              : 'text-success'
-        }
-      />
-      <span className="min-w-0 flex-1">{banner.text}</span>
-      <button
-        type="button"
-        onClick={() => setBanner(null)}
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-current/70 transition-colors hover:bg-current/10 hover:text-current"
-        aria-label={tr('common.close', '关闭')}
-        title={tr('common.close', '关闭')}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  ) : null;
-
   if (viewMode === 'detail') {
     return (
       <div className="flex h-full min-h-0 flex-col gap-3 text-sm text-text-primary">
@@ -514,7 +488,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           }}
           tr={tr}
         />
-        {bannerContent}
 
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           <TaskStatusSection enabled={draft.enabled} onEnabledChange={updateDraftEnabled} tr={tr} />
@@ -562,8 +535,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
-      {bannerContent}
-
       <section className="mt-3 flex min-h-0 flex-1 flex-col">
         <Tabs
           value={activeListTab}

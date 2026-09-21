@@ -82,8 +82,6 @@ export function SettingsAPI() {
     modelOptions,
     isSaving,
     isLoadingConfig,
-    error,
-    successMessage,
     isRefreshingModels,
     isDiscoveringLocalOllama,
     enableThinking,
@@ -174,22 +172,6 @@ export function SettingsAPI() {
         onSaveAndContinuePendingAction={saveAndContinuePendingConfigSetAction}
         onDiscardAndContinuePendingAction={discardAndContinuePendingConfigSetAction}
       />
-
-      {(error || successMessage) && (
-        <div
-          role={error ? 'alert' : 'status'}
-          className={`flex items-center gap-2 rounded-lg px-4 py-3 text-[13px] ${
-            error ? 'bg-error/10 text-error' : 'bg-success/10 text-success'
-          }`}
-        >
-          {error ? (
-            <AlertCircle className="h-4 w-4 shrink-0" />
-          ) : (
-            <CheckCircle className="h-4 w-4 shrink-0" />
-          )}
-          {error || successMessage}
-        </div>
-      )}
 
       <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
         <SettingsCard icon={<Wifi className="h-4.5 w-4.5" />} title={t('api.serviceAuth')}>

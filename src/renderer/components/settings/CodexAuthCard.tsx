@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle, KeyRound, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { CheckCircle, KeyRound, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import type { CodexAuthStatus, CodexLoginPromptPayload } from '../../types';
+import { showToast } from '../../utils/toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 
@@ -35,6 +36,13 @@ export function CodexAuthCard() {
       setManualCode('');
     });
   }, []);
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', error);
+      setError('');
+    }
+  }, [error]);
 
   const handleLogin = useCallback(async () => {
     setBusy('login');
@@ -206,13 +214,6 @@ export function CodexAuthCard() {
           >
             {t('api.codexManualCodeSubmit')}
           </Button>
-        </div>
-      )}
-
-      {error && (
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-error">
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          {error}
         </div>
       )}
     </div>

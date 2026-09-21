@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { showToast } from '../../utils/toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Switch } from '../ui/switch';
@@ -25,10 +26,8 @@ export function AdditionalChannelSettings({
   const [appId, setAppId] = useState(larkConfig?.appId || '');
   const [appSecret, setAppSecret] = useState(larkConfig?.appSecret || '');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
   async function save() {
     setSaving(true);
-    setError(false);
     try {
       const result = await window.electronAPI.remote.updateFeishuConfig({
         ...larkConfig,
@@ -39,10 +38,10 @@ export function AdditionalChannelSettings({
         enabled: larkConfig?.enabled ?? true,
         dm: larkConfig?.dm || { policy: 'pairing' },
       });
-      if (!result.success) setError(true);
+      if (!result.success) showToast('error', t('remote.saveFailed'));
       else onSaved();
     } catch {
-      setError(true);
+      showToast('error', t('remote.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -85,11 +84,6 @@ export function AdditionalChannelSettings({
               autoComplete="off"
             />
           </label>
-          {error && (
-            <p role="alert" className="text-sm text-error">
-              {t('remote.saveFailed')}
-            </p>
-          )}
           <Button
             type="submit"
             variant="primary"

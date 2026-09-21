@@ -1435,8 +1435,6 @@
     "apiOriginPlaceholder": "Example: http://127.0.0.1:3000",
     "apiKey": "API Key",
     "apiKeyPlaceholder": "Enter the X-API-Key value",
-    "mockServer": "Mock Server",
-    "settingsDescription": "Manage the Personal Analysis connection. Browse, preview, and import cloud data from the Cloud Data page.",
     "saveSettings": "Save Settings",
     "saveSuccess": "Personal Analysis settings saved. The new connection will be used on the next tool request.",
     "saveFailed": "Failed to save Personal Analysis settings",

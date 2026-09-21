@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plug,
-  AlertCircle,
   CheckCircle,
   Edit3,
   Trash2,
@@ -14,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { MCPServerConfig, MCPServerStatus, MCPToolInfo, MCPPreset } from './shared';
+import { showToast } from '../../utils/toast';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -96,6 +96,13 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
     }, 3000);
     return () => clearInterval(interval);
   }, [isActive, loadAll, loadStatuses, loadTools]);
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', error);
+      setError('');
+    }
+  }, [error]);
 
   async function handleAddPreset(presetKey: string) {
     const preset = presets[presetKey];
@@ -198,13 +205,6 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-error/10 text-error text-sm">
-          <AlertCircle className="w-4 h-4" />
-          {error}
-        </div>
-      )}
-
       {/* Add/Edit Form */}
       {(showAddForm || editingServer) && (
         <ServerForm

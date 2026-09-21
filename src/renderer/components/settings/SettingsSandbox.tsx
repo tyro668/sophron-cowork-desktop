@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Shield, AlertCircle, CheckCircle, Settings, Loader2 } from 'lucide-react';
 import { renderLocalizedBannerMessage } from './shared';
 import type { LocalizedBanner } from './shared';
+import { showToast } from '../../utils/toast';
 import { GlassSwitch } from '../GlassSwitch';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -47,6 +48,20 @@ export function SettingsSandbox() {
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', renderLocalizedBannerMessage(error, t));
+      setError(null);
+    }
+  }, [error, t]);
+
+  useEffect(() => {
+    if (success) {
+      showToast('success', renderLocalizedBannerMessage(success, t));
+      setSuccess(null);
+    }
+  }, [success, t]);
 
   const platform = window.electronAPI?.platform || 'unknown';
   const isWindows = platform === 'win32';
@@ -321,20 +336,6 @@ export function SettingsSandbox() {
 
   return (
     <div className="space-y-4">
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-error/10 text-error text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {renderLocalizedBannerMessage(error, t)}
-        </div>
-      )}
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-success/10 text-success text-sm">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          {renderLocalizedBannerMessage(success, t)}
-        </div>
-      )}
-
       {/* Sandbox overview */}
       <div className="p-4 rounded-lg bg-surface border border-border space-y-4">
         <div className="flex items-center justify-between gap-4">

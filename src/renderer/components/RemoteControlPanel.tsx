@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Check, CheckCircle2, Info, Loader2, Save, ScrollText } from 'lucide-react';
+import { Check, Info, Loader2, Save, ScrollText } from 'lucide-react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogTitle, DialogBody } from './ui/dialog';
@@ -19,6 +19,7 @@ import { ChannelList } from './remote/ChannelList';
 import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
 import { CHANNEL_STATE_DOT_CLASS, getChannelState } from './remote/channel-state';
 import { GatewayControlCard } from './remote/GatewayControlCard';
+import { showToast } from '../utils/toast';
 import { PairingGuideCard } from './remote/PairingGuideCard';
 import { PairingRequestsSection } from './remote/PairingRequestsSection';
 import { RemoteSectionNav } from './remote/RemoteSectionNav';
@@ -53,6 +54,20 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   const [togglingChannel, setTogglingChannel] = useState<RemoteChannelType | null>(null);
   const [error, setError] = useState<LocalizedBanner | null>(null);
   const [success, setSuccess] = useState<LocalizedBanner | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', error.key ? t(error.key) : (error.text ?? ''));
+      setError(null);
+    }
+  }, [error, t]);
+
+  useEffect(() => {
+    if (success) {
+      showToast('success', success.key ? t(success.key) : (success.text ?? ''));
+      setSuccess(null);
+    }
+  }, [success, t]);
   const [activeSection, setActiveSection] = useState<RemoteSection>('channels');
   const [setupMode, setSetupMode] = useState<'scan' | 'manual' | null>(null);
   const [additionalConfig, setAdditionalConfig] = useState<
@@ -649,21 +664,6 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   return (
     <div className="w-full overflow-hidden rounded-2xl border border-border-subtle bg-surface">
       <div className="space-y-3 p-4 sm:p-5">
-        {error && (
-          <div className="flex items-center gap-3 rounded-xl border border-error/30 bg-error/10 p-3">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-error" />
-            <span className="text-sm text-error">{error.key ? t(error.key) : error.text}</span>
-          </div>
-        )}
-        {success && (
-          <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 p-3">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-            <span className="text-sm text-success">
-              {success.key ? t(success.key) : success.text}
-            </span>
-          </div>
-        )}
-
         <GatewayControlCard
           status={status}
           isTogglingGateway={isTogglingGateway}
@@ -743,11 +743,6 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 </Button>
               </div>
               <DialogBody>
-                {error && (
-                  <p role="alert" className="mb-3 text-sm text-error">
-                    {error.key ? t(error.key) : error.text}
-                  </p>
-                )}
                 {selectedChannel === 'lark' || selectedChannel === 'wechat' ? (
                   <AdditionalChannelSettings
                     key={selectedChannel}

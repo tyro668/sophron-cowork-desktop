@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCircle, Loader2, Save, Globe, Trash2, Copy } from 'lucide-react';
+import { AlertCircle, Loader2, Save, Globe, Trash2, Copy } from 'lucide-react';
 import { formatAppDateTime } from '../../utils/i18n-format';
+import { showToast } from '../../utils/toast';
 import { SettingsContentSection } from './shared';
 import { GlassSwitch } from '../GlassSwitch';
 import { useConfirmDialog } from '../ConfirmDialog';
@@ -15,8 +16,6 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
     Array<{ name: string; path: string; size: number; mtime: Date }>
   >([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [logsDirectory, setLogsDirectory] = useState('');
   const [devLogsEnabled, setDevLogsEnabled] = useState(true);
 
@@ -28,12 +27,10 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
       ]);
       setLogFiles(files || []);
       setLogsDirectory(dir || '');
-      setError('');
     } catch (err) {
       console.error('Failed to load logs:', err);
-      setError(t('logs.exportFailed'));
     }
-  }, [t]);
+  }, []);
 
   const loadDevLogsStatus = useCallback(async () => {
     try {
@@ -60,20 +57,17 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   async function handleToggleDevLogs() {
     setIsLoading(true);
-    setError('');
-    setSuccess('');
     try {
       const newEnabled = !devLogsEnabled;
       const result = await window.electronAPI.logs.setEnabled(newEnabled);
       if (result.success) {
         setDevLogsEnabled(newEnabled);
-        setSuccess(newEnabled ? t('logs.devLogsEnabled') : t('logs.devLogsDisabled'));
-        setTimeout(() => setSuccess(''), 3000);
+        showToast('success', newEnabled ? t('logs.devLogsEnabled') : t('logs.devLogsDisabled'));
       } else {
-        setError(result.error || t('logs.toggleFailed'));
+        showToast('error', result.error || t('logs.toggleFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('logs.toggleFailed'));
+      showToast('error', err instanceof Error ? err.message : t('logs.toggleFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -81,18 +75,15 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   async function handleExport() {
     setIsLoading(true);
-    setError('');
-    setSuccess('');
     try {
       const result = await window.electronAPI.logs.export();
       if (result.success) {
-        setSuccess(t('logs.exportSuccess', { path: result.path }));
-        setTimeout(() => setSuccess(''), 5000);
+        showToast('success', t('logs.exportSuccess', { path: result.path }));
       } else {
-        setError(result.error || t('logs.exportFailed'));
+        showToast('error', result.error || t('logs.exportFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('logs.exportFailed'));
+      showToast('error', err instanceof Error ? err.message : t('logs.exportFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +94,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
     try {
       await window.electronAPI.logs.open();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('logs.exportFailed'));
+      showToast('error', err instanceof Error ? err.message : t('logs.exportFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -117,19 +108,16 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
     if (!confirmed) return;
 
     setIsLoading(true);
-    setError('');
-    setSuccess('');
     try {
       const result = await window.electronAPI.logs.clear();
       if (result.success) {
-        setSuccess(t('logs.clearSuccess', { count: result.deletedCount }));
+        showToast('success', t('logs.clearSuccess', { count: result.deletedCount }));
         await loadLogs();
-        setTimeout(() => setSuccess(''), 3000);
       } else {
-        setError(result.error || t('logs.clearFailed'));
+        showToast('error', result.error || t('logs.clearFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('logs.clearFailed'));
+      showToast('error', err instanceof Error ? err.message : t('logs.clearFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -149,20 +137,6 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="space-y-4">
-      {/* Error/Success Messages */}
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-error/10 text-error text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-success/10 text-success text-sm">
-          <CheckCircle className="w-4 h-4 flex-shrink-0" />
-          {success}
-        </div>
-      )}
-
       {/* Developer Logs Toggle */}
       <section className="glass-card rounded-xl px-4 py-4">
         <div className="flex items-center justify-between gap-4">

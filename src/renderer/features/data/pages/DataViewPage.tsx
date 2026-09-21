@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle } from 'lucide-react';
+import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
 import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
 import { TaskEditor, TasksPanel } from '../../../components/data-view/data-tasks';
@@ -83,9 +83,16 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
-  const { setPendingNavigationTab, setLoadingTab } = ui;
+  const { setPendingNavigationTab, setLoadingTab, setError } = ui;
   const { loadDashboard, invalidateRequests } = dashboard;
   const { loadInputTables } = inputTables;
+
+  useEffect(() => {
+    if (error) {
+      showToast('error', error);
+      setError(null);
+    }
+  }, [error, setError]);
 
   // Auto-load: react to tab/search changes with a two-frame delay so the tab
   // switch paints before the fetch starts; task search debounces 180ms.
@@ -208,13 +215,6 @@ export function DataViewPage() {
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col px-3 py-3 sm:px-4">
-        {error && (
-          <div className="mb-4 flex shrink-0 items-start gap-2 rounded-lg border border-error/20 bg-error/10 px-3.5 py-2.5 text-[13px] text-error">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
         {editors.editingTask ? (
           <TaskEditor
             task={editors.editingTask}

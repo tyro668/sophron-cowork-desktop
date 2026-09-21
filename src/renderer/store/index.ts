@@ -45,6 +45,7 @@ export interface GlobalNotice {
   type: GlobalNoticeType;
   actionLabel?: string;
   action?: GlobalNoticeAction;
+  onAction?: () => void;
 }
 
 export interface SessionExecutionClock {
