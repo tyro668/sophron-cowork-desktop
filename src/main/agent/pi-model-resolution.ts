@@ -1,4 +1,4 @@
-import { getModel, type Api, type Model } from '@mariozechner/pi-ai';
+import { getModel, type Api, type Model } from '@earendil-works/pi-ai/compat';
 import { isOfficialOpenAIBaseUrl } from '../config/auth-utils';
 
 const COMMON_FALLBACK_PROVIDERS = ['openai', 'anthropic', 'google'] as const;
@@ -380,28 +380,32 @@ export function applyPiModelRuntimeOverrides(
     nextModel.api === 'openai-completions'
   ) {
     const currentCompat = (nextModel.compat || {}) as Record<string, unknown>;
-    const currentReasoningEffortMap = (
-      currentCompat.reasoningEffortMap && typeof currentCompat.reasoningEffortMap === 'object'
-        ? currentCompat.reasoningEffortMap
-        : {}
-    ) as Record<string, string>;
+    const currentThinkingLevelMap =
+      nextModel.thinkingLevelMap && typeof nextModel.thinkingLevelMap === 'object'
+        ? nextModel.thinkingLevelMap
+        : {};
     nextModel = {
       ...nextModel,
       compat: {
         ...currentCompat,
         supportsReasoningEffort: true,
-        reasoningEffortMap: {
-          ...currentReasoningEffortMap,
-          off: 'none',
-        },
+      },
+      thinkingLevelMap: {
+        ...currentThinkingLevelMap,
+        off: 'none',
       },
     } as typeof nextModel;
   }
 
   // DeepSeek expects replayed reasoning as a top-level reasoning_content field,
-  // not as a { type: "thinking" } content block.
+  // not as a { type: "thinking" } content block. Official deepseek.com routes
+  // already do this inside pi-ai; custom relays and prefixed ids need the same
+  // compat. OpenRouter keeps its own reasoning object format.
+  const endpoint = options.customBaseUrl?.trim() || nextModel.baseUrl?.trim() || '';
+  const isOpenRouter = effectiveProvider === 'openrouter' || endpoint.includes('openrouter.ai');
   if (
     nextModel.api === 'openai-completions' &&
+    !isOpenRouter &&
     (effectiveProvider === 'deepseek' || DEEPSEEK_MODEL_PATTERN.test(nextModel.id))
   ) {
     const currentCompat = (nextModel.compat || {}) as Record<string, unknown>;
@@ -409,8 +413,8 @@ export function applyPiModelRuntimeOverrides(
       ...nextModel,
       compat: {
         ...currentCompat,
-        dropsThinkingInHistory: false,
-        requiresThinkingInContent: false,
+        thinkingFormat: 'deepseek',
+        requiresReasoningContentOnAssistantMessages: true,
       },
     } as typeof nextModel;
   }

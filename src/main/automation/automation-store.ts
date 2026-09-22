@@ -4,11 +4,15 @@ import type {
   Automation,
   AutomationActionGraph,
   AutomationArtifact,
+  AutomationAssignGroupInput,
   AutomationConcurrencyPolicy,
+  AutomationCreateGroupInput,
   AutomationCreateInput,
   AutomationDeliveryConfig,
   AutomationFailurePolicy,
+  AutomationGroup,
   AutomationListQuery,
+  AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
   AutomationRunStatus,
@@ -33,6 +37,11 @@ export interface AutomationRunRecoveryResult {
 export interface AutomationStore {
   list(query?: AutomationListQuery): Automation[];
   get(id: string): Automation | null;
+  listGroups(): AutomationGroup[];
+  createGroup(input: AutomationCreateGroupInput): AutomationGroup;
+  renameGroup(input: AutomationRenameGroupInput): boolean;
+  deleteGroup(id: string): boolean;
+  assignToGroup(input: AutomationAssignGroupInput): void;
   create(input: AutomationCreateInput): Automation;
   update(id: string, updates: AutomationUpdateInput): Automation | null;
   delete(id: string): boolean;
@@ -81,6 +90,14 @@ interface AutomationRow {
   last_error: string | null;
   created_at: number;
   updated_at: number;
+  group_id: string | null;
+}
+
+interface AutomationGroupRow {
+  id: string;
+  name: string;
+  sort_index: number;
+  created_at: number;
 }
 
 interface AutomationRunRow {
@@ -176,11 +193,92 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
   return {
     list: (query = {}) => {
       const rows = raw
-        .prepare('SELECT * FROM automations ORDER BY updated_at DESC')
+        .prepare(
+          `SELECT a.* FROM automations a
+           LEFT JOIN automation_groups g ON g.id = a.group_id
+           ORDER BY a.group_id IS NULL, g.sort_index, g.name, a.updated_at DESC`
+        )
         .all() as AutomationRow[];
       return rows
         .map(mapAutomationRow)
         .filter((automation) => matchesAutomationQuery(automation, query));
+    },
+
+    listGroups: () => {
+      const rows = raw
+        .prepare('SELECT * FROM automation_groups ORDER BY sort_index, name')
+        .all() as AutomationGroupRow[];
+      return rows.map(mapAutomationGroupRow);
+    },
+
+    createGroup: (input: AutomationCreateGroupInput) => {
+      const name = input.name.trim();
+      if (!name) {
+        throw new Error('Group name is required');
+      }
+      const duplicate = raw
+        .prepare('SELECT 1 AS found FROM automation_groups WHERE name = ? LIMIT 1')
+        .get(name) as { found: number } | undefined;
+      if (duplicate) {
+        throw new Error('A group with this name already exists');
+      }
+      const maxSort = raw
+        .prepare('SELECT MAX(sort_index) AS maxSort FROM automation_groups')
+        .get() as { maxSort: number | null };
+      const group: AutomationGroup = {
+        id: randomUUID(),
+        name,
+        createdAt: Date.now(),
+      };
+      raw
+        .prepare(
+          'INSERT INTO automation_groups (id, name, sort_index, created_at) VALUES (?, ?, ?, ?)'
+        )
+        .run(group.id, group.name, (maxSort.maxSort ?? -1) + 1, group.createdAt);
+      return group;
+    },
+
+    renameGroup: (input: AutomationRenameGroupInput) => {
+      const name = input.name.trim();
+      if (!name) {
+        throw new Error('Group name is required');
+      }
+      const duplicate = raw
+        .prepare('SELECT 1 AS found FROM automation_groups WHERE name = ? AND id != ? LIMIT 1')
+        .get(name, input.id) as { found: number } | undefined;
+      if (duplicate) {
+        throw new Error('A group with this name already exists');
+      }
+      const result = raw
+        .prepare('UPDATE automation_groups SET name = ? WHERE id = ?')
+        .run(name, input.id);
+      return result.changes > 0;
+    },
+
+    deleteGroup: (id: string) => {
+      const result = raw.transaction(() => {
+        raw.prepare('UPDATE automations SET group_id = NULL WHERE group_id = ?').run(id);
+        return raw.prepare('DELETE FROM automation_groups WHERE id = ?').run(id);
+      })();
+      return result.changes > 0;
+    },
+
+    assignToGroup: (input: AutomationAssignGroupInput) => {
+      if (input.groupId) {
+        const group = raw
+          .prepare('SELECT 1 AS found FROM automation_groups WHERE id = ? LIMIT 1')
+          .get(input.groupId) as { found: number } | undefined;
+        if (!group) {
+          throw new Error('Group not found');
+        }
+      }
+      if (input.ids.length === 0) return;
+      const statement = raw.prepare('UPDATE automations SET group_id = ? WHERE id = ?');
+      raw.transaction(() => {
+        for (const id of input.ids) {
+          statement.run(input.groupId, id);
+        }
+      })();
     },
 
     get: getAutomationById,
@@ -194,6 +292,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         name: input.name.trim() || 'Automation',
         description: input.description ?? null,
         projectId: input.projectId ?? null,
+        groupId: null,
         enabled,
         status: enabled ? 'enabled' : 'disabled',
         trigger,
@@ -514,16 +613,17 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
   raw
     .prepare(
       `INSERT INTO automations (
-        id, name, description, project_id, enabled, status, trigger_json, action_graph_json,
+        id, name, description, project_id, group_id, enabled, status, trigger_json, action_graph_json,
         delivery_json, failure_policy_json, concurrency_json, next_run_at, locked_run_id,
         last_run_at, last_run_status, last_error, created_at, updated_at, output_bindings_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       automation.id,
       automation.name,
       automation.description,
       automation.projectId,
+      automation.groupId,
       automation.enabled ? 1 : 0,
       automation.status,
       JSON.stringify(automation.trigger),
@@ -589,6 +689,7 @@ function mapAutomationRow(row: AutomationRow): Automation {
     name: row.name,
     description: row.description,
     projectId: row.project_id,
+    groupId: row.group_id ?? null,
     enabled: row.enabled === 1,
     status: parseAutomationStatus(row.status, row.enabled === 1),
     trigger: parseJson(row.trigger_json, defaultOnceTrigger()),
@@ -604,6 +705,14 @@ function mapAutomationRow(row: AutomationRow): Automation {
     lastError: row.last_error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapAutomationGroupRow(row: AutomationGroupRow): AutomationGroup {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
   };
 }
 
@@ -688,6 +797,7 @@ function mapScheduledTaskToAutomation(db: DatabaseInstance, row: ScheduledTaskRo
     name: row.title || 'Automation',
     description: null,
     projectId: project?.id ?? null,
+    groupId: null,
     enabled,
     status: enabled ? 'enabled' : 'disabled',
     trigger,

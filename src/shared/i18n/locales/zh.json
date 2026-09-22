@@ -1416,6 +1416,17 @@
     "relative": {
       "today": "今天",
       "yesterday": "昨天"
+    },
+    "groups": {
+      "moveToGroup": "移动到分组",
+      "assignTitle": "移动到分组",
+      "move": "移动",
+      "ungrouped": "未分组",
+      "newGroup": "新建分组",
+      "namePlaceholder": "分组名称",
+      "rename": "重命名分组",
+      "delete": "解散分组",
+      "deleteConfirm": "确定解散分组“{name}”吗？其中的条目会移出分组，不会被删除。"
     }
   },
   "settings": {

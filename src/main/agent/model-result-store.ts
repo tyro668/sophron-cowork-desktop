@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { Type } from '@sinclair/typebox';
-import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
+import { Type } from 'typebox';
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 
 export const MODEL_RESULT_MAX_CHARS = 6000;
 export const RESULT_READ_TOOL = 'tool_result_read';

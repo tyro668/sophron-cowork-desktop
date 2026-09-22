@@ -1,6 +1,9 @@
 import type {
+  AutomationAssignGroupInput,
+  AutomationCreateGroupInput,
   AutomationCreateInput,
   AutomationListQuery,
+  AutomationRenameGroupInput,
   AutomationRunQuery,
   AutomationUpdateInput,
 } from '../../../shared/automation/types';
@@ -66,5 +69,25 @@ export function registerAutomationIpc(): void {
 
   handleIpc('automation.actions.listDefinitions', () => {
     return requireAutomationService().listActionDefinitions();
+  });
+
+  handleIpc('automation.groups.list', () => {
+    return requireAutomationService().listGroups();
+  });
+
+  handleIpc('automation.groups.create', (_event, payload: AutomationCreateGroupInput) => {
+    return requireAutomationService().createGroup(payload);
+  });
+
+  handleIpc('automation.groups.rename', (_event, payload: AutomationRenameGroupInput) => {
+    return requireAutomationService().renameGroup(payload);
+  });
+
+  handleIpc('automation.groups.delete', (_event, id: string) => {
+    return requireAutomationService().deleteGroup(id);
+  });
+
+  handleIpc('automation.groups.assign', (_event, payload: AutomationAssignGroupInput) => {
+    return requireAutomationService().assignGroup(payload);
   });
 }

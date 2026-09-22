@@ -3,8 +3,8 @@
  * ToolDefinition[] custom tools whose execute() delegates to callTool and
  * normalizes results for the model.
  */
-import { Type, type TSchema } from '@sinclair/typebox';
-import type { AgentSession, ToolDefinition } from '@mariozechner/pi-coding-agent';
+import { Type, type TSchema } from 'typebox';
+import type { AgentSession, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { MCPManager } from '../mcp/mcp-manager';
 import type { AgentToolPack } from '../extensions/agent-runtime-extension';
 import { normalizeMcpToolResultForModel } from './tool-result-utils';
@@ -96,12 +96,7 @@ export function applyActiveToolsInPlace(piSession: AgentSession, toolNames: stri
   };
   const liveTools = agent?.state?.tools;
   const registry = internals._toolRegistry;
-  if (
-    !Array.isArray(liveTools) ||
-    !registry ||
-    typeof agent.setSystemPrompt !== 'function' ||
-    typeof internals._rebuildSystemPrompt !== 'function'
-  ) {
+  if (!Array.isArray(liveTools) || !registry) {
     piSession.setActiveToolsByName(toolNames);
     return piSession.getActiveToolNames();
   }
@@ -116,8 +111,12 @@ export function applyActiveToolsInPlace(piSession: AgentSession, toolNames: stri
   }
   liveTools.length = 0;
   liveTools.push(...resolved);
-  internals._baseSystemPrompt = internals._rebuildSystemPrompt.call(piSession, validNames);
-  agent.setSystemPrompt(internals._baseSystemPrompt);
+  if (typeof internals._rebuildSystemPrompt === 'function') {
+    internals._baseSystemPrompt = internals._rebuildSystemPrompt.call(piSession, validNames);
+  }
+  if (typeof agent.setSystemPrompt === 'function' && internals._baseSystemPrompt) {
+    agent.setSystemPrompt(internals._baseSystemPrompt);
+  }
   return validNames;
 }
 

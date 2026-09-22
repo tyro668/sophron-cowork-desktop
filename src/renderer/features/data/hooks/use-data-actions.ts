@@ -8,12 +8,14 @@ import type { TFunction } from 'i18next';
 import type {
   DataCleaningTask,
   DataDataset,
+  DataGroupScope,
   DataInputTableConfig,
   DataInputTableSourceKind,
   DataOutputTable,
   DataRunTaskInput,
 } from '../../../types';
 import type { ConfirmDialogOptions } from '../../../components/ConfirmDialog';
+import type { AssignGroupTarget, DataListGroup } from '../../../components/data-view/group-ui';
 import { DATA_DELETE_BATCH_SIZE, matchesSearchText } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
 import type { InputTableDraft } from '../model/types';
@@ -557,6 +559,84 @@ export function useDataActions(deps: DataActionsDeps) {
     }
   }, [confirmDelete, dashboard, editors, loadDashboard, t, ui]);
 
+  const reloadScope = useCallback(
+    async (scope: DataGroupScope) => {
+      if (scope === 'input') {
+        await loadInputTables({ preserveError: true });
+      } else {
+        await loadDashboard({
+          preserveError: true,
+          tab: scope === 'task' ? 'tasks' : 'output_tables',
+        });
+      }
+    },
+    [loadDashboard, loadInputTables]
+  );
+
+  const handleAssignToGroup = useCallback(
+    async (scope: DataGroupScope, ids: string[], target: AssignGroupTarget) => {
+      if (ids.length === 0 || !dataClient.has('assignGroup')) return;
+      ui.setActionId('assign-group');
+      ui.setError(null);
+      try {
+        let groupId = target.groupId;
+        if (target.newGroupName) {
+          const group = await dataClient.createGroup({ scope, name: target.newGroupName });
+          groupId = group.id;
+        }
+        await dataClient.assignGroup({ scope, ids, groupId });
+        await reloadScope(scope);
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await reloadScope(scope);
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [reloadScope, ui]
+  );
+
+  const handleRenameGroup = useCallback(
+    async (scope: DataGroupScope, group: DataListGroup, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === group.name || !dataClient.has('renameGroup')) return;
+      ui.setActionId(`rename-group-${group.id}`);
+      ui.setError(null);
+      try {
+        await dataClient.renameGroup({ id: group.id, name: trimmed });
+        await reloadScope(scope);
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await reloadScope(scope);
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [reloadScope, ui]
+  );
+
+  const handleDeleteGroup = useCallback(
+    async (scope: DataGroupScope, group: DataListGroup) => {
+      if (!dataClient.has('deleteGroup')) return;
+      const confirmed = await confirmDelete({
+        message: t('data.groups.deleteConfirm', { name: group.name }),
+      });
+      if (!confirmed) return;
+      ui.setActionId(`delete-group-${group.id}`);
+      ui.setError(null);
+      try {
+        await dataClient.deleteGroup(group.id);
+        await reloadScope(scope);
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await reloadScope(scope);
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [confirmDelete, reloadScope, t, ui]
+  );
+
   return {
     handleCreateTask,
     handleRunTask,
@@ -578,6 +658,9 @@ export function useDataActions(deps: DataActionsDeps) {
     handleUpdateOutputTable,
     handleDeleteOutputTable,
     handleDeleteAllOutputTables,
+    handleAssignToGroup,
+    handleRenameGroup,
+    handleDeleteGroup,
   };
 }
 

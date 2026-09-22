@@ -30,6 +30,7 @@ const EMPTY: DataDashboard = {
   tasks: [],
   datasets: [],
   outputTables: [],
+  groups: [],
   totalTasks: 0,
   totalDatasets: 0,
   totalOutputTables: 0,

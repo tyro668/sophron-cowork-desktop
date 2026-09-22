@@ -497,6 +497,11 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'automation.runs.list': [str, objOpt],
   'automation.artifacts.list': [str],
   'automation.actions.listDefinitions': [],
+  'automation.groups.list': [],
+  'automation.groups.create': [z.looseObject({ name: str })],
+  'automation.groups.rename': [z.looseObject({ id: str, name: str })],
+  'automation.groups.delete': [str],
+  'automation.groups.assign': [z.looseObject({ ids: z.array(str), groupId: str.nullable() })],
   // schedule
   'schedule.list': [],
   'schedule.create': [
@@ -577,6 +582,17 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
     }),
   ],
   'data.updateTask': [z.looseObject({ id: str, name: strOpt })],
+  'data.listGroups': [z.enum(['task', 'input', 'output'])],
+  'data.createGroup': [z.looseObject({ scope: z.enum(['task', 'input', 'output']), name: str })],
+  'data.renameGroup': [z.looseObject({ id: str, name: str })],
+  'data.deleteGroup': [str],
+  'data.assignGroup': [
+    z.looseObject({
+      scope: z.enum(['task', 'input', 'output']),
+      ids: z.array(str),
+      groupId: strNullish,
+    }),
+  ],
   'data.runTask': [str, dataRunTaskInput.optional()],
   'data.runTaskWithDiagnostics': [str, dataRunTaskInput.optional()],
   'data.getTaskNodeStats': [str],

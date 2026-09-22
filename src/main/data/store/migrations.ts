@@ -622,6 +622,26 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       }
     },
   },
+  {
+    version: 12,
+    name: 'data_list_groups',
+    up: async (ctx) => {
+      await ctx.metaRunSql(`
+        CREATE TABLE IF NOT EXISTS data_groups (
+          id VARCHAR PRIMARY KEY,
+          scope VARCHAR NOT NULL,
+          name VARCHAR NOT NULL,
+          sort_index BIGINT NOT NULL DEFAULT 0,
+          created_at BIGINT NOT NULL
+        )
+      `);
+      await ctx.metaRunSql(
+        'CREATE INDEX IF NOT EXISTS idx_data_groups_scope ON data_groups(scope)'
+      );
+      await ctx.ensureMetadataColumn('data_cleaning_tasks', 'group_id', 'VARCHAR');
+      await ctx.ensureMetadataColumn('data_datasets', 'group_id', 'VARCHAR');
+    },
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

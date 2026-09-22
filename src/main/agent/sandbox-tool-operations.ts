@@ -10,7 +10,7 @@ import {
   type EditOperations,
   type ReadOperations,
   type WriteOperations,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import { getLimaInstanceName } from '../sandbox/lima-instance-name';
 
 const VIRTUAL_WORKSPACE_PATH = '/workspace';
@@ -363,34 +363,40 @@ export function createSandboxCodingTools(
   return [
     {
       ...read,
-      execute: (id, params, signal, update) =>
-        read.execute(
+      execute: (id, params, signal, update) => {
+        const input = params as { path: string };
+        return read.execute(
           id,
-          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          { ...input, path: resolveSandboxToolInput(input.path, cwd) },
           signal,
           update
-        ),
+        );
+      },
     },
     createBashTool(cwd, { operations: createSandboxBashOperations(mode) }),
     {
       ...edit,
-      execute: (id, params, signal, update) =>
-        edit.execute(
+      execute: (id, params, signal, update) => {
+        const input = params as Parameters<typeof edit.execute>[1];
+        return edit.execute(
           id,
-          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          { ...input, path: resolveSandboxToolInput(input.path, cwd) },
           signal,
           update
-        ),
+        );
+      },
     },
     {
       ...write,
-      execute: (id, params, signal, update) =>
-        write.execute(
+      execute: (id, params, signal, update) => {
+        const input = params as Parameters<typeof write.execute>[1];
+        return write.execute(
           id,
-          { ...params, path: resolveSandboxToolInput(params.path, cwd) },
+          { ...input, path: resolveSandboxToolInput(input.path, cwd) },
           signal,
           update
-        ),
+        );
+      },
     },
   ] as ReturnType<typeof createCodingTools>;
 }

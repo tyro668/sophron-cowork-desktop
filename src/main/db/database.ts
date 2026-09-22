@@ -685,6 +685,22 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
       );
     },
   },
+  {
+    version: 4,
+    name: 'automation_groups',
+    up: (database) => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS automation_groups (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          sort_index INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+        ALTER TABLE automations ADD COLUMN group_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_automations_group ON automations(group_id);
+      `);
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =

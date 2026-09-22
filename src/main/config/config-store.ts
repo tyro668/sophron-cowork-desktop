@@ -264,9 +264,7 @@ export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
   if (cachedDynamicPresets) return cachedDynamicPresets;
 
   try {
-    const { getModels } = (await import('@mariozechner/pi-ai')) as {
-      getModels: (provider: string) => Array<{ id: string; name: string }> | undefined;
-    };
+    const { getModels } = await import('@earendil-works/pi-ai/compat');
 
     const result = { ...PROVIDER_PRESETS } as Record<
       string,
@@ -277,7 +275,7 @@ export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
       const preset = PROVIDER_PRESETS[providerKey as keyof typeof PROVIDER_PRESETS];
       if (!preset) continue;
 
-      const registryModels = getModels(curated.piProvider);
+      const registryModels = getModels(curated.piProvider as Parameters<typeof getModels>[0]);
       if (!registryModels || registryModels.length === 0) continue;
 
       // Static preset stays authoritative for membership — the bundled pi-ai

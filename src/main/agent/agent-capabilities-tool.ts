@@ -4,8 +4,8 @@
  * lists packs and activates them mid-run so the next provider request already
  * sees the tools.
  */
-import { Type } from '@sinclair/typebox';
-import type { ToolDefinition } from '@mariozechner/pi-coding-agent';
+import { Type } from 'typebox';
+import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { AgentToolPack, ToolActivationResult } from '../extensions/agent-runtime-extension';
 
 export const CAPABILITIES_SEARCH_TOOL_NAME = 'capabilities_search';

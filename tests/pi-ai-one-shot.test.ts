@@ -44,14 +44,13 @@ vi.mock('electron-store', () => {
   };
 });
 
-vi.mock('@mariozechner/pi-ai', () => ({
+vi.mock('@earendil-works/pi-ai/compat', () => ({
   completeSimple: mocks.completeSimple,
 }));
 
 vi.mock('../src/main/agent/shared-auth', () => ({
-  getSharedAuthStorage: () => ({
-    setRuntimeApiKey: mocks.setRuntimeApiKey,
-  }),
+  setRuntimeApiKey: mocks.setRuntimeApiKey,
+  getProviderApiKey: vi.fn(),
 }));
 
 vi.mock('../src/main/agent/pi-model-resolution', () => ({

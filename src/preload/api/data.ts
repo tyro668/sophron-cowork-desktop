@@ -33,6 +33,11 @@ import type {
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
   DataUpdateTaskInput,
+  DataGroup,
+  DataGroupScope,
+  DataCreateGroupInput,
+  DataRenameGroupInput,
+  DataAssignGroupInput,
   DataWorkflowSaveInput,
   ImportCloudTableInput,
   ImportCloudTableResult,
@@ -97,6 +102,16 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.createTask', payload),
     updateTask: (payload: DataUpdateTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.updateTask', payload),
+    listGroups: (scope: DataGroupScope): Promise<DataGroup[]> =>
+      ipcRenderer.invoke('data.listGroups', scope),
+    createGroup: (payload: DataCreateGroupInput): Promise<DataGroup> =>
+      ipcRenderer.invoke('data.createGroup', payload),
+    renameGroup: (payload: DataRenameGroupInput): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.renameGroup', payload),
+    deleteGroup: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deleteGroup', id),
+    assignGroup: (payload: DataAssignGroupInput): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.assignGroup', payload),
     runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
       ipcRenderer.invoke('data.runTask', id, payload),
     runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput): Promise<RunTaskResult> =>

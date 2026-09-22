@@ -2,6 +2,7 @@ import type {
   CloudOutputAction,
   DataCleaningTask,
   DataDataset,
+  DataGroup,
   DataInputTableNormalizerArtifact,
   DataInputTableNormalizerArtifactVersion,
   DataNormalizerArtifactVersionStatus,
@@ -35,10 +36,19 @@ export interface DataDatasetCsvExport {
   csv: string;
 }
 
+export interface DataGroupRow {
+  id: string;
+  scope: string;
+  name: string;
+  sort_index: number | string;
+  created_at: number | string;
+}
+
 export interface DataTaskRow {
   id: string;
   name: string;
   status: string;
+  group_id?: string | null;
   node_count: number | string;
   source_path: string | null;
   source_dataset_id: string | null;
@@ -63,6 +73,7 @@ export interface DataDatasetRow {
   table_name: string;
   row_count: number | string;
   column_count: number | string;
+  group_id?: string | null;
   created_at: number | string;
   updated_at: number | string;
 }
@@ -148,11 +159,23 @@ export const LEGACY_DEMO_TASK_NAMES = [
   '库存日报清洗',
 ];
 
+export function mapGroupRow(row: DataGroupRow): DataGroup {
+  const scope =
+    row.scope === 'task' || row.scope === 'input' || row.scope === 'output' ? row.scope : 'input';
+  return {
+    id: String(row.id),
+    scope,
+    name: String(row.name),
+    createdAt: toNumber(row.created_at),
+  };
+}
+
 export function mapTaskRow(row: DataTaskRow): DataCleaningTask {
   return {
     id: String(row.id),
     name: String(row.name),
     status: normalizeStatus(row.status),
+    groupId: row.group_id ? String(row.group_id) : null,
     nodeCount: toNumber(row.node_count),
     sourcePath: row.source_path ? String(row.source_path) : null,
     sourceDatasetId: row.source_dataset_id ? String(row.source_dataset_id) : null,
@@ -181,6 +204,7 @@ export function mapDatasetRow(row: DataDatasetRow): DataDataset {
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
+    groupId: row.group_id ? String(row.group_id) : null,
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };
@@ -254,6 +278,7 @@ export function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
     relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
+    groupId: row.group_id ? String(row.group_id) : null,
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
     cloudAction: config.kind === OUTPUT_TABLE_CONFIG_KIND ? config.cloudAction : null,

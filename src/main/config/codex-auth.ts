@@ -5,17 +5,17 @@
  *
  * Two credential sources are supported:
  * - Local codex CLI login state (`~/.codex/auth.json`), imported read-only
- * - In-app OAuth login via pi-ai's `loginOpenAICodex` (PKCE + localhost callback)
+ * - In-app OAuth login via pi's ModelRuntime (`login`, PKCE + localhost callback)
  *
- * Imported/acquired tokens live in the shared pi-coding-agent `AuthStorage`
+ * Imported/acquired tokens live in the shared credential store
  * (`~/.pi/agent/auth.json`) as `{ type: 'oauth', ... }` credentials, so
- * `AuthStorage.getApiKey()` transparently refreshes expired access tokens.
+ * `ModelRuntime.getAuth()` refreshes expired access tokens.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { log, logWarn } from '../utils/logger';
-import { getSharedAuthStorage } from '../agent/shared-auth';
+import { getSharedAuthStorage, getSharedModelRuntime } from '../agent/shared-auth';
 
 export const OPENAI_CODEX_PROVIDER = 'openai-codex';
 
@@ -229,27 +229,29 @@ export interface CodexLoginHooks {
  * (manual paste fallback when the callback server cannot bind).
  */
 export async function loginCodex(hooks: CodexLoginHooks): Promise<CodexAuthStatus> {
-  const { loginOpenAICodex } = await import('@mariozechner/pi-ai/oauth');
-
-  const credentials = await loginOpenAICodex({
-    originator: 'sophron',
-    onAuth: ({ url }) => {
-      hooks.onAuthUrl?.(url);
+  const runtime = await getSharedModelRuntime();
+  const controller = new AbortController();
+  await runtime.login(OPENAI_CODEX_PROVIDER, 'oauth', {
+    signal: controller.signal,
+    notify(event) {
+      if (event.type === 'auth_url') hooks.onAuthUrl?.(event.url);
     },
-    onPrompt: async ({ message }) => {
+    async prompt(prompt) {
       if (!hooks.onPromptCode) {
         throw new Error('OAuth callback server unavailable and no manual code handler configured');
       }
-      return hooks.onPromptCode(message);
+      return hooks.onPromptCode(prompt.message);
     },
   });
 
   const authStorage = getSharedAuthStorage();
-  authStorage.set(OPENAI_CODEX_PROVIDER, {
-    type: 'oauth',
-    ...credentials,
-    [SOURCE_FIELD]: 'app',
-  });
+  const stored = authStorage.get(OPENAI_CODEX_PROVIDER);
+  if (stored?.type === 'oauth') {
+    authStorage.set(OPENAI_CODEX_PROVIDER, {
+      ...stored,
+      [SOURCE_FIELD]: 'app',
+    });
+  }
   log('[CodexAuth] In-app OAuth login succeeded');
   return getCodexAuthStatus();
 }

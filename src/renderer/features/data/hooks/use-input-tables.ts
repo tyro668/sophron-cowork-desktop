@@ -11,7 +11,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { DataDataset } from '../../../types';
+import type { DataDataset, DataGroup } from '../../../types';
 import { getTablePageCount, TABLE_PAGE_SIZE } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
 import type { DataTab, InputTableSourceFilter } from '../model/types';
@@ -30,6 +30,8 @@ export function useInputTables(deps: {
   setError: Dispatch<SetStateAction<string | null>>;
   setLoadingTab: Dispatch<SetStateAction<DataTab | null>>;
   setPendingNavigationTab: Dispatch<SetStateAction<DataTab | null>>;
+  /** Keeps the shared group list fresh — every dashboard payload carries it. */
+  setGroups?: (groups: DataGroup[]) => void;
 }) {
   const {
     searchQuery,
@@ -38,6 +40,7 @@ export function useInputTables(deps: {
     setError,
     setLoadingTab,
     setPendingNavigationTab,
+    setGroups,
   } = deps;
   const [inputTableDatasets, setInputTableDatasets] = useState<DataDataset[]>([]);
   const [totalInputTableDatasets, setTotalInputTableDatasets] = useState(0);
@@ -73,6 +76,7 @@ export function useInputTables(deps: {
         if (requestSeq === inputTablesRequestSeq.current) {
           setInputTableDatasets(nextDashboard.datasets);
           setTotalInputTableDatasets(nextDashboard.totalDatasets);
+          setGroups?.(nextDashboard.groups);
         }
       } catch (err) {
         if (requestSeq === inputTablesRequestSeq.current) {
@@ -91,6 +95,7 @@ export function useInputTables(deps: {
       inputTableSourceFilter,
       searchQuery,
       setError,
+      setGroups,
       setLoadingTab,
       setPendingNavigationTab,
     ]

@@ -5,8 +5,12 @@ import type {
   Automation,
   AutomationActionDefinitionSummary,
   AutomationArtifact,
+  AutomationAssignGroupInput,
+  AutomationCreateGroupInput,
   AutomationCreateInput,
+  AutomationGroup,
   AutomationListQuery,
+  AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
   AutomationUpdateInput,
@@ -83,6 +87,27 @@ export class AutomationService {
 
   delete(id: string): { success: boolean } {
     return { success: this.store.delete(id) };
+  }
+
+  listGroups(): AutomationGroup[] {
+    return this.store.listGroups();
+  }
+
+  createGroup(input: AutomationCreateGroupInput): AutomationGroup {
+    return this.store.createGroup(input);
+  }
+
+  renameGroup(input: AutomationRenameGroupInput): { success: boolean } {
+    return { success: this.store.renameGroup(input) };
+  }
+
+  deleteGroup(id: string): { success: boolean } {
+    return { success: this.store.deleteGroup(id) };
+  }
+
+  assignGroup(input: AutomationAssignGroupInput): { success: boolean } {
+    this.store.assignToGroup(input);
+    return { success: true };
   }
 
   setEnabled(id: string, enabled: boolean): Automation | null {

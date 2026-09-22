@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowUpDown,
   Eye,
+  FolderInput,
   Info,
   PencilLine,
   Plus,
@@ -12,7 +13,17 @@ import {
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import type { DataDataset, DataOutputTable } from '../../types';
+import type { DataDataset, DataGroup, DataOutputTable } from '../../types';
+import {
+  AssignGroupDialog,
+  buildGroupSections,
+  GroupHeaderRow,
+  GroupNameDialog,
+  hasNamedSections,
+  toggleCollapsed,
+  type AssignGroupTarget,
+  type DataListGroup,
+} from './group-ui';
 import {
   DataMoreMenu,
   DataTableSearch,
@@ -33,6 +44,7 @@ import { OutputTableAutomations } from './table-automations';
 export function OutputTablesPanel({
   outputTables,
   totalOutputTables,
+  groups,
   currentPage,
   searchQuery,
   isLoading,
@@ -46,9 +58,13 @@ export function OutputTablesPanel({
   onEdit,
   onDelete,
   onDeleteAll,
+  onAssignToGroup,
+  onRenameGroup,
+  onDeleteGroup,
 }: {
   outputTables: DataOutputTable[];
   totalOutputTables: number;
+  groups: DataGroup[];
   currentPage: number;
   searchQuery: string;
   isLoading: boolean;
@@ -62,9 +78,15 @@ export function OutputTablesPanel({
   onEdit: (outputTable: DataOutputTable) => void;
   onDelete: (outputTable: DataOutputTable) => void;
   onDeleteAll: () => void;
+  onAssignToGroup: (ids: string[], target: AssignGroupTarget) => void;
+  onRenameGroup: (group: DataListGroup, name: string) => void;
+  onDeleteGroup: (group: DataListGroup) => void;
 }) {
   const { t } = useTranslation();
   const [selectedOutputTableId, setSelectedOutputTableId] = useState<string | null>(null);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const selectedOutputTable =
     outputTables.find((outputTable) => outputTable.id === selectedOutputTableId) ?? null;
   const selectedBusy = selectedOutputTable ? actionId === selectedOutputTable.id : false;
@@ -81,6 +103,60 @@ export function OutputTablesPanel({
       setSelectedOutputTableId(null);
     }
   }, [isLoading, outputTables, selectedOutputTableId]);
+
+  const sections = useMemo(
+    () => buildGroupSections(outputTables, groups, (outputTable) => outputTable.groupId),
+    [outputTables, groups]
+  );
+  const grouped = hasNamedSections(sections);
+
+  const renderRow = (outputTable: DataOutputTable) => {
+    const selected = outputTable.id === selectedOutputTableId;
+    return (
+      <tr
+        onClick={() => setSelectedOutputTableId(outputTable.id)}
+        onDoubleClick={() => onEdit(outputTable)}
+        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+          selected
+            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
+            : 'hover:bg-surface-hover/35'
+        }`}
+      >
+        <td className="px-4">
+          <input
+            type="radio"
+            name="output-table-selection"
+            checked={selected}
+            onChange={() => setSelectedOutputTableId(outputTable.id)}
+            onClick={(event) => event.stopPropagation()}
+            className="h-3.5 w-3.5 accent-accent"
+            aria-label={outputTable.name}
+          />
+        </td>
+        <td className="px-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+              <UploadCloud className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+              {outputTable.name}
+            </div>
+          </div>
+        </td>
+        <td className="px-2">
+          <div className="truncate text-[13px] font-medium text-text-secondary">
+            {formatOutputTableRelatedTaskNames(outputTable, t)}
+          </div>
+        </td>
+        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+          {formatDateTime(outputTable.updatedAt)}
+        </td>
+        <td className="px-2">
+          <InputTableStatusBadge label={t('data.outputTables.status.available')} tone="success" />
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
@@ -120,6 +196,16 @@ export function OutputTablesPanel({
             onClick={() => {
               if (selectedOutputTable) {
                 onEdit(selectedOutputTable);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<FolderInput className="h-3.5 w-3.5" />}
+            label={t('data.groups.moveToGroup')}
+            disabled={!selectedOutputTable || selectedBusy || bulkBusy}
+            onClick={() => {
+              if (selectedOutputTable) {
+                setAssignDialogOpen(true);
               }
             }}
           />
@@ -205,57 +291,27 @@ export function OutputTablesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {outputTables.map((outputTable) => {
-                    const selected = outputTable.id === selectedOutputTableId;
-                    return (
-                      <tr
-                        key={outputTable.id}
-                        onClick={() => setSelectedOutputTableId(outputTable.id)}
-                        onDoubleClick={() => onEdit(outputTable)}
-                        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                          selected
-                            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                            : 'hover:bg-surface-hover/35'
-                        }`}
-                      >
-                        <td className="px-4">
-                          <input
-                            type="radio"
-                            name="output-table-selection"
-                            checked={selected}
-                            onChange={() => setSelectedOutputTableId(outputTable.id)}
-                            onClick={(event) => event.stopPropagation()}
-                            className="h-3.5 w-3.5 accent-accent"
-                            aria-label={outputTable.name}
-                          />
-                        </td>
-                        <td className="px-2">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                              <UploadCloud className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                              {outputTable.name}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2">
-                          <div className="truncate text-[13px] font-medium text-text-secondary">
-                            {formatOutputTableRelatedTaskNames(outputTable, t)}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                          {formatDateTime(outputTable.updatedAt)}
-                        </td>
-                        <td className="px-2">
-                          <InputTableStatusBadge
-                            label={t('data.outputTables.status.available')}
-                            tone="success"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {sections.map((section) => (
+                    <Fragment key={section.key}>
+                      {grouped && (
+                        <GroupHeaderRow
+                          colSpan={5}
+                          group={section.group}
+                          count={section.rows.length}
+                          collapsed={collapsedGroups.has(section.key)}
+                          onToggle={() =>
+                            setCollapsedGroups((current) => toggleCollapsed(current, section.key))
+                          }
+                          onRename={section.group ? setRenameTarget : undefined}
+                          onDelete={section.group ? onDeleteGroup : undefined}
+                        />
+                      )}
+                      {!collapsedGroups.has(section.key) &&
+                        section.rows.map((outputTable) => (
+                          <Fragment key={outputTable.id}>{renderRow(outputTable)}</Fragment>
+                        ))}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -268,6 +324,32 @@ export function OutputTablesPanel({
           embedded
         />
       </div>
+      <AssignGroupDialog
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        groups={groups}
+        currentGroupId={selectedOutputTable?.groupId ?? null}
+        busy={actionId === 'assign-group'}
+        onSubmit={(target) => {
+          if (selectedOutputTable) {
+            onAssignToGroup([selectedOutputTable.id], target);
+          }
+          setAssignDialogOpen(false);
+        }}
+      />
+      <GroupNameDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+        initialName={renameTarget?.name ?? ''}
+        onSubmit={(name) => {
+          if (renameTarget) {
+            onRenameGroup(renameTarget, name);
+          }
+          setRenameTarget(null);
+        }}
+      />
     </div>
   );
 }

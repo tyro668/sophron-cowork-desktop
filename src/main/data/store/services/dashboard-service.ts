@@ -8,8 +8,10 @@ import { toNumber, normalizeListWindow } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
 import {
   DataDatasetRow,
+  DataGroupRow,
   storedDatasetSourceKindSql,
   mapDatasetRow,
+  mapGroupRow,
   mapOutputTableRow,
   outputTableConfigPredicateSql,
   DataTaskRow,
@@ -79,13 +81,16 @@ export class DashboardService {
       ? await this.ctx.metaQueryRows<DataTaskRow>(
           `
               SELECT
-                id, name, status, node_count, source_path, source_dataset_id, output_table,
-                row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
-              FROM data_cleaning_tasks
+                t.id, t.name, t.status, t.group_id, t.node_count, t.source_path,
+                t.source_dataset_id, t.output_table, t.row_count, t.column_count, t.error,
+                t.scheduled_for, t.created_at, t.updated_at, t.last_run_at
+              FROM data_cleaning_tasks t
+              LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'task'
               WHERE $query = ''
-                OR lower(name) LIKE $like ESCAPE '\\'
-                OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
-              ORDER BY updated_at DESC, created_at DESC
+                OR lower(t.name) LIKE $like ESCAPE '\\'
+                OR lower(coalesce(t.source_path, '')) LIKE $like ESCAPE '\\'
+              ORDER BY t.group_id IS NULL, g.sort_index, g.name,
+                t.updated_at DESC, t.created_at DESC
               LIMIT ${taskWindow.limit} OFFSET ${taskWindow.offset}
             `,
           { query: normalizedQuery, like }
@@ -114,6 +119,7 @@ export class DashboardService {
               WITH page AS (
                 SELECT d.*
                 FROM data_datasets d
+                LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
                 WHERE ($query = ''
                   OR lower(d.name) LIKE $like ESCAPE '\\'
                   OR lower(d.source_path) LIKE $like ESCAPE '\\')
@@ -122,7 +128,8 @@ export class DashboardService {
                     $sourceKind = ''
                     OR ${storedDatasetSourceKindSql('d')} = $sourceKind
                   )
-                ORDER BY d.updated_at DESC, d.created_at DESC
+                ORDER BY d.group_id IS NULL, g.sort_index, g.name,
+                  d.updated_at DESC, d.created_at DESC
                 LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
               )
               SELECT
@@ -153,16 +160,21 @@ export class DashboardService {
                 d.*,
                 ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names
               FROM data_datasets d
+              LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
               WHERE ($query = ''
                 OR lower(d.name) LIKE $like ESCAPE '\\'
                 OR lower(d.table_name) LIKE $like ESCAPE '\\')
                 AND ${outputTableConfigPredicateSql('d')}
-              ORDER BY d.updated_at DESC, d.created_at DESC
+              ORDER BY d.group_id IS NULL, g.sort_index, g.name,
+                d.updated_at DESC, d.created_at DESC
               LIMIT ${outputWindow.limit} OFFSET ${outputWindow.offset}
             `,
           { query: normalizedQuery, like }
         )
       : [];
+    const groupRows = await this.ctx.metaQueryRows<DataGroupRow>(
+      'SELECT * FROM data_groups ORDER BY scope, sort_index, created_at, name'
+    );
     const statusCounts: DataTaskStatusCounts = {
       running: toNumber(summary.running_count),
       completed: toNumber(summary.completed_count),
@@ -183,6 +195,7 @@ export class DashboardService {
       tasks: taskRows.map(mapTaskRow),
       datasets: datasetRows.map(mapDatasetRow),
       outputTables: outputRows.map(mapOutputTableRow),
+      groups: groupRows.map(mapGroupRow),
       totalTasks: toNumber(taskCountRows[0]?.count),
       totalDatasets: toNumber(datasetCountRows[0]?.count),
       totalOutputTables: toNumber(outputCountRows[0]?.count),

@@ -1,6 +1,6 @@
 import { ModelResultStore } from '../src/main/agent/model-result-store';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentToolResult, ExtensionContext } from '@mariozechner/pi-coding-agent';
+import type { AgentToolResult, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { DataToolDefinition } from '../src/main/data/data-tool-types';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
@@ -44,6 +44,7 @@ describe('DataToolService', () => {
   it('formats command results as short tool content with structured details', async () => {
     const inputTable: DataDataset = {
       id: 'dataset_1',
+      groupId: null,
       name: 'customers',
       sourcePath: '/tmp/customers.csv',
       sourceKind: 'csv',
@@ -84,6 +85,7 @@ describe('DataToolService', () => {
   it('keeps table inspection schema-only by default and caps agent result previews at five rows', async () => {
     const task: DataCleaningTask = {
       id: 'task_compact',
+      groupId: null,
       name: 'Compact preview task',
       status: 'completed',
       nodeCount: 2,
@@ -168,6 +170,7 @@ describe('DataToolService', () => {
   it('formats output tables and data tasks as clickable app links', async () => {
     const outputTable: DataOutputTable = {
       id: 'output_1',
+      groupId: null,
       name: 'customers output',
       tableName: 'output_1',
       rowCount: 2,
@@ -179,6 +182,7 @@ describe('DataToolService', () => {
     };
     const task: DataCleaningTask = {
       id: 'task_1',
+      groupId: null,
       name: 'customers cleanup',
       status: 'draft',
       nodeCount: 0,
@@ -232,6 +236,7 @@ describe('DataToolService', () => {
     };
     const inputTable: DataDataset = {
       id: 'dataset_2',
+      groupId: null,
       name: 'customers normalized',
       sourcePath: '/tmp/customers.csv',
       sourceKind: 'csv',
@@ -308,6 +313,7 @@ describe('DataToolService', () => {
     };
     const inputTable: DataDataset = {
       id: 'dataset_3',
+      groupId: null,
       name: 'normalized excel',
       sourcePath: '/workspace/.tmp/source.xlsx',
       sourceKind: 'excel',
@@ -674,6 +680,7 @@ describe('DataToolService', () => {
   it('reports omitted run mode as temporary / not committed', async () => {
     const task: DataCleaningTask = {
       id: 'task_run',
+      groupId: null,
       name: 'run evidence',
       status: 'completed',
       nodeCount: 1,

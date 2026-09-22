@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Value } from '@sinclair/typebox/value';
+import { Value } from 'typebox/value';
 import type { Automation } from '../src/shared/automation/types';
 import { compileAutomationSchedule } from '../src/main/automation/tools/schedule-compiler';
 import { AutomationToolService } from '../src/main/automation/tools/service';
@@ -27,6 +27,7 @@ function createServiceFixture(options: { now?: () => number } = {}) {
       name: input.name,
       description: input.description ?? null,
       projectId: input.projectId ?? null,
+      groupId: null,
       enabled: input.enabled !== false,
       status: input.enabled === false ? 'disabled' : 'enabled',
       trigger: input.trigger,

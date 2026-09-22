@@ -13,8 +13,8 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   AgentSession as PiAgentSession,
   AgentSessionEvent,
-} from '@mariozechner/pi-coding-agent';
-import type { Model, Api } from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-coding-agent';
+import type { Model, Api } from '@earendil-works/pi-ai';
 import type {
   Session,
   Message,
@@ -757,7 +757,7 @@ export class AgentRunEventBridge {
           break;
         }
 
-        case 'auto_compaction_start': {
+        case 'compaction_start': {
           log('[AgentRunner] Auto-compaction started, reason:', event.reason);
           this.compactionStepId = `compaction-${Date.now()}`;
           this.compactionStartedAt = Date.now();
@@ -773,7 +773,7 @@ export class AgentRunEventBridge {
           break;
         }
 
-        case 'auto_compaction_end': {
+        case 'compaction_end': {
           const status = event.aborted ? 'error' : event.errorMessage ? 'error' : 'completed';
           const title = event.aborted
             ? 'Context compaction aborted'
@@ -838,7 +838,7 @@ export class AgentRunEventBridge {
     const messages = [...this.ctx.piSession.agent.state.messages];
     if (messages[messages.length - 1]?.role === 'assistant') {
       messages.pop();
-      this.ctx.piSession.agent.replaceMessages(messages);
+      this.ctx.piSession.agent.state.messages = messages;
 
       const leafId = this.ctx.piSession.sessionManager.getLeafId();
       const leafEntry = leafId ? this.ctx.piSession.sessionManager.getEntry(leafId) : undefined;

@@ -74,14 +74,23 @@ import type {
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
   DataUpdateTaskInput,
+  DataGroup,
+  DataGroupScope,
+  DataCreateGroupInput,
+  DataRenameGroupInput,
+  DataAssignGroupInput,
   DataWorkflowSaveInput,
   DataOutputTable,
   AppUpdateState,
   Automation,
   AutomationActionDefinitionSummary,
   AutomationArtifact,
+  AutomationAssignGroupInput,
+  AutomationCreateGroupInput,
   AutomationCreateInput,
+  AutomationGroup,
   AutomationListQuery,
+  AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
   AutomationUpdateInput,
@@ -166,6 +175,11 @@ export interface ElectronApi {
     getTask: (id: string) => Promise<DataCleaningTask | null>;
     createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
     updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
+    listGroups: (scope: DataGroupScope) => Promise<DataGroup[]>;
+    createGroup: (payload: DataCreateGroupInput) => Promise<DataGroup>;
+    renameGroup: (payload: DataRenameGroupInput) => Promise<{ success: boolean }>;
+    deleteGroup: (id: string) => Promise<{ success: boolean }>;
+    assignGroup: (payload: DataAssignGroupInput) => Promise<{ success: boolean }>;
     runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
     runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput) => Promise<RunTaskResult>;
     getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
@@ -483,6 +497,13 @@ export interface ElectronApi {
     listRuns: (id: string, query?: AutomationRunQuery) => Promise<AutomationRun[]>;
     listArtifacts: (runId: string) => Promise<AutomationArtifact[]>;
     listActionDefinitions: () => Promise<AutomationActionDefinitionSummary[]>;
+    groups: {
+      list: () => Promise<AutomationGroup[]>;
+      create: (payload: AutomationCreateGroupInput) => Promise<AutomationGroup>;
+      rename: (payload: AutomationRenameGroupInput) => Promise<{ success: boolean }>;
+      delete: (id: string) => Promise<{ success: boolean }>;
+      assign: (payload: AutomationAssignGroupInput) => Promise<{ success: boolean }>;
+    };
   };
   memory: {
     getOverview: (cwd?: string) => Promise<MemoryOverview>;

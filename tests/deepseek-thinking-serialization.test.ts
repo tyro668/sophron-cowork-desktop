@@ -1,20 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import path from 'node:path';
-import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
-
-const completionsPath = path.resolve(
-  'node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js'
-);
-const completionsSource = fs.readFileSync(completionsPath, 'utf8');
-const isPatched = completionsSource.includes('dropsThinkingInHistory');
-
-if (!isPatched) {
-  throw new Error('Expected @mariozechner/pi-ai patch to be applied before running this suite');
-}
-
-const mod = await import(pathToFileURL(completionsPath).href);
-const { convertMessages } = mod;
+import { convertMessages } from '@earendil-works/pi-ai/api/openai-completions';
+import { normalizeContext, type Context } from '@earendil-works/pi-ai';
 
 describe('DeepSeek thinking block serialization', () => {
   const baseModel = {
@@ -34,15 +20,13 @@ describe('DeepSeek thinking block serialization', () => {
     supportsStore: false,
     supportsDeveloperRole: false,
     supportsReasoningEffort: true,
-    reasoningEffortMap: {},
     supportsUsageInStreaming: true,
     maxTokensField: 'max_completion_tokens' as const,
     requiresToolResultName: false,
     requiresAssistantAfterToolResult: false,
     requiresThinkingAsText: false,
-    dropsThinkingInHistory: false,
-    requiresThinkingInContent: false,
-    thinkingFormat: 'openai' as const,
+    requiresReasoningContentOnAssistantMessages: true,
+    thinkingFormat: 'deepseek' as const,
     openRouterRouting: {},
     vercelGatewayRouting: {},
     supportsStrictMode: true,
@@ -75,12 +59,16 @@ describe('DeepSeek thinking block serialization', () => {
       ],
     };
 
-    const result = convertMessages(baseModel, context, baseCompat);
+    const result = convertMessages(
+      baseModel,
+      normalizeContext(context as Context),
+      baseCompat as never
+    );
     const assistantMsg = result.find((m: { role: string }) => m.role === 'assistant');
 
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg!.content).toBe('Hi there!');
-    expect((assistantMsg as Record<string, unknown>).reasoning_content).toBe(
+    expect((assistantMsg as unknown as Record<string, unknown>).reasoning_content).toBe(
       'Let me think about this...'
     );
   });
@@ -111,14 +99,18 @@ describe('DeepSeek thinking block serialization', () => {
       ],
     };
 
-    const result = convertMessages(baseModel, context, baseCompat);
+    const result = convertMessages(
+      baseModel,
+      normalizeContext(context as Context),
+      baseCompat as never
+    );
     const assistantMsg = result.find((m: { role: string }) => m.role === 'assistant');
 
     expect(assistantMsg).toBeDefined();
-    expect((assistantMsg as Record<string, unknown>).reasoning_content).toBe(
+    expect((assistantMsg as unknown as Record<string, unknown>).reasoning_content).toBe(
       'Deep reasoning here...'
     );
-    expect((assistantMsg as Record<string, unknown>).tool_calls).toHaveLength(1);
+    expect((assistantMsg as unknown as Record<string, unknown>).tool_calls).toHaveLength(1);
   });
 
   it('still supports text fallback for providers that require thinking as text', () => {
@@ -141,10 +133,10 @@ describe('DeepSeek thinking block serialization', () => {
       ],
     };
 
-    const result = convertMessages(baseModel, context, {
+    const result = convertMessages(baseModel, normalizeContext(context as Context), {
       ...baseCompat,
       requiresThinkingAsText: true,
-    });
+    } as never);
 
     const assistantMsg = result.find((m: { role: string }) => m.role === 'assistant');
     expect(Array.isArray(assistantMsg!.content)).toBe(true);
@@ -173,7 +165,11 @@ describe('DeepSeek thinking block serialization', () => {
       ],
     };
 
-    const result = convertMessages(baseModel, context, baseCompat);
+    const result = convertMessages(
+      baseModel,
+      normalizeContext(context as Context),
+      baseCompat as never
+    );
 
     expect(result.some((m: { role: string }) => m.role === 'assistant')).toBe(false);
   });

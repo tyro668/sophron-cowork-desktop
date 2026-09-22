@@ -4,7 +4,7 @@
  * renders the tabbed workspace. Components below only receive state and
  * action callbacks; every IPC call lives in `features/data/api/data-client`.
  */
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
@@ -54,6 +54,7 @@ export function DataViewPage() {
     setError: ui.setError,
     setLoadingTab: ui.setLoadingTab,
     setPendingNavigationTab: ui.setPendingNavigationTab,
+    setGroups: dashboard.setGroups,
   });
   const editors = useDataViewEditors({
     tasks: dashboard.dashboard.tasks,
@@ -83,6 +84,18 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
+  const taskGroups = useMemo(
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'task'),
+    [dashboard.dashboard.groups]
+  );
+  const inputGroups = useMemo(
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'input'),
+    [dashboard.dashboard.groups]
+  );
+  const outputGroups = useMemo(
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'output'),
+    [dashboard.dashboard.groups]
+  );
   const { setPendingNavigationTab, setLoadingTab, setError } = ui;
   const { loadDashboard, invalidateRequests } = dashboard;
   const { loadInputTables } = inputTables;
@@ -281,6 +294,7 @@ export function DataViewPage() {
                   <TasksPanel
                     tasks={dashboard.dashboard.tasks}
                     totalTasks={dashboard.dashboard.totalTasks}
+                    groups={taskGroups}
                     currentPage={dashboard.taskPage}
                     searchQuery={searchQuery}
                     actionId={actionId}
@@ -294,12 +308,18 @@ export function DataViewPage() {
                     onEdit={actions.handleEditTask}
                     onDelete={actions.handleDeleteTask}
                     onDeleteAll={actions.handleDeleteAllTasks}
+                    onAssignToGroup={(ids, target) =>
+                      actions.handleAssignToGroup('task', ids, target)
+                    }
+                    onRenameGroup={(group, name) => actions.handleRenameGroup('task', group, name)}
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('task', group)}
                   />
                 </TabsContent>
                 <TabsContent value="input_tables" className="min-h-0 flex-1 bg-transparent">
                   <InputTablesPanel
                     datasets={inputTables.inputTableDatasets}
                     drafts={drafts.drafts}
+                    groups={inputGroups}
                     totalDatasets={inputTables.totalInputTableDatasets}
                     currentPage={inputTables.datasetPage}
                     searchQuery={searchQuery}
@@ -316,6 +336,11 @@ export function DataViewPage() {
                     onDeleteDraft={actions.handleDeleteInputTableDraft}
                     onEditDraft={editors.setEditingInputTableDraftId}
                     onEditDataset={actions.handleEditInputTableDataset}
+                    onAssignToGroup={(ids, target) =>
+                      actions.handleAssignToGroup('input', ids, target)
+                    }
+                    onRenameGroup={(group, name) => actions.handleRenameGroup('input', group, name)}
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('input', group)}
                     isCreateDisabled={!isDataApiAvailable}
                     actionId={actionId}
                   />
@@ -324,6 +349,7 @@ export function DataViewPage() {
                   <OutputTablesPanel
                     outputTables={dashboard.dashboard.outputTables}
                     totalOutputTables={dashboard.dashboard.totalOutputTables}
+                    groups={outputGroups}
                     currentPage={dashboard.outputPage}
                     searchQuery={searchQuery}
                     isLoading={isOutputTablesLoading}
@@ -339,6 +365,13 @@ export function DataViewPage() {
                     onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
                     onDelete={actions.handleDeleteOutputTable}
                     onDeleteAll={actions.handleDeleteAllOutputTables}
+                    onAssignToGroup={(ids, target) =>
+                      actions.handleAssignToGroup('output', ids, target)
+                    }
+                    onRenameGroup={(group, name) =>
+                      actions.handleRenameGroup('output', group, name)
+                    }
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('output', group)}
                   />
                 </TabsContent>
                 <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">

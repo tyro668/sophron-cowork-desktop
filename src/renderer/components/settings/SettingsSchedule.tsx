@@ -14,8 +14,10 @@ import type {
   Automation,
   AutomationActionDefinitionSummary,
   AutomationCreateInput,
+  AutomationGroup,
   DataDashboard,
 } from '../../types';
+import type { AssignGroupTarget, DataListGroup } from '../data-view/group-ui';
 import { useAppStore } from '../../store';
 import {
   AUTOMATION_TABLE_PAGE_SIZE,
@@ -70,6 +72,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     [t]
   );
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [automationGroups, setAutomationGroups] = useState<AutomationGroup[]>([]);
   const [actionDefinitions, setActionDefinitions] = useState<AutomationActionDefinitionSummary[]>(
     []
   );
@@ -183,8 +186,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         setBanner(null);
       }
       try {
-        const [automationRows, actions, dashboard] = await Promise.all([
+        const [automationRows, groups, actions, dashboard] = await Promise.all([
           window.electronAPI.automation.list(),
+          window.electronAPI.automation.groups.list(),
           window.electronAPI.automation.listActionDefinitions(),
           window.electronAPI.data.getDashboard({
             includeSummary: false,
@@ -199,6 +203,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
         automationsRef.current = automationRows;
         setAutomations(automationRows);
+        setAutomationGroups(groups);
         setActionDefinitions(actions);
         setDataDashboard(dashboard);
         if (!skipNextAutoSelectRef.current && !selectedIdRef.current && automationRows[0]) {
@@ -589,6 +594,53 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     await load();
   };
 
+  const assignToGroup = async (target: AssignGroupTarget) => {
+    if (!selectedAutomation) return;
+    try {
+      let groupId = target.groupId;
+      if (target.newGroupName) {
+        const group = await window.electronAPI.automation.groups.create({
+          name: target.newGroupName,
+        });
+        groupId = group.id;
+      }
+      await window.electronAPI.automation.groups.assign({
+        ids: [selectedAutomation.id],
+        groupId,
+      });
+      await load({ silent: true });
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : String(error));
+      await load({ silent: true });
+    }
+  };
+
+  const renameGroup = async (group: DataListGroup, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === group.name) return;
+    try {
+      await window.electronAPI.automation.groups.rename({ id: group.id, name: trimmed });
+      await load({ silent: true });
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : String(error));
+      await load({ silent: true });
+    }
+  };
+
+  const deleteGroup = async (group: DataListGroup) => {
+    const confirmed = await confirmDelete({
+      message: t('data.groups.deleteConfirm', { name: group.name }),
+    });
+    if (!confirmed) return;
+    try {
+      await window.electronAPI.automation.groups.delete(group.id);
+      await load({ silent: true });
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : String(error));
+      await load({ silent: true });
+    }
+  };
+
   if (viewMode === 'detail') {
     return (
       <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
@@ -671,6 +723,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           <TabsContent value="automations" className="contents">
             <AutomationListPanel
               automations={pageAutomations}
+              groups={automationGroups}
               totalAutomations={filteredAutomations.length}
               currentPage={safeCurrentPage}
               selectedId={selectedId}
@@ -684,6 +737,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               onRun={() => void runNow()}
               onEdit={openSelectedDetail}
               onDelete={() => void remove()}
+              onAssignToGroup={(target) => void assignToGroup(target)}
+              onRenameGroup={(group, name) => void renameGroup(group, name)}
+              onDeleteGroup={(group) => void deleteGroup(group)}
               onSelect={(automation) => {
                 suppressSelectedAutomationSyncRef.current = false;
                 setSelectedId(automation.id);

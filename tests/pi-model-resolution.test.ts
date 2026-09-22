@@ -10,7 +10,7 @@ import {
   resolveSyntheticPiModelFallback,
 } from '../src/main/agent/pi-model-resolution';
 import { API_PROVIDER_PRESETS } from '../src/shared/api-model-presets';
-import type { Api, Model, OpenAICompletionsCompat } from '@mariozechner/pi-ai';
+import type { Api, Model, OpenAICompletionsCompat } from '@earendil-works/pi-ai';
 
 /**
  * The models exercised here all resolve through the openai-completions api,
@@ -112,7 +112,7 @@ describe('pi model resolution helpers', () => {
   });
 
   it('resolves codex models from the pi-ai registry without downgrading the api', () => {
-    const model = resolvePiRegistryModel('openai-codex/gpt-5.3-codex', {
+    const model = resolvePiRegistryModel('openai-codex/gpt-5.5', {
       configProvider: 'openai-codex',
       rawProvider: 'openai-codex',
       customBaseUrl: 'https://chatgpt.com/backend-api',
@@ -555,9 +555,7 @@ describe('pi model resolution helpers', () => {
     );
 
     expect(completionsCompat(model)?.supportsReasoningEffort).toBe(true);
-    expect(
-      (completionsCompat(model)?.reasoningEffortMap as Record<string, string> | undefined)?.off
-    ).toBe('none');
+    expect(model.thinkingLevelMap?.off).toBe('none');
   });
 
   it('disables developer role for openrouter with custom endpoint', () => {
@@ -660,15 +658,11 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
-      false
-    );
-    expect(
-      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
-    ).toBe(false);
+    expect(completionsCompat(model)?.thinkingFormat).toBe('deepseek');
+    expect(completionsCompat(model)?.requiresReasoningContentOnAssistantMessages).toBe(true);
   });
 
-  it('uses top-level reasoning replay for provider-prefixed DeepSeek model ids', () => {
+  it('leaves OpenRouter DeepSeek ids on the OpenRouter reasoning format', () => {
     const model = applyPiModelRuntimeOverrides(
       {
         id: 'deepseek/deepseek-v4-flash',
@@ -689,15 +683,11 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
-      false
-    );
-    expect(
-      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
-    ).toBe(false);
+    expect(completionsCompat(model)?.thinkingFormat).toBeUndefined();
+    expect(completionsCompat(model)?.requiresReasoningContentOnAssistantMessages).toBeUndefined();
   });
 
-  it('does not drop thinking for unrelated custom endpoint model ids', () => {
+  it('does not apply DeepSeek reasoning replay to unrelated custom endpoint model ids', () => {
     const model = applyPiModelRuntimeOverrides(
       {
         id: 'custom-reasoner',
@@ -718,11 +708,7 @@ describe('pi model resolution helpers', () => {
       }
     );
 
-    expect((model.compat as { dropsThinkingInHistory?: boolean })?.dropsThinkingInHistory).toBe(
-      undefined
-    );
-    expect(
-      (model.compat as { requiresThinkingInContent?: boolean })?.requiresThinkingInContent
-    ).toBeUndefined();
+    expect(completionsCompat(model)?.thinkingFormat).toBeUndefined();
+    expect(completionsCompat(model)?.requiresReasoningContentOnAssistantMessages).toBeUndefined();
   });
 });

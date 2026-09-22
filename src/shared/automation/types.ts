@@ -188,12 +188,33 @@ export interface AutomationOutputBinding {
   runOnChange: boolean;
 }
 
+export interface AutomationGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface AutomationCreateGroupInput {
+  name: string;
+}
+
+export interface AutomationRenameGroupInput {
+  id: string;
+  name: string;
+}
+
+export interface AutomationAssignGroupInput {
+  ids: string[];
+  groupId: string | null;
+}
+
 export interface Automation {
   outputBindings?: AutomationOutputBinding[];
   id: string;
   name: string;
   description: string | null;
   projectId: string | null;
+  groupId: string | null;
   enabled: boolean;
   status: AutomationStatus;
   trigger: AutomationTrigger;

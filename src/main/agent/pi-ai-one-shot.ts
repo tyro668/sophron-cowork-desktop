@@ -4,7 +4,7 @@ import {
   type StopReason,
   type Usage,
   type UserMessage as PiUserMessage,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai/compat';
 import type { AgentRuntimeConfig, ApiTestInput, ApiTestResult } from '../../shared/contracts';
 import { PROVIDER_PRESETS, type AppConfig, type CustomProtocolType } from '../config/config-store';
 import {
@@ -19,7 +19,7 @@ import {
 } from '../config/auth-utils';
 import { log, logWarn } from '../utils/logger';
 import { normalizeGeneratedTitle } from '../session/session-title-utils';
-import { getSharedAuthStorage } from './shared-auth';
+import { getProviderApiKey, setRuntimeApiKey } from './shared-auth';
 import {
   ensureCodexCredentials,
   hasCodexCredentials,
@@ -254,18 +254,15 @@ export async function runPiAiOneShot(
         'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex 并完成连接后再试。'
       );
     }
-    apiKey = (await getSharedAuthStorage().getApiKey(OPENAI_CODEX_PROVIDER)) || '';
+    apiKey = (await getProviderApiKey(OPENAI_CODEX_PROVIDER)) || '';
     if (!apiKey) {
       throw new Error('OpenAI Codex 登录凭据不可用或刷新失败，请在 设置 → API 中重新连接。');
     }
   }
   if (apiKey) {
-    const authStorage = getSharedAuthStorage();
-    // Set for the config provider
-    authStorage.setRuntimeApiKey(provider, apiKey);
-    // Also set for the model's native provider if different
+    await setRuntimeApiKey(provider, apiKey);
     if (resolvedModel.provider !== provider) {
-      authStorage.setRuntimeApiKey(resolvedModel.provider, apiKey);
+      await setRuntimeApiKey(resolvedModel.provider, apiKey);
     }
   }
 

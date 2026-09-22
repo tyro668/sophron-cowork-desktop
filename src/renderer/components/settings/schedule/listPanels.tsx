@@ -4,6 +4,7 @@ import {
   Bell,
   CalendarClock,
   Database,
+  FolderInput,
   MoreHorizontal,
   PencilLine,
   Play,
@@ -19,10 +20,21 @@ import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
 
 import { EmptyState, flatToolbarRowClass } from '../../data-view/shared';
+import {
+  AssignGroupDialog,
+  buildGroupSections,
+  GroupHeaderRow,
+  GroupNameDialog,
+  hasNamedSections,
+  toggleCollapsed,
+  type AssignGroupTarget,
+  type DataListGroup,
+} from '../../data-view/group-ui';
 import { Button } from '../../ui/button';
 
 export function AutomationListPanel({
   automations,
+  groups,
   totalAutomations,
   currentPage,
   selectedId,
@@ -36,10 +48,14 @@ export function AutomationListPanel({
   onRun,
   onEdit,
   onDelete,
+  onAssignToGroup,
+  onRenameGroup,
+  onDeleteGroup,
   onSelect,
   tr,
 }: {
   automations: Automation[];
+  groups: DataListGroup[];
   totalAutomations: number;
   currentPage: number;
   selectedId: string | null;
@@ -53,9 +69,14 @@ export function AutomationListPanel({
   onRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onAssignToGroup: (target: AssignGroupTarget) => void;
+  onRenameGroup: (group: DataListGroup, name: string) => void;
+  onDeleteGroup: (group: DataListGroup) => void;
   onSelect: (automation: Automation) => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-between`}>
@@ -87,6 +108,16 @@ export function AutomationListPanel({
             label={tr('schedule.configure', '配置')}
             disabled={!selectedAutomation}
             onClick={onEdit}
+          />
+          <DataToolbarButton
+            icon={<FolderInput className="h-3.5 w-3.5" />}
+            label={tr('data.groups.moveToGroup', '移动到分组')}
+            disabled={!selectedAutomation}
+            onClick={() => {
+              if (selectedAutomation) {
+                setAssignDialogOpen(true);
+              }
+            }}
           />
           <DataToolbarButton
             icon={<Trash2 className="h-3.5 w-3.5" />}
@@ -137,10 +168,13 @@ export function AutomationListPanel({
           ) : (
             <AutomationTable
               automations={automations}
+              groups={groups}
               selectedId={selectedId}
               isLoading={isLoading}
               onSelect={onSelect}
               onEdit={onEdit}
+              onRenameGroup={setRenameTarget}
+              onDeleteGroup={onDeleteGroup}
               tr={tr}
             />
           )}
@@ -153,6 +187,31 @@ export function AutomationListPanel({
           embedded
         />
       </div>
+      <AssignGroupDialog
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        groups={groups}
+        currentGroupId={selectedAutomation?.groupId ?? null}
+        onSubmit={(target) => {
+          if (selectedAutomation) {
+            onAssignToGroup(target);
+          }
+          setAssignDialogOpen(false);
+        }}
+      />
+      <GroupNameDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+        initialName={renameTarget?.name ?? ''}
+        onSubmit={(name) => {
+          if (renameTarget) {
+            onRenameGroup(renameTarget, name);
+          }
+          setRenameTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -301,19 +360,88 @@ function AutomationRunTable({
 
 function AutomationTable({
   automations,
+  groups,
   selectedId,
   isLoading,
   onSelect,
   onEdit,
+  onRenameGroup,
+  onDeleteGroup,
   tr,
 }: {
   automations: Automation[];
+  groups: DataListGroup[];
   selectedId: string | null;
   isLoading: boolean;
   onSelect: (automation: Automation) => void;
   onEdit: () => void;
+  onRenameGroup: (group: DataListGroup) => void;
+  onDeleteGroup: (group: DataListGroup) => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const sections = buildGroupSections(automations, groups, (automation) => automation.groupId);
+  const grouped = hasNamedSections(sections);
+  const renderRow = (automation: Automation, index: number) => {
+    const selected = automation.id === selectedId;
+    const icon = AUTOMATION_ICON_STYLES[index % AUTOMATION_ICON_STYLES.length];
+    const RowIcon = icon.Icon;
+    return (
+      <tr
+        key={automation.id}
+        onClick={() => onSelect(automation)}
+        onDoubleClick={onEdit}
+        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+          selected
+            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
+            : 'hover:bg-surface-hover/35'
+        }`}
+      >
+        <td className="px-3">
+          <input
+            type="radio"
+            name="automation-selection"
+            checked={selected}
+            onChange={() => onSelect(automation)}
+            onClick={(event) => event.stopPropagation()}
+            className="h-3.5 w-3.5 accent-accent"
+            aria-label={automation.name}
+          />
+        </td>
+        <td className="px-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
+            >
+              <RowIcon className="h-4 w-4" />
+            </div>
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-[13px] font-medium text-text-secondary">
+                {automation.name}
+              </span>
+              {automation.description && (
+                <span className="truncate text-[11px] text-text-muted">
+                  {automation.description}
+                </span>
+              )}
+            </div>
+          </div>
+        </td>
+        <td className="px-2">
+          <AutomationStatusBadge automation={automation} tr={tr} />
+        </td>
+        <td className="px-2 text-[13px] font-medium text-text-secondary">
+          {automation.actionGraph.nodes.length}
+        </td>
+        <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+          <span className="truncate">{formatAutomationNextRun(automation, tr)}</span>
+        </td>
+        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+          {formatAppDateTime(automation.updatedAt)}
+        </td>
+      </tr>
+    );
+  };
   if (isLoading) {
     return <LoadingState label={tr('schedule.loadingTasks', '正在加载自动化...')} />;
   }
@@ -349,69 +477,56 @@ function AutomationTable({
           </tr>
         </thead>
         <tbody>
-          {automations.map((automation, index) => {
-            const selected = automation.id === selectedId;
-            const icon = AUTOMATION_ICON_STYLES[index % AUTOMATION_ICON_STYLES.length];
-            const RowIcon = icon.Icon;
-            return (
-              <tr
-                key={automation.id}
-                onClick={() => onSelect(automation)}
-                onDoubleClick={onEdit}
-                className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-                  selected
-                    ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                    : 'hover:bg-surface-hover/35'
-                }`}
-              >
-                <td className="px-3">
-                  <input
-                    type="radio"
-                    name="automation-selection"
-                    checked={selected}
-                    onChange={() => onSelect(automation)}
-                    onClick={(event) => event.stopPropagation()}
-                    className="h-3.5 w-3.5 accent-accent"
-                    aria-label={automation.name}
-                  />
-                </td>
-                <td className="px-2">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
-                    >
-                      <RowIcon className="h-4 w-4" />
-                    </div>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="truncate text-[13px] font-medium text-text-secondary">
-                        {automation.name}
-                      </span>
-                      {automation.description && (
-                        <span className="truncate text-[11px] text-text-muted">
-                          {automation.description}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-2">
-                  <AutomationStatusBadge automation={automation} tr={tr} />
-                </td>
-                <td className="px-2 text-[13px] font-medium text-text-secondary">
-                  {automation.actionGraph.nodes.length}
-                </td>
-                <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                  <span className="truncate">{formatAutomationNextRun(automation, tr)}</span>
-                </td>
-                <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                  {formatAppDateTime(automation.updatedAt)}
-                </td>
-              </tr>
-            );
-          })}
+          {sections.map((section) => (
+            <AutomationSectionRows
+              key={section.key}
+              section={section}
+              grouped={grouped}
+              collapsed={collapsed.has(section.key)}
+              onToggle={() => setCollapsed((current) => toggleCollapsed(current, section.key))}
+              onRenameGroup={onRenameGroup}
+              onDeleteGroup={onDeleteGroup}
+              renderRow={renderRow}
+            />
+          ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+function AutomationSectionRows({
+  section,
+  grouped,
+  collapsed,
+  onToggle,
+  onRenameGroup,
+  onDeleteGroup,
+  renderRow,
+}: {
+  section: ReturnType<typeof buildGroupSections<Automation>>[number];
+  grouped: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+  onRenameGroup: (group: DataListGroup) => void;
+  onDeleteGroup: (group: DataListGroup) => void;
+  renderRow: (automation: Automation, index: number) => ReactNode;
+}) {
+  return (
+    <>
+      {grouped && (
+        <GroupHeaderRow
+          colSpan={6}
+          group={section.group}
+          count={section.rows.length}
+          collapsed={collapsed}
+          onToggle={onToggle}
+          onRename={section.group ? onRenameGroup : undefined}
+          onDelete={section.group ? onDeleteGroup : undefined}
+        />
+      )}
+      {!collapsed && section.rows.map((row, index) => renderRow(row, index))}
+    </>
   );
 }
 

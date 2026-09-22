@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 import { isAbsolute, join } from 'path';
 import type {
   DataToolExecutionContext,

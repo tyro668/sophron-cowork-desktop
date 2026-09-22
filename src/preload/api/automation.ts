@@ -3,8 +3,12 @@ import type {
   Automation,
   AutomationActionDefinitionSummary,
   AutomationArtifact,
+  AutomationAssignGroupInput,
+  AutomationCreateGroupInput,
   AutomationCreateInput,
+  AutomationGroup,
   AutomationListQuery,
+  AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
   AutomationUpdateInput,
@@ -34,5 +38,16 @@ export function createAutomationApi(): ElectronApi['automation'] {
       ipcRenderer.invoke('automation.artifacts.list', runId),
     listActionDefinitions: (): Promise<AutomationActionDefinitionSummary[]> =>
       ipcRenderer.invoke('automation.actions.listDefinitions'),
+    groups: {
+      list: (): Promise<AutomationGroup[]> => ipcRenderer.invoke('automation.groups.list'),
+      create: (payload: AutomationCreateGroupInput): Promise<AutomationGroup> =>
+        ipcRenderer.invoke('automation.groups.create', payload),
+      rename: (payload: AutomationRenameGroupInput): Promise<{ success: boolean }> =>
+        ipcRenderer.invoke('automation.groups.rename', payload),
+      delete: (id: string): Promise<{ success: boolean }> =>
+        ipcRenderer.invoke('automation.groups.delete', id),
+      assign: (payload: AutomationAssignGroupInput): Promise<{ success: boolean }> =>
+        ipcRenderer.invoke('automation.groups.assign', payload),
+    },
   };
 }

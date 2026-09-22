@@ -79,7 +79,7 @@ vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
 }));
 
 vi.mock('../src/main/agent/shared-auth', () => ({
-  getSharedAuthStorage: () => ({ getApiKey: mocks.codexGetApiKey }),
+  getProviderApiKey: mocks.codexGetApiKey,
 }));
 
 vi.mock('../src/main/config/codex-auth', () => ({

@@ -1,11 +1,12 @@
 import type {
   AssistantMessage as PiAssistantMessage,
+  JsonObject,
   Message as PiMessage,
   TextContent as PiTextContent,
   ToolCall as PiToolCall,
   ToolResultMessage as PiToolResultMessage,
   UserMessage as PiUserMessage,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
 import type { ContentBlock, Message } from '../../shared/contracts';
 
 const TOOL_PROTOCOL_OPENERS = [
@@ -249,7 +250,7 @@ function convertTurnToPiMessages(turn: Message[], options: ColdStartHistoryOptio
           type: 'toolCall',
           id: block.id,
           name: block.name || 'unknown',
-          arguments: block.input ?? {},
+          arguments: (block.input ?? {}) as JsonObject,
         };
         assistantContent.push(toolCall);
         emittedToolCalls.add(block.id);

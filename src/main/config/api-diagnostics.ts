@@ -33,7 +33,7 @@ import type {
 } from '../../shared/contracts';
 import { log, logWarn } from '../utils/logger';
 import { probeWithPiAi } from '../agent/pi-ai-one-shot';
-import { getSharedAuthStorage } from '../agent/shared-auth';
+import { getProviderApiKey } from '../agent/shared-auth';
 import { ensureCodexCredentials, OPENAI_CODEX_PROVIDER } from './codex-auth';
 import { fetchOllamaModelIndex } from './ollama-api';
 
@@ -369,7 +369,7 @@ async function stepAuth(input: DiagnosticInput, step: DiagnosticStep): Promise<v
         step.error = 'Codex OAuth credentials not found';
         step.fix = 'codex_auth_missing';
       } else {
-        const accessToken = await getSharedAuthStorage().getApiKey(OPENAI_CODEX_PROVIDER);
+        const accessToken = await getProviderApiKey(OPENAI_CODEX_PROVIDER);
         if (accessToken) {
           step.status = 'ok';
         } else {

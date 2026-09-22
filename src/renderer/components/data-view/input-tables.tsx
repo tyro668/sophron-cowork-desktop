@@ -1,17 +1,23 @@
 import { useAppStore } from '../../store';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
   CloudDownload,
   Eye,
+  FolderInput,
   PencilLine,
   Plus,
   RefreshCw,
   Table2,
   Trash2,
 } from 'lucide-react';
-import type { DataDataset, DataInputTableConfig, DataInputTableSourceKind } from '../../types';
+import type {
+  DataDataset,
+  DataGroup,
+  DataInputTableConfig,
+  DataInputTableSourceKind,
+} from '../../types';
 import { GlassSelect } from '../GlassSelect';
 import { Button } from '../ui/button';
 import type { InputTableDraft, InputTableSourceFilter } from '../../features/data/model/types';
@@ -32,6 +38,16 @@ import {
   getTablePageCount,
   matchesSearchText,
 } from './shared';
+import {
+  AssignGroupDialog,
+  buildGroupSections,
+  GroupHeaderRow,
+  GroupNameDialog,
+  hasNamedSections,
+  toggleCollapsed,
+  type AssignGroupTarget,
+  type DataListGroup,
+} from './group-ui';
 import { InputTableEditorWorkbench } from './input-table-editor-workbench';
 
 const INPUT_TABLE_SOURCE_FILTERS: Array<{
@@ -47,6 +63,7 @@ const INPUT_TABLE_SOURCE_FILTERS: Array<{
 export function InputTablesPanel({
   datasets,
   drafts,
+  groups,
   totalDatasets,
   currentPage,
   searchQuery,
@@ -63,11 +80,15 @@ export function InputTablesPanel({
   onDeleteDraft,
   onEditDraft,
   onEditDataset,
+  onAssignToGroup,
+  onRenameGroup,
+  onDeleteGroup,
   isCreateDisabled,
   actionId,
 }: {
   datasets: DataDataset[];
   drafts: InputTableDraft[];
+  groups: DataGroup[];
   totalDatasets: number;
   currentPage: number;
   searchQuery: string;
@@ -84,12 +105,18 @@ export function InputTablesPanel({
   onDeleteDraft: (id: string) => void;
   onEditDraft: (id: string) => void;
   onEditDataset: (id: string) => void;
+  onAssignToGroup: (ids: string[], target: AssignGroupTarget) => void;
+  onRenameGroup: (group: DataListGroup, name: string) => void;
+  onDeleteGroup: (group: DataListGroup) => void;
   isCreateDisabled: boolean;
   actionId: string | null;
 }) {
   const { t } = useTranslation();
   const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const filteredDrafts = useMemo(
     () =>
       sourceFilter === 'all'
@@ -120,6 +147,11 @@ export function InputTablesPanel({
     [datasets, isLoading, pageDrafts]
   );
   const pageRows = visibleRows;
+  const datasetSections = useMemo(
+    () => buildGroupSections(datasets, groups, (dataset) => dataset.groupId),
+    [datasets, groups]
+  );
+  const grouped = hasNamedSections(datasetSections);
   const emptyLabel =
     sourceFilter === 'all' ? t('data.inputTables.empty') : t('data.inputTables.emptyFiltered');
   const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
@@ -136,6 +168,89 @@ export function InputTablesPanel({
       setSelectedDatasetId(null);
     }
   }, [isLoading, selectedDatasetId, visibleRows]);
+
+  const renderRow = (row: (typeof visibleRows)[number]) => {
+    const dataset = row.kind === 'dataset' ? row.dataset : null;
+    const draft = row.kind === 'draft' ? row.draft : null;
+    const sourceKind = dataset ? dataset.sourceKind : 'draft';
+    const sourceMeta = getInputTableSourceMeta(sourceKind);
+    const selected = row.id === selectedDatasetId;
+    const rowName = dataset?.name ?? draft?.name ?? '';
+    const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
+    return (
+      <tr
+        key={row.id}
+        onClick={() => setSelectedDatasetId(row.id)}
+        onDoubleClick={() => {
+          if (draft) {
+            onEditDraft(draft.id);
+          } else if (dataset) {
+            onEditDataset(dataset.id);
+          }
+        }}
+        className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
+          selected
+            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
+            : 'hover:bg-surface-hover/35'
+        }`}
+      >
+        <td className="px-4">
+          <input
+            type="radio"
+            name="input-table-selection"
+            checked={selected}
+            onChange={() => setSelectedDatasetId(row.id)}
+            onClick={(event) => event.stopPropagation()}
+            className="h-3.5 w-3.5 accent-accent"
+            aria-label={rowName}
+          />
+        </td>
+        <td className="px-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+              <Table2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+              {rowName}
+            </div>
+          </div>
+        </td>
+        <td className="px-2">
+          <span
+            className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
+          >
+            {t(sourceMeta.labelKey)}
+          </span>
+        </td>
+        <td className="px-2">
+          <div
+            className="truncate text-[13px] font-medium text-text-secondary"
+            title={dataset?.sourcePath}
+          >
+            {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.notConfigured')}
+          </div>
+        </td>
+        <td className="px-2">
+          <div className="truncate text-[13px] font-medium text-text-secondary">
+            {dataset
+              ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
+              : t('data.inputTables.noRelatedTasks')}
+          </div>
+        </td>
+        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+          {formatDateTime(rowUpdatedAt)}
+        </td>
+        <td className="px-2">
+          <InputTableStatusBadge
+            label={
+              draft ? t('data.inputTables.status.draft') : t('data.inputTables.status.available')
+            }
+            tone={draft ? 'warning' : 'success'}
+          />
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
@@ -198,6 +313,16 @@ export function InputTablesPanel({
                 onEditDraft(selectedDraft.id);
               } else if (selectedDataset) {
                 onEditDataset(selectedDataset.id);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<FolderInput className="h-3.5 w-3.5" />}
+            label={t('data.groups.moveToGroup')}
+            disabled={!selectedDataset || selectedRowBusy || bulkBusy}
+            onClick={() => {
+              if (selectedDataset) {
+                setAssignDialogOpen(true);
               }
             }}
           />
@@ -291,92 +416,28 @@ export function InputTablesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((row) => {
-                    const dataset = row.kind === 'dataset' ? row.dataset : null;
-                    const draft = row.kind === 'draft' ? row.draft : null;
-                    const sourceKind = dataset ? dataset.sourceKind : 'draft';
-                    const sourceMeta = getInputTableSourceMeta(sourceKind);
-                    const selected = row.id === selectedDatasetId;
-                    const rowName = dataset?.name ?? draft?.name ?? '';
-                    const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
-                    return (
-                      <tr
-                        key={row.id}
-                        onClick={() => setSelectedDatasetId(row.id)}
-                        onDoubleClick={() => {
-                          if (draft) {
-                            onEditDraft(draft.id);
-                          } else if (dataset) {
-                            onEditDataset(dataset.id);
+                  {pageRows.filter((row) => row.kind === 'draft').map((row) => renderRow(row))}
+                  {datasetSections.map((section) => (
+                    <Fragment key={section.key}>
+                      {grouped && (
+                        <GroupHeaderRow
+                          colSpan={7}
+                          group={section.group}
+                          count={section.rows.length}
+                          collapsed={collapsedGroups.has(section.key)}
+                          onToggle={() =>
+                            setCollapsedGroups((current) => toggleCollapsed(current, section.key))
                           }
-                        }}
-                        className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
-                          selected
-                            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                            : 'hover:bg-surface-hover/35'
-                        }`}
-                      >
-                        <td className="px-4">
-                          <input
-                            type="radio"
-                            name="input-table-selection"
-                            checked={selected}
-                            onChange={() => setSelectedDatasetId(row.id)}
-                            onClick={(event) => event.stopPropagation()}
-                            className="h-3.5 w-3.5 accent-accent"
-                            aria-label={rowName}
-                          />
-                        </td>
-                        <td className="px-2">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                              <Table2 className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
-                              {rowName}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2">
-                          <span
-                            className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
-                          >
-                            {t(sourceMeta.labelKey)}
-                          </span>
-                        </td>
-                        <td className="px-2">
-                          <div
-                            className="truncate text-[13px] font-medium text-text-secondary"
-                            title={dataset?.sourcePath}
-                          >
-                            {dataset
-                              ? formatDisplayPath(dataset.sourcePath)
-                              : t('data.inputTables.notConfigured')}
-                          </div>
-                        </td>
-                        <td className="px-2">
-                          <div className="truncate text-[13px] font-medium text-text-secondary">
-                            {dataset
-                              ? formatRelatedTaskNames(dataset.relatedTaskNames, t)
-                              : t('data.inputTables.noRelatedTasks')}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                          {formatDateTime(rowUpdatedAt)}
-                        </td>
-                        <td className="px-2">
-                          <InputTableStatusBadge
-                            label={
-                              draft
-                                ? t('data.inputTables.status.draft')
-                                : t('data.inputTables.status.available')
-                            }
-                            tone={draft ? 'warning' : 'success'}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          onRename={section.group ? setRenameTarget : undefined}
+                          onDelete={section.group ? onDeleteGroup : undefined}
+                        />
+                      )}
+                      {!collapsedGroups.has(section.key) &&
+                        section.rows.map((dataset) =>
+                          renderRow({ kind: 'dataset', id: dataset.id, dataset })
+                        )}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -389,6 +450,32 @@ export function InputTablesPanel({
           embedded
         />
       </div>
+      <AssignGroupDialog
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        groups={groups}
+        currentGroupId={selectedDataset?.groupId ?? null}
+        busy={actionId === 'assign-group'}
+        onSubmit={(target) => {
+          if (selectedDataset) {
+            onAssignToGroup([selectedDataset.id], target);
+          }
+          setAssignDialogOpen(false);
+        }}
+      />
+      <GroupNameDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+        initialName={renameTarget?.name ?? ''}
+        onSubmit={(name) => {
+          if (renameTarget) {
+            onRenameGroup(renameTarget, name);
+          }
+          setRenameTarget(null);
+        }}
+      />
     </div>
   );
 }

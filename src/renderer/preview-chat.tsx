@@ -272,6 +272,7 @@ function PreviewApp() {
             <TasksPanel
               tasks={[]}
               totalTasks={0}
+              groups={[]}
               currentPage={1}
               searchQuery=""
               actionId={null}
@@ -285,6 +286,9 @@ function PreviewApp() {
               onEdit={() => {}}
               onDelete={() => {}}
               onDeleteAll={() => {}}
+              onAssignToGroup={() => {}}
+              onRenameGroup={() => {}}
+              onDeleteGroup={() => {}}
             />
             <EmptyPanelPreview label="添加输入表" />
             <EmptyPanelPreview label="添加输出表" />

@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, type AgentTool } from '@mariozechner/pi-agent-core';
-import { Type } from '@sinclair/typebox';
+import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
+import { Type } from 'typebox';
 import { AgentRuntimeExtensionManager } from '../src/main/extensions/agent-runtime-extension-manager';
 import type { BeforeSessionRunContext } from '../src/main/extensions/agent-runtime-extension';
-import { AgentSession } from '@mariozechner/pi-coding-agent';
+import { AgentSession } from '@earendil-works/pi-coding-agent';
 import {
   createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   type AssistantMessage,
+  type Message,
   type Model,
-} from '@mariozechner/pi-ai';
+} from '@earendil-works/pi-ai';
 import { AgentRequestContext } from '../src/main/agent/agent-request-context';
 import {
   applyActiveToolsInPlace,
@@ -28,6 +31,18 @@ const model: Model<'openai-completions'> = {
   contextWindow: 128000,
   maxTokens: 1000,
 };
+function requestView(messages: readonly Message[]): {
+  system: string;
+  history: string;
+  tools: string[];
+} {
+  return {
+    system: getCurrentSystemPrompt(messages),
+    history: JSON.stringify(messages.filter((message) => message.role !== 'system')),
+    tools: getCurrentTools(messages).map((tool) => tool.name),
+  };
+}
+
 function response(content: AssistantMessage['content']) {
   const message: AssistantMessage = {
     role: 'assistant',
@@ -58,10 +73,8 @@ describe('request-only domain context with the real SDK', () => {
     const agent = new Agent({
       initialState: { model, systemPrompt: 'base' },
       streamFn: (_model, context) => {
-        seen.push({
-          system: context.systemPrompt ?? '',
-          history: JSON.stringify(context.messages),
-        });
+        const view = requestView(context.messages);
+        seen.push({ system: view.system, history: view.history });
         return response([{ type: 'text', text: 'done' }]);
       },
     });
@@ -86,7 +99,7 @@ describe('request-only domain context with the real SDK', () => {
       expect(seen[i].history).not.toContain('stable-domain-rule');
     }
     // Compaction/recovery replaces history; request context is independent of it.
-    agent.replaceMessages([]);
+    agent.state.messages = agent.state.messages.filter((message) => message.role === 'system');
     await agent.prompt('继续');
     expect(seen.at(-1)?.system).toContain('current-task=9;');
     expect(seen.at(-1)?.system).toContain('stable-domain-rule');
@@ -118,7 +131,7 @@ describe('request-only domain context with the real SDK', () => {
     const agent = new Agent({
       initialState: { model },
       streamFn: (_model, request) => {
-        system = request.systemPrompt ?? '';
+        system = getCurrentSystemPrompt(request.messages);
         return response([{ type: 'text', text: 'done' }]);
       },
     });
@@ -170,9 +183,10 @@ describe('request-only domain context with the real SDK', () => {
     const agent = new Agent({
       initialState: { model, tools: [searchTool], systemPrompt: 'base' },
       streamFn: (_model, request) => {
+        const view = requestView(request.messages);
         requests.push({
-          tools: request.tools?.map((tool) => tool.name) ?? [],
-          system: request.systemPrompt ?? '',
+          tools: view.tools,
+          system: view.system,
         });
         return response(
           requests.length === 1

@@ -19,7 +19,12 @@ import type {
   DataDashboard,
   DataDashboardQuery,
   DataDataset,
+  DataAssignGroupInput,
+  DataCreateGroupInput,
+  DataGroup,
+  DataGroupScope,
   DataImportDatasetInput,
+  DataRenameGroupInput,
   DataInputTableNormalizerArtifact,
   DataInputTableNormalizerArtifactVersion,
   DataInputTableNormalizerVersionSaveResult,
@@ -46,6 +51,7 @@ import { DataStoreContext } from './store/data-store-context';
 import type { DataTaskStoreOptions } from './store/data-store-records';
 import { CacheRepository } from './store/repositories/cache-repository';
 import { DatasetRepository } from './store/repositories/dataset-repository';
+import { GroupRepository } from './store/repositories/group-repository';
 import { NormalizerRepository } from './store/repositories/normalizer-repository';
 import { OutputCommitJournal } from './store/repositories/output-commit-journal';
 import { TableCommitJournal } from './store/repositories/table-commit-journal';
@@ -70,6 +76,7 @@ export class DataTaskStore {
   private readonly ctx: DataStoreContext;
   private readonly tasks: TaskRepository;
   private readonly datasets: DatasetRepository;
+  private readonly groups: GroupRepository;
   private readonly normalizers: NormalizerRepository;
   private readonly runStats: RunStatsRepository;
   private readonly summarizer: InputSourceSummaryService;
@@ -86,6 +93,7 @@ export class DataTaskStore {
 
     const tasks = new TaskRepository(this.ctx);
     const datasets = new DatasetRepository(this.ctx);
+    const groups = new GroupRepository(this.ctx);
     const normalizers = new NormalizerRepository(this.ctx);
     const workflows = new WorkflowRepository(this.ctx);
     const runStats = new RunStatsRepository(this.ctx);
@@ -147,6 +155,7 @@ export class DataTaskStore {
 
     this.tasks = tasks;
     this.datasets = datasets;
+    this.groups = groups;
     this.normalizers = normalizers;
     this.runStats = runStats;
     this.summarizer = summarizer;
@@ -367,6 +376,28 @@ export class DataTaskStore {
   }
   getDashboard(query: DataDashboardQuery = {}): Promise<DataDashboard> {
     return this.dashboardService.getDashboard(query);
+  }
+
+  // ---- groups ----
+  async listGroups(scope: DataGroupScope): Promise<DataGroup[]> {
+    await this.ctx.ensureMetadataReady();
+    return this.groups.listGroups(scope);
+  }
+  async createGroup(input: DataCreateGroupInput): Promise<DataGroup> {
+    await this.ctx.ensureMetadataReady();
+    return this.groups.createGroup(input.scope, input.name);
+  }
+  async renameGroup(input: DataRenameGroupInput): Promise<void> {
+    await this.ctx.ensureMetadataReady();
+    return this.groups.renameGroup(input.id, input.name);
+  }
+  async deleteGroup(id: string): Promise<void> {
+    await this.ctx.ensureMetadataReady();
+    return this.groups.deleteGroup(id);
+  }
+  async assignGroup(input: DataAssignGroupInput): Promise<void> {
+    await this.ctx.ensureMetadataReady();
+    return this.groups.assignToGroup(input.scope, input.ids, input.groupId);
   }
 }
 

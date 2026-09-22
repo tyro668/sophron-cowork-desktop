@@ -19,6 +19,7 @@
  */
 import {
   createAgentSession,
+  getAgentDir,
   SessionManager as PiSessionManager,
   SettingsManager as PiSettingsManager,
   createCodingTools,
@@ -27,12 +28,12 @@ import {
   type ToolDefinition,
   type Skill as PiSkill,
   type ResourceDiagnostic,
-} from '@mariozechner/pi-coding-agent';
+} from '@earendil-works/pi-coding-agent';
 import type {
   AssistantMessage as PiAssistantMessage,
   Message as PiMessage,
-} from '@mariozechner/pi-ai';
-import { getSharedAuthStorage, ModelRegistry } from './shared-auth';
+} from '@earendil-works/pi-ai';
+import { getSharedModelRuntime, setRuntimeApiKey } from './shared-auth';
 import type {
   Session,
   Message,
@@ -105,6 +106,23 @@ import type { ToolActivationResult } from '../extensions/agent-runtime-extension
 import { AgentRequestContext } from './agent-request-context';
 import { ModelResultStore, RESULT_READ_TOOL } from './model-result-store';
 
+function installBaseTools(session: PiAgentSession, tools: Array<{ name: string }>): void {
+  // createAgentSession() does not expose baseToolsOverride. Sandbox, sudo, and
+  // default-timeout wrappers still have to replace the built-in tool implementations.
+  const internal = session as unknown as {
+    _baseToolsOverride?: Record<string, unknown>;
+    _buildRuntime: (options?: {
+      activeToolNames?: string[];
+      includeAllExtensionTools?: boolean;
+    }) => void;
+  };
+  internal._baseToolsOverride = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+  internal._buildRuntime({
+    activeToolNames: tools.map((tool) => tool.name),
+    includeAllExtensionTools: true,
+  });
+}
+
 // Virtual workspace path shown to the model (hides real sandbox path)
 interface AgentRunnerOptions {
   sendToRenderer: (event: ServerEvent) => void;
@@ -139,7 +157,7 @@ interface AgentRunOptions {
 }
 
 /**
- * AgentRunner - Uses @mariozechner/pi-coding-agent SDK
+ * AgentRunner - Uses @earendil-works/pi-coding-agent SDK
  *
  * Environment variables should be set before running:
  *   ANTHROPIC_BASE_URL=https://openrouter.ai/api
@@ -910,14 +928,12 @@ export class AgentRunner {
         },
       });
 
-      // Set up API keys via AuthStorage
-      const authStorage = getSharedAuthStorage();
+      // Set up API keys on the shared model runtime. OAuth credentials are
+      // refreshed by ModelRuntime.getAuth() when a request is sent.
+      const modelRuntime = await getSharedModelRuntime();
       const apiKey = runtimeConfig.apiKey?.trim();
       if (provider === 'openai-codex' && !apiKey) {
-        // ChatGPT subscription auth: credentials live in AuthStorage as OAuth
-        // (imported from the local codex CLI or acquired via in-app login) and
-        // are refreshed automatically by AuthStorage.getApiKey().
-        if (!ensureCodexCredentials()) {
+        if (!(await ensureCodexCredentials())) {
           throw new Error(
             'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex，连接本地 codex CLI 登录态或完成浏览器登录。'
           );
@@ -927,11 +943,11 @@ export class AgentRunner {
         // Map our config provider to pi-ai provider name
         const piProvider =
           provider === 'custom' ? runtimeConfig.customProtocol || 'anthropic' : provider;
-        authStorage.setRuntimeApiKey(piProvider, apiKey);
+        await setRuntimeApiKey(piProvider, apiKey);
         // Also set the key for the model's native provider (e.g., when using
         // google/gemini via openrouter, pi-ai looks up "google" not "openrouter")
         if (piModel.provider !== piProvider) {
-          authStorage.setRuntimeApiKey(piModel.provider, apiKey);
+          await setRuntimeApiKey(piModel.provider, apiKey);
           log('[AgentRunner] Set runtime API key for model provider:', piModel.provider);
         }
         log('[AgentRunner] Set runtime API key for config provider:', piProvider);
@@ -1488,11 +1504,12 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       } else {
         // First query in this session — create new agent session
         // ResourceLoader + ModelRegistry only needed for session creation — skip on reuse
-        const { DefaultResourceLoader } = await import('@mariozechner/pi-coding-agent');
+        const { DefaultResourceLoader } = await import('@earendil-works/pi-coding-agent');
         const resourceLoader = new DefaultResourceLoader({
           cwd: effectiveCwd,
+          agentDir: getAgentDir(),
           additionalSkillPaths: skillPaths,
-          appendSystemPrompt: coworkAppendPrompt,
+          appendSystemPrompt: coworkAppendPrompt ? [coworkAppendPrompt] : [],
           skillsOverride:
             selectedSkillNameSet.size > 0
               ? (current: { skills: PiSkill[]; diagnostics: ResourceDiagnostic[] }) => ({
@@ -1504,8 +1521,6 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               : undefined,
         });
         await resourceLoader.reload();
-
-        const modelRegistry = new ModelRegistry(authStorage);
 
         // Ollama-specific compaction tuning based on actual context window
         const contextWindow = piModel.contextWindow || 128000;
@@ -1545,9 +1560,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         const { session: newPiSession } = await createAgentSession({
           model: piModel,
           thinkingLevel,
-          authStorage,
-          modelRegistry,
-          tools: wrappedTools as unknown as ReturnType<typeof createCodingTools>,
+          modelRuntime,
           customTools,
           sessionManager: piSessionManager,
           settingsManager: PiSettingsManager.inMemory({
@@ -1557,6 +1570,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           resourceLoader,
           cwd: effectiveCwd,
         });
+        installBaseTools(newPiSession, wrappedTools);
         piSession = newPiSession;
         requestContext.install(piSession.agent);
 
@@ -1772,7 +1786,10 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
               timestamp: Date.now(),
             };
             piSession.sessionManager.appendMessage(protocolErrorMessage);
-            piSession.agent.appendMessage(protocolErrorMessage);
+            piSession.agent.state.messages = [
+              ...piSession.agent.state.messages,
+              protocolErrorMessage,
+            ];
             this.sendMessage(session.id, {
               id: uuidv4(),
               sessionId: session.id,

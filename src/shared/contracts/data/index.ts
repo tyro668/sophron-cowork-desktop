@@ -43,10 +43,20 @@ export type DataTaskStatus = 'running' | 'completed' | 'stopped' | 'draft' | 'pe
 
 export type DataTaskStatusCounts = Record<DataTaskStatus, number>;
 
+export type DataGroupScope = 'task' | 'input' | 'output';
+
+export interface DataGroup {
+  id: string;
+  scope: DataGroupScope;
+  name: string;
+  createdAt: number;
+}
+
 export interface DataCleaningTask {
   id: string;
   name: string;
   status: DataTaskStatus;
+  groupId: string | null;
   nodeCount: number;
   sourcePath: string | null;
   sourceDatasetId: string | null;
@@ -355,6 +365,7 @@ export type DataInputTableConfig =
 export interface DataDataset {
   id: string;
   name: string;
+  groupId: string | null;
   sourcePath: string;
   sourceKind: DataInputTableSourceKind;
   inputConfig: DataInputTableConfig;
@@ -370,6 +381,7 @@ export interface DataDataset {
 export interface DataOutputTable {
   id: string;
   name: string;
+  groupId: string | null;
   sourceDatasetId: string | null;
   tableName: string;
   rowCount: number;
@@ -394,6 +406,7 @@ export interface DataDashboard {
   tasks: DataCleaningTask[];
   datasets: DataDataset[];
   outputTables: DataOutputTable[];
+  groups: DataGroup[];
   totalTasks: number;
   totalDatasets: number;
   totalOutputTables: number;
@@ -424,6 +437,23 @@ export interface DataCreateTaskInput {
 export interface DataUpdateTaskInput {
   id: string;
   name?: string;
+}
+
+export interface DataCreateGroupInput {
+  scope: DataGroupScope;
+  name: string;
+}
+
+export interface DataRenameGroupInput {
+  id: string;
+  name: string;
+}
+
+export interface DataAssignGroupInput {
+  scope: DataGroupScope;
+  ids: string[];
+  /** null returns the rows to the ungrouped section. */
+  groupId: string | null;
 }
 
 export interface DataRunTaskInput {

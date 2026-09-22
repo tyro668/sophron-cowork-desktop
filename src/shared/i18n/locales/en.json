@@ -1416,6 +1416,17 @@
     "relative": {
       "today": "Today",
       "yesterday": "Yesterday"
+    },
+    "groups": {
+      "moveToGroup": "Move to group",
+      "assignTitle": "Move to group",
+      "move": "Move",
+      "ungrouped": "Ungrouped",
+      "newGroup": "New group",
+      "namePlaceholder": "Group name",
+      "rename": "Rename group",
+      "delete": "Dissolve group",
+      "deleteConfirm": "Dissolve group \"{name}\"? Its items will be ungrouped, not deleted."
     }
   },
   "settings": {

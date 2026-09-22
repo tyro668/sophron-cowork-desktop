@@ -14,6 +14,7 @@ import {
 import type {
   DataCleaningTask,
   DataDashboard,
+  DataGroup,
   DataOutputTable,
   WorkflowNodeRunStat,
 } from '../../../types';
@@ -95,6 +96,7 @@ export function useDataDashboard(deps: {
               ? nextDashboard.outputTables
               : current.outputTables,
             datasets: current.datasets,
+            groups: nextDashboard.groups,
             totalTasks:
               shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
             totalDatasets: current.totalDatasets,
@@ -120,6 +122,11 @@ export function useDataDashboard(deps: {
   /** Drops any in-flight dashboard response (used on tab switches). */
   const invalidateRequests = useCallback(() => {
     dashboardRequestSeq.current += 1;
+  }, []);
+
+  /** Replaces the group list — shared by every list tab's reload path. */
+  const setGroups = useCallback((groups: DataGroup[]) => {
+    setDashboard((current) => ({ ...current, groups }));
   }, []);
 
   const prependTask = useCallback((task: DataCleaningTask) => {
@@ -163,6 +170,7 @@ export function useDataDashboard(deps: {
     outputPage,
     loadDashboard,
     invalidateRequests,
+    setGroups,
     prependTask,
     prependOutputTable,
     setLastRunFailure,
