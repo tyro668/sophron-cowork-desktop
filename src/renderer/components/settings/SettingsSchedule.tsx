@@ -31,6 +31,7 @@ import {
   automationToDraft,
   createCloudTableAutomationDraft,
   createEmptyDraft,
+  relinkLinearGraph,
   draftToPayload,
   getCloudAutomationConfigsFromDraft,
   normalizeDraftTrigger,
@@ -48,13 +49,14 @@ import {
   ActionChainSection,
   EditorHeader,
   ExecutionProjectPanel,
-  TaskStatusSection,
   TriggerConditionPanel,
 } from './schedule/editorPanels';
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
+  const outputNavigation = useAppStore((state) => state.pendingTableAutomationNavigation);
+  const clearOutputNavigation = useAppStore((state) => state.clearTableAutomationNavigation);
   const projects = useAppStore((state) => state.projects);
   const appConfig = useAppStore((state) => state.appConfig);
   const pendingCloudAutomationTemplateNavigation = useAppStore(
@@ -330,6 +332,118 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     setDraft(automationToDraft(selectedAutomation));
   }, [selectedAutomation]);
 
+  useEffect(() => {
+    if (!outputNavigation) return;
+    clearOutputNavigation();
+    skipNextAutoSelectRef.current = true;
+    suppressSelectedAutomationSyncRef.current = true;
+    setViewMode('detail');
+    setActiveListTab('automations');
+    setBanner(null);
+    if (outputNavigation.automationId) {
+      const id = outputNavigation.automationId;
+      setSelectedId(id);
+      void window.electronAPI.automation
+        .get(id)
+        .then((automation) => {
+          if (!automation) throw new Error(tr('schedule.taskMissing', '自动化不存在'));
+          setAutomations((rows) => [...rows.filter((row) => row.id !== id), automation]);
+          const next = automationToDraft(automation);
+          if (
+            outputNavigation.inputTable &&
+            !next.actionGraph.nodes.some(
+              (node) =>
+                node.type === 'cloud.sync' &&
+                node.config.direction === 'input' &&
+                node.config.inputTableId === outputNavigation.inputTable?.id
+            )
+          ) {
+            const node = {
+              id: crypto.randomUUID(),
+              type: 'cloud.sync',
+              enabled: true,
+              config: {
+                direction: 'input',
+                spaceId: '',
+                projectId: '',
+                tableId: '',
+                tableKind: 'analysis',
+                inputTableId: outputNavigation.inputTable.id,
+                inputTableName: outputNavigation.inputTable.name,
+              },
+            };
+            next.actionGraph = relinkLinearGraph({
+              ...next.actionGraph,
+              nodes: [...next.actionGraph.nodes, node],
+            });
+          }
+          setDraft(next);
+        })
+        .catch((error) => setBanner({ tone: 'error', text: String(error) }));
+    } else if (outputNavigation.outputTable) {
+      const table = outputNavigation.outputTable;
+      setSelectedId(null);
+      setDraft({
+        ...createEmptyDraft(table.name),
+        triggerMode: 'manual',
+        trigger: {
+          kind: 'manual',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        },
+        outputBindings: [{ outputTableId: table.id, runOnChange: true }],
+        actionGraph: {
+          version: 1,
+          edges: [],
+          nodes: [
+            {
+              id: crypto.randomUUID(),
+              type: 'cloud.sync',
+              enabled: true,
+              config: {
+                direction: 'output',
+                outputTableId: table.id,
+                type: 'drive_file',
+                writeMode: 'create',
+                spaceId: '',
+                projectId: '',
+              },
+            },
+          ],
+        },
+      });
+    } else if (outputNavigation.inputTable || outputNavigation.newInputTableName !== undefined) {
+      const table = outputNavigation.inputTable;
+      const name =
+        table?.name ||
+        outputNavigation.newInputTableName ||
+        tr('schedule.cloudInput.title', '云端表同步到输入表');
+      setSelectedId(null);
+      setDraft({
+        ...createEmptyDraft(name),
+        actionGraph: {
+          version: 1,
+          edges: [],
+          nodes: [
+            {
+              id: crypto.randomUUID(),
+              type: 'cloud.sync',
+              enabled: true,
+              config: {
+                direction: 'input',
+                spaceId: '',
+                projectId: '',
+                tableId: '',
+                tableKind: 'analysis',
+                inputTableId: table?.id,
+                inputTableName: table?.name || outputNavigation.newInputTableName || '',
+              },
+            },
+          ],
+        },
+      });
+    }
+  }, [outputNavigation, clearOutputNavigation, tr]);
+
   const createNew = () => {
     suppressSelectedAutomationSyncRef.current = false;
     setSelectedId(null);
@@ -418,9 +532,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     setBanner(null);
     try {
       const payload = draftToPayload(draft, appConfig);
-      const saved = selectedAutomation
-        ? await window.electronAPI.automation.update(selectedAutomation.id, payload)
+      let saved = selectedId
+        ? await window.electronAPI.automation.update(selectedId, payload)
         : await window.electronAPI.automation.create(payload as AutomationCreateInput);
+      if (saved?.status === 'paused' && payload.enabled) {
+        saved = await window.electronAPI.automation.resume(saved.id);
+      }
       if (!saved) {
         throw new Error(tr('schedule.taskMissing', '自动化不存在'));
       }
@@ -480,6 +597,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           draft={draft}
           isSaving={isSaving}
           onDraftChange={setDraft}
+          onEnabledChange={updateDraftEnabled}
           onSave={() => void save()}
           onRun={() => void runNow()}
           onBack={() => {
@@ -489,10 +607,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           tr={tr}
         />
 
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-          <TaskStatusSection enabled={draft.enabled} onEnabledChange={updateDraftEnabled} tr={tr} />
-          <div className="automation-editor-grid grid items-start gap-3">
-            <div className="flex min-h-0 flex-col gap-4">
+        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] md:overflow-hidden">
+          <div className="min-h-0 border-b border-border-muted md:overflow-y-auto md:border-b-0 md:border-r">
+            <div className="divide-y divide-border-muted">
               <ExecutionProjectPanel
                 draft={draft}
                 projects={projects}
@@ -506,29 +623,29 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 tr={tr}
               />
             </div>
-            <ActionChainSection
-              draft={draft}
-              actionDefinitions={actionDefinitions}
-              dataTasks={dataTasks}
-              inputTables={inputTables}
-              outputTables={outputTables}
-              appConfig={appConfig}
-              onDraftChange={setDraft}
-              onGeneratedTaskSuccess={(workflowDslAvailable) =>
-                showTransientBanner({
-                  tone: workflowDslAvailable ? 'success' : 'warning',
-                  text: workflowDslAvailable
-                    ? tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。')
-                    : tr(
-                        'schedule.generatedTaskReadyWithoutDsl',
-                        '数据任务已生成，但任务逻辑预览暂时不可用。'
-                      ),
-                })
-              }
-              tr={tr}
-            />
           </div>
-        </section>
+          <ActionChainSection
+            draft={draft}
+            actionDefinitions={actionDefinitions}
+            dataTasks={dataTasks}
+            inputTables={inputTables}
+            outputTables={outputTables}
+            appConfig={appConfig}
+            onDraftChange={setDraft}
+            onGeneratedTaskSuccess={(workflowDslAvailable) =>
+              showTransientBanner({
+                tone: workflowDslAvailable ? 'success' : 'warning',
+                text: workflowDslAvailable
+                  ? tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。')
+                  : tr(
+                      'schedule.generatedTaskReadyWithoutDsl',
+                      '数据任务已生成，但任务逻辑预览暂时不可用。'
+                    ),
+              })
+            }
+            tr={tr}
+          />
+        </div>
       </div>
     );
   }

@@ -676,6 +676,15 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
       }
     },
   },
+  {
+    version: 3,
+    name: 'automation_output_bindings',
+    up: (database) => {
+      database.exec(
+        "ALTER TABLE automations ADD COLUMN output_bindings_json TEXT NOT NULL DEFAULT '[]'"
+      );
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =

@@ -12,7 +12,6 @@
  *   store/services/*        — workflow/dataset/normalizer application logic
  */
 import type {
-  CloudOutputAction,
   DataCleaningTask,
   DataColumnTypeInfo,
   DataCreateOutputTableInput,
@@ -207,17 +206,11 @@ export class DataTaskStore {
     }
     return updated;
   }
-  updateOutputTableCloudAction(
-    id: string,
-    action: CloudOutputAction | null
-  ): Promise<DataOutputTable> {
-    return this.datasets.updateOutputTableCloudAction(id, action);
-  }
-  listOutputTableCloudActions(): Promise<Array<{ id: string; action: CloudOutputAction }>> {
-    return this.datasets.listOutputTableCloudActions();
-  }
   setOutputCommitListener(listener: (outputDatasetIds: string[]) => void): void {
     this.commitCoordinator.onOutputsCommitted = listener;
+  }
+  findInputTableByAutomationSyncKey(syncKey: string): Promise<DataDataset | null> {
+    return this.datasets.findInputTableByAutomationSyncKey(syncKey);
   }
   getInputTableRecord(id: string): Promise<DataDataset | null> {
     return this.datasets.getInputTableRecord(id);

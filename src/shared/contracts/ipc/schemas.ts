@@ -471,8 +471,24 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       .optional(),
   ],
   'automation.get': [str],
-  'automation.create': [z.looseObject({ name: str, trigger: obj, actionGraph: obj })],
-  'automation.update': [str, obj],
+  'automation.create': [
+    z.looseObject({
+      name: str,
+      trigger: obj,
+      actionGraph: obj,
+      outputBindings: z
+        .array(z.object({ outputTableId: z.string().trim().min(1), runOnChange: bool }))
+        .optional(),
+    }),
+  ],
+  'automation.update': [
+    str,
+    z.looseObject({
+      outputBindings: z
+        .array(z.object({ outputTableId: z.string().trim().min(1), runOnChange: bool }))
+        .optional(),
+    }),
+  ],
   'automation.delete': [str],
   'automation.setEnabled': [str, bool],
   'automation.pause': [str],
@@ -722,24 +738,4 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       sheetName: strOpt,
     }),
   ],
-  'data.setOutputTableCloudAction': [
-    z.looseObject({
-      outputTableId: str,
-      action: z
-        .looseObject({
-          type: z.enum(['cloud_table', 'drive_file']),
-          trigger: z.enum(['on_change', 'schedule']),
-          schedule: scheduleConfig,
-          spaceId: str,
-          projectId: str,
-          fileId: strOpt,
-          fileName: strOpt,
-          tableId: strOpt,
-          tableName: strOpt,
-          writeMode: z.enum(['CREATE', 'REPLACE']).optional(),
-        })
-        .nullable(),
-    }),
-  ],
-  'data.runOutputTableCloudAction': [personalAnalysisConnection.extend({ outputTableId: str })],
 };

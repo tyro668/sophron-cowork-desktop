@@ -1,18 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  ArrowUpDown,
-  BarChart3,
-  Cloud,
-  Database,
-  Folder,
-  PencilLine,
-  Play,
-  Plus,
-  RefreshCw,
-  Trash2,
-  UploadCloud,
-} from 'lucide-react';
+import { ArrowUpDown, PencilLine, Play, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react';
 import type { DataCleaningTask } from '../../../types';
 import {
   DataMoreMenu,
@@ -26,14 +14,6 @@ import {
   formatTimestamp,
 } from '../shared';
 import { Button } from '../../ui/button';
-
-const TASK_ICON_STYLES = [
-  { Icon: Database, className: 'bg-accent-muted text-accent' },
-  { Icon: BarChart3, className: 'bg-accent-muted text-accent' },
-  { Icon: Folder, className: 'bg-warning/10 text-warning' },
-  { Icon: UploadCloud, className: 'bg-surface-active text-text-secondary' },
-  { Icon: Cloud, className: 'bg-success/10 text-success' },
-];
 
 export function TasksPanel({
   tasks,
@@ -244,9 +224,7 @@ function TasksTable({
           </tr>
         </thead>
         <tbody>
-          {visibleTasks.map((task, index) => {
-            const icon = TASK_ICON_STYLES[index % TASK_ICON_STYLES.length];
-            const RowIcon = icon.Icon;
+          {visibleTasks.map((task) => {
             const selected = task.id === selectedTaskId;
             return (
               <tr
@@ -272,10 +250,8 @@ function TasksTable({
                 </td>
                 <td className="px-2">
                   <div className="flex min-w-0 items-center gap-3">
-                    <div
-                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
-                    >
-                      <RowIcon className="h-4 w-4" />
+                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+                      <Workflow className="h-4 w-4" />
                     </div>
                     <div className="flex min-w-0 items-center">
                       <span className="truncate text-[13px] font-medium text-text-secondary">

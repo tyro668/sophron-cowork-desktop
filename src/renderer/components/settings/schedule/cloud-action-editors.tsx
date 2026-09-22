@@ -1,3 +1,4 @@
+import { Button } from '../../ui/button';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -7,7 +8,6 @@ import {
   Loader2,
   Save,
   Search,
-  UploadCloud,
   Wand2,
 } from 'lucide-react';
 import type {
@@ -267,9 +267,9 @@ export function CloudTableProcessActionEditor({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-accent">
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-text-secondary">
             {sourceLocation === 'local' ? (
               <Database className="h-4 w-4" />
             ) : (
@@ -308,8 +308,8 @@ export function CloudTableProcessActionEditor({
         )}
       </div>
 
-      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-accent">
+      <div className="border-t border-border-muted pt-4">
+        <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-text-secondary">
           <Wand2 className="h-4 w-4" />
           {tr('schedule.cloudProcessSection', '处理逻辑')}
         </div>
@@ -465,6 +465,7 @@ export function CloudTableProcessActionEditor({
                 isAnalyzingTask ||
                 isGeneratingTask ||
                 Boolean(requirementAnalysis) ||
+                outputLocation !== 'local' ||
                 !config.source.tableId.trim() ||
                 !config.processRequirement.trim() ||
                 (config.output.writeMode === 'replace' && !config.output.targetTableId.trim())
@@ -487,27 +488,27 @@ export function CloudTableProcessActionEditor({
         </div>
       </div>
 
-      <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-accent">
-            {outputLocation === 'local' ? (
-              <Save className="h-4 w-4" />
-            ) : (
-              <UploadCloud className="h-4 w-4" />
-            )}
-            {outputLocation === 'local'
-              ? tr('schedule.localOutputSection', '输出到本地')
-              : tr('schedule.cloudOutputSection', '输出到云空间')}
+      <div className="border-t border-border-muted pt-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-text-secondary">
+            <Save className="h-4 w-4" />
+            {tr('schedule.localOutputSection', '输出到本地')}
           </div>
-          <SegmentedControl<DataProcessLocation>
-            value={outputLocation}
-            options={[
-              { value: 'cloud', label: tr('schedule.dataOutputCloud', '云端表') },
-              { value: 'local', label: tr('schedule.dataOutputLocal', '本地表') },
-            ]}
-            onChange={updateOutputLocation}
-          />
+          {outputLocation !== 'local' && (
+            <Button size="sm" onClick={() => updateOutputLocation('local')}>
+              {tr('schedule.cloudSync.useLocalOutput', '改为本地输出表')}
+            </Button>
+          )}
         </div>
+        {outputLocation !== 'local' && (
+          <p role="alert" className="mb-3 text-xs text-warning">
+            {tr(
+              'schedule.cloudSync.useOutputAction',
+              '数据处理结果请保存到本地输出表，再添加写入网盘文件动作。'
+            )}
+          </p>
+        )}
+
         <div className="space-y-3.5">
           <ConfigRow label={tr('schedule.cloudWriteMode', '写入方式')}>
             <GlassSelect
@@ -535,36 +536,20 @@ export function CloudTableProcessActionEditor({
             />
           </ConfigRow>
           {config.output.writeMode === 'replace' ? (
-            outputLocation === 'local' ? (
-              <ConfigRow label={tr('schedule.localTargetOutputTable', '目标输出表')}>
-                <LocalTableSelect
-                  value={config.output.targetTableId}
-                  tables={outputTables}
-                  placeholder={tr('schedule.outputTablePlaceholder', '选择输出表')}
-                  searchPlaceholder={tr('schedule.localOutputSearchPlaceholder', '搜索输出表')}
-                  onChange={(tableId) =>
-                    updateConfig({
-                      ...config,
-                      output: { ...config.output, targetTableId: tableId },
-                    })
-                  }
-                />
-              </ConfigRow>
-            ) : (
-              <ConfigRow label={tr('schedule.cloudTargetTable', '目标表')}>
-                <CloudReplaceTargetSelector
-                  config={config}
-                  connection={cloudConnection}
-                  onTargetChange={(tableId) =>
-                    updateConfig({
-                      ...config,
-                      output: { ...config.output, targetTableId: tableId },
-                    })
-                  }
-                  tr={tr}
-                />
-              </ConfigRow>
-            )
+            <ConfigRow label={tr('schedule.localTargetOutputTable', '目标输出表')}>
+              <LocalTableSelect
+                value={outputLocation === 'local' ? config.output.targetTableId : ''}
+                tables={outputTables}
+                placeholder={tr('schedule.outputTablePlaceholder', '选择输出表')}
+                searchPlaceholder={tr('schedule.localOutputSearchPlaceholder', '搜索输出表')}
+                onChange={(targetTableId) =>
+                  updateConfig({
+                    ...config,
+                    output: { ...config.output, location: 'local', targetTableId },
+                  })
+                }
+              />
+            </ConfigRow>
           ) : (
             <ConfigRow label={tr('schedule.cloudOutputTableName', '结果表名')}>
               <input
@@ -860,7 +845,7 @@ export function CloudSourceTableSelector({
             </div>
           </div>
           {selectedTable && (
-            <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-3 text-[12px] leading-5 text-text-secondary">
+            <div className="rounded-md bg-surface-muted/60 px-3 py-3 text-[12px] leading-5 text-text-secondary">
               <div className="grid gap-2 sm:grid-cols-2">
                 <CloudTargetInfoItem
                   label={tr('schedule.cloudTableName', '表名')}
@@ -886,7 +871,7 @@ export function CloudSourceTableSelector({
       </ConfigRow>
 
       {!canBrowseCloud && (
-        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-2 text-[12px] leading-5 text-text-muted">
+        <div className="rounded-md bg-surface-muted/60 px-3 py-2 text-[12px] leading-5 text-text-muted">
           {tr('schedule.cloudConnectRequired', '请先连接云空间后再选择云端表。')}
         </div>
       )}
@@ -1047,7 +1032,7 @@ export function CloudReplaceTargetSelector({
       </div>
 
       {!canBrowseProjectTables && (
-        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-2 text-[12px] leading-5 text-text-muted">
+        <div className="rounded-md bg-surface-muted/60 px-3 py-2 text-[12px] leading-5 text-text-muted">
           {tr(
             'schedule.cloudTargetBrowseUnavailable',
             '当前连接或源表项目信息不足，暂时只能默认覆盖源表。'
@@ -1055,7 +1040,7 @@ export function CloudReplaceTargetSelector({
         </div>
       )}
       {selectedTable && (
-        <div className="rounded-lg border border-border-muted bg-bg-secondary/30 px-3 py-3 text-[12px] leading-5 text-text-secondary">
+        <div className="rounded-md bg-surface-muted/60 px-3 py-3 text-[12px] leading-5 text-text-secondary">
           <div
             className={`mb-2 flex items-center gap-2 font-semibold ${
               isReplacingSource ? 'text-error' : 'text-warning'

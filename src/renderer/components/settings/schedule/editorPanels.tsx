@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Clock, Folder, PencilLine, Play, Plus, Save } from 'lucide-react';
+import { ArrowLeft, PencilLine, Play, Plus, Save } from 'lucide-react';
 import type { Automation, AutomationTrigger, Project } from '../../../types';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassSelect } from '../../GlassSelect';
@@ -24,6 +24,7 @@ export function EditorHeader({
   draft,
   isSaving,
   onDraftChange,
+  onEnabledChange,
   onSave,
   onRun,
   onBack,
@@ -33,6 +34,7 @@ export function EditorHeader({
   draft: AutomationDraft;
   isSaving: boolean;
   onDraftChange: (draft: AutomationDraft) => void;
+  onEnabledChange: (enabled: boolean) => void;
   onSave: () => void;
   onRun: () => void;
   onBack: () => void;
@@ -111,7 +113,13 @@ export function EditorHeader({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        <HeaderStatusToggle
+          enabled={draft.enabled}
+          disabled={isSaving}
+          onEnabledChange={onEnabledChange}
+          tr={tr}
+        />
         <Button
           variant="secondary"
           onClick={onSave}
@@ -132,12 +140,14 @@ export function EditorHeader({
   );
 }
 
-export function TaskStatusSection({
+function HeaderStatusToggle({
   enabled,
+  disabled,
   onEnabledChange,
   tr,
 }: {
   enabled: boolean;
+  disabled?: boolean;
   onEnabledChange: (enabled: boolean) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -156,21 +166,17 @@ export function TaskStatusSection({
   );
 
   return (
-    <section className="glass-card grid flex-shrink-0 gap-4 rounded-xl border border-border-muted bg-surface p-4 lg:grid-cols-[360px] lg:items-center">
-      <div className="flex min-h-10 items-center gap-4">
-        <span className="text-[13px] font-medium text-text-secondary">
-          {tr('schedule.taskStatus', '任务状态')}
-        </span>
-        <GlassSwitch
-          checked={localEnabled}
-          onCheckedChange={handleCheckedChange}
-          ariaLabel={tr('schedule.taskStatus', '任务状态')}
-        />
-        <span className="text-[13px] font-medium text-text-secondary">
-          {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
-        </span>
-      </div>
-    </section>
+    <div className="flex items-center gap-2">
+      <GlassSwitch
+        checked={localEnabled}
+        onCheckedChange={handleCheckedChange}
+        disabled={disabled}
+        ariaLabel={tr('schedule.taskStatus', '任务状态')}
+      />
+      <span className="text-[12px] font-medium text-text-secondary">
+        {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
+      </span>
+    </div>
   );
 }
 
@@ -197,13 +203,11 @@ export function ExecutionProjectPanel({
   };
 
   return (
-    <section className="glass-card flex flex-shrink-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
-      <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
-        <h2 className="text-[16px] font-semibold text-text-secondary">
-          {tr('schedule.projectPanelTitle', '执行项目')}
-        </h2>
-      </div>
-      <div className="pt-4">
+    <section className="px-4 py-4">
+      <h2 className="mb-3 text-[13px] font-semibold text-text-secondary">
+        {tr('schedule.projectPanelTitle', '执行项目')}
+      </h2>
+      <div>
         <GlassSelect
           value={draft.projectId}
           options={[
@@ -235,7 +239,9 @@ export function TriggerConditionPanel({
   tr: (key: string, fallback: string) => string;
 }) {
   const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
-  const triggerMethod = draft.triggerMode === 'file_change' ? 'file_change' : 'scheduled';
+  const triggerMethod = ['file_change', 'manual'].includes(draft.triggerMode)
+    ? draft.triggerMode
+    : 'scheduled';
   const setMode = (mode: TriggerMode) => {
     onDraftChange({
       ...draft,
@@ -245,22 +251,23 @@ export function TriggerConditionPanel({
   };
 
   return (
-    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
-      <div className="flex h-9 flex-shrink-0 items-center border-b border-border-muted">
-        <h2 className="text-[16px] font-semibold text-text-secondary">
-          {tr('schedule.triggerTitle', '触发条件')}
-        </h2>
-      </div>
-      <div className="pt-4">
+    <section className="px-4 py-4">
+      <h2 className="mb-3 text-[13px] font-semibold text-text-secondary">
+        {tr('schedule.triggerTitle', '触发条件')}
+      </h2>
+      <div>
         <ConfigRow label={tr('schedule.triggerMethod', '触发方式')}>
           <GlassSelect
             value={triggerMethod}
             options={[
+              { value: 'manual', label: tr('schedule.triggerManual', '手动或输出表更新时触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
               { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}
             onValueChange={(value) => {
-              setMode(value === 'file_change' ? 'file_change' : 'daily');
+              setMode(
+                value === 'manual' ? 'manual' : value === 'file_change' ? 'file_change' : 'daily'
+              );
             }}
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
@@ -269,7 +276,7 @@ export function TriggerConditionPanel({
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
-        {trigger.kind === 'file_change' ? (
+        {trigger.kind === 'manual' ? null : trigger.kind === 'file_change' ? (
           <FileChangeConfigCard
             draft={draft}
             trigger={trigger}
@@ -308,10 +315,6 @@ function ScheduledConfigCard({
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-[13px] font-medium text-text-primary">
-        <Clock className="h-4 w-4" />
-        {tr('schedule.scheduledConfig', '定时配置')}
-      </div>
       <div className="space-y-3.5">
         <ConfigRow label={tr('schedule.frequency', '执行频率')}>
           <SegmentedControl<'recurring' | 'interval' | 'once'>
@@ -503,11 +506,7 @@ function FileChangeConfigCard({
     onDraftChange({ ...draft, projectId: next.projectId ?? draft.projectId, trigger: next });
   };
   return (
-    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-4">
-      <div className="mb-4 flex items-center gap-2 text-[13px] font-semibold text-accent">
-        <Folder className="h-4 w-4" />
-        {tr('schedule.fileChangeConfig', '文件变更配置')}
-      </div>
+    <div>
       <div className="space-y-3.5">
         <ConfigRow label={tr('schedule.watchProject', '监听项目')}>
           <GlassSelect

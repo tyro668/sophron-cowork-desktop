@@ -6,6 +6,7 @@
 // `shared/contracts` is the single import surface for cross-process types.
 export type {
   Automation,
+  AutomationOutputBinding,
   AutomationActionDefinitionSummary,
   AutomationActionGraph,
   AutomationActionNode,

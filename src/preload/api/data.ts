@@ -51,9 +51,6 @@ import type {
   RunTaskResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
-  RunOutputTableCloudActionInput,
-  RunOutputTableCloudActionResult,
-  SetOutputTableCloudActionInput,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   WorkflowNodeRunStat,
@@ -210,13 +207,5 @@ export function createDataApi(): ElectronApi['data'] {
       payload: PreviewCloudDriveFileInput
     ): Promise<PreviewCloudDriveFileResult> =>
       invokeDataCommand('data.previewCloudDriveFile', payload),
-    setOutputTableCloudAction: (
-      payload: SetOutputTableCloudActionInput
-    ): Promise<{ outputTable: DataOutputTable | null }> =>
-      invokeDataCommand('data.setOutputTableCloudAction', payload),
-    runOutputTableCloudAction: (
-      payload: RunOutputTableCloudActionInput
-    ): Promise<RunOutputTableCloudActionResult> =>
-      invokeDataCommand('data.runOutputTableCloudAction', payload),
   };
 }

@@ -1,6 +1,16 @@
+import { useAppStore } from '../../store';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUpDown, Eye, PencilLine, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowUpDown,
+  CloudDownload,
+  Eye,
+  PencilLine,
+  Plus,
+  RefreshCw,
+  Table2,
+  Trash2,
+} from 'lucide-react';
 import type { DataDataset, DataInputTableConfig, DataInputTableSourceKind } from '../../types';
 import { GlassSelect } from '../GlassSelect';
 import { Button } from '../ui/button';
@@ -78,6 +88,7 @@ export function InputTablesPanel({
   actionId: string | null;
 }) {
   const { t } = useTranslation();
+  const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const filteredDrafts = useMemo(
     () =>
@@ -162,6 +173,12 @@ export function InputTablesPanel({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <DataToolbarButton
+            icon={<CloudDownload className="h-3.5 w-3.5" />}
+            label={t('schedule.cloudInput.addFromCloud')}
+            disabled={bulkBusy}
+            onClick={() => navigateToAutomation({ newInputTableName: '' })}
+          />
           <DataToolbarButton
             icon={<Eye className="h-3.5 w-3.5" />}
             label={t('data.inputTables.actions.preview')}
@@ -279,7 +296,6 @@ export function InputTablesPanel({
                     const draft = row.kind === 'draft' ? row.draft : null;
                     const sourceKind = dataset ? dataset.sourceKind : 'draft';
                     const sourceMeta = getInputTableSourceMeta(sourceKind);
-                    const SourceIcon = sourceMeta.Icon;
                     const selected = row.id === selectedDatasetId;
                     const rowName = dataset?.name ?? draft?.name ?? '';
                     const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
@@ -313,10 +329,8 @@ export function InputTablesPanel({
                         </td>
                         <td className="px-2">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div
-                              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sourceMeta.className}`}
-                            >
-                              <SourceIcon className="h-4 w-4" />
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+                              <Table2 className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
                               {rowName}

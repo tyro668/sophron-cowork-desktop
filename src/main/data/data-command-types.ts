@@ -30,7 +30,6 @@ import type {
 } from '../../shared/contracts';
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
 import type {
-  CloudOutputActionSpec,
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDriveFile,
   PersonalAnalysisDriveFileListResult,
@@ -342,20 +341,6 @@ export interface PreviewCloudDriveFileCommand extends PersonalAnalysisConnection
 export interface PreviewCloudDriveFileResult {
   file: PersonalAnalysisDriveFile;
   preview: DataInputTablePreview;
-}
-
-export interface SetOutputTableCloudActionCommand {
-  outputTableId: string;
-  action: CloudOutputActionSpec | null;
-}
-
-export interface RunOutputTableCloudActionCommand extends PersonalAnalysisConnectionCommand {
-  outputTableId: string;
-}
-
-export interface RunOutputTableCloudActionResult {
-  outputTable: DataOutputTable;
-  ranAt: number;
 }
 
 export type PreviewInputTableNormalizerVersionCommand = DataPreviewInputTableNormalizerVersionInput;

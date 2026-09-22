@@ -5,7 +5,6 @@
 import type { DataColumnTypeInfo } from '../../data-field-types';
 import type {
   CloudOutputAction,
-  CloudOutputActionSpec,
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDriveFile,
   PersonalAnalysisDriveFileListResult,
@@ -331,6 +330,7 @@ export interface DataInputTableCsvConfig {
   delimiter: 'auto';
   dataProcessing?: DataInputTableProcessingConfig;
   cloudMirror?: {
+    automationSyncKey?: string;
     tableId: string;
     sourceVersion?: string;
     contentHash: string;
@@ -377,6 +377,7 @@ export interface DataOutputTable {
   relatedTaskNames: string[];
   createdAt: number;
   updatedAt: number;
+  /** Legacy metadata, retained only for pre-automation migration compatibility. */
   cloudAction?: CloudOutputAction | null;
 }
 
@@ -786,18 +787,4 @@ export interface PreviewCloudDriveFileInput extends PersonalAnalysisConnectionIn
 export interface PreviewCloudDriveFileResult {
   file: PersonalAnalysisDriveFile;
   preview: DataInputTablePreview;
-}
-
-export interface SetOutputTableCloudActionInput {
-  outputTableId: string;
-  action: CloudOutputActionSpec | null;
-}
-
-export interface RunOutputTableCloudActionInput extends PersonalAnalysisConnectionInput {
-  outputTableId: string;
-}
-
-export interface RunOutputTableCloudActionResult {
-  outputTable: DataOutputTable;
-  ranAt: number;
 }

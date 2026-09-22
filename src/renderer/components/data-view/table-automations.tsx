@@ -1,0 +1,204 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Play, Plus, Settings, Unlink } from 'lucide-react';
+import type { Automation, DataOutputTable, DataDataset } from '../../types';
+import { dataClient } from '../../features/data/api/data-client';
+import { useAppStore } from '../../store';
+import { Button } from '../ui/button';
+import { Switch } from '../ui/switch';
+import { InputTableSelect, formatDateTime } from './shared';
+
+export function OutputTableAutomations({ outputTable }: { outputTable: DataOutputTable }) {
+  return <TableAutomations table={outputTable} kind="output" />;
+}
+export function InputTableAutomations({ inputTable }: { inputTable: DataDataset }) {
+  return <TableAutomations table={inputTable} kind="input" />;
+}
+function TableAutomations({
+  table,
+  kind,
+}: {
+  table: { id: string; name: string };
+  kind: 'input' | 'output';
+}) {
+  const { t } = useTranslation();
+  const mainView = useAppStore((state) => state.mainView);
+  const navigate = useAppStore((state) => state.navigateToTableAutomation);
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => setAutomations(await dataClient.listAutomations()), []);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    void dataClient
+      .listAutomations()
+      .then((rows) => {
+        if (active) setAutomations(rows);
+      })
+      .catch((error) => {
+        if (active) setError(String(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [mainView]);
+  const execute = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+      await load();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const referencesTable = (automation: Automation) =>
+    automation.actionGraph.nodes.some(
+      (node) =>
+        node.type === 'cloud.sync' &&
+        node.config.direction === kind &&
+        node.config[kind === 'input' ? 'inputTableId' : 'outputTableId'] === table.id
+    );
+  const linked = automations.filter(
+    (a) =>
+      referencesTable(a) ||
+      (kind === 'output' && a.outputBindings?.some((b) => b.outputTableId === table.id))
+  );
+  const navigation = kind === 'input' ? { inputTable: table } : { outputTable: table };
+  const available = automations.filter((a) => !linked.includes(a));
+  const bind = async (automationId: string, runOnChange: boolean | null) => {
+    // Read current associations so editing another output does not lose its links.
+    const current = await dataClient.getAutomation(automationId);
+    if (!current) throw new Error(t('data.outputTables.automation.missing'));
+    const bindings = (current.outputBindings ?? []).filter((b) => b.outputTableId !== table.id);
+    if (runOnChange !== null) bindings.push({ outputTableId: table.id, runOnChange });
+    const saved = await dataClient.updateAutomation(automationId, { outputBindings: bindings });
+    if (!saved) throw new Error(t('data.outputTables.automation.missing'));
+    setSelectedId('');
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[13px] font-medium text-text-primary">
+          {t('data.outputTables.automation.title')}
+        </h3>
+        <Button size="sm" onClick={() => navigate(navigation)} disabled={busy}>
+          <Plus size={14} />
+          {t('data.outputTables.automation.create')}
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <InputTableSelect
+            value={selectedId}
+            disabled={busy}
+            options={[
+              { value: '', label: t('data.outputTables.automation.select') },
+              ...available.map((a) => ({ value: a.id, label: a.name })),
+            ]}
+            onChange={setSelectedId}
+          />
+        </div>
+        <Button
+          size="sm"
+          disabled={loading || busy || !selectedId}
+          onClick={() =>
+            kind === 'input'
+              ? navigate({ automationId: selectedId, inputTable: table })
+              : void execute(() => bind(selectedId, true))
+          }
+        >
+          {t('data.outputTables.automation.link')}
+        </Button>
+      </div>
+      {loading && <p className="text-xs text-text-muted">{t('common.loading')}</p>}
+      {!loading && linked.length === 0 && (
+        <p className="text-xs text-text-muted">{t('data.outputTables.automation.empty')}</p>
+      )}
+      {linked.map((automation) => {
+        const binding = automation.outputBindings?.find((b) => b.outputTableId === table.id);
+        return (
+          <div key={automation.id} className="space-y-2 border-t border-border-subtle py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-medium text-text-primary">
+                  {automation.name}
+                </div>
+                <div className="text-xs text-text-muted">
+                  {t(`schedule.status.${automation.status}`)}
+                  {automation.lastRunAt ? ` · ${formatDateTime(automation.lastRunAt)}` : ''}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || automation.status === 'running'}
+                  onClick={() =>
+                    void execute(async () => {
+                      const run = await dataClient.runAutomation(automation.id);
+                      if (!run) throw new Error(t('data.outputTables.automation.missing'));
+                      if (run.status === 'failed')
+                        throw new Error(run.error || t('schedule.runFailed'));
+                    })
+                  }
+                >
+                  <Play size={13} />
+                  {t('data.outputTables.automation.run')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => navigate({ automationId: automation.id })}
+                >
+                  <Settings size={13} />
+                  {t('data.outputTables.automation.edit')}
+                </Button>
+                {kind === 'output' && !referencesTable(automation) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => void execute(() => bind(automation.id, null))}
+                  >
+                    <Unlink size={13} />
+                    {t('data.outputTables.automation.unlink')}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {kind === 'output' && (
+              <label className="flex items-center gap-3 text-xs text-text-secondary">
+                <Switch
+                  checked={binding?.runOnChange ?? false}
+                  disabled={busy}
+                  onCheckedChange={(checked) => void execute(() => bind(automation.id, checked))}
+                />
+                {t('data.outputTables.automation.onChange')}
+              </label>
+            )}
+            {automation.lastError && (
+              <p className="text-xs text-error">
+                {t(automation.lastError, { defaultValue: automation.lastError })}
+              </p>
+            )}
+          </div>
+        );
+      })}
+      {error && (
+        <p role="alert" className="text-xs text-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

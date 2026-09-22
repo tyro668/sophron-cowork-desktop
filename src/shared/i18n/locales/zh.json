@@ -399,6 +399,18 @@
         "rows": "行数",
         "columns": "列数",
         "relatedTasks": "关联数据任务"
+      },
+      "automation": {
+        "title": "自动化动作",
+        "create": "新建自动化",
+        "select": "选择已有自动化",
+        "link": "关联",
+        "empty": "尚未关联自动化",
+        "run": "立即运行",
+        "edit": "配置",
+        "unlink": "解除关联",
+        "onChange": "输出表更新后执行",
+        "missing": "自动化已不存在，请刷新列表"
       }
     },
     "editor": {
@@ -2472,7 +2484,8 @@
       "manual": "手动",
       "retry": "重试",
       "queued_overlap": "排队",
-      "file_change": "文件变更"
+      "file_change": "文件变更",
+      "output_change": "输出表更新"
     },
     "deliveryStatus": {
       "pending": "待交付",
@@ -2556,7 +2569,7 @@
     "cloudTargetRequired": "请选择目标云表",
     "cloudTableFallbackName": "云表",
     "cloudAutomationDefaultName": "{{name}}自动处理",
-    "cloudAutomationDescription": "自动导入云空间表，完成数据处理后回写云端",
+    "cloudAutomationDescription": "自动导入云空间表并保存数据处理结果",
     "cloudTemplateInvalid": "云表自动处理配置不可用",
     "cloudAutoProcessTitle": "云表自动处理",
     "templateMode": "模板",
@@ -2643,12 +2656,10 @@
     "triggerFileChange": "文件变更时触发",
     "noAutoTrigger": "无自动触发",
     "noAutoTriggerDesc": "未配置自动触发。你仍可以在自动化列表或详情页点击“运行”立即执行。",
-    "scheduledConfig": "定时配置",
     "frequency": "执行频率",
     "familyRecurring": "周期",
     "familyInterval": "按间隔",
     "repeat": "重复",
-    "fileChangeConfig": "文件变更配置",
     "watchProject": "监听项目",
     "watchPatterns": "文件范围",
     "debounceSeconds": "防抖秒数",
@@ -2804,7 +2815,49 @@
     "pickerAdd": "添加",
     "pickerSelectedTimes": "已选时段",
     "pickerNone": "还没有选择时段",
-    "pickerSuggestions": "常用建议"
+    "pickerSuggestions": "常用建议",
+    "noActions": "还没有动作，点击右上角「添加动作」。",
+    "triggerManual": "手动或输出表更新时触发",
+    "outputChangeTrigger": "输出表更新后执行",
+    "cloudSync": {
+      "title": "输出表写入网盘文件",
+      "login": "登录云空间",
+      "connection": "连接设置",
+      "space": "分析空间",
+      "selectSpace": "选择分析空间",
+      "project": "项目",
+      "selectProject": "选择项目",
+      "target": "网盘 CSV 文件",
+      "name": "文件名称",
+      "selectTarget": "选择可写入的 CSV 文件",
+      "invalid": "请选择输出表、分析空间、项目及网盘文件",
+      "writeMode": "写入方式",
+      "selectMode": "选择写入方式",
+      "create": "新增并持续替换",
+      "replace": "替换文件内容",
+      "append": "追加数据行",
+      "loadMore": "加载更多",
+      "legacyTarget": "输出表仅支持写入网盘文件。原云端数据表配置已保留，请重新选择网盘目标后启用自动化。",
+      "useLocalOutput": "改为本地输出表",
+      "useOutputAction": "数据处理结果请保存到本地输出表，再添加写入网盘文件动作。",
+      "direction": "同步方向",
+      "selectDirection": "选择同步方向",
+      "menuTitle": "云空间同步",
+      "menuDescription": "在云空间与本地数据表之间同步数据"
+    },
+    "cloudInput": {
+      "title": "云端表同步到输入表",
+      "sourceKind": "来源类型",
+      "analysis": "分析表",
+      "base": "基础表",
+      "sourceTable": "来源表",
+      "selectSource": "选择来源表",
+      "target": "目标输入表",
+      "create": "新增并持续同步",
+      "name": "输入表名称",
+      "invalid": "请选择分析空间、项目、来源表和目标输入表",
+      "addFromCloud": "从云端添加"
+    }
   },
   "remote": {
     "title": "远程控制",

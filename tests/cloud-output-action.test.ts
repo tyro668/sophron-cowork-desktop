@@ -1,192 +1,212 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAnalysisCommandService } from '../src/main/data/cloud-analysis-command-service';
 import type { DataTaskStore } from '../src/main/data/data-task-store';
-import type { CloudOutputAction } from '../src/shared/personal-analysis-types';
+import type { DataCommandService } from '../src/main/data/data-command-service';
+import { registerCloudSyncAction } from '../src/main/automation/cloud-sync-action';
+import {
+  AutomationActionRegistry,
+  type AutomationRunContext,
+} from '../src/main/automation/automation-action-registry';
+import type { AutomationStore } from '../src/main/automation/automation-store';
+import type { Automation } from '../src/shared/automation/types';
 
-const { syncDriveCsv } = vi.hoisted(() => ({ syncDriveCsv: vi.fn() }));
-vi.mock('../src/main/data/personal-analysis-client', () => ({
-  createPersonalAnalysisClient: () => ({ syncDriveCsv }),
+const { syncDriveCsv, uploadCsv, previewDriveFile, downloadDriveCsv } = vi.hoisted(() => ({
+  syncDriveCsv: vi.fn(),
+  uploadCsv: vi.fn(),
+  previewDriveFile: vi.fn(),
+  downloadDriveCsv: vi.fn(),
 }));
-
+vi.mock('../src/main/data/personal-analysis-client', () => ({
+  createPersonalAnalysisClient: () => ({
+    syncDriveCsv,
+    uploadCsv,
+    previewDriveFile,
+    downloadDriveCsv,
+    listDatasources: async () => [{ datasourceId: 'ds' }],
+  }),
+}));
+const config = {
+  direction: 'output' as const,
+  outputTableId: 'out',
+  type: 'drive_file' as const,
+  spaceId: 's',
+  projectId: 'p',
+  fileId: 'file',
+  version: 1,
+};
+const context: AutomationRunContext = {
+  automationId: 'auto',
+  runId: 'run',
+  now: 1,
+  outputs: new Map(),
+  emitArtifact: vi.fn(),
+  log: vi.fn(),
+};
 function fixture() {
-  let action: CloudOutputAction | null = {
-    type: 'drive_file',
-    trigger: 'on_change',
-    spaceId: 's',
-    projectId: 'p',
-    fileId: 'old-file',
-    version: 1,
-  };
-  const getOutputTableRecord = vi.fn(async () => ({
-    id: 'out',
-    name: 'result',
-    cloudAction: action && { ...action },
-  }));
-  const updateOutputTableCloudAction = vi.fn(
-    async (_id: string, next: CloudOutputAction | null) => {
-      action = next && { ...next };
-      return getOutputTableRecord();
-    }
+  let current = {
+    id: 'auto',
+    name: 'sync',
+    actionGraph: {
+      version: 1,
+      edges: [],
+      nodes: [{ id: 'sync', type: 'cloud.sync', enabled: true, config: { ...config } }],
+    },
+  } as unknown as Automation;
+  const update = vi.fn((_id, changes) => {
+    current = { ...current, ...changes };
+    return current;
+  });
+  const store = { get: () => current, update } as unknown as AutomationStore;
+  const sync = vi.fn(async () => ({ fileId: 'file', version: 2 }));
+  const registry = new AutomationActionRegistry();
+  registerCloudSyncAction(
+    registry,
+    { syncOutputTableToCloud: sync } as unknown as DataCommandService,
+    store
   );
-  const store = {
-    getOutputTableRecord,
-    updateOutputTableCloudAction,
-    exportDatasetCsv: vi.fn(async () => ({ csv: 'name,value\na,1\n' })),
-  };
-  const service = new CloudAnalysisCommandService(
-    store as unknown as DataTaskStore,
-    () => ({ apiOrigin: 'http://mock.local', apiKey: 'key', updatedAt: 0 }),
+  const action = registry.get('cloud.sync')!;
+  const run = () =>
+    action.execute(current.actionGraph.nodes[0].config, context, current.actionGraph.nodes[0]);
+  return { run, sync, update, get: () => current, action };
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  previewDriveFile.mockResolvedValue({
+    file: { fileId: 'file', fileType: 'csv', writable: true, version: 1 },
+  });
+});
+describe('automation cloud output action', () => {
+  it('saves the returned identity/version on the automation for subsequent runs', async () => {
+    const f = fixture();
+    await f.run();
+    expect(f.get().actionGraph.nodes[0].config.version).toBe(2);
+    await f.run();
+    expect(f.sync.mock.calls[1]).toEqual([
+      'out',
+      expect.objectContaining({ fileId: 'file', version: 2 }),
+      'automation-auto-sync',
+      expect.any(Function),
+    ]);
+  });
+  it('recovers a failed local save before making another remote write', async () => {
+    const f = fixture();
+    const save = f.update.getMockImplementation()!;
+    f.update.mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    await expect(f.run()).rejects.toThrow('disk full');
+    await expect(f.run()).rejects.toThrow('disk full');
+    expect(f.sync).toHaveBeenCalledTimes(1);
+    f.update.mockImplementation(save);
+    await f.run();
+    expect(f.sync).toHaveBeenCalledTimes(1);
+    expect(f.get().actionGraph.nodes[0].config.version).toBe(2);
+  });
+  it('does not overwrite a destination edited during a remote request', async () => {
+    const f = fixture();
+    f.sync.mockImplementation(async () => {
+      f.get().actionGraph.nodes[0].config.fileId = 'different-file';
+      return { fileId: 'file', version: 2 };
+    });
+    await f.run();
+    expect(f.get().actionGraph.nodes[0].config.fileId).toBe('different-file');
+    expect(f.update).not.toHaveBeenCalled();
+  });
+  it('rejects missing output table or cloud destination configuration', () => {
+    expect(() => fixture().action.validate?.({ outputTableId: 'out' })).toThrow();
+  });
+  it('syncs drive CSV using the saved optimistic version without table-side configuration', async () => {
+    syncDriveCsv.mockResolvedValue({
+      file: { fileId: 'file', fileName: 'result.csv', version: 2 },
+    });
+    const store = {
+      getOutputTableRecord: async () => ({ id: 'out', name: 'result' }),
+      exportDatasetCsv: async () => ({ csv: 'id\n1', name: 'result' }),
+    } as unknown as DataTaskStore;
+    const service = new CloudAnalysisCommandService(
+      store,
+      () => ({ apiOrigin: 'https://example.com', apiKey: 'key', updatedAt: 0 }),
+      { createInputTable: vi.fn() }
+    );
+    expect(await service.syncOutputTableToCloud('out', config)).toEqual({
+      fileId: 'file',
+      fileName: 'result.csv',
+      version: 2,
+      writeMode: 'replace',
+    });
+    expect(syncDriveCsv).toHaveBeenCalledWith(
+      's',
+      'p',
+      expect.objectContaining({ expectedVersion: 1, csvContent: 'id\n1' })
+    );
+  });
+  it('rejects legacy cloud table destinations before exporting or uploading', async () => {
+    const f = fixture();
+    expect(() => f.action.validate?.({ ...config, type: 'cloud_table' })).toThrow();
+    expect(() =>
+      f.action.validate?.({ ...config, fileId: undefined, writeMode: 'append' })
+    ).toThrow();
+    expect(() => f.action.validate?.({ ...config, writeMode: 'create' })).toThrow();
+  });
+  it('creates a drive file with a stable key, then stores a replace binding', async () => {
+    syncDriveCsv.mockResolvedValue({ file: { fileId: 'new', fileName: 'result.csv', version: 1 } });
+    const service = outputService();
+    const saved = await service.syncOutputTableToCloud(
+      'out',
+      { ...config, fileId: undefined, version: undefined, writeMode: 'create' },
+      'stable'
+    );
+    expect(saved).toMatchObject({ fileId: 'new', writeMode: 'replace', version: 1 });
+    expect(syncDriveCsv).toHaveBeenCalledWith(
+      's',
+      'p',
+      expect.objectContaining({ outputId: 'stable', expectedVersion: 0, fileName: 'result.csv' })
+    );
+    expect(uploadCsv).not.toHaveBeenCalled();
+  });
+  it('appends the full file with aligned columns and persists the base version before writing', async () => {
+    downloadDriveCsv.mockResolvedValue('name,id\r\n"a,b",001\r\n"two\nlines",002\r\n');
+    const before = vi.fn();
+    syncDriveCsv.mockImplementationOnce(async () => {
+      expect(before).toHaveBeenCalledWith(1);
+      return { file: { fileId: 'file', fileName: 'result.csv', version: 2 } };
+    });
+    await outputService('id,name\n003,new').syncOutputTableToCloud(
+      'out',
+      { ...config, writeMode: 'append' },
+      'stable',
+      before
+    );
+    expect(syncDriveCsv).toHaveBeenCalledWith(
+      's',
+      'p',
+      expect.objectContaining({
+        expectedVersion: 1,
+        csvContent: 'name,id\r\n"a,b",001\r\n"two\nlines",002\r\nnew,003\r\n',
+      })
+    );
+  });
+  it('does not write on a changed version, incompatible schema or Excel target', async () => {
+    const service = outputService();
+    await expect(
+      service.syncOutputTableToCloud('out', { ...config, version: 0, writeMode: 'append' })
+    ).rejects.toThrow('changed');
+    downloadDriveCsv.mockResolvedValue('other\n1');
+    await expect(
+      service.syncOutputTableToCloud('out', { ...config, writeMode: 'append' })
+    ).rejects.toThrow('columns do not match');
+    previewDriveFile.mockResolvedValueOnce({ file: { fileType: 'excel', version: 1 } });
+    await expect(service.syncOutputTableToCloud('out', config)).rejects.toThrow('CSV');
+    expect(syncDriveCsv).not.toHaveBeenCalled();
+  });
+});
+function outputService(csv = 'id\n1') {
+  return new CloudAnalysisCommandService(
+    {
+      getOutputTableRecord: async () => ({ id: 'out', name: 'result' }),
+      exportDatasetCsv: async () => ({ csv, name: 'result' }),
+    } as unknown as DataTaskStore,
+    () => ({ apiOrigin: 'https://example.com', apiKey: 'key', updatedAt: 0 }),
     { createInputTable: vi.fn() }
   );
-  syncDriveCsv.mockResolvedValue({ file: { fileId: 'old-file', fileName: 'a.csv', version: 2 } });
-  return { service, store, action: () => action };
 }
-
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-});
-
-describe('cloud output action consistency', () => {
-  it('restores persisted schedules on a fresh service and triggers at the configured time', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 6, 8, 59, 59));
-    const { service, store } = fixture();
-    const action: CloudOutputAction = {
-      type: 'drive_file',
-      trigger: 'schedule',
-      spaceId: 's',
-      projectId: 'p',
-      fileId: 'old-file',
-      schedule: { kind: 'daily', times: ['09:00'] },
-    };
-    await store.updateOutputTableCloudAction('out', action);
-    Object.assign(store, {
-      listOutputTableCloudActions: vi.fn(async () => [{ id: 'out', action }]),
-    });
-    await service.ensureActionTimersArmed();
-    await service.ensureActionTimersArmed();
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(syncDriveCsv).toHaveBeenCalledTimes(1);
-    await service.setOutputTableCloudAction({ outputTableId: 'out', action: null });
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('does not restore a stale startup schedule after the action is removed', async () => {
-    vi.useFakeTimers();
-    const { service, store } = fixture();
-    const gate = deferred();
-    Object.assign(store, {
-      listOutputTableCloudActions: vi.fn(async () => {
-        await gate.promise;
-        return [
-          {
-            id: 'out',
-            action: {
-              type: 'drive_file',
-              trigger: 'schedule',
-              schedule: { kind: 'daily', times: ['09:00'] },
-            },
-          },
-        ];
-      }),
-    });
-    const restoring = service.ensureActionTimersArmed();
-    await service.setOutputTableCloudAction({ outputTableId: 'out', action: null });
-    gate.resolve();
-    await restoring;
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('retries failed startup restoration without requiring an output commit', async () => {
-    vi.useFakeTimers();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { service, store } = fixture();
-    const list = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('database temporarily unavailable'))
-      .mockResolvedValue([]);
-    Object.assign(store, { listOutputTableCloudActions: list });
-    await service.ensureActionTimersArmed();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(list).toHaveBeenCalledTimes(2);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('reports persistence failure and recovers the remote version before the next upload', async () => {
-    const { service, store, action } = fixture();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const save = store.updateOutputTableCloudAction.getMockImplementation()!;
-    store.updateOutputTableCloudAction.mockRejectedValue(new Error('disk write failure'));
-    await expect(service.runOutputTableCloudAction({ outputTableId: 'out' })).rejects.toThrow(
-      'disk write failure'
-    );
-    expect(action()?.version).toBe(1);
-    await expect(service.runOutputTableCloudAction({ outputTableId: 'out' })).rejects.toThrow(
-      'disk write failure'
-    );
-    expect(syncDriveCsv).toHaveBeenCalledTimes(1);
-    store.updateOutputTableCloudAction.mockImplementation(save);
-    syncDriveCsv.mockResolvedValue({ file: { fileId: 'old-file', fileName: 'a.csv', version: 3 } });
-    await service.runOutputTableCloudAction({ outputTableId: 'out' });
-    expect(syncDriveCsv.mock.calls[1][2].expectedVersion).toBe(2);
-    expect(action()?.version).toBe(3);
-    expect(action()?.lastError).toBeUndefined();
-  });
-
-  it.each(['remove', 'replace'] as const)(
-    'does not undo %s while a sync is in flight',
-    async (operation) => {
-      const { service, action } = fixture();
-      const entered = deferred();
-      const release = deferred();
-      syncDriveCsv.mockImplementation(async () => {
-        entered.resolve();
-        await release.promise;
-        return { file: { fileId: 'old-file', fileName: 'a.csv', version: 2 } };
-      });
-      const running = service.runOutputTableCloudAction({ outputTableId: 'out' });
-      await entered.promise;
-      const replacement =
-        operation === 'remove'
-          ? null
-          : {
-              type: 'drive_file' as const,
-              trigger: 'on_change' as const,
-              spaceId: 's',
-              projectId: 'p',
-              fileId: 'new-file',
-            };
-      const saving = service.setOutputTableCloudAction({
-        outputTableId: 'out',
-        action: replacement,
-      });
-      release.resolve();
-      await Promise.all([running, saving]);
-      expect(action()).toEqual(replacement);
-    }
-  );
-
-  it('allows removing a binding after a failed save without restoring its pending state', async () => {
-    const { service, store, action } = fixture();
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const save = store.updateOutputTableCloudAction.getMockImplementation()!;
-    store.updateOutputTableCloudAction.mockRejectedValue(new Error('disk write failure'));
-    await expect(service.runOutputTableCloudAction({ outputTableId: 'out' })).rejects.toThrow();
-    store.updateOutputTableCloudAction.mockImplementation(save);
-    await service.setOutputTableCloudAction({ outputTableId: 'out', action: null });
-    await expect(service.runOutputTableCloudAction({ outputTableId: 'out' })).rejects.toThrow(
-      'has no cloud action'
-    );
-    expect(action()).toBeNull();
-    expect(syncDriveCsv).toHaveBeenCalledTimes(1);
-  });
-});

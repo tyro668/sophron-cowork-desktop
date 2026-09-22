@@ -251,9 +251,6 @@ export function DataViewPage() {
             isBusy={actionId === editors.editingOutputTable.id}
             onBack={() => editors.setEditingOutputTableId(null)}
             onSave={actions.handleUpdateOutputTable}
-            onCloudActionChanged={() =>
-              dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
-            }
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">

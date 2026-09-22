@@ -19,6 +19,11 @@ function dataApi(): DataApi {
 }
 
 export const dataClient = {
+  listAutomations: () => window.electronAPI.automation.list(),
+  getAutomation: (id: string) => window.electronAPI.automation.get(id),
+  updateAutomation: (...args: Parameters<ElectronApi['automation']['update']>) =>
+    window.electronAPI.automation.update(...args),
+  runAutomation: (id: string) => window.electronAPI.automation.runNow(id),
   /** Whether the preload data bridge is present at all. */
   isAvailable(): boolean {
     return Boolean(window.electronAPI?.data);
@@ -125,11 +130,6 @@ export const dataClient = {
     dataApi().listCloudDriveFiles(...args),
   previewCloudDriveFile: (...args: Parameters<DataApi['previewCloudDriveFile']>) =>
     dataApi().previewCloudDriveFile(...args),
-  setOutputTableCloudAction: (...args: Parameters<DataApi['setOutputTableCloudAction']>) =>
-    dataApi().setOutputTableCloudAction(...args),
-  runOutputTableCloudAction: (...args: Parameters<DataApi['runOutputTableCloudAction']>) =>
-    dataApi().runOutputTableCloudAction(...args),
-
   // ---- host pickers / auth used by the data feature ----
   selectFiles: () => window.electronAPI?.selectFiles?.() ?? Promise.resolve([]),
   selectInputTableSource: (

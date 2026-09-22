@@ -49,6 +49,29 @@ describe('PersonalAnalysisClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('downloads the complete drive CSV without forwarding the account token to storage', async () => {
+    const csv = 'id,name\n' + Array.from({ length: 120 }, (_, index) => `${index},name`).join('\n');
+    const fetchMock = vi.fn(async (url: string | URL, options?: RequestInit) => {
+      if (String(url).includes('/drive-files/file%2Fid/download')) {
+        expect(options?.headers).toMatchObject({ Authorization: 'Bearer account-token' });
+        return jsonResponse({
+          success: true,
+          data: { downloadUrl: 'https://storage.example/full.csv' },
+        });
+      }
+      expect(String(url)).toBe('https://storage.example/full.csv');
+      expect(options?.headers).toBeUndefined();
+      return new Response(csv);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new PersonalAnalysisClient({
+      apiOrigin: 'https://cloud.example',
+      accessToken: 'account-token',
+    });
+    await expect(client.downloadDriveCsv('s', 'p', 'file/id')).resolves.toBe(csv);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('lists datasources from the configured service', async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
       const href = String(url);

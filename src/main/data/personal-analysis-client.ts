@@ -179,6 +179,15 @@ export class PersonalAnalysisClient {
     };
   }
 
+  async downloadDriveCsv(spaceId: string, projectId: string, fileId: string): Promise<string> {
+    const { downloadUrl } = await this.apiJson<{ downloadUrl: string }>(
+      `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files/${encodeURIComponent(fileId)}/download`
+    );
+    const response = await fetchWithTimeout(downloadUrl, {}, 'Download drive CSV');
+    if (!response.ok) throw new Error(`Download drive CSV failed: HTTP ${response.status}`);
+    return response.text();
+  }
+
   async syncDriveCsv(
     spaceId: string,
     projectId: string,

@@ -1,3 +1,5 @@
+import { registerCloudSyncAction } from './cloud-sync-action';
+import type { AutomationStore } from './automation-store';
 import type { DataTaskStore } from '../data/data-task-store';
 import type { DataCommandService } from '../data/data-command-service';
 import type { SessionManager } from '../session/session-manager';
@@ -11,6 +13,7 @@ import { AutomationActionRegistry, objectSchema } from './automation-action-regi
 
 interface DefaultAutomationActionOptions {
   dataTaskStore: DataTaskStore;
+  automationStore?: AutomationStore;
   dataCommandService?: DataCommandService;
   sessionManager: SessionManager;
   resolveProjectCwd?: (projectId: string) => string | null;
@@ -242,11 +245,16 @@ export function createDefaultAutomationActionRegistry(
       if (!config.source || typeof config.source !== 'object') {
         throw new Error('cloud.table.process requires source');
       }
+      if ((config.output as { location?: string } | undefined)?.location !== 'local') {
+        throw new Error('schedule.cloudSync.useOutputAction');
+      }
       if (!config.output || typeof config.output !== 'object') {
         throw new Error('cloud.table.process requires output');
       }
     },
     execute: async (config, context, node) => {
+      if ((config.output as { location?: string } | undefined)?.location !== 'local')
+        throw new Error('schedule.cloudSync.useOutputAction');
       if (!options.dataCommandService) {
         throw new Error('cloud.table.process requires DataCommandService');
       }
@@ -344,6 +352,7 @@ export function createDefaultAutomationActionRegistry(
     },
   });
 
+  registerCloudSyncAction(registry, options.dataCommandService, options.automationStore);
   return registry;
 }
 

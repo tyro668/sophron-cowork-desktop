@@ -7,7 +7,8 @@ export type AutomationTriggerReason =
   | 'manual'
   | 'retry'
   | 'queued_overlap'
-  | 'file_change';
+  | 'file_change'
+  | 'output_change';
 
 export type AutomationDeliveryStatus = 'pending' | 'succeeded' | 'partial' | 'failed' | 'skipped';
 
@@ -182,7 +183,13 @@ export interface AutomationDeliveryChannel {
   config: Record<string, unknown>;
 }
 
+export interface AutomationOutputBinding {
+  outputTableId: string;
+  runOnChange: boolean;
+}
+
 export interface Automation {
+  outputBindings?: AutomationOutputBinding[];
   id: string;
   name: string;
   description: string | null;
@@ -255,6 +262,7 @@ export interface AutomationListQuery {
 }
 
 export interface AutomationCreateInput {
+  outputBindings?: AutomationOutputBinding[];
   name: string;
   description?: string | null;
   projectId?: string | null;
@@ -267,6 +275,7 @@ export interface AutomationCreateInput {
 }
 
 export interface AutomationUpdateInput {
+  outputBindings?: AutomationOutputBinding[];
   name?: string;
   description?: string | null;
   projectId?: string | null;

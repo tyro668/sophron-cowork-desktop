@@ -322,7 +322,7 @@ function AutomationTable({
   }
   return (
     <div className="min-w-0 overflow-x-auto">
-      <table className="min-w-[72rem] w-full table-fixed border-collapse text-left">
+      <table className="w-full table-fixed border-collapse text-left">
         <colgroup>
           <col className="w-12" />
           <col />
@@ -478,6 +478,8 @@ function formatAutomationNextRun(
   tr: (key: string, fallback: string) => string
 ): string {
   if (automation.trigger.kind === 'manual') {
+    if (automation.outputBindings?.some((binding) => binding.runOnChange))
+      return tr('schedule.outputChangeTrigger', '输出表更新后执行');
     return tr('schedule.noAutoTrigger', '无自动触发');
   }
   return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-';

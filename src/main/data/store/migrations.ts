@@ -15,6 +15,8 @@
  * - Never call ctx.ensureMetadataReady() inside a migration; it would
  *   deadlock on the in-flight initialization promise.
  */
+import { computeNextAutomationRunAt } from '../../automation/automation-trigger';
+import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
 import {
   LEGACY_DEMO_TASK_NAMES,
@@ -427,6 +429,196 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
         await ctx.metaRunSql(
           'ALTER TABLE data_workflow_node_caches ADD COLUMN workflow_signature VARCHAR'
         );
+      }
+    },
+  },
+  {
+    version: 8,
+    name: 'output_cloud_actions_to_automations',
+    up: async (ctx) => {
+      // Standalone DuckDB stores have no automation service. Preserve their
+      // legacy metadata in those standalone stores.
+      if (!ctx.metadataDb) return;
+      const tables = await ctx.metaQueryRows<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'automations'"
+      );
+      if (!tables.length) return;
+      const rows = await ctx.metaQueryRows<{
+        id: string;
+        name: string;
+        config_json: string | null;
+      }>('SELECT id, name, config_json FROM data_datasets WHERE config_json IS NOT NULL');
+      for (const row of rows) {
+        const config = parseOutputTableConfig(row.config_json);
+        const action = config.cloudAction;
+        if (!action || config.kind !== OUTPUT_TABLE_CONFIG_KIND) continue;
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const trigger: AutomationTrigger =
+          action.trigger === 'schedule' && action.schedule
+            ? { ...action.schedule, timezone }
+            : { kind: 'manual', timezone };
+        const { lastRunAt, lastError } = action;
+        const target = {
+          type: action.type,
+          spaceId: action.spaceId,
+          projectId: action.projectId,
+          tableId: action.tableId,
+          tableName: action.tableName,
+          fileId: action.fileId,
+          fileName: action.fileName,
+          version: action.version,
+          syncKey: `cowork-output-${row.id}`,
+        };
+        const now = ctx.now();
+        await ctx.metaRunSql(
+          `INSERT INTO automations (
+          id, name, enabled, status, trigger_json, action_graph_json,
+          failure_policy_json, concurrency_json, next_run_at, last_run_at,
+          last_error, created_at, updated_at, output_bindings_json
+        ) VALUES ($id, $name, 1, 'enabled', $trigger, $graph, $failure,
+          $concurrency, $nextRunAt, $lastRunAt, $lastError, $now, $now, $bindings)`,
+          {
+            id: `output-cloud-${row.id}`,
+            name: row.name,
+            trigger: JSON.stringify(trigger),
+            graph: JSON.stringify({
+              version: 1,
+              edges: [],
+              nodes: [
+                {
+                  id: 'cloud-sync',
+                  type: 'cloud.output.sync',
+                  enabled: true,
+                  config: { ...target, outputTableId: row.id },
+                },
+              ],
+            }),
+            failure: JSON.stringify({
+              disableOnFailure: false,
+              retry: { enabled: false, maxAttempts: 0, backoffMs: 1000 },
+              notifyOnFailure: true,
+            }),
+            concurrency: JSON.stringify({ overlapPolicy: 'skip' }),
+            nextRunAt: computeNextAutomationRunAt(trigger, now),
+            lastRunAt: lastRunAt ?? null,
+            lastError: lastError ?? null,
+            now,
+            bindings: JSON.stringify([
+              { outputTableId: row.id, runOnChange: action.trigger === 'on_change' },
+            ]),
+          }
+        );
+        await ctx.metaRunSql(
+          "UPDATE data_datasets SET config_json = $config, source_kind = 'output' WHERE id = $id",
+          {
+            id: row.id,
+            config: outputTableConfigJson(config.sourceDatasetId),
+          }
+        );
+      }
+    },
+  },
+  {
+    version: 9,
+    name: 'restrict_output_automations_to_drive_files',
+    up: async (ctx) => {
+      if (!ctx.metadataDb) return;
+      const tables = await ctx.metaQueryRows<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'automations'"
+      );
+      if (!tables.length) return;
+      const rows = await ctx.metaQueryRows<{ id: string; action_graph_json: string }>(
+        'SELECT id, action_graph_json FROM automations'
+      );
+      for (const row of rows) {
+        const graph = JSON.parse(row.action_graph_json) as {
+          nodes?: Array<{ type: string; config?: { type?: string } }>;
+        };
+        if (
+          !graph.nodes?.some(
+            (node) => node.type === 'cloud.output.sync' && node.config?.type === 'cloud_table'
+          )
+        )
+          continue;
+        // Preserve the old destination for review; never silently redirect data.
+        await ctx.metaRunSql(
+          "UPDATE automations SET status = 'paused', next_run_at = NULL, last_error = $error WHERE id = $id",
+          { id: row.id, error: 'schedule.cloudSync.legacyTarget' }
+        );
+      }
+    },
+  },
+  {
+    version: 10,
+    name: 'restrict_generated_automation_outputs',
+    up: async (ctx) => {
+      if (!ctx.metadataDb) return;
+      const tables = await ctx.metaQueryRows<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'automations'"
+      );
+      if (!tables.length) return;
+      const rows = await ctx.metaQueryRows<{ id: string; action_graph_json: string }>(
+        'SELECT id, action_graph_json FROM automations'
+      );
+      for (const row of rows) {
+        const graph = JSON.parse(row.action_graph_json) as {
+          nodes?: Array<{
+            type: string;
+            config?: {
+              output?: { location?: string };
+              cloudAutomation?: { output?: { location?: string } };
+            };
+          }>;
+        };
+        if (
+          !graph.nodes?.some(
+            (node) =>
+              (node.type === 'cloud.table.process' && node.config?.output?.location === 'cloud') ||
+              node.config?.cloudAutomation?.output?.location === 'cloud'
+          )
+        )
+          continue;
+        await ctx.metaRunSql(
+          "UPDATE automations SET status = 'paused', next_run_at = NULL, last_error = $error WHERE id = $id",
+          { id: row.id, error: 'schedule.cloudSync.useOutputAction' }
+        );
+      }
+    },
+  },
+  {
+    version: 11,
+    name: 'merge_cloud_sync_action_types',
+    up: async (ctx) => {
+      if (!ctx.metadataDb) return;
+      const tables = await ctx.metaQueryRows<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'automations'"
+      );
+      if (!tables.length) return;
+      const rows = await ctx.metaQueryRows<{ id: string; action_graph_json: string }>(
+        'SELECT id, action_graph_json FROM automations'
+      );
+      for (const row of rows) {
+        const graph = JSON.parse(row.action_graph_json) as {
+          nodes?: Array<{ type: string; config?: Record<string, unknown> }>;
+        };
+        let changed = false;
+        for (const node of graph.nodes ?? []) {
+          const direction =
+            node.type === 'cloud.input.sync'
+              ? 'input'
+              : node.type === 'cloud.output.sync'
+                ? 'output'
+                : '';
+          if (!direction) continue;
+          node.type = 'cloud.sync';
+          node.config = { direction, ...node.config };
+          changed = true;
+        }
+        if (changed)
+          await ctx.metaRunSql('UPDATE automations SET action_graph_json = $graph WHERE id = $id', {
+            id: row.id,
+            graph: JSON.stringify(graph),
+          });
       }
     },
   },

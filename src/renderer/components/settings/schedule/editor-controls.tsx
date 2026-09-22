@@ -45,8 +45,8 @@ export function SegmentedControl<T extends string>({
 
 export function ConfigRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="automation-config-row grid min-w-0 gap-2 text-[12px] font-medium text-text-secondary">
-      <span className="automation-config-label">{label}</span>
+    <label className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] items-start gap-2 text-[12px] font-medium text-text-secondary">
+      <span className="pt-2 leading-5">{label}</span>
       <span className="block min-w-0">{children}</span>
     </label>
   );

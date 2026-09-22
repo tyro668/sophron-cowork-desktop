@@ -1,3 +1,12 @@
+import { createHash, randomUUID } from 'crypto';
+import {
+  cloudInputSyncSchema,
+  cloudOutputSyncSchema,
+  type CloudInputSyncConfig,
+  type CloudOutputSyncConfig,
+} from '../../shared/automation/cloud-sync';
+import { appendCloudCsv } from './cloud-drive-csv';
+import { DataCommandLockCoordinator } from './data-command-lock-coordinator';
 import { hasPersonalAnalysisConnection } from '../../shared/personal-analysis';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -6,6 +15,7 @@ import type { DataTaskStore } from './data-task-store';
 import {
   DataCommandError,
   type CreateInputTableCommand,
+  type UpdateInputTableCommand,
   type ImportCloudTableCommand,
   type ImportCloudTableResult,
   type InputTableResult,
@@ -21,11 +31,8 @@ import {
   type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
-  type RunOutputTableCloudActionCommand,
-  type RunOutputTableCloudActionResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
-  type SetOutputTableCloudActionCommand,
   type UploadDataTableToCloudCommand,
   type UploadDataTableToCloudResult,
 } from './data-command-types';
@@ -34,16 +41,11 @@ import {
   type PersonalAnalysisClient,
 } from './personal-analysis-client';
 import type {
-  CloudOutputAction,
-  CloudOutputActionSpec,
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDatasource,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
-import type { DataInputTablePreview, DataOutputTable } from '../../shared/contracts';
-import { calendarCronPatterns } from '../schedule/calendar-schedule';
-import { Cron } from 'croner';
-import { normalizeScheduleConfig } from '../schedule/scheduled-task-manager';
+import type { DataInputTablePreview } from '../../shared/contracts';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
@@ -53,17 +55,12 @@ export interface CloudAnalysisCommandServiceOptions {
   getPersonalAnalysisConnection?: (
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
+  updateInputTable?: (input: UpdateInputTableCommand) => Promise<InputTableResult>;
   createInputTable: (input: CreateInputTableCommand) => Promise<InputTableResult>;
 }
 
 export class CloudAnalysisCommandService {
-  private readonly outputActionQueues = new Map<string, Promise<unknown>>();
-  private readonly pendingOutputActions = new Map<string, CloudOutputAction>();
-  private readonly outputActionJobs = new Map<string, Cron[]>();
-  private actionTimersArmed = false;
-  private actionTimersArming: Promise<void> | null = null;
-  private actionTimerRetry: NodeJS.Timeout | null = null;
-
+  private readonly locks = new DataCommandLockCoordinator();
   constructor(
     private readonly store: DataTaskStore,
     private readonly getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig,
@@ -225,250 +222,119 @@ export class CloudAnalysisCommandService {
     }
   }
 
-  async setOutputTableCloudAction(
-    input: SetOutputTableCloudActionCommand
-  ): Promise<{ outputTable: DataOutputTable }> {
-    const outputTableId = normalizeRequiredName(input.outputTableId, 'outputTableId is required');
-    const action = input.action ? this.normalizeOutputAction(input.action) : null;
-    return this.enqueueOutputAction(outputTableId, async () => {
-      try {
-        const outputTable = await this.store.updateOutputTableCloudAction(outputTableId, action);
-        this.pendingOutputActions.delete(outputTableId);
-        this.rearmActionTimer(outputTableId, action);
-        return { outputTable };
-      } catch (error) {
-        throw toCommandError(error, 'RUN_FAILED');
-      }
+  async syncInputTableFromCloud(
+    raw: CloudInputSyncConfig,
+    syncKey: string
+  ): Promise<{ inputTableId: string; inputTableName: string }> {
+    const config = cloudInputSyncSchema.parse(raw);
+    return this.locks.withKeyedLock(`input:${config.inputTableId || syncKey}`, async () => {
+      const client = await this.createPersonalAnalysisClient({});
+      const source = await client.findTable(config.spaceId, config.projectId, config.tableId);
+      if (!source || source.kind !== config.tableKind)
+        throw new DataCommandError(
+          'INVALID_ARGUMENT',
+          'Select an analysis table or base table in the configured project'
+        );
+      // The creation marker is committed with the dataset, so recovery after a
+      // process exit cannot create a second input or overwrite a same-name table.
+      const existing = config.inputTableId
+        ? await this.store.getInputTableRecord(config.inputTableId)
+        : await this.store.findInputTableByAutomationSyncKey(syncKey);
+      if (config.inputTableId && !existing)
+        throw new DataCommandError(
+          'RESOURCE_NOT_FOUND',
+          `Input table not found: ${config.inputTableId}`
+        );
+      const csv = await client.exportTableCsv(config.tableId);
+      const filePath = await writeCloudCsvTempFile(config.tableId, csv);
+      const inputConfig = {
+        ...(existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig : {}),
+        sourceKind: 'csv' as const,
+        header: 'auto' as const,
+        dataRegion: 'auto' as const,
+        encoding: 'auto' as const,
+        delimiter: 'auto' as const,
+        ...(existing?.inputConfig.dataProcessing
+          ? { dataProcessing: existing.inputConfig.dataProcessing }
+          : {}),
+        cloudMirror: {
+          contentHash: createHash('sha256').update(csv).digest('hex'),
+          tableId: config.tableId,
+          sourceVersion: source.updatedAt,
+          automationSyncKey: syncKey,
+        },
+      };
+      if (existing && !this.options.updateInputTable)
+        throw new Error('Input table sync is unavailable');
+      const result = existing
+        ? await this.options.updateInputTable!({
+            id: existing.id,
+            sourceKind: 'csv',
+            filePath,
+            config: inputConfig,
+          })
+        : await this.options.createInputTable({
+            name: config.inputTableName,
+            sourceKind: 'csv',
+            filePath,
+            config: inputConfig,
+          });
+      return { inputTableId: result.inputTable.id, inputTableName: result.inputTable.name };
     });
   }
 
-  async runOutputTableCloudAction(
-    input: RunOutputTableCloudActionCommand
-  ): Promise<RunOutputTableCloudActionResult> {
-    const outputTableId = normalizeRequiredName(input.outputTableId, 'outputTableId is required');
-    return this.enqueueOutputAction(outputTableId, () =>
-      this.executeOutputAction(outputTableId, input)
-    );
-  }
-
-  /**
-   * Post-commit hook: run every committed output table's cloud action whose
-   * trigger is `on_change`. Best-effort — failures persist lastError on the
-   * action and never fail the task run.
-   */
-  runCommittedOutputActions(outputDatasetIds: string[]): void {
-    void this.ensureActionTimersArmed();
-    for (const outputTableId of outputDatasetIds) {
-      void this.enqueueOutputAction(outputTableId, async () => {
-        const outputTable = await this.store.getOutputTableRecord(outputTableId);
-        if (outputTable?.cloudAction?.trigger !== 'on_change') return;
-        await this.executeOutputAction(outputTableId, {});
-      }).catch(() => undefined);
-    }
-  }
-
-  /**
-   * Arms cron jobs for output tables whose cloud action runs on a schedule.
-   * Idempotent; resolves once the metadata store is ready.
-   */
-  async ensureActionTimersArmed(): Promise<void> {
-    if (this.actionTimersArmed) return;
-    if (this.actionTimersArming) return this.actionTimersArming;
-    this.actionTimersArming = (async () => {
-      try {
-        const bound = await this.store.listOutputTableCloudActions();
-        for (const { id } of bound) {
-          await this.enqueueOutputAction(id, async () => {
-            const current = await this.store.getOutputTableRecord(id);
-            this.rearmActionTimer(id, current?.cloudAction ?? null);
-          });
-        }
-        this.actionTimersArmed = true;
-        if (this.actionTimerRetry) clearTimeout(this.actionTimerRetry);
-        this.actionTimerRetry = null;
-      } catch (error) {
-        console.warn('[Data] Failed to arm cloud action timers:', error);
-        if (!this.actionTimerRetry) {
-          this.actionTimerRetry = setTimeout(() => {
-            this.actionTimerRetry = null;
-            void this.ensureActionTimersArmed();
-          }, 5000);
-          this.actionTimerRetry.unref?.();
-        }
-      } finally {
-        this.actionTimersArming = null;
-      }
-    })();
-    return this.actionTimersArming;
-  }
-
-  private normalizeOutputAction(spec: CloudOutputActionSpec): CloudOutputAction {
-    const spaceId = normalizeRequiredName(spec.spaceId, 'Cloud spaceId is required');
-    const projectId = normalizeRequiredName(spec.projectId, 'Cloud projectId is required');
-    const schedule =
-      spec.trigger === 'schedule' ? normalizeScheduleConfig(spec.schedule ?? null) : null;
-    if (spec.trigger === 'schedule' && !schedule) {
-      throw new DataCommandError('INVALID_ARGUMENT', 'schedule is required for scheduled actions');
-    }
-    if (spec.type === 'drive_file') {
-      return {
-        type: 'drive_file',
-        trigger: spec.trigger,
-        ...(schedule ? { schedule } : {}),
-        spaceId,
-        projectId,
-        ...(spec.fileId?.trim() ? { fileId: spec.fileId.trim() } : {}),
-        ...(spec.fileName?.trim() ? { fileName: spec.fileName.trim() } : {}),
-      };
-    }
-    return {
-      type: 'cloud_table',
-      trigger: spec.trigger,
-      ...(schedule ? { schedule } : {}),
-      spaceId,
-      projectId,
-      ...(spec.tableId?.trim() ? { tableId: spec.tableId.trim() } : {}),
-      ...(spec.tableName?.trim() ? { tableName: spec.tableName.trim() } : {}),
-    };
-  }
-
-  private rearmActionTimer(outputTableId: string, action: CloudOutputAction | null): void {
-    for (const job of this.outputActionJobs.get(outputTableId) ?? []) {
-      job.stop();
-    }
-    this.outputActionJobs.delete(outputTableId);
-    const schedule = action?.trigger === 'schedule' ? action.schedule : null;
-    if (!schedule) return;
-
-    const jobs: Cron[] = [];
-    for (const pattern of calendarCronPatterns(schedule)) {
-      try {
-        jobs.push(
-          new Cron(pattern, { unref: true, protect: true }, () => {
-            return this.enqueueOutputAction(outputTableId, async () => {
-              const current = await this.store.getOutputTableRecord(outputTableId);
-              if (
-                current?.cloudAction?.trigger !== 'schedule' ||
-                JSON.stringify(current.cloudAction.schedule) !== JSON.stringify(schedule)
-              )
-                return;
-              await this.executeOutputAction(outputTableId, {});
-            }).catch(() => undefined);
-          })
-        );
-      } catch (error) {
-        console.warn('[Data] Invalid cloud action cron pattern:', pattern, error);
-      }
-    }
-    if (jobs.length) {
-      this.outputActionJobs.set(outputTableId, jobs);
-    }
-  }
-
-  private enqueueOutputAction<T>(outputTableId: string, run: () => Promise<T>): Promise<T> {
-    const queued = (this.outputActionQueues.get(outputTableId) ?? Promise.resolve()).then(run, run);
-    this.outputActionQueues.set(
-      outputTableId,
-      queued.catch(() => undefined)
-    );
-    return queued;
-  }
-
-  private async executeOutputAction(
+  async syncOutputTableToCloud(
     outputTableId: string,
-    connection: PersonalAnalysisConnectionInput
-  ): Promise<RunOutputTableCloudActionResult> {
-    // Recover a successful remote write before issuing another versioned request.
-    const pending = this.pendingOutputActions.get(outputTableId);
-    if (pending) {
-      try {
-        await this.store.updateOutputTableCloudAction(outputTableId, pending);
-        this.pendingOutputActions.delete(outputTableId);
-      } catch (error) {
-        throw toCommandError(error, 'RUN_FAILED');
-      }
-    }
+    raw: CloudOutputSyncConfig,
+    syncKey = `cowork-output-${outputTableId}`,
+    beforeWrite?: (version: number) => void
+  ): Promise<Partial<CloudOutputSyncConfig>> {
+    const action = cloudOutputSyncSchema.parse(raw);
+    if (outputTableId !== action.outputTableId)
+      throw new Error('Output table binding does not match');
     const outputTable = await this.store.getOutputTableRecord(outputTableId);
-    if (!outputTable) {
+    if (!outputTable)
       throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${outputTableId}`);
-    }
-    const action = outputTable.cloudAction;
-    if (!action) {
-      throw new DataCommandError(
-        'INVALID_ARGUMENT',
-        `Output table ${outputTableId} has no cloud action`
+    const exported = await this.store.exportDatasetCsv({ tableKind: 'output', id: outputTableId });
+    const client = await this.createPersonalAnalysisClient({});
+    let csvContent = exported.csv;
+    let version = action.version;
+    if (action.fileId) {
+      const { file } = await client.previewDriveFile(
+        action.spaceId,
+        action.projectId,
+        action.fileId
       );
+      if (file.fileType !== 'csv' || file.writable === false)
+        throw new Error('Only writable CSV drive files can receive output tables');
+      if (!Number.isInteger(file.version)) throw new Error('Drive file version is unavailable');
+      if (version !== undefined && version !== file.version)
+        throw new Error(
+          'Drive file changed since the last sync; select the file again to refresh its version'
+        );
+      version = file.version!;
+      if (action.writeMode === 'append') {
+        const csv = await client.downloadDriveCsv(action.spaceId, action.projectId, action.fileId);
+        csvContent = appendCloudCsv(csv, exported.csv);
+      }
+      // Persist the base version BEFORE a remote append. An ambiguous write or
+      // restart then fails on a version conflict instead of appending twice.
+      beforeWrite?.(version);
     }
-
-    const persistAction = async (updates: Partial<CloudOutputAction>) => {
-      const nextAction = { ...action, ...updates };
-      this.pendingOutputActions.set(outputTableId, nextAction);
-      await this.store.updateOutputTableCloudAction(outputTableId, nextAction);
-      this.pendingOutputActions.delete(outputTableId);
+    const name = action.fileName || sanitizeFileName(outputTable.name);
+    const result = await client.syncDriveCsv(action.spaceId, action.projectId, {
+      fileId: action.fileId,
+      outputId: syncKey,
+      fileName: action.fileId ? undefined : /\.csv$/i.test(name) ? name : `${name}.csv`,
+      expectedVersion: action.fileId ? version : 0,
+      csvContent,
+    });
+    return {
+      fileId: result.file.fileId,
+      fileName: result.file.fileName,
+      version: result.file.version,
+      writeMode: action.writeMode === 'append' ? 'append' : 'replace',
     };
-
-    try {
-      const exported = await this.store.exportDatasetCsv({
-        tableKind: 'output',
-        id: outputTableId,
-      });
-      const client = await this.createPersonalAnalysisClient(connection);
-      if (action.type === 'drive_file') {
-        const result = await client.syncDriveCsv(action.spaceId, action.projectId, {
-          fileId: action.fileId,
-          outputId: `cowork-output-${outputTableId}`,
-          fileName: action.fileId
-            ? undefined
-            : action.fileName || `${sanitizeFileName(outputTable.name)}.csv`,
-          expectedVersion: action.fileId ? action.version : undefined,
-          csvContent: exported.csv,
-        });
-        await persistAction({
-          fileId: result.file.fileId,
-          fileName: result.file.fileName,
-          version: result.file.version,
-          lastRunAt: Date.now(),
-          lastError: undefined,
-        });
-      } else {
-        const tableName =
-          normalizeOptionalName(action.tableName) || outputTable.name || exported.id;
-        const datasourceId = await this.resolveUploadDatasourceId(client, undefined);
-        const upload = await client.uploadCsv({
-          ...connection,
-          writeMode: action.tableId ? 'REPLACE' : 'CREATE',
-          datasourceId,
-          spaceId: action.spaceId,
-          projectId: action.projectId,
-          tableId: action.tableId,
-          fileName: `${sanitizeFileName(tableName)}.csv`,
-          tableName,
-          csv: exported.csv,
-        });
-        await persistAction({
-          tableId: upload.tableId,
-          tableName: upload.table?.tableName ?? tableName,
-          lastRunAt: Date.now(),
-          lastError: undefined,
-        });
-      }
-      const refreshed = await this.store.getOutputTableRecord(outputTableId);
-      return { outputTable: refreshed ?? outputTable, ranAt: Date.now() };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const nextAction = {
-        ...(this.pendingOutputActions.get(outputTableId) ?? action),
-        lastError: message,
-      };
-      this.pendingOutputActions.set(outputTableId, nextAction);
-      try {
-        await this.store.updateOutputTableCloudAction(outputTableId, nextAction);
-        this.pendingOutputActions.delete(outputTableId);
-      } catch (persistError) {
-        console.warn('[Data] Failed to persist cloud action status:', persistError);
-      }
-      throw toCommandError(error, 'RUN_FAILED');
-    }
   }
 
   async uploadDataTableToCloud(
@@ -639,7 +505,7 @@ function driveFilePreviewToDataPreview(result: {
 async function writeCloudCsvTempFile(tableId: string, csv: string): Promise<string> {
   const directory = join(tmpdir(), 'sophron-cowork-cloud-imports');
   await mkdir(directory, { recursive: true });
-  const filePath = join(directory, `${sanitizeFileName(tableId)}-${Date.now()}.csv`);
+  const filePath = join(directory, `${sanitizeFileName(tableId)}-${randomUUID()}.csv`);
   await writeFile(filePath, csv, 'utf8');
   return filePath;
 }

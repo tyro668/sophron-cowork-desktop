@@ -1,0 +1,177 @@
+import { useTranslation } from 'react-i18next';
+import type { AutomationActionNode, DataDataset, DataOutputTable } from '../../../types';
+import { Input } from '../../ui/input';
+import { ConfigRow, SelectLine } from './editor-controls';
+import { CloudResourceSelector, withSavedOption } from './cloud-resource-selector';
+
+export function CloudSyncEditor({
+  node,
+  inputTables,
+  outputTables,
+  onChange,
+}: {
+  node: AutomationActionNode;
+  inputTables: DataDataset[];
+  outputTables: DataOutputTable[];
+  onChange: (node: AutomationActionNode) => void;
+}) {
+  const { t } = useTranslation();
+  const config = node.config;
+  const update = (patch: Record<string, unknown>) =>
+    onChange({ ...node, config: { ...config, ...patch } });
+  const direction =
+    config.direction === 'input' || config.direction === 'output' ? config.direction : '';
+  const kind = config.tableKind === 'base' ? 'base' : 'analysis';
+  const legacy = direction === 'output' && config.type === 'cloud_table';
+  const writeMode = legacy ? '' : String(config.writeMode ?? (config.fileId ? 'replace' : ''));
+  const setDirection = (next: string) => {
+    if (next === direction) return;
+    update(
+      next === 'input'
+        ? {
+            direction: 'input',
+            tableKind: 'analysis',
+            outputTableId: undefined,
+            type: undefined,
+            writeMode: undefined,
+            fileId: undefined,
+            fileName: undefined,
+            version: undefined,
+          }
+        : {
+            direction: 'output',
+            type: 'drive_file',
+            writeMode: undefined,
+            tableId: undefined,
+            tableName: undefined,
+            tableKind: undefined,
+            inputTableId: undefined,
+            inputTableName: undefined,
+          }
+    );
+  };
+  return (
+    <div className="space-y-3">
+      <ConfigRow label={t('schedule.cloudSync.direction')}>
+        <SelectLine
+          value={direction}
+          placeholder={t('schedule.cloudSync.selectDirection')}
+          options={[
+            { value: 'input', label: t('schedule.cloudInput.title') },
+            { value: 'output', label: t('schedule.cloudSync.title') },
+          ]}
+          onChange={setDirection}
+        />
+      </ConfigRow>
+      {direction === 'input' && (
+        <>
+          <ConfigRow label={t('schedule.cloudInput.sourceKind')}>
+            <SelectLine
+              value={kind}
+              placeholder={t('schedule.cloudInput.sourceKind')}
+              options={['analysis', 'base'].map((value) => ({
+                value,
+                label: t(`schedule.cloudInput.${value}`),
+              }))}
+              onChange={(tableKind) =>
+                update({ tableKind, tableId: undefined, tableName: undefined })
+              }
+            />
+          </ConfigRow>
+          <CloudResourceSelector config={config} resource={kind} onChange={update} />
+          <ConfigRow label={t('schedule.cloudInput.target')}>
+            <SelectLine
+              value={String(config.inputTableId ?? '')}
+              options={[
+                { value: '__create__', label: t('schedule.cloudInput.create') },
+                ...withSavedOption(
+                  inputTables.map((table) => ({ value: table.id, label: table.name })),
+                  String(config.inputTableId ?? ''),
+                  String(config.inputTableName ?? '')
+                ),
+              ]}
+              placeholder={t('schedule.inputTablePlaceholder')}
+              onChange={(value) => {
+                const table = inputTables.find((table) => table.id === value);
+                update({
+                  inputTableId: value === '__create__' ? undefined : value,
+                  inputTableName: table?.name,
+                  ...(value === '__create__' ? { syncKey: crypto.randomUUID() } : {}),
+                });
+              }}
+            />
+          </ConfigRow>
+          {!config.inputTableId && (
+            <ConfigRow label={t('schedule.cloudInput.name')}>
+              <Input
+                value={String(config.inputTableName ?? '')}
+                onChange={(event) => update({ inputTableName: event.target.value })}
+              />
+            </ConfigRow>
+          )}
+        </>
+      )}
+      {direction === 'output' && (
+        <>
+          {legacy && (
+            <p role="alert" className="text-xs text-warning">
+              {t('schedule.cloudSync.legacyTarget')}
+            </p>
+          )}
+          <ConfigRow label={t('schedule.outputDataLabel')}>
+            <SelectLine
+              value={String(config.outputTableId ?? '')}
+              options={withSavedOption(
+                outputTables.map((table) => ({ value: table.id, label: table.name })),
+                String(config.outputTableId ?? '')
+              )}
+              placeholder={t('schedule.outputTablePlaceholder')}
+              onChange={(outputTableId) => update({ outputTableId })}
+            />
+          </ConfigRow>
+          <ConfigRow label={t('schedule.cloudSync.writeMode')}>
+            <SelectLine
+              value={writeMode}
+              placeholder={t('schedule.cloudSync.selectMode')}
+              options={['create', 'replace', 'append'].map((value) => ({
+                value,
+                label: t(`schedule.cloudSync.${value}`),
+              }))}
+              onChange={(writeMode) =>
+                update({
+                  type: 'drive_file',
+                  writeMode,
+                  tableId: undefined,
+                  tableName: undefined,
+                  ...(writeMode === 'create' || legacy
+                    ? {
+                        fileId: undefined,
+                        fileName: undefined,
+                        version: undefined,
+                        syncKey: crypto.randomUUID(),
+                      }
+                    : {}),
+                })
+              }
+            />
+          </ConfigRow>
+          <CloudResourceSelector
+            config={config}
+            resource="drive"
+            create={writeMode === 'create'}
+            onChange={update}
+          />
+          {writeMode === 'create' && (
+            <ConfigRow label={t('schedule.cloudSync.name')}>
+              <Input
+                value={String(config.fileName ?? '')}
+                onChange={(event) => update({ fileName: event.target.value || undefined })}
+                placeholder={outputTables.find((table) => table.id === config.outputTableId)?.name}
+              />
+            </ConfigRow>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

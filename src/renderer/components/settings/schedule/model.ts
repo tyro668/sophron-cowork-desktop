@@ -1,3 +1,4 @@
+import { cloudSyncSchema } from '../../../../shared/automation/cloud-sync';
 import { getAgentModelLabel } from '../../AgentModelSelector';
 import type {
   Automation,
@@ -91,7 +92,7 @@ export function createCloudTableAutomationDraft(
     source: { ...template.source, location: 'cloud' },
     processRequirement: '',
     output: {
-      location: 'cloud',
+      location: 'local',
       writeMode: 'create',
       targetTableId: '',
       tableName: `${template.source.tableName || 'cloud_table'}_processed`,
@@ -109,10 +110,7 @@ export function createCloudTableAutomationDraft(
       '{{name}}',
       tableName
     ),
-    description: tr(
-      'schedule.cloudAutomationDescription',
-      '自动导入云空间表，完成数据处理后回写云端'
-    ),
+    description: tr('schedule.cloudAutomationDescription', '自动导入云空间表并保存数据处理结果'),
     projectId: '',
     enabled: true,
     permissionPolicy: 'full_access',
@@ -363,6 +361,21 @@ export function validateEnabledActionNodes(
     return tr('schedule.enabledActionRequired', '请至少启用一个动作');
   }
   for (const node of enabledNodes) {
+    if (
+      node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
+      (node.config.output as { location?: string } | undefined)?.location !== 'local'
+    )
+      return tr(
+        'schedule.cloudSync.useOutputAction',
+        '数据处理结果请保存到本地输出表，再添加写入网盘文件动作。'
+      );
+    if (node.type === 'cloud.sync' && !cloudSyncSchema.safeParse(node.config).success) {
+      if (node.config.direction === 'input')
+        return tr('schedule.cloudInput.invalid', '请选择分析空间、项目、来源表和目标输入表');
+      if (node.config.direction === 'output')
+        return tr('schedule.cloudSync.invalid', '请选择输出表、云空间、项目和同步目标');
+      return tr('schedule.cloudSync.selectDirection', '选择同步方向');
+    }
     const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
     if (cloudAutomation) {
       return tr('schedule.generatedTaskRequired', '请先生成并确认数据任务');
@@ -465,19 +478,13 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
 }
 
 export function automationToDraft(automation: Automation): AutomationDraft {
-  const trigger =
-    automation.trigger.kind === 'manual'
-      ? ({
-          kind: 'daily',
-          times: [DEFAULT_TIME],
-          timezone: SYSTEM_TIMEZONE,
-        } satisfies EditableAutomationTrigger)
-      : (automation.trigger as EditableAutomationTrigger);
+  const trigger = automation.trigger as EditableAutomationTrigger;
   return {
     name: automation.name,
+    outputBindings: automation.outputBindings ?? [],
     description: automation.description ?? '',
     projectId: automation.projectId ?? '',
-    enabled: automation.enabled,
+    enabled: automation.enabled && automation.status !== 'paused',
     permissionPolicy: 'full_access',
     triggerMode: trigger.kind,
     trigger,
@@ -493,6 +500,7 @@ export function draftToPayload(
 ): AutomationCreateInput | AutomationUpdateInput {
   return {
     name: draft.name,
+    outputBindings: draft.outputBindings ?? [],
     description: draft.description || null,
     projectId: draft.projectId || null,
     enabled: draft.enabled,
@@ -536,7 +544,8 @@ export function normalizeDraftTrigger(
   mode: TriggerMode,
   trigger: EditableAutomationTrigger
 ): EditableAutomationTrigger {
-  const timezone = SYSTEM_TIMEZONE;
+  const timezone = trigger.timezone || SYSTEM_TIMEZONE;
+  if (mode === 'manual') return { kind: 'manual', timezone };
   if (mode === 'file_change') {
     const source = trigger.kind === 'file_change' ? trigger : null;
     return {
@@ -606,6 +615,7 @@ export function relinkLinearGraph(graph: AutomationActionGraph): AutomationActio
 }
 
 export function defaultConfigForAction(type: string): Record<string, unknown> {
+  if (type === 'cloud.sync') return { direction: '', spaceId: '', projectId: '' };
   if (type === 'conversation.run') {
     return {
       prompt: '',

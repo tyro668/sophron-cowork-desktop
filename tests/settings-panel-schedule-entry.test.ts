@@ -28,7 +28,6 @@ describe('Automation workspace', () => {
       "import { SettingsSchedule } from './settings/SettingsSchedule';"
     );
     expect(automationSource).toContain('<SettingsSchedule isActive={isActive} />');
-    expect(automationSource).toContain('max-w-[1500px]');
     expect(settingsPanelSource).not.toContain("id: 'schedule' as TabId");
   });
 
@@ -73,7 +72,7 @@ describe('Automation workspace', () => {
   it('renders list, run history, and the full editor sections', () => {
     expect(automationSource).toContain('<AutomationListPanel');
     expect(automationSource).toContain('<AutomationRunLogPanel');
-    expect(automationSource).toContain('<TaskStatusSection');
+    expect(automationSource).toContain('<EditorHeader');
     expect(automationSource).toContain('<ExecutionProjectPanel');
     expect(automationSource).toContain('<TriggerConditionPanel');
     expect(automationSource).toContain('<ActionChainSection');
@@ -88,9 +87,7 @@ describe('Automation workspace', () => {
   });
 
   it('creates, updates, runs, and deletes through the automation API', () => {
-    expect(automationSource).toContain(
-      'window.electronAPI.automation.update(selectedAutomation.id, payload)'
-    );
+    expect(automationSource).toContain('window.electronAPI.automation.update(selectedId, payload)');
     expect(automationSource).toContain(
       'window.electronAPI.automation.create(payload as AutomationCreateInput)'
     );

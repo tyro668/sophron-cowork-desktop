@@ -100,11 +100,8 @@ import type {
   PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
-  RunOutputTableCloudActionInput,
-  RunOutputTableCloudActionResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
-  SetOutputTableCloudActionInput,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   CodexAuthStatus,
@@ -236,12 +233,6 @@ export interface ElectronApi {
     previewCloudDriveFile: (
       payload: PreviewCloudDriveFileInput
     ) => Promise<PreviewCloudDriveFileResult>;
-    setOutputTableCloudAction: (
-      payload: SetOutputTableCloudActionInput
-    ) => Promise<{ outputTable: DataOutputTable | null }>;
-    runOutputTableCloudAction: (
-      payload: RunOutputTableCloudActionInput
-    ) => Promise<RunOutputTableCloudActionResult>;
   };
   config: {
     get: () => Promise<AppConfig>;

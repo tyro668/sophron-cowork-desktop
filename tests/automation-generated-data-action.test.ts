@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDefaultAutomationActionRegistry } from '../src/main/automation/default-actions';
 
 describe('generated data task automation action', () => {
+  it('rejects direct analysis-table writes before invoking the task runtime', async () => {
+    const runGeneratedTask = vi.fn();
+    const registry = createDefaultAutomationActionRegistry({
+      dataTaskStore: {} as never,
+      dataCommandService: { runGeneratedTask } as never,
+      sessionManager: {} as never,
+    });
+    const action = registry.get('cloud.table.process')!;
+    const config = {
+      taskId: 'task',
+      source: { location: 'local', tableId: 'input' },
+      output: { location: 'cloud', targetTableId: 'remote' },
+    };
+    expect(() => action.validate?.(config)).toThrow('schedule.cloudSync.useOutputAction');
+    await expect(action.execute(config, {} as never, {} as never)).rejects.toThrow(
+      'schedule.cloudSync.useOutputAction'
+    );
+    expect(runGeneratedTask).not.toHaveBeenCalled();
+  });
   it('passes the certified input and output schemas to the runtime execution', async () => {
     const runGeneratedTask = vi.fn(async () => ({
       task: { name: 'generated task', rowCount: 1, columnCount: 1 },

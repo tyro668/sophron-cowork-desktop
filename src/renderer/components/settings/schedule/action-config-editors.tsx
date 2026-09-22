@@ -1,3 +1,5 @@
+import { Button } from '../../ui/button';
+import { CloudSyncEditor } from './cloud-sync-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Loader2, MessagesSquare, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import type {
@@ -36,7 +38,8 @@ import {
   type DataProcessMode,
 } from './editor-controls';
 import { CloudTableProcessActionEditor } from './cloud-action-editors';
-import { CalendarClock } from 'lucide-react';
+import { flatToolbarRowClass } from '../../data-view/shared';
+import { ArrowLeftRight, CalendarClock, CloudUpload, CloudDownload } from 'lucide-react';
 
 export function ActionChainSection({
   draft,
@@ -110,31 +113,37 @@ export function ActionChainSection({
     </GlassDropdownMenu>
   );
   return (
-    <section className="glass-card flex min-h-0 flex-col rounded-xl border border-border-muted bg-surface p-4">
-      <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted">
-        <h2 className="min-w-0 text-[16px] font-semibold text-text-secondary">
+    <section className="flex min-h-0 min-w-0 flex-col">
+      <div className={`${flatToolbarRowClass} justify-between`}>
+        <h2 className="min-w-0 text-[13px] font-semibold text-text-secondary">
           {tr('schedule.actionsTitle', '执行动作')}
         </h2>
         {addActionButton}
       </div>
-      <div className="min-w-0 space-y-3 pt-4">
-        {nodes.map((node, index) => (
-          <ActionStepCard
-            key={node.id}
-            node={node}
-            index={index}
-            dataTasks={dataTasks}
-            inputTables={inputTables}
-            outputTables={outputTables}
-            appConfig={appConfig}
-            onGeneratedTaskSuccess={onGeneratedTaskSuccess}
-            onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
-            onChange={(next) =>
-              updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
-            }
-            tr={tr}
-          />
-        ))}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {nodes.length === 0 ? (
+          <div className="flex h-full min-h-24 items-center justify-center px-4 text-xs text-text-muted">
+            {tr('schedule.noActions', '还没有动作，点击右上角「添加动作」。')}
+          </div>
+        ) : (
+          nodes.map((node, index) => (
+            <ActionStepCard
+              key={node.id}
+              node={node}
+              index={index}
+              dataTasks={dataTasks}
+              inputTables={inputTables}
+              outputTables={outputTables}
+              appConfig={appConfig}
+              onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+              onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
+              onChange={(next) =>
+                updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
+              }
+              tr={tr}
+            />
+          ))
+        )}
       </div>
     </section>
   );
@@ -165,13 +174,13 @@ export function ActionStepCard({
 }) {
   const Icon = getActionIcon(node.type, node);
   return (
-    <div className="rounded-lg border border-border-muted bg-bg-secondary/20 p-4">
-      <div className="mb-5 flex items-center gap-3">
-        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-[13px] font-semibold text-accent">
+    <div className="border-b border-border-muted px-4 py-4">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-text-secondary">
           {index + 1}
         </span>
-        <Icon className="h-5 w-5 flex-shrink-0 text-text-secondary" />
-        <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-secondary">
+        <Icon className="h-4 w-4 flex-shrink-0 text-text-muted" />
+        <div className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text-primary">
           {getNodeLabel(node, tr)}
         </div>
         <MiniIcon
@@ -286,6 +295,34 @@ export function DataProcessActionEditor({
           tr={tr}
         />
       )}
+      {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
+        (node.config.output as { location?: string } | undefined)?.location !== 'local' && (
+          <div className="space-y-2">
+            <p role="alert" className="text-xs text-warning">
+              {tr(
+                'schedule.cloudSync.useOutputAction',
+                '数据处理结果请保存到本地输出表，再添加写入网盘文件动作。'
+              )}
+            </p>
+            <Button
+              size="sm"
+              onClick={() => {
+                const output = (node.config.output ?? {}) as Record<string, unknown>;
+                setConfig({
+                  ...node.config,
+                  output: {
+                    ...output,
+                    location: 'local',
+                    writeMode: 'replace',
+                    targetTableId: output.localOutputTableId,
+                  },
+                });
+              }}
+            >
+              {tr('schedule.cloudSync.useLocalOutput', '改为本地输出表')}
+            </Button>
+          </div>
+        )}
       {mode === 'task' && (
         <>
           <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
@@ -362,7 +399,7 @@ export function GeneratedTaskReviewCard({
   }, [loadCurrentWorkflowDsl]);
 
   return (
-    <div className="rounded-lg border border-border-muted bg-bg-secondary/30 p-3">
+    <div className="rounded-md bg-surface-muted/60 p-3">
       <div className="mb-2 text-[12px] font-semibold text-text-secondary">
         <span>{tr('schedule.generatedTaskReview', '生成结果')}</span>
       </div>
@@ -465,6 +502,14 @@ export function ActionConfigEditor({
           tr={tr}
         />
       )}
+      {node.type === 'cloud.sync' && (
+        <CloudSyncEditor
+          node={node}
+          inputTables={inputTables}
+          outputTables={outputTables}
+          onChange={onChange}
+        />
+      )}
       {node.type === 'data.input.preview' && (
         <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
           <SelectLine
@@ -518,6 +563,7 @@ export function getActionTitle(
   fallback: string,
   tr: (key: string, fallback: string) => string
 ): string {
+  if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle', '云空间同步');
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
     return tr('schedule.dataProcessActionTitle', '数据处理');
   }
@@ -543,6 +589,9 @@ export function getActionMenuDescription(
       '对指定数据表做结构化加工（AI 生成或复用已有数据任务）'
     );
   }
+  if (type === 'cloud.sync') {
+    return tr('schedule.cloudSync.menuDescription', '在云空间与本地数据表之间同步数据');
+  }
   if (type === 'conversation.run') {
     return tr(
       'schedule.actionTypes.conversationRun.description',
@@ -553,6 +602,11 @@ export function getActionMenuDescription(
 }
 
 export function getActionIcon(type: string, node?: AutomationActionNode): LucideIcon {
+  if (type === 'cloud.sync') {
+    if (node?.config.direction === 'input') return CloudDownload;
+    if (node?.config.direction === 'output') return CloudUpload;
+    return ArrowLeftRight;
+  }
   if (node && isDataProcessNode(node)) return Database;
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) return Database;
   if (type === 'conversation.run') return MessagesSquare;
@@ -577,6 +631,12 @@ export function getNodeLabel(
 ): string {
   if (isDataProcessNode(node)) {
     return tr('schedule.dataProcessActionTitle', '数据处理');
+  }
+  if (node.type === 'cloud.sync' && (!node.label || node.label === node.type)) {
+    if (node.config.direction === 'input')
+      return tr('schedule.cloudInput.title', '云端表同步到输入表');
+    if (node.config.direction === 'output')
+      return tr('schedule.cloudSync.title', '输出表写入网盘文件');
   }
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;

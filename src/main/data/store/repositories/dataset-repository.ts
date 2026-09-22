@@ -1,6 +1,5 @@
 /** data_datasets row access (input tables + output tables). */
 import type {
-  CloudOutputAction,
   DataCreateOutputTableInput,
   DataDataset,
   DataOutputTable,
@@ -58,6 +57,22 @@ export class DatasetRepository {
     } catch {
       return null;
     }
+  }
+  async findInputTableByAutomationSyncKey(syncKey: string): Promise<DataDataset | null> {
+    await this.ctx.ensureMetadataReady();
+    const rows = await this.ctx.metaQueryRows<DataDatasetRow>(
+      `SELECT * FROM data_datasets WHERE ${storedDatasetSourceKindSql()} = 'csv' AND config_json LIKE $pattern ESCAPE '\\'`,
+      { pattern: `%${JSON.stringify(syncKey).replace(/[%_\\]/g, '\\$&')}%` }
+    );
+    return (
+      rows
+        .map(mapDatasetRow)
+        .find(
+          (table) =>
+            table.inputConfig.sourceKind === 'csv' &&
+            table.inputConfig.cloudMirror?.automationSyncKey === syncKey
+        ) ?? null
+    );
   }
   async findInputTableRecordByName(name: string): Promise<DataDataset | null> {
     await this.ctx.ensureMetadataReady();
@@ -236,45 +251,6 @@ export class DatasetRepository {
     return outputTable;
   }
 
-  async updateOutputTableCloudAction(
-    id: string,
-    action: CloudOutputAction | null
-  ): Promise<DataOutputTable> {
-    await this.ctx.ensureMetadataReady();
-    const rows = await this.ctx.metaQueryRows<{ config_json: string | null }>(
-      `SELECT config_json FROM data_datasets WHERE id = $id AND ${outputTableConfigPredicateSql()} LIMIT 1`,
-      { id }
-    );
-    if (!rows[0]) {
-      throw new Error(`Output table not found: ${id}`);
-    }
-    const config = parseOutputTableConfig(rows[0].config_json);
-    await this.ctx.metaRunSql(
-      'UPDATE data_datasets SET config_json = $configJson, updated_at = $updatedAt WHERE id = $id',
-      {
-        id,
-        configJson: outputTableConfigJson(config.sourceDatasetId, action),
-        updatedAt: this.ctx.now(),
-      }
-    );
-    return this.requireOutputTable(id);
-  }
-
-  async listOutputTableCloudActions(): Promise<Array<{ id: string; action: CloudOutputAction }>> {
-    await this.ctx.ensureMetadataReady();
-    const rows = await this.ctx.metaQueryRows<{ id: string; config_json: string | null }>(
-      `SELECT id, config_json FROM data_datasets
-       WHERE ${outputTableConfigPredicateSql()}
-         AND coalesce(config_json, '') LIKE '%"cloudAction"%'`,
-      {}
-    );
-    const result: Array<{ id: string; action: CloudOutputAction }> = [];
-    for (const row of rows) {
-      const action = parseOutputTableConfig(row.config_json).cloudAction;
-      if (action) result.push({ id: row.id, action });
-    }
-    return result;
-  }
   /**
    * Whether a user-managed (explicit) output-table dataset row claims this
    * physical table. Such rows mark resources a task may reference but never

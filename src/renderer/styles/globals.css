@@ -798,26 +798,6 @@
 }
 
 @layer components {
-  .automation-editor-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
-  }
-
-  .automation-editor-grid > * {
-    min-width: 0;
-    container-type: inline-size;
-  }
-
-  .automation-config-label {
-    padding-top: 0.5rem;
-  }
-
-  @container (min-width: 480px) {
-    .automation-config-row {
-      grid-template-columns: 96px minmax(0, 1fr);
-      align-items: start;
-    }
-  }
-
   /* Heading font — keep titles aligned with the app font system */
   .heading-serif {
     font-family: var(--font-sans);

@@ -1,3 +1,6 @@
+import { InputTableAutomations } from './table-automations';
+import { Button } from '../ui/button';
+import { Dialog } from '../ui/dialog';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -116,6 +119,7 @@ export function InputTableEditorWorkbench({
   const [localSourceKind, setLocalSourceKind] =
     useState<DataInputTableSourceKind>(initialSourceKind);
   const [localConfig, setLocalConfig] = useState<DataInputTableConfig>(initialConfig);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -616,6 +620,26 @@ export function InputTableEditorWorkbench({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {dataset && (
+              <>
+                <Button size="sm" onClick={() => setAutomationsOpen(true)}>
+                  {t('data.outputTables.automation.title')}
+                </Button>
+                <Dialog
+                  open={automationsOpen}
+                  onOpenChange={setAutomationsOpen}
+                  ariaLabel={t('data.outputTables.automation.title')}
+                  className="w-full max-w-2xl p-5"
+                >
+                  <InputTableAutomations inputTable={dataset} />
+                  <div className="mt-4 flex justify-end">
+                    <Button size="sm" onClick={() => setAutomationsOpen(false)}>
+                      {t('common.close')}
+                    </Button>
+                  </div>
+                </Dialog>
+              </>
+            )}
             <button
               type="button"
               onClick={() => void previewInputTable()}

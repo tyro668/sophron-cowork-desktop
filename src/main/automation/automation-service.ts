@@ -1,3 +1,6 @@
+import { automationRunScope } from './automation-run-scope';
+import { cloudSyncSchema } from '../../shared/automation/cloud-sync';
+import { z } from 'zod';
 import type {
   Automation,
   AutomationActionDefinitionSummary,
@@ -12,6 +15,19 @@ import type { AutomationStore } from './automation-store';
 import { computeNextAutomationRunAt, normalizeAutomationTrigger } from './automation-trigger';
 import type { AutomationRunner } from './automation-runner';
 import type { AutomationActionRegistry } from './automation-action-registry';
+
+const outputBindingsSchema = z
+  .array(
+    z.object({
+      outputTableId: z.string().trim().min(1),
+      runOnChange: z.boolean(),
+    })
+  )
+  .refine(
+    (bindings) =>
+      new Set(bindings.map((binding) => binding.outputTableId)).size === bindings.length,
+    'An output table can only be linked once'
+  );
 
 export interface AutomationServiceOptions {
   store: AutomationStore;
@@ -43,17 +59,26 @@ export class AutomationService {
 
   create(input: AutomationCreateInput): Automation {
     this.validateActionGraph(input.actionGraph);
+    const outputBindings = outputBindingsSchema.parse(input.outputBindings ?? []);
     return this.store.create({
       ...input,
+      outputBindings,
       trigger: normalizeAutomationTrigger(input.trigger),
     });
   }
 
   update(id: string, input: AutomationUpdateInput): Automation | null {
+    const outputBindings =
+      input.outputBindings === undefined
+        ? undefined
+        : outputBindingsSchema.parse(input.outputBindings);
     if (input.actionGraph) {
       this.validateActionGraph(input.actionGraph);
+    } else if (input.enabled === true) {
+      const current = this.store.get(id);
+      if (current) this.validateActionGraph(current.actionGraph);
     }
-    return this.store.update(id, input);
+    return this.store.update(id, { ...input, ...(outputBindings ? { outputBindings } : {}) });
   }
 
   delete(id: string): { success: boolean } {
@@ -63,6 +88,7 @@ export class AutomationService {
   setEnabled(id: string, enabled: boolean): Automation | null {
     const automation = this.store.get(id);
     if (!automation) return null;
+    if (enabled) this.validateActionGraph(automation.actionGraph);
     const nextRunAt = enabled ? computeNextAutomationRunAt(automation.trigger, this.now()) : null;
     return this.store.setRuntimeState(id, {
       enabled,
@@ -82,6 +108,7 @@ export class AutomationService {
   resume(id: string): Automation | null {
     const automation = this.store.get(id);
     if (!automation) return null;
+    this.validateActionGraph(automation.actionGraph);
     if (!automation.enabled) {
       return this.setEnabled(id, true);
     }
@@ -108,11 +135,15 @@ export class AutomationService {
     return this.runner.run(automation, 'manual');
   }
 
-  async runTriggered(id: string, reason: 'timer' | 'file_change'): Promise<AutomationRun | null> {
+  async runTriggered(
+    id: string,
+    reason: 'timer' | 'file_change' | 'output_change'
+  ): Promise<AutomationRun | null> {
     const automation = this.store.get(id);
     if (!automation || !automation.enabled || automation.status === 'paused') return null;
     if (automation.lockedRunId) {
       if (automation.concurrencyPolicy.overlapPolicy === 'queue_once') {
+        if (reason === 'output_change') return this.runner.queueOnce(automation, reason);
         return this.store.createRun({
           automationId: automation.id,
           status: 'queued',
@@ -123,6 +154,25 @@ export class AutomationService {
       return null;
     }
     return this.runner.run(automation, reason);
+  }
+
+  async runForOutputTables(outputTableIds: string[]): Promise<void> {
+    const committed = new Set(outputTableIds);
+    const ancestors = automationRunScope.getStore() ?? [];
+    for (const automation of this.store.list({ status: 'all' })) {
+      if (
+        !automation.outputBindings?.some(
+          (binding) => binding.runOnChange && committed.has(binding.outputTableId)
+        )
+      )
+        continue;
+      // Skip causal cycles and coalesce commits already waiting in the queue.
+      // Independent overlapping changes still honor the automation's policy.
+      if (this.runner.hasQueuedRun(automation.id) || ancestors.includes(automation.id)) continue;
+      void this.runTriggered(automation.id, 'output_change').catch((error) => {
+        console.warn('[Automation] Output trigger failed:', automation.id, error);
+      });
+    }
   }
 
   listRuns(id: string, query?: AutomationRunQuery): AutomationRun[] {
@@ -170,6 +220,23 @@ export class AutomationService {
       throw new Error('Automation action graph requires nodes');
     }
     for (const node of graph.nodes) {
+      if (
+        node.enabled !== false &&
+        node.type === 'cloud.table.process' &&
+        (node.config.output as { location?: string } | undefined)?.location !== 'local'
+      )
+        throw new Error('schedule.cloudSync.useOutputAction');
+      if (node.enabled !== false && node.type === 'cloud.sync') {
+        try {
+          cloudSyncSchema.parse(node.config);
+        } catch {
+          throw new Error(
+            node.config?.type === 'cloud_table'
+              ? 'schedule.cloudSync.legacyTarget'
+              : 'schedule.cloudSync.invalid'
+          );
+        }
+      }
       if (!this.registry.get(node.type)) {
         throw new Error(`Automation action is not registered: ${node.type}`);
       }

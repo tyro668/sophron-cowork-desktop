@@ -69,6 +69,7 @@ interface AutomationRow {
   enabled: number;
   status: string;
   trigger_json: string;
+  output_bindings_json: string;
   action_graph_json: string;
   delivery_json: string | null;
   failure_policy_json: string;
@@ -196,6 +197,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         enabled,
         status: enabled ? 'enabled' : 'disabled',
         trigger,
+        outputBindings: input.outputBindings ?? [],
         actionGraph: normalizeActionGraph(input.actionGraph),
         delivery: input.delivery ?? DEFAULT_AUTOMATION_DELIVERY,
         failurePolicy: mergeFailurePolicy(input.failurePolicy),
@@ -232,6 +234,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         enabled: nextEnabled,
         status: nextStatus,
         trigger: nextTrigger,
+        outputBindings: updates.outputBindings ?? current.outputBindings ?? [],
         actionGraph:
           updates.actionGraph === undefined
             ? current.actionGraph
@@ -513,8 +516,8 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
       `INSERT INTO automations (
         id, name, description, project_id, enabled, status, trigger_json, action_graph_json,
         delivery_json, failure_policy_json, concurrency_json, next_run_at, locked_run_id,
-        last_run_at, last_run_status, last_error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        last_run_at, last_run_status, last_error, created_at, updated_at, output_bindings_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       automation.id,
@@ -534,7 +537,8 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
       automation.lastRunStatus,
       automation.lastError,
       automation.createdAt,
-      automation.updatedAt
+      automation.updatedAt,
+      JSON.stringify(automation.outputBindings ?? [])
     );
 }
 
@@ -568,6 +572,7 @@ function automationToUpdateRow(automation: Automation): Record<string, unknown> 
     enabled: automation.enabled ? 1 : 0,
     status: automation.status,
     trigger_json: JSON.stringify(automation.trigger),
+    output_bindings_json: JSON.stringify(automation.outputBindings ?? []),
     action_graph_json: JSON.stringify(automation.actionGraph),
     delivery_json: automation.delivery ? JSON.stringify(automation.delivery) : null,
     failure_policy_json: JSON.stringify(automation.failurePolicy),
@@ -587,6 +592,7 @@ function mapAutomationRow(row: AutomationRow): Automation {
     enabled: row.enabled === 1,
     status: parseAutomationStatus(row.status, row.enabled === 1),
     trigger: parseJson(row.trigger_json, defaultOnceTrigger()),
+    outputBindings: parseJson(row.output_bindings_json, []),
     actionGraph: normalizeActionGraph(parseJson(row.action_graph_json, emptyActionGraph())),
     delivery: parseJson(row.delivery_json, null),
     failurePolicy: mergeFailurePolicy(parseJson(row.failure_policy_json, {})),
@@ -912,7 +918,8 @@ function parseTriggerReason(value: string): AutomationTriggerReason {
     value === 'manual' ||
     value === 'retry' ||
     value === 'queued_overlap' ||
-    value === 'file_change'
+    value === 'file_change' ||
+    value === 'output_change'
   ) {
     return value;
   }

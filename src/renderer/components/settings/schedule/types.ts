@@ -15,10 +15,8 @@ export const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone 
 export const DEFAULT_TIME = '09:00';
 export const AUTOMATION_TABLE_PAGE_SIZE = 10;
 export const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
-// Top-level "添加动作" menu only exposes two intents: a free-form task (conversation.run)
-// and the unified data-processing action (CLOUD_TABLE_PROCESS_ACTION_TYPE). "复用数据任务"
-// (data.task.run) is no longer a separate entry — it is a mode inside 数据处理.
-export const ACTION_MENU_TYPES = ['conversation.run'];
+// Data processing stays unified; cloud sync is reusable as a separate action.
+export const ACTION_MENU_TYPES = ['conversation.run', 'cloud.sync'];
 export const CLOUD_TABLE_PROCESS_ACTION_TYPE = 'cloud.table.process';
 export const DATA_ACTION_TYPES = ['data.task.run'];
 export const DATA_PREVIEW_ACTION_TYPES = ['data.input.preview', 'data.output.preview'];
@@ -123,10 +121,10 @@ export function getProjectOptionLabel(
   );
 }
 
-export type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' | 'manual' }>;
+export type EditableAutomationTrigger = Exclude<AutomationTrigger, { kind: 'cron' }>;
 export type ScheduledAutomationTrigger = Exclude<
   EditableAutomationTrigger,
-  { kind: 'file_change' }
+  { kind: 'file_change' | 'manual' }
 >;
 export type TriggerMode = EditableAutomationTrigger['kind'];
 export type ListTab = 'automations' | 'runs';
@@ -137,6 +135,7 @@ export interface AutomationRunLogEntry {
 }
 
 export interface AutomationDraft {
+  outputBindings?: Automation['outputBindings'];
   name: string;
   description: string;
   projectId: string;

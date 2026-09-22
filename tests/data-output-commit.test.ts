@@ -28,6 +28,9 @@ describe('validated task output commit', () => {
 
     const store = createDataTaskStore(path.join(root, 'workspace.duckdb'));
     stores.push(store);
+    const committedOutputs: string[][] = [];
+    store.setOutputCommitListener((ids) => committedOutputs.push(ids));
+    const output = await store.createOutputTable({ name: 'Atomic output' });
     const task = await store.createTask({ name: 'Atomic output', sourcePath: oldSource });
     const workflow: DataWorkflowSaveInput = {
       nodes: [
@@ -45,13 +48,16 @@ describe('validated task output commit', () => {
           label: 'output',
           x: 0,
           y: 0,
-          config: { table: 'atomic_output' },
+          config: { outputDatasetId: output.id },
         },
       ],
       edges: [{ id: 'edge', sourceNodeId: 'source', targetNodeId: 'output' }],
     };
 
     await store.runTask(task.id, { sourcePath: oldSource, workflow });
+    expect(committedOutputs).toHaveLength(1);
+    expect(committedOutputs[0]).toHaveLength(1);
+    committedOutputs.length = 0;
     const validated = await store.validateTaskWorkflow(task.id, {
       sourcePath: newSource,
       workflow,
@@ -77,12 +83,13 @@ describe('validated task output commit', () => {
     await expect(
       store.commitValidatedTaskOutput(task.id, validated.task, workflow)
     ).rejects.toThrow('forced metadata failure');
+    expect(committedOutputs).toEqual([]);
     stores.pop()?.close();
 
     const duckdb = await DuckDBInstance.create(path.join(root, 'workspace.duckdb'));
     const connection = await duckdb.connect();
     try {
-      const reader = await connection.runAndReadAll('SELECT id, value FROM atomic_output');
+      const reader = await connection.runAndReadAll(`SELECT id, value FROM "${output.tableName}"`);
       expect(reader.getRowObjectsJson()).toEqual([{ id: '1', value: 'old' }]);
     } finally {
       connection.closeSync();

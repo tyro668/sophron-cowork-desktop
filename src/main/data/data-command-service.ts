@@ -1,5 +1,9 @@
+import type {
+  CloudInputSyncConfig,
+  CloudOutputSyncConfig,
+} from '../../shared/automation/cloud-sync';
 import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
-import type { DataCleaningTask, DataOutputTable } from '../../shared/contracts';
+import type { DataCleaningTask } from '../../shared/contracts';
 import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,
@@ -64,9 +68,6 @@ import {
   type RunTaskResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
-  type RunOutputTableCloudActionCommand,
-  type RunOutputTableCloudActionResult,
-  type SetOutputTableCloudActionCommand,
   type SummarizeInputTableSourceCommand,
   type SummarizeInputTableSourceResult,
   type TaskResult,
@@ -135,12 +136,8 @@ export class DataCommandService {
       getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
       onPersonalAnalysisKeyRejected: options.onPersonalAnalysisKeyRejected,
       createInputTable: (input) => this.createInputTable(input),
+      updateInputTable: (input) => this.updateInputTable(input),
     });
-    store.setOutputCommitListener((outputDatasetIds) =>
-      this.cloudAnalysis.runCommittedOutputActions(outputDatasetIds)
-    );
-    void this.cloudAnalysis.ensureActionTimersArmed();
-
     const locks = new DataCommandLockCoordinator();
     this.resources = new DataCommandResources(store);
     this.preview = new WorkflowPreviewService(store, this.resources);
@@ -326,16 +323,17 @@ export class DataCommandService {
     return this.cloudAnalysis.previewCloudDriveFile(input);
   }
 
-  async setOutputTableCloudAction(
-    input: SetOutputTableCloudActionCommand
-  ): Promise<{ outputTable: DataOutputTable }> {
-    return this.cloudAnalysis.setOutputTableCloudAction(input);
+  syncInputTableFromCloud(config: CloudInputSyncConfig, syncKey: string) {
+    return this.cloudAnalysis.syncInputTableFromCloud(config, syncKey);
   }
 
-  async runOutputTableCloudAction(
-    input: RunOutputTableCloudActionCommand
-  ): Promise<RunOutputTableCloudActionResult> {
-    return this.cloudAnalysis.runOutputTableCloudAction(input);
+  syncOutputTableToCloud(
+    outputTableId: string,
+    config: CloudOutputSyncConfig,
+    syncKey?: string,
+    beforeWrite?: (version: number) => void
+  ) {
+    return this.cloudAnalysis.syncOutputTableToCloud(outputTableId, config, syncKey, beforeWrite);
   }
 
   async listTasks(input: ListInputTablesInput = {}): Promise<ListTasksResult> {

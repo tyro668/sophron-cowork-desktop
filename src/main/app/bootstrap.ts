@@ -241,6 +241,8 @@ export async function bootstrap(): Promise<void> {
 
   startNavServer(() => appContext.mainWindow);
 
+  // Finish metadata upgrades (including legacy output-action migration) before scheduling.
+  await initializedDataTaskStore.getDashboard({ includeSummary: false });
   appContext.automationStore = createAutomationStore(db);
   appContext.automationStore.migrateScheduledTasks();
   const recoveredAutomationRuns = appContext.automationStore.recoverInterruptedRuns();
@@ -253,6 +255,7 @@ export async function bootstrap(): Promise<void> {
   }
   const automationActionRegistry = createDefaultAutomationActionRegistry({
     dataTaskStore: initializedDataTaskStore,
+    automationStore: appContext.automationStore,
     dataCommandService: appContext.dataCommandService ?? undefined,
     sessionManager: appContext.sessionManager,
     resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
@@ -274,6 +277,11 @@ export async function bootstrap(): Promise<void> {
     store: appContext.automationStore,
     runner: automationRunner,
     registry: automationActionRegistry,
+  });
+  initializedDataTaskStore.setOutputCommitListener((ids) => {
+    void appContext.automationService?.runForOutputTables(ids).catch((error) => {
+      logWarn('[Automation] Output change dispatch failed:', error);
+    });
   });
   appContext.automationScheduler = new AutomationScheduler(appContext.automationService, {
     resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,

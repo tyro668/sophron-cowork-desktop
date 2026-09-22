@@ -399,6 +399,18 @@
         "rows": "Rows",
         "columns": "Columns",
         "relatedTasks": "Related data tasks"
+      },
+      "automation": {
+        "title": "Automations",
+        "create": "New automation",
+        "select": "Select an automation",
+        "link": "Link",
+        "empty": "No linked automations",
+        "run": "Run now",
+        "edit": "Configure",
+        "unlink": "Unlink",
+        "onChange": "Run when the output table changes",
+        "missing": "This automation no longer exists. Refresh the list."
       }
     },
     "editor": {
@@ -2472,7 +2484,8 @@
       "manual": "Manual",
       "retry": "Retry",
       "queued_overlap": "Queued",
-      "file_change": "File change"
+      "file_change": "File change",
+      "output_change": "Output table changed"
     },
     "deliveryStatus": {
       "pending": "Pending",
@@ -2556,7 +2569,7 @@
     "cloudTargetRequired": "Select a target cloud table",
     "cloudTableFallbackName": "Cloud table",
     "cloudAutomationDefaultName": "{{name}} auto process",
-    "cloudAutomationDescription": "Automatically import the cloud space table, process it, and write the result back to the cloud.",
+    "cloudAutomationDescription": "Import cloud tables and save processing results locally",
     "cloudTemplateInvalid": "Cloud table auto-processing config is unavailable",
     "cloudAutoProcessTitle": "Cloud table auto process",
     "templateMode": "Template",
@@ -2643,12 +2656,10 @@
     "triggerFileChange": "Trigger on file changes",
     "noAutoTrigger": "No automatic trigger",
     "noAutoTriggerDesc": "No automatic trigger is configured. You can still use Run from the automation list or detail page to execute it immediately.",
-    "scheduledConfig": "Schedule config",
     "frequency": "Frequency",
     "familyRecurring": "Recurring",
     "familyInterval": "By interval",
     "repeat": "Repeat",
-    "fileChangeConfig": "File change config",
     "watchProject": "Watch project",
     "watchPatterns": "File scope",
     "debounceSeconds": "Debounce seconds",
@@ -2804,7 +2815,49 @@
     "pickerAdd": "Add",
     "pickerSelectedTimes": "Selected times",
     "pickerNone": "No time slots selected yet",
-    "pickerSuggestions": "Suggestions"
+    "pickerSuggestions": "Suggestions",
+    "noActions": "No actions yet. Click \"Add action\" above.",
+    "triggerManual": "Manual or output table changes",
+    "outputChangeTrigger": "After output table changes",
+    "cloudSync": {
+      "title": "Write output table to drive file",
+      "login": "Sign in",
+      "connection": "Connection settings",
+      "space": "Analysis space",
+      "selectSpace": "Select analysis space",
+      "project": "Project",
+      "selectProject": "Select project",
+      "target": "Drive CSV file",
+      "name": "File name",
+      "selectTarget": "Select a writable CSV file",
+      "invalid": "Select an output table, analysis space, project and drive file",
+      "writeMode": "Write mode",
+      "selectMode": "Select write mode",
+      "create": "Create, then keep replacing",
+      "replace": "Replace file contents",
+      "append": "Append rows",
+      "loadMore": "Load more",
+      "legacyTarget": "Output tables now write only to drive files. The previous cloud table configuration is preserved. Select a drive destination before enabling this automation.",
+      "useLocalOutput": "Use a local output table",
+      "useOutputAction": "Save processing results to a local output table, then add a drive file action.",
+      "direction": "Sync direction",
+      "selectDirection": "Select a sync direction",
+      "menuTitle": "Cloud sync",
+      "menuDescription": "Sync data between the cloud space and local tables"
+    },
+    "cloudInput": {
+      "title": "Sync cloud table to input table",
+      "sourceKind": "Source type",
+      "analysis": "Analysis table",
+      "base": "Base table",
+      "sourceTable": "Source table",
+      "selectSource": "Select source table",
+      "target": "Target input table",
+      "create": "Create and keep syncing",
+      "name": "Input table name",
+      "invalid": "Select an analysis space, project, source table and target input table",
+      "addFromCloud": "Add from cloud"
+    }
   },
   "remote": {
     "title": "Remote Control",

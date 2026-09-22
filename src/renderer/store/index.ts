@@ -141,6 +141,19 @@ interface AppState {
   pendingDataNavigation: PendingDataNavigation | null;
   pendingDataTabNavigation: PendingDataTabNavigation | null;
   pendingCloudAutomationTemplateNavigation: PendingCloudAutomationTemplateNavigation | null;
+  pendingTableAutomationNavigation: {
+    automationId?: string;
+    outputTable?: { id: string; name: string };
+    inputTable?: { id: string; name: string };
+    newInputTableName?: string;
+  } | null;
+  navigateToTableAutomation: (target: {
+    automationId?: string;
+    outputTable?: { id: string; name: string };
+    inputTable?: { id: string; name: string };
+    newInputTableName?: string;
+  }) => void;
+  clearTableAutomationNavigation: () => void;
   welcomeCloudTableChatDrafts: CloudTableChatAttachment[];
   cloudTableChatDraftsBySession: Record<string, CloudTableChatAttachment[]>;
 
@@ -302,6 +315,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingDataNavigation: null,
   pendingDataTabNavigation: null,
   pendingCloudAutomationTemplateNavigation: null,
+  pendingTableAutomationNavigation: null,
+  navigateToTableAutomation: (target) =>
+    set({
+      mainView: 'automation',
+      activeSessionId: null,
+      showSettings: false,
+      pendingTableAutomationNavigation: target,
+    }),
+  clearTableAutomationNavigation: () => set({ pendingTableAutomationNavigation: null }),
   welcomeCloudTableChatDrafts: [],
   cloudTableChatDraftsBySession: {},
   workingDir: null,

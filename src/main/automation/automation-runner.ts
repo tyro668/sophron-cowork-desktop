@@ -1,3 +1,4 @@
+import { automationRunScope } from './automation-run-scope';
 import type {
   Automation,
   AutomationActionNode,
@@ -33,6 +34,8 @@ export class AutomationRunner {
     automation: Automation;
     reason: AutomationTriggerReason;
     runId: string;
+    run: AutomationRun;
+    ancestors: readonly string[];
   }> = [];
 
   constructor(options: AutomationRunnerOptions) {
@@ -44,6 +47,10 @@ export class AutomationRunner {
     this.notifyRunFinished = options.notifyRunFinished;
   }
 
+  hasQueuedRun(id: string): boolean {
+    return this.queued.some((entry) => entry.automation.id === id);
+  }
+
   async run(automation: Automation, reason: AutomationTriggerReason): Promise<AutomationRun> {
     if (this.runningCount >= this.maxConcurrentRuns) {
       const queuedRun = this.store.createRun({
@@ -52,13 +59,48 @@ export class AutomationRunner {
         triggerReason: reason,
         queuedAt: this.now(),
       });
-      this.queued.push({ automation, reason, runId: queuedRun.id });
+      this.queued.push({
+        automation,
+        reason,
+        runId: queuedRun.id,
+        run: queuedRun,
+        ancestors: automationRunScope.getStore() ?? [],
+      });
       return queuedRun;
     }
     return this.execute(automation, reason);
   }
 
-  private async execute(
+  queueOnce(automation: Automation, reason: AutomationTriggerReason): AutomationRun {
+    const existing = this.queued.find((entry) => entry.automation.id === automation.id);
+    if (existing) return existing.run;
+    const run = this.store.createRun({
+      automationId: automation.id,
+      status: 'queued',
+      triggerReason: reason,
+      queuedAt: this.now(),
+    });
+    this.queued.push({
+      automation,
+      reason,
+      runId: run.id,
+      run,
+      ancestors: automationRunScope.getStore() ?? [],
+    });
+    return run;
+  }
+
+  private execute(
+    automation: Automation,
+    reason: AutomationTriggerReason,
+    existingRunId?: string
+  ): Promise<AutomationRun> {
+    return automationRunScope.run([...(automationRunScope.getStore() ?? []), automation.id], () =>
+      this.executeInScope(automation, reason, existingRunId)
+    );
+  }
+
+  private async executeInScope(
     automation: Automation,
     reason: AutomationTriggerReason,
     existingRunId?: string
@@ -141,8 +183,9 @@ export class AutomationRunner {
           deliveryStatus: deliveryStatus ?? 'skipped',
           createdSessionId: findSessionArtifactId(emittedArtifacts),
         }) ?? run;
+      const current = this.store.get(automation.id) ?? automation;
       this.store.setRuntimeState(automation.id, {
-        status: automation.enabled ? 'enabled' : 'disabled',
+        status: current.status === 'paused' ? 'paused' : current.enabled ? 'enabled' : 'disabled',
         lockedRunId: null,
         lastRunAt: finishedAt,
         lastRunStatus: 'succeeded',
@@ -166,9 +209,11 @@ export class AutomationRunner {
           artifactCount: emittedArtifacts.length,
           deliveryStatus: deliveryStatus ?? 'skipped',
         }) ?? run;
+      const current = this.store.get(automation.id) ?? automation;
+      const enabled = current.enabled && !automation.failurePolicy.disableOnFailure;
       this.store.setRuntimeState(automation.id, {
-        status: automation.failurePolicy.disableOnFailure ? 'disabled' : 'failed',
-        enabled: automation.failurePolicy.disableOnFailure ? false : automation.enabled,
+        status: !enabled ? 'disabled' : current.status === 'paused' ? 'paused' : 'failed',
+        enabled,
         lockedRunId: null,
         lastRunAt: finishedAt,
         lastRunStatus: 'failed',
@@ -184,9 +229,24 @@ export class AutomationRunner {
 
   private async drainQueue(): Promise<void> {
     while (this.runningCount < this.maxConcurrentRuns && this.queued.length > 0) {
-      const next = this.queued.shift();
-      if (!next) return;
-      await this.execute(next.automation, next.reason, next.runId);
+      // An overlap may be waiting for its own automation while other slots are
+      // free. Its current run will drain the queue when it releases its lock.
+      const index = this.queued.findIndex(
+        (entry) => !this.store.get(entry.automation.id)?.lockedRunId
+      );
+      if (index < 0) return;
+      const [next] = this.queued.splice(index, 1);
+      const current = this.store.get(next.automation.id);
+      if (
+        next.reason === 'output_change' &&
+        (!current || !current.enabled || current.status === 'paused')
+      ) {
+        this.store.updateRun(next.runId, { status: 'cancelled', finishedAt: this.now() });
+        continue;
+      }
+      await automationRunScope.run(next.ancestors, () =>
+        this.execute(current ?? next.automation, next.reason, next.runId)
+      );
     }
   }
 }
