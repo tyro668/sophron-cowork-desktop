@@ -162,8 +162,8 @@ export class WorkflowExecutor {
     return toNumber(rows[0]?.count);
   }
   /**
-   * `incremental by [col]` on an input source reads only rows newer than the
-   * stored watermark and records the new high-water mark for the next run.
+   * Bound input tables always materialize in full. File sources may use
+   * `incremental by [col]` to read rows newer than the stored watermark.
    */
   private async materializeInputSourceWithContract(
     task: DataCleaningTask,
@@ -175,6 +175,11 @@ export class WorkflowExecutor {
     const incrementalBy =
       typeof node.config.incrementalBy === 'string' ? node.config.incrementalBy.trim() : '';
     const relation = await this.compiler.materializeInputSource(node, sourcePath, outputRelation);
+    const usesInputTable =
+      node.config.source === 'dataset' ||
+      (typeof node.config.source !== 'string' && Boolean(node.config.datasetId));
+    // Older saved workflows may still contain incrementalBy on a bound table.
+    if (usesInputTable) return relation;
     if (!incrementalBy) return relation;
 
     const column = quoteIdentifier(incrementalBy);

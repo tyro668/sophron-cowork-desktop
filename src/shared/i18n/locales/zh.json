@@ -1408,8 +1408,6 @@
       "mergeKeys": "业务键字段",
       "mergeKeysPlaceholder": "例如 order_id, sku（逗号分隔）",
       "schemaPolicy": "Schema 漂移策略",
-      "incrementalBy": "增量水位字段",
-      "incrementalByPlaceholder": "可选，例如 updated_at",
       "assertion": "断言",
       "rejectStream": "Reject 流"
     },

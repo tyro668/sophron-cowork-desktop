@@ -478,6 +478,21 @@ describe('ETL runtime contract validation', () => {
     expect(schemaDiagnostics(ok).filter((item) => item.severity === 'error')).toHaveLength(0);
   });
 
+  it('does not require a legacy incremental field on a bound input table', () => {
+    const plan = buildWorkflowPlan({
+      nodes: [
+        node('src', 'input_source', {
+          source: 'dataset',
+          datasetId: 'table-id',
+          incrementalBy: 'removed_column',
+        }),
+        node('out', 'output', { table: 't' }),
+      ],
+      edges: [edge('e1', 'src', 'out')],
+    }).plan;
+    expect(schemaDiagnostics(plan).filter((item) => item.severity === 'error')).toHaveLength(0);
+  });
+
   it('validates expect expression fields and unique columns', () => {
     const plan = buildWorkflowPlan({
       nodes: [

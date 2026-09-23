@@ -583,9 +583,6 @@ export function createDataCustomTools(
         nodeId: Type.String({ minLength: 1 }),
         inputTableId: Type.String({ minLength: 1 }),
         alias: Type.Optional(Type.String()),
-        incrementalBy: Type.Optional(
-          Type.String({ description: 'Incremental watermark column name' })
-        ),
         dryRun: Type.Optional(Type.Boolean()),
       }),
       execute: async (_toolCallId, params) =>

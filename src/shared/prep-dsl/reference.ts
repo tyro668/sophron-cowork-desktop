@@ -209,7 +209,7 @@ const OPERATORS = [
   '- output table "Result table" mode append schema strict',
   'Output modes: replace (default) rewrites the target table; append adds rows matched by column name (missing columns become null); error_if_exists fails when the target already exists; merge by [key], ... upserts rows on business keys (matching keys are replaced, new keys inserted; NULL keys match NULL keys, and duplicate keys inside one batch keep the last row — reruns stay idempotent). Schema drift policy after the mode: schema extend (default; union columns by name, new columns added, missing become null), schema strict (fail when the incoming columns differ from the existing table), schema ignore (drop incoming-only columns, null-fill missing). Only "output table" targets are executable; "output dataset"/"output file" parse but are not supported. Multiple output sinks are all committed, each with its own mode/policy.',
   'expect assertions: expect <expression> fails the run when any row violates — a NULL/unknown expression result counts as a violation; expect unique [k1], [k2] fails on duplicate key tuples including duplicate NULL keys; expect rows >= 1 checks the row count. Append reject to <stream-name> to route violating rows to a named stream instead of failing (expression/unique only — row-count violations have no rows to route, so reject to is rejected there); the stream can feed its own chain (e.g. its own output sink).',
-  'Incremental input: input source ... incremental by [updated_at] reads only rows newer than the last committed watermark and advances the watermark to MAX([updated_at]) after a successful run. Watermarks are stored per input node AND column — switching the incremental column starts a fresh read instead of reusing a stale watermark.',
+  'Bound input tables are read in full on every run. For task/file sources, incremental by [updated_at] reads only rows newer than the last committed watermark and advances it to MAX([updated_at]) after a successful run. Watermarks are stored per input node AND column — switching the incremental column starts a fresh read instead of reusing a stale watermark.',
   '',
   'Expressions are compiled for DuckDB-like execution. Common functions such as CAST(...) and split_part(...) can be used in derive/filter expressions.',
   'Use DECIMAL or DECIMAL(18,2) rather than FLOAT for money, prices, rates, percentages, and other fixed-decimal business values.',
@@ -270,7 +270,7 @@ const VALIDATION = [
   '- limit without order by, deduplicate without order by, and random sampling without seed report nondeterminism warnings.',
   '- output table is the only executable destination; dataset/file destinations are rejected at validation, not just at run time. mode must be replace, append, error_if_exists, or merge; merge requires by [key] columns that exist upstream, and by keys without mode merge are rejected. Two output sinks resolving to the same target table are rejected (outputTargetDuplicate).',
   '- expect expressions and unique fields are checked against the upstream schema; a declared reject stream that no edge consumes reports a warning, and a reject edge without a configured reject stream is an error.',
-  '- incremental by [field] on an input source is checked against the source schema.',
+  '- incremental by [field] applies only to task/file sources and is checked against the source schema.',
 ].join('\n');
 
 const SECTION_BY_TOPIC: Record<PrepDslReferenceTopic, string> = {

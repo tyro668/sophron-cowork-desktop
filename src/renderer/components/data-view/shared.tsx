@@ -38,7 +38,7 @@ export function makeLocalId(prefix: string): string {
  * text + bottom-accent-line look on top of the semantic `Tabs` primitives.
  */
 export const underlineTabTriggerClass =
-  'relative h-9 rounded-none bg-transparent px-2.5 text-[13px] text-text-secondary shadow-none ' +
+  'relative h-11 rounded-none bg-transparent px-2.5 text-[13px] text-text-secondary shadow-none ' +
   'hover:text-text-primary data-[state=active]:bg-transparent data-[state=active]:text-accent ' +
   'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-px ' +
   'after:w-full after:rounded-full data-[state=active]:after:bg-accent';
@@ -49,7 +49,7 @@ export const underlineTabTriggerClass =
  * trigger underline sits on. Keeps tab height/spacing identical across pages.
  */
 export const underlineTabBarClass =
-  'flex h-10 flex-shrink-0 items-end border-b border-border-subtle px-3';
+  'flex h-12 flex-shrink-0 items-end border-b border-border-subtle px-3';
 export const underlineTabListClass =
   'inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0';
 

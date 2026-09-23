@@ -140,7 +140,7 @@ export function buildWorkflowCapabilityManifest(
       expect:
         'kind expression|unique|row_count; violations fail the run unless config.rejectStream routes rejected rows to a named stream consumable via a `reject` edge',
       incremental:
-        'input_source.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
+        'Bound input tables are always read in full. For task/file sources, input_source.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
       outOfScope:
         'Scheduling, credentials, and retry policy stay in task configuration, not in plans or DSL',
     },

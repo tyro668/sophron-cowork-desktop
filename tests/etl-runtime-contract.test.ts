@@ -297,6 +297,44 @@ describe('ETL runtime contract', () => {
     expect(third.rowCount).toBe(4);
   });
 
+  it('reads every row of a bound input table even with a legacy incremental setting', async () => {
+    const { store: initialStore, dbPath, tempRoot } = makeStore();
+    let store = initialStore;
+    const firstCsv = writeCsv(tempRoot, 'bound-first.csv', 'id,value\n1,old\n2,keep\n');
+    const nextCsv = writeCsv(tempRoot, 'bound-next.csv', 'id,value\n2,changed\n3,new\n');
+    const inputTable = await store.importDataset({ filePath: firstCsv });
+    const task = await store.createTask({ name: 'Bound input table' });
+    await saveCompiledDsl(
+      store,
+      task.id,
+      `input source dataset "${inputTable.id}" as src
+        | output table "bound_full_out" mode replace`
+    );
+    const workflow = await store.getTaskWorkflow(task.id);
+    await store.saveTaskWorkflow(task.id, {
+      nodes: workflow.nodes.map((node) =>
+        node.type === 'input_source'
+          ? { ...node, config: { ...node.config, incrementalBy: 'id' } }
+          : node
+      ),
+      edges: workflow.edges,
+    });
+
+    await store.runTask(task.id);
+    await store.updateDataset({ id: inputTable.id, filePath: nextCsv });
+    const second = await store.runTaskWithDiagnostics(task.id);
+    expect(second.nodeStats?.find((stat) => stat.nodeType === 'input_source')?.outputRows).toBe(2);
+
+    store = reopenStore(dbPath);
+    const rows = await readRows(dbPath, 'SELECT id, value FROM bound_full_out ORDER BY id');
+    expect(rows.map((row) => `${row.id}:${row.value}`)).toEqual(['2:changed', '3:new']);
+    const watermarks = await readRows(
+      dbPath,
+      `SELECT watermark_value FROM data_task_watermarks WHERE task_id = '${task.id}'`
+    );
+    expect(watermarks).toEqual([]);
+  });
+
   it('does not advance the watermark when the run fails', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;

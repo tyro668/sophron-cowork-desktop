@@ -3,7 +3,6 @@ import {
   parsePrepOperatorDsl,
   type PrepDiagnostic,
 } from '../../shared/prep-dsl';
-import { formatFieldRef } from '../../shared/prep-dsl/syntax/fields';
 import { WORKFLOW_PLAN_VERSION, type WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import { WORKFLOW_OPERATOR_TYPE_SET, WORKFLOW_OPERATOR_TYPES } from './store/workflow-model';
 import type { DataTaskStore } from './data-task-store';
@@ -256,26 +255,18 @@ export class WorkflowAuthoringCommandService {
       );
     }
     const alias = sanitizeAlias(input.alias) || stringConfigValue(node.config.alias) || 'source';
-    const incrementalBy =
-      typeof input.incrementalBy === 'string' && input.incrementalBy.trim()
-        ? input.incrementalBy.trim().replace(/^\[|\]$/g, '')
-        : undefined;
-    const incrementalClause = incrementalBy
-      ? ` incremental by ${formatFieldRef(incrementalBy)}`
-      : '';
+    const config = { ...node.config };
+    delete config.incrementalBy;
     const nextWorkflow = updateWorkflowNode(workflow, input.nodeId, {
       config: {
-        ...node.config,
+        ...config,
         source: 'dataset',
         datasetId: inputTable.id,
         inputTableName: inputTable.name,
         alias,
-        ...(incrementalBy ? { incrementalBy } : {}),
-        dsl: `input source dataset "${escapeDslString(inputTable.id)}"${incrementalClause} as ${alias}`,
+        dsl: `input source dataset "${escapeDslString(inputTable.id)}" as ${alias}`,
       },
     });
-    if (!incrementalBy)
-      delete (nextWorkflow.nodes.find((n) => n.id === input.nodeId)?.config ?? {}).incrementalBy;
     return this.saveOrPreview(input.taskId, nextWorkflow, Boolean(input.dryRun));
   }
 

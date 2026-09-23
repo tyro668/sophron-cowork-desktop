@@ -298,10 +298,9 @@ const currentOperatorCases: Array<{
   {
     name: 'input source incremental',
     type: 'input_source',
-    dsl: 'input source dataset "orders_input" incremental by [updated_at] as orders',
+    dsl: 'input source task incremental by [updated_at] as orders',
     expectedConfig: {
-      source: 'dataset',
-      datasetId: 'orders_input',
+      source: 'task',
       incrementalBy: 'updated_at',
       alias: 'orders',
     },
@@ -1691,6 +1690,36 @@ describe('operator DSL executable cases', () => {
     expect(parsed.operator?.config.conversions).toEqual([
       { column: 'value as text', type: 'integer', onError: 'fail' },
     ]);
+  });
+
+  it('rejects incremental reads for input tables and omits legacy settings on export', () => {
+    const parsed = parsePrepOperatorDsl(
+      'input source dataset "orders_input" incremental by [updated_at] as orders',
+      'input_source'
+    );
+    expect(
+      errorsOf(parsed.diagnostics)
+        .map((item) => item.message)
+        .join(' ')
+    ).toMatch(/input tables are always read in full/i);
+    const exported = exportPrepWorkflowDsl(
+      [
+        {
+          id: 'source',
+          type: 'input_source',
+          config: {
+            source: 'dataset',
+            datasetId: 'orders_input',
+            alias: 'orders',
+            incrementalBy: 'updated_at',
+          },
+        },
+        { id: 'out', type: 'output', config: { table: 'result' } },
+      ],
+      [{ sourceNodeId: 'source', targetNodeId: 'out', targetHandle: 'input' }]
+    );
+    expect(exported).toContain('input source dataset "orders_input" as orders');
+    expect(exported).not.toContain('incremental by');
   });
 
   it('exports graphical dataset and file output configurations', () => {

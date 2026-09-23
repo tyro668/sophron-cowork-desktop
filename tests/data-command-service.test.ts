@@ -4577,6 +4577,32 @@ describe('constrained workflow plans and resource bindings', () => {
     expect(run.task.status).toBe('completed');
   });
 
+  it('removes incremental settings when binding an input table', async () => {
+    const { service, tempRoot } = createService();
+    const { orders, output } = await seedTables(service, tempRoot);
+    const task = await service.createTask({ name: 'Full input table' });
+    const result = await service.applyWorkflowPlan({
+      taskId: task.task.id,
+      plan: {
+        version: 'workflow-plan/v1',
+        nodes: [
+          {
+            id: 'orders',
+            type: 'input_source',
+            config: { source: 'dataset', alias: 'orders', incrementalBy: 'old_column' },
+          },
+          { id: 'sink', type: 'output', config: { mode: 'replace' } },
+        ],
+        edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
+      },
+      inputResources: { orders: orders.id },
+      outputTableId: output.id,
+    });
+    const inputNode = result.workflow.nodes.find((node) => node.type === 'input_source');
+    expect(inputNode?.config).not.toHaveProperty('incrementalBy');
+    expect(result.dsl).not.toContain('incremental by');
+  });
+
   it('rejects plan version mismatch, unknown node types, and unbound dataset sources', async () => {
     const { service, tempRoot } = createService();
     const { orders } = await seedTables(service, tempRoot);

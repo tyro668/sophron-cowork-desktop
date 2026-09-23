@@ -540,9 +540,10 @@ function formatInputSource(node: PrepFlowNodeLike, alias: string): string | null
       : isString(config.filePath)
         ? 'file'
         : 'task';
-  const incremental = isString(config.incrementalBy)
-    ? ` incremental by ${formatFieldRef(config.incrementalBy)}`
-    : '';
+  const incremental =
+    source !== 'dataset' && isString(config.incrementalBy)
+      ? ` incremental by ${formatFieldRef(config.incrementalBy)}`
+      : '';
   if (source === 'dataset') {
     const datasetId = stringValue(config.datasetId) ?? stringValue(config.name);
     return datasetId

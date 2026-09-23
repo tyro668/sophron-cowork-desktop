@@ -30,7 +30,7 @@ export const InputSourceConfigSchema = z
       .string()
       .trim()
       .min(1)
-      .describe('Watermark column; reads only rows newer than the last committed watermark')
+      .describe('For task/file sources only: reads rows newer than the last committed watermark')
       .optional(),
   })
   .superRefine((config, context) => {

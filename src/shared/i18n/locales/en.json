@@ -1408,8 +1408,6 @@
       "mergeKeys": "Business key fields",
       "mergeKeysPlaceholder": "e.g. order_id, sku (comma-separated)",
       "schemaPolicy": "Schema drift policy",
-      "incrementalBy": "Incremental watermark field",
-      "incrementalByPlaceholder": "Optional, e.g. updated_at",
       "assertion": "Assertion",
       "rejectStream": "Reject stream"
     },

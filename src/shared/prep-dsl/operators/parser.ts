@@ -437,6 +437,12 @@ function parseInputSource(
         break;
       }
       case 'incremental': {
+        if (config.source === 'dataset') {
+          error(
+            'Input tables are always read in full; incremental by is only for task/file sources'
+          );
+          return null;
+        }
         advance();
         const byKw = expectIdent('Expected "by" after "incremental"');
         if (!byKw || byKw.image !== 'by') {

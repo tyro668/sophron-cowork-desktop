@@ -140,7 +140,7 @@ export const DATA_TOOL_COPY = {
   data_configure_input_operator: {
     label: 'Configure input operator',
     description:
-      'Bind an input_source node to a real input table (alias optional; incrementalBy sets the incremental watermark column).',
+      'Bind an input_source node to a real input table (alias optional). The operator reads the full input table on every run.',
   },
   data_configure_output_operator: {
     label: 'Configure output operator',

@@ -433,7 +433,6 @@ export interface ConfigureInputOperatorCommand {
   nodeId: string;
   inputTableId: string;
   alias?: string;
-  incrementalBy?: string;
   dryRun?: boolean;
 }
 

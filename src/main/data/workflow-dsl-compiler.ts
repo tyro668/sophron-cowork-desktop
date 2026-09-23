@@ -117,19 +117,17 @@ export class WorkflowDslCompiler {
         const alias = stringConfigValue(node.config?.alias);
         const table = alias ? bound.get(alias) : undefined;
         if (!table) return node;
-        const incrementalBy = stringConfigValue(node.config?.incrementalBy);
-        const incrementalClause = incrementalBy
-          ? ` incremental by ${formatFieldRef(incrementalBy)}`
-          : '';
+        const config = { ...(node.config ?? {}) };
+        delete config.incrementalBy;
         return {
           ...node,
           config: {
-            ...(node.config ?? {}),
+            ...config,
             source: 'dataset',
             datasetId: table.id,
             inputTableName: table.name,
             alias,
-            dsl: `input source dataset "${escapeDslString(table.id)}"${incrementalClause} as ${alias}`,
+            dsl: `input source dataset "${escapeDslString(table.id)}" as ${alias}`,
           },
         };
       });
@@ -174,6 +172,16 @@ export class WorkflowDslCompiler {
           : node
       );
     }
+    nodes = nodes.map((node) => {
+      if (node.type !== 'input_source') return node;
+      const config = { ...(node.config ?? {}) };
+      const source =
+        stringConfigValue(config.source) ||
+        (stringConfigValue(config.datasetId) ? 'dataset' : 'task');
+      if (source !== 'dataset' || !('incrementalBy' in config)) return node;
+      delete config.incrementalBy;
+      return { ...node, config };
+    });
     return { nodes, edges: workflow.edges };
   }
 
