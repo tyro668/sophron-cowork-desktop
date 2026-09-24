@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import { resolve } from 'path';
 import { builtinModules } from 'module';
+import { piSdkResolve } from './scripts/pi-sdk-resolve';
 
 // Node built-in modules must be external for Electron main process
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
@@ -25,6 +26,7 @@ export default defineConfig({
           args.startup(['.', '--remote-debugging-port=9223']);
         },
         vite: {
+          resolve: piSdkResolve,
           build: {
             outDir: 'dist-electron/main',
             emptyOutDir: true,

@@ -1,3 +1,4 @@
+import './pi-oauth-runtime';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { join } from 'path';
@@ -105,12 +106,25 @@ export function getSharedModelRuntime(): Promise<ModelRuntime> {
 
 export async function getProviderApiKey(providerId: string): Promise<string | undefined> {
   const runtime = await getSharedModelRuntime();
+  // Recover an OAuth provider masked by an old one-shot runtime override.
+  if (
+    providerId === 'openai-codex' &&
+    runtime.getProviderAuthStatus(providerId).source === 'runtime'
+  ) {
+    await runtime.removeRuntimeApiKey(providerId);
+  }
   const result = await runtime.getAuth(providerId);
   return result?.auth.apiKey;
 }
 
 export async function setRuntimeApiKey(providerId: string, apiKey: string): Promise<void> {
   const runtime = await getSharedModelRuntime();
+  if (providerId === 'openai-codex') {
+    if (runtime.getProviderAuthStatus(providerId).source === 'runtime') {
+      await runtime.removeRuntimeApiKey(providerId);
+    }
+    return;
+  }
   await runtime.setRuntimeApiKey(providerId, apiKey);
 }
 

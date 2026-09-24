@@ -442,6 +442,9 @@ export class AgentRunEventBridge {
           // Unified handler: send the final assistant message to the renderer.
           // Works for all providers (some emit 'done' via message_update, others don't).
           if (this.ctx.controller.signal.aborted) break;
+          // The SDK also emits system/user/tool-result message lifecycle events.
+          // Only assistant messages own the response buffers and error state.
+          if (event.message.role !== 'assistant') break;
 
           // Flush any buffered content from the think-tag parser
           const flushed = this.thinkParser.flush();
@@ -524,11 +527,7 @@ export class AgentRunEventBridge {
                 content: [
                   {
                     type: 'text',
-                    text: `**Error**: ${resolvedPayload.errorText}\n\n${
-                      /\b4\d{2}\b/.test(resolvedPayload.errorText)
-                        ? '_请检查配置后重试。_'
-                        : '_Agent 正在自动重试，请稍候..._'
-                    }`,
+                    text: `**Error**: ${resolvedPayload.errorText}`,
                   },
                 ],
                 timestamp: Date.now(),
@@ -749,6 +748,21 @@ export class AgentRunEventBridge {
             timestamp: Date.now(),
           };
           this.ctx.sendMessage(this.ctx.session.id, toolResultMsg);
+          break;
+        }
+
+        case 'auto_retry_start': {
+          this.ctx.sendTraceUpdate(this.ctx.session.id, this.ctx.thinkingStepId, {
+            title: `Retrying (${event.attempt}/${event.maxAttempts})...`,
+          });
+          break;
+        }
+
+        case 'auto_retry_end': {
+          if (event.success) {
+            this.terminalErrorText = undefined;
+            this.hasEmittedError = false;
+          }
           break;
         }
 

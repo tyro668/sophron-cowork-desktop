@@ -244,9 +244,10 @@ export async function runPiAiOneShot(
   // piModel is guaranteed non-undefined after synthetic fallback
   const resolvedModel = piModel!;
 
-  // Set API key via AuthStorage (for agent sessions) AND env vars (for pi-ai completeSimple)
+  // OAuth bearer tokens are request-local; publishing one as a runtime API key
+  // masks the stored OAuth credential and breaks subsequent session/diagnostic auth.
   let apiKey = config.apiKey?.trim();
-  if (!apiKey && config.provider === 'openai-codex') {
+  if (config.provider === 'openai-codex') {
     // ChatGPT subscription auth: resolve a fresh access token from the OAuth
     // credentials held in AuthStorage (auto-refreshed by getApiKey).
     if (!ensureCodexCredentials()) {
@@ -259,7 +260,7 @@ export async function runPiAiOneShot(
       throw new Error('OpenAI Codex 登录凭据不可用或刷新失败，请在 设置 → API 中重新连接。');
     }
   }
-  if (apiKey) {
+  if (apiKey && config.provider !== 'openai-codex') {
     await setRuntimeApiKey(provider, apiKey);
     if (resolvedModel.provider !== provider) {
       await setRuntimeApiKey(resolvedModel.provider, apiKey);

@@ -104,6 +104,7 @@ import { AgentRunnerSkills } from './agent-runner-skills';
 import { createCapabilitiesSearchTool } from './agent-capabilities-tool';
 import type { ToolActivationResult } from '../extensions/agent-runtime-extension';
 import { AgentRequestContext } from './agent-request-context';
+import { installAgentPermissionGate } from './agent-permission-hook';
 import { ModelResultStore, RESULT_READ_TOOL } from './model-result-store';
 
 function installBaseTools(session: PiAgentSession, tools: Array<{ name: string }>): void {
@@ -301,15 +302,9 @@ export class AgentRunner {
   }
 
   /**
-   * Install a permission-gating hook on the pi-coding-agent session via
-   * `agent.setBeforeToolCall`. This is the only interception point that
-   * fires for built-in tools (read, bash, edit, write) — the SDK ignores
-   * wrapped `execute` functions on built-in tools passed via `options.tools`.
-   *
-   * The hook consults `decidePermission` from the main-process rules cache:
-   *  - 'allow' → delegate to SDK's original hook (proceeds normally)
-   *  - 'deny'  → return { block: true, reason } (SDK treats as tool error)
-   *  - 'ask'   → await requestPermission() IPC round-trip to PermissionDialog
+   * Install a permission gate before the SDK's tool-call hook. This covers
+   * built-in tools and custom/MCP tools, preserving extension interception
+   * after permission is granted.
    *
    * Human confirmation pauses the activity watchdog and remains pending until
    * answered or explicitly cancelled with the task.
@@ -319,231 +314,207 @@ export class AgentRunner {
       throw new Error('Permission hook unavailable: no requestPermission callback');
     }
 
-    // Access the Agent instance (public readonly property on AgentSession)
-    // and wrap its beforeToolCall hook with our permission gate.
-    //
-    // We must chain to the SDK's original beforeToolCall hook because it
-    // fires extension tool_call events and manages the _agentEventQueue.
-    // Without chaining, the renderer misses completion events.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const agent = (piSession as any).agent;
-    if (!agent || typeof agent.setBeforeToolCall !== 'function') {
-      throw new Error('Permission hook unavailable: agent.setBeforeToolCall is missing');
-    }
-
-    // Capture the SDK's hook before we overwrite it
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sdkBeforeToolCall: ((ctx: any, signal?: AbortSignal) => Promise<any>) | undefined =
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (agent as any)._beforeToolCall;
-
     const requestPermission = this.requestPermission;
     const getDisplayName = (name: string): string => this.getToolDisplayName(name);
 
-    agent.setBeforeToolCall(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (ctx: any, signal?: AbortSignal): Promise<any> => {
-        const toolName: string = ctx.toolCall?.name ?? '';
-        const input: Record<string, unknown> = ctx.args ?? {};
+    installAgentPermissionGate(piSession.agent, async (ctx, signal) => {
+      const toolName: string = ctx.toolCall?.name ?? '';
+      const input = (ctx.args ?? {}) as Record<string, unknown>;
 
-        const reviewContext = this.activePermissionContexts.get(sessionId);
-        const mcpTool = this.mcpManager?.getTool(toolName);
-        const permissionSignal = signal ?? this.activeControllers.get(sessionId)?.signal;
-        let evaluation = evaluatePermission(
-          sessionId,
-          toolName,
+      const reviewContext = this.activePermissionContexts.get(sessionId);
+      const mcpTool = this.mcpManager?.getTool(toolName);
+      const permissionSignal = signal ?? this.activeControllers.get(sessionId)?.signal;
+      let evaluation = evaluatePermission(
+        sessionId,
+        toolName,
+        input,
+        mcpTool?.originalName ?? toolName,
+        reviewContext?.cwd
+      );
+      if (reviewContext) {
+        evaluation = await completePermissionReview(evaluation, {
+          toolName: mcpTool?.originalName ?? toolName,
+          toolDescription: mcpTool?.description,
           input,
-          mcpTool?.originalName ?? toolName,
-          reviewContext?.cwd
-        );
-        if (reviewContext) {
-          evaluation = await completePermissionReview(evaluation, {
-            toolName: mcpTool?.originalName ?? toolName,
-            toolDescription: mcpTool?.description,
-            input,
-            cwd: reviewContext.cwd,
-            task: reviewContext.task,
-            signal: permissionSignal,
-            complete: (prompt, systemPrompt, reviewSignal) =>
-              runPiAiOneShot(prompt, systemPrompt, reviewContext.config, {
-                temperature: 0,
-                maxTokens: 128,
-                signal: reviewSignal,
-              }),
-          });
-        }
-        if (permissionSignal?.aborted) return { block: true, reason: 'Task cancelled.' };
-        const { decision } = evaluation;
-        const reviewReason = evaluation.source === 'auto_review' ? evaluation.reason : undefined;
-        // Human-readable name for prompts/messages (e.g. MCP sanitized
-        // 'mcp__chrome__chrome_screenshot__ab12' → 'chrome_screenshot').
-        // Rule matching and rememberAlwaysAllow still use the canonical
-        // `toolName` so allow-once decisions stay stable across calls.
-        const displayName = getDisplayName(toolName);
-        const parentId: string = ctx.toolCall?.id ?? uuidv4();
-        const turnId = this.activeTurnIds.get(sessionId);
-        const sanitizedInput = sanitizeTraceInput(input);
+          cwd: reviewContext.cwd,
+          task: reviewContext.task,
+          signal: permissionSignal,
+          complete: (prompt, systemPrompt, reviewSignal) =>
+            runPiAiOneShot(prompt, systemPrompt, reviewContext.config, {
+              temperature: 0,
+              maxTokens: 128,
+              signal: reviewSignal,
+            }),
+        });
+      }
+      if (permissionSignal?.aborted) return { block: true, reason: 'Task cancelled.' };
+      const { decision } = evaluation;
+      const reviewReason = evaluation.source === 'auto_review' ? evaluation.reason : undefined;
+      // Human-readable name for prompts/messages (e.g. MCP sanitized
+      // 'mcp__chrome__chrome_screenshot__ab12' → 'chrome_screenshot').
+      // Rule matching and rememberAlwaysAllow still use the canonical
+      // `toolName` so allow-once decisions stay stable across calls.
+      const displayName = getDisplayName(toolName);
+      const parentId: string = ctx.toolCall?.id ?? uuidv4();
+      const turnId = this.activeTurnIds.get(sessionId);
+      const sanitizedInput = sanitizeTraceInput(input);
 
-        if (decision === 'deny') {
-          log(`[AgentRunner] Tool '${toolName}' denied by rule`);
-          const now = Date.now();
-          this.sendTraceStep(sessionId, {
-            id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
-            turnId,
-            parentId,
-            type: 'permission',
+      if (decision === 'deny') {
+        log(`[AgentRunner] Tool '${toolName}' denied by rule`);
+        const now = Date.now();
+        this.sendTraceStep(sessionId, {
+          id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
+          turnId,
+          parentId,
+          type: 'permission',
+          status: 'error',
+          title: `Permission denied: ${displayName}`,
+          toolName,
+          toolInput: sanitizedInput,
+          permission: { decision: 'rule_deny', source: 'rule' },
+          error: buildTraceError(
+            `Tool '${displayName}' is denied by your permission rules.`,
+            'permission'
+          ),
+          outcome: 'permission_denied',
+          isError: true,
+          timestamp: now,
+          endedAt: now,
+          duration: 0,
+        });
+        return {
+          block: true,
+          reason: `Tool '${displayName}' is denied by your permission rules.`,
+        };
+      }
+
+      if (decision === 'ask') {
+        const toolUseId = `${ctx.toolCall?.id ?? 'unknown'}-perm-${uuidv4().slice(0, 8)}`;
+        const permissionStepId = `${parentId}-permission-${uuidv4().slice(0, 8)}`;
+        const permissionStartedAt = Date.now();
+        const evaluationMetrics = this.activeEvaluationMetrics.get(sessionId);
+        if (evaluationMetrics) evaluationMetrics.permissionPromptCount += 1;
+        this.sendTraceStep(sessionId, {
+          id: permissionStepId,
+          turnId,
+          parentId,
+          type: 'permission',
+          status: 'running',
+          title: `Permission requested: ${displayName}`,
+          toolName,
+          toolInput: sanitizedInput,
+          permission: reviewReason
+            ? { decision: 'auto_review_ask', source: 'auto_review', reason: reviewReason }
+            : undefined,
+          timestamp: permissionStartedAt,
+        });
+        let result: 'allow' | 'deny' | 'allow_always';
+        const resumeActivity = this.activeEventBridges.get(sessionId)?.pauseForPermission();
+        try {
+          // Send the display name to the renderer so the dialog shows a
+          // human-readable tool name; canonical `toolName` is still used
+          // for rule matching above and "always allow" memory below.
+          result = await requestPermission(
+            sessionId,
+            toolUseId,
+            displayName,
+            input,
+            permissionSignal
+          );
+        } catch (permErr) {
+          const endedAt = Date.now();
+          if (evaluationMetrics) {
+            evaluationMetrics.permissionWaitMs += endedAt - permissionStartedAt;
+          }
+          const errorText = toErrorText(permErr);
+          this.sendTraceUpdate(sessionId, permissionStepId, {
             status: 'error',
-            title: `Permission denied: ${displayName}`,
-            toolName,
-            toolInput: sanitizedInput,
-            permission: { decision: 'rule_deny', source: 'rule' },
-            error: buildTraceError(
-              `Tool '${displayName}' is denied by your permission rules.`,
-              'permission'
-            ),
+            title: `Permission request failed: ${displayName}`,
+            permission: { decision: 'request_failed', source: 'system', reason: reviewReason },
+            error: buildTraceError(errorText, 'permission'),
             outcome: 'permission_denied',
             isError: true,
-            timestamp: now,
-            endedAt: now,
-            duration: 0,
-          });
-          return {
-            block: true,
-            reason: `Tool '${displayName}' is denied by your permission rules.`,
-          };
-        }
-
-        if (decision === 'ask') {
-          const toolUseId = `${ctx.toolCall?.id ?? 'unknown'}-perm-${uuidv4().slice(0, 8)}`;
-          const permissionStepId = `${parentId}-permission-${uuidv4().slice(0, 8)}`;
-          const permissionStartedAt = Date.now();
-          const evaluationMetrics = this.activeEvaluationMetrics.get(sessionId);
-          if (evaluationMetrics) evaluationMetrics.permissionPromptCount += 1;
-          this.sendTraceStep(sessionId, {
-            id: permissionStepId,
-            turnId,
-            parentId,
-            type: 'permission',
-            status: 'running',
-            title: `Permission requested: ${displayName}`,
-            toolName,
-            toolInput: sanitizedInput,
-            permission: reviewReason
-              ? { decision: 'auto_review_ask', source: 'auto_review', reason: reviewReason }
-              : undefined,
-            timestamp: permissionStartedAt,
-          });
-          let result: 'allow' | 'deny' | 'allow_always';
-          const resumeActivity = this.activeEventBridges.get(sessionId)?.pauseForPermission();
-          try {
-            // Send the display name to the renderer so the dialog shows a
-            // human-readable tool name; canonical `toolName` is still used
-            // for rule matching above and "always allow" memory below.
-            result = await requestPermission(
-              sessionId,
-              toolUseId,
-              displayName,
-              input,
-              permissionSignal
-            );
-          } catch (permErr) {
-            const endedAt = Date.now();
-            if (evaluationMetrics) {
-              evaluationMetrics.permissionWaitMs += endedAt - permissionStartedAt;
-            }
-            const errorText = toErrorText(permErr);
-            this.sendTraceUpdate(sessionId, permissionStepId, {
-              status: 'error',
-              title: `Permission request failed: ${displayName}`,
-              permission: { decision: 'request_failed', source: 'system', reason: reviewReason },
-              error: buildTraceError(errorText, 'permission'),
-              outcome: 'permission_denied',
-              isError: true,
-              endedAt,
-              duration: endedAt - permissionStartedAt,
-            });
-            logError(
-              `[AgentRunner] Permission request failed for '${toolName}' — failing closed`,
-              permErr
-            );
-            return {
-              block: true,
-              reason: `Permission request failed for '${displayName}'; tool not executed.`,
-            };
-          } finally {
-            resumeActivity?.();
-          }
-
-          if (evaluationMetrics) {
-            evaluationMetrics.permissionWaitMs += Date.now() - permissionStartedAt;
-          }
-
-          if (result === 'deny' || permissionSignal?.aborted) {
-            const endedAt = Date.now();
-            this.sendTraceUpdate(sessionId, permissionStepId, {
-              status: 'error',
-              title: `Permission denied: ${displayName}`,
-              permission: { decision: 'user_deny', source: 'user', reason: reviewReason },
-              error: buildTraceError(`User denied permission for '${displayName}'.`, 'permission'),
-              outcome: 'permission_denied',
-              isError: true,
-              endedAt,
-              duration: endedAt - permissionStartedAt,
-            });
-            log(`[AgentRunner] Tool '${toolName}' denied by user`);
-            return { block: true, reason: `User denied permission for '${displayName}'.` };
-          }
-
-          if (result === 'allow_always') {
-            rememberAlwaysAllow(sessionId, toolName);
-          }
-          const endedAt = Date.now();
-          this.sendTraceUpdate(sessionId, permissionStepId, {
-            status: 'completed',
-            title: `Permission granted: ${displayName}`,
-            permission: {
-              decision: result === 'allow_always' ? 'allow_always' : 'user_allow',
-              source: 'user',
-              remembered: result === 'allow_always',
-              reason: reviewReason,
-            },
             endedAt,
             duration: endedAt - permissionStartedAt,
           });
-        } else {
-          const now = Date.now();
-          this.sendTraceStep(sessionId, {
-            id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
-            turnId,
-            parentId,
-            type: 'permission',
-            status: 'completed',
-            title:
-              evaluation.source === 'auto_review'
-                ? `Permission auto-reviewed: ${displayName}`
-                : `Permission allowed by rule: ${displayName}`,
-            toolName,
-            toolInput: sanitizedInput,
-            permission:
-              evaluation.source === 'auto_review'
-                ? { decision: 'auto_review_allow', source: 'auto_review', reason: reviewReason }
-                : evaluation.source === 'remembered'
-                  ? { decision: 'allow_always', source: 'user', remembered: true }
-                  : { decision: 'rule_allow', source: 'rule' },
-            timestamp: now,
-            endedAt: now,
-            duration: 0,
-          });
+          logError(
+            `[AgentRunner] Permission request failed for '${toolName}' — failing closed`,
+            permErr
+          );
+          return {
+            block: true,
+            reason: `Permission request failed for '${displayName}'; tool not executed.`,
+          };
+        } finally {
+          resumeActivity?.();
         }
 
-        // Allowed — delegate to SDK's original hook for event pipeline
-        return sdkBeforeToolCall ? sdkBeforeToolCall(ctx, signal) : undefined;
-      }
-    );
+        if (evaluationMetrics) {
+          evaluationMetrics.permissionWaitMs += Date.now() - permissionStartedAt;
+        }
 
-    log(
-      `[AgentRunner] Permission hook installed on session ${sessionId} via agent.setBeforeToolCall`
-    );
+        if (result === 'deny' || permissionSignal?.aborted) {
+          const endedAt = Date.now();
+          this.sendTraceUpdate(sessionId, permissionStepId, {
+            status: 'error',
+            title: `Permission denied: ${displayName}`,
+            permission: { decision: 'user_deny', source: 'user', reason: reviewReason },
+            error: buildTraceError(`User denied permission for '${displayName}'.`, 'permission'),
+            outcome: 'permission_denied',
+            isError: true,
+            endedAt,
+            duration: endedAt - permissionStartedAt,
+          });
+          log(`[AgentRunner] Tool '${toolName}' denied by user`);
+          return { block: true, reason: `User denied permission for '${displayName}'.` };
+        }
+
+        if (result === 'allow_always') {
+          rememberAlwaysAllow(sessionId, toolName);
+        }
+        const endedAt = Date.now();
+        this.sendTraceUpdate(sessionId, permissionStepId, {
+          status: 'completed',
+          title: `Permission granted: ${displayName}`,
+          permission: {
+            decision: result === 'allow_always' ? 'allow_always' : 'user_allow',
+            source: 'user',
+            remembered: result === 'allow_always',
+            reason: reviewReason,
+          },
+          endedAt,
+          duration: endedAt - permissionStartedAt,
+        });
+      } else {
+        const now = Date.now();
+        this.sendTraceStep(sessionId, {
+          id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
+          turnId,
+          parentId,
+          type: 'permission',
+          status: 'completed',
+          title:
+            evaluation.source === 'auto_review'
+              ? `Permission auto-reviewed: ${displayName}`
+              : `Permission allowed by rule: ${displayName}`,
+          toolName,
+          toolInput: sanitizedInput,
+          permission:
+            evaluation.source === 'auto_review'
+              ? { decision: 'auto_review_allow', source: 'auto_review', reason: reviewReason }
+              : evaluation.source === 'remembered'
+                ? { decision: 'allow_always', source: 'user', remembered: true }
+                : { decision: 'rule_allow', source: 'rule' },
+          timestamp: now,
+          endedAt: now,
+          duration: 0,
+        });
+      }
+
+      return undefined;
+    });
+
+    log(`[AgentRunner] Permission hook installed on session ${sessionId} via agent.beforeToolCall`);
   }
 
   /**
@@ -931,8 +902,8 @@ export class AgentRunner {
       // Set up API keys on the shared model runtime. OAuth credentials are
       // refreshed by ModelRuntime.getAuth() when a request is sent.
       const modelRuntime = await getSharedModelRuntime();
-      const apiKey = runtimeConfig.apiKey?.trim();
-      if (provider === 'openai-codex' && !apiKey) {
+      const apiKey = provider === 'openai-codex' ? undefined : runtimeConfig.apiKey?.trim();
+      if (provider === 'openai-codex') {
         if (!(await ensureCodexCredentials())) {
           throw new Error(
             'OpenAI Codex（ChatGPT 订阅）未连接。请在 设置 → API 中选择 OpenAI Codex，连接本地 codex CLI 登录态或完成浏览器登录。'
@@ -1582,7 +1553,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           );
         }
 
-        // Install permission-gating hook via the SDK's tool_call extension event.
+        // Install the permission gate before the SDK's tool-call hook.
         // This must happen once per new session — the hook persists across reuses.
         this.installPermissionHook(piSession, session.id);
 

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const completeSimpleMock = vi.hoisted(() => vi.fn());
+const authMocks = vi.hoisted(() => ({
+  getProviderApiKey: vi.fn(),
+  setRuntimeApiKey: vi.fn(),
+  ensureCodexCredentials: vi.fn(),
+}));
 
 vi.mock('@earendil-works/pi-ai/compat', () => ({
   completeSimple: completeSimpleMock,
@@ -8,8 +13,13 @@ vi.mock('@earendil-works/pi-ai/compat', () => ({
 }));
 
 vi.mock('../../main/agent/shared-auth', () => ({
-  setRuntimeApiKey: vi.fn(),
-  getProviderApiKey: vi.fn(),
+  setRuntimeApiKey: authMocks.setRuntimeApiKey,
+  getProviderApiKey: authMocks.getProviderApiKey,
+}));
+vi.mock('../../main/config/codex-auth', () => ({
+  OPENAI_CODEX_PROVIDER: 'openai-codex',
+  ensureCodexCredentials: authMocks.ensureCodexCredentials,
+  hasCodexCredentials: vi.fn(() => true),
 }));
 
 import type { AppConfig } from '../../main/config/config-store';
@@ -73,6 +83,8 @@ function makeConfig(): AppConfig {
 
 describe('runPiAiOneShot', () => {
   beforeEach(() => {
+    authMocks.ensureCodexCredentials.mockReturnValue(true);
+    authMocks.getProviderApiKey.mockResolvedValue('oauth-access-token');
     completeSimpleMock.mockReset();
     completeSimpleMock.mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],
@@ -114,5 +126,25 @@ describe('runPiAiOneShot', () => {
     const passedOptions = completeSimpleMock.mock.calls[0][2];
     expect(passedOptions).not.toHaveProperty('temperature');
     expect(passedOptions).toMatchObject({ maxTokens: 1234 });
+    expect(passedOptions.apiKey).toBe('oauth-access-token');
+    expect(authMocks.setRuntimeApiKey).not.toHaveBeenCalled();
+  });
+
+  it('resolves OAuth for every call without publishing a global API-key override', async () => {
+    const config = {
+      ...makeConfig(),
+      provider: 'openai-codex' as const,
+      apiKey: '',
+      model: 'gpt-5.1-codex',
+      baseUrl: undefined,
+    };
+    authMocks.getProviderApiKey
+      .mockResolvedValueOnce('first-token')
+      .mockResolvedValueOnce('rotated-token');
+    await runPiAiOneShot('first', 'system', config);
+    await runPiAiOneShot('second', 'system', config);
+    expect(completeSimpleMock.mock.calls[0][2].apiKey).toBe('first-token');
+    expect(completeSimpleMock.mock.calls[1][2].apiKey).toBe('rotated-token');
+    expect(authMocks.setRuntimeApiKey).not.toHaveBeenCalled();
   });
 });

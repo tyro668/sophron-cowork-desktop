@@ -5,7 +5,7 @@
     "tsBuildInfoFile": "node_modules/.cache/tsbuild/tsconfig.tests.tsbuildinfo",
     "types": ["vitest/globals", "node"]
   },
-  "include": ["tests", "src/tests"],
+  "include": ["tests", "src/tests", "scripts/pi-sdk-resolve.ts"],
   "references": [
     { "path": "./tsconfig.shared.json" },
     { "path": "./tsconfig.main.json" },

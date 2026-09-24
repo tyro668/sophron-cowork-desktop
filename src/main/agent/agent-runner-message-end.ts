@@ -58,7 +58,7 @@ export function toUserFacingErrorText(errorText: string): string {
     lower.includes('service unavailable') ||
     lower.includes('overloaded')
   ) {
-    return `上游服务异常，可能是模型服务过载或临时故障，SDK 将自动重试。\n原始错误: ${errorText}`;
+    return `上游服务异常，可能是模型服务过载或临时故障。\n原始错误: ${errorText}`;
   }
   if (
     lower.includes('terminated') ||
@@ -72,7 +72,7 @@ export function toUserFacingErrorText(errorText: string): string {
     lower.includes('upstream connect') ||
     lower.includes('retry delay')
   ) {
-    return `网络连接中断（${errorText}），可能是代理/网关不稳定，SDK 将自动重试。`;
+    return `网络连接中断（${errorText}），可能是代理/网关不稳定。`;
   }
   return errorText;
 }
