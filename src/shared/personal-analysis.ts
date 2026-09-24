@@ -59,6 +59,7 @@ export function validatePersonalAnalysisConnection(
 export function getPersonalAnalysisErrorMessage(error: unknown, t: Translate): string {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
+  if (isPersonalAnalysisServerError(error)) return t('cloudData.serverUnavailable');
 
   if (normalized.includes('timeout') || normalized.includes('timed out')) {
     return t('cloudData.errorTimeout');
@@ -105,5 +106,12 @@ export function hasPersonalAnalysisConnection(
 ): boolean {
   return Boolean(
     config?.apiOrigin?.trim() && config.apiKey?.trim() && config.connectionStatus !== 'disconnected'
+  );
+}
+
+export function isPersonalAnalysisServerError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP\s+5\d\d|network|econnrefused|econnreset|enotfound|ehostunreach|failed to fetch|fetch failed|timeout|timed out|load failed/i.test(
+    message
   );
 }

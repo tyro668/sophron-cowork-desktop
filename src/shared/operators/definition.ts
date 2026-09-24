@@ -35,10 +35,15 @@ export const OPERATOR_TYPES = [
   'set_op',
   'unnest',
   'expect',
+  'sql_query',
   'output',
 ] as const;
 
 export type DataWorkflowOperatorType = (typeof OPERATOR_TYPES)[number];
+
+/** Product categories, independent of how an operator is compiled/executed. */
+export const OPERATOR_CATEGORIES = ['input_output', 'data_transform', 'advanced_compute'] as const;
+export type OperatorCategory = (typeof OPERATOR_CATEGORIES)[number];
 
 export type OperatorInputHandle = 'input' | 'left' | 'right';
 export type OperatorOutputHandle = 'output' | 'reject';
@@ -63,6 +68,7 @@ export const BINARY_INPUT_PORTS: OperatorPorts = {
  * - `join` / `set_op` — dedicated two-input compilers in WorkflowCompiler
  * - `input_source` / `output` / `expect` — source materialization, sink
  *   commit, and quality gate respectively; not transform strategies.
+ * - `sql_query` — a native query bound against the upstream relation.
  */
 export type OperatorCompileKind =
   | 'strategy'
@@ -70,7 +76,8 @@ export type OperatorCompileKind =
   | 'set_op'
   | 'input_source'
   | 'output'
-  | 'expect';
+  | 'expect'
+  | 'sql_query';
 
 /**
  * Process-agnostic operator definition. Everything the platform needs to know
@@ -78,6 +85,8 @@ export type OperatorCompileKind =
  */
 export interface OperatorDefinition<TConfig = Record<string, unknown>> {
   readonly type: DataWorkflowOperatorType;
+  /** Product grouping; advanced compute includes custom SQL and complex algorithms. */
+  readonly category: OperatorCategory;
   /** Authoritative zod schema for the node config. */
   readonly schema: ZodType<TConfig>;
   readonly ports: OperatorPorts;
@@ -128,6 +137,7 @@ export function configSchemaDiagnostics(
 
 export function defineOperator<TConfig>(init: {
   readonly type: DataWorkflowOperatorType;
+  readonly category: OperatorCategory;
   readonly schema: ZodType<TConfig>;
   readonly ports: OperatorPorts;
   readonly compileKind: OperatorCompileKind;

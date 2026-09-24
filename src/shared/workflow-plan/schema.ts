@@ -18,7 +18,7 @@ import type {
 const UNKNOWN: PlanSchema = { columns: [], known: false };
 
 /**
- * Resolves the input columns for an `input_source` plan node. Returning null
+ * Resolves externally known columns for input_source and sql_query nodes. Returning null
  * marks the schema unknown and skips field-existence checks for the node's
  * downstream rather than producing false errors.
  */
@@ -131,6 +131,12 @@ function validateNode(
     return left;
   }
   switch (node.type) {
+    case 'sql_query': {
+      // Arbitrary projections must never masquerade as input passthrough.
+      // The main process supplies columns bound by the native SQL engine.
+      const columns = resolveInputSchema(node);
+      return columns ? { columns, known: true } : UNKNOWN;
+    }
     case 'input_source': {
       const columns = resolveInputSchema(node);
       const incrementalBy =
@@ -260,7 +266,7 @@ function validateNode(
       return {
         known: true,
         columns: left.columns.map((column) =>
-          retypes.has(column.name) ? { ...column, type: retypes.get(column.name) } : column
+          retypes.has(column.name) ? { name: column.name, type: retypes.get(column.name) } : column
         ),
       };
     }

@@ -1,4 +1,6 @@
 /** Compiles workflow nodes to SQL and resolves input-source schemas. */
+import { buildSqlQuery, describeSqlQuery } from '../../operators/sql-query';
+import { SqlQueryConfigSchema } from '../../../../shared/operator-schemas/sql-query';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../shared/contracts';
 import {
   JoinConfigSchema,
@@ -161,6 +163,12 @@ export class WorkflowCompiler {
     const inputRelation = inputEdge ? relationByNode.get(relationKeyForEdge(inputEdge)) : null;
     if (!inputRelation) {
       throw new Error(`Workflow node has no input: ${node.id}`);
+    }
+    if (compileKind === 'sql_query') {
+      const { sql } = parseOperatorConfig(SqlQueryConfigSchema, node.config);
+      const query = buildSqlQuery(sql, `SELECT * FROM ${quoteIdentifier(inputRelation)}`);
+      await describeSqlQuery(this.ctx.connection!, query);
+      return `CREATE TEMP TABLE ${quoteIdentifier(outputRelation)} AS ${query}`;
     }
     const strategy = compileKind === 'strategy' ? COMPILE_STRATEGIES[node.type] : undefined;
     if (!strategy) {

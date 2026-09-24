@@ -71,3 +71,5 @@ export {
   parseOperatorConfig,
   validateOperatorConfig,
 } from '../operators';
+
+export { SqlQueryConfigSchema } from './sql-query';

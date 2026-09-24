@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { OPERATOR_TYPES, OPERATOR_DEFINITIONS, SCHEMA_MAP } from '../../../shared/operators';
+import {
+  OPERATOR_TYPES,
+  OPERATOR_DEFINITIONS,
+  OPERATOR_GROUPS,
+  SCHEMA_MAP,
+} from '../../../shared/operators';
 import { WORKFLOW_PLAN_VERSION } from '../../../shared/workflow-plan';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 
@@ -109,6 +114,7 @@ export function buildWorkflowCapabilityManifest(
         'Submit {version, nodes, edges} to data_apply_workflow_plan. Each node config must satisfy plan.operatorConfigSchemas[node.type]; field names in configs must exist on the upstream stream schema (validation runs against the real bound-table schemas).',
       schema: PLAN_ENVELOPE_SCHEMA,
       operatorConfigSchemas: operatorConfigJsonSchemas(),
+      operatorCategories: OPERATOR_GROUPS,
       // Edge endpoints per operator — the single source is the registry's ports.
       ports: Object.fromEntries(
         OPERATOR_TYPES.map((type) => [type, OPERATOR_DEFINITIONS[type].ports])
@@ -126,6 +132,8 @@ export function buildWorkflowCapabilityManifest(
         'Binds the first output node to a real output table id (from data_list_output_tables). Extra sinks bind via config.outputDatasetId.',
     },
     runtime: {
+      sqlQuery:
+        'sql_query.config.sql is one DuckDB query (SELECT, WITH, subqueries, joins, window functions). Use input as the upstream relation. Result columns flow downstream. Scripts, write statements, and unbound parameters are not supported.',
       outputModes: {
         replace: 'default; rebuilds the target table',
         append: 'adds rows to the existing target (UNION ALL BY NAME); not idempotent by design',
@@ -217,6 +225,7 @@ export function sliceWorkflowCapabilityManifest(
     dslVersion: manifest.dslVersion,
     capabilityProfileVersion: manifest.capabilityProfileVersion,
     operatorTypes: [...OPERATOR_TYPES],
+    operatorCategories: manifest.plan.operatorCategories,
   };
   if (includeAll || sections.has('plan')) {
     slice.plan = {

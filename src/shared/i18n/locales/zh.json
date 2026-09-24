@@ -546,6 +546,8 @@
       "dslPlaceholder": "粘贴数据任务 DSL...",
       "dslInvalid": "DSL 解析失败",
       "dslDiagnostics": {
+        "invalidSqlQueryDsl": "SQL 需要使用 JSON 引号包裹查询语句",
+        "planSqlQueryInvalid": "SQL 查询无效：{{message}}",
         "invalidQualifiedField": "字段引用 {{value}} 无效，请使用 [table_name].[field_name]",
         "emptyDsl": "DSL 内容不能为空",
         "noCommands": "未找到可解析的 DSL 命令",
@@ -623,6 +625,15 @@
         "fields": "字段"
       },
       "formLabels": {
+        "sqlQuery": {
+          "query": "SQL 查询",
+          "inputTable": "上游数据表：",
+          "help": "使用 input 引用上游数据；支持单条查询，自动补全字段和关键字，可点击上方字段快速插入。",
+          "invalid": "请输入有效的单条 SQL 查询，不支持写操作。",
+          "columns": "字段：",
+          "insertField": "插入字段 {{name}}",
+          "syntaxError": "SQL 语法有误"
+        },
         "common": {
           "selectColumns": "选择字段",
           "removeField": "移除字段",
@@ -1268,7 +1279,14 @@
           "expectIncompleteField": "请补齐断言配置"
         }
       },
+      "operatorCategories": {
+        "input_output": "输入输出",
+        "data_transform": "数据变换",
+        "advanced_compute": "高级计算"
+      },
+      "emptyOperatorCategory": "暂无预测、挖掘等高级计算算子",
       "operators": {
+        "sql_query": "SQL",
         "input_source": "输入",
         "filter": "筛选",
         "field_select": "字段选择",
@@ -1568,6 +1586,8 @@
     "fieldName": "字段名",
     "exampleValue": "示例值",
     "dataPreview": "数据预览",
+    "serverUnavailable": "服务器异常，请重试",
+    "retryConnection": "重试",
     "errorTimeout": "连接超时，请检查云空间服务状态后重试。",
     "errorApiKey": "API Key 无效或已过期，请在连接管理中更换后重试。",
     "errorAuth": "账号登录凭证已失效，请重新登录后重试。",
@@ -2320,6 +2340,7 @@
     "themeToggle": "切换主题",
     "login": "登录",
     "loginDesc": "登录后同步身份",
+    "loggedInDisconnected": "已登录（未连接）",
     "loggedIn": "已登录",
     "loginProcessing": "登录中...",
     "loginWaitingBrowser": "等待浏览器认证",

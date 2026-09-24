@@ -248,6 +248,7 @@ export class DesktopAuthService {
       // Temporary network/server failures must not destroy a refreshable login.
       return {
         ...this.currentStatus(),
+        connectionStatus: 'disconnected',
         error: error instanceof Error ? error.message : String(error),
       };
     }
@@ -489,6 +490,7 @@ export class DesktopAuthService {
   ): DesktopAuthStatus {
     return {
       authenticated: true,
+      connectionStatus: 'connected',
       user: session.user,
       aiCredits,
       apiOrigin: session.apiOrigin,

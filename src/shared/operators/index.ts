@@ -1,6 +1,7 @@
 import { z, type ZodType } from 'zod';
 import type { PrepDiagnostic } from '../prep-dsl/ast';
 import {
+  OPERATOR_CATEGORIES,
   OPERATOR_TYPES,
   issuesToDiagnostics,
   withoutOperatorMetadata,
@@ -10,6 +11,7 @@ import {
 import { OPERATOR_DEFINITIONS } from './definitions';
 
 export {
+  OPERATOR_CATEGORIES,
   OPERATOR_TYPES,
   BINARY_INPUT_PORTS,
   TRANSFORM_PORTS,
@@ -19,6 +21,7 @@ export {
   withoutOperatorMetadata,
 } from './definition';
 export type {
+  OperatorCategory,
   DataWorkflowOperatorType,
   OperatorCompileKind,
   OperatorDefinition,
@@ -28,6 +31,12 @@ export type {
 } from './definition';
 export { OPERATOR_DEFINITIONS } from './definitions';
 export type { OperatorDefinitionMap, WorkflowOperatorConfigMap } from './definitions';
+
+/** Ordered category index shared by the palette and capability manifest, including empty groups. */
+export const OPERATOR_GROUPS = OPERATOR_CATEGORIES.map((category) => ({
+  category,
+  operatorTypes: OPERATOR_TYPES.filter((type) => OPERATOR_DEFINITIONS[type].category === category),
+}));
 
 export function getOperatorDefinition(type: string): OperatorDefinition | undefined {
   return (OPERATOR_DEFINITIONS as Record<string, OperatorDefinition | undefined>)[type];

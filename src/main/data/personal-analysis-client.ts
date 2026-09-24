@@ -481,6 +481,9 @@ async function parseHiResponse<T>(response: Response, text: string, label: strin
   try {
     body = JSON.parse(text) as HiResponse<T>;
   } catch {
+    if (!response.ok) {
+      throw new PersonalAnalysisHttpError(label, response.status, undefined, text.slice(0, 200));
+    }
     throw new Error(`${label} expected JSON but got: ${text.slice(0, 200)}`);
   }
 

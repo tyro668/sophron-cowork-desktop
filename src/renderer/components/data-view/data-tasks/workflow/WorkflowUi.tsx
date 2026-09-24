@@ -1,4 +1,4 @@
-import { memo, useCallback, type DragEvent } from 'react';
+import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BaseEdge,
@@ -9,18 +9,17 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import { AlertCircle, Copy, Upload, Workflow, X } from 'lucide-react';
-import type { DataInputTablePreview, DataWorkflowOperatorType } from '../../../../types';
+import type { DataInputTablePreview } from '../../../../types';
 import { GlassDataGridPreview } from '../../../GlassDataGridPreview';
 import { Button } from '../../../ui/button';
 import { Dialog } from '../../../ui/dialog';
-import type { WorkflowOperatorCatalogItem } from './operator-catalog';
+export { WorkflowOperatorPalette } from './WorkflowOperatorPalette';
 import { getOperatorCatalog } from './operator-catalog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import type { WorkflowSummaryRow } from './workflow-summary';
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-  WORKFLOW_OPERATOR_MIME,
   type WorkflowAlignmentGuides,
   type WorkflowAlignmentLine,
   type WorkflowFlowNode,
@@ -34,11 +33,6 @@ interface WorkflowDslDialogProps {
   onApply: () => void;
   onCopy: () => void;
   onClose: () => void;
-}
-
-interface WorkflowOperatorPaletteProps {
-  operators: WorkflowOperatorCatalogItem[];
-  onAddOperator?: (type: DataWorkflowOperatorType) => void;
 }
 
 export function WorkflowDslDialog({
@@ -124,46 +118,6 @@ export function WorkflowDslDialog({
         )}
       </div>
     </Dialog>
-  );
-}
-
-export function WorkflowOperatorPalette({
-  operators,
-  onAddOperator,
-}: WorkflowOperatorPaletteProps) {
-  const { t } = useTranslation();
-  const handleDragStart = useCallback(
-    (event: DragEvent<HTMLButtonElement>, type: DataWorkflowOperatorType) => {
-      event.dataTransfer.setData(WORKFLOW_OPERATOR_MIME, type);
-      event.dataTransfer.effectAllowed = 'copy';
-    },
-    []
-  );
-
-  return (
-    <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl p-2">
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        {operators.map(({ type, labelKey, Icon, colorClassName }) => (
-          <button
-            key={type}
-            type="button"
-            draggable
-            onDragStart={(event) => handleDragStart(event, type)}
-            onClick={() => onAddOperator?.(type)}
-            title={t('data.workflow.addOperatorToCanvas')}
-            aria-label={`${t(labelKey)} — ${t('data.workflow.addOperatorToCanvas')}`}
-            className="flex h-9 w-full cursor-grab items-center gap-2 rounded-lg border border-border-muted bg-surface px-2.5 text-left text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent active:cursor-grabbing"
-          >
-            <span
-              className={`inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${colorClassName}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </span>
-            <span className="truncate">{t(labelKey)}</span>
-          </button>
-        ))}
-      </div>
-    </aside>
   );
 }
 

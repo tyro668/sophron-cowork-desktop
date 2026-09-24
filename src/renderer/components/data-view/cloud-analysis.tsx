@@ -37,6 +37,7 @@ import type {
 import {
   EMPTY_PERSONAL_ANALYSIS_CONFIG,
   hasPersonalAnalysisConnection,
+  isPersonalAnalysisServerError,
   getPersonalAnalysisErrorMessage,
 } from '../../../shared/personal-analysis';
 import { InputTablePreviewDialog } from './input-tables';
@@ -236,6 +237,8 @@ export function CloudAnalysisPanel() {
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<string[]>([]);
   const [loadingProjectsBySpace, setLoadingProjectsBySpace] = useState<Record<string, boolean>>({});
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [serverError, setServerError] = useState(false);
+  const [retryingConnection, setRetryingConnection] = useState(false);
   const [loadingTables, setLoadingTables] = useState(false);
   const [loadingMoreTables, setLoadingMoreTables] = useState(false);
   const [tablePageInfo, setTablePageInfo] = useState(EMPTY_TABLE_PAGE_INFO);
@@ -317,9 +320,28 @@ export function CloudAnalysisPanel() {
     ]
   );
 
+  const sharesAccountServer = Boolean(
+    connectionPayload.apiOrigin && connectionPayload.apiOrigin === desktopAuthStatus.apiOrigin
+  );
+  const accountServerDisconnected =
+    sharesAccountServer &&
+    desktopAuthStatus.authenticated &&
+    desktopAuthStatus.connectionStatus === 'disconnected';
+  const serverUnavailable = isConnected && (serverError || accountServerDisconnected);
+
   const setNotice = useCallback(
     (next: NoticeState | null) => {
       if (!next) return;
+      if (next.type === 'error' && next.message === t('cloudData.serverUnavailable')) {
+        setServerError(true);
+        const status = useAppStore.getState().desktopAuthStatus;
+        if (status.authenticated && status.apiOrigin === connectionPayload.apiOrigin) {
+          useAppStore
+            .getState()
+            .setDesktopAuthStatus({ ...status, connectionStatus: 'disconnected' });
+        }
+        return;
+      }
       showToast(
         next.type,
         next.message,
@@ -335,7 +357,7 @@ export function CloudAnalysisPanel() {
           : undefined
       );
     },
-    [navigateToDataElement, t]
+    [connectionPayload.apiOrigin, navigateToDataElement, t]
   );
 
   useEffect(() => {
@@ -728,6 +750,7 @@ export function CloudAnalysisPanel() {
         const spaceResult = await dataClient.listCloudSpaces(connection);
         const nextSpaces = spaceResult.spaces;
         if (requestId !== catalogRequestSeq.current) return;
+        setServerError(false);
         const nextSpaceIds = new Set(nextSpaces.map((space) => space.spaceId));
         const preservedSelectedProject =
           viewSnapshot?.selectedProject && nextSpaceIds.has(viewSnapshot.selectedProject.spaceId)
@@ -873,8 +896,9 @@ export function CloudAnalysisPanel() {
     setSelectedFileIds([]);
     tableCacheRef.current.clear();
     fileCacheRef.current.clear();
+    setServerError(false);
 
-    if (connectionPayload.apiOrigin) {
+    if (connectionPayload.apiOrigin && !accountServerDisconnected) {
       resetConnectionState();
       void loadCatalog({ connection: connectionPayload });
       return;
@@ -883,7 +907,29 @@ export function CloudAnalysisPanel() {
     catalogRequestSeq.current += 1;
     setLoadingCatalog(false);
     resetConnectionState();
-  }, [connectionPayload, loadCatalog, resetConnectionState, setNotice]);
+  }, [accountServerDisconnected, connectionPayload, loadCatalog, resetConnectionState, setNotice]);
+
+  const retryConnection = async () => {
+    setRetryingConnection(true);
+    try {
+      if (sharesAccountServer) {
+        const before = useAppStore.getState().desktopAuthStatus;
+        const status = await dataClient.authGetStatus();
+        if (useAppStore.getState().desktopAuthStatus === before) setDesktopAuthStatus(status);
+        if (!status.authenticated || status.connectionStatus === 'disconnected') return;
+        // A disconnected-to-connected transition triggers a fresh catalog effect.
+        if (before.connectionStatus === 'disconnected') return;
+      }
+      resetConnectionState();
+      tableCacheRef.current.clear();
+      fileCacheRef.current.clear();
+      await loadCatalog();
+    } catch {
+      setServerError(true);
+    } finally {
+      setRetryingConnection(false);
+    }
+  };
 
   const selectProject = useCallback(
     (target: SelectedProject) => {
@@ -1054,6 +1100,11 @@ export function CloudAnalysisPanel() {
         });
       } catch (error) {
         if (requestId !== previewRequestSeq.current) return;
+        if (isPersonalAnalysisServerError(error)) {
+          setPreview(null);
+          setNotice({ type: 'error', message: t('cloudData.serverUnavailable') });
+          return;
+        }
         setPreview({
           kind: 'table',
           name: table.tableName,
@@ -1064,7 +1115,7 @@ export function CloudAnalysisPanel() {
         });
       }
     },
-    [connectionPayload, t]
+    [connectionPayload, setNotice, t]
   );
 
   const previewFile = useCallback(
@@ -1090,6 +1141,11 @@ export function CloudAnalysisPanel() {
         });
       } catch (error) {
         if (requestId !== previewRequestSeq.current) return;
+        if (isPersonalAnalysisServerError(error)) {
+          setPreview(null);
+          setNotice({ type: 'error', message: t('cloudData.serverUnavailable') });
+          return;
+        }
         setPreview({
           kind: 'file',
           name: file.fileName,
@@ -1099,7 +1155,7 @@ export function CloudAnalysisPanel() {
         });
       }
     },
-    [connectionPayload, t]
+    [connectionPayload, setNotice, t]
   );
 
   const importTable = useCallback(
@@ -1321,7 +1377,23 @@ export function CloudAnalysisPanel() {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
-      {!isConnected ? (
+      {serverUnavailable ? (
+        <div className="grid min-h-0 flex-1 place-items-center px-6 py-5">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Cloud className="h-8 w-8 text-text-muted" />
+            <p role="alert" className="text-sm text-text-secondary">
+              {t('cloudData.serverUnavailable')}
+            </p>
+            <Button
+              onClick={() => void retryConnection()}
+              disabled={retryingConnection || loadingCatalog}
+            >
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+              {t('cloudData.retryConnection')}
+            </Button>
+          </div>
+        </div>
+      ) : !isConnected ? (
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
           <div className="flex w-full max-w-[340px] flex-col items-center text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
@@ -1974,7 +2046,7 @@ export function CloudAnalysisPanel() {
         </div>
       )}
 
-      {preview && (
+      {preview && !serverUnavailable && (
         <InputTablePreviewDialog
           tableKind="input"
           title={t('cloudData.previewTitle', { name: preview.name })}

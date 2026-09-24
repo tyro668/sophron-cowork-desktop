@@ -8,6 +8,7 @@ import type {
   DataWorkflowSaveInput,
 } from '../../../shared/contracts';
 import { toFiniteNumber, toNumber } from '../operators';
+import { OPERATOR_TYPES } from '../../../shared/operators/definition';
 
 export const WORKFLOW_TEMP_CACHE_TTL_MS = 86_400_000;
 
@@ -57,26 +58,7 @@ export type WorkflowOutputMode = 'persisted' | 'temporary';
 
 export type WorkflowCacheScope = 'permanent' | 'temporary';
 
-export const WORKFLOW_OPERATOR_TYPES: readonly DataWorkflowOperatorType[] = [
-  'input_source',
-  'filter',
-  'field_select',
-  'deduplicate',
-  'missing_value',
-  'type_convert',
-  'sort',
-  'join',
-  'aggregate',
-  'calculate_field',
-  'field_mapping',
-  'limit',
-  'pivot',
-  'unpivot',
-  'set_op',
-  'unnest',
-  'expect',
-  'output',
-];
+export const WORKFLOW_OPERATOR_TYPES = OPERATOR_TYPES;
 
 export const WORKFLOW_OPERATOR_TYPE_SET = new Set<string>(WORKFLOW_OPERATOR_TYPES);
 
@@ -98,6 +80,7 @@ export const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> =
   set_op: '集合操作',
   unnest: '嵌套展开',
   expect: '质量断言',
+  sql_query: 'SQL',
   output: '输出',
 };
 

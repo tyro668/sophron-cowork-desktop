@@ -270,6 +270,16 @@ export const WORKFLOW_SUMMARIZERS: Record<DataWorkflowOperatorType, WorkflowSumm
   set_op: summarizeSetOp,
   unnest: summarizeUnnest,
   expect: summarizeExpect,
+  sql_query: (config, t) => ({
+    primary: [
+      {
+        label: t('data.workflow.formLabels.sqlQuery.query'),
+        value: stringValue(config.sql),
+        mono: true,
+      },
+    ],
+    details: [],
+  }),
   output: summarizeOutput,
 };
 

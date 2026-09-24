@@ -1,4 +1,5 @@
 /** Staged plan validation shared by save, trial-run and DSL apply. */
+import { resolveSqlQuerySchemas } from '../../workflow/sql-query-schemas';
 import type { DataWorkflowSaveInput } from '../../../../shared/contracts';
 import {
   buildWorkflowPlan,
@@ -101,8 +102,10 @@ export class WorkflowValidator {
         );
         if (columns) inputSchemas.set(node.id, columns);
       }
+      const sqlSchemas = await resolveSqlQuerySchemas(this.ctx.connection!, plan, inputSchemas);
+      diagnostics.push(...sqlSchemas.diagnostics);
       diagnostics.push(
-        ...validateWorkflowPlanSchemas(plan, (node) => inputSchemas.get(node.id) ?? null)
+        ...validateWorkflowPlanSchemas(plan, (node) => sqlSchemas.resolved.get(node.id) ?? null)
       );
       return diagnostics;
     }, `validateWorkflowPlan:${id}`);

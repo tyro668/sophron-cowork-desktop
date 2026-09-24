@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   OPERATOR_DEFINITIONS,
+  OPERATOR_CATEGORIES,
+  OPERATOR_GROUPS,
   OPERATOR_TYPES,
   SCHEMA_MAP,
   getOperatorConfigValidation,
@@ -17,7 +19,14 @@ import {
   isWorkflowOperatorType,
 } from '../../shared/operators';
 import { COMPILE_STRATEGIES } from '../../main/data/operators/strategy';
-import { OPERATOR_UI } from '../../renderer/components/data-view/data-tasks/workflow/operator-catalog';
+import {
+  OPERATOR_UI,
+  OPERATOR_CATALOG_GROUPS,
+} from '../../renderer/components/data-view/data-tasks/workflow/operator-catalog';
+import {
+  buildWorkflowCapabilityManifest,
+  sliceWorkflowCapabilityManifest,
+} from '../../main/data/workflow/workflow-capability-manifest';
 import { AI_GENERATED_WORKFLOW_NODE_TYPES } from '../../main/data/workflow/prep-dsl-capability-profile';
 
 const ALL_TYPES = [...OPERATOR_TYPES].sort();
@@ -26,6 +35,34 @@ const VALID_INPUT_HANDLES = new Set(['input', 'left', 'right']);
 const VALID_OUTPUT_HANDLES = new Set(['output', 'reject']);
 
 describe('shared operator registry', () => {
+  it('partitions operators into IO, transforms and advanced compute', () => {
+    expect(OPERATOR_CATEGORIES).toEqual(['input_output', 'data_transform', 'advanced_compute']);
+    expect(OPERATOR_GROUPS.map(({ operatorTypes }) => operatorTypes)).toEqual([
+      ['input_source', 'output'],
+      OPERATOR_TYPES.filter((type) => !['input_source', 'output', 'sql_query'].includes(type)),
+      ['sql_query'],
+    ]);
+    expect(OPERATOR_GROUPS.flatMap(({ operatorTypes }) => operatorTypes).sort()).toEqual(ALL_TYPES);
+  });
+
+  it('exposes the same category index in the UI and complete or sliced AI manifests', () => {
+    expect(
+      OPERATOR_CATALOG_GROUPS.map(({ category, operators }) => ({
+        category,
+        operatorTypes: operators.map(({ type }) => type),
+      }))
+    ).toEqual(OPERATOR_GROUPS);
+    const manifest = buildWorkflowCapabilityManifest();
+    expect(manifest.plan.operatorCategories).toEqual(OPERATOR_GROUPS);
+    expect(sliceWorkflowCapabilityManifest(manifest).operatorCategories).toEqual(OPERATOR_GROUPS);
+    expect(
+      sliceWorkflowCapabilityManifest(manifest, {
+        sections: ['operators'],
+        operatorTypes: ['filter'],
+      }).operatorCategories
+    ).toEqual(OPERATOR_GROUPS);
+  });
+
   it('defines exactly one entry per operator type', () => {
     expect(Object.keys(OPERATOR_DEFINITIONS).sort()).toEqual(ALL_TYPES);
     for (const type of OPERATOR_TYPES) {
@@ -43,9 +80,15 @@ describe('shared operator registry', () => {
       for (const handle of def.ports.outputs) {
         expect(VALID_OUTPUT_HANDLES.has(handle)).toBe(true);
       }
-      expect(['strategy', 'join', 'set_op', 'input_source', 'output', 'expect']).toContain(
-        def.compileKind
-      );
+      expect([
+        'strategy',
+        'join',
+        'set_op',
+        'input_source',
+        'output',
+        'expect',
+        'sql_query',
+      ]).toContain(def.compileKind);
     }
   });
 

@@ -3,6 +3,15 @@ import { getPersonalAnalysisErrorMessage } from '../src/shared/personal-analysis
 const t = (key: string) => key;
 describe('cloud authorization error messages', () => {
   it.each([
+    'fetch failed',
+    'request timed out',
+    'POST /api/personal/api-keys/token failed: HTTP 503',
+  ])('identifies server outages: %s', (message) => {
+    expect(getPersonalAnalysisErrorMessage(new Error(message), t)).toBe(
+      'cloudData.serverUnavailable'
+    );
+  });
+  it.each([
     'HTTP 401 unauthorized',
     'HTTP 200 61311002 token 无效',
     'Please sign in before accessing cloud analysis',

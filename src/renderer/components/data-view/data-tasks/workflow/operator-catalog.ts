@@ -2,6 +2,7 @@ import {
   ArrowUpDown,
   BarChart3,
   Calculator,
+  Code2,
   Columns3,
   Copy,
   Database,
@@ -17,7 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { DataWorkflowOperatorType } from '../../../../types';
-import { OPERATOR_TYPES } from '../../../../../shared/operators';
+import { OPERATOR_TYPES, OPERATOR_GROUPS } from '../../../../../shared/operators';
 import type { OperatorFormLoader } from '../../../workflow-forms/types';
 import { WORKFLOW_SUMMARIZERS, type WorkflowSummarizer } from './workflow-summary';
 
@@ -198,6 +199,15 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
     form: () => import('../../../workflow-forms/FormExpect'),
     summarize: WORKFLOW_SUMMARIZERS.expect,
   },
+  sql_query: {
+    type: 'sql_query',
+    labelKey: 'data.workflow.operators.sql_query',
+    Icon: Code2,
+    colorClassName: OPERATOR_CHIP_CLASS,
+    nodeClassName: OPERATOR_NODE_CLASS,
+    form: () => import('../../../workflow-forms/FormSqlQuery'),
+    summarize: WORKFLOW_SUMMARIZERS.sql_query,
+  },
   output: {
     type: 'output',
     labelKey: 'data.workflow.operators.output',
@@ -212,6 +222,12 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
 export const OPERATOR_CATALOG: WorkflowOperatorCatalogItem[] = OPERATOR_TYPES.map(
   (type) => OPERATOR_UI[type]
 );
+
+/** Category membership comes from the kernel registry, never a separate UI list. */
+export const OPERATOR_CATALOG_GROUPS = OPERATOR_GROUPS.map(({ category, operatorTypes }) => ({
+  category,
+  operators: operatorTypes.map((type) => OPERATOR_UI[type]),
+}));
 
 export function getOperatorCatalog(type: DataWorkflowOperatorType): WorkflowOperatorCatalogItem {
   return OPERATOR_UI[type];

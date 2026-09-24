@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { createElement } from 'react';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n-test';
 import { useAppStore } from '../../src/renderer/store';
@@ -137,6 +137,38 @@ describe('cloud analysis account gate', () => {
     expect(screen.queryByText('Private space')).toBeNull();
     expect(screen.getByText(i18n.t('cloudData.connectTitle'))).toBeTruthy();
     expect(listCloudSpaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces cloud content when the account server disconnects and recovers on retry', async () => {
+    signIn();
+    render(createElement(CloudAnalysisPanel));
+    await screen.findByText('Private space');
+    const online = useAppStore.getState().desktopAuthStatus;
+    act(() =>
+      useAppStore.getState().setDesktopAuthStatus({ ...online, connectionStatus: 'disconnected' })
+    );
+    expect(screen.getByRole('alert').textContent).toBe(i18n.t('cloudData.serverUnavailable'));
+    expect(screen.queryByText('Private space')).toBeNull();
+    (
+      window as unknown as { electronAPI: { auth: { getStatus: unknown } } }
+    ).electronAPI.auth.getStatus = vi
+      .fn()
+      .mockResolvedValue({ ...online, connectionStatus: 'connected' });
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('cloudData.retryConnection') }));
+    await screen.findByText('Private space');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(listCloudSpaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the server error page when catalog loading fails over the network', async () => {
+    signIn();
+    listCloudSpaces.mockRejectedValueOnce(new Error('fetch failed'));
+    render(createElement(CloudAnalysisPanel));
+    await screen.findByRole('alert');
+    expect(useAppStore.getState().desktopAuthStatus).toMatchObject({
+      authenticated: true,
+      connectionStatus: 'disconnected',
+    });
   });
 
   it('ignores a pending catalog response after logout', async () => {

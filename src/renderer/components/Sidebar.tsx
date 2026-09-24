@@ -1,3 +1,4 @@
+import { useDesktopAuthConnection } from '../hooks/useDesktopAuthConnection';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -140,7 +141,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       ? t('sidebar.loginWaitingBrowser')
       : t('sidebar.loginProcessing')
     : desktopAuthStatus.authenticated
-      ? t('sidebar.loggedIn')
+      ? t(
+          desktopAuthStatus.connectionStatus === 'disconnected'
+            ? 'sidebar.loggedInDisconnected'
+            : 'sidebar.loggedIn'
+        )
       : t('sidebar.loginDesc');
   const authCreditsLabel = t('sidebar.aiCredits');
   const authCreditsText = useMemo(() => {
@@ -153,19 +158,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     return t('sidebar.creditsUnavailable');
   }, [desktopAuthStatus.aiCredits?.availableCredits, t]);
 
-  const refreshDesktopAuthStatus = useCallback(async () => {
-    if (!isElectron || !window.electronAPI?.auth) return;
-    try {
-      const status = await window.electronAPI.auth.getStatus();
-      setDesktopAuthStatus(status);
-    } catch (error) {
-      setGlobalNotice({
-        id: `desktop-auth-status-${Date.now()}`,
-        type: 'warning',
-        message: error instanceof Error ? error.message : t('sidebar.loginStatusFailed'),
-      });
-    }
-  }, [isElectron, setDesktopAuthStatus, setGlobalNotice, t]);
+  const refreshDesktopAuthStatus = useDesktopAuthConnection(isElectron);
 
   const handleCancelLoginClick = useCallback(async () => {
     if (!isElectron || !window.electronAPI?.auth || !isLoginBusy) return;
@@ -282,10 +275,6 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       cleanup?.();
     };
   }, []);
-
-  useEffect(() => {
-    void refreshDesktopAuthStatus();
-  }, [refreshDesktopAuthStatus]);
 
   // Exit select mode when sidebar collapses
   useEffect(() => {
@@ -725,6 +714,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           <div className="truncate text-[13px] font-semibold leading-5 text-text-primary">
             {authDisplayName || t('sidebar.loggedIn')}
           </div>
+          {desktopAuthStatus.connectionStatus === 'disconnected' && (
+            <div className="text-xs text-text-muted">{authSecondaryText}</div>
+          )}
         </div>
       </div>
       <div className="mx-1 my-1 h-px bg-border-subtle" />
@@ -1271,11 +1263,15 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                     title={t('sidebar.accountMenu')}
                   >
                     {renderAuthAvatar('h-8 w-8', 'h-4 w-4')}
-                    <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
-                      {authDisplayName || t('sidebar.loggedIn')}
-                    </span>
-                    <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
-                      {authSecondaryText}
+                    <span
+                      className={`flex min-w-0 flex-1 ${desktopAuthStatus.connectionStatus === 'disconnected' ? 'flex-col' : 'items-center gap-3'}`}
+                    >
+                      <span className="min-w-0 truncate text-[13px] font-medium text-text-primary">
+                        {authDisplayName || t('sidebar.loggedIn')}
+                      </span>
+                      <span className="text-[12px] font-medium text-text-muted">
+                        {authSecondaryText}
+                      </span>
                     </span>
                   </button>
                 }

@@ -68,6 +68,8 @@ export interface WorkflowPlanDiagnostic extends PrepDiagnostic {
 /** Column shape propagated along the plan graph during schema validation. */
 export interface PlanColumn {
   name: string;
+  /** Exact database type when available, for native query binding (e.g. lists/decimals). */
+  storageType?: string;
   /** Normalized DSL type name (text/integer/float/decimal/date/datetime/boolean/...) when known. */
   type?: string;
 }

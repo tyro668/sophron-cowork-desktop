@@ -546,6 +546,8 @@
       "dslPlaceholder": "Paste data task DSL...",
       "dslInvalid": "DSL parse failed",
       "dslDiagnostics": {
+        "invalidSqlQueryDsl": "SQL requires a JSON-quoted query string",
+        "planSqlQueryInvalid": "Invalid SQL query: {{message}}",
         "invalidQualifiedField": "Invalid field reference {{value}}; use [table_name].[field_name]",
         "emptyDsl": "DSL content cannot be empty",
         "noCommands": "No parseable DSL commands found",
@@ -623,6 +625,15 @@
         "fields": "Fields"
       },
       "formLabels": {
+        "sqlQuery": {
+          "query": "SQL query",
+          "inputTable": "Upstream table:",
+          "help": "Reference upstream data as input. One query only. Fields and keywords auto-complete; click a field above to insert it.",
+          "invalid": "Enter a valid single SQL query. Write statements are not supported.",
+          "columns": "Fields:",
+          "insertField": "Insert field {{name}}",
+          "syntaxError": "SQL syntax error"
+        },
         "common": {
           "selectColumns": "Select columns",
           "removeField": "Remove field",
@@ -1268,7 +1279,14 @@
           "expectIncompleteField": "Please complete the assertion configuration"
         }
       },
+      "operatorCategories": {
+        "input_output": "Input / Output",
+        "data_transform": "Data Transformation",
+        "advanced_compute": "Advanced Computing"
+      },
+      "emptyOperatorCategory": "No forecasting or data mining operators available yet",
       "operators": {
+        "sql_query": "SQL",
         "input_source": "Input",
         "filter": "Filter",
         "field_select": "Field select",
@@ -1568,6 +1586,8 @@
     "fieldName": "Field name",
     "exampleValue": "Example value",
     "dataPreview": "Data preview",
+    "serverUnavailable": "Server unavailable. Please try again.",
+    "retryConnection": "Retry",
     "errorTimeout": "Connection timed out. Check the Cloud Space service and try again.",
     "errorApiKey": "The API Key is invalid or expired. Change the connection and try again.",
     "errorAuth": "Your account session is no longer valid. Sign in again and retry.",
@@ -2320,6 +2340,7 @@
     "themeToggle": "Toggle theme",
     "login": "Sign in",
     "loginDesc": "Sync identity after sign-in",
+    "loggedInDisconnected": "Signed in (disconnected)",
     "loggedIn": "Signed in",
     "loginProcessing": "Signing in...",
     "loginWaitingBrowser": "Waiting for browser authorization",

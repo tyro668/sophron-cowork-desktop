@@ -40,6 +40,7 @@ const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
   set_op: 'set_op',
   unnest: 'unnest',
   expect: 'expect',
+  sql_query: 'sql_query',
   output: 'output',
 };
 

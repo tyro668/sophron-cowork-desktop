@@ -1,3 +1,5 @@
+import { SqlQueryConfigSchema } from '../operator-schemas/sql-query';
+import { sqlQueryCodec } from '../prep-dsl/operators/sql-query';
 import { SortConfigSchema } from '../operator-schemas/sort';
 import { FieldSelectConfigSchema } from '../operator-schemas/field-select';
 import { FieldMappingConfigSchema } from '../operator-schemas/field-mapping';
@@ -54,6 +56,7 @@ const EXPECT_PORTS: OperatorPorts = { inputs: ['input'], outputs: ['output', 're
 export const OPERATOR_DEFINITIONS = {
   input_source: defineOperator({
     type: 'input_source',
+    category: 'input_output',
     schema: InputSourceConfigSchema,
     ports: SOURCE_PORTS,
     compileKind: 'input_source',
@@ -61,6 +64,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   filter: defineOperator({
     type: 'filter',
+    category: 'data_transform',
     schema: FilterConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -68,6 +72,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   field_select: defineOperator({
     type: 'field_select',
+    category: 'data_transform',
     schema: FieldSelectConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -75,6 +80,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   deduplicate: defineOperator({
     type: 'deduplicate',
+    category: 'data_transform',
     schema: DeduplicateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -82,6 +88,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   missing_value: defineOperator({
     type: 'missing_value',
+    category: 'data_transform',
     schema: MissingValueConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -89,6 +96,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   type_convert: defineOperator({
     type: 'type_convert',
+    category: 'data_transform',
     schema: TypeConvertConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -96,6 +104,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   sort: defineOperator({
     type: 'sort',
+    category: 'data_transform',
     schema: SortConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -103,6 +112,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   join: defineOperator({
     type: 'join',
+    category: 'data_transform',
     schema: JoinConfigSchema,
     ports: BINARY_INPUT_PORTS,
     compileKind: 'join',
@@ -110,6 +120,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   aggregate: defineOperator({
     type: 'aggregate',
+    category: 'data_transform',
     schema: AggregateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -117,6 +128,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   calculate_field: defineOperator({
     type: 'calculate_field',
+    category: 'data_transform',
     schema: CalculateFieldConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -124,6 +136,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   field_mapping: defineOperator({
     type: 'field_mapping',
+    category: 'data_transform',
     schema: FieldMappingConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -131,6 +144,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   limit: defineOperator({
     type: 'limit',
+    category: 'data_transform',
     schema: LimitConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -138,6 +152,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   pivot: defineOperator({
     type: 'pivot',
+    category: 'data_transform',
     schema: PivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -145,6 +160,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   unpivot: defineOperator({
     type: 'unpivot',
+    category: 'data_transform',
     schema: UnpivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -152,6 +168,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   set_op: defineOperator({
     type: 'set_op',
+    category: 'data_transform',
     schema: SetOpConfigSchema,
     ports: BINARY_INPUT_PORTS,
     compileKind: 'set_op',
@@ -159,6 +176,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   unnest: defineOperator({
     type: 'unnest',
+    category: 'data_transform',
     schema: UnnestConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -166,13 +184,23 @@ export const OPERATOR_DEFINITIONS = {
   }),
   expect: defineOperator({
     type: 'expect',
+    category: 'data_transform',
     schema: ExpectConfigSchema,
     ports: EXPECT_PORTS,
     compileKind: 'expect',
     dsl: expectCodec,
   }),
+  sql_query: defineOperator({
+    type: 'sql_query',
+    category: 'advanced_compute',
+    schema: SqlQueryConfigSchema,
+    ports: TRANSFORM_PORTS,
+    compileKind: 'sql_query',
+    dsl: sqlQueryCodec,
+  }),
   output: defineOperator({
     type: 'output',
+    category: 'input_output',
     schema: OutputConfigSchema,
     ports: SINK_PORTS,
     compileKind: 'output',

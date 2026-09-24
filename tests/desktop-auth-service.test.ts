@@ -106,8 +106,33 @@ describe('desktop account session lifecycle', () => {
   it('keeps refresh credentials after temporary network failures', async () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
     const service = new DesktopAuthService(() => origin);
-    expect(await service.getStatus()).toMatchObject({ authenticated: true, error: 'offline' });
+    expect(await service.getStatus()).toMatchObject({
+      authenticated: true,
+      connectionStatus: 'disconnected',
+      error: 'offline',
+    });
     expect(storage.get('session')).toMatchObject({ refreshToken: 'refresh-old' });
+  });
+
+  it('restores connected status after a temporary outage without signing in again', async () => {
+    storage.set('session', session(Date.now() + 3600_000));
+    fetchMock
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce(ok({ user, scope: 'ai read write' }))
+      .mockResolvedValueOnce(ok({ availableCredits: 10 }));
+    const service = new DesktopAuthService(() => origin);
+    expect(await service.getStatus()).toMatchObject({
+      authenticated: true,
+      connectionStatus: 'disconnected',
+    });
+    expect(await service.getStatus()).toMatchObject({
+      authenticated: true,
+      connectionStatus: 'connected',
+    });
+    expect(storage.get('session')).toMatchObject({
+      accessToken: 'account-old',
+      refreshToken: 'refresh-old',
+    });
   });
 
   it('clears the account only when its refresh credential is rejected', async () => {

@@ -39,7 +39,7 @@ import { useConfirmDialog } from '../../../ConfirmDialog';
 import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, flatToolbarRowClass, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
-import { OPERATOR_CATALOG, getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
@@ -1193,10 +1193,7 @@ export function TaskEditor({
         </div>
       ) : (
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3 p-3">
-          <WorkflowOperatorPalette
-            operators={OPERATOR_CATALOG}
-            onAddOperator={addOperatorAfterSelected}
-          />
+          <WorkflowOperatorPalette onAddOperator={addOperatorAfterSelected} />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
             <WorkflowCanvas
               nodes={nodes}

@@ -154,6 +154,7 @@ export const dataClient = {
   hasAuth(): boolean {
     return typeof window.electronAPI?.auth?.login === 'function';
   },
+  authGetStatus: () => window.electronAPI.auth.getStatus(),
   authLogin: () => {
     const auth = window.electronAPI?.auth;
     if (!auth) {

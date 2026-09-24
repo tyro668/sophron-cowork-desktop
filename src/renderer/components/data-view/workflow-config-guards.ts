@@ -25,6 +25,7 @@ const ISSUE_MESSAGE_KEYS: Record<OperatorConfigIssueCode, string> = {
   set_op_incomplete_field: 'data.workflow.formLabels.setOp.setOpIncompleteField',
   missing_value_incomplete_field:
     'data.workflow.formLabels.missingValue.missingValueIncompleteField',
+  sql_query_invalid: 'data.workflow.formLabels.sqlQuery.invalid',
   expect_incomplete_field: 'data.workflow.formLabels.expect.expectIncompleteField',
 };
 

@@ -1,3 +1,4 @@
+import { resolveSqlQuerySchemas } from '../../workflow/sql-query-schemas';
 /** Node-level previews: rows, columns, column types, distinct values. */
 import type {
   DataColumnTypeInfo,
@@ -259,9 +260,10 @@ export class WorkflowNodePreviewService {
       const columns = await this.compiler.resolveInputSourceColumnTypes(taskNode, task.sourcePath);
       if (columns) inputSchemas.set(planNode.id, columns);
     }
+    const sqlSchemas = await resolveSqlQuerySchemas(this.ctx.connection!, plan, inputSchemas);
     const { schemas } = propagateWorkflowPlanSchemas(
       plan,
-      (planNode) => inputSchemas.get(planNode.id) ?? null
+      (planNode) => sqlSchemas.resolved.get(planNode.id) ?? null
     );
     const schema = schemas.get(node.id);
     return schema?.known ? schema.columns : null;
@@ -454,7 +456,7 @@ function toColumnTypeInfos(columns: PlanColumn[] | null): DataColumnTypeInfo[] {
     .map((column) => ({
       name: column.name,
       type: column.type as DataFieldType,
-      storageType: column.type ?? '',
+      storageType: column.storageType ?? column.type ?? '',
     }));
 }
 
@@ -474,7 +476,7 @@ function mergeInferredWithCacheTypes(
       merged.push({
         name: column.name,
         type: column.type as DataFieldType,
-        storageType: column.type ?? '',
+        storageType: column.storageType ?? column.type ?? '',
       });
       continue;
     }

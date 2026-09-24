@@ -201,6 +201,8 @@ export interface AiCreditBalance {
 
 export interface DesktopAuthStatus {
   authenticated: boolean;
+  /** Session validity and server reachability are independent. */
+  connectionStatus?: 'connected' | 'disconnected';
   user?: DesktopAuthUser;
   aiCredits?: AiCreditBalance;
   aiCreditUsage?: AiCreditUsageSummary;

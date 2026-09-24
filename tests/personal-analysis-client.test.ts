@@ -11,6 +11,18 @@ describe('PersonalAnalysisClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves HTTP failure status when a proxy returns HTML', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('<html>Unavailable</html>', { status: 503 }))
+    );
+    const client = new PersonalAnalysisClient({
+      apiOrigin: 'http://mock.local',
+      apiKey: 'saved-key',
+    });
+    await expect(client.listSpaces()).rejects.toThrow('HTTP 503');
+  });
+
   it('requires a configured API origin', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
