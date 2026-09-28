@@ -53,18 +53,16 @@ function setDataBridge(data: Partial<Record<string, unknown>>) {
 }
 
 describe('useDataViewUi', () => {
-  it('tracks tab, search, error, and source-filter UI state', () => {
+  it('tracks tab, search, and error UI state', () => {
     const { result } = renderHook(() => useDataViewUi());
 
     expect(result.current.activeTab).toBe('tasks');
     act(() => result.current.setActiveTab('input_tables'));
     act(() => result.current.setSearchQuery('cust'));
-    act(() => result.current.setInputTableSourceFilter('csv'));
     act(() => result.current.setError('boom'));
 
     expect(result.current.activeTab).toBe('input_tables');
     expect(result.current.searchQuery).toBe('cust');
-    expect(result.current.inputTableSourceFilter).toBe('csv');
     expect(result.current.error).toBe('boom');
   });
 });
@@ -168,7 +166,6 @@ describe('useDataNavigation', () => {
       setPendingNavigationTab: vi.fn(),
       setLoadingTab: vi.fn(),
       setSearchQuery: vi.fn(),
-      setInputTableSourceFilter: vi.fn(),
     } as unknown as DataViewUi;
     const dashboard = {
       prependTask: vi.fn(),
@@ -251,7 +248,6 @@ describe('useDataNavigation', () => {
     expect(editors.setEditingInputTableDatasetId).toHaveBeenCalledWith('ds_nav');
     expect(editors.setFocusedInputTable).toHaveBeenCalledWith(inputTable);
     expect(ui.setActiveTab).toHaveBeenCalledWith('input_tables');
-    expect(ui.setInputTableSourceFilter).toHaveBeenCalledWith('all');
     expect(inputTables.upsertDataset).toHaveBeenCalledWith(inputTable, false);
     expect(useAppStore.getState().pendingDataNavigation).toBeNull();
   });
@@ -300,7 +296,6 @@ describe('useDataNavigation', () => {
         setPendingNavigationTab: vi.fn(),
         setLoadingTab: vi.fn(),
         setSearchQuery: vi.fn(),
-        setInputTableSourceFilter: vi.fn(),
       },
       dashboard: {
         prependTask: vi.fn(),

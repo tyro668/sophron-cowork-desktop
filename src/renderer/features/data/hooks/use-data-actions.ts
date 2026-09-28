@@ -237,7 +237,6 @@ export function useDataActions(deps: DataActionsDeps) {
     const draft = drafts.createDraft(
       `${t('data.inputTables.defaultName')} ${inputTables.totalInputTableDatasets + drafts.drafts.length + 1}`
     );
-    ui.setInputTableSourceFilter('all');
     ui.setActiveTab('input_tables');
     ui.setSearchQuery('');
     editors.setEditingInputTableDatasetId(null);
@@ -284,7 +283,7 @@ export function useDataActions(deps: DataActionsDeps) {
         editors.setEditingInputTableDraftId(null);
         editors.setEditingInputTableDatasetId(imported.id);
         inputTables.setDatasetPage(1);
-        await loadInputTables({ preserveError: true, page: 1, sourceFilter: 'all' });
+        await loadInputTables({ preserveError: true, page: 1 });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
         await loadInputTables({ preserveError: true });
@@ -482,12 +481,9 @@ export function useDataActions(deps: DataActionsDeps) {
 
   const handleDeleteAllInputTables = useCallback(async () => {
     if (!dataClient.has('deleteDataset')) return;
-    const draftIds =
-      ui.inputTableSourceFilter === 'all'
-        ? drafts.drafts
-            .filter((draft) => matchesSearchText(draft.name, ui.searchQuery))
-            .map((draft) => draft.id)
-        : [];
+    const draftIds = drafts.drafts
+      .filter((draft) => matchesSearchText(draft.name, ui.searchQuery))
+      .map((draft) => draft.id);
     const count = inputTables.totalInputTableDatasets + draftIds.length;
     if (count <= 0) return;
     const confirmed = await confirmDelete({
@@ -514,7 +510,7 @@ export function useDataActions(deps: DataActionsDeps) {
           taskLimit: 0,
           datasetOffset: 0,
           datasetLimit: DATA_DELETE_BATCH_SIZE,
-          datasetSourceKind: ui.inputTableSourceFilter,
+          datasetSourceKind: 'all',
           outputLimit: 0,
         });
         hasMoreInputTables = page.datasets.length > 0;

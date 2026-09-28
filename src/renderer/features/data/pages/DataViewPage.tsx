@@ -34,7 +34,7 @@ import { useDataViewEditors } from '../hooks/use-data-view-editors';
 import { useStoredPreview } from '../hooks/use-stored-preview';
 import { useDataActions } from '../hooks/use-data-actions';
 import { useDataNavigation } from '../hooks/use-data-navigation';
-import type { DataTab, InputTableSourceFilter } from '../model/types';
+import type { DataTab } from '../model/types';
 
 export function DataViewPage() {
   const { t } = useTranslation();
@@ -52,7 +52,6 @@ export function DataViewPage() {
   });
   const inputTables = useInputTables({
     searchQuery: ui.searchQuery,
-    sourceFilter: ui.inputTableSourceFilter,
     draftsCount: drafts.drafts.length,
     setError: ui.setError,
     setLoadingTab: ui.setLoadingTab,
@@ -185,16 +184,6 @@ export function DataViewPage() {
       ui.setSearchQuery(value);
     },
     [activeTab, dashboard, inputTables, ui]
-  );
-
-  const handleInputTableSourceFilterChange = useCallback(
-    (value: InputTableSourceFilter) => {
-      ui.setLoadingTab('input_tables');
-      inputTables.setInputTablesLoading(true);
-      ui.setInputTableSourceFilter(value);
-      inputTables.setDatasetPage(1);
-    },
-    [inputTables, ui]
   );
 
   const handleTabChange = useCallback(
@@ -349,9 +338,7 @@ export function DataViewPage() {
                     currentPage={inputTables.datasetPage}
                     searchQuery={searchQuery}
                     isLoading={isInputTablesLoading}
-                    sourceFilter={ui.inputTableSourceFilter}
                     onSearchChange={handleSearchChange}
-                    onSourceFilterChange={handleInputTableSourceFilterChange}
                     onPageChange={handleDatasetPageChange}
                     onCreate={actions.handleCreateInputTableDraft}
                     onRefresh={() => inputTables.loadInputTables({ preserveError: true })}

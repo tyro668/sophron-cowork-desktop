@@ -6,8 +6,7 @@
 import type { DataDashboard, DataDataset, DataOutputTable } from '../../../types';
 
 export type DataTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
-export type InputTableSourceFilter = 'all' | 'excel' | 'csv' | 'folder';
-export type InputTableSourceKind = Exclude<InputTableSourceFilter, 'all'> | 'file' | 'draft';
+export type InputTableSourceKind = 'excel' | 'csv' | 'folder' | 'file' | 'draft';
 
 /** Locally-drafted input table not yet imported into the store. */
 export interface InputTableDraft {

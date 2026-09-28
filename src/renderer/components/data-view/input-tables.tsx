@@ -19,9 +19,8 @@ import type {
   DataInputTableConfig,
   DataInputTableSourceKind,
 } from '../../types';
-import { GlassSelect } from '../GlassSelect';
 import { Button } from '../ui/button';
-import type { InputTableDraft, InputTableSourceFilter } from '../../features/data/model/types';
+import type { InputTableDraft } from '../../features/data/model/types';
 import {
   DataMoreMenu,
   DataTableSearch,
@@ -55,16 +54,6 @@ import {
 } from './group-ui';
 import { InputTableEditorWorkbench } from './input-table-editor-workbench';
 
-const INPUT_TABLE_SOURCE_FILTERS: Array<{
-  value: InputTableSourceFilter;
-  labelKey: string;
-}> = [
-  { value: 'all', labelKey: 'data.inputTables.sources.all' },
-  { value: 'excel', labelKey: 'data.inputTables.sources.excel' },
-  { value: 'csv', labelKey: 'data.inputTables.sources.csv' },
-  { value: 'folder', labelKey: 'data.inputTables.sources.folder' },
-];
-
 export function InputTablesPanel({
   datasets,
   drafts,
@@ -73,9 +62,7 @@ export function InputTablesPanel({
   currentPage,
   searchQuery,
   isLoading,
-  sourceFilter,
   onSearchChange,
-  onSourceFilterChange,
   onPageChange,
   onCreate,
   onRefresh,
@@ -99,9 +86,7 @@ export function InputTablesPanel({
   currentPage: number;
   searchQuery: string;
   isLoading: boolean;
-  sourceFilter: InputTableSourceFilter;
   onSearchChange: (value: string) => void;
-  onSourceFilterChange: (source: InputTableSourceFilter) => void;
   onPageChange: (page: number) => void;
   onCreate: () => void;
   onRefresh: () => void;
@@ -125,11 +110,8 @@ export function InputTablesPanel({
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const filteredDrafts = useMemo(
-    () =>
-      sourceFilter === 'all'
-        ? drafts.filter((draft) => matchesSearchText(draft.name, searchQuery))
-        : [],
-    [drafts, searchQuery, sourceFilter]
+    () => drafts.filter((draft) => matchesSearchText(draft.name, searchQuery)),
+    [drafts, searchQuery]
   );
   const draftCount = filteredDrafts.length;
   const totalRows = totalDatasets + draftCount;
@@ -137,11 +119,8 @@ export function InputTablesPanel({
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
   const draftStart = (safeCurrentPage - 1) * TABLE_PAGE_SIZE;
   const pageDrafts = useMemo(
-    () =>
-      !isLoading && sourceFilter === 'all'
-        ? filteredDrafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE)
-        : [],
-    [draftStart, filteredDrafts, isLoading, sourceFilter]
+    () => (!isLoading ? filteredDrafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE) : []),
+    [draftStart, filteredDrafts, isLoading]
   );
   const visibleRows = useMemo(
     () =>
@@ -159,8 +138,7 @@ export function InputTablesPanel({
     [datasets, groups]
   );
   const grouped = hasNamedSections(datasetSections);
-  const emptyLabel =
-    sourceFilter === 'all' ? t('data.inputTables.empty') : t('data.inputTables.emptyFiltered');
+  const emptyLabel = t('data.inputTables.empty');
   const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
   const selectedDataset = selectedRow?.kind === 'dataset' ? selectedRow.dataset : null;
   const selectedDraft = selectedRow?.kind === 'draft' ? selectedRow.draft : null;
@@ -285,20 +263,6 @@ export function InputTablesPanel({
             onChange={onSearchChange}
             placeholder={t('data.inputTables.searchPlaceholder')}
           />
-          <label className="block w-32">
-            <span className="sr-only">{t('data.inputTables.sourceFilter')}</span>
-            <GlassSelect
-              value={sourceFilter}
-              onValueChange={(value) => onSourceFilterChange(value as InputTableSourceFilter)}
-              options={INPUT_TABLE_SOURCE_FILTERS.map((option) => ({
-                value: option.value,
-                label: t(option.labelKey),
-              }))}
-              disabled={bulkBusy}
-              triggerClassName="h-8 w-full justify-between rounded-lg bg-surface pl-3 text-xs font-medium text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:opacity-45"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          </label>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">

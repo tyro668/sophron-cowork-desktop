@@ -42,16 +42,20 @@ import {
   InputTableCheckbox,
   InputTableSelect,
   InputTableStatusBadge,
-  flatToolbarRowClass,
+  editorHeaderRowClass,
   formatCloudMirrorLocation,
   formatDateTime,
   formatDisplayPath,
   getCloudMirror,
   getCloudMirrorSourceMeta,
   getInputTableSourceMeta,
+  underlineTabListClass,
+  underlineTabTriggerClass,
   type CloudMirrorInfo,
   type TranslateFn,
 } from './shared';
+import { GlassDataGridPreview } from '../GlassDataGridPreview';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { CodePreview } from './input-table-code-preview';
 import {
   NormalizerProjectTree,
@@ -134,6 +138,7 @@ export function InputTableEditorWorkbench({
   const [localConfig, setLocalConfig] = useState<DataInputTableConfig>(initialConfig);
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data'>('config');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DataInputTablePreview | null>(null);
@@ -232,6 +237,10 @@ export function InputTableEditorWorkbench({
     setDeletingNormalizerVersionId(null);
     setActiveEditorTab('rules');
     setSelectedNormalizerFilePath('');
+    setActiveViewTab('config');
+    setPreviewData(null);
+    setPreviewError(null);
+    setPreviewPage(1);
   }, [initialConfig, initialName, initialSourceKind, targetId]);
 
   useEffect(() => {
@@ -439,7 +448,6 @@ export function InputTableEditorWorkbench({
 
   const loadPreviewPage = async (page: number) => {
     if (!dataset || !dataClient.has('previewInputTable')) return;
-    setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewPage(page);
@@ -459,7 +467,9 @@ export function InputTableEditorWorkbench({
     }
   };
 
+  // The data tab is the preview surface — open it and load page 1.
   const previewInputTable = async () => {
+    setActiveViewTab('data');
     setPreviewData(null);
     await loadPreviewPage(1);
   };
@@ -607,7 +617,7 @@ export function InputTableEditorWorkbench({
   return (
     <>
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className={`${flatToolbarRowClass} justify-between`}>
+        <div className={`${editorHeaderRowClass} justify-between`}>
           <div className="flex min-w-0 items-center gap-4">
             <button
               onClick={onBack}
@@ -700,19 +710,7 @@ export function InputTableEditorWorkbench({
                 </Dialog>
               </>
             )}
-            <button
-              type="button"
-              onClick={() => void previewInputTable()}
-              disabled={!canPreview || previewLoading}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {previewLoading ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-              {t('data.inputTables.editor.preview')}
-            </button>
+
             <button
               type="button"
               onClick={saveInputTable}
@@ -725,511 +723,586 @@ export function InputTableEditorWorkbench({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
-          <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
-            <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
-              <GlassSelect
-                value={localSourceKind}
-                onValueChange={(value) => handleSourceKindChange(value as DataInputTableSourceKind)}
-                options={[
-                  { value: 'excel', label: t('data.inputTables.editor.excel') },
-                  { value: 'csv', label: t('data.inputTables.editor.csv') },
-                  { value: 'folder', label: t('data.inputTables.editor.folder') },
-                ]}
-                disabled={isBusy}
-                triggerIcon={
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}
-                  >
-                    <SourceIcon className="h-4 w-4" />
-                  </span>
-                }
-                triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
-                contentClassName="w-[var(--radix-select-trigger-width)]"
-              />
-            </InputTableConfigRow>
-
-            <InputTableConfigRow
-              label={
-                localSourceKind === 'folder'
-                  ? t('data.inputTables.editor.folderPath')
-                  : t('data.inputTables.editor.file')
-              }
-            >
-              <div className="flex min-w-0 items-stretch">
-                <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-surface px-3 shadow-soft">
-                  <span
-                    className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
-                  >
-                    <SourceIcon className="h-4 w-4" />
-                  </span>
-                  <div
-                    className="min-w-0 truncate text-[14px] font-medium text-text-primary"
-                    title={dataset?.sourcePath ?? undefined}
-                  >
-                    {cloudMirror
-                      ? formatCloudMirrorLocation(cloudMirror)
-                      : dataset
-                        ? formatDisplayPath(dataset.sourcePath)
-                        : t('data.inputTables.editor.noSource')}
-                  </div>
-                </div>
+        <Tabs
+          value={activeViewTab}
+          onValueChange={(value) => {
+            const next = value as 'config' | 'data';
+            setActiveViewTab(next);
+            // previewData may currently hold a customize-draft preview — always
+            // reload the raw source preview when entering the data tab.
+            if (next === 'data' && canPreview && !previewLoading) {
+              void loadPreviewPage(1);
+            }
+          }}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-muted px-4">
+            <TabsList className={underlineTabListClass}>
+              <TabsTrigger value="config" className={underlineTabTriggerClass}>
+                {t('data.inputTables.editor.tabs.config')}
+              </TabsTrigger>
+              <TabsTrigger value="data" className={underlineTabTriggerClass} disabled={!canPreview}>
+                {t('data.inputTables.editor.tabs.data')}
+              </TabsTrigger>
+            </TabsList>
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              {activeViewTab === 'data' && previewData && dataset && (
+                <span>
+                  {t('data.outputTables.editor.dataMeta', {
+                    rows: previewData.totalRows,
+                    time: formatDateTime(dataset.updatedAt),
+                  })}
+                </span>
+              )}
+              {activeViewTab === 'data' && canPreview && (
                 <button
                   type="button"
-                  onClick={() => chooseSource(localSourceKind)}
-                  disabled={isBusy || !trimmedName}
-                  className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                  onClick={() => void loadPreviewPage(previewPage)}
+                  disabled={previewLoading}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label={t('data.actions.refresh')}
+                  title={t('data.actions.refresh')}
                 >
-                  {dataset?.sourcePath
-                    ? localSourceKind === 'folder'
-                      ? t('data.inputTables.editor.changeFolder')
-                      : t('data.inputTables.editor.changeFile')
-                    : localSourceKind === 'folder'
-                      ? t('data.inputTables.editor.chooseFolder')
-                      : t('data.inputTables.editor.chooseFile')}
+                  <RefreshCw className={`h-3.5 w-3.5 ${previewLoading ? 'animate-spin' : ''}`} />
                 </button>
-              </div>
-            </InputTableConfigRow>
-
-            {dataset && cloudMirror && (
-              <InputTableConfigRow label={t('data.inputTables.editor.cloudSource.title')}>
-                <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2.5 shadow-soft">
-                  <div className="flex min-w-0 items-center gap-2 text-[13px] text-text-secondary">
-                    <span className="flex-shrink-0 text-text-muted">
-                      {t('data.inputTables.editor.cloudSource.location')}
-                    </span>
-                    <span
-                      className="min-w-0 truncate font-medium text-text-primary"
-                      title={formatCloudMirrorLocation(cloudMirror)}
-                    >
-                      {formatCloudMirrorLocation(cloudMirror)}
-                    </span>
-                    {cloudMirror.tableKind && (
-                      <span className="inline-flex h-5 flex-shrink-0 items-center rounded bg-surface-active px-1.5 text-[11px] font-medium text-text-secondary">
-                        {cloudMirror.tableKind === 'base'
-                          ? t('cloudData.kindBase')
-                          : t('cloudData.kindAnalysis')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
-                    <span>
-                      {t('data.inputTables.editor.cloudSource.localSnapshot', {
-                        rows: dataset.rowCount.toLocaleString(),
-                      })}
-                    </span>
-                    <span>
-                      {t('data.inputTables.editor.cloudSource.lastSync', {
-                        time: cloudMirror.syncedAt
-                          ? formatDateTime(cloudMirror.syncedAt)
-                          : formatDateTime(dataset.updatedAt),
-                      })}
-                    </span>
-                    <span className="min-w-0 truncate" title={cloudMirror.sourceVersion}>
-                      {t('data.inputTables.editor.cloudSource.sourceUpdated', {
-                        time:
-                          cloudMirror.sourceVersion ||
-                          t('data.inputTables.editor.cloudSource.unknownTime'),
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {onSyncCloudSource && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCloudSyncBusy(true);
-                          void Promise.resolve(onSyncCloudSource(dataset)).finally(() =>
-                            setCloudSyncBusy(false)
-                          );
-                        }}
-                        disabled={
-                          isBusy || cloudSyncBusy || !cloudMirror.spaceId || !cloudMirror.projectId
-                        }
-                        className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                        title={
-                          !cloudMirror.spaceId || !cloudMirror.projectId
-                            ? t('data.inputTables.editor.cloudSource.syncUnavailable')
-                            : undefined
-                        }
-                      >
-                        <RefreshCw
-                          className={`h-3.5 w-3.5 ${cloudSyncBusy ? 'animate-spin' : ''}`}
-                        />
-                        {cloudSyncBusy
-                          ? t('data.inputTables.editor.cloudSource.syncing')
-                          : t('data.inputTables.editor.cloudSource.sync')}
-                      </button>
-                    )}
-                    {onOpenCloudSource && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenCloudSource(cloudMirror)}
-                        disabled={!cloudMirror.spaceId || !cloudMirror.projectId}
-                        className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        <Cloud className="h-3.5 w-3.5" />
-                        {t('data.inputTables.editor.cloudSource.openInCloud')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </InputTableConfigRow>
-            )}
-
-            <InputTableConfigRow label={t('data.inputTables.editor.processingStrategy')}>
-              <GlassSelect
-                value={dataProcessing.strategy}
-                onValueChange={(value) => {
-                  if (value === 'customize') {
-                    updateDataProcessing({
-                      ...(dataProcessing.strategy === 'customize' ? dataProcessing : {}),
-                      strategy: 'customize',
-                      rulePrompt:
-                        dataProcessing.strategy === 'customize' ? dataProcessing.rulePrompt : '',
-                    });
-                    setActiveEditorTab('rules');
-                    return;
-                  }
-                  updateDataProcessing({ strategy: 'auto' });
-                }}
-                options={[
-                  { value: 'auto', label: t('data.inputTables.editor.processingAuto') },
-                  { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
-                ]}
-                disabled={isBusy || !dataset}
-                triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
-                contentClassName="w-[var(--radix-select-trigger-width)]"
-              />
-            </InputTableConfigRow>
+              )}
+            </div>
           </div>
 
-          {dataProcessing.strategy === 'customize' ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
-                {editorTabs.map((tab) => (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    onClick={() => setActiveEditorTab(tab.value)}
-                    className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
-                      activeEditorTab === tab.value
-                        ? 'text-accent'
-                        : 'text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    {tab.label}
-                    {activeEditorTab === tab.value ? (
-                      <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-accent" />
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+          <TabsContent
+            value="config"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
+          >
+            <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
+              <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
+                <GlassSelect
+                  value={localSourceKind}
+                  onValueChange={(value) =>
+                    handleSourceKindChange(value as DataInputTableSourceKind)
+                  }
+                  options={[
+                    { value: 'excel', label: t('data.inputTables.editor.excel') },
+                    { value: 'csv', label: t('data.inputTables.editor.csv') },
+                    { value: 'folder', label: t('data.inputTables.editor.folder') },
+                  ]}
+                  disabled={isBusy}
+                  triggerIcon={
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}
+                    >
+                      <SourceIcon className="h-4 w-4" />
+                    </span>
+                  }
+                  triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                  contentClassName="w-[var(--radix-select-trigger-width)]"
+                />
+              </InputTableConfigRow>
 
-              <div
-                className={`min-h-0 flex-1 px-7 py-6 ${
-                  activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
-                }`}
+              <InputTableConfigRow
+                label={
+                  localSourceKind === 'folder'
+                    ? t('data.inputTables.editor.folderPath')
+                    : t('data.inputTables.editor.file')
+                }
               >
-                {activeEditorTab === 'rules' ? (
-                  <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
-                    <div className="grid flex-shrink-0 gap-2">
-                      <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
-                        {t('data.inputTables.editor.rulePrompt')}
-                        <Info className="h-3.5 w-3.5 text-text-muted" />
-                      </span>
-                      <LlmPromptComposer
-                        value={dataProcessing.rulePrompt}
-                        onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
-                        selectedSkillNames={customizeSelectedSkillNames}
-                        onSelectedSkillNamesChange={(selectedSkillNames) =>
-                          patchCustomizeDataProcessing({ selectedSkillNames })
-                        }
-                        onSkillSelectionCommit={({ value, selectedSkillNames }) =>
-                          patchCustomizeDataProcessing({
-                            rulePrompt: value,
-                            selectedSkillNames,
-                          })
-                        }
-                        appConfig={appConfig}
-                        selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
-                        modelFallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
-                        placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
-                        disabled={isBusy || !dataset}
-                        maxLength={4000}
-                        className="min-h-[128px]"
-                        textareaClassName="min-h-[64px]"
-                        skillMenuPlacement="bottom"
-                        onModelSelect={({ configSetId, model }) =>
-                          patchCustomizeDataProcessing({
-                            modelConfigSetId: configSetId,
-                            model,
-                          })
-                        }
-                      />
+                <div className="flex min-w-0 items-stretch">
+                  <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-surface px-3 shadow-soft">
+                    <span
+                      className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
+                    >
+                      <SourceIcon className="h-4 w-4" />
+                    </span>
+                    <div
+                      className="min-w-0 truncate text-[14px] font-medium text-text-primary"
+                      title={dataset?.sourcePath ?? undefined}
+                    >
+                      {cloudMirror
+                        ? formatCloudMirrorLocation(cloudMirror)
+                        : dataset
+                          ? formatDisplayPath(dataset.sourcePath)
+                          : t('data.inputTables.editor.noSource')}
                     </div>
-                    <InputTableGenerationOutputPanel
-                      isStreaming={customizeGenerating}
-                      output={customizeGenerationOutput}
-                      t={t}
-                    />
-                    {customizeGenerationError ? (
-                      <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
-                        {customizeGenerationError}
-                      </div>
-                    ) : null}
                   </div>
-                ) : null}
+                  <button
+                    type="button"
+                    onClick={() => chooseSource(localSourceKind)}
+                    disabled={isBusy || !trimmedName}
+                    className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {dataset?.sourcePath
+                      ? localSourceKind === 'folder'
+                        ? t('data.inputTables.editor.changeFolder')
+                        : t('data.inputTables.editor.changeFile')
+                      : localSourceKind === 'folder'
+                        ? t('data.inputTables.editor.chooseFolder')
+                        : t('data.inputTables.editor.chooseFile')}
+                  </button>
+                </div>
+              </InputTableConfigRow>
 
-                {activeEditorTab === 'code' ? (
-                  <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
-                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
-                      <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
-                        <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
-                          {selectedNormalizerFile?.path ??
-                            t('data.inputTables.editor.noProjectFiles')}
+              {dataset && cloudMirror && (
+                <InputTableConfigRow label={t('data.inputTables.editor.cloudSource.title')}>
+                  <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2.5 shadow-soft">
+                    <div className="flex min-w-0 items-center gap-2 text-[13px] text-text-secondary">
+                      <span className="flex-shrink-0 text-text-muted">
+                        {t('data.inputTables.editor.cloudSource.location')}
+                      </span>
+                      <span
+                        className="min-w-0 truncate font-medium text-text-primary"
+                        title={formatCloudMirrorLocation(cloudMirror)}
+                      >
+                        {formatCloudMirrorLocation(cloudMirror)}
+                      </span>
+                      {cloudMirror.tableKind && (
+                        <span className="inline-flex h-5 flex-shrink-0 items-center rounded bg-surface-active px-1.5 text-[11px] font-medium text-text-secondary">
+                          {cloudMirror.tableKind === 'base'
+                            ? t('cloudData.kindBase')
+                            : t('cloudData.kindAnalysis')}
                         </span>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
+                      <span>
+                        {t('data.inputTables.editor.cloudSource.localSnapshot', {
+                          rows: dataset.rowCount.toLocaleString(),
+                        })}
+                      </span>
+                      <span>
+                        {t('data.inputTables.editor.cloudSource.lastSync', {
+                          time: cloudMirror.syncedAt
+                            ? formatDateTime(cloudMirror.syncedAt)
+                            : formatDateTime(dataset.updatedAt),
+                        })}
+                      </span>
+                      <span className="min-w-0 truncate" title={cloudMirror.sourceVersion}>
+                        {t('data.inputTables.editor.cloudSource.sourceUpdated', {
+                          time:
+                            cloudMirror.sourceVersion ||
+                            t('data.inputTables.editor.cloudSource.unknownTime'),
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onSyncCloudSource && (
                         <button
                           type="button"
-                          disabled={!selectedNormalizerFile}
                           onClick={() => {
-                            if (selectedNormalizerFile) {
-                              void navigator.clipboard?.writeText(selectedNormalizerFile.content);
-                            }
+                            setCloudSyncBusy(true);
+                            void Promise.resolve(onSyncCloudSource(dataset)).finally(() =>
+                              setCloudSyncBusy(false)
+                            );
                           }}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                          title={t('data.inputTables.editor.copyCode')}
+                          disabled={
+                            isBusy ||
+                            cloudSyncBusy ||
+                            !cloudMirror.spaceId ||
+                            !cloudMirror.projectId
+                          }
+                          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                          title={
+                            !cloudMirror.spaceId || !cloudMirror.projectId
+                              ? t('data.inputTables.editor.cloudSource.syncUnavailable')
+                              : undefined
+                          }
                         >
-                          <Copy className="h-3.5 w-3.5" />
+                          <RefreshCw
+                            className={`h-3.5 w-3.5 ${cloudSyncBusy ? 'animate-spin' : ''}`}
+                          />
+                          {cloudSyncBusy
+                            ? t('data.inputTables.editor.cloudSource.syncing')
+                            : t('data.inputTables.editor.cloudSource.sync')}
                         </button>
-                      </div>
-                      <CodePreview file={selectedNormalizerFile} t={t} />
-                    </div>
-                    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
-                      <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
-                        {t('data.inputTables.editor.projectStructure')}
-                      </div>
-                      <div className="min-h-0 flex-1 overflow-auto p-2">
-                        <NormalizerProjectTree
-                          files={normalizerProjectFiles}
-                          selectedPath={selectedNormalizerFile?.path ?? selectedNormalizerFilePath}
-                          onSelect={setSelectedNormalizerFilePath}
-                          t={t}
-                        />
-                      </div>
+                      )}
+                      {onOpenCloudSource && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenCloudSource(cloudMirror)}
+                          disabled={!cloudMirror.spaceId || !cloudMirror.projectId}
+                          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          <Cloud className="h-3.5 w-3.5" />
+                          {t('data.inputTables.editor.cloudSource.openInCloud')}
+                        </button>
+                      )}
                     </div>
                   </div>
-                ) : null}
+                </InputTableConfigRow>
+              )}
 
-                {activeEditorTab === 'versions' ? (
-                  <InputTableVersionHistoryPanel
-                    currentVersion={currentNormalizerVersion}
-                    currentVersionId={customizeArtifactVersionId}
-                    deletingVersionId={deletingNormalizerVersionId}
-                    embedded
-                    loading={normalizerVersionsLoading}
-                    onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
-                    onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
-                    onPublish={(version) => void publishSpecificNormalizerVersion(version)}
-                    publishingVersionId={customizeVersionActionId}
-                    t={t}
-                    versions={normalizerVersions}
-                  />
-                ) : null}
-              </div>
-
-              <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
-                <button
-                  type="button"
-                  disabled={!canGenerateCustomizeDraft}
-                  onClick={() => void generateCustomizeDraft()}
-                  className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
-                  title={t('data.inputTables.editor.generateProjectDisabled')}
-                >
-                  {customizeGenerating ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  {customizeGenerating
-                    ? t('data.inputTables.editor.generateProjectDrafting')
-                    : t('data.inputTables.editor.generateProjectDraft')}
-                </button>
-                <button
-                  type="button"
-                  disabled={!customizeArtifactVersionId || previewLoading || !dataset}
-                  onClick={() => void previewCustomizeDraft()}
-                  className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {previewLoading ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                  {t('data.inputTables.editor.previewNormalizedDraft')}
-                </button>
-              </div>
+              <InputTableConfigRow label={t('data.inputTables.editor.processingStrategy')}>
+                <GlassSelect
+                  value={dataProcessing.strategy}
+                  onValueChange={(value) => {
+                    if (value === 'customize') {
+                      updateDataProcessing({
+                        ...(dataProcessing.strategy === 'customize' ? dataProcessing : {}),
+                        strategy: 'customize',
+                        rulePrompt:
+                          dataProcessing.strategy === 'customize' ? dataProcessing.rulePrompt : '',
+                      });
+                      setActiveEditorTab('rules');
+                      return;
+                    }
+                    updateDataProcessing({ strategy: 'auto' });
+                  }}
+                  options={[
+                    { value: 'auto', label: t('data.inputTables.editor.processingAuto') },
+                    { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
+                  ]}
+                  disabled={isBusy || !dataset}
+                  triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                  contentClassName="w-[var(--radix-select-trigger-width)]"
+                />
+              </InputTableConfigRow>
             </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-              <div className="grid gap-4">
-                {localSourceKind === 'excel' ? (
-                  <>
-                    <InputTableConfigRow label={t('data.inputTables.editor.sheetName')}>
-                      <GlassSelect
-                        value={excelConfig.sheetName ?? ''}
-                        onValueChange={(value) =>
-                          updateConfig({
-                            ...excelConfig,
-                            sheetName: value,
-                          })
-                        }
-                        options={(excelConfig.sheetNames.length > 0
-                          ? excelConfig.sheetNames
-                          : ['Sheet1']
-                        ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
-                        disabled={isBusy || !dataset}
-                        triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
-                        contentClassName="w-[var(--radix-select-trigger-width)]"
-                      />
-                    </InputTableConfigRow>
-                    <InputTableConfigRow
-                      label={
-                        <span className="inline-flex items-center gap-1.5">
-                          {t('data.inputTables.editor.headerRow')}
-                          <span className="group relative inline-flex">
-                            <button
-                              type="button"
-                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
-                              aria-label={t('data.inputTables.editor.headerRowDetectHint')}
-                            >
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
-                              {t('data.inputTables.editor.headerRowDetectHint')}
-                            </span>
-                          </span>
-                        </span>
-                      }
+
+            {dataProcessing.strategy === 'customize' ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
+                  {editorTabs.map((tab) => (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      onClick={() => setActiveEditorTab(tab.value)}
+                      className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
+                        activeEditorTab === tab.value
+                          ? 'text-accent'
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
                     >
-                      <div
-                        className={`grid items-start gap-2 ${
-                          excelConfig.headerMode === 'manual'
-                            ? 'sm:grid-cols-[minmax(0,1fr)_10rem]'
-                            : ''
-                        }`}
-                      >
+                      {tab.label}
+                      {activeEditorTab === tab.value ? (
+                        <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-accent" />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  className={`min-h-0 flex-1 px-7 py-6 ${
+                    activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
+                  }`}
+                >
+                  {activeEditorTab === 'rules' ? (
+                    <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
+                      <div className="grid flex-shrink-0 gap-2">
+                        <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
+                          {t('data.inputTables.editor.rulePrompt')}
+                          <Info className="h-3.5 w-3.5 text-text-muted" />
+                        </span>
+                        <LlmPromptComposer
+                          value={dataProcessing.rulePrompt}
+                          onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
+                          selectedSkillNames={customizeSelectedSkillNames}
+                          onSelectedSkillNamesChange={(selectedSkillNames) =>
+                            patchCustomizeDataProcessing({ selectedSkillNames })
+                          }
+                          onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+                            patchCustomizeDataProcessing({
+                              rulePrompt: value,
+                              selectedSkillNames,
+                            })
+                          }
+                          appConfig={appConfig}
+                          selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
+                          modelFallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
+                          placeholder={t('data.inputTables.editor.rulePromptPlaceholder')}
+                          disabled={isBusy || !dataset}
+                          maxLength={4000}
+                          className="min-h-[128px]"
+                          textareaClassName="min-h-[64px]"
+                          skillMenuPlacement="bottom"
+                          onModelSelect={({ configSetId, model }) =>
+                            patchCustomizeDataProcessing({
+                              modelConfigSetId: configSetId,
+                              model,
+                            })
+                          }
+                        />
+                      </div>
+                      <InputTableGenerationOutputPanel
+                        isStreaming={customizeGenerating}
+                        output={customizeGenerationOutput}
+                        t={t}
+                      />
+                      {customizeGenerationError ? (
+                        <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
+                          {customizeGenerationError}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {activeEditorTab === 'code' ? (
+                    <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
+                      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                        <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
+                          <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
+                            {selectedNormalizerFile?.path ??
+                              t('data.inputTables.editor.noProjectFiles')}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!selectedNormalizerFile}
+                            onClick={() => {
+                              if (selectedNormalizerFile) {
+                                void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                              }
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                            title={t('data.inputTables.editor.copyCode')}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <CodePreview file={selectedNormalizerFile} t={t} />
+                      </div>
+                      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                        <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
+                          {t('data.inputTables.editor.projectStructure')}
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-auto p-2">
+                          <NormalizerProjectTree
+                            files={normalizerProjectFiles}
+                            selectedPath={
+                              selectedNormalizerFile?.path ?? selectedNormalizerFilePath
+                            }
+                            onSelect={setSelectedNormalizerFilePath}
+                            t={t}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {activeEditorTab === 'versions' ? (
+                    <InputTableVersionHistoryPanel
+                      currentVersion={currentNormalizerVersion}
+                      currentVersionId={customizeArtifactVersionId}
+                      deletingVersionId={deletingNormalizerVersionId}
+                      embedded
+                      loading={normalizerVersionsLoading}
+                      onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
+                      onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
+                      onPublish={(version) => void publishSpecificNormalizerVersion(version)}
+                      publishingVersionId={customizeVersionActionId}
+                      t={t}
+                      versions={normalizerVersions}
+                    />
+                  ) : null}
+                </div>
+
+                <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
+                  <button
+                    type="button"
+                    disabled={!canGenerateCustomizeDraft}
+                    onClick={() => void generateCustomizeDraft()}
+                    className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                    title={t('data.inputTables.editor.generateProjectDisabled')}
+                  >
+                    {customizeGenerating ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                    {customizeGenerating
+                      ? t('data.inputTables.editor.generateProjectDrafting')
+                      : t('data.inputTables.editor.generateProjectDraft')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!customizeArtifactVersionId || previewLoading || !dataset}
+                    onClick={() => void previewCustomizeDraft()}
+                    className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {previewLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                    {t('data.inputTables.editor.previewNormalizedDraft')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+                <div className="grid gap-4">
+                  {localSourceKind === 'excel' ? (
+                    <>
+                      <InputTableConfigRow label={t('data.inputTables.editor.sheetName')}>
                         <GlassSelect
-                          value={excelConfig.headerMode}
+                          value={excelConfig.sheetName ?? ''}
                           onValueChange={(value) =>
                             updateConfig({
                               ...excelConfig,
-                              headerMode: value as DataInputTableExcelConfig['headerMode'],
+                              sheetName: value,
                             })
                           }
-                          options={[
-                            { value: 'auto', label: t('data.inputTables.editor.smartDetect') },
-                            {
-                              value: 'manual',
-                              label: t('data.inputTables.editor.manualSpecify'),
-                            },
-                          ]}
+                          options={(excelConfig.sheetNames.length > 0
+                            ? excelConfig.sheetNames
+                            : ['Sheet1']
+                          ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                           disabled={isBusy || !dataset}
                           triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
                           contentClassName="w-[var(--radix-select-trigger-width)]"
                         />
-                        {excelConfig.headerMode === 'manual' ? (
-                          <label className="relative block !h-10">
-                            <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={excelConfig.headerRow}
-                              onChange={(event) =>
-                                updateConfig({
-                                  ...excelConfig,
-                                  headerRow: Math.max(
-                                    1,
-                                    Math.floor(Number(event.target.value) || 1)
-                                  ),
-                                })
-                              }
-                              disabled={isBusy || !dataset}
-                              className="box-border !h-10 w-full rounded-lg border border-border-muted bg-surface pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
-                            />
-                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
-                              {t('data.inputTables.editor.rowUnit')}
+                      </InputTableConfigRow>
+                      <InputTableConfigRow
+                        label={
+                          <span className="inline-flex items-center gap-1.5">
+                            {t('data.inputTables.editor.headerRow')}
+                            <span className="group relative inline-flex">
+                              <button
+                                type="button"
+                                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
+                                aria-label={t('data.inputTables.editor.headerRowDetectHint')}
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </button>
+                              <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
+                                {t('data.inputTables.editor.headerRowDetectHint')}
+                              </span>
                             </span>
-                          </label>
-                        ) : null}
-                      </div>
-                    </InputTableConfigRow>
-                  </>
-                ) : null}
-
-                {localSourceKind === 'csv' ? (
-                  <div className="grid gap-3">
-                    {[
-                      ['header', 'data.inputTables.editor.csvHeader'],
-                      ['dataRegion', 'data.inputTables.editor.csvDataRegion'],
-                      ['encoding', 'data.inputTables.editor.csvEncoding'],
-                      ['delimiter', 'data.inputTables.editor.csvDelimiter'],
-                    ].map(([key, labelKey]) => (
-                      <InputTableConfigRow key={key} label={t(labelKey)}>
-                        <div className="text-[14px] font-medium text-text-primary">
-                          {t('data.inputTables.editor.autoDetected')}
+                          </span>
+                        }
+                      >
+                        <div
+                          className={`grid items-start gap-2 ${
+                            excelConfig.headerMode === 'manual'
+                              ? 'sm:grid-cols-[minmax(0,1fr)_10rem]'
+                              : ''
+                          }`}
+                        >
+                          <GlassSelect
+                            value={excelConfig.headerMode}
+                            onValueChange={(value) =>
+                              updateConfig({
+                                ...excelConfig,
+                                headerMode: value as DataInputTableExcelConfig['headerMode'],
+                              })
+                            }
+                            options={[
+                              { value: 'auto', label: t('data.inputTables.editor.smartDetect') },
+                              {
+                                value: 'manual',
+                                label: t('data.inputTables.editor.manualSpecify'),
+                              },
+                            ]}
+                            disabled={isBusy || !dataset}
+                            triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                            contentClassName="w-[var(--radix-select-trigger-width)]"
+                          />
+                          {excelConfig.headerMode === 'manual' ? (
+                            <label className="relative block !h-10">
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={excelConfig.headerRow}
+                                onChange={(event) =>
+                                  updateConfig({
+                                    ...excelConfig,
+                                    headerRow: Math.max(
+                                      1,
+                                      Math.floor(Number(event.target.value) || 1)
+                                    ),
+                                  })
+                                }
+                                disabled={isBusy || !dataset}
+                                className="box-border !h-10 w-full rounded-lg border border-border-muted bg-surface pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              />
+                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
+                                {t('data.inputTables.editor.rowUnit')}
+                              </span>
+                            </label>
+                          ) : null}
                         </div>
                       </InputTableConfigRow>
-                    ))}
-                  </div>
-                ) : null}
+                    </>
+                  ) : null}
 
-                {localSourceKind === 'folder' ? (
-                  <div className="grid gap-3">
-                    <InputTableConfigRow label={t('data.inputTables.editor.fileSelectionRange')}>
-                      <InputTableSelect
-                        value={folderConfig.fileRange}
-                        disabled={isBusy || !dataset}
-                        onChange={(value) =>
-                          updateConfig({
-                            ...folderConfig,
-                            fileRange: value as DataInputTableFolderConfig['fileRange'],
-                          })
-                        }
-                        options={[
-                          {
-                            value: 'excel_csv',
-                            label: t('data.inputTables.editor.includeExcelCsv'),
-                          },
-                          { value: 'excel', label: t('data.inputTables.editor.includeExcel') },
-                          { value: 'csv', label: t('data.inputTables.editor.includeCsv') },
-                        ]}
-                      />
-                    </InputTableConfigRow>
-                    <div className="flex flex-wrap gap-4 px-1">
-                      <InputTableCheckbox
-                        checked={folderConfig.skipEmptyFiles}
-                        disabled={isBusy || !dataset}
-                        label={t('data.inputTables.editor.skipEmptyFiles')}
-                        onChange={(checked) =>
-                          updateConfig({ ...folderConfig, skipEmptyFiles: checked })
-                        }
-                      />
-                      <InputTableCheckbox
-                        checked={folderConfig.keepSourceFileName}
-                        disabled={isBusy || !dataset}
-                        label={t('data.inputTables.editor.keepSourceFileName')}
-                        onChange={(checked) =>
-                          updateConfig({ ...folderConfig, keepSourceFileName: checked })
-                        }
-                      />
+                  {localSourceKind === 'csv' ? (
+                    <div className="grid gap-3">
+                      {[
+                        ['header', 'data.inputTables.editor.csvHeader'],
+                        ['dataRegion', 'data.inputTables.editor.csvDataRegion'],
+                        ['encoding', 'data.inputTables.editor.csvEncoding'],
+                        ['delimiter', 'data.inputTables.editor.csvDelimiter'],
+                      ].map(([key, labelKey]) => (
+                        <InputTableConfigRow key={key} label={t(labelKey)}>
+                          <div className="text-[14px] font-medium text-text-primary">
+                            {t('data.inputTables.editor.autoDetected')}
+                          </div>
+                        </InputTableConfigRow>
+                      ))}
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
+
+                  {localSourceKind === 'folder' ? (
+                    <div className="grid gap-3">
+                      <InputTableConfigRow label={t('data.inputTables.editor.fileSelectionRange')}>
+                        <InputTableSelect
+                          value={folderConfig.fileRange}
+                          disabled={isBusy || !dataset}
+                          onChange={(value) =>
+                            updateConfig({
+                              ...folderConfig,
+                              fileRange: value as DataInputTableFolderConfig['fileRange'],
+                            })
+                          }
+                          options={[
+                            {
+                              value: 'excel_csv',
+                              label: t('data.inputTables.editor.includeExcelCsv'),
+                            },
+                            { value: 'excel', label: t('data.inputTables.editor.includeExcel') },
+                            { value: 'csv', label: t('data.inputTables.editor.includeCsv') },
+                          ]}
+                        />
+                      </InputTableConfigRow>
+                      <div className="flex flex-wrap gap-4 px-1">
+                        <InputTableCheckbox
+                          checked={folderConfig.skipEmptyFiles}
+                          disabled={isBusy || !dataset}
+                          label={t('data.inputTables.editor.skipEmptyFiles')}
+                          onChange={(checked) =>
+                            updateConfig({ ...folderConfig, skipEmptyFiles: checked })
+                          }
+                        />
+                        <InputTableCheckbox
+                          checked={folderConfig.keepSourceFileName}
+                          disabled={isBusy || !dataset}
+                          label={t('data.inputTables.editor.keepSourceFileName')}
+                          onChange={(checked) =>
+                            updateConfig({ ...folderConfig, keepSourceFileName: checked })
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </TabsContent>
+          <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
+            <GlassDataGridPreview
+              preview={previewData}
+              isLoading={previewLoading}
+              error={previewError}
+              currentPage={previewPage}
+              onPageChange={(page) => void loadPreviewPage(page)}
+              labels={{
+                loading: t('data.inputTables.editor.previewLoading'),
+                empty: t('data.inputTables.editor.previewEmpty'),
+                total: (count) => t('data.inputTables.editor.previewTotal', { count }),
+                pageSize: (count) => t('data.inputTables.editor.previewPageSize', { count }),
+              }}
+              edgeToEdge
+              rowHeight={32}
+              headerHeight={34}
+            />
+          </TabsContent>
+        </Tabs>
       </section>
       {previewOpen && (
         <InputTablePreviewDialog

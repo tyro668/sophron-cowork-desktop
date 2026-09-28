@@ -38,7 +38,7 @@ import { showToast } from '../../../../utils/toast';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
-import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, flatToolbarRowClass, makeLocalId } from '../../shared';
+import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, editorHeaderRowClass, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
@@ -1152,7 +1152,7 @@ export function TaskEditor({
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
-      <div className={`${flatToolbarRowClass} justify-between`}>
+      <div className={`${editorHeaderRowClass} justify-between`}>
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={() => void handleBack()}

@@ -14,18 +14,16 @@ import {
 import type { DataDataset, DataGroup } from '../../../types';
 import { getTablePageCount, TABLE_PAGE_SIZE } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
-import type { DataTab, InputTableSourceFilter } from '../model/types';
+import type { DataTab } from '../model/types';
 
 export interface LoadInputTablesOptions {
   preserveError?: boolean;
   page?: number;
-  sourceFilter?: InputTableSourceFilter;
   query?: string;
 }
 
 export function useInputTables(deps: {
   searchQuery: string;
-  sourceFilter: InputTableSourceFilter;
   draftsCount: number;
   setError: Dispatch<SetStateAction<string | null>>;
   setLoadingTab: Dispatch<SetStateAction<DataTab | null>>;
@@ -33,15 +31,8 @@ export function useInputTables(deps: {
   /** Keeps the shared group list fresh — every dashboard payload carries it. */
   setGroups?: (groups: DataGroup[]) => void;
 }) {
-  const {
-    searchQuery,
-    sourceFilter: inputTableSourceFilter,
-    draftsCount,
-    setError,
-    setLoadingTab,
-    setPendingNavigationTab,
-    setGroups,
-  } = deps;
+  const { searchQuery, draftsCount, setError, setLoadingTab, setPendingNavigationTab, setGroups } =
+    deps;
   const [inputTableDatasets, setInputTableDatasets] = useState<DataDataset[]>([]);
   const [totalInputTableDatasets, setTotalInputTableDatasets] = useState(0);
   const [inputTablesLoading, setInputTablesLoading] = useState(false);
@@ -54,7 +45,6 @@ export function useInputTables(deps: {
       const requestSeq = inputTablesRequestSeq.current + 1;
       inputTablesRequestSeq.current = requestSeq;
       const requestedPage = Math.max(1, options.page ?? datasetPage);
-      const sourceFilter = options.sourceFilter ?? inputTableSourceFilter;
       setInputTablesLoading(true);
       setLoadingTab('input_tables');
       if (!options.preserveError) {
@@ -70,7 +60,7 @@ export function useInputTables(deps: {
           taskLimit: 0,
           datasetOffset: (requestedPage - 1) * TABLE_PAGE_SIZE,
           datasetLimit: TABLE_PAGE_SIZE,
-          datasetSourceKind: sourceFilter,
+          datasetSourceKind: 'all',
           outputLimit: 0,
         });
         if (requestSeq === inputTablesRequestSeq.current) {
@@ -90,15 +80,7 @@ export function useInputTables(deps: {
         }
       }
     },
-    [
-      datasetPage,
-      inputTableSourceFilter,
-      searchQuery,
-      setError,
-      setGroups,
-      setLoadingTab,
-      setPendingNavigationTab,
-    ]
+    [datasetPage, searchQuery, setError, setGroups, setLoadingTab, setPendingNavigationTab]
   );
 
   /** Inserts or replaces a dataset row and bumps the total once. */
@@ -124,12 +106,11 @@ export function useInputTables(deps: {
   }, []);
 
   useEffect(() => {
-    const draftCount = inputTableSourceFilter === 'all' ? draftsCount : 0;
-    const pageCount = getTablePageCount(totalInputTableDatasets + draftCount);
+    const pageCount = getTablePageCount(totalInputTableDatasets + draftsCount);
     if (datasetPage > pageCount) {
       setDatasetPage(pageCount);
     }
-  }, [datasetPage, draftsCount, inputTableSourceFilter, totalInputTableDatasets]);
+  }, [datasetPage, draftsCount, totalInputTableDatasets]);
 
   return {
     inputTableDatasets,

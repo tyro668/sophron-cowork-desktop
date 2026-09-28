@@ -154,12 +154,10 @@
       "searchPlaceholder": "Search input tables...",
       "configTitle": "Input table config",
       "count": "{{count}} input tables",
-      "sourceFilter": "Source",
       "create": "New input table",
       "add": "Add input table",
       "import": "Import input table",
       "empty": "No input tables",
-      "emptyFiltered": "No input tables match this filter",
       "loading": "Loading input tables...",
       "defaultName": "New input table",
       "physicalTable": "Physical table",
@@ -264,7 +262,6 @@
         },
         "loadingVersions": "Loading versions...",
         "noVersions": "No versions yet",
-        "preview": "Preview",
         "previewTitle": "Input table data preview",
         "previewLoading": "Loading preview data...",
         "previewEmpty": "No preview data",
@@ -321,6 +318,10 @@
           "syncing": "Syncing…",
           "syncUnavailable": "Cloud source linkage is incomplete; re-import the table from the Cloud Space panel",
           "openInCloud": "View in Cloud Space"
+        },
+        "tabs": {
+          "config": "Configuration",
+          "data": "Data"
         }
       },
       "status": {
@@ -334,7 +335,6 @@
         "createTask": "Create task from this table"
       },
       "sources": {
-        "all": "All sources",
         "excel": "Excel",
         "csv": "CSV",
         "folder": "Folder",
@@ -419,7 +419,13 @@
         "exportExcel": "Excel file (.xlsx)",
         "exportReport": "Generate report (HTML)",
         "exportDone": "Exported: {{path}}",
-        "dataMeta": "{{rows}} rows · data updated {{time}}"
+        "dataMeta": "{{rows}} rows · data updated {{time}}",
+        "tabs": {
+          "data": "Data",
+          "config": "Configuration"
+        },
+        "dataLoading": "Loading data…",
+        "dataEmpty": "No data in this output table yet"
       },
       "automation": {
         "title": "Automations",

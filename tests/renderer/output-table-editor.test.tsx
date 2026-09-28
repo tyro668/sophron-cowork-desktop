@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 /**
- * Output-table editor: config-first like the input-table workbench — the
- * config form is the main body, preview opens in the shared preview dialog,
- * and the toolbar keeps re-run/export/save actions.
+ * Output-table editor: config-first tab layout shared with the input-table
+ * workbench — 配置 (default) shows bindings/automations, 数据 hosts the inline
+ * preview grid; the toolbar keeps re-run/export/save actions.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -82,12 +82,14 @@ function renderEditor(overrides?: {
   return { ...view, previewDataset, exportTable };
 }
 
-async function openPreviewDialog(previewDataset: ReturnType<typeof vi.fn>) {
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+/** The preview grid is canvas-based — assert the fetch + footer + grid shell. */
+async function waitForGrid(previewDataset: ReturnType<typeof vi.fn>, container: HTMLElement) {
   await waitFor(() =>
     expect(previewDataset).toHaveBeenCalledWith({ id: 'ot1', limit: 100, offset: 0 })
   );
-  expect(await screen.findByText('Output table data preview')).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'Data' }));
+  expect(await screen.findByText('2 rows')).toBeTruthy();
+  expect(container.querySelector('.glass-data-grid-preview')).toBeTruthy();
 }
 
 describe('OutputTableEditor', () => {
@@ -95,24 +97,28 @@ describe('OutputTableEditor', () => {
     vi.restoreAllMocks();
   });
 
-  it('opens on the config form and does not prefetch the preview', async () => {
+  it('opens on the config tab and prefetches the preview for the data tab', async () => {
     const { previewDataset } = renderEditor();
+    await waitFor(() =>
+      expect(previewDataset).toHaveBeenCalledWith({ id: 'ot1', limit: 100, offset: 0 })
+    );
+    expect(screen.getByRole('tab', { name: 'Configuration' }).getAttribute('aria-selected')).toBe(
+      'true'
+    );
+    // The config form is the default view.
     expect(await screen.findByText('Input table')).toBeTruthy();
-    expect(previewDataset).not.toHaveBeenCalled();
   });
 
-  it('opens the shared preview dialog from the toolbar', async () => {
-    const { previewDataset } = renderEditor();
-    await openPreviewDialog(previewDataset);
-    // The dialog portals to document.body — query the document, not the render root.
-    expect(document.body.querySelector('.glass-data-grid-preview')).toBeTruthy();
-    expect(await screen.findByText('2 rows')).toBeTruthy();
+  it('shows the preview grid after switching to the data tab', async () => {
+    const { previewDataset, container } = renderEditor();
+    await waitForGrid(previewDataset, container);
+    expect(screen.getByRole('tab', { name: 'Data' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('re-runs the related task and reloads the open preview', async () => {
+  it('re-runs the related task and reloads the preview', async () => {
     const onRunTask = vi.fn(async () => undefined);
-    const { previewDataset } = renderEditor({ onRunTask });
-    await openPreviewDialog(previewDataset);
+    const { previewDataset, container } = renderEditor({ onRunTask });
+    await waitForGrid(previewDataset, container);
 
     fireEvent.click(screen.getByRole('button', { name: 'Re-run' }));
     await waitFor(() =>

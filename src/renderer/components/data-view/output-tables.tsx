@@ -28,8 +28,9 @@ import type {
 } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
 import { showToast } from '../../utils/toast';
+import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
-import { InputTablePreviewDialog } from './input-table-preview-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   AssignGroupDialog,
   buildGroupSections,
@@ -50,10 +51,13 @@ import {
   InputTableStatusBadge,
   LoadingState,
   PaginationFooter,
+  editorHeaderRowClass,
   flatToolbarRowClass,
   formatDateTime,
   formatOutputTableRelatedTaskNames,
   INPUT_TABLE_PREVIEW_PAGE_SIZE,
+  underlineTabListClass,
+  underlineTabTriggerClass,
 } from './shared';
 import { Button } from '../ui/button';
 import { OutputTableAutomations } from './table-automations';
@@ -398,7 +402,7 @@ export function OutputTableEditor({
   const [localName, setLocalName] = useState(outputTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceDatasetId, setSourceDatasetId] = useState(outputTable.sourceDatasetId ?? '');
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'data' | 'config'>('config');
   const [preview, setPreview] = useState<DataInputTablePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -465,13 +469,8 @@ export function OutputTableEditor({
 
   useEffect(() => {
     setPreview(null);
-    setPreviewOpen(false);
     setPreviewPage(1);
-  }, [loadPreview]);
-
-  const openPreview = useCallback(() => {
-    setPreviewOpen(true);
-    setPreviewPage(1);
+    setActiveTab('config');
     void loadPreview(1);
   }, [loadPreview]);
 
@@ -492,7 +491,7 @@ export function OutputTableEditor({
     setRunBusy(true);
     try {
       await onRunTask(relatedTask);
-      if (previewOpen) await loadPreview(previewPage);
+      await loadPreview(previewPage);
     } finally {
       setRunBusy(false);
     }
@@ -524,7 +523,7 @@ export function OutputTableEditor({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className={`${flatToolbarRowClass} justify-between`}>
+      <div className={`${editorHeaderRowClass} justify-between`}>
         <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={onBack}
@@ -577,19 +576,6 @@ export function OutputTableEditor({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={openPreview}
-            disabled={previewLoading}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {previewLoading ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Eye className="h-3.5 w-3.5" />
-            )}
-            {t('data.inputTables.editor.preview')}
-          </button>
           {relatedTask && (
             <button
               type="button"
@@ -648,43 +634,85 @@ export function OutputTableEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-4">
-        <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-          <InputTableFormLabel>
-            <span className="inline-flex items-center gap-1.5">
-              {t('data.outputTables.editor.inputTable')}
-              <InlineInfoTooltip label={t('data.outputTables.editor.inputTableInfo')} />
-            </span>
-          </InputTableFormLabel>
-          <InputTableSelect
-            value={sourceDatasetId}
-            options={inputTableOptions}
-            disabled={busy || isInputTablesLoading}
-            onChange={setSourceDatasetId}
-          />
-
-          <div className="col-span-full border-t border-border-subtle" />
-
-          <div className="col-span-full">
-            <OutputTableAutomations key={outputTable.id} outputTable={outputTable} />
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as 'data' | 'config')}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="flex h-10 items-center justify-between border-b border-border-muted px-4">
+          <TabsList className={underlineTabListClass}>
+            <TabsTrigger value="config" className={underlineTabTriggerClass}>
+              {t('data.outputTables.editor.tabs.config')}
+            </TabsTrigger>
+            <TabsTrigger value="data" className={underlineTabTriggerClass}>
+              {t('data.outputTables.editor.tabs.data')}
+            </TabsTrigger>
+          </TabsList>
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            {activeTab === 'data' && preview && (
+              <span>
+                {t('data.outputTables.editor.dataMeta', {
+                  rows: preview.totalRows,
+                  time: formatDateTime(outputTable.updatedAt),
+                })}
+              </span>
+            )}
+            {activeTab === 'data' && (
+              <button
+                type="button"
+                onClick={() => void loadPreview(previewPage)}
+                disabled={previewLoading}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                aria-label={t('data.actions.refresh')}
+                title={t('data.actions.refresh')}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${previewLoading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
           </div>
         </div>
-      </div>
-      {previewOpen && (
-        <InputTablePreviewDialog
-          tableKind="output"
-          subtitle={t('data.outputTables.editor.dataMeta', {
-            rows: preview?.totalRows ?? outputTable.rowCount ?? 0,
-            time: formatDateTime(outputTable.updatedAt),
-          })}
-          preview={preview}
-          isLoading={previewLoading}
-          error={previewError}
-          currentPage={previewPage}
-          onPageChange={(page) => void loadPreview(page)}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
+
+        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface p-4">
+          <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+            <InputTableFormLabel>
+              <span className="inline-flex items-center gap-1.5">
+                {t('data.outputTables.editor.inputTable')}
+                <InlineInfoTooltip label={t('data.outputTables.editor.inputTableInfo')} />
+              </span>
+            </InputTableFormLabel>
+            <InputTableSelect
+              value={sourceDatasetId}
+              options={inputTableOptions}
+              disabled={busy || isInputTablesLoading}
+              onChange={setSourceDatasetId}
+            />
+
+            <div className="col-span-full border-t border-border-subtle" />
+
+            <div className="col-span-full">
+              <OutputTableAutomations key={outputTable.id} outputTable={outputTable} />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
+          <GlassDataGridPreview
+            preview={preview}
+            isLoading={previewLoading}
+            error={previewError}
+            currentPage={previewPage}
+            onPageChange={(page) => void loadPreview(page)}
+            labels={{
+              loading: t('data.outputTables.editor.dataLoading'),
+              empty: t('data.outputTables.editor.dataEmpty'),
+              total: (count) => t('data.workflow.nodeDataTotal', { count }),
+              pageSize: (count) => t('data.workflow.nodeDataPageSize', { count }),
+            }}
+            edgeToEdge
+            rowHeight={32}
+            headerHeight={34}
+          />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }

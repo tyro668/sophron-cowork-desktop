@@ -62,6 +62,14 @@ export const underlineTabListClass =
 export const flatToolbarRowClass =
   'flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-border-subtle px-3 py-1.5';
 
+/**
+ * Editor header strip (task/input-table/output-table editors): sits where the
+ * workspace tab bar would be, so it must match `underlineTabBarClass` height
+ * (h-12) to avoid a vertical shift when drilling into an editor.
+ */
+export const editorHeaderRowClass =
+  'flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border-subtle px-3';
+
 export function DataToolbarButton({
   icon,
   label,

@@ -154,12 +154,10 @@
       "searchPlaceholder": "搜索输入表...",
       "configTitle": "输入表配置",
       "count": "{{count}} 个输入表",
-      "sourceFilter": "来源",
       "create": "新建输入表",
       "add": "新增输入表",
       "import": "导入输入表",
       "empty": "暂无输入表",
-      "emptyFiltered": "没有符合筛选的输入表",
       "loading": "正在加载输入表...",
       "defaultName": "新的输入表",
       "physicalTable": "物理表",
@@ -264,7 +262,6 @@
         },
         "loadingVersions": "正在加载版本...",
         "noVersions": "暂无版本",
-        "preview": "预览",
         "previewTitle": "输入表数据预览",
         "previewLoading": "正在读取预览数据...",
         "previewEmpty": "暂无可预览数据",
@@ -321,6 +318,10 @@
           "syncing": "同步中…",
           "syncUnavailable": "云端来源信息不完整，请从云空间重新导入",
           "openInCloud": "在云空间中查看"
+        },
+        "tabs": {
+          "config": "配置",
+          "data": "数据"
         }
       },
       "status": {
@@ -334,7 +335,6 @@
         "createTask": "基于此表创建任务"
       },
       "sources": {
-        "all": "全部来源",
         "excel": "Excel",
         "csv": "CSV",
         "folder": "文件夹",
@@ -419,7 +419,13 @@
         "exportExcel": "Excel 文件 (.xlsx)",
         "exportReport": "生成报告 (HTML)",
         "exportDone": "已导出：{{path}}",
-        "dataMeta": "共 {{rows}} 行 · 数据更新于 {{time}}"
+        "dataMeta": "共 {{rows}} 行 · 数据更新于 {{time}}",
+        "tabs": {
+          "data": "数据",
+          "config": "配置"
+        },
+        "dataLoading": "正在加载数据…",
+        "dataEmpty": "该输出表暂无数据"
       },
       "automation": {
         "title": "自动化动作",

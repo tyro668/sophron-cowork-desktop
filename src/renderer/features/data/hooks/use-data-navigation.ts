@@ -35,14 +35,7 @@ export function useDataNavigation(deps: {
   const clearDataTabNavigation = useAppStore((state) => state.clearDataTabNavigation);
 
   // Stable members only — slice objects are recreated every render.
-  const {
-    setError,
-    setActiveTab,
-    setPendingNavigationTab,
-    setLoadingTab,
-    setSearchQuery,
-    setInputTableSourceFilter,
-  } = ui;
+  const { setError, setActiveTab, setPendingNavigationTab, setLoadingTab, setSearchQuery } = ui;
   const { prependTask, prependOutputTable, setTaskPage, setOutputPage } = dashboard;
   const { setInputTablesLoading, upsertDataset, setTotalInputTableDatasets, setDatasetPage } =
     inputTables;
@@ -122,7 +115,6 @@ export function useDataNavigation(deps: {
           return;
         }
         setFocusedInputTable(inputTable);
-        setInputTableSourceFilter('all');
         upsertDataset(inputTable, false);
         setTotalInputTableDatasets((current) => Math.max(current, 1));
         setDatasetPage(1);
@@ -180,7 +172,6 @@ export function useDataNavigation(deps: {
     setFocusedInputTable,
     setFocusedOutputTable,
     setFocusedTask,
-    setInputTableSourceFilter,
     setInputTablesLoading,
     setLoadingTab,
     setOutputPage,
