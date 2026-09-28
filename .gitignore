@@ -8,6 +8,7 @@ dist-wsl-agent/
 dist-lima-agent/
 dist-mcp/
 release/
+artifacts/
 
 # Bundled Node.js binaries
 resources/node/
