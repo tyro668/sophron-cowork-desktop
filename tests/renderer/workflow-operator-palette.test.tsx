@@ -18,10 +18,17 @@ describe('categorized operator palette', () => {
           name: new RegExp(i18n.t(`data.workflow.operatorCategories.${category}`)),
         });
       expect(within(group('input_output')).getAllByRole('button')).toHaveLength(3);
-      expect(within(group('data_transform')).getAllByRole('button')).toHaveLength(17);
-      expect(within(group('advanced_compute')).getAllByRole('button')).toHaveLength(2);
+      expect(within(group('data_transform')).getAllByRole('button')).toHaveLength(11);
+      // Advanced compute starts collapsed — expand it before asserting members.
+      const advancedGroup = group('advanced_compute');
+      const advancedHeading = within(advancedGroup).getByRole('button', {
+        name: new RegExp(i18n.t('data.workflow.operatorCategories.advanced_compute')),
+      });
+      expect(advancedHeading.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(advancedHeading);
+      expect(within(advancedGroup).getAllByRole('button')).toHaveLength(8);
       expect(
-        within(group('advanced_compute')).getByRole('button', {
+        within(advancedGroup).getByRole('button', {
           name: `SQL — ${i18n.t('data.workflow.addOperatorToCanvas')}`,
         })
       ).toBeTruthy();

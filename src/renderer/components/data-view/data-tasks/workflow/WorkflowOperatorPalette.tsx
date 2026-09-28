@@ -13,10 +13,12 @@ export function WorkflowOperatorPalette({
 }) {
   const { t } = useTranslation();
   const id = useId();
-  const [collapsed, setCollapsed] = useState<Partial<Record<OperatorCategory, boolean>>>({});
+  const [collapsed, setCollapsed] = useState<Partial<Record<OperatorCategory, boolean>>>({
+    advanced_compute: true,
+  });
 
   return (
-    <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl p-2">
+    <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border-subtle bg-surface p-2">
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {OPERATOR_CATALOG_GROUPS.map(({ category, operators }) => {
           const expanded = !collapsed[category];

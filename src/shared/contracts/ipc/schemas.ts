@@ -686,6 +686,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       model: strNullish,
       reuseTaskId: strNullish,
       currentVersion: numNullish,
+      startFromNodeId: strNullish,
+      workflow: dataWorkflowSaveInput.nullish(),
     }),
   ],
   'data.analyzeTaskRequirement': [
@@ -696,6 +698,9 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       usageTraceId: strOpt,
       modelConfigSetId: strNullish,
       model: strNullish,
+      reuseTaskId: strNullish,
+      startFromNodeId: strNullish,
+      workflow: dataWorkflowSaveInput.nullish(),
     }),
   ],
   'data.previewInputTableNormalizerVersion': [

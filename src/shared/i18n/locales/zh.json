@@ -553,6 +553,7 @@
       "noNodeSelected": "选择一个节点后配置会显示在这里。",
       "emptyCanvas": "从左侧拖拽算子到画布开始构建流程。",
       "selectedOperator": "已选择 {{count}} 个{{name}}",
+      "selectedOperators": "已选择 {{count}} 个算子",
       "noOperatorSelected": "未选择算子",
       "configureSelected": "配置",
       "copySelected": "复制",
@@ -560,6 +561,9 @@
       "enableSelected": "启用",
       "deleteSelected": "删除",
       "deleteOperatorConfirm": "确认删除算子“{{name}}”？删除后会同时移除相关连线。",
+      "deleteOperatorsConfirm": "确认删除选中的 {{count}} 个算子？删除后会同时移除相关连线。",
+      "tidyLayout": "规整",
+      "tidyLayoutHint": "按数据流向自动整理画布算子布局",
       "copySuffix": "副本",
       "collapseCanvasToolbar": "收起画布工具栏",
       "expandCanvasToolbar": "展开画布工具栏",
@@ -1464,6 +1468,7 @@
       "aiInputBound": "将基于输入表「{{name}}」生成",
       "aiInputMissing": "先在输入节点绑定输入表，或先应用起始模板",
       "aiReplaceWarning": "生成将替换当前画布上的流程；未保存的修改会丢失。",
+      "aiAnchorHint": "将以所选算子「{{name}}」为起点继续生成，新算子接入现有流程，不会覆盖画布。",
       "aiRequirementPlaceholder": "描述想要的处理流程，例如：筛选金额大于 0 的记录，按地区汇总销售额。",
       "aiStatusSupported": "可生成",
       "aiStatusAmbiguous": "需确认",
@@ -1494,7 +1499,10 @@
       "runErrorNodeHint": "点击选中该节点并打开配置",
       "runErrorFields": "可用字段",
       "runErrorSuggestion": "是否想用「{{field}}」？",
-      "runErrorDetails": "技术详情"
+      "runErrorDetails": "技术详情",
+      "aiFollowUpPlaceholder": "补充说明或逐项回答上面的问题，例如：region 就是省份",
+      "aiReanalyze": "发送并重新分析",
+      "aiStartOver": "重新开始"
     },
     "relative": {
       "today": "今天",

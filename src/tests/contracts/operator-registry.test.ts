@@ -37,10 +37,21 @@ const VALID_OUTPUT_HANDLES = new Set(['output', 'reject']);
 describe('shared operator registry', () => {
   it('partitions operators into IO, transforms and advanced compute', () => {
     expect(OPERATOR_CATEGORIES).toEqual(['input_output', 'data_transform', 'advanced_compute']);
+    const ADVANCED_COMPUTE_TYPES = [
+      'sql_query',
+      'deduplicate',
+      'missing_value',
+      'pivot',
+      'unpivot',
+      'unnest',
+      'expect',
+    ];
     expect(OPERATOR_GROUPS.map(({ operatorTypes }) => operatorTypes)).toEqual([
       ['input_source', 'output'],
-      OPERATOR_TYPES.filter((type) => !['input_source', 'output', 'sql_query'].includes(type)),
-      ['sql_query'],
+      OPERATOR_TYPES.filter(
+        (type) => !['input_source', 'output', ...ADVANCED_COMPUTE_TYPES].includes(type)
+      ),
+      ADVANCED_COMPUTE_TYPES,
     ]);
     expect(OPERATOR_GROUPS.flatMap(({ operatorTypes }) => operatorTypes).sort()).toEqual(ALL_TYPES);
   });

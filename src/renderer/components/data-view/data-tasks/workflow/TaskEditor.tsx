@@ -11,6 +11,7 @@ import {
   Save,
   Sparkles,
   Upload,
+  Waypoints,
   Workflow,
   X,
 } from 'lucide-react';
@@ -60,6 +61,7 @@ import {
   removeWorkflowNode,
   synchronizeRightInputConfigs,
 } from './workflow-graph-operations';
+import { layoutWorkflowNodes } from './workflow-layout';
 import {
   getWorkflowSaveInputSignature,
   getWorkflowUpstreamSignature,
@@ -102,6 +104,7 @@ export function TaskEditor({
     null
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [activeInspectorTab, setActiveInspectorTab] = useState<WorkflowInspectorTab>('config');
   const [saving, setSaving] = useState(false);
   const [renamingTask, setRenamingTask] = useState(false);
@@ -116,11 +119,13 @@ export function TaskEditor({
   const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [explainDialogOpen, setExplainDialogOpen] = useState(false);
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
   const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
   const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
   const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const canvasViewportSizeRef = useRef({ width: 0, height: 0 });
   const skipTaskTitleSaveRef = useRef(false);
   // A create flow mounts the editor already in title-edit mode; the reset
   // effect below must not cancel that on the first run.
@@ -134,6 +139,9 @@ export function TaskEditor({
       setWorkflow(nextWorkflow);
       setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
       setLoadedWorkflowInput(toWorkflowSaveInput(nextWorkflow));
+      setSelectedNodeIds((current) =>
+        current.length > 0 ? current : nextWorkflow.nodes[0] ? [nextWorkflow.nodes[0].id] : []
+      );
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
@@ -288,6 +296,29 @@ export function TaskEditor({
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
   );
+  // The effective selection: the user's multi-select set, or the single
+  // resolved node when nothing is multi-selected.
+  const selectionTargets = useMemo(
+    () =>
+      selectedNodeIds.length > 0
+        ? nodes.filter((node) => selectedNodeIds.includes(node.id))
+        : selectedNode
+          ? [selectedNode]
+          : [],
+    [nodes, selectedNodeIds, selectedNode]
+  );
+  const selectionIdSet = useMemo(
+    () => new Set(selectionTargets.map((node) => node.id)),
+    [selectionTargets]
+  );
+  const selectNodes = useCallback((ids: string[], primaryId?: string | null) => {
+    setSelectedNodeIds(ids);
+    setSelectedNodeId(primaryId ?? ids[ids.length - 1] ?? null);
+  }, []);
+  const selectSingleNode = useCallback((id: string | null) => {
+    setSelectedNodeIds(id ? [id] : []);
+    setSelectedNodeId(id);
+  }, []);
   // Preview staleness compares the current upstream config against the
   // signature stamped on the cache row that produced the preview (persisted,
   // per-node, only updated for nodes that actually materialized). For
@@ -387,7 +418,7 @@ export function TaskEditor({
       const catalog = getOperatorCatalog(type);
       const createdAt = Date.now();
       const id = makeLocalId('node');
-      setSelectedNodeId(id);
+      selectSingleNode(id);
       setWorkflow((current) => {
         if (!current) return current;
         const fallbackPosition = getNextWorkflowNodePosition(current.nodes.length);
@@ -410,7 +441,7 @@ export function TaskEditor({
         };
       });
     },
-    [t, task.id]
+    [selectSingleNode, t, task.id]
   );
 
   /**
@@ -427,7 +458,7 @@ export function TaskEditor({
       const id = makeLocalId('node');
       const ports = getOperatorDefinition(type)?.ports ?? { inputs: ['input'], outputs: [] };
       const primaryInput = ports.inputs[0];
-      setSelectedNodeId(id);
+      selectSingleNode(id);
       setActiveInspectorTab('config');
       setWorkflow((current) => {
         if (!current) return current;
@@ -530,7 +561,7 @@ export function TaskEditor({
         return next;
       });
     },
-    [selectedNode, t, task.id]
+    [selectedNode, selectSingleNode, t, task.id]
   );
 
   // Empty-canvas starter: input → SQL → output as an unsaved draft so the
@@ -549,11 +580,32 @@ export function TaskEditor({
           output: t(getOperatorCatalog('output').labelKey),
         },
       });
-      setSelectedNodeId(graph.nodes[1]?.id ?? null);
+      selectSingleNode(graph.nodes[1]?.id ?? null);
       setActiveInspectorTab('config');
       return { ...current, nodes: graph.nodes, edges: graph.edges };
     });
-  }, [boundInputTable, t, task.id, task.name]);
+  }, [boundInputTable, selectSingleNode, t, task.id, task.name]);
+
+  /**
+   * Auto-layout: relayers the whole canvas (wrapping rows to the pane width so
+   * the flow reads at 100% zoom), then lets RF refit the viewport — fitView's
+   * maxZoom cap keeps 100% whenever the wrapped layout already fits.
+   */
+  const tidyCanvas = useCallback(() => {
+    setWorkflow((current) =>
+      current
+        ? {
+            ...current,
+            nodes: layoutWorkflowNodes(
+              current.nodes,
+              current.edges,
+              canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
+            ),
+          }
+        : current
+    );
+    setLayoutEpoch((current) => current + 1);
+  }, []);
 
   const moveNode = useCallback((nodeId: string, x: number, y: number) => {
     setWorkflow((current) => {
@@ -643,19 +695,20 @@ export function TaskEditor({
           }
         : current
     );
-    setSelectedNodeId(id);
+    selectSingleNode(id);
     setActiveInspectorTab('config');
-  }, [selectedNode, t, task.id]);
+  }, [selectedNode, selectSingleNode, t, task.id]);
 
   const toggleSelectedNodeDisabled = useCallback(() => {
-    if (!selectedNode) return;
-    const nextDisabled = selectedNode.config.disabled !== true;
+    if (selectionTargets.length === 0) return;
+    // Any enabled target → disable the whole set; all disabled → re-enable all.
+    const nextDisabled = selectionTargets.some((node) => node.config.disabled !== true);
     setWorkflow((current) => {
       if (!current) return current;
       return {
         ...current,
         nodes: current.nodes.map((node) => {
-          if (node.id !== selectedNode.id) return node;
+          if (!selectionIdSet.has(node.id)) return node;
           const nextConfig = { ...node.config };
           if (nextDisabled) {
             nextConfig.disabled = true;
@@ -670,17 +723,24 @@ export function TaskEditor({
         }),
       };
     });
-  }, [selectedNode]);
+  }, [selectionIdSet, selectionTargets]);
 
   const deleteSelectedNode = useCallback(async () => {
-    if (!selectedNode) return;
+    if (selectionTargets.length === 0) return;
     const confirmed = await confirmDelete({
-      message: t('data.workflow.deleteOperatorConfirm', { name: selectedNode.label }),
+      message:
+        selectionTargets.length === 1
+          ? t('data.workflow.deleteOperatorConfirm', { name: selectionTargets[0].label })
+          : t('data.workflow.deleteOperatorsConfirm', { count: selectionTargets.length }),
     });
     if (!confirmed) return;
-    setWorkflow((current) => (current ? removeWorkflowNode(current, selectedNode.id) : current));
-    setSelectedNodeId((current) => (current === selectedNode.id ? null : current));
-  }, [confirmDelete, selectedNode, t]);
+    setWorkflow((current) => {
+      if (!current) return current;
+      return selectionTargets.reduce((next, node) => removeWorkflowNode(next, node.id), current);
+    });
+    setSelectedNodeIds((current) => current.filter((id) => !selectionIdSet.has(id)));
+    setSelectedNodeId((current) => (current && selectionIdSet.has(current) ? null : current));
+  }, [confirmDelete, selectionIdSet, selectionTargets, t]);
 
   /**
    * Runs the shared plan validation (graph + propagated schemas) and marks the
@@ -710,14 +770,14 @@ export function TaskEditor({
         setPlanErrorNodeIds(canvasIds);
         const firstError = diagnostics.find((item) => item.severity === 'error');
         if (firstError && canvasIds.size > 0) {
-          setSelectedNodeId([...canvasIds][0]);
+          selectSingleNode([...canvasIds][0]);
         }
         return firstError?.message ?? null;
       } catch {
         return null;
       }
     },
-    [nodes, task.id]
+    [nodes, selectSingleNode, task.id]
   );
 
   const saveWorkflow = useCallback(async (): Promise<DataTaskWorkflow | null> => {
@@ -732,13 +792,17 @@ export function TaskEditor({
         current && getWorkflowSaveInputSignature(current) !== submittedSignature ? current : saved
       );
       setSavedWorkflowSignature(savedSignature);
-      setSelectedNodeId((current) => {
+      const remapSavedId = (current: string | null): string | null => {
         if (!current) return saved.nodes[0]?.id ?? null;
         return (
           saved.nodes.find((node) => node.id === current || node.id.endsWith(`__${current}`))?.id ??
           current
         );
-      });
+      };
+      setSelectedNodeId(remapSavedId);
+      setSelectedNodeIds(
+        (current) => current.map((id) => remapSavedId(id) ?? id).filter(Boolean) as string[]
+      );
       await onWorkflowSaved();
       return saved;
     } catch (err) {
@@ -853,12 +917,15 @@ export function TaskEditor({
     return ids;
   }, [nodes, configIssuesVisible, planErrorNodeIds]);
 
-  const flagIncompleteNodes = useCallback((nodeList: DataWorkflowNode[]): string | null => {
-    const firstInvalid = nodeList.find((node) => incompleteConfigMessageKey(node));
-    setConfigIssuesVisible(Boolean(firstInvalid));
-    if (firstInvalid) setSelectedNodeId(firstInvalid.id);
-    return firstInvalid ? incompleteConfigMessageKey(firstInvalid) : null;
-  }, []);
+  const flagIncompleteNodes = useCallback(
+    (nodeList: DataWorkflowNode[]): string | null => {
+      const firstInvalid = nodeList.find((node) => incompleteConfigMessageKey(node));
+      setConfigIssuesVisible(Boolean(firstInvalid));
+      if (firstInvalid) selectSingleNode(firstInvalid.id);
+      return firstInvalid ? incompleteConfigMessageKey(firstInvalid) : null;
+    },
+    [selectSingleNode]
+  );
 
   const validateWorkflowBeforeRun = useCallback(() => {
     if (!workflowSaveInput) return false;
@@ -1042,7 +1109,7 @@ export function TaskEditor({
       }
       setLocalError(null);
       setWorkflow(nextWorkflow);
-      setSelectedNodeId(nodeId);
+      selectSingleNode(nodeId);
       const planError = await flagPlanDiagnostics(toWorkflowSaveInput(nextWorkflow));
       if (planError) {
         setLocalError(planError);
@@ -1055,7 +1122,7 @@ export function TaskEditor({
       });
       setNodeDataRefreshVersion((current) => current + 1);
     },
-    [onRun, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics]
+    [onRun, selectSingleNode, t, task, workflow, flagIncompleteNodes, flagPlanDiagnostics]
   );
 
   const openImportDsl = useCallback(() => {
@@ -1139,7 +1206,7 @@ export function TaskEditor({
         nodes: nextNodes,
         edges: nextEdges,
       });
-      setSelectedNodeId(nextNodes[0]?.id ?? null);
+      selectSingleNode(nextNodes[0]?.id ?? null);
       closeDslDialog();
       setLocalError(null);
       return;
@@ -1148,7 +1215,7 @@ export function TaskEditor({
       diagnostics.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n') ||
         t('data.workflow.dslInvalid')
     );
-  }, [closeDslDialog, dslText, t, task.id, workflow]);
+  }, [closeDslDialog, dslText, selectSingleNode, t, task.id, workflow]);
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
@@ -1211,6 +1278,16 @@ export function TaskEditor({
           </Button>
           <Button
             variant="secondary"
+            onClick={tidyCanvas}
+            disabled={isBusy || nodes.length === 0}
+            className="px-3 text-xs shadow-soft"
+            title={t('data.workflow.tidyLayoutHint')}
+          >
+            <Waypoints className="h-3.5 w-3.5" />
+            {t('data.workflow.tidyLayout')}
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
             className="px-3 text-xs shadow-soft"
@@ -1270,13 +1347,13 @@ export function TaskEditor({
       </div>
 
       {!workflow ? (
-        <div className="m-3 flex flex-1 min-h-0 items-center justify-center rounded-xl border border-border-muted bg-surface text-xs text-text-muted shadow-card">
+        <div className="flex flex-1 min-h-0 items-center justify-center bg-surface text-xs text-text-muted">
           {t('common.loading')}
         </div>
       ) : (
-        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3 p-3">
+        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch">
           <WorkflowOperatorPalette onAddOperator={addOperatorAfterSelected} />
-          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
+          <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px]">
             {/* grid + stretch keeps WorkflowCanvas at the full row height so the
                 empty-state overlay can anchor absolute to this wrapper */}
             <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)]">
@@ -1284,8 +1361,13 @@ export function TaskEditor({
                 nodes={nodes}
                 edges={edges}
                 invalidNodeIds={invalidNodeIds}
-                selectedNodeId={selectedNode?.id ?? null}
-                onSelectNode={setSelectedNodeId}
+                selectedNodeIds={selectionTargets.map((node) => node.id)}
+                primaryNodeId={selectedNode?.id ?? null}
+                layoutEpoch={layoutEpoch}
+                onViewportSizeChange={(size) => {
+                  canvasViewportSizeRef.current = size;
+                }}
+                onSelectionChange={selectNodes}
                 onDuplicateNode={duplicateSelectedNode}
                 onToggleNodeDisabled={toggleSelectedNodeDisabled}
                 onDeleteNode={deleteSelectedNode}
@@ -1355,7 +1437,7 @@ export function TaskEditor({
                   lastRunFailure?.at ?? ''
                 }`}
                 onSelectNode={(id) => {
-                  setSelectedNodeId(id);
+                  selectSingleNode(id);
                   setActiveInspectorTab('config');
                 }}
                 firstZeroOutputNode={firstZeroOutputNode}
@@ -1383,6 +1465,12 @@ export function TaskEditor({
         open={aiDialogOpen}
         taskId={task.id}
         boundInputTable={boundInputTable}
+        anchorNode={
+          selectionIdSet.size === 1
+            ? (nodes.find((node) => node.id === selectedNode?.id) ?? null)
+            : null
+        }
+        draftWorkflow={workflowSaveInput}
         hasExistingNodes={nodes.length > 0}
         isCanvasDirty={isWorkflowDirty}
         onApplied={async () => {
@@ -1431,7 +1519,7 @@ export function TaskEditor({
                         variant="secondary"
                         size="sm"
                         onClick={() => {
-                          setSelectedNodeId(failedExpectRun.node!.id);
+                          selectSingleNode(failedExpectRun.node!.id);
                           setActiveInspectorTab('data');
                         }}
                         className="h-7 text-[11px]"

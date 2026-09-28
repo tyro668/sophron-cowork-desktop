@@ -344,7 +344,7 @@ export function WorkflowInspector({
 
   if (!node) {
     return (
-      <aside className="glass-card min-h-0 overflow-y-auto rounded-xl p-3 text-xs text-text-muted">
+      <aside className="min-h-0 overflow-y-auto border-t border-border-subtle bg-surface p-3 text-xs text-text-muted">
         {t('data.workflow.noNodeSelected')}
       </aside>
     );
@@ -368,7 +368,7 @@ export function WorkflowInspector({
       ];
 
   return (
-    <aside className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
+    <aside className="flex min-h-0 flex-col overflow-hidden border-t border-border-subtle bg-surface">
       <Tabs
         value={resolvedTab}
         onValueChange={(v) => onActiveTabChange(v as WorkflowInspectorTab)}

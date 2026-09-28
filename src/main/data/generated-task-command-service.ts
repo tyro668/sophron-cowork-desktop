@@ -1,6 +1,12 @@
 import { randomUUID } from 'crypto';
 import { exportPrepWorkflowDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
-import type { DataAutomationColumnSnapshot, DataCleaningTask } from '../../shared/contracts';
+import type {
+  DataAutomationColumnSnapshot,
+  DataCleaningTask,
+  DataColumnTypeInfo,
+  DataInputTablePreview,
+  DataWorkflowNodeInput,
+} from '../../shared/contracts';
 import type { DataTaskStore } from './data-task-store';
 import type { DataTaskLlmUsageRecorder } from './data-task-llm-usage-recorder';
 import {
@@ -26,10 +32,14 @@ import {
   nextGeneratedTaskVersion,
   normalizeOptionalName,
   normalizeRequiredName,
+  stringConfigValue,
   summarizeDiagnostics,
   toCommandError,
+  toWorkflowSaveShape,
   type CompiledWorkflowCandidate,
 } from './data-command-utils';
+import { mergeGeneratedChainAfterAnchor } from './workflow/generated-workflow-merge';
+import { scopedWorkflowEntityId } from './store/workflow-model';
 import {
   analyzeDataTaskRequirement,
   compileLoweredWorkflowToPlatformNodes,
@@ -61,6 +71,21 @@ interface GeneratedWorkflowCandidateValidation {
   generated?: GeneratedDataTaskWorkflow;
   candidate?: CompiledWorkflowCandidate;
   compatibilityDsl?: string;
+  /** Output node the generated chain feeds after an anchor merge (null when none). */
+  terminalOutputNodeId?: string | null;
+}
+
+interface GenerationAnchor {
+  taskId: string;
+  /** Draft (or saved) workflow used as the merge base — unsaved canvas edits included. */
+  workflow: WorkflowSaveShape;
+  node: DataWorkflowNodeInput;
+  /** Plan-inferred output schema of the anchor node; drives analysis + generation. */
+  columns: Array<{ name: string; type?: string }>;
+  /** True when the anchor tail is open and the generated output node survives the merge. */
+  keepsGeneratedOutput: boolean;
+  /** Name shown to the generator — the downstream output's name when the merge drops the generated sink. */
+  promptOutputName: string;
 }
 
 export interface GeneratedTaskCommandServiceOptions {
@@ -90,19 +115,31 @@ export class GeneratedTaskCommandService {
       'Processing requirement is required'
     );
     const preparedInput = await this.inputResolver.prepareGeneratedTaskInput(input);
+    const anchor = await this.resolveGenerationAnchor(input);
+    const generationColumns = anchor ? anchor.columns : preparedInput.columnsSnapshot;
     const requirementContract = this.assertAnalysisReceipt(
       input,
       preparedInput.inputTable.id,
-      preparedInput.columnsSnapshot
+      generationColumns
     );
     const displayInputTableName =
       normalizeOptionalName(input.source.tableName) || preparedInput.inputTable.name;
-    const resolvedOutput = await this.outputResolver.resolveGeneratedOutputTable(
-      input.output,
-      displayInputTableName,
-      input.outputConflictPolicy
-    );
-    const outputTable = resolvedOutput.outputTable;
+    // Anchored merges that splice into existing downstream edges (or into an
+    // existing output sink) drop the generated output node — no new output
+    // table is resolved/created in that case.
+    const resolvedOutput =
+      anchor && !anchor.keepsGeneratedOutput
+        ? null
+        : await this.outputResolver.resolveGeneratedOutputTable(
+            input.output,
+            displayInputTableName,
+            input.outputConflictPolicy
+          );
+    const outputTable = resolvedOutput?.outputTable ?? null;
+    const generationOutputName =
+      outputTable?.name ??
+      anchor?.promptOutputName ??
+      `${displayInputTableName || '数据表'}_processed`;
     const reusableTask = await this.resolveReusableGeneratedTask(input.reuseTaskId);
     let createdTaskId: string | undefined;
     let task: DataCleaningTask;
@@ -116,11 +153,13 @@ export class GeneratedTaskCommandService {
                 `${displayInputTableName || '数据表'}_自动处理`
             ),
             sourceInputTableId: preparedInput.inputTable.id,
-            outputTableId: outputTable.id,
+            outputTableId: outputTable?.id,
           })
         ).task;
     } catch (error) {
-      if (resolvedOutput.created) await this.rollbackOutputTable(outputTable.id);
+      if (resolvedOutput?.created && outputTable) {
+        await this.rollbackOutputTable(outputTable.id);
+      }
       throw error;
     }
     if (!reusableTask) createdTaskId = task.id;
@@ -130,7 +169,7 @@ export class GeneratedTaskCommandService {
         typeof input.analysisId === 'string' ? input.analysisId : undefined
       ),
       inputTableId: preparedInput.inputTable.id,
-      outputTableId: outputTable.id,
+      outputTableId: outputTable?.id,
     };
     const onModelUsage = (event: WorkflowModelUsageEvent): void => {
       this.recordWorkflowModelUsage(generationId, task.id, event, usageAttribution);
@@ -140,9 +179,9 @@ export class GeneratedTaskCommandService {
         const repairBudget = createGeneratedWorkflowRepairBudget();
         let generated = await generateDataTaskWorkflowFromRequirement({
           inputTableId: preparedInput.inputTable.id,
-          outputTableName: outputTable.name,
+          outputTableName: generationOutputName,
           requirement: processRequirement,
-          columns: preparedInput.columnsSnapshot,
+          columns: generationColumns,
           requirementContract,
           runtimeConfig: input.runtimeConfig,
           repairBudget,
@@ -153,11 +192,12 @@ export class GeneratedTaskCommandService {
           taskId: task.id,
           inputTableId: preparedInput.inputTable.id,
           inputTableName: preparedInput.inputTable.name,
-          outputTableId: outputTable.id,
-          outputTableName: outputTable.name,
-          outputPhysicalTableName: outputTable.tableName,
-          columns: preparedInput.columnsSnapshot,
+          outputTableId: outputTable?.id,
+          outputTableName: generationOutputName,
+          outputPhysicalTableName: outputTable?.tableName,
+          columns: generationColumns,
           generated,
+          anchor,
         });
         generated = validation.generated ?? generated;
         let compatibilityDsl = validation.compatibilityDsl;
@@ -190,9 +230,9 @@ export class GeneratedTaskCommandService {
           }
           generated = await repairGeneratedWorkflowFromDiagnostics({
             inputTableId: preparedInput.inputTable.id,
-            outputTableName: outputTable.name,
+            outputTableName: generationOutputName,
             requirement: processRequirement,
-            columns: preparedInput.columnsSnapshot,
+            columns: generationColumns,
             requirementContract,
             runtimeConfig: input.runtimeConfig,
             failedJavascriptSource: generated.javascriptSource,
@@ -205,11 +245,12 @@ export class GeneratedTaskCommandService {
             taskId: task.id,
             inputTableId: preparedInput.inputTable.id,
             inputTableName: preparedInput.inputTable.name,
-            outputTableId: outputTable.id,
-            outputTableName: outputTable.name,
-            outputPhysicalTableName: outputTable.tableName,
-            columns: preparedInput.columnsSnapshot,
+            outputTableId: outputTable?.id,
+            outputTableName: generationOutputName,
+            outputPhysicalTableName: outputTable?.tableName,
+            columns: generationColumns,
             generated,
+            anchor,
           });
           generated = validation.generated ?? generated;
           compatibilityDsl = validation.compatibilityDsl;
@@ -229,18 +270,34 @@ export class GeneratedTaskCommandService {
           );
         }
         await this.store.saveTaskWorkflow(task.id, validation.candidate.workflow);
+        // When the generated output node was dropped by the anchor merge, the
+        // chain feeds an existing output sink — surface its binding instead.
+        const terminalOutput = validation.terminalOutputNodeId
+          ? validation.candidate.workflow.nodes.find(
+              (node) => node.id === validation.terminalOutputNodeId
+            )
+          : undefined;
+        const terminalOutputTableId =
+          outputTable?.id ??
+          stringConfigValue(terminalOutput?.config?.outputDatasetId) ??
+          stringConfigValue(terminalOutput?.config?.outputTableId) ??
+          '';
+        const terminalOutputTableName =
+          outputTable?.name ??
+          stringConfigValue(terminalOutput?.config?.outputTableName) ??
+          generationOutputName;
         return {
           taskId: task.id,
           taskName: task.name,
-          outputTableId: outputTable.id,
-          outputTableName: outputTable.name,
+          outputTableId: terminalOutputTableId,
+          outputTableName: terminalOutputTableName,
           ...(compatibilityDsl ? { workflowDsl: compatibilityDsl } : {}),
           workflowDslAvailable: Boolean(compatibilityDsl),
           requiredColumns: generated.requiredColumns,
           expectedOutputSchema: generated.expectedOutputSchema,
           lineage: generated.lineage,
-          columnsSnapshot: preparedInput.columnsSnapshot,
-          sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
+          columnsSnapshot: generationColumns,
+          sourceSummaryHash: hashColumns(generationColumns),
           workflowHash: hashWorkflowGraph(validation.candidate.workflow),
           version: nextGeneratedTaskVersion(input.currentVersion),
           generatedAt: Date.now(),
@@ -254,7 +311,7 @@ export class GeneratedTaskCommandService {
           });
         });
       }
-      if (resolvedOutput.created) await this.rollbackOutputTable(outputTable.id);
+      if (resolvedOutput?.created && outputTable) await this.rollbackOutputTable(outputTable.id);
       throw error;
     }
   }
@@ -268,9 +325,11 @@ export class GeneratedTaskCommandService {
       'Processing requirement is required'
     );
     const preparedInput = await this.inputResolver.prepareGeneratedTaskInput(input);
+    const anchor = await this.resolveGenerationAnchor(input);
+    const analysisColumns = anchor ? anchor.columns : preparedInput.columnsSnapshot;
     const analysis = await analyzeDataTaskRequirement({
       requirement: processRequirement,
-      columns: preparedInput.columnsSnapshot,
+      columns: analysisColumns,
       runtimeConfig: input.runtimeConfig,
       signal: input.signal,
       onModelUsage: (result) => {
@@ -290,8 +349,8 @@ export class GeneratedTaskCommandService {
       ...analysis,
       inputTableId: preparedInput.inputTable.id,
       inputTableName: preparedInput.inputTable.name,
-      columnsSnapshot: preparedInput.columnsSnapshot,
-      sourceSummaryHash: hashColumns(preparedInput.columnsSnapshot),
+      columnsSnapshot: analysisColumns,
+      sourceSummaryHash: hashColumns(analysisColumns),
       capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
     };
     const receipt = this.analysisReceipts.create({
@@ -305,6 +364,95 @@ export class GeneratedTaskCommandService {
       capabilityProfileVersion: result.capabilityProfileVersion,
     });
     return { ...result, analysisId: receipt.id, expiresAt: receipt.expiresAt };
+  }
+
+  /**
+   * Resolves the selected canvas node that generation continues from. When set,
+   * the generated ops are spliced after this node (instead of replacing the
+   * workflow) and the model sees the node's plan-inferred output schema as the
+   * "input" columns.
+   */
+  private async resolveGenerationAnchor(
+    input: Pick<GenerateTaskFromRequirementCommand, 'reuseTaskId' | 'startFromNodeId' | 'workflow'>
+  ): Promise<GenerationAnchor | null> {
+    const startFromNodeId = normalizeOptionalName(input.startFromNodeId);
+    if (!startFromNodeId) return null;
+    const taskId = normalizeRequiredName(
+      input.reuseTaskId ?? '',
+      'Anchored generation requires an existing task (reuseTaskId)'
+    );
+    const workflow: WorkflowSaveShape = input.workflow?.nodes?.length
+      ? input.workflow
+      : toWorkflowSaveShape(await this.store.getTaskWorkflow(taskId));
+    const node = workflow.nodes.find((item) => item.id === startFromNodeId);
+    if (!node) {
+      throw new DataCommandError(
+        'VALIDATION_FAILED',
+        `Cannot find workflow node "${startFromNodeId}" to anchor generation`
+      );
+    }
+    let columnTypes: DataColumnTypeInfo[] = [];
+    try {
+      columnTypes = await this.store.getWorkflowNodeColumnTypes({
+        taskId,
+        nodeId: node.id,
+        nodeType: node.type,
+        nodeConfig: node.config,
+        workflow,
+      });
+    } catch (error) {
+      logDataCommandFallback('Failed to infer anchor node columns for generation', error, {
+        taskId,
+        nodeId: node.id,
+      });
+    }
+    const columns = columnTypes
+      .map((column) => ({ name: column.name, type: column.storageType || column.type }))
+      .filter((column) => Boolean(column.name));
+    const outgoing = workflow.edges.filter(
+      (edge) =>
+        edge.sourceNodeId === node.id && (!edge.sourceHandle || edge.sourceHandle === 'output')
+    );
+    return {
+      taskId,
+      workflow,
+      node,
+      columns,
+      keepsGeneratedOutput: node.type !== 'output' && outgoing.length === 0,
+      promptOutputName:
+        findDownstreamOutputName(workflow, node, outgoing) ??
+        `${normalizeOptionalName(node.label) || 'result'}_processed`,
+    };
+  }
+
+  /** Preview the specific output sink the generated chain feeds after a merge. */
+  private async previewGeneratedOutput(
+    taskId: string,
+    task: DataCleaningTask,
+    workflow: WorkflowSaveShape,
+    terminalOutputNodeId: string | null
+  ): Promise<DataInputTablePreview | undefined> {
+    const terminalNode = terminalOutputNodeId
+      ? workflow.nodes.find((node) => node.id === terminalOutputNodeId)
+      : undefined;
+    if (terminalNode) {
+      try {
+        return await this.store.previewWorkflowNode({
+          taskId,
+          nodeId: terminalNode.id,
+          nodeType: 'output',
+          nodeConfig: terminalNode.config,
+          limit: 20,
+        });
+      } catch (error) {
+        logDataCommandFallback(
+          'Terminal output preview failed; falling back to task output preview',
+          error,
+          { taskId, nodeId: terminalNode.id }
+        );
+      }
+    }
+    return this.preview.previewTaskOutput(taskId, task, 20, workflow);
   }
 
   private assertAnalysisReceipt(
@@ -377,11 +525,12 @@ export class GeneratedTaskCommandService {
     taskId: string;
     inputTableId: string;
     inputTableName: string;
-    outputTableId: string;
+    outputTableId?: string;
     outputTableName: string;
-    outputPhysicalTableName: string;
+    outputPhysicalTableName?: string;
     columns: DataAutomationColumnSnapshot[];
     generated: GeneratedDataTaskWorkflow;
+    anchor?: GenerationAnchor | null;
   }): Promise<GeneratedWorkflowCandidateValidation> {
     const contractDiagnostics = normalizeWorkflowFailureDiagnostics(
       validateGeneratedWorkflowGenerationContract(input.generated, input.columns),
@@ -397,6 +546,7 @@ export class GeneratedTaskCommandService {
 
     let candidate: CompiledWorkflowCandidate;
     let canonicalGenerated: GeneratedDataTaskWorkflow;
+    let terminalOutputNodeId: string | null = null;
     try {
       const plan = compileLoweredWorkflowToPlatformNodes({
         semantics: input.generated,
@@ -409,10 +559,28 @@ export class GeneratedTaskCommandService {
           outputMode: 'replace',
         },
       });
-      const workflow = { nodes: plan.nodes, edges: plan.edges };
+      let workflow = { nodes: plan.nodes, edges: plan.edges };
+      let operationNodeOrigins = plan.operationNodeOrigins;
+      if (input.anchor) {
+        // Anchor mode: splice the generated ops into the draft workflow at the
+        // selected node — the plan's standalone input/output boundary nodes are
+        // dropped or rebound inside the merge.
+        const merged = mergeGeneratedChainAfterAnchor(
+          input.anchor.workflow,
+          input.anchor.node.id,
+          { nodes: plan.nodes, edges: plan.edges },
+          (id) => scopedWorkflowEntityId(input.anchor!.taskId, id)
+        );
+        workflow = { nodes: merged.nodes, edges: merged.edges };
+        terminalOutputNodeId = merged.terminalOutputNodeId;
+        operationNodeOrigins = plan.operationNodeOrigins.map((origin) => ({
+          ...origin,
+          nodeId: merged.nodeIdMap.get(origin.nodeId) ?? origin.nodeId,
+        }));
+      }
       canonicalGenerated = {
         ...input.generated,
-        operationOrigins: plan.operationNodeOrigins,
+        operationOrigins: operationNodeOrigins,
         requiredColumns: plan.requiredColumns,
         expectedOutputSchema: plan.expectedOutputSchema,
         lineage: plan.lineage,
@@ -445,11 +613,11 @@ export class GeneratedTaskCommandService {
       });
       const temporaryRun: RunTaskResult = {
         task: temporaryExecution.task,
-        preview: await this.preview.previewTaskOutput(
+        preview: await this.previewGeneratedOutput(
           input.taskId,
           temporaryExecution.task,
-          20,
-          candidate.workflow
+          candidate.workflow,
+          terminalOutputNodeId
         ),
         diagnostics: temporaryExecution.diagnostics,
         nodeStats: temporaryExecution.nodeStats,
@@ -482,6 +650,7 @@ export class GeneratedTaskCommandService {
         ),
         candidate,
         compatibilityDsl,
+        terminalOutputNodeId,
         diagnostics: [...nodeDiagnostics, ...executionDiagnostics, ...outputSchemaDiagnostics],
       };
     } catch (error) {
@@ -607,4 +776,40 @@ export class GeneratedTaskCommandService {
       });
     });
   }
+}
+
+/** First output-sink name reachable from the anchor through `output` edges. */
+function findDownstreamOutputName(
+  workflow: WorkflowSaveShape,
+  anchor: DataWorkflowNodeInput,
+  anchorOutEdges: WorkflowSaveShape['edges']
+): string | undefined {
+  const nameOf = (node: DataWorkflowNodeInput | undefined) =>
+    node
+      ? stringConfigValue(node.config?.outputTableName) ||
+        stringConfigValue(node.config?.table) ||
+        stringConfigValue(node.config?.outputDatasetId)
+      : '';
+  if (anchor.type === 'output') return nameOf(anchor) || undefined;
+  const byId = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const visited = new Set<string>();
+  const queue = anchorOutEdges.map((edge) => edge.targetNodeId);
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = byId.get(id);
+    if (!node) continue;
+    if (node.type === 'output') return nameOf(node) || undefined;
+    for (const edge of workflow.edges) {
+      if (
+        edge.sourceNodeId === id &&
+        (!edge.sourceHandle || edge.sourceHandle === 'output') &&
+        !visited.has(edge.targetNodeId)
+      ) {
+        queue.push(edge.targetNodeId);
+      }
+    }
+  }
+  return undefined;
 }

@@ -28,6 +28,7 @@ import {
   type NodeChange,
   type OnConnectStartParams,
   useReactFlow,
+  useStore,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Ban, ChevronDown, Copy, Trash2, Workflow } from 'lucide-react';
@@ -77,8 +78,10 @@ export function WorkflowCanvas({
   nodes,
   edges,
   invalidNodeIds,
-  selectedNodeId,
-  onSelectNode,
+  selectedNodeIds,
+  primaryNodeId,
+  layoutEpoch,
+  onSelectionChange,
   onDuplicateNode,
   onToggleNodeDisabled,
   onDeleteNode,
@@ -87,12 +90,17 @@ export function WorkflowCanvas({
   onConnectNodes,
   onReconnectEdge,
   onRemoveEdge,
+  onViewportSizeChange,
 }: {
   nodes: DataWorkflowNode[];
   edges: DataWorkflowEdge[];
   invalidNodeIds?: ReadonlySet<string>;
-  selectedNodeId: string | null;
-  onSelectNode: (id: string) => void;
+  selectedNodeIds: readonly string[];
+  /** Last-clicked node — drives the inspector and the toolbar's icon/label. */
+  primaryNodeId: string | null;
+  /** Bumped by the tidy action — refits the viewport onto the new layout. */
+  layoutEpoch?: number;
+  onSelectionChange: (ids: string[], primaryId: string | null) => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
   onDeleteNode: () => void;
@@ -106,6 +114,8 @@ export function WorkflowCanvas({
   ) => void;
   onReconnectEdge: (edgeId: string, connection: Connection) => void;
   onRemoveEdge: (edgeId: string) => void;
+  /** Reports the RF pane size — the tidy layout wraps rows to fit at 100%. */
+  onViewportSizeChange?: (size: { width: number; height: number }) => void;
 }) {
   return (
     <ReactFlowProvider>
@@ -113,8 +123,10 @@ export function WorkflowCanvas({
         nodes={nodes}
         edges={edges}
         invalidNodeIds={invalidNodeIds}
-        selectedNodeId={selectedNodeId}
-        onSelectNode={onSelectNode}
+        selectedNodeIds={selectedNodeIds}
+        primaryNodeId={primaryNodeId}
+        layoutEpoch={layoutEpoch}
+        onSelectionChange={onSelectionChange}
         onDuplicateNode={onDuplicateNode}
         onToggleNodeDisabled={onToggleNodeDisabled}
         onDeleteNode={onDeleteNode}
@@ -123,6 +135,7 @@ export function WorkflowCanvas({
         onConnectNodes={onConnectNodes}
         onReconnectEdge={onReconnectEdge}
         onRemoveEdge={onRemoveEdge}
+        onViewportSizeChange={onViewportSizeChange}
       />
     </ReactFlowProvider>
   );
@@ -132,8 +145,10 @@ function WorkflowCanvasContent({
   nodes,
   edges,
   invalidNodeIds,
-  selectedNodeId,
-  onSelectNode,
+  selectedNodeIds,
+  primaryNodeId,
+  layoutEpoch,
+  onSelectionChange,
   onDuplicateNode,
   onToggleNodeDisabled,
   onDeleteNode,
@@ -142,12 +157,15 @@ function WorkflowCanvasContent({
   onConnectNodes,
   onReconnectEdge,
   onRemoveEdge,
+  onViewportSizeChange,
 }: {
   nodes: DataWorkflowNode[];
   edges: DataWorkflowEdge[];
   invalidNodeIds?: ReadonlySet<string>;
-  selectedNodeId: string | null;
-  onSelectNode: (id: string) => void;
+  selectedNodeIds: readonly string[];
+  primaryNodeId: string | null;
+  layoutEpoch?: number;
+  onSelectionChange: (ids: string[], primaryId: string | null) => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
   onDeleteNode: () => void;
@@ -161,21 +179,35 @@ function WorkflowCanvasContent({
   ) => void;
   onReconnectEdge: (edgeId: string, connection: Connection) => void;
   onRemoveEdge: (edgeId: string) => void;
+  onViewportSizeChange?: (size: { width: number; height: number }) => void;
 }) {
   const { t } = useTranslation();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const paneWidth = useStore((state) => state.width);
+  const paneHeight = useStore((state) => state.height);
+  const onViewportSizeChangeRef = useRef(onViewportSizeChange);
+  onViewportSizeChangeRef.current = onViewportSizeChange;
+  useEffect(() => {
+    onViewportSizeChangeRef.current?.({ width: paneWidth, height: paneHeight });
+  }, [paneWidth, paneHeight]);
   const themeSetting = useThemeSetting();
   const systemDarkMode = useSystemDarkMode();
   const colorMode = themeSetting === 'system' ? (systemDarkMode ? 'dark' : 'light') : themeSetting;
   const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId]
+  const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
+  const selectedNodes = useMemo(
+    () => nodes.filter((node) => selectedIdSet.has(node.id)),
+    [nodes, selectedIdSet]
   );
-  const selectedNodeCatalog = selectedNode ? getOperatorCatalog(selectedNode.type) : null;
+  const primaryNode = useMemo(
+    () => nodes.find((node) => node.id === primaryNodeId) ?? selectedNodes[0] ?? null,
+    [nodes, primaryNodeId, selectedNodes]
+  );
+  const selectedNodeCatalog = primaryNode ? getOperatorCatalog(primaryNode.type) : null;
   const SelectedNodeIcon = selectedNodeCatalog?.Icon;
-  const selectedNodeDisabled = selectedNode?.config.disabled === true;
+  const allSelectedDisabled =
+    selectedNodes.length > 0 && selectedNodes.every((node) => node.config.disabled === true);
   const mappedFlowNodes = useMemo<WorkflowFlowNode[]>(
     () =>
       nodes.map((node) => ({
@@ -189,13 +221,13 @@ function WorkflowCanvasContent({
         dragHandle: '.workflow-node-drag-handle',
         draggable: true,
         selectable: true,
-        selected: node.id === selectedNodeId,
+        selected: selectedIdSet.has(node.id),
         data: {
           workflowNode: node,
           invalid: invalidNodeIds?.has(node.id),
         },
       })),
-    [nodes, selectedNodeId, invalidNodeIds]
+    [nodes, selectedIdSet, invalidNodeIds]
   );
   const mappedFlowEdges = useMemo<WorkflowFlowEdge[]>(
     () =>
@@ -231,6 +263,17 @@ function WorkflowCanvasContent({
     setFlowEdges(mappedFlowEdges);
   }, [mappedFlowEdges]);
 
+  // Tidy action bumped the epoch → recenter the viewport onto the new layout.
+  const layoutEpochRef = useRef(layoutEpoch ?? 0);
+  useEffect(() => {
+    if (layoutEpoch === undefined || layoutEpoch === layoutEpochRef.current) return;
+    layoutEpochRef.current = layoutEpoch;
+    const timer = window.setTimeout(() => {
+      void fitView({ padding: 0.15, duration: 250, maxZoom: 1 });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [layoutEpoch, fitView]);
+
   const handleNodesChange = useCallback(
     (changes: NodeChange<WorkflowFlowNode>[]) => {
       let nextGuides = EMPTY_WORKFLOW_ALIGNMENT_GUIDES;
@@ -247,16 +290,17 @@ function WorkflowCanvasContent({
         };
       });
       setAlignmentGuides(nextGuides);
-      for (const change of snappedChanges) {
-        if (change.type === 'select' && change.selected) {
-          onSelectNode(change.id);
-        }
-      }
       const nextNodes = applyNodeChanges(snappedChanges, flowNodesRef.current);
       flowNodesRef.current = nextNodes;
       setFlowNodes(nextNodes);
+      const selectChanges = snappedChanges.filter((change) => change.type === 'select');
+      if (selectChanges.length > 0) {
+        const selectedIds = nextNodes.filter((item) => item.selected).map((item) => item.id);
+        const lastSelected = [...selectChanges].reverse().find((change) => change.selected)?.id;
+        onSelectionChange(selectedIds, lastSelected ?? selectedIds[selectedIds.length - 1] ?? null);
+      }
     },
-    [onSelectNode]
+    [onSelectionChange]
   );
 
   const handleEdgesChange = useCallback((changes: EdgeChange<WorkflowFlowEdge>[]) => {
@@ -273,9 +317,9 @@ function WorkflowCanvasContent({
         connection.sourceHandle ?? 'output',
         connection.targetHandle ?? 'input'
       );
-      onSelectNode(connection.target);
+      onSelectionChange([connection.target], connection.target);
     },
-    [onConnectNodes, onSelectNode]
+    [onConnectNodes, onSelectionChange]
   );
   const handleConnectStart = useCallback(
     (_event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
@@ -356,11 +400,11 @@ function WorkflowCanvasContent({
           connectionStart?.handleId ?? 'output',
           dropTarget.handleId
         );
-        onSelectNode(dropTarget.nodeId);
+        onSelectionChange([dropTarget.nodeId], dropTarget.nodeId);
       }
       setConnectionStart(null);
     },
-    [connectionStart, onConnectNodes, onSelectNode]
+    [connectionStart, onConnectNodes, onSelectionChange]
   );
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -399,15 +443,9 @@ function WorkflowCanvasContent({
     },
     [onMoveNode]
   );
-  const handleNodeClick = useCallback(
-    (_event: ReactMouseEvent, node: WorkflowFlowNode) => {
-      onSelectNode(node.id);
-    },
-    [onSelectNode]
-  );
 
   return (
-    <section className="glass-card flex min-h-0 flex-col overflow-hidden rounded-xl">
+    <section className="flex min-h-0 flex-col overflow-hidden">
       <div className="glass-panel-header flex h-12 shrink-0 items-center justify-between gap-3 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -423,11 +461,18 @@ function WorkflowCanvasContent({
               </span>
             )}
             <span className="truncate text-[13px] font-medium text-text-secondary">
-              {selectedNode
-                ? t('data.workflow.selectedOperator', { count: 1, name: selectedNode.label })
-                : t('data.workflow.noOperatorSelected')}
+              {selectedNodes.length === 0
+                ? t('data.workflow.noOperatorSelected')
+                : selectedNodes.length === 1
+                  ? t('data.workflow.selectedOperator', {
+                      count: 1,
+                      name: (primaryNode ?? selectedNodes[0]).label,
+                    })
+                  : t('data.workflow.selectedOperators', { count: selectedNodes.length })}
             </span>
-            {selectedNode && <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
+            {selectedNodes.length > 0 && (
+              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+            )}
           </div>
 
           {!toolbarCollapsed && (
@@ -437,23 +482,23 @@ function WorkflowCanvasContent({
                 <DataToolbarButton
                   icon={<Copy className="h-3.5 w-3.5" />}
                   label={t('data.workflow.copySelected')}
-                  disabled={!selectedNode}
+                  disabled={!primaryNode}
                   onClick={onDuplicateNode}
                 />
                 <DataToolbarButton
                   icon={<Ban className="h-3.5 w-3.5" />}
                   label={
-                    selectedNodeDisabled
+                    allSelectedDisabled
                       ? t('data.workflow.enableSelected')
                       : t('data.workflow.disableSelected')
                   }
-                  disabled={!selectedNode}
+                  disabled={selectedNodes.length === 0}
                   onClick={onToggleNodeDisabled}
                 />
                 <DataToolbarButton
                   icon={<Trash2 className="h-3.5 w-3.5" />}
                   label={t('data.workflow.deleteSelected')}
-                  disabled={!selectedNode}
+                  disabled={selectedNodes.length === 0}
                   danger
                   onClick={onDeleteNode}
                 />
@@ -491,7 +536,10 @@ function WorkflowCanvasContent({
           onReconnect={handleReconnect}
           onReconnectEnd={handleReconnectEnd}
           onNodeDragStop={handleNodeDragStop}
-          onNodeClick={handleNodeClick}
+          multiSelectionKeyCode={['Shift']}
+          // Deletion goes through the toolbar's confirm flow — RF's built-in
+          // key delete would only ghost-remove nodes from local state.
+          deleteKeyCode={null}
           defaultViewport={WORKFLOW_DEFAULT_VIEWPORT}
           nodesDraggable
           edgesReconnectable

@@ -80,7 +80,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   deduplicate: defineOperator({
     type: 'deduplicate',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: DeduplicateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -88,7 +88,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   missing_value: defineOperator({
     type: 'missing_value',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: MissingValueConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -152,7 +152,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   pivot: defineOperator({
     type: 'pivot',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: PivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -160,7 +160,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   unpivot: defineOperator({
     type: 'unpivot',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: UnpivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -176,7 +176,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   unnest: defineOperator({
     type: 'unnest',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: UnnestConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -184,7 +184,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   expect: defineOperator({
     type: 'expect',
-    category: 'data_transform',
+    category: 'advanced_compute',
     schema: ExpectConfigSchema,
     ports: EXPECT_PORTS,
     compileKind: 'expect',

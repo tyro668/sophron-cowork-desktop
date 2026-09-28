@@ -553,6 +553,7 @@
       "noNodeSelected": "Select a node to configure it here.",
       "emptyCanvas": "Drag operators from the left onto the canvas to start building the flow.",
       "selectedOperator": "Selected {{count}} {{name}}",
+      "selectedOperators": "{{count}} operators selected",
       "noOperatorSelected": "No operator selected",
       "configureSelected": "Config",
       "copySelected": "Copy",
@@ -560,6 +561,9 @@
       "enableSelected": "Enable",
       "deleteSelected": "Delete",
       "deleteOperatorConfirm": "Delete operator \"{{name}}\"? Related edges will also be removed.",
+      "deleteOperatorsConfirm": "Delete the {{count}} selected operators? Related edges will also be removed.",
+      "tidyLayout": "Tidy",
+      "tidyLayoutHint": "Auto-arrange canvas operators along the data flow",
       "copySuffix": "copy",
       "collapseCanvasToolbar": "Collapse canvas toolbar",
       "expandCanvasToolbar": "Expand canvas toolbar",
@@ -1464,6 +1468,7 @@
       "aiInputBound": "Generates from input table \"{{name}}\"",
       "aiInputMissing": "Bind an input table on a source node first, or start from the template",
       "aiReplaceWarning": "Generation replaces the flow on this canvas; unsaved edits will be lost.",
+      "aiAnchorHint": "Generation continues from the selected operator \"{{name}}\" — new operators join the existing flow without replacing the canvas.",
       "aiRequirementPlaceholder": "Describe the pipeline you want, e.g. keep rows with amount > 0, then aggregate sales by region.",
       "aiStatusSupported": "Supported",
       "aiStatusAmbiguous": "Needs review",
@@ -1494,7 +1499,10 @@
       "runErrorNodeHint": "Click to select the node and open its config",
       "runErrorFields": "Available fields",
       "runErrorSuggestion": "Did you mean \"{{field}}\"?",
-      "runErrorDetails": "Technical details"
+      "runErrorDetails": "Technical details",
+      "aiFollowUpPlaceholder": "Add clarification or answer the questions above, e.g. \"region\" means province",
+      "aiReanalyze": "Send & re-analyze",
+      "aiStartOver": "Start over"
     },
     "relative": {
       "today": "Today",

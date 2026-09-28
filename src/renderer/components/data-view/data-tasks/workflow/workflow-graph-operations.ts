@@ -136,14 +136,58 @@ export function removeWorkflowEdge(workflow: DataTaskWorkflow, edgeId: string): 
   });
 }
 
+/**
+ * Removes a node and its edges, then bypasses the main data path: every edge
+ * into the node's `input` handle is reconnected to every node it fed through
+ * its `output` handle (A→B→C deleting B yields A→C). Reject streams and
+ * right-side join inputs are not bypassed — their edges are simply removed.
+ */
 export function removeWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataTaskWorkflow {
   if (!workflow.nodes.some((node) => node.id === nodeId)) return workflow;
+  const inEdges = workflow.edges.filter(
+    (edge) => edge.targetNodeId === nodeId && (edge.targetHandle ?? 'input') === 'input'
+  );
+  const outEdges = workflow.edges.filter(
+    (edge) => edge.sourceNodeId === nodeId && (edge.sourceHandle ?? 'output') === 'output'
+  );
+  const remainingEdges = workflow.edges.filter(
+    (edge) => edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId
+  );
+  const bypassEdges: DataWorkflowEdge[] = [];
+  const usedEdgeIds = new Set(remainingEdges.map((edge) => edge.id));
+  let seq = 0;
+  for (const inEdge of inEdges) {
+    for (const outEdge of outEdges) {
+      if (inEdge.sourceNodeId === outEdge.targetNodeId) continue;
+      const exists = [...remainingEdges, ...bypassEdges].some(
+        (edge) =>
+          edge.sourceNodeId === inEdge.sourceNodeId &&
+          edge.targetNodeId === outEdge.targetNodeId &&
+          (edge.sourceHandle ?? 'output') === (inEdge.sourceHandle ?? 'output') &&
+          (edge.targetHandle ?? 'input') === (outEdge.targetHandle ?? 'input')
+      );
+      if (exists) continue;
+      let id = `edge_${inEdge.sourceNodeId}_${outEdge.targetNodeId}`;
+      while (usedEdgeIds.has(id)) {
+        seq += 1;
+        id = `edge_${inEdge.sourceNodeId}_${outEdge.targetNodeId}_${seq}`;
+      }
+      usedEdgeIds.add(id);
+      bypassEdges.push({
+        id,
+        taskId: workflow.task.id,
+        sourceNodeId: inEdge.sourceNodeId,
+        targetNodeId: outEdge.targetNodeId,
+        sourceHandle: inEdge.sourceHandle ?? 'output',
+        targetHandle: outEdge.targetHandle ?? 'input',
+        createdAt: Date.now(),
+      });
+    }
+  }
   return synchronizeRightInputConfigs({
     ...workflow,
     nodes: workflow.nodes.filter((node) => node.id !== nodeId),
-    edges: workflow.edges.filter(
-      (edge) => edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId
-    ),
+    edges: [...remainingEdges, ...bypassEdges],
   });
 }
 

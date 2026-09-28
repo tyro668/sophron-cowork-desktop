@@ -172,7 +172,14 @@ export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirement
 
 export type AnalyzeTaskRequirementCommand = Pick<
   GenerateTaskFromRequirementCommand,
-  'source' | 'processRequirement' | 'usageTraceId' | 'runtimeConfig' | 'signal'
+  | 'source'
+  | 'processRequirement'
+  | 'usageTraceId'
+  | 'runtimeConfig'
+  | 'signal'
+  | 'reuseTaskId'
+  | 'startFromNodeId'
+  | 'workflow'
 > & {
   /** User message that initiated a tool-driven analysis; used to enforce a later confirmation turn. */
   sourceUserMessageId?: string;

@@ -1402,6 +1402,119 @@ function main() {
     expect(generated.workflowDsl).not.toContain('EU的数据');
   });
 
+  it('anchors generation at the selected node and merges into the existing workflow', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'anchored-market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'anchored market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const first = await service.generateTaskFromRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '过滤掉 Market 为 EU 的数据',
+      output: { location: 'local', writeMode: 'create', tableName: 'anchored result' },
+      runtimeConfig: testRuntimeConfig,
+    });
+    const saved = await store.getTaskWorkflow(first.taskId);
+    const filterNode = saved.nodes.find((node) => node.type === 'filter')!;
+    const outputNode = saved.nodes.find((node) => node.type === 'output')!;
+
+    // Second generation produces a two-step chain (aggregate → filter) — the
+    // internal chain edge must survive the merge or the head operator dead-ends.
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        javascriptSource: asFunctionWorkflow(
+          [
+            'aggregate',
+            '{ groupBy: [expr(row => row["Market"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] }',
+          ],
+          ['filter', '{ condition: expr(row => row["总销售额"] > 100) }']
+        ),
+        requiredColumns: [{ name: 'Market' }, { name: 'Sales' }],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
+    const second = await service.generateTaskFromRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '计算各 Market 总销售额并过滤大于 100 的',
+      output: { location: 'local', writeMode: 'create', tableName: 'anchored second' },
+      runtimeConfig: testRuntimeConfig,
+      reuseTaskId: first.taskId,
+      startFromNodeId: filterNode.id,
+      workflow: {
+        nodes: saved.nodes.map((node) => ({
+          id: node.id,
+          type: node.type,
+          label: node.label,
+          x: node.x,
+          y: node.y,
+          config: node.config,
+        })),
+        edges: saved.edges.map((edge) => ({
+          id: edge.id,
+          sourceNodeId: edge.sourceNodeId,
+          targetNodeId: edge.targetNodeId,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+        })),
+      },
+    });
+
+    const merged = await store.getTaskWorkflow(first.taskId);
+    expect(second.taskId).toBe(first.taskId);
+    // Existing nodes stay; the generated aggregate→filter chain splices in.
+    expect(merged.nodes.map((node) => node.type)).toEqual([
+      'input_source',
+      'filter',
+      'output',
+      'aggregate',
+      'filter',
+    ]);
+    const aggregateNode = merged.nodes.find((node) => node.type === 'aggregate')!;
+    const newFilter = merged.nodes.find(
+      (node) => node.type === 'filter' && node.id !== filterNode.id
+    )!;
+    const pairs = merged.edges.map((edge) => `${edge.sourceNodeId}->${edge.targetNodeId}`);
+    expect(pairs).toContain(`${filterNode.id}->${aggregateNode.id}`);
+    expect(pairs).toContain(`${aggregateNode.id}->${newFilter.id}`);
+    expect(pairs).toContain(`${newFilter.id}->${outputNode.id}`);
+    expect(pairs).not.toContain(`${filterNode.id}->${outputNode.id}`);
+    // The merged tail feeds the existing output sink — no new output table.
+    expect(second.outputTableId).toBe(first.outputTableId);
+  });
+
+  it('rejects anchored generation when the start node is missing', async () => {
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'anchor-missing.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'anchor missing input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const first = await service.generateTaskFromRequirement({
+      source: { location: 'local', tableId: input.inputTable.id },
+      processRequirement: '过滤',
+      output: { location: 'local', writeMode: 'create', tableName: 'anchor missing out' },
+      runtimeConfig: testRuntimeConfig,
+    });
+    await expect(
+      service.generateTaskFromRequirement({
+        source: { location: 'local', tableId: input.inputTable.id },
+        processRequirement: '再过滤',
+        output: { location: 'local', writeMode: 'create' },
+        runtimeConfig: testRuntimeConfig,
+        reuseTaskId: first.taskId,
+        startFromNodeId: 'no_such_node',
+      })
+    ).rejects.toThrow(/Cannot find workflow node/);
+  });
+
   it('saves and runs native generated nodes when compatibility DSL export fails', async () => {
     const exportWorkflowDsl = vi.fn(() => {
       throw new Error('simulated compatibility DSL export failure');

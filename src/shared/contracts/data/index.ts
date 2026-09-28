@@ -594,6 +594,10 @@ export interface DataGenerateTaskFromRequirementInput {
   model?: string | null;
   reuseTaskId?: string | null;
   currentVersion?: number | null;
+  /** Selected canvas node the generated steps continue from; the result merges into the workflow instead of replacing it. */
+  startFromNodeId?: string | null;
+  /** Live canvas draft — supplies the anchor node's output schema and the merge base (unsaved edits included). */
+  workflow?: DataWorkflowSaveInput | null;
 }
 
 export type DataTaskRequirementItemStatus = 'supported' | 'ambiguous' | 'unsupported';
