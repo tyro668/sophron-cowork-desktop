@@ -158,7 +158,8 @@ export class DashboardService {
           `
               SELECT
                 d.*,
-                ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names
+                ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names,
+                ${this.ctx.outputTableRelatedTaskIdsSql('d')} AS related_task_ids
               FROM data_datasets d
               LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
               WHERE ($query = ''

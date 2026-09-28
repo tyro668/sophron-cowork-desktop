@@ -342,7 +342,16 @@ export interface DataInputTableCsvConfig {
   cloudMirror?: {
     automationSyncKey?: string;
     tableId: string;
+    spaceId?: string;
+    projectId?: string;
+    spaceName?: string;
+    projectName?: string;
+    tableKind?: 'base' | 'analysis';
+    tableName?: string;
+    /** Cloud table `updatedAt` captured at the last successful sync. */
     sourceVersion?: string;
+    /** Epoch ms of the last successful cloud import/sync. */
+    syncedAt?: number;
     contentHash: string;
   };
 }
@@ -387,10 +396,29 @@ export interface DataOutputTable {
   rowCount: number;
   columnCount: number;
   relatedTaskNames: string[];
+  relatedTaskIds: string[];
   createdAt: number;
   updatedAt: number;
   /** Legacy metadata, retained only for pre-automation migration compatibility. */
   cloudAction?: CloudOutputAction | null;
+}
+
+/** File export formats supported by `data.exportTable`. */
+export type DataTableExportFormat = 'csv' | 'xlsx' | 'html';
+
+export interface DataExportTableInput {
+  tableKind: 'input' | 'output';
+  id: string;
+  format: DataTableExportFormat;
+  /** Report language ('zh' | 'en'); other formats ignore it. */
+  locale?: string;
+}
+
+export interface DataExportTableResult {
+  success: boolean;
+  path?: string;
+  /** 'cancelled' when the user dismissed the save dialog. */
+  error?: string;
 }
 
 export interface DataDashboardSummary {
@@ -472,6 +500,32 @@ export interface WorkflowNodeRunStat {
   droppedRows?: number;
   rejectedRows?: number;
   sample?: Record<string, unknown>[];
+  /** Run this stat belongs to; absent on legacy single-batch stats. */
+  runId?: string;
+}
+
+export type DataTaskRunTrigger = 'run' | 'trial';
+export type DataTaskRunStatus = 'running' | 'completed' | 'failed';
+
+/** One recorded task execution (trial and persisted runs share the table). */
+export interface DataTaskRun {
+  id: string;
+  taskId: string;
+  /** Per-task monotonically increasing run number, starting at 1. */
+  seq: number;
+  trigger: DataTaskRunTrigger;
+  status: DataTaskRunStatus;
+  /** Execution signature of the workflow version that ran. */
+  workflowSignature: string | null;
+  /** Rows read across input_source nodes; null when no stats were collected. */
+  inputRows: number | null;
+  /** Rows written across output nodes; null when no stats were collected. */
+  outputRows: number | null;
+  error: string | null;
+  /** Node that failed (from the executor's workflowOrigin), when known. */
+  failedNodeId: string | null;
+  startedAt: number;
+  finishedAt: number | null;
 }
 
 export interface RunTaskResult {
@@ -753,6 +807,9 @@ export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
   tableId: string;
   spaceId?: string;
   projectId?: string;
+  /** Display names kept for provenance display; ids remain authoritative. */
+  spaceName?: string;
+  projectName?: string;
   name?: string;
   previewRows?: number;
 }
@@ -763,6 +820,14 @@ export interface ImportCloudTableResult {
   cloudTableId: string;
   cloudTable?: PersonalAnalysisTable;
   downloadedFilePath: string;
+}
+
+export interface RefreshCloudInputTableInput extends PersonalAnalysisConnectionInput {
+  inputTableId: string;
+}
+
+export interface RefreshCloudInputTableResult {
+  inputTable: DataDataset;
 }
 
 export interface UploadDataTableToCloudInput extends PersonalAnalysisConnectionInput {

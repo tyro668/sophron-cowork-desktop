@@ -360,7 +360,7 @@ describe('metadata migrations', () => {
 
     // Ledger records every migration in order.
     const ledger = ledgerRows(raw);
-    expect(ledger.map((row) => row.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(ledger.map((row) => row.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
       'drop_legacy_demo_rows',
@@ -374,12 +374,16 @@ describe('metadata migrations', () => {
       'restrict_generated_automation_outputs',
       'merge_cloud_sync_action_types',
       'data_list_groups',
+      'data_task_runs',
     ]);
 
     // v12: group table + member columns exist.
     expect(tableNames(raw)).toContain('data_groups');
     expect(columnNames(raw, 'data_cleaning_tasks')).toContain('group_id');
     expect(columnNames(raw, 'data_datasets')).toContain('group_id');
+
+    // v13: per-run history table.
+    expect(tableNames(raw)).toContain('data_task_runs');
 
     // Baseline adds the missing column and the newer tables.
     expect(columnNames(raw, 'data_datasets')).toContain('file_count');

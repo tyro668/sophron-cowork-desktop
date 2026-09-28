@@ -1011,6 +1011,41 @@ describe('DuckDB data task store', () => {
     expect(dashboard.outputTables).toHaveLength(1);
     expect(dashboard.outputTables[0]?.name).toBe('Sales curated output');
     expect(dashboard.outputTables[0]?.relatedTaskNames).toEqual(['Auto publish']);
+    expect(dashboard.outputTables[0]?.relatedTaskIds).toEqual([task.id]);
+
+    // File exports build against the materialized table + provenance metadata.
+    const outputTableId = dashboard.outputTables[0]!.id;
+    const csvExport = await store.buildTableExport({
+      tableKind: 'output',
+      id: outputTableId,
+      format: 'csv',
+    });
+    expect(csvExport.fileName).toBe('Sales curated output.csv');
+    expect(String(csvExport.content)).toContain(',');
+
+    const xlsxExport = await store.buildTableExport({
+      tableKind: 'output',
+      id: outputTableId,
+      format: 'xlsx',
+    });
+    expect(xlsxExport.fileName).toBe('Sales curated output.xlsx');
+    const xlsxRows = XLSX.utils.sheet_to_json<(string | number)[]>(
+      XLSX.read(xlsxExport.content, { type: 'buffer' }).Sheets.data,
+      { header: 1 }
+    );
+    expect(xlsxRows.length).toBe(3); // header + 2 rows
+
+    const report = await store.buildTableExport({
+      tableKind: 'output',
+      id: outputTableId,
+      format: 'html',
+      locale: 'en',
+    });
+    const html = String(report.content);
+    expect(report.fileName).toBe('Sales curated output-report.html');
+    expect(html).toContain('Auto publish'); // producing task
+    expect(html).toContain('Computed at'); // computation timestamp
+    expect(html).toContain('Processing logic'); // DSL section
 
     const renamedNodes = saved.nodes.map((node) => {
       const config = { ...node.config };

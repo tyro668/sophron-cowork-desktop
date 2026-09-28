@@ -28,6 +28,9 @@ export function useDataViewEditors(deps: {
   const { tasks, inputTableDatasets, outputTables, drafts, setError } = deps;
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [focusedTask, setFocusedTask] = useState<DataCleaningTask | null>(null);
+  // Set by task-creation flows so the editor opens with the title already in
+  // edit mode (focus + select). Read once on TaskEditor mount.
+  const [taskNameEditRequested, setTaskNameEditRequested] = useState(false);
   const [editingInputTableDraftId, setEditingInputTableDraftId] = useState<string | null>(null);
   const [editingInputTableDatasetId, setEditingInputTableDatasetId] = useState<string | null>(null);
   const [focusedInputTable, setFocusedInputTable] = useState<DataDataset | null>(null);
@@ -62,6 +65,7 @@ export function useDataViewEditors(deps: {
   /** Clears every editor/dialog target — used when deep-linking elsewhere. */
   const resetWorkspace = useCallback(() => {
     setEditingTaskId(null);
+    setTaskNameEditRequested(false);
     setEditingInputTableDraftId(null);
     setEditingInputTableDatasetId(null);
     setEditingOutputTableId(null);
@@ -121,6 +125,8 @@ export function useDataViewEditors(deps: {
     editingOutputTableId,
     outputEditorInputTables,
     outputEditorInputTablesLoading,
+    taskNameEditRequested,
+    setTaskNameEditRequested,
     setEditingTaskId,
     setFocusedTask,
     setEditingInputTableDraftId,

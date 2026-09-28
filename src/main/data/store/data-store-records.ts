@@ -70,6 +70,7 @@ export interface DataDatasetRow {
   config_json: string | null;
   file_count: number | string | null;
   related_task_names?: string | null;
+  related_task_ids?: string | null;
   table_name: string;
   row_count: number | string;
   column_count: number | string;
@@ -278,6 +279,7 @@ export function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
     relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
+    relatedTaskIds: parseRelatedTaskIds(row.related_task_ids),
     groupId: row.group_id ? String(row.group_id) : null,
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
@@ -459,6 +461,12 @@ function parseLegacyCloudDriveTarget(value: unknown): CloudOutputAction | null {
 export function parseRelatedTaskNames(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split('\u001F').filter(Boolean).slice(0, 2);
+}
+
+/** Related task ids — no display cap (drives refresh/run actions). */
+export function parseRelatedTaskIds(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split('\u001F').filter(Boolean);
 }
 
 export function storedDatasetSourceKindSql(alias?: string): string {

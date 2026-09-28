@@ -596,6 +596,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'data.runTask': [str, dataRunTaskInput.optional()],
   'data.runTaskWithDiagnostics': [str, dataRunTaskInput.optional()],
   'data.getTaskNodeStats': [str],
+  'data.listTaskRuns': [str, numOpt],
+  'data.getTaskRunNodeStats': [str, str],
   'data.getTaskWorkflow': [str],
   'data.saveTaskWorkflow': [str, dataWorkflowSaveInput],
   'data.validateTaskWorkflowPlan': [str, dataWorkflowSaveInput],
@@ -630,6 +632,14 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
     }),
   ],
   'data.previewDataset': [z.looseObject({ id: str, limit: numOpt, offset: numOpt })],
+  'data.exportTable': [
+    z.looseObject({
+      tableKind: z.enum(['input', 'output']),
+      id: str,
+      format: z.enum(['csv', 'xlsx', 'html']),
+      locale: str.optional(),
+    }),
+  ],
   'data.previewWorkflowNode': [dataPreviewWorkflowNodeInput],
   'data.getWorkflowNodeColumns': [dataPreviewWorkflowNodeInput],
   'data.getWorkflowNodeColumnTypes': [dataPreviewWorkflowNodeInput],
@@ -716,8 +726,15 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       tableId: str,
       spaceId: strOpt,
       projectId: strOpt,
+      spaceName: strOpt,
+      projectName: strOpt,
       name: strOpt,
       previewRows: numOpt,
+    }),
+  ],
+  'data.refreshCloudInputTable': [
+    personalAnalysisConnection.extend({
+      inputTableId: str,
     }),
   ],
   'data.uploadDataTableToCloud': [

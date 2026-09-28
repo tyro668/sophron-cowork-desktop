@@ -123,7 +123,17 @@ export class AutomationInputResolver {
         dataRegion: 'auto' as const,
         encoding: 'auto' as const,
         delimiter: 'auto' as const,
-        cloudMirror: { tableId, sourceVersion, contentHash },
+        cloudMirror: {
+          tableId,
+          sourceVersion,
+          contentHash,
+          syncedAt: Date.now(),
+          spaceId: normalizeOptionalName(source.spaceId),
+          projectId: normalizeOptionalName(source.projectId),
+          spaceName: normalizeOptionalName(source.spaceName),
+          projectName: normalizeOptionalName(source.projectName),
+          tableName: normalizeOptionalName(source.tableName),
+        },
       };
       if (existing) {
         const result = await this.updateAutomationCloudMirrorInputTable(

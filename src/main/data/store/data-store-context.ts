@@ -319,10 +319,16 @@ export class DataStoreContext {
         )
       `;
   }
+  outputTableRelatedTaskIdsSql(outputAlias: string): string {
+    return this.outputTableRelatedTaskSql(outputAlias, 'id');
+  }
   outputTableRelatedTaskNamesSql(outputAlias: string): string {
+    return this.outputTableRelatedTaskSql(outputAlias, 'name');
+  }
+  private outputTableRelatedTaskSql(outputAlias: string, column: 'id' | 'name'): string {
     return `
         (
-          SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
+          SELECT group_concat(t.${column}, ${this.relatedTaskNamesSeparatorSql()})
           FROM data_cleaning_tasks t
           WHERE t.output_table = ${outputAlias}.table_name
             OR EXISTS (

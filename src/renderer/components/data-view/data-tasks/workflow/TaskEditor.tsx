@@ -4,10 +4,12 @@ import type { Connection } from '@xyflow/react';
 import {
   AlertCircle,
   ArrowLeft,
+  FileText,
   MoreHorizontal,
   PencilLine,
   Play,
   Save,
+  Sparkles,
   Upload,
   Workflow,
   X,
@@ -40,6 +42,10 @@ import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT, flatToolbarRowClass, makeLocalId } fr
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { buildWorkflowStarterGraph } from './workflow-starter';
+import { stringValue } from './workflow-summary';
+import { WorkflowAiGenerateDialog } from './WorkflowAiGenerateDialog';
+import { WorkflowExplainDialog } from './WorkflowExplainDialog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
@@ -71,6 +77,7 @@ export function TaskEditor({
   onBack,
   onRun,
   onWorkflowSaved,
+  autoEditTitle,
 }: {
   task: DataCleaningTask;
   outputTables: DataOutputTable[];
@@ -80,6 +87,8 @@ export function TaskEditor({
   onBack: () => void;
   onRun: (task: DataCleaningTask, payload?: DataRunTaskInput) => void | Promise<void>;
   onWorkflowSaved: () => void | Promise<void>;
+  /** Opened from a create flow: start with the title in edit mode. */
+  autoEditTitle?: boolean;
 }) {
   const { t } = useTranslation();
   const { confirm, confirmDelete } = useConfirmDialog();
@@ -103,14 +112,19 @@ export function TaskEditor({
   const [dslText, setDslText] = useState('');
   const [dslError, setDslError] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState(task.name);
-  const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(false);
+  const [isEditingTaskTitle, setIsEditingTaskTitle] = useState(() => autoEditTitle === true);
   const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [explainDialogOpen, setExplainDialogOpen] = useState(false);
   const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
   const [inputTableChoices, setInputTableChoices] = useState<DataDataset[]>([]);
   const [inputTableChoicesLoading, setInputTableChoicesLoading] = useState(false);
   const [outputTableChoices, setOutputTableChoices] = useState<DataOutputTable[]>(outputTables);
   const taskTitleInputRef = useRef<HTMLInputElement | null>(null);
   const skipTaskTitleSaveRef = useRef(false);
+  // A create flow mounts the editor already in title-edit mode; the reset
+  // effect below must not cancel that on the first run.
+  const skipInitialTitleResetRef = useRef(autoEditTitle === true);
 
   const loadWorkflow = useCallback(async () => {
     if (!dataClient.isAvailable()) return;
@@ -137,6 +151,10 @@ export function TaskEditor({
   }, [localError]);
 
   useEffect(() => {
+    if (skipInitialTitleResetRef.current) {
+      skipInitialTitleResetRef.current = false;
+      return;
+    }
     setTaskTitle(task.name);
     setIsEditingTaskTitle(false);
   }, [task.id, task.name]);
@@ -150,6 +168,21 @@ export function TaskEditor({
   useEffect(() => {
     setOutputTableChoices(outputTables);
   }, [outputTables]);
+
+  const loadOutputTableChoices = useCallback(async () => {
+    try {
+      const dashboard = await dataClient.getDashboard({
+        includeSummary: false,
+        includeTasks: false,
+        includeDatasets: false,
+        includeOutputTables: true,
+        outputLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
+      });
+      setOutputTableChoices(dashboard.outputTables);
+    } catch {
+      // The workflow editor can still run with the already-loaded choices.
+    }
+  }, []);
 
   useEffect(() => {
     if (!dataClient.has('getDashboard')) return undefined;
@@ -178,31 +211,42 @@ export function TaskEditor({
         }
       }
     };
-    const loadOutputTableChoices = async () => {
-      try {
-        const dashboard = await dataClient.getDashboard({
-          includeSummary: false,
-          includeTasks: false,
-          includeDatasets: false,
-          includeOutputTables: true,
-          outputLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
-        });
-        if (!cancelled) {
-          setOutputTableChoices(dashboard.outputTables);
-        }
-      } catch {
-        // The workflow editor can still run with the already-loaded choices.
-      }
-    };
     void loadInputTableChoices();
     void loadOutputTableChoices();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadOutputTableChoices]);
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
+  // The input table AI generation binds to: first enabled input_source node
+  // with a dataset, else the task-level source binding.
+  const boundInputTable = useMemo(() => {
+    for (const node of nodes) {
+      if (node.type !== 'input_source' || node.config.disabled === true) continue;
+      const datasetId =
+        stringValue(node.config.datasetId) ||
+        stringValue(node.config.inputTableId) ||
+        stringValue(node.config.sourceDatasetId);
+      if (!datasetId) continue;
+      const name =
+        stringValue(node.config.inputTableName) ||
+        stringValue(node.config.name) ||
+        inputTableChoices.find((table) => table.id === datasetId)?.name ||
+        datasetId;
+      return { id: datasetId, name };
+    }
+    if (task.sourceDatasetId) {
+      return {
+        id: task.sourceDatasetId,
+        name:
+          inputTableChoices.find((table) => table.id === task.sourceDatasetId)?.name ??
+          task.sourceDatasetId,
+      };
+    }
+    return null;
+  }, [nodes, inputTableChoices, task.sourceDatasetId]);
   const workflowSaveInput = useMemo(
     () => (workflow ? toWorkflowSaveInput(workflow) : null),
     [workflow]
@@ -488,6 +532,28 @@ export function TaskEditor({
     },
     [selectedNode, t, task.id]
   );
+
+  // Empty-canvas starter: input → SQL → output as an unsaved draft so the
+  // user reviews/adjusts before persisting.
+  const applyStarterTemplate = useCallback(() => {
+    setWorkflow((current) => {
+      if (!current || current.nodes.length > 0) return current;
+      const graph = buildWorkflowStarterGraph({
+        taskId: task.id,
+        sourceDatasetId: boundInputTable?.id ?? null,
+        sourceName: boundInputTable?.name ?? null,
+        outputTableName: t('data.workflow.starterOutputName', { name: task.name }),
+        labels: {
+          input_source: t(getOperatorCatalog('input_source').labelKey),
+          sql_query: t(getOperatorCatalog('sql_query').labelKey),
+          output: t(getOperatorCatalog('output').labelKey),
+        },
+      });
+      setSelectedNodeId(graph.nodes[1]?.id ?? null);
+      setActiveInspectorTab('config');
+      return { ...current, nodes: graph.nodes, edges: graph.edges };
+    });
+  }, [boundInputTable, t, task.id, task.name]);
 
   const moveNode = useCallback((nodeId: string, x: number, y: number) => {
     setWorkflow((current) => {
@@ -1136,6 +1202,15 @@ export function TaskEditor({
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
+            onClick={() => setAiDialogOpen(true)}
+            disabled={isBusy || !workflow}
+            className="px-3 text-xs shadow-soft"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {t('data.workflow.aiGenerate')}
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow}
             className="px-3 text-xs shadow-soft"
@@ -1177,6 +1252,13 @@ export function TaskEditor({
               </button>
             }
           >
+            <GlassMenuItem
+              icon={<FileText className="h-3.5 w-3.5" />}
+              onSelect={() => setExplainDialogOpen(true)}
+              disabled={nodes.length === 0}
+            >
+              {t('data.workflow.explainTitle')}
+            </GlassMenuItem>
             <GlassMenuItem icon={<Upload className="h-3.5 w-3.5" />} onSelect={openImportDsl}>
               {t('data.workflow.importDsl')}
             </GlassMenuItem>
@@ -1195,23 +1277,67 @@ export function TaskEditor({
         <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch gap-3 p-3">
           <WorkflowOperatorPalette onAddOperator={addOperatorAfterSelected} />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px] gap-3">
-            <WorkflowCanvas
-              nodes={nodes}
-              edges={edges}
-              invalidNodeIds={invalidNodeIds}
-              selectedNodeId={selectedNode?.id ?? null}
-              onSelectNode={setSelectedNodeId}
-              onDuplicateNode={duplicateSelectedNode}
-              onToggleNodeDisabled={toggleSelectedNodeDisabled}
-              onDeleteNode={deleteSelectedNode}
-              onAddNode={addOperator}
-              onMoveNode={moveNode}
-              onConnectNodes={connectNodes}
-              onReconnectEdge={reconnectWorkflowEdge}
-              onRemoveEdge={removeWorkflowEdge}
-            />
+            {/* grid + stretch keeps WorkflowCanvas at the full row height so the
+                empty-state overlay can anchor absolute to this wrapper */}
+            <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)]">
+              <WorkflowCanvas
+                nodes={nodes}
+                edges={edges}
+                invalidNodeIds={invalidNodeIds}
+                selectedNodeId={selectedNode?.id ?? null}
+                onSelectNode={setSelectedNodeId}
+                onDuplicateNode={duplicateSelectedNode}
+                onToggleNodeDisabled={toggleSelectedNodeDisabled}
+                onDeleteNode={deleteSelectedNode}
+                onAddNode={addOperator}
+                onMoveNode={moveNode}
+                onConnectNodes={connectNodes}
+                onReconnectEdge={reconnectWorkflowEdge}
+                onRemoveEdge={removeWorkflowEdge}
+              />
+              {nodes.length === 0 && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+                  <div className="pointer-events-auto flex w-[26rem] max-w-full flex-col items-center gap-4 rounded-xl border border-border-muted bg-surface px-6 py-5 text-center shadow-card">
+                    <div className="text-[13px] font-semibold text-text-secondary">
+                      {t('data.workflow.starterTitle')}
+                    </div>
+                    <div className="text-[12px] leading-5 text-text-muted">
+                      {t('data.workflow.starterHint')}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={applyStarterTemplate}
+                        disabled={isBusy}
+                        className="h-8 px-3 text-xs"
+                      >
+                        <Workflow className="h-3.5 w-3.5" />
+                        {t('data.workflow.starterTemplate')}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setAiDialogOpen(true)}
+                        disabled={isBusy || !boundInputTable}
+                        className="h-8 px-3 text-xs"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {t('data.workflow.starterAi')}
+                      </Button>
+                    </div>
+                    {!boundInputTable && (
+                      <div className="text-[11px] leading-5 text-text-muted">
+                        {t('data.workflow.aiInputMissing')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <WorkflowDataContext.Provider value={workflowDataContext}>
               <WorkflowInspector
+                taskId={task.id}
                 node={selectedNode}
                 workflowNodes={nodes}
                 workflowEdges={edges}
@@ -1225,6 +1351,13 @@ export function TaskEditor({
                 isRunningOperatorDsl={actionId === task.id}
                 nodeDataRefreshVersion={nodeDataRefreshVersion}
                 runStat={selectedNode ? runStatsByNode.get(selectedNode.id) : undefined}
+                runRefreshKey={`${task.lastRunAt ?? ''}:${runNodeStats?.[0]?.runId ?? ''}:${
+                  lastRunFailure?.at ?? ''
+                }`}
+                onSelectNode={(id) => {
+                  setSelectedNodeId(id);
+                  setActiveInspectorTab('config');
+                }}
                 firstZeroOutputNode={firstZeroOutputNode}
                 isPreviewStale={isPreviewStale}
                 upstreamSignature={selectedUpstreamSignature}
@@ -1246,6 +1379,28 @@ export function TaskEditor({
           onClose={closeDslDialog}
         />
       )}
+      <WorkflowAiGenerateDialog
+        open={aiDialogOpen}
+        taskId={task.id}
+        boundInputTable={boundInputTable}
+        hasExistingNodes={nodes.length > 0}
+        isCanvasDirty={isWorkflowDirty}
+        onApplied={async () => {
+          await loadWorkflow();
+          // Generation may have created a new output table — the tasks-tab
+          // dashboard reload does not fetch output tables, so refresh the
+          // inspector's choices here or the bound id shows instead of a name.
+          await loadOutputTableChoices();
+          await onWorkflowSaved();
+        }}
+        onOpenChange={setAiDialogOpen}
+      />
+      <WorkflowExplainDialog
+        open={explainDialogOpen}
+        nodes={nodes}
+        edges={edges}
+        onOpenChange={setExplainDialogOpen}
+      />
       {failedExpectRun && lastRunFailure && (
         <div className="absolute bottom-4 left-1/2 z-40 flex w-[min(92%,36rem)] -translate-x-1/2 flex-col items-center gap-2">
           {failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at && (

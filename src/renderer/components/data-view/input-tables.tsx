@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Table2,
   Trash2,
+  Workflow,
 } from 'lucide-react';
 import type {
   DataDataset,
@@ -34,7 +35,11 @@ import {
   formatDateTime,
   formatDisplayPath,
   formatRelatedTaskNames,
+  formatCloudMirrorLocation,
+  getCloudMirror,
+  getCloudMirrorSourceMeta,
   getInputTableSourceMeta,
+  type CloudMirrorInfo,
   getTablePageCount,
   matchesSearchText,
 } from './shared';
@@ -80,6 +85,7 @@ export function InputTablesPanel({
   onDeleteDraft,
   onEditDraft,
   onEditDataset,
+  onCreateTaskFromTable,
   onAssignToGroup,
   onRenameGroup,
   onDeleteGroup,
@@ -105,6 +111,7 @@ export function InputTablesPanel({
   onDeleteDraft: (id: string) => void;
   onEditDraft: (id: string) => void;
   onEditDataset: (id: string) => void;
+  onCreateTaskFromTable: (dataset: DataDataset) => void;
   onAssignToGroup: (ids: string[], target: AssignGroupTarget) => void;
   onRenameGroup: (group: DataListGroup, name: string) => void;
   onDeleteGroup: (group: DataListGroup) => void;
@@ -173,7 +180,10 @@ export function InputTablesPanel({
     const dataset = row.kind === 'dataset' ? row.dataset : null;
     const draft = row.kind === 'draft' ? row.draft : null;
     const sourceKind = dataset ? dataset.sourceKind : 'draft';
-    const sourceMeta = getInputTableSourceMeta(sourceKind);
+    const cloudMirror = getCloudMirror(dataset);
+    const sourceMeta = cloudMirror
+      ? getCloudMirrorSourceMeta()
+      : getInputTableSourceMeta(sourceKind);
     const selected = row.id === selectedDatasetId;
     const rowName = dataset?.name ?? draft?.name ?? '';
     const rowUpdatedAt = dataset?.updatedAt ?? draft?.updatedAt ?? null;
@@ -225,9 +235,13 @@ export function InputTablesPanel({
         <td className="px-2">
           <div
             className="truncate text-[13px] font-medium text-text-secondary"
-            title={dataset?.sourcePath}
+            title={dataset?.sourcePath ?? undefined}
           >
-            {dataset ? formatDisplayPath(dataset.sourcePath) : t('data.inputTables.notConfigured')}
+            {cloudMirror
+              ? formatCloudMirrorLocation(cloudMirror)
+              : dataset
+                ? formatDisplayPath(dataset.sourcePath)
+                : t('data.inputTables.notConfigured')}
           </div>
         </td>
         <td className="px-2">
@@ -301,6 +315,16 @@ export function InputTablesPanel({
             onClick={() => {
               if (selectedDataset) {
                 onPreviewDataset(selectedDataset);
+              }
+            }}
+          />
+          <DataToolbarButton
+            icon={<Workflow className="h-3.5 w-3.5" />}
+            label={t('data.inputTables.actions.createTask')}
+            disabled={!selectedDataset || bulkBusy || actionId === 'create'}
+            onClick={() => {
+              if (selectedDataset) {
+                onCreateTaskFromTable(selectedDataset);
               }
             }}
           />
@@ -490,6 +514,9 @@ export function InputTableEditor({
   onChooseDraftSource,
   onChooseDatasetSource,
   onUpdateDatasetConfig,
+  onCreateTask,
+  onSyncCloudSource,
+  onOpenCloudSource,
 }: {
   draft?: InputTableDraft;
   dataset?: DataDataset;
@@ -514,6 +541,9 @@ export function InputTableEditor({
     config: DataInputTableConfig,
     name?: string
   ) => void | Promise<void>;
+  onCreateTask?: (dataset: DataDataset) => void;
+  onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
+  onOpenCloudSource?: (mirror: CloudMirrorInfo) => void;
 }) {
   return (
     <InputTableEditorWorkbench
@@ -526,6 +556,9 @@ export function InputTableEditor({
       onChooseDraftSource={onChooseDraftSource}
       onChooseDatasetSource={onChooseDatasetSource}
       onUpdateDatasetConfig={onUpdateDatasetConfig}
+      onCreateTask={onCreateTask}
+      onSyncCloudSource={onSyncCloudSource}
+      onOpenCloudSource={onOpenCloudSource}
     />
   );
 }

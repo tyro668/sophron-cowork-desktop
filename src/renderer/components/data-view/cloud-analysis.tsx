@@ -58,6 +58,15 @@ interface SelectedProject {
   projectId: string;
 }
 
+/** Deep-link target: expand the space, open the project, highlight the table. */
+export interface CloudFocusTarget {
+  spaceId: string;
+  projectId: string;
+  tableId: string;
+  /** Unique value per request so repeated focuses on the same table re-run. */
+  nonce: number;
+}
+
 type CloudConnection = Pick<PersonalAnalysisConfig, 'apiOrigin'> & {
   apiKey?: string;
   connectionMode?: 'account' | 'apiKey';
@@ -206,7 +215,7 @@ function readErrorCode(error: unknown): string | undefined {
   return message.match(/^\[([A-Z_]+)\]/)?.[1];
 }
 
-export function CloudAnalysisPanel() {
+export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTarget | null }) {
   const { t } = useTranslation();
   const appConfig = useAppStore((state) => state.appConfig);
   const desktopAuthStatus = useAppStore((state) => state.desktopAuthStatus);
@@ -244,6 +253,8 @@ export function CloudAnalysisPanel() {
   const [tablePageInfo, setTablePageInfo] = useState(EMPTY_TABLE_PAGE_INFO);
   const [loginBusy, setLoginBusy] = useState(false);
   const [importingTableId, setImportingTableId] = useState<string | null>(null);
+  const [focusedTableId, setFocusedTableId] = useState<string | null>(null);
+  const handledFocusNonce = useRef(0);
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [batchSelectMode, setBatchSelectMode] = useState(false);
   const [addingToChat, setAddingToChat] = useState(false);
@@ -934,6 +945,7 @@ export function CloudAnalysisPanel() {
   const selectProject = useCallback(
     (target: SelectedProject) => {
       setSelectedProject(target);
+      setFocusedTableId(null);
       setSelectedTableIds([]);
       setSelectedFileIds([]);
       resetTableResults({ cancelRequests: true });
@@ -957,6 +969,42 @@ export function CloudAnalysisPanel() {
       resetTableResults,
     ]
   );
+
+  // Deep-link ("view original table" on a cloud-mirrored input): expand the
+  // space, select the project, load the tables list, highlight the row.
+  useEffect(() => {
+    if (!focusTarget || focusTarget.nonce === handledFocusNonce.current) return;
+    handledFocusNonce.current = focusTarget.nonce;
+    const target = { spaceId: focusTarget.spaceId, projectId: focusTarget.projectId };
+    setExpandedSpaceIds((current) =>
+      current.includes(target.spaceId) ? current : [...current, target.spaceId]
+    );
+    void loadProjectsForSpace(target.spaceId);
+    setListTab('tables');
+    setSelectedProject(target);
+    setSelectedTableIds([]);
+    setSelectedFileIds([]);
+    resetTableResults({ cancelRequests: true });
+    resetFileResults({ cancelRequests: true });
+    setTableLookupStarted(true);
+    void loadTables(target, connectionPayload);
+    setFocusedTableId(focusTarget.tableId);
+  }, [
+    focusTarget,
+    connectionPayload,
+    loadProjectsForSpace,
+    loadTables,
+    resetFileResults,
+    resetTableResults,
+  ]);
+
+  // Scroll the highlighted table into view once it appears in the loaded page.
+  useEffect(() => {
+    if (!focusedTableId || !tables.some((table) => table.tableId === focusedTableId)) return;
+    document.getElementById(`cloud-table-row-${focusedTableId}`)?.scrollIntoView({
+      block: 'center',
+    });
+  }, [focusedTableId, tables]);
 
   const evictProjectListCaches = useCallback(
     (target: SelectedProject) => {
@@ -1164,6 +1212,11 @@ export function CloudAnalysisPanel() {
       const targetSpaceId = table.spaceId || selectedProject?.spaceId;
       const targetProjectId = table.projectId || selectedProject?.projectId;
       if (!targetProjectId) return;
+      const targetSpaceName = spaces.find((space) => space.spaceId === targetSpaceId)?.spaceName;
+      const targetProjectName = targetSpaceId
+        ? projectsBySpace[targetSpaceId]?.find((project) => project.projectId === targetProjectId)
+            ?.projectName
+        : undefined;
       const requestId = ++importRequestSeq.current;
       setImportingTableId(table.tableId);
       try {
@@ -1172,6 +1225,8 @@ export function CloudAnalysisPanel() {
           tableId: table.tableId,
           spaceId: targetSpaceId,
           projectId: targetProjectId,
+          spaceName: targetSpaceName,
+          projectName: targetProjectName,
           name: table.tableName,
           previewRows: 20,
         });
@@ -1196,7 +1251,7 @@ export function CloudAnalysisPanel() {
         }
       }
     },
-    [connectionPayload, selectedProject, setNotice, t]
+    [connectionPayload, selectedProject, setNotice, spaces, projectsBySpace, t]
   );
 
   const startCloudTableAutomation = useCallback(
@@ -1881,11 +1936,14 @@ export function CloudAnalysisPanel() {
                             return (
                               <tr
                                 key={table.tableId}
+                                id={`cloud-table-row-${table.tableId}`}
                                 onClick={() => handleTableRowSelect(table.tableId)}
                                 className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
                                   isSelected
                                     ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-                                    : 'hover:bg-surface-hover/35'
+                                    : table.tableId === focusedTableId
+                                      ? 'bg-accent-muted/60 ring-1 ring-inset ring-accent/40'
+                                      : 'hover:bg-surface-hover/35'
                                 }`}
                               >
                                 <td className="px-4">

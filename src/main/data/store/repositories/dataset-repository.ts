@@ -223,7 +223,8 @@ export class DatasetRepository {
       `
           SELECT
             d.*,
-            ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names
+            ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names,
+            ${this.ctx.outputTableRelatedTaskIdsSql('d')} AS related_task_ids
           FROM data_datasets d
           WHERE d.id = $id
             AND ${outputTableConfigPredicateSql('d')}

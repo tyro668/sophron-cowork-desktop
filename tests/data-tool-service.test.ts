@@ -177,6 +177,7 @@ describe('DataToolService', () => {
       columnCount: 2,
       sourceDatasetId: null,
       relatedTaskNames: [],
+      relatedTaskIds: [],
       createdAt: 1,
       updatedAt: 1,
     };

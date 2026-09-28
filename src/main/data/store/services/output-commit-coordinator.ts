@@ -34,7 +34,8 @@ export class OutputCommitCoordinator {
     workflow: DataWorkflowSaveInput,
     watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
     nodeStats?: WorkflowNodeRunStat[],
-    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>,
+    runId?: string
   ): Promise<DataCleaningTask> {
     return this.ctx.runExclusive(async () => {
       await this.ctx.ensureReady();
@@ -282,7 +283,7 @@ export class OutputCommitCoordinator {
           await this.watermarks.upsertTaskWatermark(id, watermarkUpdates);
         }
         if (nodeStats && nodeStats.length > 0) {
-          await this.runStats.persistTaskNodeStats(id, commitId, nodeStats);
+          await this.runStats.persistTaskNodeStats(id, runId ?? commitId, nodeStats);
         }
         for (const sink of sinks) {
           await this.journal.updateOutputCommitState(sink.journalId, 'metadata_committed');

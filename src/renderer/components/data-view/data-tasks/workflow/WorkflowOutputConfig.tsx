@@ -200,11 +200,19 @@ export function WorkflowOutputConfig({
             value={selectedOutputDatasetId || undefined}
             onValueChange={handleOutputTableChange}
             options={[
+              // Bound table missing from choices (still loading or beyond the
+              // fetch cap): keep the option selectable but display its saved
+              // display name instead of the raw id.
               ...(selectedOutputDatasetId &&
               !availableOutputTables.some(
                 (outputTable) => outputTable.id === selectedOutputDatasetId
               )
-                ? [{ value: selectedOutputDatasetId, label: selectedOutputDatasetId }]
+                ? [
+                    {
+                      value: selectedOutputDatasetId,
+                      label: stringValue(node.config.outputTableName) || selectedOutputDatasetId,
+                    },
+                  ]
                 : []),
               ...availableOutputTables.map((outputTable) => ({
                 value: outputTable.id,

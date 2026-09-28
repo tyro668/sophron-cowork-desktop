@@ -17,7 +17,10 @@ import type {
 import type { ConfirmDialogOptions } from '../../../components/ConfirmDialog';
 import type { AssignGroupTarget, DataListGroup } from '../../../components/data-view/group-ui';
 import { DATA_DELETE_BATCH_SIZE, matchesSearchText } from '../../../components/data-view/shared';
+import { getOperatorCatalog } from '../../../components/data-view/data-tasks/workflow/operator-catalog';
+import { buildWorkflowStarterGraph } from '../../../components/data-view/data-tasks/workflow/workflow-starter';
 import { dataClient } from '../api/data-client';
+import { uniqueTaskName } from '../model/task-names';
 import type { InputTableDraft } from '../model/types';
 import type { DataViewUi } from './use-data-view-ui';
 import type { DataDashboardState } from './use-data-dashboard';
@@ -35,30 +38,103 @@ export interface DataActionsDeps {
   confirmDelete: (options: ConfirmDialogOptions) => Promise<boolean>;
 }
 
+/** Every stored task name — the unique-name check must scan all pages, not
+ *  just the currently loaded page. */
+async function collectTaskNames(): Promise<Set<string>> {
+  const names = new Set<string>();
+  let offset = 0;
+  for (;;) {
+    const page = await dataClient.getDashboard({
+      includeSummary: false,
+      includeTasks: true,
+      includeDatasets: false,
+      includeOutputTables: false,
+      taskOffset: offset,
+      taskLimit: DATA_DELETE_BATCH_SIZE,
+      datasetLimit: 0,
+      outputLimit: 0,
+    });
+    for (const task of page.tasks) names.add(task.name);
+    if (page.tasks.length < DATA_DELETE_BATCH_SIZE) break;
+    offset += page.tasks.length;
+  }
+  return names;
+}
+
 export function useDataActions(deps: DataActionsDeps) {
   const { ui, dashboard, inputTables, drafts, editors, t, confirmDelete } = deps;
   const { loadDashboard } = dashboard;
   const { loadInputTables } = inputTables;
 
-  const handleCreateTask = useCallback(async () => {
-    if (!dataClient.isAvailable()) return;
-    ui.setActionId('create');
-    ui.setError(null);
-    try {
-      ui.setActiveTab('tasks');
-      ui.setSearchQuery('');
-      dashboard.setTaskPage(1);
-      await dataClient.createTask({
-        name: `${t('data.defaultTaskName')} ${dashboard.dashboard.summary.taskCount + 1}`,
-      });
-      await loadDashboard({ query: '', taskPage: 1 });
-    } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true, query: '' });
-    } finally {
-      ui.setActionId(null);
-    }
-  }, [dashboard, loadDashboard, t, ui]);
+  /**
+   * Creates a task with a guaranteed-unique name and opens the editor in
+   * rename mode. With `sourceDataset`, the task is persisted with a bound
+   * `input_source` node — the "create task from this table" flow lands on a
+   * canvas that is already wired to the selected input table.
+   */
+  const createTaskAndEdit = useCallback(
+    async (sourceDataset?: DataDataset) => {
+      if (!dataClient.isAvailable()) return;
+      ui.setActionId('create');
+      ui.setError(null);
+      try {
+        ui.setActiveTab('tasks');
+        ui.setSearchQuery('');
+        dashboard.setTaskPage(1);
+        const existingNames = await collectTaskNames();
+        const name = sourceDataset
+          ? uniqueTaskName(t('data.taskNameFromTable', { name: sourceDataset.name }), existingNames)
+          : uniqueTaskName(t('data.defaultTaskName'), existingNames, { alwaysNumber: true });
+        const task = await dataClient.createTask({
+          name,
+          sourceDatasetId: sourceDataset?.id ?? null,
+        });
+        let focused = task;
+        if (sourceDataset) {
+          try {
+            // Seed the same input → SQL → output starter graph the empty
+            // canvas offers — bound to the table this task was created from.
+            const starter = buildWorkflowStarterGraph({
+              taskId: task.id,
+              sourceDatasetId: sourceDataset.id,
+              sourceName: sourceDataset.name,
+              labels: {
+                input_source: t(getOperatorCatalog('input_source').labelKey),
+                sql_query: t(getOperatorCatalog('sql_query').labelKey),
+                output: t(getOperatorCatalog('output').labelKey),
+              },
+            });
+            const seeded = await dataClient.saveTaskWorkflow(task.id, {
+              nodes: starter.nodes,
+              edges: starter.edges,
+            });
+            focused = seeded.task;
+          } catch (err) {
+            // Task exists and the editor still opens — binding can be redone
+            // in the input node's config if the seed save failed.
+            ui.setError(err instanceof Error ? err.message : String(err));
+          }
+        }
+        editors.setFocusedTask(focused);
+        editors.setEditingTaskId(focused.id);
+        editors.setTaskNameEditRequested(true);
+        await loadDashboard({ query: '', taskPage: 1 });
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true, query: '' });
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [dashboard, editors, loadDashboard, t, ui]
+  );
+
+  const handleCreateTask = useCallback(() => createTaskAndEdit(), [createTaskAndEdit]);
+
+  const handleCreateTaskFromTable = useCallback(
+    (dataset: DataDataset) => createTaskAndEdit(dataset),
+    [createTaskAndEdit]
+  );
 
   const handleRunTask = useCallback(
     async (task: DataCleaningTask, payload?: DataRunTaskInput) => {
@@ -121,8 +197,30 @@ export function useDataActions(deps: DataActionsDeps) {
     [dashboard, editors, loadDashboard, ui]
   );
 
+  const handleRefreshCloudInputTable = useCallback(
+    async (dataset: DataDataset) => {
+      if (!dataClient.has('refreshCloudInputTable')) return;
+      ui.setActionId(`cloud-sync:${dataset.id}`);
+      ui.setError(null);
+      try {
+        await dataClient.refreshCloudInputTable({ inputTableId: dataset.id });
+        await Promise.all([
+          loadInputTables({ preserveError: true }),
+          loadDashboard({ preserveError: true }),
+        ]);
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true });
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [loadDashboard, loadInputTables, ui]
+  );
+
   const handleEditTask = useCallback(
     (task: DataCleaningTask) => {
+      editors.setTaskNameEditRequested(false);
       editors.setFocusedTask(task);
       editors.setEditingTaskId(task.id);
     },
@@ -130,6 +228,7 @@ export function useDataActions(deps: DataActionsDeps) {
   );
 
   const handleCloseTaskEditor = useCallback(() => {
+    editors.setTaskNameEditRequested(false);
     editors.setEditingTaskId(null);
     editors.setFocusedTask(null);
   }, [editors]);
@@ -639,6 +738,8 @@ export function useDataActions(deps: DataActionsDeps) {
 
   return {
     handleCreateTask,
+    handleCreateTaskFromTable,
+    handleRefreshCloudInputTable,
     handleRunTask,
     handleEditTask,
     handleCloseTaskEditor,

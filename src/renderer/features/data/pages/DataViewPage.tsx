@@ -4,11 +4,14 @@
  * renders the tabbed workspace. Components below only receive state and
  * action callbacks; every IPC call lives in `features/data/api/data-client`.
  */
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
-import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
+import {
+  CloudAnalysisPanel,
+  type CloudFocusTarget,
+} from '../../../components/data-view/cloud-analysis';
 import { TaskEditor, TasksPanel } from '../../../components/data-view/data-tasks';
 import {
   InputTableEditor,
@@ -84,6 +87,22 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
+  const [cloudFocus, setCloudFocus] = useState<CloudFocusTarget | null>(null);
+  const handleOpenCloudSource = useCallback(
+    (mirror: { spaceId?: string; projectId?: string; tableId: string }) => {
+      if (!mirror.spaceId || !mirror.projectId) return;
+      setCloudFocus({
+        spaceId: mirror.spaceId,
+        projectId: mirror.projectId,
+        tableId: mirror.tableId,
+        nonce: Date.now(),
+      });
+      // The editor replaces the whole tab area — close it so the cloud tab shows.
+      editors.setEditingInputTableDatasetId(null);
+      ui.setActiveTab('cloud_analysis');
+    },
+    [editors, ui]
+  );
   const taskGroups = useMemo(
     () => dashboard.dashboard.groups.filter((group) => group.scope === 'task'),
     [dashboard.dashboard.groups]
@@ -235,6 +254,7 @@ export function DataViewPage() {
             actionId={actionId}
             runNodeStats={dashboard.runNodeStats}
             lastRunFailure={dashboard.lastRunFailure}
+            autoEditTitle={editors.taskNameEditRequested}
             onBack={actions.handleCloseTaskEditor}
             onRun={actions.handleRunTask}
             onWorkflowSaved={() => dashboard.loadDashboard({ preserveError: true })}
@@ -255,6 +275,9 @@ export function DataViewPage() {
             onRenameDataset={actions.handleRenameInputTableDataset}
             onChooseDatasetSource={actions.handleUpdateInputTableSource}
             onUpdateDatasetConfig={actions.handleUpdateInputTableConfig}
+            onCreateTask={actions.handleCreateTaskFromTable}
+            onSyncCloudSource={actions.handleRefreshCloudInputTable}
+            onOpenCloudSource={handleOpenCloudSource}
           />
         ) : editors.editingOutputTable ? (
           <OutputTableEditor
@@ -262,8 +285,10 @@ export function DataViewPage() {
             inputTables={editors.outputEditorInputTables}
             isInputTablesLoading={editors.outputEditorInputTablesLoading}
             isBusy={actionId === editors.editingOutputTable.id}
+            tasks={dashboard.dashboard.tasks}
             onBack={() => editors.setEditingOutputTableId(null)}
             onSave={actions.handleUpdateOutputTable}
+            onRunTask={actions.handleRunTask}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -336,6 +361,7 @@ export function DataViewPage() {
                     onDeleteDraft={actions.handleDeleteInputTableDraft}
                     onEditDraft={editors.setEditingInputTableDraftId}
                     onEditDataset={actions.handleEditInputTableDataset}
+                    onCreateTaskFromTable={actions.handleCreateTaskFromTable}
                     onAssignToGroup={(ids, target) =>
                       actions.handleAssignToGroup('input', ids, target)
                     }
@@ -375,7 +401,7 @@ export function DataViewPage() {
                   />
                 </TabsContent>
                 <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
-                  <CloudAnalysisPanel />
+                  <CloudAnalysisPanel focusTarget={cloudFocus} />
                 </TabsContent>
               </Tabs>
             </section>

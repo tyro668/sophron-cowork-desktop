@@ -191,6 +191,8 @@
         "folderPath": "文件夹路径",
         "changeFile": "更换文件",
         "changeFolder": "更换文件夹",
+        "chooseFile": "选择文件",
+        "chooseFolder": "选择文件夹",
         "noSource": "尚未选择来源",
         "chooseSourceFirst": "请选择文件或文件夹后继续配置",
         "processingStrategy": "数据处理策略",
@@ -307,7 +309,19 @@
         "csv": "CSV 文件",
         "csvDesc": "选择 .csv、.tsv 或 .tab 文件作为一张输入表。",
         "folder": "文件夹",
-        "folderDesc": "读取文件夹下的 Excel 和 CSV 文件，并合并为一张输入表。"
+        "folderDesc": "读取文件夹下的 Excel 和 CSV 文件，并合并为一张输入表。",
+        "cloudSource": {
+          "title": "云端来源",
+          "location": "位置",
+          "localSnapshot": "本地快照 {{rows}} 行",
+          "lastSync": "上次同步 {{time}}",
+          "sourceUpdated": "源更新 {{time}}",
+          "unknownTime": "未知",
+          "sync": "同步最新数据",
+          "syncing": "同步中…",
+          "syncUnavailable": "云端来源信息不完整，请从云空间重新导入",
+          "openInCloud": "在云空间中查看"
+        }
       },
       "status": {
         "available": "可用",
@@ -316,7 +330,8 @@
       "actions": {
         "preview": "预览",
         "edit": "编辑",
-        "delete": "删除"
+        "delete": "删除",
+        "createTask": "基于此表创建任务"
       },
       "sources": {
         "all": "全部来源",
@@ -324,7 +339,8 @@
         "csv": "CSV",
         "folder": "文件夹",
         "file": "文件",
-        "notConfigured": "未配置"
+        "notConfigured": "未配置",
+        "cloud": "云表"
       }
     },
     "outputTables": {
@@ -395,10 +411,15 @@
         "noInputTable": "不绑定输入表",
         "loadingInputTables": "正在加载输入表...",
         "inputTableInfo": "可从输入表复制生成输出表，也可以在数据任务的输出算子中选择此输出表作为任务写入目标。",
-        "physicalTable": "物理表",
-        "rows": "行数",
-        "columns": "列数",
-        "relatedTasks": "关联数据任务"
+        "runTask": "重新运行",
+        "running": "运行中…",
+        "runTaskTitle": "重新运行任务「{{name}}」",
+        "export": "导出",
+        "exportCsv": "CSV 文件",
+        "exportExcel": "Excel 文件 (.xlsx)",
+        "exportReport": "生成报告 (HTML)",
+        "exportDone": "已导出：{{path}}",
+        "dataMeta": "共 {{rows}} 行 · 数据更新于 {{time}}"
       },
       "automation": {
         "title": "自动化动作",
@@ -1427,7 +1448,47 @@
       "mergeKeysPlaceholder": "例如 order_id, sku（逗号分隔）",
       "schemaPolicy": "Schema 漂移策略",
       "assertion": "断言",
-      "rejectStream": "Reject 流"
+      "rejectStream": "Reject 流",
+      "aiGenerate": "AI 生成",
+      "aiAnalyze": "分析可行性",
+      "aiAnalyzing": "分析中…",
+      "aiGenerateSubmit": "生成流程",
+      "aiGenerating": "生成中…",
+      "aiAnalysisResult": "需求解析结果",
+      "aiInputBound": "将基于输入表「{{name}}」生成",
+      "aiInputMissing": "先在输入节点绑定输入表，或先应用起始模板",
+      "aiReplaceWarning": "生成将替换当前画布上的流程；未保存的修改会丢失。",
+      "aiRequirementPlaceholder": "描述想要的处理流程，例如：筛选金额大于 0 的记录，按地区汇总销售额。",
+      "aiStatusSupported": "可生成",
+      "aiStatusAmbiguous": "需确认",
+      "aiStatusUnsupported": "暂不支持",
+      "explainTitle": "解释流程",
+      "explainDisabled": "已禁用",
+      "explainDsl": "流程 DSL（可审阅）",
+      "starterTitle": "从空白流程开始",
+      "starterHint": "流程由「输入 → 处理 → 输出」节点组成。可用起始模板快速搭建，或让 AI 按描述生成。",
+      "starterTemplate": "使用起始模板",
+      "starterAi": "AI 生成流程",
+      "starterOutputName": "{{name}} 输出",
+      "runEmpty": "任务还没有运行记录。点击「试运行」或「保存并运行」后，这里会显示每次运行的详情。",
+      "runKindRun": "正式运行",
+      "runKindTrial": "试运行",
+      "runStartedAt": "开始",
+      "runFinishedAt": "结束",
+      "runDuration": "耗时",
+      "runRows": "行数",
+      "runRowsValue": "输入 {{input}} · 输出 {{output}}",
+      "runVersion": "版本",
+      "runNodeStats": "各节点行数",
+      "runNoNodeStats": "该次运行没有保留节点级统计。",
+      "runInProgress": "运行进行中，统计待生成。",
+      "runErrorMissingField": "字段「{{field}}」不存在",
+      "runErrorAtLine": "第 {{line}} 行",
+      "runErrorNode": "出错节点 {{name}}",
+      "runErrorNodeHint": "点击选中该节点并打开配置",
+      "runErrorFields": "可用字段",
+      "runErrorSuggestion": "是否想用「{{field}}」？",
+      "runErrorDetails": "技术详情"
     },
     "relative": {
       "today": "今天",
@@ -1443,7 +1504,8 @@
       "rename": "重命名分组",
       "delete": "解散分组",
       "deleteConfirm": "确定解散分组“{name}”吗？其中的条目会移出分组，不会被删除。"
-    }
+    },
+    "taskNameFromTable": "{{name}} 清洗任务"
   },
   "settings": {
     "title": "设置",

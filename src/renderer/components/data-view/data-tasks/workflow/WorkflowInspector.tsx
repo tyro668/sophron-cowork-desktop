@@ -21,7 +21,8 @@ import { dataClient } from '../../../../features/data/api/data-client';
 import { useWorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { WorkflowOperatorConfigPanel } from '../../WorkflowOperatorConfigPanel';
 import { getOperatorCatalog } from './operator-catalog';
-import { getWorkflowConfigSummary } from './workflow-summary';
+import { formatNodeRunStatLine, getWorkflowConfigSummary } from './workflow-summary';
+import { WorkflowRunLogsPanel } from './WorkflowRunLogsPanel';
 import { WorkflowInputSourceConfig } from './WorkflowInputSourceConfig';
 import { WorkflowOutputConfig } from './WorkflowOutputConfig';
 import { WorkflowNodeDataPreview, WorkflowSummaryPanel } from './WorkflowUi';
@@ -29,27 +30,8 @@ import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import { getWorkflowFieldSourceCandidates } from './workflow-field-candidates';
 import type { WorkflowInspectorTab } from './workflow-model';
 
-function formatNodeRunStatLine(
-  stat: WorkflowNodeRunStat,
-  t: (key: string, options?: Record<string, unknown>) => string
-): string {
-  const input = stat.inputRowsByHandle
-    ? `${t('data.workflow.runStatLeft', { count: stat.inputRowsByHandle.left ?? '—' })} ${t(
-        'data.workflow.runStatRight',
-        { count: stat.inputRowsByHandle.right ?? '—' }
-      )}`
-    : t('data.workflow.runStatInput', { count: stat.inputRows ?? '—' });
-  const parts = [input, t('data.workflow.runStatOutput', { count: stat.outputRows ?? '—' })];
-  if (stat.droppedRows != null) {
-    parts.push(t('data.workflow.runStatDropped', { count: stat.droppedRows }));
-  }
-  if (stat.rejectedRows != null) {
-    parts.push(t('data.workflow.runStatRejected', { count: stat.rejectedRows }));
-  }
-  return parts.join(' · ');
-}
-
 export function WorkflowInspector({
+  taskId,
   node,
   workflowNodes,
   workflowEdges,
@@ -63,12 +45,16 @@ export function WorkflowInspector({
   isRunningOperatorDsl,
   nodeDataRefreshVersion,
   runStat,
+  runRefreshKey,
+  onSelectNode,
   firstZeroOutputNode,
   isPreviewStale,
   upstreamSignature,
   onPreviewToHere,
   isPreviewRunning,
 }: {
+  /** Owning task — the logs tab lists its recorded runs. */
+  taskId: string;
   node: DataWorkflowNode | null;
   workflowNodes: DataWorkflowNode[];
   workflowEdges: DataWorkflowEdge[];
@@ -82,6 +68,10 @@ export function WorkflowInspector({
   isRunningOperatorDsl: boolean;
   nodeDataRefreshVersion: number;
   runStat?: WorkflowNodeRunStat;
+  /** Bumped when a run finishes — refetches the run list on the logs tab. */
+  runRefreshKey?: number | string | null;
+  /** Logs tab "locate failed node" — selects the node + opens its config. */
+  onSelectNode?: (nodeId: string) => void;
   firstZeroOutputNode?: DataWorkflowNode | null;
   isPreviewStale?: boolean;
   /** Current draft's upstream-subgraph signature for the selected node. */
@@ -447,9 +437,14 @@ export function WorkflowInspector({
           }`}
         >
           {resolvedTab === 'logs' ? (
-            <div className="h-full min-h-0 rounded-lg border border-border-muted bg-surface p-2.5 text-xs text-text-muted">
-              {t('data.workflow.noLogs')}
-            </div>
+            <WorkflowRunLogsPanel
+              taskId={taskId}
+              node={node}
+              workflowNodes={workflowNodes}
+              runStat={runStat}
+              refreshKey={runRefreshKey}
+              onSelectNode={onSelectNode}
+            />
           ) : resolvedTab === 'data' ? (
             <div className="flex h-full min-h-0 flex-col gap-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

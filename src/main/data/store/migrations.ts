@@ -642,6 +642,35 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       await ctx.ensureMetadataColumn('data_datasets', 'group_id', 'VARCHAR');
     },
   },
+  {
+    version: 13,
+    name: 'data_task_runs',
+    up: async (ctx) => {
+      // Per-run records so the logs tab can answer "what happened in this
+      // run" for both trial and persisted executions. Node stats stay keyed
+      // by run_id and are retained alongside their run row.
+      await ctx.metaRunSql(`
+        CREATE TABLE IF NOT EXISTS data_task_runs (
+          id VARCHAR PRIMARY KEY,
+          task_id VARCHAR NOT NULL,
+          seq INTEGER NOT NULL,
+          trigger VARCHAR NOT NULL,
+          status VARCHAR NOT NULL,
+          workflow_signature VARCHAR,
+          input_rows BIGINT,
+          output_rows BIGINT,
+          error VARCHAR,
+          failed_node_id VARCHAR,
+          started_at BIGINT NOT NULL,
+          finished_at BIGINT,
+          created_at BIGINT NOT NULL
+        )
+      `);
+      await ctx.metaRunSql(
+        'CREATE INDEX IF NOT EXISTS idx_data_task_runs_task ON data_task_runs(task_id, seq DESC)'
+      );
+    },
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

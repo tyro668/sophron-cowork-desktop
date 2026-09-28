@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Cloud,
   FileText,
   Folder,
   Info,
@@ -13,7 +14,7 @@ import {
   Table2,
   type LucideIcon,
 } from 'lucide-react';
-import type { DataOutputTable, DataTaskStatus } from '../../types';
+import type { DataDataset, DataOutputTable, DataTaskStatus } from '../../types';
 import type { InputTableSourceKind } from '../../features/data/model/types';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
@@ -525,4 +526,35 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
         badgeClassName: 'bg-surface-active text-text-secondary',
       };
   }
+}
+
+export type CloudMirrorInfo = NonNullable<
+  Extract<DataDataset['inputConfig'], { sourceKind: 'csv' }>['cloudMirror']
+>;
+
+/** Cloud provenance persisted on csv input tables imported/synced from a cloud table. */
+export function getCloudMirror(
+  dataset: Pick<DataDataset, 'inputConfig'> | null | undefined
+): CloudMirrorInfo | undefined {
+  const config = dataset?.inputConfig;
+  return config?.sourceKind === 'csv' ? config.cloudMirror : undefined;
+}
+
+export function getCloudMirrorSourceMeta(): ReturnType<typeof getInputTableSourceMeta> {
+  return {
+    Icon: Cloud,
+    labelKey: 'data.inputTables.sources.cloud',
+    className: 'bg-accent-muted text-accent',
+    badgeClassName: 'bg-accent-muted text-accent',
+  };
+}
+
+/** `space / project / table` breadcrumb, falling back to ids when names are unknown. */
+export function formatCloudMirrorLocation(mirror: CloudMirrorInfo): string {
+  const parts = [
+    mirror.spaceName || mirror.spaceId,
+    mirror.projectName || mirror.projectId,
+    mirror.tableName || mirror.tableId,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(' / ');
 }

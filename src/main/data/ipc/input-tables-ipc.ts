@@ -1,5 +1,9 @@
+import { dialog } from 'electron';
+import * as fs from 'fs';
 import type {
   DataDeleteInputTableNormalizerVersionInput,
+  DataExportTableInput,
+  DataExportTableResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataImportDatasetInput,
   DataListInputTableNormalizerVersionsInput,
@@ -10,6 +14,7 @@ import type {
   DataSummarizeInputTableSourceInput,
   DataUpdateDatasetInput,
 } from '../../../shared/contracts';
+import { appContext } from '../../app/context';
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
 
@@ -153,6 +158,43 @@ export function registerInputTablesIpc({
       throw error;
     }
   });
+
+  handleIpc(
+    'data.exportTable',
+    async (_event, payload: DataExportTableInput): Promise<DataExportTableResult> => {
+      let prepared: { fileName: string; content: string | Buffer };
+      try {
+        prepared = await requireDataTaskStore().buildTableExport(payload);
+      } catch (error) {
+        logError('[Data] Error building table export:', error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+      const filters =
+        payload.format === 'csv'
+          ? [{ name: 'CSV', extensions: ['csv'] }]
+          : payload.format === 'xlsx'
+            ? [{ name: 'Excel', extensions: ['xlsx'] }]
+            : [{ name: 'HTML', extensions: ['html'] }];
+      const mainWindow = appContext.mainWindow;
+      if (!mainWindow) {
+        return { success: false, error: 'Main window is not available' };
+      }
+      const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: prepared.fileName,
+        filters,
+      });
+      if (result.canceled || !result.filePath) {
+        return { success: false, error: 'cancelled' };
+      }
+      try {
+        await fs.promises.writeFile(result.filePath, prepared.content);
+        return { success: true, path: result.filePath };
+      } catch (error) {
+        logError('[Data] Error writing table export:', error);
+        return { success: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  );
 
   handleIpc('data.deleteDataset', async (_event, id: string) => {
     try {

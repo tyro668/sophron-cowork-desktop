@@ -63,6 +63,8 @@ import type {
   DataInputTableNormalizerVersionSaveResult,
   DataListInputTableNormalizerVersionsInput,
   DataListInputTableNormalizerVersionsResult,
+  DataExportTableInput,
+  DataExportTableResult,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
   DataPreviewInputTableNormalizerVersionInput,
@@ -109,6 +111,8 @@ import type {
   PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
+  RefreshCloudInputTableInput,
+  RefreshCloudInputTableResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
   UploadDataTableToCloudInput,
@@ -120,6 +124,7 @@ import type {
   DiagnosticResult,
   RunTaskResult,
   WorkflowNodeRunStat,
+  DataTaskRun,
   McpServerConfig,
   McpTool,
   McpServerStatus,
@@ -184,6 +189,8 @@ export interface ElectronApi {
     runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput) => Promise<RunTaskResult>;
     getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
     getTaskNodeStats: (id: string) => Promise<WorkflowNodeRunStat[]>;
+    listTaskRuns: (id: string, limit?: number) => Promise<DataTaskRun[]>;
+    getTaskRunNodeStats: (id: string, runId: string) => Promise<WorkflowNodeRunStat[]>;
     saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput) => Promise<DataTaskWorkflow>;
     validateTaskWorkflowPlan: (
       id: string,
@@ -197,6 +204,7 @@ export interface ElectronApi {
     updateOutputTable: (payload: DataUpdateOutputTableInput) => Promise<DataOutputTable>;
     previewInputTable: (payload: DataPreviewInputTableInput) => Promise<DataInputTablePreview>;
     previewDataset: (payload: DataPreviewDatasetInput) => Promise<DataInputTablePreview>;
+    exportTable: (payload: DataExportTableInput) => Promise<DataExportTableResult>;
     previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput) => Promise<DataInputTablePreview>;
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
     getWorkflowNodeColumnTypes: (
@@ -240,6 +248,9 @@ export interface ElectronApi {
     searchCloudTables: (payload: SearchCloudTablesInput) => Promise<SearchCloudTablesResult>;
     previewCloudTable: (payload: PreviewCloudTableInput) => Promise<PreviewCloudTableResult>;
     importCloudTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
+    refreshCloudInputTable: (
+      payload: RefreshCloudInputTableInput
+    ) => Promise<RefreshCloudInputTableResult>;
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ) => Promise<UploadDataTableToCloudResult>;

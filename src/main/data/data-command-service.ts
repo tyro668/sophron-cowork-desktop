@@ -2,6 +2,7 @@ import type {
   CloudInputSyncConfig,
   CloudOutputSyncConfig,
 } from '../../shared/automation/cloud-sync';
+import { dirname, join } from 'path';
 import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
 import type { DataCleaningTask } from '../../shared/contracts';
 import type {
@@ -59,6 +60,8 @@ import {
   type PreviewInputTableNormalizerVersionResult,
   type PreviewTableCommand,
   type PreviewTableResult,
+  type RefreshCloudInputTableCommand,
+  type RefreshCloudInputTableResult,
   type PublishInputTableNormalizerVersionCommand,
   type PublishInputTableNormalizerVersionResult,
   type RunGeneratedTaskCommand,
@@ -137,6 +140,10 @@ export class DataCommandService {
       onPersonalAnalysisKeyRejected: options.onPersonalAnalysisKeyRejected,
       createInputTable: (input) => this.createInputTable(input),
       updateInputTable: (input) => this.updateInputTable(input),
+      // Keep downloaded cloud snapshots next to the store so sourcePath stays
+      // valid across restarts and OS temp cleanup (see cloudMirror provenance).
+      cloudImportDir:
+        store.dbPath === ':memory:' ? undefined : join(dirname(store.dbPath), 'cloud-imports'),
     });
     const locks = new DataCommandLockCoordinator();
     this.resources = new DataCommandResources(store);
@@ -301,6 +308,12 @@ export class DataCommandService {
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
     return this.cloudAnalysis.importCloudTable(input);
+  }
+
+  async refreshCloudInputTable(
+    input: RefreshCloudInputTableCommand
+  ): Promise<RefreshCloudInputTableResult> {
+    return this.cloudAnalysis.refreshCloudInputTable(input);
   }
 
   async previewCloudTable(input: PreviewCloudTableCommand): Promise<PreviewCloudTableResult> {

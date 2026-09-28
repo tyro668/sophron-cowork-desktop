@@ -274,6 +274,9 @@ export interface ImportCloudTableCommand extends PersonalAnalysisConnectionComma
   tableId: string;
   spaceId?: string;
   projectId?: string;
+  /** Display names kept for provenance display; ids remain authoritative. */
+  spaceName?: string;
+  projectName?: string;
   name?: string;
   previewRows?: number;
 }
@@ -283,6 +286,12 @@ export interface ImportCloudTableResult extends InputTableResult {
   cloudTable?: PersonalAnalysisTable;
   downloadedFilePath: string;
 }
+
+export interface RefreshCloudInputTableCommand extends PersonalAnalysisConnectionCommand {
+  inputTableId: string;
+}
+
+export interface RefreshCloudInputTableResult extends InputTableResult {}
 
 export interface PreviewCloudTableCommand extends PersonalAnalysisConnectionCommand {
   tableId: string;
@@ -483,6 +492,8 @@ export interface WorkflowNodeRunStat {
   rejectedRows?: number;
   /** Up to 5 sample rows that were dropped or rejected. */
   sample?: Record<string, unknown>[];
+  /** Run this stat belongs to; absent on legacy single-batch stats. */
+  runId?: string;
 }
 
 export interface RunTaskResult {

@@ -20,6 +20,7 @@ import type {
   DataDashboardQuery,
   DataDataset,
   DataAssignGroupInput,
+  DataExportTableInput,
   DataCreateGroupInput,
   DataGroup,
   DataGroupScope,
@@ -38,6 +39,7 @@ import type {
   DataRunTaskInput,
   DataSaveInputTableNormalizerDraftInput,
   DataSummarizeInputTableSourceInput,
+  DataTaskRun,
   DataTaskWorkflow,
   DataUpdateDatasetInput,
   DataUpdateOutputTableInput,
@@ -56,6 +58,7 @@ import { NormalizerRepository } from './store/repositories/normalizer-repository
 import { OutputCommitJournal } from './store/repositories/output-commit-journal';
 import { TableCommitJournal } from './store/repositories/table-commit-journal';
 import { RunStatsRepository } from './store/repositories/run-stats-repository';
+import { TaskRunsRepository } from './store/repositories/task-runs-repository';
 import { TaskRepository } from './store/repositories/task-repository';
 import { WatermarkRepository } from './store/repositories/watermark-repository';
 import { WorkflowRepository } from './store/repositories/workflow-repository';
@@ -64,6 +67,10 @@ import { InputSourceSummaryService } from './store/services/input-source-summary
 import { InputTableService } from './store/services/input-table-service';
 import { NormalizerService } from './store/services/normalizer-service';
 import { OutputCommitCoordinator } from './store/services/output-commit-coordinator';
+import {
+  TableExportService,
+  type PreparedTableExport,
+} from './store/services/table-export-service';
 import { TaskService } from './store/services/task-service';
 import { WorkflowBindingResolver } from './store/services/workflow-binding-resolver';
 import { WorkflowCompiler } from './store/services/workflow-compiler';
@@ -78,7 +85,6 @@ export class DataTaskStore {
   private readonly datasets: DatasetRepository;
   private readonly groups: GroupRepository;
   private readonly normalizers: NormalizerRepository;
-  private readonly runStats: RunStatsRepository;
   private readonly summarizer: InputSourceSummaryService;
   private readonly normalizerService: NormalizerService;
   private readonly inputTables: InputTableService;
@@ -86,9 +92,13 @@ export class DataTaskStore {
   private readonly validator: WorkflowValidator;
   private readonly commitCoordinator: OutputCommitCoordinator;
   private readonly nodePreview: WorkflowNodePreviewService;
+  private readonly tableExport: TableExportService;
   private readonly dashboardService: DashboardService;
 
-  constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
+  constructor(
+    public readonly dbPath: string,
+    options: DataTaskStoreOptions = {}
+  ) {
     this.ctx = new DataStoreContext(dbPath, options);
 
     const tasks = new TaskRepository(this.ctx);
@@ -97,6 +107,7 @@ export class DataTaskStore {
     const normalizers = new NormalizerRepository(this.ctx);
     const workflows = new WorkflowRepository(this.ctx);
     const runStats = new RunStatsRepository(this.ctx);
+    const taskRuns = new TaskRunsRepository(this.ctx);
     const caches = new CacheRepository(this.ctx);
     const watermarks = new WatermarkRepository(this.ctx);
     const journal = new OutputCommitJournal(this.ctx);
@@ -144,11 +155,13 @@ export class DataTaskStore {
       workflows,
       caches,
       runStats,
+      taskRuns,
       executor,
       validator,
       commitCoordinator,
       binding
     );
+    const tableExport = new TableExportService(this.ctx, datasets, tasks, workflows, taskRuns);
 
     this.ctx.registerPostReadyHook(() => commitCoordinator.recoverPendingOutputCommits());
     this.ctx.registerPostReadyHook(() => inputTables.recoverPendingTableCommits());
@@ -157,7 +170,6 @@ export class DataTaskStore {
     this.datasets = datasets;
     this.groups = groups;
     this.normalizers = normalizers;
-    this.runStats = runStats;
     this.summarizer = summarizer;
     this.normalizerService = normalizerService;
     this.inputTables = inputTables;
@@ -165,6 +177,7 @@ export class DataTaskStore {
     this.validator = validator;
     this.commitCoordinator = commitCoordinator;
     this.nodePreview = nodePreview;
+    this.tableExport = tableExport;
     this.dashboardService = new DashboardService(this.ctx);
   }
 
@@ -194,6 +207,10 @@ export class DataTaskStore {
     maxRows?: number;
   }): Promise<DataDatasetCsvExport> {
     return this.inputTables.exportDatasetCsv(input);
+  }
+  /** Builds an export file payload (csv/xlsx/html report) — the IPC layer owns dialogs + writes. */
+  buildTableExport(input: DataExportTableInput): Promise<PreparedTableExport> {
+    return this.tableExport.buildTableExport(input);
   }
   summarizeInputTableSource(
     input: DataSummarizeInputTableSourceInput
@@ -324,7 +341,8 @@ export class DataTaskStore {
     workflow: DataWorkflowSaveInput,
     watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
     nodeStats?: WorkflowNodeRunStat[],
-    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>
+    stagedSinks?: Array<{ nodeId: string; stagingTable: string }>,
+    runId?: string
   ): Promise<DataCleaningTask> {
     return this.commitCoordinator.commitValidatedTaskOutput(
       id,
@@ -332,7 +350,8 @@ export class DataTaskStore {
       workflow,
       watermarkUpdates,
       nodeStats,
-      stagedSinks
+      stagedSinks,
+      runId
     );
   }
   discardTemporaryTaskOutput(task: DataCleaningTask): Promise<void> {
@@ -348,7 +367,13 @@ export class DataTaskStore {
     return this.taskService.saveTaskWorkflow(id, input);
   }
   getTaskNodeStats(taskId: string): Promise<WorkflowNodeRunStat[]> {
-    return this.runStats.getTaskNodeStats(taskId);
+    return this.taskService.getTaskNodeStats(taskId);
+  }
+  listTaskRuns(taskId: string, limit?: number): Promise<DataTaskRun[]> {
+    return this.taskService.listTaskRuns(taskId, limit);
+  }
+  getTaskRunNodeStats(taskId: string, runId: string): Promise<WorkflowNodeRunStat[]> {
+    return this.taskService.getTaskRunNodeStats(taskId, runId);
   }
 
   // ---- workflow node previews ----

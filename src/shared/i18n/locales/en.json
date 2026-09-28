@@ -191,6 +191,8 @@
         "folderPath": "Folder path",
         "changeFile": "Change file",
         "changeFolder": "Change folder",
+        "chooseFile": "Choose file",
+        "chooseFolder": "Choose folder",
         "noSource": "No source selected",
         "chooseSourceFirst": "Choose a file or folder to continue",
         "processingStrategy": "Data processing",
@@ -307,7 +309,19 @@
         "csv": "CSV file",
         "csvDesc": "Choose a .csv, .tsv, or .tab file as one input table.",
         "folder": "Folder",
-        "folderDesc": "Read Excel and CSV files in the folder and merge them into one input table."
+        "folderDesc": "Read Excel and CSV files in the folder and merge them into one input table.",
+        "cloudSource": {
+          "title": "Cloud source",
+          "location": "Location",
+          "localSnapshot": "Local snapshot: {{rows}} rows",
+          "lastSync": "Last synced {{time}}",
+          "sourceUpdated": "Source updated {{time}}",
+          "unknownTime": "unknown",
+          "sync": "Sync latest data",
+          "syncing": "Syncing…",
+          "syncUnavailable": "Cloud source linkage is incomplete; re-import the table from the Cloud Space panel",
+          "openInCloud": "View in Cloud Space"
+        }
       },
       "status": {
         "available": "Available",
@@ -316,7 +330,8 @@
       "actions": {
         "preview": "Preview",
         "edit": "Edit",
-        "delete": "Delete"
+        "delete": "Delete",
+        "createTask": "Create task from this table"
       },
       "sources": {
         "all": "All sources",
@@ -324,7 +339,8 @@
         "csv": "CSV",
         "folder": "Folder",
         "file": "File",
-        "notConfigured": "Not configured"
+        "notConfigured": "Not configured",
+        "cloud": "Cloud table"
       }
     },
     "outputTables": {
@@ -395,10 +411,15 @@
         "noInputTable": "No bound input table",
         "loadingInputTables": "Loading input tables...",
         "inputTableInfo": "Copy from an input table, or select this output table in a data task output operator so the task writes into it.",
-        "physicalTable": "Physical table",
-        "rows": "Rows",
-        "columns": "Columns",
-        "relatedTasks": "Related data tasks"
+        "runTask": "Re-run",
+        "running": "Running…",
+        "runTaskTitle": "Re-run task \"{{name}}\"",
+        "export": "Export",
+        "exportCsv": "CSV file",
+        "exportExcel": "Excel file (.xlsx)",
+        "exportReport": "Generate report (HTML)",
+        "exportDone": "Exported: {{path}}",
+        "dataMeta": "{{rows}} rows · data updated {{time}}"
       },
       "automation": {
         "title": "Automations",
@@ -1427,7 +1448,47 @@
       "mergeKeysPlaceholder": "e.g. order_id, sku (comma-separated)",
       "schemaPolicy": "Schema drift policy",
       "assertion": "Assertion",
-      "rejectStream": "Reject stream"
+      "rejectStream": "Reject stream",
+      "aiGenerate": "Generate with AI",
+      "aiAnalyze": "Analyze",
+      "aiAnalyzing": "Analyzing…",
+      "aiGenerateSubmit": "Generate flow",
+      "aiGenerating": "Generating…",
+      "aiAnalysisResult": "Requirement analysis",
+      "aiInputBound": "Generates from input table \"{{name}}\"",
+      "aiInputMissing": "Bind an input table on a source node first, or start from the template",
+      "aiReplaceWarning": "Generation replaces the flow on this canvas; unsaved edits will be lost.",
+      "aiRequirementPlaceholder": "Describe the pipeline you want, e.g. keep rows with amount > 0, then aggregate sales by region.",
+      "aiStatusSupported": "Supported",
+      "aiStatusAmbiguous": "Needs review",
+      "aiStatusUnsupported": "Unsupported",
+      "explainTitle": "Explain flow",
+      "explainDisabled": "Disabled",
+      "explainDsl": "Flow DSL (reviewable)",
+      "starterTitle": "Start from an empty flow",
+      "starterHint": "A flow is input → process → output nodes. Start from a template or let AI generate it from a description.",
+      "starterTemplate": "Use starter template",
+      "starterAi": "Generate with AI",
+      "starterOutputName": "{{name}} output",
+      "runEmpty": "No runs yet. Run a trial or save & run to see execution details here.",
+      "runKindRun": "Run",
+      "runKindTrial": "Trial",
+      "runStartedAt": "Started",
+      "runFinishedAt": "Finished",
+      "runDuration": "Duration",
+      "runRows": "Rows",
+      "runRowsValue": "in {{input}} · out {{output}}",
+      "runVersion": "Version",
+      "runNodeStats": "Row counts per node",
+      "runNoNodeStats": "This run kept no per-node stats.",
+      "runInProgress": "Run in progress — stats pending.",
+      "runErrorMissingField": "Field \"{{field}}\" does not exist",
+      "runErrorAtLine": "line {{line}}",
+      "runErrorNode": "Failed node {{name}}",
+      "runErrorNodeHint": "Click to select the node and open its config",
+      "runErrorFields": "Available fields",
+      "runErrorSuggestion": "Did you mean \"{{field}}\"?",
+      "runErrorDetails": "Technical details"
     },
     "relative": {
       "today": "Today",
@@ -1443,7 +1504,8 @@
       "rename": "Rename group",
       "delete": "Dissolve group",
       "deleteConfirm": "Dissolve group \"{name}\"? Its items will be ungrouped, not deleted."
-    }
+    },
+    "taskNameFromTable": "{{name}} cleaning task"
   },
   "settings": {
     "title": "Settings",

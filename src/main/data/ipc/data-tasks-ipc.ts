@@ -153,6 +153,24 @@ export function registerDataTasksIpc({
     }
   });
 
+  handleIpc('data.listTaskRuns', async (_event, id: string, limit?: number) => {
+    try {
+      return await requireDataTaskStore().listTaskRuns(id, limit);
+    } catch (error) {
+      logError('[Data] Error listing task runs:', error);
+      throw error;
+    }
+  });
+
+  handleIpc('data.getTaskRunNodeStats', async (_event, id: string, runId: string) => {
+    try {
+      return await requireDataTaskStore().getTaskRunNodeStats(id, runId);
+    } catch (error) {
+      logError('[Data] Error getting task run node stats:', error);
+      throw error;
+    }
+  });
+
   handleIpc('data.getTaskWorkflow', async (_event, id: string) => {
     try {
       return await requireDataTaskStore().getTaskWorkflow(id);

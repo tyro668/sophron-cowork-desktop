@@ -1,19 +1,35 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowUpDown,
+  BarChart3,
+  ChevronDown,
+  Download,
   Eye,
+  FileText,
   FolderInput,
   Info,
   PencilLine,
+  Play,
   Plus,
   RefreshCw,
   Save,
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import type { DataDataset, DataGroup, DataOutputTable } from '../../types';
+import type {
+  DataCleaningTask,
+  DataDataset,
+  DataGroup,
+  DataInputTablePreview,
+  DataOutputTable,
+  DataTableExportFormat,
+} from '../../types';
+import { dataClient } from '../../features/data/api/data-client';
+import { showToast } from '../../utils/toast';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
+import { InputTablePreviewDialog } from './input-table-preview-dialog';
 import {
   AssignGroupDialog,
   buildGroupSections,
@@ -37,6 +53,7 @@ import {
   flatToolbarRowClass,
   formatDateTime,
   formatOutputTableRelatedTaskNames,
+  INPUT_TABLE_PREVIEW_PAGE_SIZE,
 } from './shared';
 import { Button } from '../ui/button';
 import { OutputTableAutomations } from './table-automations';
@@ -359,24 +376,35 @@ export function OutputTableEditor({
   inputTables,
   isInputTablesLoading,
   isBusy,
+  tasks,
   onBack,
   onSave,
+  onRunTask,
 }: {
   outputTable: DataOutputTable;
   inputTables: DataDataset[];
   isInputTablesLoading: boolean;
   isBusy: boolean;
+  tasks: DataCleaningTask[];
   onBack: () => void;
   onSave: (
     outputTable: DataOutputTable,
     name: string,
     sourceDatasetId: string | null
   ) => void | Promise<void>;
+  onRunTask: (task: DataCleaningTask) => void | Promise<void>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [localName, setLocalName] = useState(outputTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceDatasetId, setSourceDatasetId] = useState(outputTable.sourceDatasetId ?? '');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [preview, setPreview] = useState<DataInputTablePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [runBusy, setRunBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState<DataTableExportFormat | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const busy = isBusy;
   const trimmedName = localName.trim();
@@ -403,6 +431,50 @@ export function OutputTableEditor({
     return [{ value: '', label: emptyLabel }, ...options];
   }, [inputTables, isInputTablesLoading, sourceDatasetId, t]);
 
+  // The task that produced this table — matched by id (name fallback for
+  // dashboards loaded before relatedTaskIds existed).
+  const relatedTask = useMemo(() => {
+    for (const id of outputTable.relatedTaskIds ?? []) {
+      const found = tasks.find((task) => task.id === id);
+      if (found) return found;
+    }
+    return tasks.find((task) => outputTable.relatedTaskNames.includes(task.name)) ?? null;
+  }, [tasks, outputTable.relatedTaskIds, outputTable.relatedTaskNames]);
+
+  const loadPreview = useCallback(
+    async (page: number) => {
+      if (!dataClient.has('previewDataset')) return;
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const result = await dataClient.previewDataset({
+          id: outputTable.id,
+          limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
+          offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
+        });
+        setPreview(result);
+        setPreviewPage(page);
+      } catch (err) {
+        setPreviewError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setPreviewLoading(false);
+      }
+    },
+    [outputTable.id]
+  );
+
+  useEffect(() => {
+    setPreview(null);
+    setPreviewOpen(false);
+    setPreviewPage(1);
+  }, [loadPreview]);
+
+  const openPreview = useCallback(() => {
+    setPreviewOpen(true);
+    setPreviewPage(1);
+    void loadPreview(1);
+  }, [loadPreview]);
+
   useEffect(() => {
     setLocalName(outputTable.name);
     setIsNameEditing(false);
@@ -414,6 +486,41 @@ export function OutputTableEditor({
     nameInputRef.current?.focus();
     nameInputRef.current?.select();
   }, [isNameEditing]);
+
+  const handleRunRelatedTask = async () => {
+    if (!relatedTask || runBusy) return;
+    setRunBusy(true);
+    try {
+      await onRunTask(relatedTask);
+      if (previewOpen) await loadPreview(previewPage);
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const handleExport = async (format: DataTableExportFormat) => {
+    if (exportBusy) return;
+    setExportBusy(format);
+    try {
+      const result = await dataClient.exportTable({
+        tableKind: 'output',
+        id: outputTable.id,
+        format,
+        locale: i18n.language.startsWith('zh') ? 'zh' : 'en',
+      });
+      if (result.success) {
+        showToast('success', t('data.outputTables.editor.exportDone', { path: result.path }));
+      } else if (result.error && result.error !== 'cancelled') {
+        showToast('error', result.error);
+      }
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportBusy(null);
+    }
+  };
+
+  const exportDisabled = busy || exportBusy !== null || !dataClient.has('exportTable');
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -469,15 +576,76 @@ export function OutputTableEditor({
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={!canSave}
-          className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Save className="h-3.5 w-3.5" />
-          {busy ? t('common.saving') : t('common.save')}
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={openPreview}
+            disabled={previewLoading}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {previewLoading ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+            {t('data.inputTables.editor.preview')}
+          </button>
+          {relatedTask && (
+            <button
+              type="button"
+              onClick={() => void handleRunRelatedTask()}
+              disabled={busy || runBusy}
+              title={t('data.outputTables.editor.runTaskTitle', { name: relatedTask.name })}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Play className="h-3.5 w-3.5" />
+              {runBusy
+                ? t('data.outputTables.editor.running')
+                : t('data.outputTables.editor.runTask')}
+            </button>
+          )}
+          <GlassDropdownMenu
+            align="end"
+            trigger={
+              <Button variant="secondary" size="sm" disabled={exportDisabled}>
+                <Download className="h-3.5 w-3.5" />
+                {t('data.outputTables.editor.export')}
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            }
+          >
+            <GlassMenuItem
+              icon={<FileText className="h-3.5 w-3.5" />}
+              disabled={exportBusy !== null}
+              onSelect={() => void handleExport('csv')}
+            >
+              {t('data.outputTables.editor.exportCsv')}
+            </GlassMenuItem>
+            <GlassMenuItem
+              icon={<Download className="h-3.5 w-3.5" />}
+              disabled={exportBusy !== null}
+              onSelect={() => void handleExport('xlsx')}
+            >
+              {t('data.outputTables.editor.exportExcel')}
+            </GlassMenuItem>
+            <GlassMenuItem
+              icon={<BarChart3 className="h-3.5 w-3.5" />}
+              disabled={exportBusy !== null}
+              onSelect={() => void handleExport('html')}
+            >
+              {t('data.outputTables.editor.exportReport')}
+            </GlassMenuItem>
+          </GlassDropdownMenu>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!canSave}
+            className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {busy ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-surface p-4">
@@ -502,6 +670,21 @@ export function OutputTableEditor({
           </div>
         </div>
       </div>
+      {previewOpen && (
+        <InputTablePreviewDialog
+          tableKind="output"
+          subtitle={t('data.outputTables.editor.dataMeta', {
+            rows: preview?.totalRows ?? outputTable.rowCount ?? 0,
+            time: formatDateTime(outputTable.updatedAt),
+          })}
+          preview={preview}
+          isLoading={previewLoading}
+          error={previewError}
+          currentPage={previewPage}
+          onPageChange={(page) => void loadPreview(page)}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </section>
   );
 }

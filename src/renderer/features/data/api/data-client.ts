@@ -53,6 +53,9 @@ export const dataClient = {
     dataApi().getTaskWorkflow(...args),
   getTaskNodeStats: (...args: Parameters<DataApi['getTaskNodeStats']>) =>
     dataApi().getTaskNodeStats(...args),
+  listTaskRuns: (...args: Parameters<DataApi['listTaskRuns']>) => dataApi().listTaskRuns(...args),
+  getTaskRunNodeStats: (...args: Parameters<DataApi['getTaskRunNodeStats']>) =>
+    dataApi().getTaskRunNodeStats(...args),
   saveTaskWorkflow: (...args: Parameters<DataApi['saveTaskWorkflow']>) =>
     dataApi().saveTaskWorkflow(...args),
   validateTaskWorkflowPlan: (...args: Parameters<DataApi['validateTaskWorkflowPlan']>) =>
@@ -77,6 +80,7 @@ export const dataClient = {
     dataApi().deleteDataset(...args),
   previewDataset: (...args: Parameters<DataApi['previewDataset']>) =>
     dataApi().previewDataset(...args),
+  exportTable: (...args: Parameters<DataApi['exportTable']>) => dataApi().exportTable(...args),
   previewInputTable: (...args: Parameters<DataApi['previewInputTable']>) =>
     dataApi().previewInputTable(...args),
   summarizeInputTableSource: (...args: Parameters<DataApi['summarizeInputTableSource']>) =>
@@ -129,6 +133,8 @@ export const dataClient = {
     dataApi().previewCloudTable(...args),
   importCloudTable: (...args: Parameters<DataApi['importCloudTable']>) =>
     dataApi().importCloudTable(...args),
+  refreshCloudInputTable: (...args: Parameters<DataApi['refreshCloudInputTable']>) =>
+    dataApi().refreshCloudInputTable(...args),
   uploadDataTableToCloud: (...args: Parameters<DataApi['uploadDataTableToCloud']>) =>
     dataApi().uploadDataTableToCloud(...args),
   listCloudDriveFiles: (...args: Parameters<DataApi['listCloudDriveFiles']>) =>

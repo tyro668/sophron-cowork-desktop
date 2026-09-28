@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
@@ -48,7 +48,12 @@ afterEach(async () => {
   await store.close();
   rmSync(directory, { recursive: true, force: true });
 });
-function service() {
+async function cloudMirrorOf(inputTableId: string) {
+  const dataset = await store.getInputTableRecord(inputTableId);
+  return dataset?.inputConfig.sourceKind === 'csv' ? dataset.inputConfig.cloudMirror : undefined;
+}
+
+function service(cloudImportDir?: string) {
   const input = new InputTablesCommandService(store, {} as never);
   return new CloudAnalysisCommandService(
     store,
@@ -56,6 +61,7 @@ function service() {
     {
       createInputTable: (command) => input.createInputTable(command),
       updateInputTable: (command) => input.updateInputTable(command),
+      cloudImportDir,
     }
   );
 }
@@ -83,8 +89,106 @@ describe('cloud input table automation', () => {
       expect((await store.getDashboard()).totalDatasets).toBe(1);
       expect((await store.getInputTableRecord(created.inputTableId))?.rowCount).toBe(1);
       expect(findTable).toHaveBeenCalledWith('s', 'p', 'remote');
+      const mirror = await cloudMirrorOf(created.inputTableId);
+      expect(mirror).toMatchObject({
+        tableId: 'remote',
+        spaceId: 's',
+        projectId: 'p',
+        tableKind,
+        automationSyncKey: 'key_%"',
+      });
+      expect(mirror?.syncedAt).toEqual(expect.any(Number));
     }
   );
+  it('persists full cloud provenance on manual import and keeps a stable snapshot file', async () => {
+    const importDir = join(directory, 'cloud-imports');
+    const result = await service(importDir).importCloudTable({
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+      spaceName: 'Alpha space',
+      projectName: 'Beta project',
+      name: 'Imported sales',
+    });
+    const dataset = result.inputTable;
+    expect(dataset.sourcePath.startsWith(importDir)).toBe(true);
+    expect(existsSync(dataset.sourcePath)).toBe(true);
+    const mirror = await cloudMirrorOf(dataset.id);
+    expect(mirror).toMatchObject({
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+      spaceName: 'Alpha space',
+      projectName: 'Beta project',
+      tableKind: 'analysis',
+      tableName: 'Remote sales',
+      sourceVersion: '2026-09-22',
+    });
+    expect(mirror?.syncedAt).toEqual(expect.any(Number));
+    expect(mirror?.contentHash).toEqual(expect.any(String));
+    // The snapshot path survives OS temp cleanup semantics — reimports of the
+    // stored source keep working (sourcePath stays valid inside the store dir).
+    await store.updateDataset({
+      id: dataset.id,
+      config: dataset.inputConfig,
+    });
+    expect((await store.getInputTableRecord(dataset.id))?.rowCount).toBe(2);
+  });
+  it('re-downloads the snapshot on manual refresh and preserves table identity', async () => {
+    const importDir = join(directory, 'cloud-imports');
+    const created = await service(importDir).importCloudTable({
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+      name: 'Imported sales',
+    });
+    const firstMirror = await cloudMirrorOf(created.inputTable.id);
+    exportTableCsv.mockResolvedValue('id,amount\n9,99\n');
+    findTable.mockResolvedValue({
+      tableId: 'remote',
+      tableName: 'Remote sales v2',
+      kind: 'analysis',
+      updatedAt: '2026-09-23',
+    });
+    const refreshed = await service(importDir).refreshCloudInputTable({
+      inputTableId: created.inputTable.id,
+    });
+    expect(refreshed.inputTable.id).toBe(created.inputTable.id);
+    expect(refreshed.inputTable.rowCount).toBe(1);
+    const mirror = await cloudMirrorOf(created.inputTable.id);
+    expect(mirror?.sourceVersion).toBe('2026-09-23');
+    expect(mirror?.tableName).toBe('Remote sales v2');
+    expect((mirror?.syncedAt ?? 0) >= (firstMirror?.syncedAt ?? 0)).toBe(true);
+    expect((await store.getDashboard()).totalDatasets).toBe(1);
+  });
+  it('rejects refresh for non-cloud tables and incomplete legacy linkage', async () => {
+    writeFileSync(join(directory, 'local.csv'), 'id\n1\n');
+    writeFileSync(join(directory, 'legacy.csv'), 'id\n2\n');
+    const plain = await store.importDataset({
+      filePath: join(directory, 'local.csv'),
+      sourceKind: 'csv',
+      name: 'Local file',
+    });
+    await expect(service().refreshCloudInputTable({ inputTableId: plain.id })).rejects.toThrow(
+      'not linked to a cloud table'
+    );
+    const legacy = await store.importDataset({
+      filePath: join(directory, 'legacy.csv'),
+      sourceKind: 'csv',
+      name: 'Legacy mirror',
+      config: {
+        sourceKind: 'csv',
+        header: 'auto',
+        dataRegion: 'auto',
+        encoding: 'auto',
+        delimiter: 'auto',
+        cloudMirror: { tableId: 'remote', contentHash: 'abc' },
+      },
+    });
+    await expect(service().refreshCloudInputTable({ inputTableId: legacy.id })).rejects.toThrow(
+      'linkage is incomplete'
+    );
+  });
   it('rejects other project sources, wrong kinds, and deleted targets without creating replacements', async () => {
     findTable.mockResolvedValueOnce(undefined);
     await expect(service().syncInputTableFromCloud(config, 'key')).rejects.toThrow(

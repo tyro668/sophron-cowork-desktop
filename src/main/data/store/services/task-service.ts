@@ -3,6 +3,8 @@ import type {
   DataCleaningTask,
   DataCreateTaskInput,
   DataRunTaskInput,
+  DataTaskRun,
+  DataTaskRunTrigger,
   DataTaskStatus,
   DataTaskWorkflow,
   DataUpdateTaskInput,
@@ -15,6 +17,7 @@ import { normalizeSourcePath } from '../input-source';
 import { CacheRepository } from '../repositories/cache-repository';
 import { DatasetRepository } from '../repositories/dataset-repository';
 import { RunStatsRepository } from '../repositories/run-stats-repository';
+import { TaskRunsRepository } from '../repositories/task-runs-repository';
 import { TaskRepository } from '../repositories/task-repository';
 import { WorkflowRepository } from '../repositories/workflow-repository';
 import {
@@ -29,6 +32,18 @@ import { WorkflowExecutor } from './workflow-executor';
 import { WorkflowValidator } from './workflow-validator';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * The executor stamps node failures with `workflowOrigin.nodeId`; fall back
+ * to the message wrapper ("Workflow node <id> (<type>) failed: …") so the
+ * run row always names the node that broke.
+ */
+function failedNodeIdOf(error: unknown): string | null {
+  const origin = (error as { workflowOrigin?: { nodeId?: unknown } }).workflowOrigin;
+  if (origin && typeof origin.nodeId === 'string') return origin.nodeId;
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Workflow node (\S+) \(/.exec(message)?.[1] ?? null;
+}
+
 export class TaskService {
   constructor(
     private readonly ctx: DataStoreContext,
@@ -37,6 +52,7 @@ export class TaskService {
     private readonly workflows: WorkflowRepository,
     private readonly caches: CacheRepository,
     private readonly runStats: RunStatsRepository,
+    private readonly taskRuns: TaskRunsRepository,
     private readonly executor: WorkflowExecutor,
     private readonly validator: WorkflowValidator,
     private readonly commitCoordinator: OutputCommitCoordinator,
@@ -96,20 +112,50 @@ export class TaskService {
     failure?: { message: string };
   }> {
     return this.ctx.runExclusive(async () => {
+      const runtimeWorkflow = input.workflow
+        ? normalizeRuntimeWorkflowInput(id, input.workflow, this.ctx.now())
+        : await this.workflows.getRuntimeWorkflow(id);
+      const workflow = input.workflow ?? runtimeWorkflowToSaveInput(runtimeWorkflow);
+      const signature = workflowExecutionSignature(workflow);
+      const trigger: DataTaskRunTrigger = input.outputMode === 'temporary' ? 'trial' : 'run';
+      const runId = uuidv4();
+      const startedAt = this.ctx.now();
+      await this.recordRunStart(id, runId, trigger, signature, startedAt);
+
       if (input.outputMode === 'temporary') {
         try {
-          return await this.executor.runTaskToTemporaryOutputUnsafe(id, input);
+          const result = await this.executor.runTaskToTemporaryOutputUnsafe(id, {
+            ...input,
+            workflow,
+          });
+          if (result.nodeStats && result.nodeStats.length > 0) {
+            await this.runStats
+              .persistTaskNodeStats(id, runId, result.nodeStats)
+              .catch(() => undefined);
+          }
+          await this.finishRunSafely(runId, 'completed', result.nodeStats, null);
+          await this.pruneTaskRuns(id);
+          return {
+            ...result,
+            nodeStats: result.nodeStats?.map((stat) => ({ ...stat, runId })),
+          };
         } catch (error) {
-          // Temporary runs never persist stats — return the partially
-          // collected stats/samples with the failure so callers can inspect
-          // where the run broke instead of showing a bare message.
+          // Trial runs still record their row + partially collected stats so
+          // the logs tab can show where the run broke instead of a bare
+          // "no logs" empty state.
+          const message = error instanceof Error ? error.message : String(error);
           const failedStats = (error as { nodeStats?: WorkflowNodeRunStat[] }).nodeStats;
+          if (failedStats && failedStats.length > 0) {
+            await this.runStats.persistTaskNodeStats(id, runId, failedStats).catch(() => undefined);
+          }
+          await this.finishRunSafely(runId, 'failed', failedStats, message, failedNodeIdOf(error));
+          await this.pruneTaskRuns(id);
           const task = await this.tasks.requireTask(id);
           return {
             task,
             diagnostics: [],
-            nodeStats: failedStats,
-            failure: { message: error instanceof Error ? error.message : String(error) },
+            nodeStats: failedStats?.map((stat) => ({ ...stat, runId })),
+            failure: { message },
           };
         }
       }
@@ -117,11 +163,6 @@ export class TaskService {
       await this.ctx.ensureReady();
       const task = await this.tasks.requireTask(id);
       const sourcePath = input.sourcePath ? normalizeSourcePath(input.sourcePath) : task.sourcePath;
-      const runtimeWorkflow = input.workflow
-        ? normalizeRuntimeWorkflowInput(id, input.workflow, this.ctx.now())
-        : await this.workflows.getRuntimeWorkflow(id);
-      const workflow = input.workflow ?? runtimeWorkflowToSaveInput(runtimeWorkflow);
-      const startedAt = this.ctx.now();
       await this.tasks.markTaskRunning(id, sourcePath, startedAt);
 
       try {
@@ -136,29 +177,110 @@ export class TaskService {
           workflow,
           validated.watermarkUpdates,
           validated.nodeStats,
-          validated.stagedSinks
+          validated.stagedSinks,
+          runId
         );
+        await this.finishRunSafely(runId, 'completed', validated.nodeStats, null);
+        await this.pruneTaskRuns(id);
         return {
           task: committedTask,
           diagnostics: validated.diagnostics,
-          nodeStats: validated.nodeStats,
+          nodeStats: validated.nodeStats?.map((stat) => ({ ...stat, runId })),
         };
       } catch (error) {
         const failedAt = this.ctx.now();
         const message = error instanceof Error ? error.message : String(error);
-        // Per-node stats collected before the failure are persisted under a
-        // failed-run id so exception samples stay inspectable.
         const failedStats = (error as { nodeStats?: WorkflowNodeRunStat[] }).nodeStats;
         if (failedStats && failedStats.length > 0) {
-          await this.runStats
-            .persistTaskNodeStats(id, `failed_${failedAt}`, failedStats)
-            .catch(() => undefined);
+          await this.runStats.persistTaskNodeStats(id, runId, failedStats).catch(() => undefined);
         }
+        await this.finishRunSafely(runId, 'failed', failedStats, message, failedNodeIdOf(error));
+        await this.pruneTaskRuns(id);
         await this.tasks.markTaskFailed(id, message, failedAt);
         await this.cleanupTemporaryTaskResources(id).catch(() => undefined);
         throw error;
       }
     }, `runTask:${id}`);
+  }
+
+  /**
+   * Run recording is observability, never a gate — every write is
+   * best-effort so a read-only/legacy metadata store cannot break a run.
+   */
+  private async recordRunStart(
+    taskId: string,
+    runId: string,
+    trigger: DataTaskRunTrigger,
+    workflowSignature: string,
+    startedAt: number
+  ): Promise<void> {
+    try {
+      const seq = await this.taskRuns.nextSeq(taskId);
+      await this.taskRuns.insertRun({
+        id: runId,
+        taskId,
+        seq,
+        trigger,
+        workflowSignature,
+        startedAt,
+      });
+    } catch {
+      /* metadata read-only or table missing — run still proceeds */
+    }
+  }
+
+  private async finishRunSafely(
+    runId: string,
+    status: 'completed' | 'failed',
+    stats: WorkflowNodeRunStat[] | undefined,
+    error: string | null,
+    failedNodeId: string | null = null
+  ): Promise<void> {
+    const inputs = (stats ?? []).filter((stat) => stat.nodeType === 'input_source');
+    const outputs = (stats ?? []).filter((stat) => stat.nodeType === 'output');
+    await this.taskRuns
+      .finishRun(runId, {
+        status,
+        inputRows: inputs.length ? inputs.reduce((sum, stat) => sum + stat.outputRows, 0) : null,
+        outputRows: outputs.length ? outputs.reduce((sum, stat) => sum + stat.outputRows, 0) : null,
+        error,
+        failedNodeId,
+        finishedAt: this.ctx.now(),
+      })
+      .catch(() => undefined);
+  }
+
+  /** Keeps the newest 20 runs per task and sweeps their stats + orphans. */
+  private async pruneTaskRuns(taskId: string): Promise<void> {
+    try {
+      const removed = await this.taskRuns.pruneTaskRuns(taskId, 20);
+      if (removed.length > 0) {
+        await this.runStats.deleteStatsForRuns(taskId, removed);
+      }
+      await this.runStats.deleteOrphanStats(taskId);
+    } catch {
+      /* retention is best-effort */
+    }
+  }
+
+  /**
+   * Stats for the canvas: the latest committed (non-trial) run. Falls back
+   * to the newest persisted batch for tasks whose stats predate run records.
+   */
+  async getTaskNodeStats(taskId: string): Promise<WorkflowNodeRunStat[]> {
+    const run = await this.taskRuns.getLatestTaskRun(taskId, 'run').catch(() => null);
+    if (run) {
+      return this.runStats.getTaskRunStats(taskId, run.id);
+    }
+    return this.runStats.getLatestTaskNodeStats(taskId);
+  }
+
+  async listTaskRuns(taskId: string, limit?: number): Promise<DataTaskRun[]> {
+    return this.taskRuns.listTaskRuns(taskId, limit);
+  }
+
+  async getTaskRunNodeStats(taskId: string, runId: string): Promise<WorkflowNodeRunStat[]> {
+    return this.runStats.getTaskRunStats(taskId, runId);
   }
   async validateTaskWorkflow(
     id: string,

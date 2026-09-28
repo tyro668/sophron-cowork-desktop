@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import {
   cloudInputSyncSchema,
   cloudOutputSyncSchema,
@@ -31,6 +31,8 @@ import {
   type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
+  type RefreshCloudInputTableCommand,
+  type RefreshCloudInputTableResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
   type UploadDataTableToCloudCommand,
@@ -45,7 +47,7 @@ import type {
   PersonalAnalysisDatasource,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
-import type { DataInputTablePreview } from '../../shared/contracts';
+import type { DataInputTableCsvConfig, DataInputTablePreview } from '../../shared/contracts';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
@@ -57,6 +59,12 @@ export interface CloudAnalysisCommandServiceOptions {
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
   updateInputTable?: (input: UpdateInputTableCommand) => Promise<InputTableResult>;
   createInputTable: (input: CreateInputTableCommand) => Promise<InputTableResult>;
+  /**
+   * Stable directory for downloaded cloud snapshots. Recorded as the input
+   * table's `sourcePath` so reimports keep working after OS temp cleanup.
+   * Defaults to the system temp directory (tests/in-memory stores).
+   */
+  cloudImportDir?: string;
 }
 
 export class CloudAnalysisCommandService {
@@ -135,13 +143,24 @@ export class CloudAnalysisCommandService {
           ? await client.findTable(input.spaceId, input.projectId, tableId)
           : undefined;
       const csv = await client.exportTableCsv(tableId);
-      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
+      const downloadedFilePath = await this.writeCloudSnapshotFile(tableId, csv);
       const result = await this.options.createInputTable({
         name:
           normalizeOptionalName(input.name) || cloudTable?.tableName || `Cloud table ${tableId}`,
         sourceKind: 'csv',
         filePath: downloadedFilePath,
         previewRows: input.previewRows,
+        config: buildCloudCsvConfig(undefined, {
+          contentHash: createHash('sha256').update(csv).digest('hex'),
+          tableId,
+          spaceId: normalizeOptionalName(input.spaceId),
+          projectId: normalizeOptionalName(input.projectId),
+          spaceName: normalizeOptionalName(input.spaceName),
+          projectName: normalizeOptionalName(input.projectName),
+          tableKind: cloudTable?.kind,
+          tableName: cloudTable?.tableName ?? normalizeOptionalName(input.name),
+          sourceVersion: cloudTable?.updatedAt,
+        }),
       });
       return {
         ...result,
@@ -167,7 +186,7 @@ export class CloudAnalysisCommandService {
     try {
       const client = await this.createPersonalAnalysisClient(input);
       const csv = await client.exportTableCsv(tableId);
-      const downloadedFilePath = await writeCloudCsvTempFile(tableId, csv);
+      const downloadedFilePath = await this.writeCloudSnapshotFile(tableId, csv);
       const preview = await this.store.previewInputTable({
         filePath: downloadedFilePath,
         sourceKind: 'csv',
@@ -246,24 +265,20 @@ export class CloudAnalysisCommandService {
           `Input table not found: ${config.inputTableId}`
         );
       const csv = await client.exportTableCsv(config.tableId);
-      const filePath = await writeCloudCsvTempFile(config.tableId, csv);
-      const inputConfig = {
-        ...(existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig : {}),
-        sourceKind: 'csv' as const,
-        header: 'auto' as const,
-        dataRegion: 'auto' as const,
-        encoding: 'auto' as const,
-        delimiter: 'auto' as const,
-        ...(existing?.inputConfig.dataProcessing
-          ? { dataProcessing: existing.inputConfig.dataProcessing }
-          : {}),
-        cloudMirror: {
+      const filePath = await this.writeCloudSnapshotFile(config.tableId, csv);
+      const inputConfig = buildCloudCsvConfig(
+        existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig : undefined,
+        {
           contentHash: createHash('sha256').update(csv).digest('hex'),
           tableId: config.tableId,
+          spaceId: config.spaceId,
+          projectId: config.projectId,
+          tableKind: source.kind ?? config.tableKind,
+          tableName: source.tableName ?? config.tableName,
           sourceVersion: source.updatedAt,
           automationSyncKey: syncKey,
-        },
-      };
+        }
+      );
       if (existing && !this.options.updateInputTable)
         throw new Error('Input table sync is unavailable');
       const result = existing
@@ -281,6 +296,63 @@ export class CloudAnalysisCommandService {
           });
       return { inputTableId: result.inputTable.id, inputTableName: result.inputTable.name };
     });
+  }
+
+  async refreshCloudInputTable(
+    input: RefreshCloudInputTableCommand
+  ): Promise<RefreshCloudInputTableResult> {
+    const inputTableId = normalizeRequiredName(
+      input.inputTableId,
+      'Cloud inputTableId is required'
+    );
+    const existing = await this.store.getInputTableRecord(inputTableId);
+    if (!existing) {
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${inputTableId}`);
+    }
+    const mirror =
+      existing.inputConfig.sourceKind === 'csv' ? existing.inputConfig.cloudMirror : undefined;
+    if (!mirror) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'Input table is not linked to a cloud table');
+    }
+    const spaceId = normalizeOptionalName(mirror.spaceId);
+    const projectId = normalizeOptionalName(mirror.projectId);
+    if (!spaceId || !projectId) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        'Cloud source linkage is incomplete; re-import the table from the Cloud Space panel'
+      );
+    }
+    const client = await this.createPersonalAnalysisClient(input);
+    let tableKind = mirror.tableKind;
+    if (!tableKind) {
+      const source = await client.findTable(spaceId, projectId, mirror.tableId);
+      if (!source?.kind) {
+        throw new DataCommandError(
+          'INVALID_ARGUMENT',
+          'Cloud source linkage is incomplete; re-import the table from the Cloud Space panel'
+        );
+      }
+      tableKind = source.kind;
+    }
+    const result = await this.syncInputTableFromCloud(
+      {
+        spaceId,
+        projectId,
+        tableId: mirror.tableId,
+        tableKind,
+        tableName: mirror.tableName,
+        inputTableId,
+      },
+      mirror.automationSyncKey ?? `cloud-import:${inputTableId}`
+    );
+    const refreshed = await this.store.getInputTableRecord(result.inputTableId);
+    if (!refreshed) {
+      throw new DataCommandError(
+        'INTERNAL_ERROR',
+        `Input table disappeared during refresh: ${inputTableId}`
+      );
+    }
+    return { inputTable: refreshed };
   }
 
   async syncOutputTableToCloud(
@@ -379,6 +451,19 @@ export class CloudAnalysisCommandService {
     } catch (error) {
       throw toCommandError(error, 'RUN_FAILED');
     }
+  }
+
+  /**
+   * Downloads land in a stable per-store directory (not tmpdir) so the recorded
+   * `sourcePath` survives OS temp cleanup and reimports stay re-runnable.
+   * Files are keyed by cloud table id — each sync overwrites the latest snapshot.
+   */
+  private async writeCloudSnapshotFile(tableId: string, csv: string): Promise<string> {
+    const directory = this.options.cloudImportDir ?? join(tmpdir(), 'sophron-cowork-cloud-imports');
+    await mkdir(directory, { recursive: true });
+    const filePath = join(directory, `cloud-${sanitizeFileName(tableId)}.csv`);
+    await writeFile(filePath, csv, 'utf8');
+    return filePath;
   }
 
   private async createPersonalAnalysisClient(input: PersonalAnalysisConnectionInput = {}) {
@@ -502,12 +587,45 @@ function driveFilePreviewToDataPreview(result: {
   };
 }
 
-async function writeCloudCsvTempFile(tableId: string, csv: string): Promise<string> {
-  const directory = join(tmpdir(), 'sophron-cowork-cloud-imports');
-  await mkdir(directory, { recursive: true });
-  const filePath = join(directory, `${sanitizeFileName(tableId)}-${randomUUID()}.csv`);
-  await writeFile(filePath, csv, 'utf8');
-  return filePath;
+interface CloudCsvMirrorInput {
+  contentHash: string;
+  tableId: string;
+  spaceId?: string;
+  projectId?: string;
+  spaceName?: string;
+  projectName?: string;
+  tableKind?: 'base' | 'analysis';
+  tableName?: string;
+  sourceVersion?: string;
+  automationSyncKey?: string;
+}
+
+function buildCloudCsvConfig(
+  existing: DataInputTableCsvConfig | undefined,
+  mirror: CloudCsvMirrorInput
+): DataInputTableCsvConfig {
+  const cloudMirror: NonNullable<DataInputTableCsvConfig['cloudMirror']> = {
+    tableId: mirror.tableId,
+    contentHash: mirror.contentHash,
+    syncedAt: Date.now(),
+  };
+  if (mirror.spaceId) cloudMirror.spaceId = mirror.spaceId;
+  if (mirror.projectId) cloudMirror.projectId = mirror.projectId;
+  if (mirror.spaceName) cloudMirror.spaceName = mirror.spaceName;
+  if (mirror.projectName) cloudMirror.projectName = mirror.projectName;
+  if (mirror.tableKind) cloudMirror.tableKind = mirror.tableKind;
+  if (mirror.tableName) cloudMirror.tableName = mirror.tableName;
+  if (mirror.sourceVersion) cloudMirror.sourceVersion = mirror.sourceVersion;
+  if (mirror.automationSyncKey) cloudMirror.automationSyncKey = mirror.automationSyncKey;
+  return {
+    sourceKind: 'csv',
+    header: 'auto',
+    dataRegion: 'auto',
+    encoding: 'auto',
+    delimiter: 'auto',
+    ...(existing?.dataProcessing ? { dataProcessing: existing.dataProcessing } : {}),
+    cloudMirror,
+  };
 }
 
 function sanitizeFileName(value: string): string {

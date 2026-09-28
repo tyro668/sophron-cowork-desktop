@@ -21,6 +21,8 @@ import type {
   DataInputTableSourceSummary,
   DataListInputTableNormalizerVersionsInput,
   DataListInputTableNormalizerVersionsResult,
+  DataExportTableInput,
+  DataExportTableResult,
   DataOutputTable,
   DataPreviewDatasetInput,
   DataPreviewInputTableInput,
@@ -53,12 +55,15 @@ import type {
   PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
+  RefreshCloudInputTableInput,
+  RefreshCloudInputTableResult,
   RunTaskResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   WorkflowNodeRunStat,
+  DataTaskRun,
 } from '../../shared/contracts';
 import type { WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
@@ -120,6 +125,10 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.getTaskWorkflow', id),
     getTaskNodeStats: (id: string): Promise<WorkflowNodeRunStat[]> =>
       ipcRenderer.invoke('data.getTaskNodeStats', id),
+    listTaskRuns: (id: string, limit?: number): Promise<DataTaskRun[]> =>
+      ipcRenderer.invoke('data.listTaskRuns', id, limit),
+    getTaskRunNodeStats: (id: string, runId: string): Promise<WorkflowNodeRunStat[]> =>
+      ipcRenderer.invoke('data.getTaskRunNodeStats', id, runId),
     saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput): Promise<DataTaskWorkflow> =>
       ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
     validateTaskWorkflowPlan: (
@@ -143,6 +152,8 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.previewInputTable', payload),
     previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
       ipcRenderer.invoke('data.previewDataset', payload),
+    exportTable: (payload: DataExportTableInput): Promise<DataExportTableResult> =>
+      ipcRenderer.invoke('data.exportTable', payload),
     previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> =>
       ipcRenderer.invoke('data.previewWorkflowNode', payload),
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
@@ -212,6 +223,10 @@ export function createDataApi(): ElectronApi['data'] {
       invokeDataCommand('data.previewCloudTable', payload),
     importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
       invokeDataCommand('data.importCloudTable', payload),
+    refreshCloudInputTable: (
+      payload: RefreshCloudInputTableInput
+    ): Promise<RefreshCloudInputTableResult> =>
+      invokeDataCommand('data.refreshCloudInputTable', payload),
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ): Promise<UploadDataTableToCloudResult> =>

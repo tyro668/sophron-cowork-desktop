@@ -494,3 +494,30 @@ function formatConflict(value: unknown, t: TranslateFn): string {
   }
   return strategy;
 }
+
+/** Compact "in N · out M · dropped/rejected" line for one node-run stat. */
+export function formatNodeRunStatLine(
+  stat: {
+    inputRows: number | null;
+    inputRowsByHandle?: Record<string, number>;
+    outputRows: number;
+    droppedRows?: number;
+    rejectedRows?: number;
+  },
+  t: TranslateFn
+): string {
+  const input = stat.inputRowsByHandle
+    ? `${t('data.workflow.runStatLeft', { count: stat.inputRowsByHandle.left ?? '—' })} ${t(
+        'data.workflow.runStatRight',
+        { count: stat.inputRowsByHandle.right ?? '—' }
+      )}`
+    : t('data.workflow.runStatInput', { count: stat.inputRows ?? '—' });
+  const parts = [input, t('data.workflow.runStatOutput', { count: stat.outputRows ?? '—' })];
+  if (stat.droppedRows != null) {
+    parts.push(t('data.workflow.runStatDropped', { count: stat.droppedRows }));
+  }
+  if (stat.rejectedRows != null) {
+    parts.push(t('data.workflow.runStatRejected', { count: stat.rejectedRows }));
+  }
+  return parts.join(' · ');
+}
