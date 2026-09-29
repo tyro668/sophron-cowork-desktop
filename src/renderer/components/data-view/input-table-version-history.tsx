@@ -5,7 +5,8 @@ import type {
 } from '../../types';
 import { formatDateTime, type TranslateFn } from './shared';
 import { Button } from '../ui/button';
-import { ChevronDown, FileText, Folder, RefreshCw, Trash2 } from 'lucide-react';
+import { Badge } from '../ui/badge';
+import { ChevronDown, FileText, Folder, History, RefreshCw, Trash2 } from 'lucide-react';
 import {
   buildNormalizerProjectTree,
   getNormalizerVersionDiffSummary,
@@ -137,23 +138,51 @@ export function InputTableVersionHistoryPanel({
         embedded ? 'bg-surface' : 'mt-3 bg-surface shadow-soft'
       }`}
     >
-      <div className="flex h-11 items-center justify-between border-b border-border-muted px-3">
-        <div className="text-[13px] font-medium text-text-primary">
-          {t('data.inputTables.editor.versionHistory')}
+      <div className="flex h-10 items-center justify-between gap-3 border-b border-border-muted px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <History className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+          <span className="truncate text-[13px] font-medium text-text-primary">
+            {t('data.inputTables.editor.versionHistory')}
+          </span>
+          {versions.length > 0 ? (
+            <span className="rounded-full bg-surface-active px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
+              {versions.length}
+            </span>
+          ) : null}
         </div>
         <button
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={t('common.refresh')}
+          title={t('common.refresh')}
+          className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          {t('common.refresh')}
         </button>
       </div>
       {versions.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="h-9 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-[11px] font-medium text-text-muted">
+                <th className="w-20 whitespace-nowrap px-3">
+                  {t('data.inputTables.editor.versionsColumnVersion')}
+                </th>
+                <th className="w-32 whitespace-nowrap px-3">
+                  {t('data.inputTables.editor.versionsColumnStatus')}
+                </th>
+                <th className="min-w-[11rem] whitespace-nowrap px-3">
+                  {t('data.inputTables.editor.versionsColumnUpdatedAt')}
+                </th>
+                <th className="min-w-[16rem] px-3">
+                  {t('data.inputTables.editor.versionsColumnDiff')}
+                </th>
+                <th className="w-36 whitespace-nowrap px-3 text-right">
+                  {t('data.inputTables.editor.versionsColumnActions')}
+                </th>
+              </tr>
+            </thead>
             <tbody>
               {versions.map((version) => {
                 const isCurrent = version.id === currentVersionId;
@@ -164,49 +193,41 @@ export function InputTableVersionHistoryPanel({
                     key={version.id}
                     className="h-11 border-b border-border-muted/80 text-text-secondary last:border-b-0 hover:bg-surface-hover"
                   >
-                    <td className="w-20 px-3 font-mono text-[13px] font-medium text-text-primary">
+                    <td className="px-3 font-mono text-[13px] font-medium text-text-primary">
                       {t('data.inputTables.editor.versionNumber', {
                         version: version.version,
                       })}
                     </td>
-                    <td className="w-44 px-3">
+                    <td className="px-3">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {isCurrent ? (
-                          <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[11px] font-medium text-accent">
-                            {t('data.inputTables.editor.currentVersion')}
-                          </span>
+                          <Badge tone="accent">{t('data.inputTables.editor.currentVersion')}</Badge>
                         ) : null}
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                            isPublished
-                              ? 'bg-success/10 text-success'
-                              : 'bg-surface text-text-secondary'
-                          }`}
-                        >
+                        <Badge tone={isPublished ? 'success' : 'default'}>
                           {isPublished
                             ? t('data.inputTables.editor.publishedVersion')
-                            : version.status}
-                        </span>
+                            : version.status === 'archived'
+                              ? t('data.inputTables.editor.versionStatusArchived')
+                              : t('data.inputTables.editor.versionStatusDraft')}
+                        </Badge>
                       </div>
                     </td>
-                    <td className="min-w-[13rem] px-3 text-text-muted">
-                      {t('data.inputTables.editor.updatedAt', {
-                        time: formatDateTime(version.updatedAt),
-                      })}
+                    <td className="whitespace-nowrap px-3 text-text-muted">
+                      {formatDateTime(version.updatedAt)}
                     </td>
-                    <td className="min-w-[16rem] max-w-[28rem] px-3">
+                    <td className="max-w-[28rem] px-3">
                       <span className="line-clamp-1 font-medium text-text-secondary">
                         {diffSummary || version.rulePrompt || '-'}
                       </span>
                     </td>
-                    <td className="w-[13rem] px-3">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-3">
+                      <div className="flex items-center justify-end gap-1.5">
                         <Button
                           variant="primary"
                           size="sm"
                           disabled={isPublished || publishingVersionId === version.id}
                           onClick={() => onPublish(version)}
-                          className="h-7 min-w-[4.25rem] gap-1 px-3 text-[11px]"
+                          className="h-7 gap-1 px-2.5 text-[11px]"
                         >
                           {publishingVersionId === version.id ? (
                             <RefreshCw className="h-3 w-3 animate-spin" />
@@ -219,21 +240,19 @@ export function InputTableVersionHistoryPanel({
                           type="button"
                           disabled={isPublished || deletingVersionId === version.id}
                           onClick={() => onDelete(version)}
+                          aria-label={t('data.inputTables.editor.deleteVersionAction')}
                           title={
                             isPublished
                               ? t('data.inputTables.editor.deletePublishedVersionBlocked')
-                              : undefined
+                              : t('data.inputTables.editor.deleteVersionAction')
                           }
-                          className="inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-lg border border-danger/20 bg-danger/10 px-3 text-[11px] font-medium text-danger transition-colors hover:border-danger/40 hover:bg-danger/20 disabled:cursor-not-allowed disabled:border-border-muted disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted"
                         >
                           {deletingVersionId === version.id ? (
-                            <RefreshCw className="h-3 w-3 animate-spin" />
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           )}
-                          {deletingVersionId === version.id
-                            ? t('data.inputTables.editor.deletingVersionAction')
-                            : t('data.inputTables.editor.deleteVersionAction')}
                         </button>
                       </div>
                     </td>
@@ -244,10 +263,22 @@ export function InputTableVersionHistoryPanel({
           </table>
         </div>
       ) : (
-        <div className="px-3 py-6 text-center text-xs font-medium text-text-muted">
-          {loading
-            ? t('data.inputTables.editor.loadingVersions')
-            : t('data.inputTables.editor.noVersions')}
+        <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
+          {loading ? (
+            <span className="text-xs font-medium text-text-muted">
+              {t('data.inputTables.editor.loadingVersions')}
+            </span>
+          ) : (
+            <>
+              <History className="h-5 w-5 text-text-muted" />
+              <span className="text-[13px] font-medium text-text-secondary">
+                {t('data.inputTables.editor.noVersions')}
+              </span>
+              <span className="text-xs text-text-muted">
+                {t('data.inputTables.editor.noVersionsHint')}
+              </span>
+            </>
+          )}
         </div>
       )}
     </section>

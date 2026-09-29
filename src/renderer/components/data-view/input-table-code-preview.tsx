@@ -201,16 +201,32 @@ export function tokenCodePreviewStream(
   return null;
 }
 
-export function getCodePreviewLanguage(filePath: string) {
+const CODE_PREVIEW_LANGUAGE_LABELS: Record<CodePreviewLanguageKind, string> = {
+  python: 'Python',
+  javascript: 'JavaScript',
+  json: 'JSON',
+  toml: 'TOML',
+  markdown: 'Markdown',
+  text: 'Text',
+};
+
+export function getCodePreviewLanguageKind(filePath: string): CodePreviewLanguageKind {
   const normalized = filePath.toLowerCase();
-  if (/\.(py|pyw)$/.test(normalized)) return codePreviewLanguages.python;
-  if (/\.(js|jsx|mjs|cjs|ts|tsx)$/.test(normalized)) {
-    return codePreviewLanguages.javascript;
-  }
-  if (/\.json$/.test(normalized)) return codePreviewLanguages.json;
-  if (/\.(toml|lock)$/.test(normalized)) return codePreviewLanguages.toml;
-  if (/\.(md|markdown)$/.test(normalized)) return codePreviewLanguages.markdown;
-  return [];
+  if (/\.(py|pyw)$/.test(normalized)) return 'python';
+  if (/\.(js|jsx|mjs|cjs|ts|tsx)$/.test(normalized)) return 'javascript';
+  if (/\.json$/.test(normalized)) return 'json';
+  if (/\.(toml|lock)$/.test(normalized)) return 'toml';
+  if (/\.(md|markdown)$/.test(normalized)) return 'markdown';
+  return 'text';
+}
+
+export function getCodePreviewLanguageLabel(filePath: string): string {
+  return CODE_PREVIEW_LANGUAGE_LABELS[getCodePreviewLanguageKind(filePath)];
+}
+
+export function getCodePreviewLanguage(filePath: string) {
+  const kind = getCodePreviewLanguageKind(filePath);
+  return kind === 'text' ? [] : codePreviewLanguages[kind];
 }
 
 export function CodePreview({ file, t }: { file?: DataNormalizerProjectFile; t: TranslateFn }) {

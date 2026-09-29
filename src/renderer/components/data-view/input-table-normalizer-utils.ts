@@ -38,53 +38,170 @@ export function createNormalizerGenerationProgressId(): string {
   return `normalizer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function buildNormalizerGenerationStartOutput(input: {
+/**
+ * Structured model behind the Codex-style generation console. Progress events
+ * from the main process mutate a draft log held in a ref; the workbench flushes
+ * shallow snapshots into React state on a throttle so token-delta floods never
+ * re-render the markdown pipeline.
+ */
+export type NormalizerGenerationStepPhase =
+  | 'source_summary'
+  | 'source_analysis'
+  | 'code_generation'
+  | 'saving';
+
+export type NormalizerGenerationStepStatus = 'active' | 'done' | 'error';
+
+export interface NormalizerGenerationStep {
+  phase: NormalizerGenerationStepPhase;
+  status: NormalizerGenerationStepStatus;
+  notes: string[];
+  stream: string;
+}
+
+export interface NormalizerGenerationLog {
+  meta: Array<{ label: string; value: string }>;
+  steps: NormalizerGenerationStep[];
+  startedAt: number;
+  finishedAt?: number;
+  outcome?: {
+    status: 'success' | 'error';
+    title: string;
+    details: string[];
+    files: string[];
+  };
+}
+
+const NORMALIZER_STEP_PHASE_ORDER: NormalizerGenerationStepPhase[] = [
+  'source_summary',
+  'source_analysis',
+  'code_generation',
+  'saving',
+];
+
+export function createNormalizerGenerationLog(input: {
   inputTableName: string;
   sourceKind: DataInputTableSourceKind;
   language: DataNormalizerLanguage;
   rulePrompt: string;
   t: TranslateFn;
-}): string {
-  return [
-    `**${input.t('data.inputTables.editor.generationOutputStartTitle')}**`,
-    '',
-    `- ${input.t('data.inputTables.editor.generationOutputInputTable')}: ${input.inputTableName}`,
-    `- ${input.t('data.inputTables.editor.generationOutputSourceKind')}: ${input.sourceKind}`,
-    `- ${input.t('data.inputTables.editor.generationOutputLanguage')}: ${input.language === 'node' ? 'Node.js' : 'Python'}`,
-    `- ${input.t('data.inputTables.editor.rulePrompt')}: ${truncateGenerationLogText(input.rulePrompt, 220)}`,
-    '',
-    '```text',
-    input.t('data.inputTables.editor.generationOutputPreparing'),
-    '```',
-  ].join('\n');
+}): NormalizerGenerationLog {
+  return {
+    meta: [
+      {
+        label: input.t('data.inputTables.editor.generationOutputInputTable'),
+        value: input.inputTableName,
+      },
+      {
+        label: input.t('data.inputTables.editor.generationOutputSourceKind'),
+        value: input.sourceKind,
+      },
+      {
+        label: input.t('data.inputTables.editor.generationOutputLanguage'),
+        value: input.language === 'node' ? 'Node.js' : 'Python',
+      },
+      {
+        label: input.t('data.inputTables.editor.rulePrompt'),
+        value: truncateGenerationLogText(input.rulePrompt, 160),
+      },
+    ],
+    steps: [],
+    startedAt: Date.now(),
+  };
 }
 
-export function buildNormalizerGenerationSuccessOutput(input: {
-  artifactId: string;
-  versionNumber: number;
-  files: DataNormalizerProjectFile[];
-  language: DataNormalizerLanguage;
-  t: TranslateFn;
-}): string {
-  const fileLines = input.files.slice(0, 12).map((file) => `- ${file.path}`);
-  const extraCount = Math.max(0, input.files.length - fileLines.length);
-  if (extraCount > 0) {
-    fileLines.push(`- ... +${extraCount}`);
+/** Strips the markdown decorations legacy progress texts still carry. */
+export function cleanNormalizerProgressMessage(text: string): string[] {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/```[a-zA-Z]*\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function ensureGenerationStep(
+  log: NormalizerGenerationLog,
+  phase: NormalizerGenerationStepPhase
+): NormalizerGenerationStep {
+  let step = log.steps.find((candidate) => candidate.phase === phase);
+  if (!step) {
+    // A later phase starting implies every earlier active step has finished.
+    for (const candidate of log.steps) {
+      if (candidate.status === 'active') candidate.status = 'done';
+    }
+    step = { phase, status: 'active', notes: [], stream: '' };
+    log.steps.push(step);
+    log.steps.sort(
+      (left, right) =>
+        NORMALIZER_STEP_PHASE_ORDER.indexOf(left.phase) -
+        NORMALIZER_STEP_PHASE_ORDER.indexOf(right.phase)
+    );
+  } else if (step.status !== 'error') {
+    step.status = 'active';
   }
-  return [
-    '```text',
-    `[4/4] ${input.t('data.inputTables.editor.generatedStatusReady')}`,
-    `artifact=${input.artifactId}`,
-    `version=v${input.versionNumber}`,
-    `language=${input.language}`,
-    '```',
-    '',
-    `**${input.t('data.inputTables.editor.generatedDraftFiles', {
+  return step;
+}
+
+export function applyNormalizerGenerationProgress(
+  log: NormalizerGenerationLog,
+  event: { phase: string; kind: 'message' | 'delta'; text: string }
+): void {
+  if (event.phase === 'error') {
+    markNormalizerGenerationError(log, event.text);
+    return;
+  }
+  if (event.phase === 'complete') {
+    for (const step of log.steps) {
+      if (step.status === 'active') step.status = 'done';
+    }
+    return;
+  }
+  const step = ensureGenerationStep(log, event.phase as NormalizerGenerationStepPhase);
+  if (event.kind === 'delta') {
+    step.stream += event.text;
+    return;
+  }
+  step.notes.push(...cleanNormalizerProgressMessage(event.text));
+}
+
+export function markNormalizerGenerationSuccess(
+  log: NormalizerGenerationLog,
+  input: { versionNumber: number; files: DataNormalizerProjectFile[]; t: TranslateFn }
+): void {
+  for (const step of log.steps) {
+    if (step.status === 'active') step.status = 'done';
+  }
+  log.finishedAt = Date.now();
+  log.outcome = {
+    status: 'success',
+    title: input.t('data.inputTables.editor.generationResultSaved', {
+      version: input.versionNumber,
       count: input.files.length,
-    })}**`,
-    '',
-    ...fileLines,
-  ].join('\n');
+    }),
+    details: [],
+    files: input.files.map((file) => file.path),
+  };
+}
+
+export function markNormalizerGenerationError(log: NormalizerGenerationLog, message: string): void {
+  const activeStep = [...log.steps].reverse().find((step) => step.status === 'active');
+  if (activeStep) activeStep.status = 'error';
+  log.finishedAt = Date.now();
+  const lines = cleanNormalizerProgressMessage(message);
+  log.outcome = {
+    status: 'error',
+    title: lines[0] ?? message,
+    details: lines.slice(1),
+    files: [],
+  };
+}
+
+export function formatGenerationElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, '0')}s` : `${seconds}s`;
 }
 
 export function truncateGenerationLogText(value: string, maxLength: number): string {

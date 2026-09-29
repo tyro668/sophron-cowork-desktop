@@ -64,44 +64,36 @@ export function createLlmInputTableNormalizerProjectGenerator(
       };
       const runtimeConfig = input.runtimeConfig ?? (await getConfig());
       const sourceSummary = compactSourceSummary(input.sourceSummary);
-      const analysisProgress = createJsonProgressWriter(input, 'source_analysis', '结构分析输出');
-      const analysisResponse = await runWithProgressBlock(
-        () =>
-          runPiAiOneShot(
-            buildSourceAnalysisUserPrompt(generationInput, sourceSummary),
-            buildSourceAnalysisSystemPrompt(),
-            runtimeConfig,
-            {
-              temperature: 0,
-              maxTokens: 8_000,
-              onTextDelta: analysisProgress.append,
-            }
-          ),
-        (result) => analysisProgress.fallback(result.text),
-        analysisProgress.close
+      const analysisProgress = createJsonProgressWriter(input, 'source_analysis');
+      const analysisResponse = await runPiAiOneShot(
+        buildSourceAnalysisUserPrompt(generationInput, sourceSummary),
+        buildSourceAnalysisSystemPrompt(),
+        runtimeConfig,
+        {
+          temperature: 0,
+          maxTokens: 8_000,
+          onTextDelta: analysisProgress.append,
+        }
       );
+      analysisProgress.fallback(analysisResponse.text);
       const sourceStructureAnalysis = parseSourceStructureAnalysis(analysisResponse.text);
-      const codeProgress = createJsonProgressWriter(input, 'code_generation', '项目文件输出');
-      const response = await runWithProgressBlock(
-        () =>
-          runPiAiOneShot(
-            buildCodeGenerationUserPrompt(
-              generationInput,
-              template,
-              sourceSummary,
-              sourceStructureAnalysis
-            ),
-            buildCodeGenerationSystemPrompt(input.primaryLanguage),
-            runtimeConfig,
-            {
-              temperature: 0.1,
-              maxTokens: 16_000,
-              onTextDelta: codeProgress.append,
-            }
-          ),
-        (result) => codeProgress.fallback(result.text),
-        codeProgress.close
+      const codeProgress = createJsonProgressWriter(input, 'code_generation');
+      const response = await runPiAiOneShot(
+        buildCodeGenerationUserPrompt(
+          generationInput,
+          template,
+          sourceSummary,
+          sourceStructureAnalysis
+        ),
+        buildCodeGenerationSystemPrompt(input.primaryLanguage),
+        runtimeConfig,
+        {
+          temperature: 0.1,
+          maxTokens: 16_000,
+          onTextDelta: codeProgress.append,
+        }
       );
+      codeProgress.fallback(response.text);
       const generatedFiles = parseGeneratedProjectFiles(response.text);
       const files = mergeGeneratedProjectFiles(
         template.files,
@@ -161,29 +153,18 @@ function emitProgress(
   input.onProgress?.(event);
 }
 
+// Raw model text streams through as `delta` events; the renderer owns all
+// presentation (step titles, collapsible output) so this writer stays minimal.
 function createJsonProgressWriter(
   input: GenerateInputTableNormalizerProjectInput,
-  phase: InputTableNormalizerProjectProgressPhase,
-  title: string
+  phase: InputTableNormalizerProjectProgressPhase
 ): {
   append: (delta: string) => void;
   fallback: (finalText: string) => void;
-  close: () => void;
 } {
-  let opened = false;
   let streamedText = '';
-  const open = () => {
-    if (opened) return;
-    opened = true;
-    emitProgress(input, {
-      phase,
-      kind: 'message',
-      text: `\n\n**${title}**\n\n\`\`\`json\n`,
-    });
-  };
   const append = (delta: string) => {
     if (typeof delta !== 'string' || delta.length === 0) return;
-    open();
     streamedText += delta;
     emitProgress(input, {
       phase,
@@ -197,29 +178,7 @@ function createJsonProgressWriter(
       if (streamedText.trim().length > 0 || !finalText.trim()) return;
       append(finalText);
     },
-    close() {
-      if (!opened) return;
-      emitProgress(input, {
-        phase,
-        kind: 'message',
-        text: '\n```\n',
-      });
-    },
   };
-}
-
-async function runWithProgressBlock<T>(
-  run: () => Promise<T>,
-  beforeClose: ((result: T) => void) | undefined,
-  close: () => void
-): Promise<T> {
-  try {
-    const result = await run();
-    beforeClose?.(result);
-    return result;
-  } finally {
-    close();
-  }
 }
 
 function buildSourceAnalysisSystemPrompt(): string {

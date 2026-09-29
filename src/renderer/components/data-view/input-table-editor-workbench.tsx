@@ -5,10 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
+  Check,
   Cloud,
-  Code2,
   Copy,
   Eye,
+  FileCode2,
   Info,
   PencilLine,
   RefreshCw,
@@ -27,11 +28,9 @@ import type {
   DataInputTableProcessingConfig,
   DataInputTableSourceKind,
   DataNormalizerLanguage,
-  Message,
 } from '../../types';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
-import { MessageCard } from '../MessageCard';
 import { getAgentModelLabel } from '../AgentModelSelector';
 import { LlmPromptComposer } from '../LlmPromptComposer';
 import { useConfirmDialog } from '../ConfirmDialog';
@@ -52,19 +51,19 @@ import {
   underlineTabListClass,
   underlineTabTriggerClass,
   type CloudMirrorInfo,
-  type TranslateFn,
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { CodePreview } from './input-table-code-preview';
+import { CodePreview, getCodePreviewLanguageLabel } from './input-table-code-preview';
+import { InputTableGenerationConsole } from './input-table-generation-console';
 import {
   NormalizerProjectTree,
   InputTableVersionHistoryPanel,
 } from './input-table-version-history';
 import { InputTablePreviewDialog } from './input-table-preview-dialog';
 import {
-  buildNormalizerGenerationStartOutput,
-  buildNormalizerGenerationSuccessOutput,
+  applyNormalizerGenerationProgress,
+  createNormalizerGenerationLog,
   createNormalizerGenerationProgressId,
   getDefaultExcelInputTableConfig,
   getDefaultFolderInputTableConfig,
@@ -73,7 +72,10 @@ import {
   getPreferredNormalizerFilePath,
   inferNormalizerLanguageFromRulePrompt,
   isInputTableConfigEqual,
+  markNormalizerGenerationError,
+  markNormalizerGenerationSuccess,
   withInputTableDataProcessing,
+  type NormalizerGenerationLog,
 } from './input-table-normalizer-utils';
 
 export type InputTableEditorProps = {
@@ -127,10 +129,11 @@ export function InputTableEditorWorkbench({
   const targetId = draft?.id ?? dataset?.id ?? '';
   const initialName = draft?.name ?? dataset?.name ?? '';
   const initialSourceKind = dataset?.sourceKind ?? 'excel';
-  const initialConfig = useMemo(
-    () => dataset?.inputConfig ?? getDefaultInputTableConfig(initialSourceKind),
-    [dataset?.inputConfig, initialSourceKind]
-  );
+  const initialConfig = dataset?.inputConfig ?? getDefaultInputTableConfig(initialSourceKind);
+  // Keyed on serialized content, not object identity: a dataset refetch after a
+  // failed save produces an equal config object, and must not reset in-progress
+  // edits (an unpublished customize draft lives in localConfig).
+  const initialConfigKey = useMemo(() => JSON.stringify(initialConfig), [initialConfig]);
   const [localName, setLocalName] = useState(initialName);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [localSourceKind, setLocalSourceKind] =
@@ -144,7 +147,10 @@ export function InputTableEditorWorkbench({
   const [previewData, setPreviewData] = useState<DataInputTablePreview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
-  const [customizeGenerationOutput, setCustomizeGenerationOutput] = useState('');
+  const [generationLog, setGenerationLog] = useState<NormalizerGenerationLog | null>(null);
+  const generationLogRef = useRef<NormalizerGenerationLog | null>(null);
+  const generationFlushTimerRef = useRef<number | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
   const [deletingNormalizerVersionId, setDeletingNormalizerVersionId] = useState<string | null>(
     null
@@ -157,6 +163,13 @@ export function InputTableEditorWorkbench({
   const [activeEditorTab, setActiveEditorTab] = useState<InputTableEditorTab>('rules');
   const [selectedNormalizerFilePath, setSelectedNormalizerFilePath] = useState('');
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  // Last customize config seen while editing — restored when the strategy
+  // select toggles back to 自定义, so the generated-draft linkage survives
+  // accidental switches and failed saves.
+  const customizeDraftBackupRef = useRef<Extract<
+    DataInputTableProcessingConfig,
+    { strategy: 'customize' }
+  > | null>(null);
   const autoPreviewArmed = useRef(false);
   const lastSourcePath = useRef<string | null>(dataset?.sourcePath ?? null);
   const trimmedName = localName.trim();
@@ -226,13 +239,20 @@ export function InputTableEditorWorkbench({
   }, [normalizerLanguage, normalizerProjectFiles, selectedNormalizerFilePath]);
 
   useEffect(() => {
+    const persistedConfig = JSON.parse(initialConfigKey) as DataInputTableConfig;
     setLocalName(initialName);
     setIsNameEditing(false);
     setLocalSourceKind(initialSourceKind);
-    setLocalConfig(initialConfig);
+    setLocalConfig(persistedConfig);
+    customizeDraftBackupRef.current =
+      persistedConfig.dataProcessing?.strategy === 'customize'
+        ? persistedConfig.dataProcessing
+        : null;
     setCustomizeGenerationError(null);
-    setCustomizeGenerationOutput('');
+    generationLogRef.current = null;
+    setGenerationLog(null);
     setCustomizeGenerating(false);
+    setCodeCopied(false);
     setCustomizeVersionActionId(null);
     setDeletingNormalizerVersionId(null);
     setActiveEditorTab('rules');
@@ -241,13 +261,19 @@ export function InputTableEditorWorkbench({
     setPreviewData(null);
     setPreviewError(null);
     setPreviewPage(1);
-  }, [initialConfig, initialName, initialSourceKind, targetId]);
+  }, [initialConfigKey, initialName, initialSourceKind, targetId]);
 
   useEffect(() => {
     if (!isNameEditing) return;
     nameInputRef.current?.focus();
     nameInputRef.current?.select();
   }, [isNameEditing]);
+
+  useEffect(() => {
+    if (dataProcessing.strategy === 'customize') {
+      customizeDraftBackupRef.current = dataProcessing;
+    }
+  }, [dataProcessing]);
 
   useEffect(() => {
     const preferredPath = getPreferredNormalizerFilePath(
@@ -322,13 +348,31 @@ export function InputTableEditorWorkbench({
     [dataProcessing, updateDataProcessing]
   );
 
-  const appendGenerationOutput = useCallback((line: string) => {
-    setCustomizeGenerationOutput((current) => `${current}${current ? '\n' : ''}${line}`);
+  // Progress deltas arrive per token — buffer them in the mutable log ref and
+  // flush snapshots at ~20fps so the console repaints smoothly instead of
+  // re-rendering once per IPC event.
+  const flushGenerationLog = useCallback(() => {
+    const current = generationLogRef.current;
+    if (!current) return;
+    setGenerationLog({ ...current, steps: [...current.steps] });
   }, []);
 
-  const appendGenerationOutputChunk = useCallback((chunk: string) => {
-    setCustomizeGenerationOutput((current) => `${current}${chunk}`);
-  }, []);
+  const scheduleGenerationLogFlush = useCallback(() => {
+    if (generationFlushTimerRef.current !== null) return;
+    generationFlushTimerRef.current = window.setTimeout(() => {
+      generationFlushTimerRef.current = null;
+      flushGenerationLog();
+    }, 50);
+  }, [flushGenerationLog]);
+
+  useEffect(
+    () => () => {
+      if (generationFlushTimerRef.current !== null) {
+        window.clearTimeout(generationFlushTimerRef.current);
+      }
+    },
+    []
+  );
 
   const refreshNormalizerVersions = useCallback(async (artifactId: string | undefined) => {
     if (!artifactId) {
@@ -359,15 +403,15 @@ export function InputTableEditorWorkbench({
       return;
     }
     setActiveEditorTab('rules');
-    setCustomizeGenerationOutput(
-      buildNormalizerGenerationStartOutput({
-        inputTableName: dataset.name,
-        sourceKind: localSourceKind,
-        language: normalizerLanguage,
-        rulePrompt,
-        t,
-      })
-    );
+    const log = createNormalizerGenerationLog({
+      inputTableName: dataset.name,
+      sourceKind: localSourceKind,
+      language: normalizerLanguage,
+      rulePrompt,
+      t,
+    });
+    generationLogRef.current = log;
+    setGenerationLog({ ...log, steps: [...log.steps] });
     setCustomizeGenerating(true);
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
@@ -375,11 +419,8 @@ export function InputTableEditorWorkbench({
       (event: DataInputTableNormalizerDraftProgressEvent) => {
         if (event.progressId !== progressId) return;
         if (typeof event.text !== 'string' || event.text.length === 0) return;
-        if (event.kind === 'delta') {
-          appendGenerationOutputChunk(event.text);
-        } else {
-          appendGenerationOutput(event.text);
-        }
+        applyNormalizerGenerationProgress(log, event);
+        scheduleGenerationLogFlush();
       }
     );
     try {
@@ -414,30 +455,37 @@ export function InputTableEditorWorkbench({
         getPreferredNormalizerFilePath(result.version.files, result.version.runtime.language)
       );
       void refreshNormalizerVersions(result.artifact.id);
-      appendGenerationOutput(
-        buildNormalizerGenerationSuccessOutput({
-          artifactId: result.artifact.id,
-          versionNumber: result.version.version,
-          files: result.version.files,
-          language: result.artifact.primaryLanguage,
-          t,
-        })
-      );
+      markNormalizerGenerationSuccess(log, {
+        versionNumber: result.version.version,
+        files: result.version.files,
+        t,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setCustomizeGenerationError(message);
-      appendGenerationOutput(
-        `${t('data.inputTables.editor.generationOutputFailed')}\n\n${message}`
-      );
+      markNormalizerGenerationError(log, message);
     } finally {
       unsubscribeProgress?.();
       setCustomizeGenerating(false);
+      flushGenerationLog();
     }
   };
 
   const saveInputTable = () => {
     if (!dataset || !trimmedName) return;
+    setCustomizeGenerationError(null);
     if (canSaveConfig && onUpdateDatasetConfig) {
+      // A customize config backed by an unpublished draft cannot reimport — the
+      // server rejects it. Fail fast with a localized hint and route the user
+      // to the versions tab where publishing lives, instead of wiping state.
+      if (
+        dataProcessing.strategy === 'customize' &&
+        dataProcessing.artifactVersionStatus !== 'published'
+      ) {
+        setCustomizeGenerationError(t('data.inputTables.editor.saveRequiresPublishedVersion'));
+        setActiveEditorTab('versions');
+        return;
+      }
       void onUpdateDatasetConfig(dataset, localConfig, localName);
       return;
     }
@@ -934,12 +982,12 @@ export function InputTableEditorWorkbench({
                   value={dataProcessing.strategy}
                   onValueChange={(value) => {
                     if (value === 'customize') {
-                      updateDataProcessing({
-                        ...(dataProcessing.strategy === 'customize' ? dataProcessing : {}),
-                        strategy: 'customize',
-                        rulePrompt:
-                          dataProcessing.strategy === 'customize' ? dataProcessing.rulePrompt : '',
-                      });
+                      updateDataProcessing(
+                        customizeDraftBackupRef.current ?? {
+                          strategy: 'customize',
+                          rulePrompt: '',
+                        }
+                      );
                       setActiveEditorTab('rules');
                       return;
                     }
@@ -988,7 +1036,18 @@ export function InputTableEditorWorkbench({
                       <div className="grid flex-shrink-0 gap-2">
                         <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
                           {t('data.inputTables.editor.rulePrompt')}
-                          <Info className="h-3.5 w-3.5 text-text-muted" />
+                          <span className="group relative inline-flex">
+                            <button
+                              type="button"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
+                              aria-label={t('data.inputTables.editor.rulePromptHint')}
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
+                              {t('data.inputTables.editor.rulePromptHint')}
+                            </span>
+                          </span>
                         </span>
                         <LlmPromptComposer
                           value={dataProcessing.rulePrompt}
@@ -1019,78 +1078,169 @@ export function InputTableEditorWorkbench({
                             })
                           }
                         />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[12px] font-medium text-text-muted">
+                            {t('data.inputTables.editor.rulePromptExamples')}
+                          </span>
+                          {(
+                            [
+                              'exampleMergeHeaders',
+                              'exampleSplitMultiHeaders',
+                              'exampleDeduplicateColumns',
+                              'exampleExpandMergedCells',
+                              'exampleDateNormalize',
+                            ] as const
+                          ).map((key) => {
+                            const example = t(`data.inputTables.editor.${key}`);
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={isBusy || !dataset || customizeGenerating}
+                                onClick={() =>
+                                  patchCustomizeDataProcessing({
+                                    rulePrompt: dataProcessing.rulePrompt.trim()
+                                      ? `${dataProcessing.rulePrompt.replace(/\s+$/, '')}\n${example}`
+                                      : example,
+                                  })
+                                }
+                                className="inline-flex h-6 items-center rounded-full border border-border-muted bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {example}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <InputTableGenerationOutputPanel
+                      <InputTableGenerationConsole
                         isStreaming={customizeGenerating}
-                        output={customizeGenerationOutput}
+                        log={generationLog}
+                        onViewCode={
+                          normalizerProjectFiles.length > 0
+                            ? () => setActiveEditorTab('code')
+                            : undefined
+                        }
                         t={t}
                       />
-                      {customizeGenerationError ? (
-                        <div className="flex-shrink-0 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-[12px] font-medium text-danger">
-                          {customizeGenerationError}
-                        </div>
-                      ) : null}
                     </div>
                   ) : null}
 
                   {activeEditorTab === 'code' ? (
-                    <div className="grid h-[30rem] max-h-full min-h-0 gap-3 overflow-hidden lg:grid-cols-[minmax(0,1fr)_16rem]">
-                      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
-                        <div className="flex h-9 flex-shrink-0 items-center justify-between gap-2 border-b border-border-muted px-3">
-                          <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
-                            {selectedNormalizerFile?.path ??
-                              t('data.inputTables.editor.noProjectFiles')}
+                    normalizerProjectFiles.length === 0 ? (
+                      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border-muted">
+                        <div className="flex flex-col items-center gap-2 px-6 text-center">
+                          <FileCode2 className="h-6 w-6 text-text-muted" />
+                          <span className="text-[13px] font-medium text-text-secondary">
+                            {t('data.inputTables.editor.noProjectFiles')}
                           </span>
-                          <button
-                            type="button"
-                            disabled={!selectedNormalizerFile}
-                            onClick={() => {
-                              if (selectedNormalizerFile) {
-                                void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                          <span className="text-xs text-text-muted">
+                            {t('data.inputTables.editor.selectedFileEmpty')}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid h-full min-h-0 gap-3 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,14rem)] lg:grid-cols-[minmax(0,1fr)_15rem] lg:grid-rows-1">
+                        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                          <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+                              <span
+                                className="min-w-0 truncate font-mono text-xs font-medium text-text-primary"
+                                title={selectedNormalizerFile?.path}
+                              >
+                                {selectedNormalizerFile?.path}
+                              </span>
+                              {selectedNormalizerFile ? (
+                                <span className="flex-shrink-0 whitespace-nowrap text-[11px] font-medium text-text-muted">
+                                  {t('data.inputTables.editor.codeFileMeta', {
+                                    lines: selectedNormalizerFile.content.split('\n').length,
+                                    language: getCodePreviewLanguageLabel(
+                                      selectedNormalizerFile.path
+                                    ),
+                                  })}
+                                </span>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!selectedNormalizerFile}
+                              onClick={() => {
+                                if (selectedNormalizerFile) {
+                                  void navigator.clipboard?.writeText(
+                                    selectedNormalizerFile.content
+                                  );
+                                  setCodeCopied(true);
+                                  window.setTimeout(() => setCodeCopied(false), 1500);
+                                }
+                              }}
+                              className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                codeCopied
+                                  ? 'text-success'
+                                  : 'text-text-muted hover:bg-accent-muted hover:text-text-primary'
+                              }`}
+                              title={
+                                codeCopied
+                                  ? t('data.inputTables.editor.copiedCode')
+                                  : t('data.inputTables.editor.copyCode')
                               }
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                            title={t('data.inputTables.editor.copyCode')}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </button>
+                            >
+                              {codeCopied ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
+                          <CodePreview file={selectedNormalizerFile} t={t} />
                         </div>
-                        <CodePreview file={selectedNormalizerFile} t={t} />
+                        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                          <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-muted px-3">
+                            <span className="text-xs font-medium text-text-primary">
+                              {t('data.inputTables.editor.projectStructure')}
+                            </span>
+                            <span className="rounded-full bg-surface-active px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
+                              {normalizerProjectFiles.length}
+                            </span>
+                          </div>
+                          <div className="min-h-0 flex-1 overflow-auto p-2">
+                            <NormalizerProjectTree
+                              files={normalizerProjectFiles}
+                              selectedPath={
+                                selectedNormalizerFile?.path ?? selectedNormalizerFilePath
+                              }
+                              onSelect={setSelectedNormalizerFilePath}
+                              t={t}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
-                        <div className="flex h-9 items-center border-b border-border-muted px-3 text-xs font-medium text-text-primary">
-                          {t('data.inputTables.editor.projectStructure')}
-                        </div>
-                        <div className="min-h-0 flex-1 overflow-auto p-2">
-                          <NormalizerProjectTree
-                            files={normalizerProjectFiles}
-                            selectedPath={
-                              selectedNormalizerFile?.path ?? selectedNormalizerFilePath
-                            }
-                            onSelect={setSelectedNormalizerFilePath}
-                            t={t}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    )
                   ) : null}
 
                   {activeEditorTab === 'versions' ? (
-                    <InputTableVersionHistoryPanel
-                      currentVersion={currentNormalizerVersion}
-                      currentVersionId={customizeArtifactVersionId}
-                      deletingVersionId={deletingNormalizerVersionId}
-                      embedded
-                      loading={normalizerVersionsLoading}
-                      onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
-                      onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
-                      onPublish={(version) => void publishSpecificNormalizerVersion(version)}
-                      publishingVersionId={customizeVersionActionId}
-                      t={t}
-                      versions={normalizerVersions}
-                    />
+                    <div className="mx-auto w-full max-w-[72rem]">
+                      <InputTableVersionHistoryPanel
+                        currentVersion={currentNormalizerVersion}
+                        currentVersionId={customizeArtifactVersionId}
+                        deletingVersionId={deletingNormalizerVersionId}
+                        embedded
+                        loading={normalizerVersionsLoading}
+                        onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
+                        onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
+                        onPublish={(version) => void publishSpecificNormalizerVersion(version)}
+                        publishingVersionId={customizeVersionActionId}
+                        t={t}
+                        versions={normalizerVersions}
+                      />
+                    </div>
                   ) : null}
                 </div>
+
+                {customizeGenerationError ? (
+                  <div className="mx-7 flex-shrink-0 rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-[12px] font-medium text-error">
+                    {customizeGenerationError}
+                  </div>
+                ) : null}
 
                 <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
                   <button
@@ -1330,63 +1480,6 @@ export function InputTableConfigRow({
     <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
       <div className="text-[14px] font-medium text-text-primary">{label}</div>
       <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-export function InputTableGenerationOutputPanel({
-  output,
-  isStreaming,
-  t,
-}: {
-  output: string;
-  isStreaming: boolean;
-  t: TranslateFn;
-}) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const message = useMemo<Message>(
-    () => ({
-      id: 'input-table-normalizer-generation-output',
-      sessionId: 'data-input-table-normalizer',
-      role: 'assistant',
-      content: [{ type: 'text', text: output }],
-      timestamp: Date.now(),
-    }),
-    [output]
-  );
-
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-  }, [isStreaming, output]);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface shadow-soft">
-      <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
-        <div className="inline-flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-primary">
-          {isStreaming ? (
-            <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
-          ) : (
-            <Code2 className="h-3.5 w-3.5 text-accent" />
-          )}
-          <span className="truncate">{t('data.inputTables.editor.generationOutputTitle')}</span>
-        </div>
-        <span className="text-[11px] font-medium text-text-muted">
-          {isStreaming
-            ? t('data.inputTables.editor.generationOutputStreaming')
-            : t('data.inputTables.editor.generationOutputIdle')}
-        </span>
-      </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto px-4 py-3">
-        {output ? (
-          <MessageCard message={message} isStreaming={isStreaming} />
-        ) : (
-          <div className="flex h-full min-h-28 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface px-4 text-center text-[13px] font-medium text-text-muted">
-            {t('data.inputTables.editor.generatedStatusEmpty')}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
