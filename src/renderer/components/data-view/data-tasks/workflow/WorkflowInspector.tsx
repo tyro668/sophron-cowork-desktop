@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, PencilLine, Play, X } from 'lucide-react';
+import { ChevronDown, PencilLine, Play } from 'lucide-react';
 import type {
   DataDataset,
   DataInputTablePreview,
@@ -426,7 +426,6 @@ export function WorkflowInspector({
                 </TabsTrigger>
               ))}
             </TabsList>
-            <X className="h-4 w-4 text-text-muted" />
           </div>
         </div>
         <TabsContent

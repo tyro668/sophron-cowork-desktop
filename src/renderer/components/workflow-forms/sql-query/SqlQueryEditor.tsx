@@ -1,12 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Compartment, EditorState } from '@codemirror/state';
-import {
-  EditorView,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  keymap,
-  lineNumbers,
-} from '@codemirror/view';
+import { EditorView, highlightActiveLine, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import {
   autocompletion,
@@ -17,12 +11,11 @@ import {
 import {
   HighlightStyle,
   bracketMatching,
-  foldGutter,
   indentOnInput,
   syntaxHighlighting,
   syntaxTree,
 } from '@codemirror/language';
-import { linter, lintGutter, lintKeymap, type Diagnostic } from '@codemirror/lint';
+import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { tags } from '@lezer/highlight';
 
@@ -48,15 +41,13 @@ const theme = EditorView.theme({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     lineHeight: '1.6',
   },
-  '.cm-content': { padding: '8px 0', caretColor: 'var(--color-text-primary)' },
-  '.cm-gutters': {
-    backgroundColor: 'var(--color-surface-hover)',
-    color: 'var(--color-text-muted)',
-    borderRight: '1px solid var(--color-border-subtle)',
-  },
+  '.cm-content': { padding: '8px 10px', caretColor: 'var(--color-text-primary)' },
   '.cm-activeLine': { backgroundColor: 'var(--color-surface-hover)' },
   '.cm-content ::selection, .cm-line ::selection': {
-    backgroundColor: 'var(--color-accent-muted)',
+    backgroundColor: 'var(--code-preview-selection)',
+  },
+  '.cm-selectionBackground': {
+    backgroundColor: 'var(--code-preview-selection) !important',
   },
   '.cm-tooltip': {
     backgroundColor: 'var(--color-surface)',
@@ -139,9 +130,6 @@ export const SqlQueryEditor = forwardRef<
         doc: initial.current.value,
         extensions: [
           theme,
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          foldGutter(),
           history(),
           indentOnInput(),
           bracketMatching(),
@@ -151,7 +139,6 @@ export const SqlQueryEditor = forwardRef<
           syntaxHighlighting(highlight),
           autocompletion(),
           syntaxErrorLinter(() => errorMessage.current),
-          lintGutter(),
           keymap.of([
             ...closeBracketsKeymap,
             ...completionKeymap,
@@ -213,10 +200,5 @@ export const SqlQueryEditor = forwardRef<
       ],
     });
   }, [fields, label]);
-  return (
-    <div
-      ref={host}
-      className="min-h-[160px] flex-1 overflow-hidden rounded-lg border border-border-muted focus-within:border-accent"
-    />
-  );
+  return <div ref={host} className="min-h-[160px] flex-1 overflow-hidden" />;
 });

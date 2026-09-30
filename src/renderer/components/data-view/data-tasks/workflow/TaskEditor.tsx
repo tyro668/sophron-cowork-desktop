@@ -1289,7 +1289,7 @@ export function TaskEditor({
           <Button
             variant="secondary"
             onClick={() => void saveWorkflow()}
-            disabled={isBusy || !workflow}
+            disabled={isBusy || !workflow || !isWorkflowDirty}
             className="px-3 text-xs shadow-soft"
           >
             <Save className="h-3.5 w-3.5" />

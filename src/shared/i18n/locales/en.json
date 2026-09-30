@@ -586,8 +586,6 @@
       "tidyLayout": "Tidy",
       "tidyLayoutHint": "Auto-arrange canvas operators along the data flow",
       "copySuffix": "copy",
-      "collapseCanvasToolbar": "Collapse canvas toolbar",
-      "expandCanvasToolbar": "Expand canvas toolbar",
       "importDsl": "Import DSL",
       "exportDsl": "Export DSL",
       "viewExportDsl": "View / export DSL",
@@ -679,10 +677,10 @@
       "formLabels": {
         "sqlQuery": {
           "query": "SQL query",
-          "inputTable": "Upstream table:",
-          "help": "Reference upstream data as input. One query only. Fields and keywords auto-complete; click a field above to insert it.",
           "invalid": "Enter a valid single SQL query. Write statements are not supported.",
-          "columns": "Fields:",
+          "keywords": "Keywords",
+          "fields": "Fields",
+          "insertKeyword": "Insert keyword {{name}}",
           "insertField": "Insert field {{name}}",
           "syntaxError": "SQL syntax error"
         },
@@ -794,7 +792,6 @@
           "asofOpForward": "Nearest after",
           "asofOpNearest": "Closest",
           "rightColumnsFailed": "Failed to fetch right table columns, enter manually",
-          "joinKeepAliasPrompt": "Enter an alias after selecting a field",
           "joinConditionsHeader": "Join Conditions",
           "semiAntiConfigHint": "{{model}} needs no extra config; left-side fields are output by default",
           "noConditionsNeeded": "No conditions needed",

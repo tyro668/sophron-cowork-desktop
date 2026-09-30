@@ -1,10 +1,15 @@
 import { useCallback, useRef } from 'react';
-import { CircleHelp, CornerDownLeft } from 'lucide-react';
+import { CornerDownLeft } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { DEFAULT_SQL_QUERY } from '../../../shared/sql-query';
 import { SqlQueryEditor, type SqlQueryEditorHandle } from './sql-query/SqlQueryEditor';
+
+const itemClass =
+  'group flex w-full items-center justify-between gap-1 rounded-md px-2 py-1 text-left font-mono text-[11px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent';
+const categoryClass =
+  'px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-text-muted/80';
 
 export default function FormSqlQuery({ node, fieldCompletions, onNodeChange }: OperatorFormProps) {
   const tr = useFormTranslation('sqlQuery');
@@ -17,36 +22,44 @@ export default function FormSqlQuery({ node, fieldCompletions, onNodeChange }: O
   const insertField = useCallback((field: string) => {
     editorRef.current?.insertText(`"${field.replace(/"/g, '""')}"`);
   }, []);
+  const insertKeyword = useCallback((keyword: string) => {
+    editorRef.current?.insertText(keyword);
+  }, []);
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-3">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-1.5 font-medium text-text-secondary">
-          <span>{tr('query')}</span>
-          <span title={tr('help')} aria-label={tr('help')} tabIndex={0}>
-            <CircleHelp className="h-3.5 w-3.5 text-text-muted" />
-          </span>
+    <div className="flex h-full min-h-0">
+      <div className="flex w-44 flex-shrink-0 flex-col overflow-hidden border-r border-border-muted">
+        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+          <div className={categoryClass}>{tr('keywords')}</div>
+          <button
+            type="button"
+            onClick={() => insertKeyword('input')}
+            title={tr('insertKeyword', { name: 'input' })}
+            className={itemClass}
+          >
+            <span className="truncate">input</span>
+            <CornerDownLeft className="h-2.5 w-2.5 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-60" />
+          </button>
+          {fieldCompletions.length > 0 && (
+            <>
+              <div className={`${categoryClass} mt-1.5 border-t border-border-subtle`}>
+                {tr('fields')}
+              </div>
+              {fieldCompletions.map((field) => (
+                <button
+                  key={field}
+                  type="button"
+                  onClick={() => insertField(field)}
+                  title={tr('insertField', { name: field })}
+                  className={itemClass}
+                >
+                  <span className="truncate">{field}</span>
+                  <CornerDownLeft className="h-2.5 w-2.5 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-60" />
+                </button>
+              ))}
+            </>
+          )}
         </div>
-        <span className="text-text-muted">
-          {tr('inputTable')} <code className="text-accent">input</code>
-        </span>
       </div>
-      {fieldCompletions.length > 0 && (
-        <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto pb-0.5">
-          <span className="flex-shrink-0 text-[11px] text-text-muted">{tr('columns')}</span>
-          {fieldCompletions.map((field) => (
-            <button
-              key={field}
-              type="button"
-              onClick={() => insertField(field)}
-              title={tr('insertField', { name: field })}
-              className="group flex h-5 flex-shrink-0 items-center gap-1 rounded-md border border-border-subtle px-1.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:bg-accent-muted hover:text-accent"
-            >
-              {field}
-              <CornerDownLeft className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover:opacity-60" />
-            </button>
-          ))}
-        </div>
-      )}
       <SqlQueryEditor
         key={node.id}
         ref={editorRef}

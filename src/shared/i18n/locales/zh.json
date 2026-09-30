@@ -586,8 +586,6 @@
       "tidyLayout": "规整",
       "tidyLayoutHint": "按数据流向自动整理画布算子布局",
       "copySuffix": "副本",
-      "collapseCanvasToolbar": "收起画布工具栏",
-      "expandCanvasToolbar": "展开画布工具栏",
       "importDsl": "导入 DSL",
       "exportDsl": "导出 DSL",
       "viewExportDsl": "查看 / 导出 DSL",
@@ -679,10 +677,10 @@
       "formLabels": {
         "sqlQuery": {
           "query": "SQL 查询",
-          "inputTable": "上游数据表：",
-          "help": "使用 input 引用上游数据；支持单条查询，自动补全字段和关键字，可点击上方字段快速插入。",
           "invalid": "请输入有效的单条 SQL 查询，不支持写操作。",
-          "columns": "字段：",
+          "keywords": "关键字",
+          "fields": "字段",
+          "insertKeyword": "插入关键字 {{name}}",
           "insertField": "插入字段 {{name}}",
           "syntaxError": "SQL 语法有误"
         },
@@ -794,7 +792,6 @@
           "asofOpForward": "之后最近",
           "asofOpNearest": "最接近",
           "rightColumnsFailed": "无法获取右表字段，请手动输入",
-          "joinKeepAliasPrompt": "勾选字段后可输入别名",
           "joinConditionsHeader": "连接条件",
           "semiAntiConfigHint": "{{model}}无需额外配置，默认输出左表字段",
           "noConditionsNeeded": "无需连接条件",

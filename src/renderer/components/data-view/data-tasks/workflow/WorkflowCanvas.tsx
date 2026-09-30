@@ -31,7 +31,7 @@ import {
   useStore,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Ban, ChevronDown, Copy, Trash2, Workflow } from 'lucide-react';
+import { Ban, Copy, Trash2 } from 'lucide-react';
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
@@ -40,7 +40,7 @@ import type {
 import { DataToolbarButton } from '../../shared';
 import { useSystemDarkMode, useThemeSetting } from '../../../../store/selectors';
 import { getWorkflowAlignmentSnap, getWorkflowConnectionDropTarget } from './canvas-utils';
-import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
+import { isWorkflowOperatorType } from './operator-catalog';
 import { canConnectWorkflowNodes } from './workflow-graph-operations';
 import { WorkflowAlignmentGuidesOverlay, WorkflowEdge, WorkflowOperatorNode } from './WorkflowUi';
 import {
@@ -96,7 +96,7 @@ export function WorkflowCanvas({
   edges: DataWorkflowEdge[];
   invalidNodeIds?: ReadonlySet<string>;
   selectedNodeIds: readonly string[];
-  /** Last-clicked node — drives the inspector and the toolbar's icon/label. */
+  /** Last-clicked node — drives the inspector and the toolbar's label. */
   primaryNodeId: string | null;
   /** Bumped by the tidy action — refits the viewport onto the new layout. */
   layoutEpoch?: number;
@@ -194,7 +194,6 @@ function WorkflowCanvasContent({
   const systemDarkMode = useSystemDarkMode();
   const colorMode = themeSetting === 'system' ? (systemDarkMode ? 'dark' : 'light') : themeSetting;
   const [connectionStart, setConnectionStart] = useState<OnConnectStartParams | null>(null);
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const selectedIdSet = useMemo(() => new Set(selectedNodeIds), [selectedNodeIds]);
   const selectedNodes = useMemo(
     () => nodes.filter((node) => selectedIdSet.has(node.id)),
@@ -204,8 +203,6 @@ function WorkflowCanvasContent({
     () => nodes.find((node) => node.id === primaryNodeId) ?? selectedNodes[0] ?? null,
     [nodes, primaryNodeId, selectedNodes]
   );
-  const selectedNodeCatalog = primaryNode ? getOperatorCatalog(primaryNode.type) : null;
-  const SelectedNodeIcon = selectedNodeCatalog?.Icon;
   const allSelectedDisabled =
     selectedNodes.length > 0 && selectedNodes.every((node) => node.config.disabled === true);
   const mappedFlowNodes = useMemo<WorkflowFlowNode[]>(
@@ -446,80 +443,46 @@ function WorkflowCanvasContent({
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden">
-      <div className="glass-panel-header flex h-12 shrink-0 items-center justify-between gap-3 px-3">
+      <div className="glass-panel-header flex h-12 shrink-0 items-center gap-3 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            {selectedNodeCatalog && SelectedNodeIcon ? (
-              <span
-                className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${selectedNodeCatalog.colorClassName}`}
-              >
-                <SelectedNodeIcon className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <span className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-surface-active text-text-muted">
-                <Workflow className="h-3.5 w-3.5" />
-              </span>
-            )}
-            <span className="truncate text-[13px] font-medium text-text-secondary">
-              {selectedNodes.length === 0
-                ? t('data.workflow.noOperatorSelected')
-                : selectedNodes.length === 1
-                  ? t('data.workflow.selectedOperator', {
-                      count: 1,
-                      name: (primaryNode ?? selectedNodes[0]).label,
-                    })
-                  : t('data.workflow.selectedOperators', { count: selectedNodes.length })}
-            </span>
-            {selectedNodes.length > 0 && (
-              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-            )}
-          </div>
+          <span className="truncate text-[13px] font-medium text-text-secondary">
+            {selectedNodes.length === 0
+              ? t('data.workflow.noOperatorSelected')
+              : selectedNodes.length === 1
+                ? t('data.workflow.selectedOperator', {
+                    count: 1,
+                    name: (primaryNode ?? selectedNodes[0]).label,
+                  })
+                : t('data.workflow.selectedOperators', { count: selectedNodes.length })}
+          </span>
 
-          {!toolbarCollapsed && (
-            <>
-              <div className="hidden h-5 w-px flex-shrink-0 bg-border-muted md:block" />
-              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                <DataToolbarButton
-                  icon={<Copy className="h-3.5 w-3.5" />}
-                  label={t('data.workflow.copySelected')}
-                  disabled={!primaryNode}
-                  onClick={onDuplicateNode}
-                />
-                <DataToolbarButton
-                  icon={<Ban className="h-3.5 w-3.5" />}
-                  label={
-                    allSelectedDisabled
-                      ? t('data.workflow.enableSelected')
-                      : t('data.workflow.disableSelected')
-                  }
-                  disabled={selectedNodes.length === 0}
-                  onClick={onToggleNodeDisabled}
-                />
-                <DataToolbarButton
-                  icon={<Trash2 className="h-3.5 w-3.5" />}
-                  label={t('data.workflow.deleteSelected')}
-                  disabled={selectedNodes.length === 0}
-                  danger
-                  onClick={onDeleteNode}
-                />
-              </div>
-            </>
-          )}
+          <div className="hidden h-5 w-px flex-shrink-0 bg-border-muted md:block" />
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <DataToolbarButton
+              icon={<Copy className="h-3.5 w-3.5" />}
+              label={t('data.workflow.copySelected')}
+              disabled={!primaryNode}
+              onClick={onDuplicateNode}
+            />
+            <DataToolbarButton
+              icon={<Ban className="h-3.5 w-3.5" />}
+              label={
+                allSelectedDisabled
+                  ? t('data.workflow.enableSelected')
+                  : t('data.workflow.disableSelected')
+              }
+              disabled={selectedNodes.length === 0}
+              onClick={onToggleNodeDisabled}
+            />
+            <DataToolbarButton
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              label={t('data.workflow.deleteSelected')}
+              disabled={selectedNodes.length === 0}
+              danger
+              onClick={onDeleteNode}
+            />
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setToolbarCollapsed((current) => !current)}
-          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-muted shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
-          title={
-            toolbarCollapsed
-              ? t('data.workflow.expandCanvasToolbar')
-              : t('data.workflow.collapseCanvasToolbar')
-          }
-        >
-          <ChevronDown
-            className={`h-4 w-4 transition-transform ${toolbarCollapsed ? '' : 'rotate-180'}`}
-          />
-        </button>
       </div>
       <div className="relative min-h-0 flex-1" onDragOver={handleDragOver} onDrop={handleDrop}>
         <ReactFlow
