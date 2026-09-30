@@ -35,7 +35,7 @@ describe('categorized operator palette', () => {
     }
   );
 
-  it('collapses groups and preserves click insertion and the existing drag payload', () => {
+  it('collapses groups and preserves double-click insertion and the existing drag payload', () => {
     const onAddOperator = vi.fn();
     render(<WorkflowOperatorPalette onAddOperator={onAddOperator} />);
     const heading = screen.getByRole('button', {
@@ -47,7 +47,10 @@ describe('categorized operator palette', () => {
     expect(screen.queryByRole('button', { name: inputName })).toBeNull();
     fireEvent.click(heading);
     const input = screen.getByRole('button', { name: inputName });
+    // Single click must not insert — only double-click (or drag) adds a node.
     fireEvent.click(input);
+    expect(onAddOperator).not.toHaveBeenCalled();
+    fireEvent.doubleClick(input);
     expect(onAddOperator).toHaveBeenCalledWith('input_source');
     const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
     const dragEvent = createEvent.dragStart(input, { dataTransfer });

@@ -51,7 +51,10 @@ export function WorkflowOperatorPalette({
                       event.dataTransfer.setData(WORKFLOW_OPERATOR_MIME, type);
                       event.dataTransfer.effectAllowed = 'copy';
                     }}
-                    onClick={() => onAddOperator?.(type)}
+                    onDoubleClick={() => onAddOperator?.(type)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') onAddOperator?.(type);
+                    }}
                     title={t('data.workflow.addOperatorToCanvas')}
                     aria-label={`${t(labelKey)} — ${t('data.workflow.addOperatorToCanvas')}`}
                     className="h-9 w-full cursor-grab justify-start gap-2 px-2.5 text-xs text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent active:cursor-grabbing"

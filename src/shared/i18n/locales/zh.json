@@ -537,7 +537,7 @@
       "runStatRejected": "拒绝 {{count}}",
       "runStatRight": "右 {{count}}",
       "addRule": "添加规则",
-      "addOperatorToCanvas": "点击插入到选中节点下游",
+      "addOperatorToCanvas": "双击插入到选中节点下游，或拖拽到画布作为独立节点",
       "ruleColumn": "列名",
       "ruleRatio": "缺失值占比",
       "ruleMethod": "处理方式",
