@@ -75,7 +75,7 @@ export function TaskActivity({
   const idleSeconds = lastActivityAt ? Math.max(0, Math.floor((now - lastActivityAt) / 1000)) : 0;
 
   return (
-    <div className="-mx-2 rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-[12px] text-text-secondary">
+    <div className="mt-1 text-[12px] text-text-secondary">
       <div className="flex min-w-0 items-center gap-2">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" aria-hidden="true" />
         <span className="min-w-0 truncate" role="status" aria-live="polite">

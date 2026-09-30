@@ -110,9 +110,10 @@ export function ChatView() {
 
   const displayedMessages = useMemo(() => {
     if (!activeSessionId) return messages;
-    // Show streaming message if we have partial text OR partial thinking
-    const hasStreamingContent = partialMessage || partialThinking;
-    if (!hasStreamingContent || !activeTurn?.userMessageId) return messages;
+    // While a turn is active, keep a pending assistant reply slot anchored to
+    // the turn's user message — it hosts streamed content and the activity
+    // indicator so the loading state reads as part of the reply.
+    if (!activeTurn?.userMessageId) return messages;
     const anchorIndex = messages.findIndex((message) => message.id === activeTurn.userMessageId);
     if (anchorIndex === -1) return messages;
 
@@ -847,7 +848,7 @@ export function ChatView() {
   const messageElements = useMemo(
     () =>
       displayedMessages.map((message, index) => {
-        const isStreaming = typeof message.id === 'string' && message.id.startsWith('partial-');
+        const isPendingReply = typeof message.id === 'string' && message.id.startsWith('partial-');
         const previous = index > 0 ? displayedMessages[index - 1] : null;
         const startsTurn = message.role === 'user' || previous?.role === 'user';
         return (
@@ -855,11 +856,38 @@ export function ChatView() {
             key={message.id}
             className={`chat-message-row ${index === 0 ? '' : startsTurn ? 'mt-6' : 'mt-3'}`}
           >
-            <MessageCard message={message} isStreaming={isStreaming} />
+            <MessageCard message={message} isStreaming={isPendingReply} />
+            {isPendingReply && activeSessionId && activeTurn && (
+              <TaskActivity
+                sessionId={activeSessionId}
+                activeTurnStepId={activeTurn.stepId}
+                hasStreamingText={Boolean(partialMessage.trim() || partialThinking.trim())}
+                elapsedMs={liveElapsed}
+                now={clockNow}
+              />
+            )}
           </div>
         );
       }),
-    [displayedMessages]
+    [
+      displayedMessages,
+      activeSessionId,
+      activeTurn,
+      partialMessage,
+      partialThinking,
+      liveElapsed,
+      clockNow,
+    ]
+  );
+
+  // Fallback only when the turn's anchor message isn't in the list (no pending
+  // reply row was inserted) — otherwise the indicator lives inside the reply.
+  const showStandaloneActivity = Boolean(
+    activeSessionId &&
+    activeTurn &&
+    !displayedMessages.some(
+      (message) => typeof message.id === 'string' && message.id.startsWith('partial-')
+    )
   );
 
   if (!activeSession) {
@@ -954,7 +982,7 @@ export function ChatView() {
             messageElements
           )}
 
-          {activeSessionId && activeTurn && (
+          {showStandaloneActivity && activeSessionId && activeTurn && (
             <TaskActivity
               sessionId={activeSessionId}
               activeTurnStepId={activeTurn.stepId}

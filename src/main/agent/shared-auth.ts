@@ -125,6 +125,15 @@ export async function setRuntimeApiKey(providerId: string, apiKey: string): Prom
     }
     return;
   }
+  // App-level provider ids (e.g. `aliyun`, `moonshot`) have no pi-ai builtin
+  // provider and are absent from models.json, so checkAuth/getAuth can never
+  // resolve a runtime key published for them — the agent session then fails
+  // with "No API key found for <provider>". Register a minimal extension
+  // provider so credential-store lookup works; request routing still uses the
+  // model's own api/baseUrl.
+  if (!runtime.getProvider(providerId)) {
+    runtime.registerProvider(providerId, { name: providerId });
+  }
   await runtime.setRuntimeApiKey(providerId, apiKey);
 }
 

@@ -53,4 +53,16 @@ export async function verifyBundledOAuth() {
     throw new Error('OAuth recovery failed');
   if (getSharedAuthStorage().get('openai-codex')?.type !== 'oauth')
     throw new Error('Stored OAuth changed');
+  // App-level provider ids (e.g. `aliyun`) have no pi-ai builtin provider.
+  // Publishing a runtime key must register a provider so session auth checks
+  // (hasConfiguredAuth/checkAuth/getAuth) resolve instead of reporting
+  // "No API key found for <provider>".
+  await setRuntimeApiKey('aliyun', 'sk-aliyun');
+  if (!shared.getProvider('aliyun')) throw new Error('aliyun provider not registered');
+  if (!shared.hasConfiguredAuth('aliyun')) throw new Error('aliyun not marked configured');
+  if ((await shared.checkAuth('aliyun')) === undefined) throw new Error('aliyun checkAuth failed');
+  if ((await shared.getAuth('aliyun'))?.auth.apiKey !== 'sk-aliyun')
+    throw new Error('aliyun getAuth did not return runtime key');
+  if ((await getProviderApiKey('aliyun')) !== 'sk-aliyun')
+    throw new Error('aliyun provider api key lookup failed');
 }
