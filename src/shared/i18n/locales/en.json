@@ -678,11 +678,17 @@
         "sqlQuery": {
           "query": "SQL query",
           "invalid": "Enter a valid single SQL query. Write statements are not supported.",
+          "inputTable": "Input table",
+          "searchFields": "Search fields",
+          "noMatchingFields": "No matching fields",
           "keywords": "Keywords",
           "fields": "Fields",
           "insertKeyword": "Insert keyword {{name}}",
           "insertField": "Insert field {{name}}",
-          "syntaxError": "SQL syntax error"
+          "syntaxError": "SQL syntax error",
+          "format": "Format",
+          "validate": "Validate",
+          "validatePassed": "Validation passed"
         },
         "common": {
           "selectColumns": "Select columns",

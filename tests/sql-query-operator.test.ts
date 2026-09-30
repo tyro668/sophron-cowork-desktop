@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { normalizeSqlQuery } from '../src/shared/sql-query';
+import { formatSqlQuery, normalizeSqlQuery } from '../src/shared/sql-query';
 import { SqlQueryConfigSchema } from '../src/shared/operator-schemas/sql-query';
 import {
   parsePrepOperatorDsl,
@@ -177,5 +177,34 @@ describe('SQL query native execution', () => {
       connection.closeSync();
       instance.closeSync();
     }
+  });
+});
+
+describe('formatSqlQuery', () => {
+  it('breaks clauses onto separate lines and expands the select list', () => {
+    expect(formatSqlQuery('select a, b from input where a > 0')).toBe(
+      'SELECT\n    a,\n    b\nFROM input\nWHERE a > 0\n'
+    );
+  });
+
+  it('handles multi-word clause heads, joins, and function calls', () => {
+    expect(
+      formatSqlQuery(
+        'select count(*) as c, sum(x) from input a left join t2 b on a.id=b.id group by a having count(*)>1 order by c desc limit 10;'
+      )
+    ).toBe(
+      'SELECT\n    count(*) AS c,\n    sum(x)\nFROM input a\nLEFT JOIN t2 b ON a.id = b.id\nGROUP BY a\nHAVING count(*) > 1\nORDER BY c DESC\nLIMIT 10;\n'
+    );
+  });
+
+  it('preserves quoted identifiers and unary signs', () => {
+    expect(formatSqlQuery('select "采购成本人民币", -1 as neg from input')).toBe(
+      'SELECT\n    "采购成本人民币",\n    -1 AS neg\nFROM input\n'
+    );
+  });
+
+  it('returns the original text when quoting is unterminated', () => {
+    const broken = "select 'oops from input";
+    expect(formatSqlQuery(broken)).toBe(broken);
   });
 });

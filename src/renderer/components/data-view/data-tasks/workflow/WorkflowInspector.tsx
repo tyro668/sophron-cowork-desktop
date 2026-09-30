@@ -15,6 +15,7 @@ import {
   parsePrepOperatorDsl,
   type PrepDiagnostic,
 } from '../../../../../shared/prep-dsl';
+import type { DataColumnTypeInfo } from '../../../../../shared/data-field-types';
 import { INPUT_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { dataClient } from '../../../../features/data/api/data-client';
@@ -87,6 +88,7 @@ export function WorkflowInspector({
   const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
+  const [operatorFieldTypes, setOperatorFieldTypes] = useState<DataColumnTypeInfo[]>([]);
   const [isEditingNodeTitle, setIsEditingNodeTitle] = useState(false);
   const [nodePreviewData, setNodePreviewData] = useState<DataInputTablePreview | null>(null);
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
@@ -155,6 +157,7 @@ export function WorkflowInspector({
 
     if (!node || !usesOperatorDsl || operatorFieldSourceCandidates.length === 0) {
       setOperatorFieldCompletions([]);
+      setOperatorFieldTypes([]);
       return;
     }
     if (!dataClient.has('getWorkflowNodeColumns')) return;
@@ -162,16 +165,24 @@ export function WorkflowInspector({
     void (async () => {
       for (const candidate of operatorFieldSourceCandidates) {
         try {
-          const columns = await dataClient.getWorkflowNodeColumns({
+          const input = {
             taskId: candidate.taskId,
             nodeId: candidate.id,
             nodeType: candidate.type,
             nodeConfig: candidate.config,
             workflow: workflowData.workflow,
-          });
+          };
+          const columns = dataClient.has('getWorkflowNodeColumnTypes')
+            ? await dataClient.getWorkflowNodeColumnTypes(input)
+            : (await dataClient.getWorkflowNodeColumns(input)).map((name) => ({
+                name,
+                type: 'text' as const,
+                storageType: 'VARCHAR',
+              }));
           if (requestSeq !== operatorFieldsRequestSeq.current) return;
           if (columns.length > 0) {
-            setOperatorFieldCompletions(columns);
+            setOperatorFieldCompletions(columns.map((column) => column.name));
+            setOperatorFieldTypes(columns);
             return;
           }
         } catch {
@@ -180,6 +191,7 @@ export function WorkflowInspector({
       }
       if (requestSeq === operatorFieldsRequestSeq.current) {
         setOperatorFieldCompletions([]);
+        setOperatorFieldTypes([]);
       }
     })();
   }, [node, operatorFieldSourceCandidates, usesOperatorDsl, workflowData]);
@@ -518,6 +530,7 @@ export function WorkflowInspector({
                   : undefined
               }
               fieldCompletions={operatorFieldCompletions}
+              fieldTypes={operatorFieldTypes}
               upstreamRowCount={nodePreviewData?.totalRows}
               operatorDsl={operatorDsl}
               operatorDslStatus={operatorDslStatus}

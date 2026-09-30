@@ -678,11 +678,17 @@
         "sqlQuery": {
           "query": "SQL 查询",
           "invalid": "请输入有效的单条 SQL 查询，不支持写操作。",
+          "inputTable": "输入表",
+          "searchFields": "搜索字段",
+          "noMatchingFields": "无匹配字段",
           "keywords": "关键字",
           "fields": "字段",
           "insertKeyword": "插入关键字 {{name}}",
           "insertField": "插入字段 {{name}}",
-          "syntaxError": "SQL 语法有误"
+          "syntaxError": "SQL 语法有误",
+          "format": "格式化",
+          "validate": "校验",
+          "validatePassed": "校验通过"
         },
         "common": {
           "selectColumns": "选择字段",

@@ -4,11 +4,13 @@ import { Loader2 } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { hasOperatorForm, getOperatorFormLoader } from './index';
 import type { DataWorkflowNode } from '../../types';
+import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 
 interface OperatorFormWrapperProps {
   node: DataWorkflowNode;
   taskId?: string;
   fieldCompletions: string[];
+  fieldTypes?: DataColumnTypeInfo[];
   otherNodes: DataWorkflowNode[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
@@ -20,6 +22,7 @@ function LazyOperatorForm({
   node,
   taskId,
   fieldCompletions,
+  fieldTypes,
   otherNodes,
   sourceNode,
   rightSourceNode,
@@ -66,6 +69,7 @@ function LazyOperatorForm({
         node={node}
         taskId={taskId}
         fieldCompletions={fieldCompletions}
+        fieldTypes={fieldTypes}
         otherNodes={otherNodes}
         sourceNode={sourceNode}
         rightSourceNode={rightSourceNode}

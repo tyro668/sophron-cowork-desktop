@@ -1,6 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, highlightActiveLine, keymap } from '@codemirror/view';
+import {
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  keymap,
+  lineNumbers,
+} from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import {
   autocompletion,
@@ -18,6 +24,7 @@ import {
 import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { tags } from '@lezer/highlight';
+import { normalizeSqlQuery } from '@/shared/sql-query';
 
 const highlight = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--code-token-keyword)' },
@@ -41,8 +48,15 @@ const theme = EditorView.theme({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     lineHeight: '1.6',
   },
-  '.cm-content': { padding: '8px 10px', caretColor: 'var(--color-text-primary)' },
+  '.cm-content': { padding: '8px 0', caretColor: 'var(--color-text-primary)' },
+  '.cm-gutters': {
+    backgroundColor: 'var(--color-surface)',
+    color: 'var(--color-text-muted)',
+    border: 'none',
+    paddingRight: '6px',
+  },
   '.cm-activeLine': { backgroundColor: 'var(--color-surface-hover)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--color-surface-hover)' },
   '.cm-content ::selection, .cm-line ::selection': {
     backgroundColor: 'var(--code-preview-selection)',
   },
@@ -97,8 +111,13 @@ function syntaxErrorLinter(message: () => string) {
   });
 }
 
+export type SqlValidationResult = 'ok' | 'invalid' | 'syntax';
+
 export interface SqlQueryEditorHandle {
   insertText: (text: string) => void;
+  getValue: () => string;
+  replaceAll: (text: string) => void;
+  validate: () => SqlValidationResult;
   focus: () => void;
 }
 
@@ -130,6 +149,8 @@ export const SqlQueryEditor = forwardRef<
         doc: initial.current.value,
         extensions: [
           theme,
+          lineNumbers(),
+          highlightActiveLineGutter(),
           history(),
           indentOnInput(),
           bracketMatching(),
@@ -176,6 +197,31 @@ export const SqlQueryEditor = forwardRef<
           selection: { anchor: range.from + text.length },
         });
         editor.focus();
+      },
+      getValue: () => view.current?.state.doc.toString() ?? '',
+      replaceAll: (text: string) => {
+        const editor = view.current;
+        if (!editor) return;
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: text },
+        });
+        editor.focus();
+      },
+      validate: () => {
+        const editor = view.current;
+        if (!editor) return 'syntax';
+        try {
+          normalizeSqlQuery(editor.state.doc.toString());
+        } catch {
+          return 'invalid';
+        }
+        let hasError = false;
+        syntaxTree(editor.state)
+          .cursor()
+          .iterate((node) => {
+            if (node.type.isError) hasError = true;
+          });
+        return hasError ? 'syntax' : 'ok';
       },
       focus: () => view.current?.focus(),
     }),

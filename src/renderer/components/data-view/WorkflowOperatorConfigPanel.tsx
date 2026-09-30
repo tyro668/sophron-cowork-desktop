@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle2, Code2, Copy, Maximize2, X } from 'lucide-react';
 import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
 import { PrepDslEditor } from '../PrepDslEditor';
 import { Button } from '../ui/button';
@@ -15,6 +16,7 @@ interface WorkflowOperatorConfigPanelProps {
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   fieldCompletions: string[];
+  fieldTypes?: DataColumnTypeInfo[];
   upstreamRowCount?: number;
   operatorDsl: string;
   operatorDslStatus: string | null;
@@ -45,6 +47,7 @@ export function WorkflowOperatorConfigPanel({
   sourceNode,
   rightSourceNode,
   fieldCompletions,
+  fieldTypes,
   upstreamRowCount,
   operatorDsl,
   operatorDslStatus,
@@ -101,6 +104,7 @@ export function WorkflowOperatorConfigPanel({
             node={node}
             taskId={node.taskId}
             fieldCompletions={fieldCompletions}
+            fieldTypes={fieldTypes}
             otherNodes={workflowNodes}
             sourceNode={sourceNode}
             rightSourceNode={rightSourceNode}
