@@ -2826,7 +2826,6 @@
     "weekdayShort6": "Sat",
     "addTime": "Add time",
     "removeTime": "Remove",
-    "intervalHint": "Repeats once at each fixed interval from the start time.",
     "endAtLabel": "End",
     "setEndAt": "Set end time",
     "clearEndAt": "Clear end time",

@@ -137,7 +137,7 @@ export function MiniIcon({
       role="button"
       tabIndex={0}
       onClick={onClick}
-      className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-bg-tertiary"
+      className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-surface-muted"
     >
       {children}
     </span>

@@ -2826,7 +2826,6 @@
     "weekdayShort6": "六",
     "addTime": "添加时间",
     "removeTime": "删除",
-    "intervalHint": "从开始时间起，每隔固定时长重复一次。",
     "endAtLabel": "结束",
     "setEndAt": "设置结束时间",
     "clearEndAt": "清除结束时间",

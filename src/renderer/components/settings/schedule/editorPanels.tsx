@@ -413,33 +413,28 @@ function ScheduledConfigCard({
         {trigger.kind === 'interval' && (
           <>
             <ConfigRow label={tr('schedule.every', '每')}>
-              <div className="space-y-1.5">
-                <div className="grid grid-cols-[1fr_108px] gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={trigger.every}
-                    onChange={(event) =>
-                      onChange({ ...trigger, every: Number(event.target.value) || 1 })
-                    }
-                    className="input h-9 w-full text-xs"
-                  />
-                  <GlassSelect
-                    value={trigger.unit}
-                    options={[
-                      { value: 'minute', label: tr('schedule.repeatUnitMinute', '分钟') },
-                      { value: 'hour', label: tr('schedule.repeatUnitHour', '小时') },
-                      { value: 'day', label: tr('schedule.repeatUnitDay', '天') },
-                    ]}
-                    onValueChange={(value: string) =>
-                      onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
-                    }
-                    triggerClassName="h-9 w-full justify-between"
-                  />
-                </div>
-                <p className="text-[11px] text-text-muted">
-                  {tr('schedule.intervalHint', '从开始时间起，每隔固定时长重复一次。')}
-                </p>
+              <div className="grid grid-cols-[1fr_108px] gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={trigger.every}
+                  onChange={(event) =>
+                    onChange({ ...trigger, every: Number(event.target.value) || 1 })
+                  }
+                  className="input h-9 w-full text-xs"
+                />
+                <GlassSelect
+                  value={trigger.unit}
+                  options={[
+                    { value: 'minute', label: tr('schedule.repeatUnitMinute', '分钟') },
+                    { value: 'hour', label: tr('schedule.repeatUnitHour', '小时') },
+                    { value: 'day', label: tr('schedule.repeatUnitDay', '天') },
+                  ]}
+                  onValueChange={(value: string) =>
+                    onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
+                  }
+                  triggerClassName="h-9 w-full justify-between"
+                />
               </div>
             </ConfigRow>
             <ConfigRow label={tr('schedule.startAt', '开始')}>

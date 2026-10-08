@@ -501,14 +501,14 @@ const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; bgClass: string; textCla
 
 const AUTOMATION_STATUS_TONES: Record<Automation['status'], string> = {
   enabled: 'bg-success/10 text-success',
-  disabled: 'bg-bg-tertiary text-text-muted',
+  disabled: 'bg-surface-muted text-text-muted',
   failed: 'bg-error/10 text-error',
-  paused: 'bg-bg-tertiary text-text-muted',
+  paused: 'bg-surface-muted text-text-muted',
   running: 'bg-warning/10 text-warning',
 };
 
 const AUTOMATION_RUN_STATUS_TONES: Record<AutomationRun['status'], string> = {
-  cancelled: 'bg-bg-tertiary text-text-muted',
+  cancelled: 'bg-surface-muted text-text-muted',
   failed: 'bg-error/10 text-error',
   queued: 'bg-warning/10 text-warning',
   running: 'bg-warning/10 text-warning',
@@ -545,7 +545,7 @@ function AutomationStatusBadge({
 }) {
   const tone =
     AUTOMATION_STATUS_TONES[automation.status] ??
-    (automation.enabled ? 'bg-success/10 text-success' : 'bg-bg-tertiary text-text-muted');
+    (automation.enabled ? 'bg-success/10 text-success' : 'bg-surface-muted text-text-muted');
   return (
     <StatusBadge status={automation.status} labelKeyPrefix="schedule.status" tone={tone} tr={tr} />
   );
