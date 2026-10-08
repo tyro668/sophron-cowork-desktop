@@ -65,16 +65,19 @@ beforeEach(() => {
       listCloudDriveFiles: listFiles,
     },
     automation: {
-      list: async () => [
-        {
-          id: 'auto',
-          name: 'Scheduled import',
-          status: 'enabled',
-          actionGraph: {
-            nodes: [{ type: 'cloud.sync', config: { direction: 'input', inputTableId: 'in' } }],
+      list: async () => ({
+        automations: [
+          {
+            id: 'auto',
+            name: 'Scheduled import',
+            status: 'enabled',
+            actionGraph: {
+              nodes: [{ type: 'cloud.sync', config: { direction: 'input', inputTableId: 'in' } }],
+            },
           },
-        },
-      ],
+        ],
+        groupCounts: {},
+      }),
     },
   };
   listTables.mockResolvedValue({

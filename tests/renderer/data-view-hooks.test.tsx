@@ -122,7 +122,7 @@ describe('useDataDashboard', () => {
     });
 
     expect(getDashboard).toHaveBeenCalledWith(
-      expect.objectContaining({ includeTasks: true, taskLimit: expect.any(Number) })
+      expect.objectContaining({ includeTasks: true, taskPerGroupLimit: expect.any(Number) })
     );
     expect(result.current.dashboard.tasks).toEqual([task]);
     expect(result.current.dashboard.totalTasks).toBe(1);

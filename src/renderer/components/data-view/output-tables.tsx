@@ -659,8 +659,8 @@ export function OutputTableEditor({
           </div>
         </div>
 
-        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface p-4">
-          <div className="grid gap-5 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3">
+          <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
             <InputTableFormLabel>
               <span className="inline-flex items-center gap-1.5">
                 {t('data.outputTables.editor.inputTable')}

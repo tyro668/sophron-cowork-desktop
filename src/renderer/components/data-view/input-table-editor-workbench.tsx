@@ -821,7 +821,7 @@ export function InputTableEditorWorkbench({
             value="config"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
           >
-            <div className="grid flex-shrink-0 gap-2 border-b border-border-muted/80 px-5 py-4">
+            <div className="grid flex-shrink-0 gap-1 border-b border-border-muted/80 px-4 py-3">
               <InputTableConfigRow label={t('data.inputTables.editor.sourceType')}>
                 <GlassSelect
                   value={localSourceKind}
@@ -836,12 +836,12 @@ export function InputTableEditorWorkbench({
                   disabled={isBusy}
                   triggerIcon={
                     <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-md ${sourceMeta.className}`}
+                      className={`flex h-5 w-5 items-center justify-center rounded-md ${sourceMeta.className}`}
                     >
-                      <SourceIcon className="h-4 w-4" />
+                      <SourceIcon className="h-3.5 w-3.5" />
                     </span>
                   }
-                  triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                  triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
                   contentClassName="w-[var(--radix-select-trigger-width)]"
                 />
               </InputTableConfigRow>
@@ -854,14 +854,14 @@ export function InputTableEditorWorkbench({
                 }
               >
                 <div className="flex min-w-0 items-stretch">
-                  <div className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-l-lg border border-border-muted bg-surface px-3 shadow-soft">
+                  <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border border-border-muted bg-surface px-2.5 shadow-soft">
                     <span
-                      className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
                     >
-                      <SourceIcon className="h-4 w-4" />
+                      <SourceIcon className="h-3.5 w-3.5" />
                     </span>
                     <div
-                      className="min-w-0 truncate text-[14px] font-medium text-text-primary"
+                      className="min-w-0 truncate text-[13px] font-medium text-text-primary"
                       title={dataset?.sourcePath ?? undefined}
                     >
                       {cloudMirror
@@ -875,7 +875,7 @@ export function InputTableEditorWorkbench({
                     type="button"
                     onClick={() => chooseSource(localSourceKind)}
                     disabled={isBusy || !trimmedName}
-                    className="inline-flex h-10 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                    className="inline-flex h-8 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
                   >
                     {dataset?.sourcePath
                       ? localSourceKind === 'folder'
@@ -998,7 +998,7 @@ export function InputTableEditorWorkbench({
                     { value: 'customize', label: t('data.inputTables.editor.processingCustomize') },
                   ]}
                   disabled={isBusy || !dataset}
-                  triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                  triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
                   contentClassName="w-[var(--radix-select-trigger-width)]"
                 />
               </InputTableConfigRow>
@@ -1006,13 +1006,13 @@ export function InputTableEditorWorkbench({
 
             {dataProcessing.strategy === 'customize' ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="flex h-14 flex-shrink-0 items-end border-b border-border-muted/80 px-5">
+                <div className="flex h-10 flex-shrink-0 items-end border-b border-border-muted/80 px-4">
                   {editorTabs.map((tab) => (
                     <button
                       key={tab.value}
                       type="button"
                       onClick={() => setActiveEditorTab(tab.value)}
-                      className={`relative flex h-12 min-w-[8.5rem] items-center justify-center px-4 text-[13px] font-medium transition-colors ${
+                      className={`relative flex h-10 min-w-[7rem] items-center justify-center px-3 text-[13px] font-medium transition-colors ${
                         activeEditorTab === tab.value
                           ? 'text-accent'
                           : 'text-text-secondary hover:text-text-primary'
@@ -1027,7 +1027,7 @@ export function InputTableEditorWorkbench({
                 </div>
 
                 <div
-                  className={`min-h-0 flex-1 px-7 py-6 ${
+                  className={`min-h-0 flex-1 px-4 py-4 ${
                     activeEditorTab === 'versions' ? 'overflow-y-auto' : 'overflow-hidden'
                   }`}
                 >
@@ -1237,23 +1237,23 @@ export function InputTableEditorWorkbench({
                 </div>
 
                 {customizeGenerationError ? (
-                  <div className="mx-7 flex-shrink-0 rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-[12px] font-medium text-error">
+                  <div className="mx-4 flex-shrink-0 rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-[12px] font-medium text-error">
                     {customizeGenerationError}
                   </div>
                 ) : null}
 
-                <div className="flex min-h-16 flex-shrink-0 items-center justify-end gap-3 border-t border-border-muted/80 px-7 py-4">
+                <div className="flex min-h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-muted/80 px-4 py-2">
                   <button
                     type="button"
                     disabled={!canGenerateCustomizeDraft}
                     onClick={() => void generateCustomizeDraft()}
-                    className="inline-flex h-10 min-w-[9.5rem] items-center justify-center gap-2 rounded-lg bg-accent px-5 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                    className="inline-flex h-8 min-w-[8rem] items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
                     title={t('data.inputTables.editor.generateProjectDisabled')}
                   >
                     {customizeGenerating ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Sparkles className="h-4 w-4" />
+                      <Sparkles className="h-3.5 w-3.5" />
                     )}
                     {customizeGenerating
                       ? t('data.inputTables.editor.generateProjectDrafting')
@@ -1263,20 +1263,20 @@ export function InputTableEditorWorkbench({
                     type="button"
                     disabled={!customizeArtifactVersionId || previewLoading || !dataset}
                     onClick={() => void previewCustomizeDraft()}
-                    className="inline-flex h-10 min-w-[11.5rem] items-center justify-center gap-2 rounded-lg border border-border-muted bg-surface px-5 text-[13px] font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-8 min-w-[10rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {previewLoading ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Eye className="h-4 w-4" />
+                      <Eye className="h-3.5 w-3.5" />
                     )}
                     {t('data.inputTables.editor.previewNormalizedDraft')}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-                <div className="grid gap-4">
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <div className="grid gap-3">
                   {localSourceKind === 'excel' ? (
                     <>
                       <InputTableConfigRow label={t('data.inputTables.editor.sheetName')}>
@@ -1293,7 +1293,7 @@ export function InputTableEditorWorkbench({
                             : ['Sheet1']
                           ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                           disabled={isBusy || !dataset}
-                          triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                          triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
                           contentClassName="w-[var(--radix-select-trigger-width)]"
                         />
                       </InputTableConfigRow>
@@ -1339,11 +1339,11 @@ export function InputTableEditorWorkbench({
                               },
                             ]}
                             disabled={isBusy || !dataset}
-                            triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[14px] font-medium text-text-primary disabled:opacity-60"
+                            triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
                             contentClassName="w-[var(--radix-select-trigger-width)]"
                           />
                           {excelConfig.headerMode === 'manual' ? (
-                            <label className="relative block !h-10">
+                            <label className="relative block !h-8">
                               <input
                                 type="number"
                                 min={1}
@@ -1359,7 +1359,7 @@ export function InputTableEditorWorkbench({
                                   })
                                 }
                                 disabled={isBusy || !dataset}
-                                className="box-border !h-10 w-full rounded-lg border border-border-muted bg-surface pl-3 pr-10 text-[14px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="box-border !h-8 w-full rounded-lg border border-border-muted bg-surface pl-2.5 pr-10 text-[13px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                               />
                               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
                                 {t('data.inputTables.editor.rowUnit')}
@@ -1380,7 +1380,7 @@ export function InputTableEditorWorkbench({
                         ['delimiter', 'data.inputTables.editor.csvDelimiter'],
                       ].map(([key, labelKey]) => (
                         <InputTableConfigRow key={key} label={t(labelKey)}>
-                          <div className="text-[14px] font-medium text-text-primary">
+                          <div className="text-[13px] font-medium text-text-primary">
                             {t('data.inputTables.editor.autoDetected')}
                           </div>
                         </InputTableConfigRow>
@@ -1410,7 +1410,7 @@ export function InputTableEditorWorkbench({
                           ]}
                         />
                       </InputTableConfigRow>
-                      <div className="flex flex-wrap gap-4 px-1">
+                      <div className="flex flex-wrap gap-3 px-1">
                         <InputTableCheckbox
                           checked={folderConfig.skipEmptyFiles}
                           disabled={isBusy || !dataset}
@@ -1477,8 +1477,8 @@ export function InputTableConfigRow({
   children: ReactNode;
 }) {
   return (
-    <div className="grid min-h-12 items-center gap-3 px-1 py-1 lg:grid-cols-[10rem_minmax(0,1fr)]">
-      <div className="text-[14px] font-medium text-text-primary">{label}</div>
+    <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 lg:grid-cols-[10rem_minmax(0,1fr)]">
+      <div className="text-[13px] font-medium text-text-secondary">{label}</div>
       <div className="min-w-0">{children}</div>
     </div>
   );

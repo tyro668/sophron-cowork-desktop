@@ -361,7 +361,7 @@ export function InputTableSelect({
         disabled={disabled}
         onValueChange={onChange}
         options={options}
-        triggerClassName="!h-10 w-full justify-between rounded-lg bg-surface px-3 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+        triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />
     </label>

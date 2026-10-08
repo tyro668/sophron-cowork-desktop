@@ -65,7 +65,7 @@ function renderEditor(overrides?: {
   const exportTable = vi.fn(async () => ({ success: true, path: '/tmp/out.csv' }));
   (window as { electronAPI?: unknown }).electronAPI = {
     data: { previewDataset, exportTable, ...overrides?.data },
-    automation: { list: async () => [] },
+    automation: { list: async () => ({ automations: [], groupCounts: {} }) },
   };
   const view = render(
     <OutputTableEditor
