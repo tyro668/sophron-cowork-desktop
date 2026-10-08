@@ -97,24 +97,26 @@ export function ContextPanel() {
     return { input, output, total: input + output };
   }, [messages]);
 
-  // Context usage: last message's input tokens ≈ current context occupation
+  // Latest completed model call: full prompt + generated output. This is a
+  // snapshot, not cumulative billing usage; compaction can legitimately lower it.
   const contextUsage = useMemo(() => {
     const contextWindow = activeSessionId
       ? sessionStates[activeSessionId]?.contextWindow
       : undefined;
     if (!contextWindow) return null;
 
-    let lastInput = 0;
+    let used = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].tokenUsage?.input) {
-        lastInput = messages[i].tokenUsage!.input;
+      const usage = messages[i].tokenUsage;
+      if (messages[i].role === 'assistant' && usage && usage.input > 0) {
+        used = usage.input + usage.output;
         break;
       }
     }
-    if (lastInput === 0) return null;
+    if (used === 0) return null;
 
-    const percentage = Math.min((lastInput / contextWindow) * 100, 100);
-    return { used: lastInput, total: contextWindow, percentage };
+    const percentage = Math.min((used / contextWindow) * 100, 100);
+    return { used, total: contextWindow, percentage };
   }, [activeSessionId, sessionStates, messages]);
 
   const completedStepCount = useMemo(

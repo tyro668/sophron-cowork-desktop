@@ -382,7 +382,7 @@ function AutomationTable({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const sections = buildGroupSections(automations, groups, (automation) => automation.groupId);
   const grouped = hasNamedSections(sections);
-  const renderRow = (automation: Automation, index: number) => {
+  const renderRow = (automation: Automation, index: number, indented = false) => {
     const selected = automation.id === selectedId;
     const icon = AUTOMATION_ICON_STYLES[index % AUTOMATION_ICON_STYLES.length];
     const RowIcon = icon.Icon;
@@ -397,24 +397,17 @@ function AutomationTable({
             : 'hover:bg-surface-hover/35'
         }`}
       >
-        <td className="px-3">
-          <input
-            type="radio"
-            name="automation-selection"
-            checked={selected}
-            onChange={() => onSelect(automation)}
-            onClick={(event) => event.stopPropagation()}
-            className="h-3.5 w-3.5 accent-accent"
-            aria-label={automation.name}
-          />
-        </td>
-        <td className="px-2">
+        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-3">
-            <div
-              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}
-            >
-              <RowIcon className="h-4 w-4" />
-            </div>
+            {indented ? (
+              <RowIcon className={`h-3.5 w-3.5 flex-shrink-0 ${icon.textClass}`} />
+            ) : (
+              <div
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.bgClass}`}
+              >
+                <RowIcon className="h-4 w-4" />
+              </div>
+            )}
             <div className="flex min-w-0 flex-col">
               <span className="truncate text-[13px] font-medium text-text-secondary">
                 {automation.name}
@@ -452,7 +445,6 @@ function AutomationTable({
     <div className="min-w-0 overflow-x-auto">
       <table className="w-full table-fixed border-collapse text-left">
         <colgroup>
-          <col className="w-12" />
           <col />
           <col className="w-36" />
           <col className="w-24" />
@@ -461,9 +453,6 @@ function AutomationTable({
         </colgroup>
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="px-3">
-              <span className="sr-only">{tr('schedule.selection', '选择')}</span>
-            </th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.name', '名称')}</th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.status', '状态')}</th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.actions', '动作')}</th>
@@ -510,13 +499,13 @@ function AutomationSectionRows({
   onToggle: () => void;
   onRenameGroup: (group: DataListGroup) => void;
   onDeleteGroup: (group: DataListGroup) => void;
-  renderRow: (automation: Automation, index: number) => ReactNode;
+  renderRow: (automation: Automation, index: number, indented: boolean) => ReactNode;
 }) {
   return (
     <>
       {grouped && (
         <GroupHeaderRow
-          colSpan={6}
+          colSpan={5}
           group={section.group}
           count={section.rows.length}
           collapsed={collapsed}
@@ -525,15 +514,15 @@ function AutomationSectionRows({
           onDelete={section.group ? onDeleteGroup : undefined}
         />
       )}
-      {!collapsed && section.rows.map((row, index) => renderRow(row, index))}
+      {!collapsed && section.rows.map((row, index) => renderRow(row, index, grouped))}
     </>
   );
 }
 
-const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; className: string }> = [
-  { Icon: CalendarClock, className: 'bg-accent-muted text-accent' },
-  { Icon: Database, className: 'bg-accent-muted text-accent' },
-  { Icon: Bell, className: 'bg-warning/10 text-warning' },
+const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; bgClass: string; textClass: string }> = [
+  { Icon: CalendarClock, bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' },
+  { Icon: Database, bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' },
+  { Icon: Bell, bgClass: 'bg-warning/10 text-warning', textClass: 'text-warning' },
 ];
 
 const AUTOMATION_STATUS_TONES: Record<Automation['status'], string> = {

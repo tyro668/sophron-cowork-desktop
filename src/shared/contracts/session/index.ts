@@ -133,6 +133,7 @@ export interface ThinkingContent {
 }
 
 export interface TokenUsage {
+  /** Full prompt tokens, including cache reads and cache writes. */
   input: number;
   output: number;
 }
@@ -268,14 +269,7 @@ export type PermissionRule = SharedPermissionRule;
 
 // Tool types
 export type ToolName =
-  | 'read'
-  | 'write'
-  | 'edit'
-  | 'glob'
-  | 'grep'
-  | 'bash'
-  | 'webFetch'
-  | 'webSearch';
+  'read' | 'write' | 'edit' | 'glob' | 'grep' | 'bash' | 'webFetch' | 'webSearch';
 
 export interface ToolResult {
   success: boolean;

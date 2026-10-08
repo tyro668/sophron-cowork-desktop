@@ -137,10 +137,13 @@ class MCPConfigStore {
   }
 
   /**
-   * Get preset configurations
+   * Presets shown in Settings → MCP connectors → Quick Add.
+   * Other entries in MCP_SERVER_PRESETS stay available to createFromPreset so
+   * already-saved Software Development and GUI Operate connectors can still
+   * resolve their bundled server paths.
    */
   getPresets(): Record<string, Omit<MCPServerConfig, 'id' | 'enabled'>> {
-    return MCP_SERVER_PRESETS;
+    return { chrome: MCP_SERVER_PRESETS.chrome };
   }
 
   /**

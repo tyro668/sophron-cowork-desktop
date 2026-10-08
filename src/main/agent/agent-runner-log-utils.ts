@@ -66,7 +66,12 @@ export function toErrorText(error: unknown): string {
 
 export function normalizeTokenUsage(usage: unknown): Message['tokenUsage'] | undefined {
   const normalized = normalizeTraceUsage(usage);
+  // SDK input excludes cache hits and cache writes. Both are still part of
+  // the prompt sent to the model and must count toward context occupation.
   return normalized
-    ? { input: normalized.inputTokens, output: normalized.outputTokens }
+    ? {
+        input: normalized.inputTokens + normalized.cacheReadTokens + normalized.cacheWriteTokens,
+        output: normalized.outputTokens,
+      }
     : undefined;
 }
