@@ -37,6 +37,17 @@ export interface PendingCloudAutomationTemplateNavigation {
   nonce: number;
 }
 
+/** Cloud table prefill for a cloud.sync input node when navigating to the automation editor. */
+export interface PendingCloudInputSource {
+  spaceId: string;
+  projectId: string;
+  tableId: string;
+  tableKind: 'analysis' | 'base';
+  tableName?: string;
+  spaceName?: string;
+  projectName?: string;
+}
+
 export interface GlobalNotice {
   id: string;
   message: string;
@@ -146,12 +157,14 @@ interface AppState {
     outputTable?: { id: string; name: string };
     inputTable?: { id: string; name: string };
     newInputTableName?: string;
+    cloudSource?: PendingCloudInputSource;
   } | null;
   navigateToTableAutomation: (target: {
     automationId?: string;
     outputTable?: { id: string; name: string };
     inputTable?: { id: string; name: string };
     newInputTableName?: string;
+    cloudSource?: PendingCloudInputSource;
   }) => void;
   clearTableAutomationNavigation: () => void;
   welcomeCloudTableChatDrafts: CloudTableChatAttachment[];

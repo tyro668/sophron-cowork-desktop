@@ -225,6 +225,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   const navigateToCloudAutomationTemplate = useAppStore(
     (state) => state.navigateToCloudAutomationTemplate
   );
+  const navigateToTableAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
   const addCloudTablesToWelcomeChat = useAppStore((state) => state.addCloudTablesToWelcomeChat);
@@ -252,7 +253,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   const [loadingMoreTables, setLoadingMoreTables] = useState(false);
   const [tablePageInfo, setTablePageInfo] = useState(EMPTY_TABLE_PAGE_INFO);
   const [loginBusy, setLoginBusy] = useState(false);
-  const [importingTableId, setImportingTableId] = useState<string | null>(null);
   const [focusedTableId, setFocusedTableId] = useState<string | null>(null);
   const handledFocusNonce = useRef(0);
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
@@ -265,7 +265,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   const tableRequestSeq = useRef(0);
   const fileRequestSeq = useRef(0);
   const previewRequestSeq = useRef(0);
-  const importRequestSeq = useRef(0);
   const selectedProjectRef = useRef<SelectedProject | null>(null);
   const expandedSpaceIdsRef = useRef<string[]>([]);
   const tableLookupStartedRef = useRef(false);
@@ -898,11 +897,9 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
 
   useEffect(() => {
     previewRequestSeq.current += 1;
-    importRequestSeq.current += 1;
     setPreview(null);
     setNotice(null);
     setPreviewPage(1);
-    setImportingTableId(null);
     setSelectedTableIds([]);
     setSelectedFileIds([]);
     tableCacheRef.current.clear();
@@ -1207,51 +1204,37 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   );
 
   const importTable = useCallback(
-    async (table: PersonalAnalysisTable) => {
-      if (!dataClient.isAvailable()) return;
+    (table: PersonalAnalysisTable) => {
       const targetSpaceId = table.spaceId || selectedProject?.spaceId;
       const targetProjectId = table.projectId || selectedProject?.projectId;
-      if (!targetProjectId) return;
-      const targetSpaceName = spaces.find((space) => space.spaceId === targetSpaceId)?.spaceName;
-      const targetProjectName = targetSpaceId
-        ? projectsBySpace[targetSpaceId]?.find((project) => project.projectId === targetProjectId)
-            ?.projectName
-        : undefined;
-      const requestId = ++importRequestSeq.current;
-      setImportingTableId(table.tableId);
-      try {
-        const result = await dataClient.importCloudTable({
-          ...connectionPayload,
-          tableId: table.tableId,
+      if (!targetSpaceId || !targetProjectId) return;
+      const targetSpaceName =
+        spaces.find((space) => space.spaceId === targetSpaceId)?.spaceName ??
+        selectedSpace?.spaceName;
+      const targetProjectName =
+        projectsBySpace[targetSpaceId]?.find((project) => project.projectId === targetProjectId)
+          ?.projectName ?? selectedProjectRecord?.projectName;
+      navigateToTableAutomation({
+        newInputTableName: table.tableName,
+        cloudSource: {
           spaceId: targetSpaceId,
           projectId: targetProjectId,
+          tableId: table.tableId,
+          tableKind: table.kind ?? 'analysis',
+          tableName: table.tableName,
           spaceName: targetSpaceName,
           projectName: targetProjectName,
-          name: table.tableName,
-          previewRows: 20,
-        });
-        if (requestId !== importRequestSeq.current) return;
-        previewRequestSeq.current += 1;
-        setPreview(null);
-        setPreviewPage(1);
-        setNotice({
-          type: 'success',
-          message: t('cloudData.importSuccess', { name: result.inputTable.name }),
-          inputTableId: result.inputTable.id,
-        });
-      } catch (error) {
-        if (requestId !== importRequestSeq.current) return;
-        setNotice({
-          type: 'error',
-          message: getPersonalAnalysisErrorMessage(error, t),
-        });
-      } finally {
-        if (requestId === importRequestSeq.current) {
-          setImportingTableId(null);
-        }
-      }
+        },
+      });
     },
-    [connectionPayload, selectedProject, setNotice, spaces, projectsBySpace, t]
+    [
+      navigateToTableAutomation,
+      selectedProject,
+      selectedProjectRecord?.projectName,
+      selectedSpace?.spaceName,
+      spaces,
+      projectsBySpace,
+    ]
   );
 
   const startCloudTableAutomation = useCallback(
@@ -1685,22 +1668,12 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                   }}
                 />
                 <DataToolbarButton
-                  icon={
-                    singleSelectedTable && importingTableId === singleSelectedTable.tableId ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Database className="h-3.5 w-3.5" />
-                    )
-                  }
+                  icon={<Database className="h-3.5 w-3.5" />}
                   label={t('cloudData.importAsInput')}
-                  disabled={
-                    listTab !== 'tables' ||
-                    !singleSelectedTable ||
-                    importingTableId === singleSelectedTable.tableId
-                  }
+                  disabled={listTab !== 'tables' || !singleSelectedTable}
                   onClick={() => {
                     if (singleSelectedTable) {
-                      void importTable(singleSelectedTable);
+                      importTable(singleSelectedTable);
                     }
                   }}
                 />

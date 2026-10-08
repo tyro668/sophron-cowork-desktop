@@ -476,6 +476,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       });
     } else if (outputNavigation.inputTable || outputNavigation.newInputTableName !== undefined) {
       const table = outputNavigation.inputTable;
+      const cloudSource = outputNavigation.cloudSource;
       const name =
         table?.name ||
         outputNavigation.newInputTableName ||
@@ -493,12 +494,14 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               enabled: true,
               config: {
                 direction: 'input',
-                spaceId: '',
-                projectId: '',
-                tableId: '',
-                tableKind: 'analysis',
+                spaceId: cloudSource?.spaceId ?? '',
+                projectId: cloudSource?.projectId ?? '',
+                tableId: cloudSource?.tableId ?? '',
+                tableKind: cloudSource?.tableKind ?? 'analysis',
+                tableName: cloudSource?.tableName,
                 inputTableId: table?.id,
-                inputTableName: table?.name || outputNavigation.newInputTableName || '',
+                inputTableName:
+                  table?.name || outputNavigation.newInputTableName || cloudSource?.tableName || '',
               },
             },
           ],
