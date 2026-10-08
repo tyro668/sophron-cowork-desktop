@@ -341,7 +341,7 @@ export function SettingsAPI() {
                       </span>
                     </Button>
                   )}
-                  {(isOllamaMode || provider === 'sophron') && !useCustomModel && (
+                  {(isOllamaMode || provider === 'sophron' || isCodexMode) && !useCustomModel && (
                     <Button
                       variant="secondary"
                       onClick={() => void refreshModelOptions()}

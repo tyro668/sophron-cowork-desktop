@@ -28,6 +28,7 @@ import {
   shouldUseAnthropicAuthToken,
 } from './auth-utils';
 import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-model-presets';
+import { listCodexSubscriptionModelOptions } from './codex-models';
 import { hasCodexCredentials } from './codex-auth';
 import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
 import type { StoredPersonalAnalysisConfig } from '../../shared/personal-analysis-types';
@@ -260,7 +261,7 @@ let cachedDynamicPresets: typeof PROVIDER_PRESETS | null = null;
  * Returns PROVIDER_PRESETS with models arrays replaced by registry data where available.
  * Uses async import() because pi-ai is ESM-only.
  */
-export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
+async function loadPiAiEnrichedPresets(): Promise<typeof PROVIDER_PRESETS> {
   if (cachedDynamicPresets) return cachedDynamicPresets;
 
   try {
@@ -299,6 +300,21 @@ export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
     logWarn('[ConfigStore] Failed to load pi-ai model presets, using hardcoded fallback:', err);
     return PROVIDER_PRESETS;
   }
+}
+
+export async function getPiAiModelPresets(): Promise<typeof PROVIDER_PRESETS> {
+  const enriched = await loadPiAiEnrichedPresets();
+  // Re-read the local Codex catalog on every presets fetch. The pi-ai name
+  // enrichment above is cached; the subscription lineup is not.
+  const codexModels = listCodexSubscriptionModelOptions(enriched['openai-codex'].models);
+  if (codexModels === enriched['openai-codex'].models) return enriched;
+  return {
+    ...enriched,
+    'openai-codex': {
+      ...enriched['openai-codex'],
+      models: codexModels,
+    },
+  };
 }
 
 const PROFILE_KEYS: ProviderProfileKey[] = [

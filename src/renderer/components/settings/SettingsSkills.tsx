@@ -862,21 +862,10 @@ function SkillTableRow({
           onSelect();
         }
       }}
-      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px] ${
+      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 2xl:grid-cols-[minmax(0,1fr)_84px_92px_104px] ${
         selected ? 'bg-accent-muted ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
       }`}
     >
-      <span className="flex items-center">
-        <input
-          type="radio"
-          name="skill-selection"
-          checked={selected}
-          onChange={onSelect}
-          onClick={(event) => event.stopPropagation()}
-          className="h-3.5 w-3.5 accent-accent"
-          aria-label={item.name}
-        />
-      </span>
       <span className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           <Icon className="h-4 w-4" />

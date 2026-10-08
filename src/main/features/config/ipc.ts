@@ -19,10 +19,12 @@ import {
 import {
   configStore,
   getPiAiModelPresets,
+  PROVIDER_PRESETS,
   type AppConfig,
   type CreateConfigSetPayload,
 } from '../../config/config-store';
 import { runConfigApiTest } from '../../config/config-test-routing';
+import { listCodexSubscriptionModelOptions } from '../../config/codex-models';
 import { listOllamaModels } from '../../config/ollama-api';
 import { createPersonalAnalysisClient } from '../../data/personal-analysis-client';
 import { handleIpc } from '../../ipc-handle';
@@ -161,6 +163,9 @@ export function registerConfigIpc(): void {
     ): Promise<ProviderModelInfo[]> => {
       if (payload.provider === 'sophron') {
         return desktopAuthService.listLlmModels();
+      }
+      if (payload.provider === 'openai-codex') {
+        return listCodexSubscriptionModelOptions(PROVIDER_PRESETS['openai-codex'].models);
       }
       if (payload.provider !== 'ollama') {
         return [];

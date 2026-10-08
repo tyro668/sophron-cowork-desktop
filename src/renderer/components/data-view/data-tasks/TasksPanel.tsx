@@ -285,13 +285,10 @@ function TasksTable({
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="w-[4%] px-4">
-              <span className="sr-only">{t('data.tasks.selection')}</span>
-            </th>
-            <th className="w-[42%] whitespace-nowrap px-2">{t('data.columns.taskName')}</th>
+            <th className="w-[44%] whitespace-nowrap px-2">{t('data.columns.taskName')}</th>
             <th className="w-[16%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
             <th className="w-[12%] whitespace-nowrap px-2">{t('data.columns.nodes')}</th>
-            <th className="w-[26%] whitespace-nowrap px-2">
+            <th className="w-[28%] whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
                 {t('data.columns.updatedAt')}
                 <ArrowUpDown className="h-3 w-3" />
@@ -318,6 +315,7 @@ function TasksTable({
                     onSelect={() => onSelectTask(task.id)}
                     onEdit={() => onEdit(task)}
                     t={t}
+                    indented={grouped}
                   />
                 );
               }}
@@ -350,7 +348,7 @@ function GroupSectionRows({
     <>
       {grouped && (
         <GroupHeaderRow
-          colSpan={5}
+          colSpan={4}
           group={section.group}
           count={section.rows.length}
           collapsed={collapsed}
@@ -370,12 +368,14 @@ function TaskRow({
   onSelect,
   onEdit,
   t,
+  indented,
 }: {
   task: DataCleaningTask;
   selected: boolean;
   onSelect: () => void;
   onEdit: () => void;
   t: (key: string) => string;
+  indented?: boolean;
 }) {
   return (
     <tr
@@ -385,18 +385,7 @@ function TaskRow({
         selected ? 'bg-accent-muted ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
       }`}
     >
-      <td className="px-4">
-        <input
-          type="radio"
-          name="task-selection"
-          checked={selected}
-          onChange={onSelect}
-          onClick={(event) => event.stopPropagation()}
-          className="h-3.5 w-3.5 accent-accent"
-          aria-label={task.name}
-        />
-      </td>
-      <td className="px-2">
+      <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
             <Workflow className="h-4 w-4" />

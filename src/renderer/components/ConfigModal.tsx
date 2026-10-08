@@ -344,7 +344,7 @@ export function ConfigModal({
               {t('api.model')}
             </label>
             <div className="flex items-center gap-2">
-              {(isOllamaMode || isSophronMode) && (
+              {(isOllamaMode || isSophronMode || isCodexMode) && (
                 <Button
                   variant="ghost"
                   size="sm"

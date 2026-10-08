@@ -131,7 +131,7 @@ export function OutputTablesPanel({
   );
   const grouped = hasNamedSections(sections);
 
-  const renderRow = (outputTable: DataOutputTable) => {
+  const renderRow = (outputTable: DataOutputTable, indented = false) => {
     const selected = outputTable.id === selectedOutputTableId;
     return (
       <tr
@@ -143,18 +143,7 @@ export function OutputTablesPanel({
             : 'hover:bg-surface-hover/35'
         }`}
       >
-        <td className="px-4">
-          <input
-            type="radio"
-            name="output-table-selection"
-            checked={selected}
-            onChange={() => setSelectedOutputTableId(outputTable.id)}
-            onClick={(event) => event.stopPropagation()}
-            className="h-3.5 w-3.5 accent-accent"
-            aria-label={outputTable.name}
-          />
-        </td>
-        <td className="px-2">
+        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
               <UploadCloud className="h-4 w-4" />
@@ -293,13 +282,10 @@ export function OutputTablesPanel({
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                    <th className="w-[4%] px-4">
-                      <span className="sr-only">{t('data.outputTables.selection')}</span>
-                    </th>
-                    <th className="w-[34%] whitespace-nowrap px-2">
+                    <th className="w-[36%] whitespace-nowrap px-2">
                       {t('data.columns.outputTableName')}
                     </th>
-                    <th className="w-[30%] whitespace-nowrap px-2">
+                    <th className="w-[32%] whitespace-nowrap px-2">
                       {t('data.columns.relatedTasks')}
                     </th>
                     <th className="w-[18%] whitespace-nowrap px-2">
@@ -316,7 +302,7 @@ export function OutputTablesPanel({
                     <Fragment key={section.key}>
                       {grouped && (
                         <GroupHeaderRow
-                          colSpan={5}
+                          colSpan={4}
                           group={section.group}
                           count={section.rows.length}
                           collapsed={collapsedGroups.has(section.key)}
@@ -329,7 +315,9 @@ export function OutputTablesPanel({
                       )}
                       {!collapsedGroups.has(section.key) &&
                         section.rows.map((outputTable) => (
-                          <Fragment key={outputTable.id}>{renderRow(outputTable)}</Fragment>
+                          <Fragment key={outputTable.id}>
+                            {renderRow(outputTable, grouped)}
+                          </Fragment>
                         ))}
                     </Fragment>
                   ))}

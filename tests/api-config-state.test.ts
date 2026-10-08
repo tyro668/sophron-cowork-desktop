@@ -14,6 +14,7 @@ import {
   profileKeyFromProvider,
   profileKeyToProvider,
 } from '../src/renderer/hooks/useApiConfigState';
+import { resolveProfileModelOptions } from '../src/renderer/hooks/api-config-model';
 
 const hookPath = path.resolve(process.cwd(), 'src/renderer/hooks/useApiConfigState.ts');
 
@@ -329,6 +330,25 @@ describe('api config state helpers', () => {
       'gpt-5.3-codex'
     );
     expect(FALLBACK_PROVIDER_PRESETS.openai.models.map((item) => item.id)).not.toContain('gpt-5.2');
+    expect(FALLBACK_PROVIDER_PRESETS['openai-codex'].models.map((item) => item.id)).toContain(
+      'gpt-6.1-sol'
+    );
+    expect(
+      resolveProfileModelOptions(
+        'openai-codex',
+        FALLBACK_PROVIDER_PRESETS['openai-codex'].models,
+        [{ id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' }],
+        true
+      ).map((item) => item.id)
+    ).toEqual(['gpt-6.1-sol']);
+    expect(
+      resolveProfileModelOptions(
+        'openai-codex',
+        FALLBACK_PROVIDER_PRESETS['openai-codex'].models,
+        [],
+        true
+      ).some((item) => item.id === 'gpt-6.1-sol')
+    ).toBe(true);
     expect(FALLBACK_PROVIDER_PRESETS.anthropic.models.map((item) => item.id)).toContain(
       'claude-sonnet-4-6'
     );

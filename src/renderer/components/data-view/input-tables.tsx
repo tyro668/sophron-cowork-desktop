@@ -154,7 +154,7 @@ export function InputTablesPanel({
     }
   }, [isLoading, selectedDatasetId, visibleRows]);
 
-  const renderRow = (row: (typeof visibleRows)[number]) => {
+  const renderRow = (row: (typeof visibleRows)[number], indented = false) => {
     const dataset = row.kind === 'dataset' ? row.dataset : null;
     const draft = row.kind === 'draft' ? row.draft : null;
     const sourceKind = dataset ? dataset.sourceKind : 'draft';
@@ -182,18 +182,7 @@ export function InputTablesPanel({
             : 'hover:bg-surface-hover/35'
         }`}
       >
-        <td className="px-4">
-          <input
-            type="radio"
-            name="input-table-selection"
-            checked={selected}
-            onChange={() => setSelectedDatasetId(row.id)}
-            onClick={(event) => event.stopPropagation()}
-            className="h-3.5 w-3.5 accent-accent"
-            aria-label={rowName}
-          />
-        </td>
-        <td className="px-2">
+        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
               <Table2 className="h-4 w-4" />
@@ -379,16 +368,13 @@ export function InputTablesPanel({
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                    <th className="w-[4%] px-4">
-                      <span className="sr-only">{t('data.inputTables.selection')}</span>
-                    </th>
-                    <th className="w-[22%] whitespace-nowrap px-2">
+                    <th className="w-[24%] whitespace-nowrap px-2">
                       {t('data.columns.inputTableName')}
                     </th>
-                    <th className="w-[9%] whitespace-nowrap px-2">
+                    <th className="w-[10%] whitespace-nowrap px-2">
                       {t('data.columns.sourceType')}
                     </th>
-                    <th className="w-[22%] whitespace-nowrap px-2">
+                    <th className="w-[23%] whitespace-nowrap px-2">
                       {t('data.columns.sourceLocation')}
                     </th>
                     <th className="w-[17%] whitespace-nowrap px-2">
@@ -409,7 +395,7 @@ export function InputTablesPanel({
                     <Fragment key={section.key}>
                       {grouped && (
                         <GroupHeaderRow
-                          colSpan={7}
+                          colSpan={6}
                           group={section.group}
                           count={section.rows.length}
                           collapsed={collapsedGroups.has(section.key)}
@@ -422,7 +408,7 @@ export function InputTablesPanel({
                       )}
                       {!collapsedGroups.has(section.key) &&
                         section.rows.map((dataset) =>
-                          renderRow({ kind: 'dataset', id: dataset.id, dataset })
+                          renderRow({ kind: 'dataset', id: dataset.id, dataset }, grouped)
                         )}
                     </Fragment>
                   ))}

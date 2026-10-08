@@ -42,6 +42,8 @@ import {
   normalizeThinkingLevel,
   profileKeyFromProvider,
   profileKeyToProvider,
+  providerSupportsLiveModelRefresh,
+  resolveProfileModelOptions,
   protocolLabel,
   providerTabLabel,
   toPersistedProfiles,
@@ -224,17 +226,18 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     profiles[activeProfileKey] || defaultProfileForKey(activeProfileKey, presets);
   const modelPreset = modelPresetForProfile(activeProfileKey, presets);
   const currentPreset = modelPreset;
-  const usesDiscoveredModelOptions = provider === 'ollama' || provider === 'sophron';
+  const usesDiscoveredModelOptions = providerSupportsLiveModelRefresh(provider);
   const hasDiscoveredModelOptions =
     usesDiscoveredModelOptions &&
     Object.prototype.hasOwnProperty.call(discoveredModels, activeProfileKey);
   const modelOptions = useMemo(
     () =>
-      provider === 'ollama'
-        ? discoveredModels[activeProfileKey] || []
-        : hasDiscoveredModelOptions
-          ? discoveredModels[activeProfileKey] || []
-          : modelPreset.models,
+      resolveProfileModelOptions(
+        provider,
+        modelPreset.models,
+        discoveredModels[activeProfileKey],
+        hasDiscoveredModelOptions
+      ),
     [activeProfileKey, discoveredModels, hasDiscoveredModelOptions, modelPreset.models, provider]
   );
   const modelInputGuidance = getModelInputGuidance(provider, customProtocol);
@@ -837,7 +840,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   }, [handleDiagnose]);
 
   const refreshModelOptions = useCallback(async () => {
-    if (!isElectron || (provider !== 'ollama' && provider !== 'sophron')) {
+    if (!isElectron || !providerSupportsLiveModelRefresh(provider)) {
       return [];
     }
 
@@ -1052,7 +1055,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   }, [provider, baseUrl, refreshModelOptions]);
 
   useEffect(() => {
-    if (provider !== 'sophron') return;
+    if (provider !== 'sophron' && provider !== 'openai-codex') return;
     void refreshModelOptions();
   }, [provider, refreshModelOptions]);
 

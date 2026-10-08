@@ -137,6 +137,7 @@ const KNOWN_MODEL_SPECS: Record<string, { contextWindow: number; maxTokens: numb
   'deepseek-v4': { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   deepseek: { contextWindow: DEEPSEEK_CONTEXT_WINDOW, maxTokens: 16384 },
   claude: { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },
+  'gpt-6.1': { contextWindow: 272_000, maxTokens: 128_000 },
   'gpt-6': { contextWindow: 272_000, maxTokens: 128_000 },
   'gpt-5.6': { contextWindow: 272_000, maxTokens: 128_000 },
   'gpt-5': { contextWindow: DEFAULT_SYNTHETIC_CONTEXT_WINDOW, maxTokens: 16384 },

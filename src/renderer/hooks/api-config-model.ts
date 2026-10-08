@@ -200,6 +200,34 @@ export function isLegacyOllamaConfig(
   }
 }
 
+export function providerSupportsLiveModelRefresh(provider: string): boolean {
+  return provider === 'ollama' || provider === 'sophron' || provider === 'openai-codex';
+}
+
+/**
+ * Ollama always shows the last discovery result (empty until a refresh).
+ * Codex falls back to the preset lineup when the local catalog read returns nothing,
+ * so a missing `models_cache.json` does not blank the subscription picker.
+ */
+export function resolveProfileModelOptions(
+  provider: string,
+  presetModels: ProviderModelInfo[],
+  discoveredModels: ProviderModelInfo[] | undefined,
+  hasDiscovered: boolean
+): ProviderModelInfo[] {
+  if (provider === 'ollama') {
+    return discoveredModels || [];
+  }
+  if (!hasDiscovered) {
+    return presetModels;
+  }
+  const discovered = discoveredModels || [];
+  if (provider === 'openai-codex' && discovered.length === 0) {
+    return presetModels;
+  }
+  return discovered;
+}
+
 export function modelPresetForProfile(profileKey: ProviderProfileKey, presets: ProviderPresets) {
   if (profileKey === 'ollama') {
     return presets.ollama;

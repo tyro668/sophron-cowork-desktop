@@ -146,6 +146,17 @@ describe('pi model resolution helpers', () => {
     expect(model.contextWindow).toBe(272_000);
     expect(model.maxTokens).toBe(128_000);
 
+    const sol = buildSyntheticPiModel(
+      'gpt-6.1-sol',
+      'openai-codex',
+      'openai-codex',
+      'https://chatgpt.com/backend-api'
+    );
+    expect(sol.id).toBe('gpt-6.1-sol');
+    expect(sol.api).toBe('openai-codex-responses');
+    expect(sol.contextWindow).toBe(272_000);
+    expect(sol.maxTokens).toBe(128_000);
+
     const overridden = applyPiModelRuntimeOverrides(model, {
       configProvider: 'openai-codex',
       rawProvider: 'openai-codex',

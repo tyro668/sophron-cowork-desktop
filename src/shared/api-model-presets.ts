@@ -106,7 +106,10 @@ export const API_PROVIDER_PRESETS: SharedProviderPresets = {
     name: 'OpenAI Codex（订阅）',
     baseUrl: 'https://chatgpt.com/backend-api',
     models: [
+      { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol' },
       { id: 'gpt-6-astra', name: 'GPT-6 Astra' },
+      { id: 'gpt-6-sol', name: 'GPT-6 Sol' },
+      { id: 'gpt-6-luna', name: 'GPT-6 Luna' },
       { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' },
       { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
       { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
@@ -251,7 +254,15 @@ export const PI_AI_CURATED_PRESETS: Record<string, { piProvider: string; pick: s
   },
   'openai-codex': {
     piProvider: 'openai-codex',
-    pick: ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    pick: [
+      'gpt-6.1-sol',
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-6-luna',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ],
   },
   deepseek: {
     piProvider: 'deepseek',
@@ -318,7 +329,7 @@ export function getModelInputGuidance(
 
   if (provider === 'openai-codex') {
     return {
-      placeholder: 'gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna',
+      placeholder: 'gpt-6.1-sol, gpt-6-astra, gpt-6-sol, gpt-5.6-sol',
       hint: 'Use a model available to your ChatGPT subscription (Codex).',
     };
   }
