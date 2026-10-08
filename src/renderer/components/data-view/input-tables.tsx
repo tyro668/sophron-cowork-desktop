@@ -9,6 +9,7 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
+  Sparkles,
   Table2,
   Trash2,
   Workflow,
@@ -71,6 +72,7 @@ export function InputTablesPanel({
   onEditDraft,
   onEditDataset,
   onCreateTaskFromTable,
+  onAiGenerateTaskFromTable,
   onAssignToGroup,
   onRenameGroup,
   onDeleteGroup,
@@ -96,6 +98,7 @@ export function InputTablesPanel({
   onEditDraft: (id: string) => void;
   onEditDataset: (id: string) => void;
   onCreateTaskFromTable: (dataset: DataDataset) => void;
+  onAiGenerateTaskFromTable?: (dataset: DataDataset) => void;
   onAssignToGroup: (ids: string[], target: AssignGroupTarget) => void;
   onRenameGroup: (group: DataListGroup, name: string) => void;
   onDeleteGroup: (group: DataListGroup) => void;
@@ -242,7 +245,7 @@ export function InputTablesPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-between`}>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-[16rem] flex-1 flex-wrap items-center gap-2">
           {(isLoading || visibleRows.length > 0 || searchQuery.trim()) && (
             <button
               onClick={onCreate}
@@ -287,6 +290,16 @@ export function InputTablesPanel({
               }
             }}
           />
+          {onAiGenerateTaskFromTable && (
+            <DataToolbarButton
+              icon={<Sparkles className="h-3.5 w-3.5" />}
+              label={t('data.aiTaskGenerate')}
+              disabled={!selectedDataset || bulkBusy || actionId === 'create'}
+              onClick={() => {
+                if (selectedDataset) onAiGenerateTaskFromTable(selectedDataset);
+              }}
+            />
+          )}
           <DataToolbarButton
             icon={<PencilLine className="h-3.5 w-3.5" />}
             label={t('data.inputTables.actions.edit')}
@@ -462,6 +475,7 @@ export function InputTableEditor({
   onChooseDatasetSource,
   onUpdateDatasetConfig,
   onCreateTask,
+  onAiGenerateTask,
   onSyncCloudSource,
   onOpenCloudSource,
 }: {
@@ -489,6 +503,7 @@ export function InputTableEditor({
     name?: string
   ) => void | Promise<void>;
   onCreateTask?: (dataset: DataDataset) => void;
+  onAiGenerateTask?: (dataset: DataDataset) => void;
   onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
   onOpenCloudSource?: (mirror: CloudMirrorInfo) => void;
 }) {
@@ -504,6 +519,7 @@ export function InputTableEditor({
       onChooseDatasetSource={onChooseDatasetSource}
       onUpdateDatasetConfig={onUpdateDatasetConfig}
       onCreateTask={onCreateTask}
+      onAiGenerateTask={onAiGenerateTask}
       onSyncCloudSource={onSyncCloudSource}
       onOpenCloudSource={onOpenCloudSource}
     />

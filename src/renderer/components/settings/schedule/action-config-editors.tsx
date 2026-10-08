@@ -1,7 +1,15 @@
 import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Database, Loader2, MessagesSquare, Plus, Trash2, type LucideIcon } from 'lucide-react';
+import {
+  Database,
+  Loader2,
+  MessagesSquare,
+  Plus,
+  Sparkles,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react';
 import type {
   AutomationActionDefinitionSummary,
   AutomationActionNode,
@@ -17,12 +25,10 @@ import {
   CLOUD_TABLE_PROCESS_ACTION_TYPE,
   DATA_ACTION_TYPES,
   DATA_PREVIEW_ACTION_TYPES,
-  DATA_PROCESS_AI_CONFIG_KEY,
-  DATA_PROCESS_TASK_CONFIG_KEY,
   type AutomationDraft,
 } from './types';
 import {
-  createCloudTableProcessNode,
+  createGeneratedCloudTableProcessNode,
   parseCloudAutomationConfig,
   defaultConfigForAction,
   relinkLinearGraph,
@@ -33,11 +39,9 @@ import {
   LocalTableSelect,
   MiniIcon,
   SelectLine,
-  SegmentedControl,
-  getStashedDataProcessConfig,
-  type DataProcessMode,
 } from './editor-controls';
-import { CloudTableProcessActionEditor } from './cloud-action-editors';
+import { DataTaskAiGenerateDialog } from '../../data-view/data-tasks/DataTaskAiGenerateDialog';
+import { dataClient } from '../../../features/data/api/data-client';
 import { flatToolbarRowClass } from '../../data-view/shared';
 import { ArrowLeftRight, CalendarClock, CloudUpload, CloudDownload } from 'lucide-react';
 
@@ -69,18 +73,8 @@ export function ActionChainSection({
       actionGraph: relinkLinearGraph({ version: 1, nodes: nextNodes, edges: [] }),
     });
   const availableActionTypes = new Set(actionDefinitions.map((definition) => definition.type));
-  const menuActionTypes = [
-    ...ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type)),
-    ...(availableActionTypes.has(CLOUD_TABLE_PROCESS_ACTION_TYPE) ||
-    availableActionTypes.has('conversation.run')
-      ? [CLOUD_TABLE_PROCESS_ACTION_TYPE]
-      : []),
-  ];
+  const menuActionTypes = ACTION_MENU_TYPES.filter((type) => availableActionTypes.has(type));
   const addNode = (type: string) => {
-    if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
-      updateNodes([...nodes, createCloudTableProcessNode()]);
-      return;
-    }
     updateNodes([
       ...nodes,
       {
@@ -210,8 +204,6 @@ export function DataProcessActionEditor({
   node,
   dataTasks,
   inputTables,
-  outputTables,
-  appConfig,
   onGeneratedTaskSuccess,
   onChange,
   tr,
@@ -219,81 +211,78 @@ export function DataProcessActionEditor({
   node: AutomationActionNode;
   dataTasks: DataCleaningTask[];
   inputTables: DataDashboard['datasets'];
-  outputTables: DataDashboard['outputTables'];
-  appConfig: AppConfig | null;
   onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
-  const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
-  const mode: DataProcessMode =
-    node.type === 'data.task.run' || node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE ? 'task' : 'ai';
-  const setConfig = (config: Record<string, unknown>) => onChange({ ...node, config });
+  const [generateOpen, setGenerateOpen] = useState(false);
+  // Legacy drafts can supply a selected cloud/local source to the shared task
+  // authoring dialog. New actions simply reference an existing data task.
+  const legacyDraft = parseCloudAutomationConfig(node.config.cloudAutomation);
   const selectedTaskId = String(node.config.taskId ?? '');
-  const generatedTaskName =
-    typeof node.config.taskName === 'string' && node.config.taskName.trim()
-      ? node.config.taskName
-      : selectedTaskId;
+  const selectedTask = dataTasks.find((task) => task.id === selectedTaskId);
+  const selectedInput = inputTables.find((table) => table.id === selectedTask?.sourceDatasetId);
   const taskOptions =
-    selectedTaskId && !dataTasks.some((task) => task.id === selectedTaskId)
-      ? [{ id: selectedTaskId, name: generatedTaskName }, ...dataTasks]
+    selectedTaskId && !selectedTask
+      ? [{ id: selectedTaskId, name: String(node.config.taskName || selectedTaskId) }, ...dataTasks]
       : dataTasks;
-  const switchMode = (next: DataProcessMode) => {
-    if (next === mode) return;
-    if (next === 'task') {
-      const stashedTaskConfig =
-        getStashedDataProcessConfig(node.config, DATA_PROCESS_TASK_CONFIG_KEY) ??
-        defaultConfigForAction('data.task.run');
-      onChange({
-        ...node,
-        type:
-          node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE
-            ? CLOUD_TABLE_PROCESS_ACTION_TYPE
-            : 'data.task.run',
-        label: '',
-        config: {
-          ...stashedTaskConfig,
-          [DATA_PROCESS_AI_CONFIG_KEY]: node.config,
-        },
-      });
-      return;
-    }
-    const cloudNode = createCloudTableProcessNode();
-    const stashedAiConfig =
-      getStashedDataProcessConfig(node.config, DATA_PROCESS_AI_CONFIG_KEY) ?? cloudNode.config;
+  const selectTask = (taskId: string, taskName?: string) =>
     onChange({
       ...node,
-      type: 'conversation.run',
+      type: 'data.task.run',
       label: '',
+      // Replacing the selected task also removes stale generated source/schema bindings.
       config: {
-        ...stashedAiConfig,
-        [DATA_PROCESS_TASK_CONFIG_KEY]: node.config,
+        taskId,
+        taskName: taskName || dataTasks.find((task) => task.id === taskId)?.name,
+        outputMode: 'persisted',
       },
     });
-  };
+  const legacySource = legacyDraft?.source.tableId
+    ? {
+        ...legacyDraft.source,
+        location: legacyDraft.source.location === 'local' ? ('local' as const) : ('cloud' as const),
+        columnsSnapshot: (legacyDraft.source.columns ?? [])
+          .map((column) =>
+            typeof column === 'string'
+              ? { name: column }
+              : { name: column.name ?? '', type: column.type }
+          )
+          .filter((column) => column.name),
+      }
+    : null;
   return (
-    <div className="space-y-4">
-      <ConfigRow label={tr('schedule.dataProcessModeLabel', '处理方式')}>
-        <SegmentedControl<DataProcessMode>
-          value={mode}
-          options={[
-            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 生成任务') },
-            { value: 'task', label: tr('schedule.dataProcessModeTask', '复用数据任务') },
-          ]}
-          onChange={switchMode}
+    <div className="space-y-3">
+      <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
+        <LocalTableSelect
+          value={selectedTaskId}
+          tables={taskOptions}
+          placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
+          searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
+          onChange={(value) => selectTask(value)}
         />
       </ConfigRow>
-      {mode === 'ai' && cloudAutomation && (
-        <CloudTableProcessActionEditor
-          node={node}
-          config={cloudAutomation}
-          inputTables={inputTables}
-          outputTables={outputTables}
-          appConfig={appConfig}
-          onChange={onChange}
-          onGeneratedTaskSuccess={onGeneratedTaskSuccess}
-          tr={tr}
-        />
+      <div className="flex justify-end">
+        <Button variant="secondary" size="sm" onClick={() => setGenerateOpen(true)}>
+          <Sparkles className="h-3.5 w-3.5" />
+          {tr('data.aiTaskGenerate', 'AI 生成数据任务')}
+        </Button>
+      </div>
+      {selectedTaskId && (
+        <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
+          <GlassSelect
+            value={String(node.config.outputMode ?? 'persisted')}
+            options={[
+              { value: 'persisted', label: tr('schedule.executionFormal', '正式执行') },
+              { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
+            ]}
+            onValueChange={(outputMode) =>
+              onChange({ ...node, config: { ...node.config, outputMode } })
+            }
+            triggerClassName="h-9 w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+        </ConfigRow>
       )}
       {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
         (node.config.output as { location?: string } | undefined)?.location !== 'local' && (
@@ -308,13 +297,16 @@ export function DataProcessActionEditor({
               size="sm"
               onClick={() => {
                 const output = (node.config.output ?? {}) as Record<string, unknown>;
-                setConfig({
-                  ...node.config,
-                  output: {
-                    ...output,
-                    location: 'local',
-                    writeMode: 'replace',
-                    targetTableId: output.localOutputTableId,
+                onChange({
+                  ...node,
+                  config: {
+                    ...node.config,
+                    output: {
+                      ...output,
+                      location: 'local',
+                      writeMode: 'replace',
+                      targetTableId: output.localOutputTableId,
+                    },
                   },
                 });
               }}
@@ -323,36 +315,40 @@ export function DataProcessActionEditor({
             </Button>
           </div>
         )}
-      {mode === 'task' && (
-        <>
-          <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
-            <LocalTableSelect
-              value={selectedTaskId}
-              tables={taskOptions}
-              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
-              searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
-              onChange={(value) =>
-                setConfig({ ...node.config, taskId: value, outputMode: 'persisted' })
-              }
-            />
-          </ConfigRow>
-          <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
-            <GlassSelect
-              value={String(node.config.outputMode ?? 'persisted')}
-              options={[
-                { value: 'persisted', label: tr('schedule.executionFormal', '正式执行') },
-                { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
-              ]}
-              onValueChange={(value) => setConfig({ ...node.config, outputMode: value })}
-              triggerClassName="h-9 w-full justify-between"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          </ConfigRow>
-          {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE && (
-            <GeneratedTaskReviewCard node={node} tr={tr} />
-          )}
-        </>
-      )}
+      {selectedTaskId && <GeneratedTaskReviewCard node={node} tr={tr} />}
+      <DataTaskAiGenerateDialog
+        open={generateOpen}
+        boundInputTable={selectedInput ? { id: selectedInput.id, name: selectedInput.name } : null}
+        initialSource={legacySource}
+        initialRequirement={legacyDraft?.processRequirement}
+        initialOutput={legacyDraft ? { ...legacyDraft.output, location: 'local' } : undefined}
+        onOpenChange={setGenerateOpen}
+        onApplied={(result, input) => {
+          if (input.source.location === 'cloud' && legacyDraft) {
+            // Preserve cloud refresh for pre-existing cloud authoring drafts.
+            onChange(
+              createGeneratedCloudTableProcessNode(
+                node,
+                {
+                  ...legacyDraft,
+                  processRequirement: input.processRequirement,
+                  output: {
+                    ...legacyDraft.output,
+                    ...input.output,
+                    location: 'local',
+                    tableName: result.outputTableName,
+                    targetTableId: input.output.targetTableId ?? '',
+                  },
+                },
+                result
+              )
+            );
+          } else {
+            selectTask(result.taskId, result.taskName);
+          }
+          onGeneratedTaskSuccess(result.workflowDslAvailable);
+        }}
+      />
     </div>
   );
 }
@@ -366,6 +362,7 @@ export function GeneratedTaskReviewCard({
 }) {
   const taskId = String(node.config.taskId ?? '').trim();
   const [workflowDsl, setWorkflowDsl] = useState('');
+  const workflowRequestSeq = useRef(0);
   const [isLoadingWorkflowDsl, setIsLoadingWorkflowDsl] = useState(false);
   const [workflowDslLoadFailed, setWorkflowDslLoadFailed] = useState(false);
   const requiredColumns = Array.isArray(node.config.requiredColumns)
@@ -378,17 +375,20 @@ export function GeneratedTaskReviewCard({
         .filter(Boolean)
     : [];
   const loadCurrentWorkflowDsl = useCallback(async () => {
-    if (!taskId || !window.electronAPI?.data?.getTaskWorkflow) return;
+    if (!taskId || !dataClient.has('getTaskWorkflow')) return;
+    const requestId = ++workflowRequestSeq.current;
     setIsLoadingWorkflowDsl(true);
     setWorkflowDslLoadFailed(false);
     try {
-      const workflow = await window.electronAPI.data.getTaskWorkflow(taskId);
+      const workflow = await dataClient.getTaskWorkflow(taskId);
+      if (requestId !== workflowRequestSeq.current) return;
       setWorkflowDsl(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
     } catch {
+      if (requestId !== workflowRequestSeq.current) return;
       setWorkflowDsl('');
       setWorkflowDslLoadFailed(true);
     } finally {
-      setIsLoadingWorkflowDsl(false);
+      if (requestId === workflowRequestSeq.current) setIsLoadingWorkflowDsl(false);
     }
   }, [taskId]);
 
@@ -396,12 +396,15 @@ export function GeneratedTaskReviewCard({
     setWorkflowDsl('');
     setWorkflowDslLoadFailed(false);
     void loadCurrentWorkflowDsl();
+    return () => {
+      workflowRequestSeq.current += 1;
+    };
   }, [loadCurrentWorkflowDsl]);
 
   return (
     <div className="rounded-md bg-surface-muted/60 p-3">
       <div className="mb-2 text-[12px] font-semibold text-text-secondary">
-        <span>{tr('schedule.generatedTaskReview', '生成结果')}</span>
+        <span>{tr('schedule.dataTaskLogic', '任务逻辑')}</span>
       </div>
       {requiredColumns.length > 0 && (
         <div className="mb-2 text-[12px] leading-5 text-text-muted">
@@ -495,8 +498,6 @@ export function ActionConfigEditor({
           node={node}
           dataTasks={dataTasks}
           inputTables={inputTables}
-          outputTables={outputTables}
-          appConfig={appConfig}
           onGeneratedTaskSuccess={onGeneratedTaskSuccess}
           onChange={onChange}
           tr={tr}
@@ -564,14 +565,14 @@ export function getActionTitle(
   tr: (key: string, fallback: string) => string
 ): string {
   if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle', '云空间同步');
-  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.task.run') {
     return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
   }
   if (type === 'data.task.run') {
-    return tr('schedule.actionTypes.dataTaskRun.title', fallback);
+    return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   if (isDataActionType(type)) {
     return tr('schedule.actionTypes.data.title', fallback);
@@ -583,10 +584,10 @@ export function getActionMenuDescription(
   type: string,
   tr: (key: string, fallback: string) => string
 ): string | undefined {
-  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.task.run') {
     return tr(
       'schedule.dataProcessActionDescription',
-      '对指定数据表做结构化加工（AI 生成或复用已有数据任务）'
+      '执行已有数据任务，或调用数据任务的 AI 生成功能创建任务'
     );
   }
   if (type === 'cloud.sync') {

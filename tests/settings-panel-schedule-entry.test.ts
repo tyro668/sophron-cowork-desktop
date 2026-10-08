@@ -32,9 +32,9 @@ describe('Automation workspace', () => {
   });
 
   it('loads automations, action definitions, data resources, and run history', () => {
-    expect(automationSource).toContain('window.electronAPI.automation.list()');
+    expect(automationSource).toContain('window.electronAPI.automation.list(');
     expect(automationSource).toContain('window.electronAPI.automation.listActionDefinitions()');
-    expect(automationSource).toContain('window.electronAPI.data.getDashboard({');
+    expect(automationSource).toContain('loadDataTaskResources()');
     expect(automationSource).toContain('window.electronAPI.automation.listRuns(automation.id');
   });
 

@@ -9,6 +9,7 @@ import type {
   DataCleaningTask,
   DataDataset,
   DataGroupScope,
+  DataGenerateTaskFromRequirementResult,
   DataInputTableConfig,
   DataInputTableSourceKind,
   DataOutputTable,
@@ -225,6 +226,29 @@ export function useDataActions(deps: DataActionsDeps) {
       editors.setEditingTaskId(task.id);
     },
     [editors]
+  );
+
+  const handleGeneratedTask = useCallback(
+    async (result: DataGenerateTaskFromRequirementResult) => {
+      ui.setActiveTab('tasks');
+      ui.setSearchQuery('');
+      dashboard.setTaskPage(1);
+      editors.setEditingInputTableDatasetId(null);
+      editors.setTaskNameEditRequested(false);
+      try {
+        const task = await dataClient.getTask(result.taskId);
+        if (task) {
+          editors.setFocusedTask(task);
+          editors.setEditingTaskId(task.id);
+        }
+        await loadDashboard({ query: '', taskPage: 1 });
+      } catch (err) {
+        // Generation already persisted the task. Do not leave a retry button that
+        // would create it again just because refreshing the workspace failed.
+        ui.setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [ui, editors, dashboard, loadDashboard]
   );
 
   const handleCloseTaskEditor = useCallback(() => {
@@ -738,6 +762,7 @@ export function useDataActions(deps: DataActionsDeps) {
     handleRefreshCloudInputTable,
     handleRunTask,
     handleEditTask,
+    handleGeneratedTask,
     handleCloseTaskEditor,
     handleCreateInputTableDraft,
     handleRenameInputTableDraft,

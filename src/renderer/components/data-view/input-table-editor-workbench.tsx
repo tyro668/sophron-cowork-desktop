@@ -103,6 +103,7 @@ export type InputTableEditorProps = {
     name?: string
   ) => void | Promise<void>;
   onCreateTask?: (dataset: DataDataset) => void;
+  onAiGenerateTask?: (dataset: DataDataset) => void;
   onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
   onOpenCloudSource?: (mirror: CloudMirrorInfo) => void;
 };
@@ -120,6 +121,7 @@ export function InputTableEditorWorkbench({
   onChooseDatasetSource,
   onUpdateDatasetConfig,
   onCreateTask,
+  onAiGenerateTask,
   onSyncCloudSource,
   onOpenCloudSource,
 }: InputTableEditorProps) {
@@ -727,6 +729,17 @@ export function InputTableEditorWorkbench({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {dataset && onAiGenerateTask && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isBusy}
+                onClick={() => onAiGenerateTask(dataset)}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {t('data.aiTaskGenerate')}
+              </Button>
+            )}
             {dataset && onCreateTask && (
               <button
                 type="button"

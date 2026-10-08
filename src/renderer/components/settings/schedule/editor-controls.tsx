@@ -1,7 +1,6 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import type { AppConfig } from '../../../types';
-import { DATA_PROCESS_AI_CONFIG_KEY, DATA_PROCESS_TASK_CONFIG_KEY } from './types';
 import { GlassSelect } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
 
@@ -195,23 +194,4 @@ export function AutomationPromptPermissionFields({
       </ConfigRow>
     </>
   );
-}
-
-export type DataProcessMode = 'ai' | 'task';
-
-export function createLlmUsageTraceId(): string {
-  return typeof globalThis.crypto?.randomUUID === 'function'
-    ? globalThis.crypto.randomUUID()
-    : `llm-usage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-// Unified "数据处理" action editor. AI is a configuration-time generator; runtime execution
-// should settle on a generated/reused data task action.
-export function getStashedDataProcessConfig(
-  config: Record<string, unknown>,
-  key: typeof DATA_PROCESS_AI_CONFIG_KEY | typeof DATA_PROCESS_TASK_CONFIG_KEY
-): Record<string, unknown> | null {
-  const value = config[key];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
 }

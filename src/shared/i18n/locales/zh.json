@@ -78,6 +78,12 @@
     "pageDescription": "管理按计划自动执行的 Prompt 任务。"
   },
   "data": {
+    "aiTaskGenerate": "AI 生成数据任务",
+    "aiTaskGenerateSubmit": "生成并保存任务",
+    "aiTaskInputTable": "选择输入表",
+    "aiTaskInputSearch": "搜索输入表",
+    "aiTaskNoInputs": "暂无输入表，请先导入数据。",
+    "aiTaskOutputName": "结果表名（留空自动生成）",
     "pageTitle": "数据",
     "pageDescription": "使用 DuckDB 在本地管理数据任务、输入表和输出表。",
     "searchPlaceholder": "搜索数据任务...",
@@ -2565,6 +2571,7 @@
     "imagesCount_other": "+{{count}} 张图片"
   },
   "schedule": {
+    "dataTaskLogic": "任务逻辑",
     "summary": {
       "total": "自动化任务",
       "totalDesc": "全部自动化",
@@ -2681,7 +2688,7 @@
     "cloudTemplateLoaded": "已从云表创建自动处理草稿，请补充处理方式和执行频率。",
     "cloudProcessActionTitle": "处理云端表",
     "dataProcessActionTitle": "数据处理",
-    "dataProcessActionDescription": "对指定数据表做结构化加工（AI 生成或复用已有数据任务）",
+    "dataProcessActionDescription": "执行已有数据任务，或调用数据任务的 AI 生成功能创建任务",
     "dataProcessModeLabel": "处理方式",
     "dataProcessModeAi": "AI 生成任务",
     "dataProcessModeTask": "复用数据任务",

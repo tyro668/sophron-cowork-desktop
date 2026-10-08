@@ -7,6 +7,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
   Workflow,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ export function TasksPanel({
   isLoading,
   isCreateDisabled,
   onCreate,
+  onAiGenerate,
   onSearchChange,
   onRefresh,
   onGroupPageChange,
@@ -66,6 +68,7 @@ export function TasksPanel({
   isLoading: boolean;
   isCreateDisabled: boolean;
   onCreate: () => void;
+  onAiGenerate?: () => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
   onGroupPageChange: (groupKey: string, page: number) => void;
@@ -97,7 +100,7 @@ export function TasksPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-between`}>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-[20rem] flex-1 flex-wrap items-center gap-2">
           {(isLoading || tasks.length > 0 || searchQuery.trim()) && (
             <button
               onClick={onCreate}
@@ -107,6 +110,17 @@ export function TasksPanel({
               <Plus className="h-3.5 w-3.5" />
               {t('data.newCleaningTask')}
             </button>
+          )}
+          {onAiGenerate && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onAiGenerate}
+              disabled={isCreateDisabled || bulkBusy}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {t('data.aiTaskGenerate')}
+            </Button>
           )}
           <DataTableSearch
             value={searchQuery}

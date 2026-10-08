@@ -10,7 +10,6 @@ import type {
 } from '../../../types';
 import {
   CLOUD_TABLE_PROCESS_ACTION_TYPE,
-  DATA_PROCESS_AI_CONFIG_KEY,
   DEFAULT_TIME,
   SYSTEM_TIMEZONE,
   type AutomationDraft,
@@ -143,43 +142,6 @@ export function createCloudTableAutomationDraft(
   };
 }
 
-export function createEmptyCloudTableAutomationConfig(): CloudTableAutomationConfig {
-  // Manually added 数据处理 actions default to local→local: most users without a connected
-  // cloud-analysis space can use it immediately. The cloud deep-link overrides to cloud.
-  return {
-    kind: 'cloud_table_auto_process',
-    source: {
-      location: 'local',
-      tableId: '',
-      tableName: '',
-      columns: [],
-      rowCount: null,
-    },
-    processRequirement: '',
-    output: {
-      location: 'local',
-      writeMode: 'create',
-      targetTableId: '',
-      tableName: 'processed_table',
-    },
-  };
-}
-
-export function createCloudTableProcessNode(): AutomationActionNode {
-  const config = createEmptyCloudTableAutomationConfig();
-  return {
-    id: crypto.randomUUID(),
-    type: 'conversation.run',
-    label: '',
-    enabled: true,
-    config: {
-      ...defaultConfigForAction('conversation.run'),
-      prompt: buildCloudAutomationPrompt(config),
-      cloudAutomation: config,
-    },
-  };
-}
-
 export function createGeneratedCloudTableProcessNode(
   baseNode: AutomationActionNode,
   config: CloudTableAutomationConfig,
@@ -245,7 +207,6 @@ export function createGeneratedCloudTableProcessNode(
       generatedAt: result.generatedAt,
       schemaPolicy: 'required_subset',
       outputMode: 'persisted',
-      [DATA_PROCESS_AI_CONFIG_KEY]: baseNode.config,
     },
   };
 }

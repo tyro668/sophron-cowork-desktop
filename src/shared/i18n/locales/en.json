@@ -78,6 +78,12 @@
     "pageDescription": "Manage prompt tasks that run automatically on a plan."
   },
   "data": {
+    "aiTaskGenerate": "Generate data task with AI",
+    "aiTaskGenerateSubmit": "Generate and save task",
+    "aiTaskInputTable": "Select input table",
+    "aiTaskInputSearch": "Search input tables",
+    "aiTaskNoInputs": "No input tables. Import data first.",
+    "aiTaskOutputName": "Result table name (automatic if empty)",
     "pageTitle": "Data",
     "pageDescription": "Manage local data tasks, input tables, and output tables with DuckDB.",
     "searchPlaceholder": "Search data tasks...",
@@ -2565,6 +2571,7 @@
     "imagesCount_other": "+{{count}} images"
   },
   "schedule": {
+    "dataTaskLogic": "Task logic",
     "summary": {
       "total": "Automations",
       "totalDesc": "All automations",
@@ -2681,7 +2688,7 @@
     "cloudTemplateLoaded": "Created an auto-processing draft from the cloud table. Add the processing rule and schedule.",
     "cloudProcessActionTitle": "Process cloud table",
     "dataProcessActionTitle": "Data processing",
-    "dataProcessActionDescription": "Structured processing of a chosen table (AI-generated or reusing an existing data task)",
+    "dataProcessActionDescription": "Run an existing data task, or create one with the shared AI task generator",
     "dataProcessModeLabel": "Method",
     "dataProcessModeAi": "AI-generated task",
     "dataProcessModeTask": "Reuse data task",

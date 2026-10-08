@@ -1,3 +1,4 @@
+import { loadDataTaskResources } from '../../features/data/api/data-task-resources';
 import {
   startTransition,
   useCallback,
@@ -171,15 +172,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             window.electronAPI.automation.list({ perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE }),
             window.electronAPI.automation.groups.list(),
             window.electronAPI.automation.listActionDefinitions(),
-            window.electronAPI.data.getDashboard({
-              includeSummary: false,
-              includeTasks: true,
-              includeDatasets: true,
-              includeOutputTables: true,
-              taskLimit: 200,
-              datasetLimit: 200,
-              outputLimit: 200,
-            }),
+            loadDataTaskResources(),
           ]);
         if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
         automationsRef.current = automationRows;
@@ -745,7 +738,17 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             outputTables={outputTables}
             appConfig={appConfig}
             onDraftChange={setDraft}
-            onGeneratedTaskSuccess={(workflowDslAvailable) =>
+            onGeneratedTaskSuccess={(workflowDslAvailable) => {
+              void loadDataTaskResources()
+                .then((resources) => {
+                  if (isMountedRef.current) setDataDashboard(resources);
+                })
+                .catch((error) => {
+                  showTransientBanner({
+                    tone: 'error',
+                    text: error instanceof Error ? error.message : String(error),
+                  });
+                });
               showTransientBanner({
                 tone: workflowDslAvailable ? 'success' : 'warning',
                 text: workflowDslAvailable
@@ -754,8 +757,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                       'schedule.generatedTaskReadyWithoutDsl',
                       '数据任务已生成，但任务逻辑预览暂时不可用。'
                     ),
-              })
-            }
+              });
+            }}
             tr={tr}
           />
         </div>

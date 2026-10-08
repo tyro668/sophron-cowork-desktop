@@ -548,5 +548,4 @@ function FileChangeConfigCard({
   );
 }
 
-export { CloudTableProcessActionEditor } from './cloud-action-editors';
 export { ActionChainSection } from './action-config-editors';

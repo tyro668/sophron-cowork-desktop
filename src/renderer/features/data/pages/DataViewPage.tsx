@@ -34,6 +34,8 @@ import { useDataViewEditors } from '../hooks/use-data-view-editors';
 import { useStoredPreview } from '../hooks/use-stored-preview';
 import { useDataActions } from '../hooks/use-data-actions';
 import { useDataNavigation } from '../hooks/use-data-navigation';
+import type { DataDataset } from '../../../types';
+import { DataTaskAiGenerateDialog } from '../../../components/data-view/data-tasks/DataTaskAiGenerateDialog';
 import type { DataTab } from '../model/types';
 
 export function DataViewPage() {
@@ -41,6 +43,8 @@ export function DataViewPage() {
   const { confirmDelete } = useConfirmDialog();
   const isDataApiAvailable = dataClient.isAvailable();
 
+  const [aiTaskRequest, setAiTaskRequest] = useState<{ input?: DataDataset } | null>(null);
+  const generateTaskFromTable = (input: DataDataset) => setAiTaskRequest({ input });
   const ui = useDataViewUi();
   const drafts = useInputTableDrafts();
   const dashboard = useDataDashboard({
@@ -240,6 +244,7 @@ export function DataViewPage() {
             onChooseDatasetSource={actions.handleUpdateInputTableSource}
             onUpdateDatasetConfig={actions.handleUpdateInputTableConfig}
             onCreateTask={actions.handleCreateTaskFromTable}
+            onAiGenerateTask={generateTaskFromTable}
             onSyncCloudSource={actions.handleRefreshCloudInputTable}
             onOpenCloudSource={handleOpenCloudSource}
           />
@@ -291,6 +296,7 @@ export function DataViewPage() {
                     isLoading={isTasksLoading}
                     isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
                     onCreate={actions.handleCreateTask}
+                    onAiGenerate={() => setAiTaskRequest({})}
                     onSearchChange={handleSearchChange}
                     onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
                     onGroupPageChange={dashboard.setTaskGroupPage}
@@ -325,6 +331,7 @@ export function DataViewPage() {
                     onEditDraft={editors.setEditingInputTableDraftId}
                     onEditDataset={actions.handleEditInputTableDataset}
                     onCreateTaskFromTable={actions.handleCreateTaskFromTable}
+                    onAiGenerateTaskFromTable={generateTaskFromTable}
                     onAssignToGroup={(ids, target) =>
                       actions.handleAssignToGroup('input', ids, target)
                     }
@@ -390,6 +397,18 @@ export function DataViewPage() {
           </div>
         )}
       </div>
+      <DataTaskAiGenerateDialog
+        open={aiTaskRequest !== null}
+        boundInputTable={
+          aiTaskRequest?.input
+            ? { id: aiTaskRequest.input.id, name: aiTaskRequest.input.name }
+            : null
+        }
+        onOpenChange={(open) => {
+          if (!open) setAiTaskRequest(null);
+        }}
+        onApplied={actions.handleGeneratedTask}
+      />
     </div>
   );
 }
