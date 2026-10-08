@@ -1703,6 +1703,11 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                   disabled={listTab !== 'tables' || selectedTables.length === 0 || addingToChat}
                   onClick={() => void addSelectedTablesToChat()}
                 />
+                <DataToolbarButton
+                  icon={<ListChecks className="h-3.5 w-3.5" />}
+                  label={t('cloudData.batchSelect')}
+                  onClick={toggleBatchSelectMode}
+                />
                 <DataMoreMenu
                   items={[
                     {
@@ -1753,30 +1758,18 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                         <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
                           <thead className="sticky top-0 z-10">
                             <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                              <th className="w-[4.5rem] px-3">
-                                <div className="flex items-center gap-1">
-                                  {batchSelectMode ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={allVisibleFilesSelected}
-                                      onChange={toggleAllVisibleFiles}
-                                      className="h-3.5 w-3.5 accent-accent"
-                                      aria-label={t('cloudData.selectAllTables')}
-                                      title={t('cloudData.selectAllTables')}
-                                    />
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
-                                      onClick={toggleBatchSelectMode}
-                                      title={t('cloudData.batchSelect')}
-                                      aria-label={t('cloudData.batchSelect')}
-                                    >
-                                      <ListChecks className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              </th>
+                              {batchSelectMode && (
+                                <th className="w-[4.5rem] px-4">
+                                  <input
+                                    type="checkbox"
+                                    checked={allVisibleFilesSelected}
+                                    onChange={toggleAllVisibleFiles}
+                                    className="h-3.5 w-3.5 accent-accent"
+                                    aria-label={t('cloudData.selectAllTables')}
+                                    title={t('cloudData.selectAllTables')}
+                                  />
+                                </th>
+                              )}
                               <th className="whitespace-nowrap px-2">{t('cloudData.fileName')}</th>
                               <th className="w-[13%] whitespace-nowrap px-2">
                                 {t('cloudData.fileType')}
@@ -1805,17 +1798,18 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                                       : 'hover:bg-surface-hover/35'
                                   }`}
                                 >
-                                  <td className="px-4">
-                                    <input
-                                      type={batchSelectMode ? 'checkbox' : 'radio'}
-                                      name="cloud-file-selection"
-                                      checked={isSelected}
-                                      onChange={() => handleFileRowSelect(file.fileId)}
-                                      onClick={(event) => event.stopPropagation()}
-                                      className="h-3.5 w-3.5 accent-accent"
-                                      aria-label={file.fileName}
-                                    />
-                                  </td>
+                                  {batchSelectMode && (
+                                    <td className="px-4">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => handleFileRowSelect(file.fileId)}
+                                        onClick={(event) => event.stopPropagation()}
+                                        className="h-3.5 w-3.5 accent-accent"
+                                        aria-label={file.fileName}
+                                      />
+                                    </td>
+                                  )}
                                   <td className="px-2 py-1.5">
                                     <div className="flex min-w-0 items-center gap-3">
                                       <div
@@ -1855,30 +1849,18 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                       <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
                         <thead className="sticky top-0 z-10">
                           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                            <th className="w-[4.5rem] px-3">
-                              <div className="flex items-center gap-1">
-                                {batchSelectMode ? (
-                                  <input
-                                    type="checkbox"
-                                    checked={allVisibleTablesSelected}
-                                    onChange={toggleAllVisibleTables}
-                                    className="h-3.5 w-3.5 accent-accent"
-                                    aria-label={t('cloudData.selectAllTables')}
-                                    title={t('cloudData.selectAllTables')}
-                                  />
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-accent"
-                                    onClick={toggleBatchSelectMode}
-                                    title={t('cloudData.batchSelect')}
-                                    aria-label={t('cloudData.batchSelect')}
-                                  >
-                                    <ListChecks className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </th>
+                            {batchSelectMode && (
+                              <th className="w-[4.5rem] px-4">
+                                <input
+                                  type="checkbox"
+                                  checked={allVisibleTablesSelected}
+                                  onChange={toggleAllVisibleTables}
+                                  className="h-3.5 w-3.5 accent-accent"
+                                  aria-label={t('cloudData.selectAllTables')}
+                                  title={t('cloudData.selectAllTables')}
+                                />
+                              </th>
+                            )}
                             <th className="whitespace-nowrap px-2">{t('cloudData.tableName')}</th>
                             <th className="w-[13%] whitespace-nowrap px-2">
                               {t('cloudData.sourceType')}
@@ -1919,17 +1901,18 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                                       : 'hover:bg-surface-hover/35'
                                 }`}
                               >
-                                <td className="px-4">
-                                  <input
-                                    type={batchSelectMode ? 'checkbox' : 'radio'}
-                                    name="cloud-table-selection"
-                                    checked={isSelected}
-                                    onChange={() => handleTableRowSelect(table.tableId)}
-                                    onClick={(event) => event.stopPropagation()}
-                                    className="h-3.5 w-3.5 accent-accent"
-                                    aria-label={table.tableName}
-                                  />
-                                </td>
+                                {batchSelectMode && (
+                                  <td className="px-4">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleTableRowSelect(table.tableId)}
+                                      onClick={(event) => event.stopPropagation()}
+                                      className="h-3.5 w-3.5 accent-accent"
+                                      aria-label={table.tableName}
+                                    />
+                                  </td>
+                                )}
                                 <td className="px-2 py-1.5">
                                   <div className="flex min-w-0 items-center gap-3">
                                     <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
@@ -2054,18 +2037,21 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                       </div>
                     </div>
                   )}
-                  <div className="flex h-10 flex-shrink-0 items-center gap-1 border-t border-border-muted px-2">
+                  <div className="flex h-10 flex-shrink-0 items-stretch border-t border-border-muted">
                     {(['tables', 'files'] as const).map((tab) => (
                       <button
                         key={tab}
                         type="button"
                         onClick={() => setListTab(tab)}
-                        className={`h-7 rounded-md px-3 text-xs font-medium transition-colors ${
+                        className={`relative flex h-full items-center px-4 text-xs font-medium transition-colors ${
                           listTab === tab
-                            ? 'bg-accent-muted text-accent'
-                            : 'text-text-secondary hover:bg-surface-hover/50'
+                            ? 'bg-accent-muted/60 text-accent'
+                            : 'text-text-secondary hover:bg-surface-hover/50 hover:text-text-primary'
                         }`}
                       >
+                        {listTab === tab && (
+                          <span className="absolute inset-x-0 top-0 h-px bg-accent" />
+                        )}
                         {t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
                       </button>
                     ))}
