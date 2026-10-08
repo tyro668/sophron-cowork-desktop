@@ -29,14 +29,17 @@ function TableAutomations({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const load = useCallback(async () => setAutomations(await dataClient.listAutomations()), []);
+  const load = useCallback(
+    async () => setAutomations((await dataClient.listAutomations()).automations),
+    []
+  );
   useEffect(() => {
     let active = true;
     setLoading(true);
     void dataClient
       .listAutomations()
-      .then((rows) => {
-        if (active) setAutomations(rows);
+      .then((result) => {
+        if (active) setAutomations(result.automations);
       })
       .catch((error) => {
         if (active) setError(String(error));

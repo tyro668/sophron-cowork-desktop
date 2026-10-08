@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
@@ -14,8 +14,8 @@ import type { DataCleaningTask, DataGroup } from '../../../types';
 import {
   AssignGroupDialog,
   buildGroupSections,
-  GroupHeaderRow,
   GroupNameDialog,
+  GroupSectionRows,
   hasNamedSections,
   toggleCollapsed,
   type AssignGroupTarget,
@@ -28,8 +28,8 @@ import {
   EmptyState,
   flatToolbarRowClass,
   LoadingState,
-  PaginationFooter,
   StatusBadge,
+  TABLE_PAGE_SIZE,
   formatTimestamp,
 } from '../shared';
 import { Button } from '../../ui/button';
@@ -38,7 +38,8 @@ export function TasksPanel({
   tasks,
   totalTasks,
   groups,
-  currentPage,
+  groupCounts,
+  groupPages,
   searchQuery,
   actionId,
   isLoading,
@@ -46,7 +47,7 @@ export function TasksPanel({
   onCreate,
   onSearchChange,
   onRefresh,
-  onPageChange,
+  onGroupPageChange,
   onRun,
   onEdit,
   onDelete,
@@ -58,7 +59,8 @@ export function TasksPanel({
   tasks: DataCleaningTask[];
   totalTasks: number;
   groups: DataGroup[];
-  currentPage: number;
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   searchQuery: string;
   actionId: string | null;
   isLoading: boolean;
@@ -66,7 +68,7 @@ export function TasksPanel({
   onCreate: () => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
-  onPageChange: (page: number) => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
   onRun: (task: DataCleaningTask) => void;
   onEdit: (task: DataCleaningTask) => void;
   onDelete: (task: DataCleaningTask) => void;
@@ -202,21 +204,18 @@ export function TasksPanel({
             <TasksTable
               tasks={tasks}
               groups={groups}
+              groupCounts={groupCounts}
+              groupPages={groupPages}
               isLoading={isLoading}
               selectedTaskId={selectedTaskId}
               onSelectTask={setSelectedTaskId}
               onEdit={onEdit}
               onRenameGroup={setRenameTarget}
               onDeleteGroup={onDeleteGroup}
+              onGroupPageChange={onGroupPageChange}
             />
           )}
         </div>
-        <PaginationFooter
-          count={totalTasks}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
-          embedded
-        />
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
@@ -251,21 +250,27 @@ export function TasksPanel({
 function TasksTable({
   tasks,
   groups,
+  groupCounts,
+  groupPages,
   isLoading,
   selectedTaskId,
   onSelectTask,
   onEdit,
   onRenameGroup,
   onDeleteGroup,
+  onGroupPageChange,
 }: {
   tasks: DataCleaningTask[];
   groups: DataGroup[];
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   isLoading: boolean;
   selectedTaskId: string | null;
   onSelectTask: (taskId: string) => void;
   onEdit: (task: DataCleaningTask) => void;
   onRenameGroup: (group: DataListGroup) => void;
   onDeleteGroup: (group: DataListGroup) => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -300,22 +305,28 @@ function TasksTable({
           {sections.map((section) => (
             <GroupSectionRows
               key={section.key}
+              colSpan={4}
               section={section}
               grouped={grouped}
               collapsed={collapsed.has(section.key)}
               onToggle={() => setCollapsed((current) => toggleCollapsed(current, section.key))}
-              onRenameGroup={onRenameGroup}
-              onDeleteGroup={onDeleteGroup}
-              renderRow={(task) => {
+              onRename={section.group ? onRenameGroup : undefined}
+              onDelete={section.group ? onDeleteGroup : undefined}
+              count={groupCounts[section.key] ?? section.rows.length}
+              page={groupPages[section.key] ?? 1}
+              pageSize={TABLE_PAGE_SIZE}
+              onPageChange={(page) => onGroupPageChange(section.key, page)}
+              renderRow={(task, _index, indented) => {
                 const selected = task.id === selectedTaskId;
                 return (
                   <TaskRow
+                    key={task.id}
                     task={task}
                     selected={selected}
                     onSelect={() => onSelectTask(task.id)}
                     onEdit={() => onEdit(task)}
                     t={t}
-                    indented={grouped}
+                    indented={indented}
                   />
                 );
               }}
@@ -324,41 +335,6 @@ function TasksTable({
         </tbody>
       </table>
     </div>
-  );
-}
-
-function GroupSectionRows({
-  section,
-  grouped,
-  collapsed,
-  onToggle,
-  onRenameGroup,
-  onDeleteGroup,
-  renderRow,
-}: {
-  section: ReturnType<typeof buildGroupSections<DataCleaningTask>>[number];
-  grouped: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
-  onRenameGroup: (group: DataListGroup) => void;
-  onDeleteGroup: (group: DataListGroup) => void;
-  renderRow: (task: DataCleaningTask) => ReactNode;
-}) {
-  return (
-    <>
-      {grouped && (
-        <GroupHeaderRow
-          colSpan={4}
-          group={section.group}
-          count={section.rows.length}
-          collapsed={collapsed}
-          onToggle={onToggle}
-          onRename={section.group ? onRenameGroup : undefined}
-          onDelete={section.group ? onDeleteGroup : undefined}
-        />
-      )}
-      {!collapsed && section.rows.map((row) => <Fragment key={row.id}>{renderRow(row)}</Fragment>)}
-    </>
   );
 }
 

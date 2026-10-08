@@ -4,9 +4,9 @@
  * move-to-group / rename dialogs. All pieces are presentational — IPC stays
  * in the page's action layer.
  */
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, Folder, Pencil, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Folder, MoreVertical } from 'lucide-react';
 /** Minimal group shape — DataGroup and AutomationGroup both satisfy it. */
 export interface DataListGroup {
   id: string;
@@ -20,6 +20,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
 } from '../ui';
 
@@ -40,8 +44,23 @@ export function buildGroupSections<T>(
   getGroupId: (row: T) => string | null
 ): GroupSection<T>[] {
   const byId = new Map(groups.map((group) => [group.id, group]));
+  const groupOrder = new Map(groups.map((group, index) => [group.id, index]));
+
+  // Sort by group order (known groups first, unknown groups after, ungrouped last)
+  // so all ungrouped rows form a single section and group headers render consistently.
+  const sortedRows = [...rows].sort((a, b) => {
+    const aId = getGroupId(a);
+    const bId = getGroupId(b);
+    if (aId === bId) return 0;
+    if (!aId) return 1;
+    if (!bId) return -1;
+    const aOrder = groupOrder.get(aId) ?? groups.length;
+    const bOrder = groupOrder.get(bId) ?? groups.length;
+    return aOrder - bOrder;
+  });
+
   const sections: GroupSection<T>[] = [];
-  for (const row of rows) {
+  for (const row of sortedRows) {
     const groupId = getGroupId(row);
     const group = groupId ? (byId.get(groupId) ?? null) : null;
     const key = group ? `g:${group.id}` : 'ungrouped';
@@ -55,9 +74,9 @@ export function buildGroupSections<T>(
   return sections;
 }
 
-/** Whether any section header should render at all (flat list otherwise). */
+/** Whether any section (including the ungrouped section) exists. */
 export function hasNamedSections<T>(sections: GroupSection<T>[]): boolean {
-  return sections.some((section) => section.group !== null);
+  return sections.length > 0;
 }
 
 export function toggleCollapsed(set: Set<string>, key: string): Set<string> {
@@ -78,6 +97,9 @@ export function GroupHeaderRow({
   onToggle,
   onRename,
   onDelete,
+  page = 1,
+  totalPages = 1,
+  onPageChange,
 }: {
   colSpan: number;
   group: DataListGroup | null;
@@ -86,8 +108,14 @@ export function GroupHeaderRow({
   onToggle: () => void;
   onRename?: (group: DataListGroup) => void;
   onDelete?: (group: DataListGroup) => void;
+  page?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const { t } = useTranslation();
+  const hasPagination = totalPages > 1;
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
   return (
     <tr className="border-b border-border-muted/85 bg-surface-muted/50">
       <td colSpan={colSpan} className="px-4">
@@ -110,31 +138,113 @@ export function GroupHeaderRow({
             </span>
             <span className="flex-shrink-0 text-xs text-text-muted">{count}</span>
           </button>
-          {group && onRename && onDelete && (
-            <div className="flex flex-shrink-0 items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => onRename(group)}
-                title={t('data.groups.rename')}
-                aria-label={t('data.groups.rename')}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete(group)}
-                title={t('data.groups.delete')}
-                aria-label={t('data.groups.delete')}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-error/10 hover:text-error"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          )}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {hasPagination && (
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  disabled={!canPrev}
+                  onClick={() => onPageChange?.(page - 1)}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label={t('data.groups.prevPage', '上一页')}
+                >
+                  <ChevronLeft className="h-3 w-3" />
+                </button>
+                <span className="min-w-[2rem] text-center text-xs text-text-muted">
+                  {page}/{totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={!canNext}
+                  onClick={() => onPageChange?.(page + 1)}
+                  className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label={t('data.groups.nextPage', '下一页')}
+                >
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {group && (onRename || onDelete) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent"
+                    aria-label={t('data.groups.actions', '分组操作')}
+                  >
+                    <MoreVertical className="h-3 w-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {onRename && (
+                    <DropdownMenuItem onClick={() => onRename(group)}>
+                      {t('data.groups.rename', '重命名')}
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem
+                      onClick={() => onDelete(group)}
+                      className="text-error focus:text-error"
+                    >
+                      {t('data.groups.delete', '删除')}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       </td>
     </tr>
+  );
+}
+
+export function GroupSectionRows<T>({
+  colSpan,
+  section,
+  grouped,
+  collapsed,
+  onToggle,
+  onRename,
+  onDelete,
+  count,
+  page,
+  pageSize,
+  onPageChange,
+  renderRow,
+}: {
+  colSpan: number;
+  section: GroupSection<T>;
+  grouped: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+  onRename?: (group: DataListGroup) => void;
+  onDelete?: (group: DataListGroup) => void;
+  count: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  renderRow: (row: T, index: number, indented: boolean) => ReactNode;
+}) {
+  const totalPages = Math.max(1, Math.ceil(count / pageSize));
+  return (
+    <Fragment key={section.key}>
+      {grouped && (
+        <GroupHeaderRow
+          colSpan={colSpan}
+          group={section.group}
+          count={count}
+          collapsed={collapsed}
+          onToggle={onToggle}
+          onRename={onRename}
+          onDelete={onDelete}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      )}
+      {!collapsed && section.rows.map((row, index) => renderRow(row, index, grouped))}
+    </Fragment>
   );
 }
 

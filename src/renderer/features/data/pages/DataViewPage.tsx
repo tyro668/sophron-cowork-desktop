@@ -198,31 +198,6 @@ export function DataViewPage() {
     [activeTab, dashboard, ui]
   );
 
-  const handleTaskPageChange = useCallback(
-    (page: number) => {
-      ui.setLoadingTab('tasks');
-      dashboard.setTaskPage(page);
-    },
-    [dashboard, ui]
-  );
-
-  const handleDatasetPageChange = useCallback(
-    (page: number) => {
-      ui.setLoadingTab('input_tables');
-      inputTables.setInputTablesLoading(true);
-      inputTables.setDatasetPage(page);
-    },
-    [inputTables, ui]
-  );
-
-  const handleOutputPageChange = useCallback(
-    (page: number) => {
-      ui.setLoadingTab('output_tables');
-      dashboard.setOutputPage(page);
-    },
-    [dashboard, ui]
-  );
-
   const isTasksLoading =
     ui.loadingTab === 'tasks' || (activeTab === 'tasks' && ui.pendingNavigationTab === 'tasks');
   const isInputTablesLoading =
@@ -309,7 +284,8 @@ export function DataViewPage() {
                     tasks={dashboard.dashboard.tasks}
                     totalTasks={dashboard.dashboard.totalTasks}
                     groups={taskGroups}
-                    currentPage={dashboard.taskPage}
+                    groupCounts={dashboard.dashboard.taskGroupCounts}
+                    groupPages={dashboard.taskGroupPages}
                     searchQuery={searchQuery}
                     actionId={actionId}
                     isLoading={isTasksLoading}
@@ -317,7 +293,7 @@ export function DataViewPage() {
                     onCreate={actions.handleCreateTask}
                     onSearchChange={handleSearchChange}
                     onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
-                    onPageChange={handleTaskPageChange}
+                    onGroupPageChange={dashboard.setTaskGroupPage}
                     onRun={actions.handleRunTask}
                     onEdit={actions.handleEditTask}
                     onDelete={actions.handleDeleteTask}
@@ -334,12 +310,12 @@ export function DataViewPage() {
                     datasets={inputTables.inputTableDatasets}
                     drafts={drafts.drafts}
                     groups={inputGroups}
+                    groupCounts={inputTables.inputTableGroupCounts}
+                    groupPages={inputTables.datasetGroupPages}
                     totalDatasets={inputTables.totalInputTableDatasets}
-                    currentPage={inputTables.datasetPage}
                     searchQuery={searchQuery}
                     isLoading={isInputTablesLoading}
                     onSearchChange={handleSearchChange}
-                    onPageChange={handleDatasetPageChange}
                     onCreate={actions.handleCreateInputTableDraft}
                     onRefresh={() => inputTables.loadInputTables({ preserveError: true })}
                     onPreviewDataset={preview.previewInputTable}
@@ -354,6 +330,7 @@ export function DataViewPage() {
                     }
                     onRenameGroup={(group, name) => actions.handleRenameGroup('input', group, name)}
                     onDeleteGroup={(group) => actions.handleDeleteGroup('input', group)}
+                    onGroupPageChange={inputTables.setDatasetGroupPage}
                     isCreateDisabled={!isDataApiAvailable}
                     actionId={actionId}
                   />
@@ -363,7 +340,8 @@ export function DataViewPage() {
                     outputTables={dashboard.dashboard.outputTables}
                     totalOutputTables={dashboard.dashboard.totalOutputTables}
                     groups={outputGroups}
-                    currentPage={dashboard.outputPage}
+                    groupCounts={dashboard.dashboard.outputGroupCounts}
+                    groupPages={dashboard.outputGroupPages}
                     searchQuery={searchQuery}
                     isLoading={isOutputTablesLoading}
                     actionId={actionId}
@@ -373,7 +351,7 @@ export function DataViewPage() {
                     onRefresh={() =>
                       dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
                     }
-                    onPageChange={handleOutputPageChange}
+                    onGroupPageChange={dashboard.setOutputGroupPage}
                     onPreview={preview.previewOutputTable}
                     onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
                     onDelete={actions.handleDeleteOutputTable}

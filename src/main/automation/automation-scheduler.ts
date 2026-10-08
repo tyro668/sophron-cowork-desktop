@@ -73,7 +73,7 @@ export class AutomationScheduler {
     if (this.timer) clearTimeout(this.timer);
     const nextRunAt = this.service
       .list({ status: 'all' })
-      .filter((automation) => automation.enabled && automation.status !== 'paused')
+      .automations.filter((automation) => automation.enabled && automation.status !== 'paused')
       .map((automation) => automation.nextRunAt)
       .filter((value): value is number => typeof value === 'number')
       .sort((left, right) => left - right)[0];
@@ -88,7 +88,7 @@ export class AutomationScheduler {
 
   private syncFileWatchers(): void {
     const desired = new Map<string, { automation: Automation; cwd: string; signature: string }>();
-    for (const automation of this.service.list({ status: 'all' })) {
+    for (const automation of this.service.list({ status: 'all' }).automations) {
       if (!isFileChangeAutomation(automation)) continue;
       const projectId = automation.trigger.projectId || automation.projectId;
       if (!projectId) continue;

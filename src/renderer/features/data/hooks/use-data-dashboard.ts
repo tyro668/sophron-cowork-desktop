@@ -20,15 +20,22 @@ import type {
 } from '../../../types';
 import { getTablePageCount } from '../../../components/data-view/shared';
 import { TABLE_PAGE_SIZE } from '../../../components/data-view/shared';
+import { buildGroupSections } from '../../../components/data-view/group-ui';
 import { dataClient } from '../api/data-client';
 import { EMPTY_DASHBOARD, type DataTab } from '../model/types';
 
 export interface LoadDashboardOptions {
   preserveError?: boolean;
   query?: string;
+  /** @deprecated Pagination removed; groups are loaded with a per-group limit. */
   taskPage?: number;
+  /** @deprecated Pagination removed; groups are loaded with a per-group limit. */
   outputPage?: number;
   tab?: DataTab;
+  taskGroupId?: string | null;
+  outputGroupId?: string | null;
+  taskGroupPage?: number;
+  outputGroupPage?: number;
 }
 
 /** Failure from the most recent run — rendered as a structured card by the task editor. */
@@ -52,6 +59,8 @@ export function useDataDashboard(deps: {
   const [lastRunFailure, setLastRunFailure] = useState<DataRunFailure | null>(null);
   const [taskPage, setTaskPage] = useState(1);
   const [outputPage, setOutputPage] = useState(1);
+  const [taskGroupPages, setTaskGroupPages] = useState<Record<string, number>>({});
+  const [outputGroupPages, setOutputGroupPages] = useState<Record<string, number>>({});
   const dashboardRequestSeq = useRef(0);
   const hasLoadedDashboardSummary = useRef(false);
 
@@ -61,8 +70,6 @@ export function useDataDashboard(deps: {
       const requestSeq = dashboardRequestSeq.current + 1;
       dashboardRequestSeq.current = requestSeq;
       const targetTab = options.tab ?? activeTab;
-      const requestedTaskPage = Math.max(1, options.taskPage ?? taskPage);
-      const requestedOutputPage = Math.max(1, options.outputPage ?? outputPage);
       const shouldLoadTasks = targetTab === 'tasks';
       const shouldLoadOutputTables = targetTab === 'output_tables';
       const shouldLoadSummary = shouldLoadTasks || !hasLoadedDashboardSummary.current;
@@ -71,39 +78,76 @@ export function useDataDashboard(deps: {
         setError(null);
       }
       try {
+        const isTaskGroupPage = options.taskGroupId !== undefined;
+        const isOutputGroupPage = options.outputGroupId !== undefined;
+        const taskGroupPage = Math.max(1, options.taskGroupPage ?? 1);
+        const outputGroupPage = Math.max(1, options.outputGroupPage ?? 1);
         const nextDashboard = await dataClient.getDashboard({
           query: options.query ?? (shouldLoadTasks || shouldLoadOutputTables ? searchQuery : ''),
           includeSummary: shouldLoadSummary,
           includeTasks: shouldLoadTasks,
           includeDatasets: false,
           includeOutputTables: shouldLoadOutputTables,
-          taskOffset: (requestedTaskPage - 1) * TABLE_PAGE_SIZE,
-          taskLimit: shouldLoadTasks ? TABLE_PAGE_SIZE : 0,
+          taskPerGroupLimit: shouldLoadTasks && !isTaskGroupPage ? TABLE_PAGE_SIZE : 0,
+          taskGroupId: isTaskGroupPage ? options.taskGroupId : undefined,
+          taskOffset: isTaskGroupPage ? (taskGroupPage - 1) * TABLE_PAGE_SIZE : undefined,
+          taskLimit: isTaskGroupPage ? TABLE_PAGE_SIZE : undefined,
           datasetOffset: 0,
           datasetLimit: 0,
-          outputOffset: (requestedOutputPage - 1) * TABLE_PAGE_SIZE,
-          outputLimit: shouldLoadOutputTables ? TABLE_PAGE_SIZE : 0,
+          outputPerGroupLimit: shouldLoadOutputTables && !isOutputGroupPage ? TABLE_PAGE_SIZE : 0,
+          outputGroupId: isOutputGroupPage ? options.outputGroupId : undefined,
+          outputOffset: isOutputGroupPage ? (outputGroupPage - 1) * TABLE_PAGE_SIZE : undefined,
+          outputLimit: isOutputGroupPage ? TABLE_PAGE_SIZE : undefined,
           datasetSourceKind: 'all',
         });
         if (requestSeq === dashboardRequestSeq.current) {
           if (shouldLoadSummary) {
             hasLoadedDashboardSummary.current = true;
           }
-          setDashboard((current) => ({
-            summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
-            tasks: shouldLoadTasks ? nextDashboard.tasks : current.tasks,
-            outputTables: shouldLoadOutputTables
-              ? nextDashboard.outputTables
-              : current.outputTables,
-            datasets: current.datasets,
-            groups: nextDashboard.groups,
-            totalTasks:
-              shouldLoadTasks || shouldLoadSummary ? nextDashboard.totalTasks : current.totalTasks,
-            totalDatasets: current.totalDatasets,
-            totalOutputTables: shouldLoadOutputTables
-              ? nextDashboard.totalOutputTables
-              : current.totalOutputTables,
-          }));
+          setDashboard((current) => {
+            const tasks = isTaskGroupPage
+              ? mergeGroupRows(
+                  current.tasks,
+                  options.taskGroupId ?? null,
+                  nextDashboard.tasks,
+                  nextDashboard.groups
+                )
+              : shouldLoadTasks
+                ? nextDashboard.tasks
+                : current.tasks;
+            const outputTables = isOutputGroupPage
+              ? mergeGroupRows(
+                  current.outputTables,
+                  options.outputGroupId ?? null,
+                  nextDashboard.outputTables,
+                  nextDashboard.groups
+                )
+              : shouldLoadOutputTables
+                ? nextDashboard.outputTables
+                : current.outputTables;
+            return {
+              summary: shouldLoadSummary ? nextDashboard.summary : current.summary,
+              tasks,
+              outputTables,
+              datasets: current.datasets,
+              groups: nextDashboard.groups,
+              totalTasks:
+                shouldLoadTasks || shouldLoadSummary
+                  ? nextDashboard.totalTasks
+                  : current.totalTasks,
+              totalDatasets: current.totalDatasets,
+              totalOutputTables: shouldLoadOutputTables
+                ? nextDashboard.totalOutputTables
+                : current.totalOutputTables,
+              taskGroupCounts: shouldLoadTasks
+                ? { ...current.taskGroupCounts, ...nextDashboard.taskGroupCounts }
+                : current.taskGroupCounts,
+              datasetGroupCounts: current.datasetGroupCounts,
+              outputGroupCounts: shouldLoadOutputTables
+                ? { ...current.outputGroupCounts, ...nextDashboard.outputGroupCounts }
+                : current.outputGroupCounts,
+            };
+          });
         }
       } catch (err) {
         if (requestSeq === dashboardRequestSeq.current) {
@@ -116,7 +160,7 @@ export function useDataDashboard(deps: {
         }
       }
     },
-    [activeTab, outputPage, searchQuery, taskPage, setError, setLoadingTab, setPendingNavigationTab]
+    [activeTab, searchQuery, setError, setLoadingTab, setPendingNavigationTab]
   );
 
   /** Drops any in-flight dashboard response (used on tab switches). */
@@ -128,6 +172,40 @@ export function useDataDashboard(deps: {
   const setGroups = useCallback((groups: DataGroup[]) => {
     setDashboard((current) => ({ ...current, groups }));
   }, []);
+
+  const mergeGroupRows = <T extends { groupId: string | null }>(
+    currentRows: T[],
+    groupId: string | null,
+    loadedRows: T[],
+    groups: DataGroup[]
+  ): T[] => {
+    const combined = [...currentRows.filter((row) => row.groupId !== groupId), ...loadedRows];
+    return buildGroupSections(combined, groups, (row) => row.groupId).flatMap(
+      (section) => section.rows
+    );
+  };
+
+  const setTaskGroupPage = useCallback(
+    async (groupKey: string, page: number) => {
+      if (!dataClient.isAvailable()) return;
+      const groupId =
+        groupKey === 'ungrouped' ? null : groupKey.startsWith('g:') ? groupKey.slice(2) : groupKey;
+      setTaskGroupPages((current) => ({ ...current, [groupKey]: page }));
+      await loadDashboard({ tab: 'tasks', taskGroupId: groupId, taskGroupPage: page });
+    },
+    [loadDashboard]
+  );
+
+  const setOutputGroupPage = useCallback(
+    async (groupKey: string, page: number) => {
+      if (!dataClient.isAvailable()) return;
+      const groupId =
+        groupKey === 'ungrouped' ? null : groupKey.startsWith('g:') ? groupKey.slice(2) : groupKey;
+      setOutputGroupPages((current) => ({ ...current, [groupKey]: page }));
+      await loadDashboard({ tab: 'output_tables', outputGroupId: groupId, outputGroupPage: page });
+    },
+    [loadDashboard]
+  );
 
   const prependTask = useCallback((task: DataCleaningTask) => {
     setDashboard((current) => ({
@@ -168,9 +246,13 @@ export function useDataDashboard(deps: {
     lastRunFailure,
     taskPage,
     outputPage,
+    taskGroupPages,
+    outputGroupPages,
     loadDashboard,
     invalidateRequests,
     setGroups,
+    setTaskGroupPage,
+    setOutputGroupPage,
     prependTask,
     prependOutputTable,
     setLastRunFailure,

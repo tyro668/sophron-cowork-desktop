@@ -1541,7 +1541,11 @@
       "namePlaceholder": "Group name",
       "rename": "Rename group",
       "delete": "Dissolve group",
-      "deleteConfirm": "Dissolve group \"{name}\"? Its items will be ungrouped, not deleted."
+      "deleteConfirm": "Dissolve group \"{name}\"? Its items will be ungrouped, not deleted.",
+      "loadAll": "Load all",
+      "actions": "Group actions",
+      "prevPage": "Previous page",
+      "nextPage": "Next page"
     },
     "taskNameFromTable": "{{name}} cleaning task"
   },

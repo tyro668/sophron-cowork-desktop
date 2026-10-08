@@ -19,7 +19,8 @@ function dataApi(): DataApi {
 }
 
 export const dataClient = {
-  listAutomations: () => window.electronAPI.automation.list(),
+  listAutomations: (...args: Parameters<ElectronApi['automation']['list']>) =>
+    window.electronAPI.automation.list(...args),
   getAutomation: (id: string) => window.electronAPI.automation.get(id),
   updateAutomation: (...args: Parameters<ElectronApi['automation']['update']>) =>
     window.electronAPI.automation.update(...args),

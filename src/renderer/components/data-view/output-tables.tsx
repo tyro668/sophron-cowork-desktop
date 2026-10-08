@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -34,8 +34,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   AssignGroupDialog,
   buildGroupSections,
-  GroupHeaderRow,
   GroupNameDialog,
+  GroupSectionRows,
   hasNamedSections,
   toggleCollapsed,
   type AssignGroupTarget,
@@ -50,7 +50,7 @@ import {
   InputTableSelect,
   InputTableStatusBadge,
   LoadingState,
-  PaginationFooter,
+  TABLE_PAGE_SIZE,
   editorHeaderRowClass,
   flatToolbarRowClass,
   formatDateTime,
@@ -66,7 +66,8 @@ export function OutputTablesPanel({
   outputTables,
   totalOutputTables,
   groups,
-  currentPage,
+  groupCounts,
+  groupPages,
   searchQuery,
   isLoading,
   actionId,
@@ -74,7 +75,7 @@ export function OutputTablesPanel({
   onCreate,
   onSearchChange,
   onRefresh,
-  onPageChange,
+  onGroupPageChange,
   onPreview,
   onEdit,
   onDelete,
@@ -86,7 +87,8 @@ export function OutputTablesPanel({
   outputTables: DataOutputTable[];
   totalOutputTables: number;
   groups: DataGroup[];
-  currentPage: number;
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   searchQuery: string;
   isLoading: boolean;
   actionId: string | null;
@@ -94,7 +96,7 @@ export function OutputTablesPanel({
   onCreate: () => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
-  onPageChange: (page: number) => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
   onPreview: (outputTable: DataOutputTable) => void;
   onEdit: (outputTable: DataOutputTable) => void;
   onDelete: (outputTable: DataOutputTable) => void;
@@ -135,6 +137,7 @@ export function OutputTablesPanel({
     const selected = outputTable.id === selectedOutputTableId;
     return (
       <tr
+        key={outputTable.id}
         onClick={() => setSelectedOutputTableId(outputTable.id)}
         onDoubleClick={() => onEdit(outputTable)}
         className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
@@ -303,39 +306,31 @@ export function OutputTablesPanel({
                 </thead>
                 <tbody>
                   {sections.map((section) => (
-                    <Fragment key={section.key}>
-                      {grouped && (
-                        <GroupHeaderRow
-                          colSpan={4}
-                          group={section.group}
-                          count={section.rows.length}
-                          collapsed={collapsedGroups.has(section.key)}
-                          onToggle={() =>
-                            setCollapsedGroups((current) => toggleCollapsed(current, section.key))
-                          }
-                          onRename={section.group ? setRenameTarget : undefined}
-                          onDelete={section.group ? onDeleteGroup : undefined}
-                        />
-                      )}
-                      {!collapsedGroups.has(section.key) &&
-                        section.rows.map((outputTable) => (
-                          <Fragment key={outputTable.id}>
-                            {renderRow(outputTable, grouped)}
-                          </Fragment>
-                        ))}
-                    </Fragment>
+                    <GroupSectionRows
+                      key={section.key}
+                      colSpan={4}
+                      section={section}
+                      grouped={grouped}
+                      collapsed={collapsedGroups.has(section.key)}
+                      onToggle={() =>
+                        setCollapsedGroups((current) => toggleCollapsed(current, section.key))
+                      }
+                      onRename={section.group ? setRenameTarget : undefined}
+                      onDelete={section.group ? onDeleteGroup : undefined}
+                      count={groupCounts[section.key] ?? section.rows.length}
+                      page={groupPages[section.key] ?? 1}
+                      pageSize={TABLE_PAGE_SIZE}
+                      onPageChange={(page) => onGroupPageChange(section.key, page)}
+                      renderRow={(outputTable, _index, indented) =>
+                        renderRow(outputTable, indented)
+                      }
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-        <PaginationFooter
-          count={totalOutputTables}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
-          embedded
-        />
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}

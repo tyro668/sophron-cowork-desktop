@@ -18,8 +18,7 @@ export interface InputTableDraft {
 
 /** Which stored table the preview dialog is showing. */
 export type StoredPreviewTarget =
-  | { kind: 'input'; dataset: DataDataset }
-  | { kind: 'output'; outputTable: DataOutputTable };
+  { kind: 'input'; dataset: DataDataset } | { kind: 'output'; outputTable: DataOutputTable };
 
 export const EMPTY_DASHBOARD: DataDashboard = {
   summary: {
@@ -43,4 +42,7 @@ export const EMPTY_DASHBOARD: DataDashboard = {
   totalTasks: 0,
   totalDatasets: 0,
   totalOutputTables: 0,
+  taskGroupCounts: {},
+  datasetGroupCounts: {},
+  outputGroupCounts: {},
 };

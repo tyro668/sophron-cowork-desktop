@@ -66,7 +66,7 @@ export class AutomationToolService {
       query: input.query,
       status: input.status ?? 'all',
     });
-    const automations = matches
+    const automations = matches.automations
       .slice(offset, offset + limit)
       .map((automation) => this.toListItem(automation));
     const lines = automations.map(
@@ -75,9 +75,9 @@ export class AutomationToolService {
     );
     return toolResult(
       lines.length
-        ? `Found ${automations.length} of ${matches.length} automation(s):\n${lines.join('\n')}`
+        ? `Found ${automations.length} of ${matches.automations.length} automation(s):\n${lines.join('\n')}`
         : 'No automations found.',
-      { total: matches.length, automations }
+      { total: matches.automations.length, automations }
     );
   }
 

@@ -10,6 +10,7 @@ import type {
   AutomationCreateInput,
   AutomationGroup,
   AutomationListQuery,
+  AutomationListResult,
   AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
@@ -53,7 +54,7 @@ export class AutomationService {
     this.now = options.now ?? (() => Date.now());
   }
 
-  list(query?: AutomationListQuery): Automation[] {
+  list(query?: AutomationListQuery): AutomationListResult {
     return this.store.list(query);
   }
 
@@ -184,7 +185,7 @@ export class AutomationService {
   async runForOutputTables(outputTableIds: string[]): Promise<void> {
     const committed = new Set(outputTableIds);
     const ancestors = automationRunScope.getStore() ?? [];
-    for (const automation of this.store.list({ status: 'all' })) {
+    for (const automation of this.store.list({ status: 'all' }).automations) {
       if (
         !automation.outputBindings?.some(
           (binding) => binding.runOnChange && committed.has(binding.outputTableId)

@@ -12,6 +12,7 @@ import type {
   AutomationFailurePolicy,
   AutomationGroup,
   AutomationListQuery,
+  AutomationListResult,
   AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
@@ -35,7 +36,7 @@ export interface AutomationRunRecoveryResult {
 }
 
 export interface AutomationStore {
-  list(query?: AutomationListQuery): Automation[];
+  list(query?: AutomationListQuery): AutomationListResult;
   get(id: string): Automation | null;
   listGroups(): AutomationGroup[];
   createGroup(input: AutomationCreateGroupInput): AutomationGroup;
@@ -185,8 +186,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
   const raw = db.raw;
   const getAutomationById = (id: string): Automation | null => {
     const row = raw.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
-      | AutomationRow
-      | undefined;
+      AutomationRow | undefined;
     return row ? mapAutomationRow(row) : null;
   };
 
@@ -199,9 +199,36 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
            ORDER BY a.group_id IS NULL, g.sort_index, g.name, a.updated_at DESC`
         )
         .all() as AutomationRow[];
-      return rows
+      const allAutomations = rows
         .map(mapAutomationRow)
         .filter((automation) => matchesAutomationQuery(automation, query));
+
+      const groupCounts: Record<string, number> = {};
+      for (const automation of allAutomations) {
+        const key = automation.groupId ? `g:${automation.groupId}` : 'ungrouped';
+        groupCounts[key] = (groupCounts[key] ?? 0) + 1;
+      }
+
+      const groupIdSet = query.groupId !== undefined;
+      const perGroupLimit = query.perGroupLimit ?? 0;
+      let automations = groupIdSet
+        ? allAutomations.filter((automation) => automation.groupId === query.groupId)
+        : allAutomations;
+
+      if (groupIdSet) {
+        const offset = query.offset ?? 0;
+        const limit = query.limit && query.limit > 0 ? query.limit : Number.MAX_SAFE_INTEGER;
+        automations = automations.slice(offset, offset + limit);
+      } else if (perGroupLimit > 0) {
+        const seenByGroup: Record<string, number> = {};
+        automations = automations.filter((automation) => {
+          const key = automation.groupId ? `g:${automation.groupId}` : 'ungrouped';
+          seenByGroup[key] = (seenByGroup[key] ?? 0) + 1;
+          return seenByGroup[key] <= perGroupLimit;
+        });
+      }
+
+      return { automations, groupCounts };
     },
 
     listGroups: () => {
@@ -315,8 +342,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
 
     update: (id: string, updates: AutomationUpdateInput) => {
       const currentRow = raw.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
-        | AutomationRow
-        | undefined;
+        AutomationRow | undefined;
       if (!currentRow) return null;
       const current = mapAutomationRow(currentRow);
       const nextTrigger =
@@ -385,8 +411,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       mapped.updated_at = Date.now();
       updateAutomation(raw, id, mapped);
       const row = raw.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
-        | AutomationRow
-        | undefined;
+        AutomationRow | undefined;
       return row ? mapAutomationRow(row) : null;
     },
 
@@ -446,8 +471,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       }
       updateById(raw, 'automation_runs', id, mapped);
       const row = raw.prepare('SELECT * FROM automation_runs WHERE id = ?').get(id) as
-        | AutomationRunRow
-        | undefined;
+        AutomationRunRow | undefined;
       return row ? mapRunRow(row) : null;
     },
 

@@ -3,12 +3,7 @@ export type AutomationStatus = 'enabled' | 'disabled' | 'paused' | 'running' | '
 export type AutomationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export type AutomationTriggerReason =
-  | 'timer'
-  | 'manual'
-  | 'retry'
-  | 'queued_overlap'
-  | 'file_change'
-  | 'output_change';
+  'timer' | 'manual' | 'retry' | 'queued_overlap' | 'file_change' | 'output_change';
 
 export type AutomationDeliveryStatus = 'pending' | 'succeeded' | 'partial' | 'failed' | 'skipped';
 
@@ -134,14 +129,7 @@ export interface AutomationActionFailurePolicy {
 }
 
 export type AutomationArtifactKind =
-  | 'text'
-  | 'markdown'
-  | 'table'
-  | 'file'
-  | 'link'
-  | 'session'
-  | 'data_input'
-  | 'data_output';
+  'text' | 'markdown' | 'table' | 'file' | 'link' | 'session' | 'data_input' | 'data_output';
 
 export interface AutomationArtifact {
   id: string;
@@ -280,6 +268,15 @@ export interface AutomationListQuery {
   projectId?: string | null;
   limit?: number;
   offset?: number;
+  /** When set, only fetch rows for this group (null = ungrouped). Used for "load all". */
+  groupId?: string | null;
+  /** Max rows to fetch per group for the initial grouped load. */
+  perGroupLimit?: number;
+}
+
+export interface AutomationListResult {
+  automations: Automation[];
+  groupCounts: Record<string, number>;
 }
 
 export interface AutomationCreateInput {

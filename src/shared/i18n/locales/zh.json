@@ -1541,7 +1541,11 @@
       "namePlaceholder": "分组名称",
       "rename": "重命名分组",
       "delete": "解散分组",
-      "deleteConfirm": "确定解散分组“{name}”吗？其中的条目会移出分组，不会被删除。"
+      "deleteConfirm": "确定解散分组“{name}”吗？其中的条目会移出分组，不会被删除。",
+      "loadAll": "加载全部",
+      "actions": "分组操作",
+      "prevPage": "上一页",
+      "nextPage": "下一页"
     },
     "taskNameFromTable": "{{name}} 清洗任务"
   },

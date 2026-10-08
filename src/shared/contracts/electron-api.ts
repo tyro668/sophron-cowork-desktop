@@ -92,6 +92,7 @@ import type {
   AutomationCreateInput,
   AutomationGroup,
   AutomationListQuery,
+  AutomationListResult,
   AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
@@ -496,7 +497,7 @@ export interface ElectronApi {
     runNow: (id: string) => Promise<ScheduleTask | null>;
   };
   automation: {
-    list: (query?: AutomationListQuery) => Promise<Automation[]>;
+    list: (query?: AutomationListQuery) => Promise<AutomationListResult>;
     get: (id: string) => Promise<Automation | null>;
     create: (payload: AutomationCreateInput) => Promise<Automation>;
     update: (id: string, updates: AutomationUpdateInput) => Promise<Automation | null>;

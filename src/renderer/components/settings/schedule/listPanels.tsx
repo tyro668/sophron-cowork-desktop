@@ -17,14 +17,15 @@ import {
 import type { Automation, AutomationRun } from '../../../types';
 import { formatAppDateTime } from '../../../utils/i18n-format';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
-import { AUTOMATION_TABLE_PAGE_SIZE, type AutomationRunLogEntry } from './types';
+import type { AutomationRunLogEntry } from './types';
+import { AUTOMATION_TABLE_PAGE_SIZE } from './types';
 
 import { EmptyState, flatToolbarRowClass } from '../../data-view/shared';
 import {
   AssignGroupDialog,
   buildGroupSections,
-  GroupHeaderRow,
   GroupNameDialog,
+  GroupSectionRows,
   hasNamedSections,
   toggleCollapsed,
   type AssignGroupTarget,
@@ -35,8 +36,8 @@ import { Button } from '../../ui/button';
 export function AutomationListPanel({
   automations,
   groups,
-  totalAutomations,
-  currentPage,
+  groupCounts,
+  groupPages,
   selectedId,
   selectedAutomation,
   searchQuery,
@@ -44,7 +45,7 @@ export function AutomationListPanel({
   onCreate,
   onSearchChange,
   onRefresh,
-  onPageChange,
+  onGroupPageChange,
   onRun,
   onEdit,
   onDelete,
@@ -56,8 +57,8 @@ export function AutomationListPanel({
 }: {
   automations: Automation[];
   groups: DataListGroup[];
-  totalAutomations: number;
-  currentPage: number;
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   selectedId: string | null;
   selectedAutomation: Automation | null;
   searchQuery: string;
@@ -65,7 +66,7 @@ export function AutomationListPanel({
   onCreate: () => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
-  onPageChange: (page: number) => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
   onRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -169,23 +170,20 @@ export function AutomationListPanel({
             <AutomationTable
               automations={automations}
               groups={groups}
+              groupCounts={groupCounts}
+              groupPages={groupPages}
               selectedId={selectedId}
               isLoading={isLoading}
               onSelect={onSelect}
               onEdit={onEdit}
+              onGroupPageChange={onGroupPageChange}
               onRenameGroup={setRenameTarget}
               onDeleteGroup={onDeleteGroup}
               tr={tr}
             />
           )}
         </div>
-        <PaginationFooter
-          count={totalAutomations}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
-          tr={tr}
-          embedded
-        />
+        <div className="h-0" />
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
@@ -361,20 +359,26 @@ function AutomationRunTable({
 function AutomationTable({
   automations,
   groups,
+  groupCounts,
+  groupPages,
   selectedId,
   isLoading,
   onSelect,
   onEdit,
+  onGroupPageChange,
   onRenameGroup,
   onDeleteGroup,
   tr,
 }: {
   automations: Automation[];
   groups: DataListGroup[];
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   selectedId: string | null;
   isLoading: boolean;
   onSelect: (automation: Automation) => void;
   onEdit: () => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
   onRenameGroup: (group: DataListGroup) => void;
   onDeleteGroup: (group: DataListGroup) => void;
   tr: (key: string, fallback: string) => string;
@@ -467,55 +471,25 @@ function AutomationTable({
         </thead>
         <tbody>
           {sections.map((section) => (
-            <AutomationSectionRows
+            <GroupSectionRows
               key={section.key}
+              colSpan={5}
               section={section}
               grouped={grouped}
               collapsed={collapsed.has(section.key)}
               onToggle={() => setCollapsed((current) => toggleCollapsed(current, section.key))}
-              onRenameGroup={onRenameGroup}
-              onDeleteGroup={onDeleteGroup}
+              onRename={section.group ? onRenameGroup : undefined}
+              onDelete={section.group ? onDeleteGroup : undefined}
+              count={groupCounts[section.key] ?? section.rows.length}
+              page={groupPages[section.key] ?? 1}
+              pageSize={AUTOMATION_TABLE_PAGE_SIZE}
+              onPageChange={(page) => onGroupPageChange(section.key, page)}
               renderRow={renderRow}
             />
           ))}
         </tbody>
       </table>
     </div>
-  );
-}
-
-function AutomationSectionRows({
-  section,
-  grouped,
-  collapsed,
-  onToggle,
-  onRenameGroup,
-  onDeleteGroup,
-  renderRow,
-}: {
-  section: ReturnType<typeof buildGroupSections<Automation>>[number];
-  grouped: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
-  onRenameGroup: (group: DataListGroup) => void;
-  onDeleteGroup: (group: DataListGroup) => void;
-  renderRow: (automation: Automation, index: number, indented: boolean) => ReactNode;
-}) {
-  return (
-    <>
-      {grouped && (
-        <GroupHeaderRow
-          colSpan={5}
-          group={section.group}
-          count={section.rows.length}
-          collapsed={collapsed}
-          onToggle={onToggle}
-          onRename={section.group ? onRenameGroup : undefined}
-          onDelete={section.group ? onDeleteGroup : undefined}
-        />
-      )}
-      {!collapsed && section.rows.map((row, index) => renderRow(row, index, grouped))}
-    </>
   );
 }
 
@@ -743,66 +717,6 @@ function LoadingState({ label }: { label: string }) {
       <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2 shadow-soft">
         <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
         {label}
-      </div>
-    </div>
-  );
-}
-
-function PaginationFooter({
-  count,
-  currentPage,
-  onPageChange,
-  tr,
-  embedded = false,
-}: {
-  count: number;
-  currentPage: number;
-  onPageChange: (page: number) => void;
-  tr: (key: string, fallback: string) => string;
-  embedded?: boolean;
-}) {
-  const pageCount = Math.max(1, Math.ceil(count / AUTOMATION_TABLE_PAGE_SIZE));
-  const totalLabel = tr('schedule.paginationTotal', '共 {{count}} 条').replace(
-    '{{count}}',
-    String(count)
-  );
-  const pageSizeLabel = tr('schedule.paginationPageSize', '{{count}} 条/页').replace(
-    '{{count}}',
-    String(AUTOMATION_TABLE_PAGE_SIZE)
-  );
-
-  return (
-    <div
-      className={`flex min-h-14 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
-        embedded ? 'border-t border-border-muted py-2.5' : 'mt-3'
-      }`}
-    >
-      <span>{totalLabel}</span>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-text-secondary shadow-soft">
-          {pageSizeLabel}
-        </span>
-        {pageCount > 1 && (
-          <button
-            className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={currentPage <= 1}
-            onClick={() => onPageChange(currentPage - 1)}
-          >
-            ‹
-          </button>
-        )}
-        <span className="min-w-[4rem] text-center">
-          {currentPage} / {pageCount}
-        </span>
-        {pageCount > 1 && (
-          <button
-            className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2 text-text-secondary shadow-soft disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={currentPage >= pageCount}
-            onClick={() => onPageChange(currentPage + 1)}
-          >
-            ›
-          </button>
-        )}
       </div>
     </div>
   );

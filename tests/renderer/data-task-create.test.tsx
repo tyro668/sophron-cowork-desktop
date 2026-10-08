@@ -33,6 +33,9 @@ const EMPTY: DataDashboard = {
   totalTasks: 0,
   totalDatasets: 0,
   totalOutputTables: 0,
+  taskGroupCounts: {},
+  datasetGroupCounts: {},
+  outputGroupCounts: {},
 };
 
 function makeTask(id: string, name = id): DataCleaningTask {

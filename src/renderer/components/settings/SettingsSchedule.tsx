@@ -17,6 +17,7 @@ import type {
   AutomationGroup,
   DataDashboard,
 } from '../../types';
+import { buildGroupSections } from '../data-view/group-ui';
 import type { AssignGroupTarget, DataListGroup } from '../data-view/group-ui';
 import { useAppStore } from '../../store';
 import {
@@ -72,6 +73,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     [t]
   );
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [automationGroupCounts, setAutomationGroupCounts] = useState<Record<string, number>>({});
+  const [automationGroupPages, setAutomationGroupPages] = useState<Record<string, number>>({});
   const [automationGroups, setAutomationGroups] = useState<AutomationGroup[]>([]);
   const [actionDefinitions, setActionDefinitions] = useState<AutomationActionDefinitionSummary[]>(
     []
@@ -85,7 +88,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     createEmptyDraft(tr('schedule.newAutomation', '新建自动化'))
   );
   const [search, setSearch] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -96,6 +98,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const loadRunsRequestSeq = useRef(0);
   const selectedIdRef = useRef<string | null>(selectedId);
   const skipNextAutoSelectRef = useRef(false);
+  const skipSearchLoadRef = useRef(true);
   const suppressSelectedAutomationSyncRef = useRef(false);
   const consumedCloudTemplateNonceRef = useRef<number | null>(null);
   const transientBannerTimerRef = useRef<number | null>(null);
@@ -110,33 +113,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const inputTables = dataDashboard?.datasets ?? [];
   const outputTables = dataDashboard?.outputTables ?? [];
 
-  const filteredAutomations = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    if (!keyword) return automations;
-    return automations.filter((automation) =>
-      [automation.name, automation.description ?? '', automation.status]
-        .join(' ')
-        .toLowerCase()
-        .includes(keyword)
-    );
-  }, [automations, search]);
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredAutomations.length / AUTOMATION_TABLE_PAGE_SIZE)
-  );
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const pageAutomations = useMemo(() => {
-    const start = (safeCurrentPage - 1) * AUTOMATION_TABLE_PAGE_SIZE;
-    return filteredAutomations.slice(start, start + AUTOMATION_TABLE_PAGE_SIZE);
-  }, [filteredAutomations, safeCurrentPage]);
   const hasRunningAutomation = useMemo(
     () => automations.some((automation) => automation.status === 'running'),
     [automations]
   );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -186,23 +166,25 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         setBanner(null);
       }
       try {
-        const [automationRows, groups, actions, dashboard] = await Promise.all([
-          window.electronAPI.automation.list(),
-          window.electronAPI.automation.groups.list(),
-          window.electronAPI.automation.listActionDefinitions(),
-          window.electronAPI.data.getDashboard({
-            includeSummary: false,
-            includeTasks: true,
-            includeDatasets: true,
-            includeOutputTables: true,
-            taskLimit: 200,
-            datasetLimit: 200,
-            outputLimit: 200,
-          }),
-        ]);
+        const [{ automations: automationRows, groupCounts }, groups, actions, dashboard] =
+          await Promise.all([
+            window.electronAPI.automation.list({ perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE }),
+            window.electronAPI.automation.groups.list(),
+            window.electronAPI.automation.listActionDefinitions(),
+            window.electronAPI.data.getDashboard({
+              includeSummary: false,
+              includeTasks: true,
+              includeDatasets: true,
+              includeOutputTables: true,
+              taskLimit: 200,
+              datasetLimit: 200,
+              outputLimit: 200,
+            }),
+          ]);
         if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
         automationsRef.current = automationRows;
         setAutomations(automationRows);
+        setAutomationGroupCounts(groupCounts);
         setAutomationGroups(groups);
         setActionDefinitions(actions);
         setDataDashboard(dashboard);
@@ -228,6 +210,82 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     },
     [tr]
   );
+
+  const loadAutomations = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!isElectron) return;
+      if (!silent) {
+        setIsLoading(true);
+      }
+      try {
+        const { automations: automationRows, groupCounts } =
+          await window.electronAPI.automation.list({
+            query: search,
+            perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE,
+          });
+        if (!isMountedRef.current) return;
+        automationsRef.current = automationRows;
+        setAutomations(automationRows);
+        setAutomationGroupCounts(groupCounts);
+      } catch (error) {
+        if (!isMountedRef.current) return;
+        if (!silent) {
+          setBanner({
+            tone: 'error',
+            text:
+              error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+          });
+        }
+      } finally {
+        if (!silent && isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [search, tr]
+  );
+
+  const setAutomationGroupPage = useCallback(
+    async (groupKey: string, page: number) => {
+      if (!isElectron) return;
+      const groupId =
+        groupKey === 'ungrouped' ? null : groupKey.startsWith('g:') ? groupKey.slice(2) : groupKey;
+      setAutomationGroupPages((current) => ({ ...current, [groupKey]: page }));
+      try {
+        const { automations: loadedRows, groupCounts } = await window.electronAPI.automation.list({
+          query: search,
+          groupId,
+          offset: (page - 1) * AUTOMATION_TABLE_PAGE_SIZE,
+          limit: AUTOMATION_TABLE_PAGE_SIZE,
+        });
+        setAutomations((current) => {
+          const combined = [...current.filter((item) => item.groupId !== groupId), ...loadedRows];
+          return buildGroupSections(combined, automationGroups, (item) => item.groupId).flatMap(
+            (section) => section.rows
+          );
+        });
+        setAutomationGroupCounts((current) => ({ ...current, ...groupCounts }));
+      } catch (error) {
+        setBanner({
+          tone: 'error',
+          text:
+            error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+        });
+      }
+    },
+    [search, automationGroups, tr]
+  );
+
+  useEffect(() => {
+    if (skipSearchLoadRef.current) {
+      skipSearchLoadRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void loadAutomations({ silent: true });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [loadAutomations, search]);
 
   const loadRuns = useCallback(
     async (sourceAutomations = automationsRef.current) => {
@@ -722,10 +780,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           </div>
           <TabsContent value="automations" className="contents">
             <AutomationListPanel
-              automations={pageAutomations}
+              automations={automations}
               groups={automationGroups}
-              totalAutomations={filteredAutomations.length}
-              currentPage={safeCurrentPage}
+              groupCounts={automationGroupCounts}
+              groupPages={automationGroupPages}
               selectedId={selectedId}
               selectedAutomation={selectedAutomation}
               searchQuery={search}
@@ -733,7 +791,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               onCreate={createNew}
               onSearchChange={setSearch}
               onRefresh={() => void load()}
-              onPageChange={setCurrentPage}
+              onGroupPageChange={setAutomationGroupPage}
               onRun={() => void runNow()}
               onEdit={openSelectedDetail}
               onDelete={() => void remove()}

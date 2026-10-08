@@ -273,7 +273,8 @@ function PreviewApp() {
               tasks={[]}
               totalTasks={0}
               groups={[]}
-              currentPage={1}
+              groupCounts={{}}
+              groupPages={{}}
               searchQuery=""
               actionId={null}
               isLoading={false}
@@ -281,7 +282,7 @@ function PreviewApp() {
               onCreate={() => {}}
               onSearchChange={() => {}}
               onRefresh={() => {}}
-              onPageChange={() => {}}
+              onGroupPageChange={() => {}}
               onRun={() => {}}
               onEdit={() => {}}
               onDelete={() => {}}

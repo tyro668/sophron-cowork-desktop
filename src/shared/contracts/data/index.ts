@@ -211,12 +211,7 @@ export interface DataGenerateInputTableNormalizerDraftResult {
 }
 
 export type DataInputTableNormalizerDraftProgressPhase =
-  | 'source_summary'
-  | 'source_analysis'
-  | 'code_generation'
-  | 'saving'
-  | 'complete'
-  | 'error';
+  'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
 
 export interface DataInputTableNormalizerDraftProgressEvent {
   progressId: string;
@@ -316,8 +311,7 @@ export interface DataInputTableCustomizeProcessingConfig {
 }
 
 export type DataInputTableProcessingConfig =
-  | DataInputTableAutoProcessingConfig
-  | DataInputTableCustomizeProcessingConfig;
+  DataInputTableAutoProcessingConfig | DataInputTableCustomizeProcessingConfig;
 
 export interface DataInputTableProcessingFields {
   dataProcessing: DataInputTableProcessingConfig;
@@ -367,9 +361,7 @@ export interface DataInputTableFolderConfig {
 }
 
 export type DataInputTableConfig =
-  | DataInputTableExcelConfig
-  | DataInputTableCsvConfig
-  | DataInputTableFolderConfig;
+  DataInputTableExcelConfig | DataInputTableCsvConfig | DataInputTableFolderConfig;
 
 export interface DataDataset {
   id: string;
@@ -438,6 +430,10 @@ export interface DataDashboard {
   totalTasks: number;
   totalDatasets: number;
   totalOutputTables: number;
+  /** Total row count per group key (`g:<id>` or `ungrouped`). Used for per-group "load all". */
+  taskGroupCounts: Record<string, number>;
+  datasetGroupCounts: Record<string, number>;
+  outputGroupCounts: Record<string, number>;
 }
 
 export interface DataDashboardQuery {
@@ -453,6 +449,14 @@ export interface DataDashboardQuery {
   outputOffset?: number;
   outputLimit?: number;
   datasetSourceKind?: DataInputTableSourceKind | 'all';
+  /** When set, only fetch rows for this group (null = ungrouped). Used for "load all". */
+  taskGroupId?: string | null;
+  datasetGroupId?: string | null;
+  outputGroupId?: string | null;
+  /** Max rows to fetch per group for the initial grouped load. */
+  taskPerGroupLimit?: number;
+  datasetPerGroupLimit?: number;
+  outputPerGroupLimit?: number;
 }
 
 export interface DataCreateTaskInput {

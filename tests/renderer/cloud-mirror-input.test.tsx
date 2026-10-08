@@ -73,12 +73,12 @@ function renderPanel() {
       datasets={[makeCloudDataset()]}
       drafts={[]}
       groups={[]}
+      groupCounts={{}}
+      groupPages={{}}
       totalDatasets={1}
-      currentPage={1}
       searchQuery=""
       isLoading={false}
       onSearchChange={vi.fn()}
-      onPageChange={vi.fn()}
       onCreate={vi.fn()}
       onRefresh={vi.fn()}
       onPreviewDataset={vi.fn()}
@@ -91,6 +91,7 @@ function renderPanel() {
       onAssignToGroup={vi.fn()}
       onRenameGroup={vi.fn()}
       onDeleteGroup={vi.fn()}
+      onGroupPageChange={vi.fn()}
       isCreateDisabled={false}
       actionId={null}
     />
@@ -178,12 +179,12 @@ describe('cloud-mirrored input table', () => {
         datasets={[plain]}
         drafts={[]}
         groups={[]}
+        groupCounts={{}}
+        groupPages={{}}
         totalDatasets={1}
-        currentPage={1}
         searchQuery=""
         isLoading={false}
         onSearchChange={vi.fn()}
-        onPageChange={vi.fn()}
         onCreate={vi.fn()}
         onRefresh={vi.fn()}
         onPreviewDataset={vi.fn()}
@@ -196,6 +197,7 @@ describe('cloud-mirrored input table', () => {
         onAssignToGroup={vi.fn()}
         onRenameGroup={vi.fn()}
         onDeleteGroup={vi.fn()}
+        onGroupPageChange={vi.fn()}
         isCreateDisabled={false}
         actionId={null}
       />

@@ -67,7 +67,7 @@ describe('automation groups', () => {
     const newest = create('newest');
     const group = store.createGroup({ name: 'G' });
     store.assignToGroup({ ids: [grouped], groupId: group.id });
-    const ordered = store.list().map((a) => a.name);
+    const ordered = store.list().automations.map((a) => a.name);
     expect(ordered[0]).toBe('grouped');
     // ungrouped keep updated_at DESC
     expect(ordered.slice(1)).toEqual(['newest', 'older']);

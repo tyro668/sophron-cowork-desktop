@@ -20,7 +20,7 @@ import {
 export function registerScheduleIpc(): void {
   handleIpc('schedule.list', () => {
     try {
-      return requireAutomationService().list().map(automationToScheduledTask);
+      return requireAutomationService().list().automations.map(automationToScheduledTask);
     } catch (error) {
       logError('[Schedule] Error listing tasks:', error);
       return [];

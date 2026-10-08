@@ -467,6 +467,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
         projectId: strNullish,
         limit: numOpt,
         offset: numOpt,
+        groupId: strNullish,
+        perGroupLimit: numOpt,
       })
       .optional(),
   ],
@@ -569,7 +571,26 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   // data workspace
   'data.getDashboard': [
     z
-      .looseObject({ status: strOpt, projectId: strNullish, limit: numOpt, offset: numOpt })
+      .looseObject({
+        query: strOpt,
+        includeSummary: boolOpt,
+        includeTasks: boolOpt,
+        includeDatasets: boolOpt,
+        includeOutputTables: boolOpt,
+        taskOffset: numOpt,
+        taskLimit: numOpt,
+        datasetOffset: numOpt,
+        datasetLimit: numOpt,
+        outputOffset: numOpt,
+        outputLimit: numOpt,
+        datasetSourceKind: strOpt,
+        taskGroupId: strNullish,
+        datasetGroupId: strNullish,
+        outputGroupId: strNullish,
+        taskPerGroupLimit: numOpt,
+        datasetPerGroupLimit: numOpt,
+        outputPerGroupLimit: numOpt,
+      })
       .optional(),
   ],
   'data.getTask': [str],

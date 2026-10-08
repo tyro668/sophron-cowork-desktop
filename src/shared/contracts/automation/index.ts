@@ -19,6 +19,7 @@ export type {
   AutomationDeliveryChannel,
   AutomationGroup,
   AutomationListQuery,
+  AutomationListResult,
   AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,

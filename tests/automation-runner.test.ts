@@ -53,7 +53,7 @@ function createStore(): AutomationStore & {
   return {
     runs,
     artifacts,
-    list: vi.fn(() => []),
+    list: vi.fn(() => ({ automations: [], groupCounts: {} })),
     listGroups: vi.fn(() => []),
     createGroup: vi.fn(),
     renameGroup: vi.fn(() => false),

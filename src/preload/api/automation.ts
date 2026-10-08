@@ -8,6 +8,7 @@ import type {
   AutomationCreateInput,
   AutomationGroup,
   AutomationListQuery,
+  AutomationListResult,
   AutomationRenameGroupInput,
   AutomationRun,
   AutomationRunQuery,
@@ -17,7 +18,7 @@ import type { ElectronApi } from '../../shared/contracts/electron-api';
 
 export function createAutomationApi(): ElectronApi['automation'] {
   return {
-    list: (query?: AutomationListQuery): Promise<Automation[]> =>
+    list: (query?: AutomationListQuery): Promise<AutomationListResult> =>
       ipcRenderer.invoke('automation.list', query),
     get: (id: string): Promise<Automation | null> => ipcRenderer.invoke('automation.get', id),
     create: (payload: AutomationCreateInput): Promise<Automation> =>

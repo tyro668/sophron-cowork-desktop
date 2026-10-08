@@ -1,5 +1,5 @@
 import { useAppStore } from '../../store';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
@@ -27,10 +27,9 @@ import {
   DataToolbarButton,
   EmptyState,
   InputTableStatusBadge,
+  TABLE_PAGE_SIZE,
   flatToolbarRowClass,
   LoadingState,
-  PaginationFooter,
-  TABLE_PAGE_SIZE,
   formatDateTime,
   formatDisplayPath,
   formatRelatedTaskNames,
@@ -39,14 +38,13 @@ import {
   getCloudMirrorSourceMeta,
   getInputTableSourceMeta,
   type CloudMirrorInfo,
-  getTablePageCount,
   matchesSearchText,
 } from './shared';
 import {
   AssignGroupDialog,
   buildGroupSections,
-  GroupHeaderRow,
   GroupNameDialog,
+  GroupSectionRows,
   hasNamedSections,
   toggleCollapsed,
   type AssignGroupTarget,
@@ -58,12 +56,12 @@ export function InputTablesPanel({
   datasets,
   drafts,
   groups,
+  groupCounts,
+  groupPages,
   totalDatasets,
-  currentPage,
   searchQuery,
   isLoading,
   onSearchChange,
-  onPageChange,
   onCreate,
   onRefresh,
   onPreviewDataset,
@@ -76,18 +74,19 @@ export function InputTablesPanel({
   onAssignToGroup,
   onRenameGroup,
   onDeleteGroup,
+  onGroupPageChange,
   isCreateDisabled,
   actionId,
 }: {
   datasets: DataDataset[];
   drafts: InputTableDraft[];
   groups: DataGroup[];
+  groupCounts: Record<string, number>;
+  groupPages: Record<string, number>;
   totalDatasets: number;
-  currentPage: number;
   searchQuery: string;
   isLoading: boolean;
   onSearchChange: (value: string) => void;
-  onPageChange: (page: number) => void;
   onCreate: () => void;
   onRefresh: () => void;
   onPreviewDataset: (dataset: DataDataset) => void;
@@ -100,6 +99,7 @@ export function InputTablesPanel({
   onAssignToGroup: (ids: string[], target: AssignGroupTarget) => void;
   onRenameGroup: (group: DataListGroup, name: string) => void;
   onDeleteGroup: (group: DataListGroup) => void;
+  onGroupPageChange: (groupKey: string, page: number) => void;
   isCreateDisabled: boolean;
   actionId: string | null;
 }) {
@@ -115,13 +115,7 @@ export function InputTablesPanel({
   );
   const draftCount = filteredDrafts.length;
   const totalRows = totalDatasets + draftCount;
-  const pageCount = getTablePageCount(totalRows);
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const draftStart = (safeCurrentPage - 1) * TABLE_PAGE_SIZE;
-  const pageDrafts = useMemo(
-    () => (!isLoading ? filteredDrafts.slice(draftStart, draftStart + TABLE_PAGE_SIZE) : []),
-    [draftStart, filteredDrafts, isLoading]
-  );
+  const pageDrafts = useMemo(() => (!isLoading ? filteredDrafts : []), [filteredDrafts, isLoading]);
   const visibleRows = useMemo(
     () =>
       isLoading
@@ -133,11 +127,19 @@ export function InputTablesPanel({
     [datasets, isLoading, pageDrafts]
   );
   const pageRows = visibleRows;
-  const datasetSections = useMemo(
-    () => buildGroupSections(datasets, groups, (dataset) => dataset.groupId),
-    [datasets, groups]
+  const pageSections = useMemo(
+    () =>
+      buildGroupSections(pageRows, groups, (row) =>
+        row.kind === 'dataset' ? (row.dataset?.groupId ?? null) : null
+      ),
+    [pageRows, groups]
   );
-  const grouped = hasNamedSections(datasetSections);
+  const sectionCounts = useMemo(() => {
+    const counts: Record<string, number> = { ...groupCounts };
+    counts.ungrouped = (counts.ungrouped ?? 0) + draftCount;
+    return counts;
+  }, [groupCounts, draftCount]);
+  const grouped = hasNamedSections(pageSections);
   const emptyLabel = t('data.inputTables.empty');
   const selectedRow = visibleRows.find((row) => row.id === selectedDatasetId) ?? null;
   const selectedDataset = selectedRow?.kind === 'dataset' ? selectedRow.dataset : null;
@@ -394,39 +396,30 @@ export function InputTablesPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.filter((row) => row.kind === 'draft').map((row) => renderRow(row))}
-                  {datasetSections.map((section) => (
-                    <Fragment key={section.key}>
-                      {grouped && (
-                        <GroupHeaderRow
-                          colSpan={6}
-                          group={section.group}
-                          count={section.rows.length}
-                          collapsed={collapsedGroups.has(section.key)}
-                          onToggle={() =>
-                            setCollapsedGroups((current) => toggleCollapsed(current, section.key))
-                          }
-                          onRename={section.group ? setRenameTarget : undefined}
-                          onDelete={section.group ? onDeleteGroup : undefined}
-                        />
-                      )}
-                      {!collapsedGroups.has(section.key) &&
-                        section.rows.map((dataset) =>
-                          renderRow({ kind: 'dataset', id: dataset.id, dataset }, grouped)
-                        )}
-                    </Fragment>
+                  {pageSections.map((section) => (
+                    <GroupSectionRows
+                      key={section.key}
+                      colSpan={6}
+                      section={section}
+                      grouped={grouped}
+                      collapsed={collapsedGroups.has(section.key)}
+                      onToggle={() =>
+                        setCollapsedGroups((current) => toggleCollapsed(current, section.key))
+                      }
+                      onRename={section.group ? setRenameTarget : undefined}
+                      onDelete={section.group ? onDeleteGroup : undefined}
+                      count={sectionCounts[section.key] ?? section.rows.length}
+                      page={groupPages[section.key] ?? 1}
+                      pageSize={TABLE_PAGE_SIZE}
+                      onPageChange={(page) => onGroupPageChange(section.key, page)}
+                      renderRow={(row, _index, indented) => renderRow(row, indented)}
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-        <PaginationFooter
-          count={totalRows}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
-          embedded
-        />
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
