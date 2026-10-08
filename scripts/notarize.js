@@ -11,8 +11,6 @@
  * If any of the three vars is missing the script silently skips notarization,
  * so local dev builds still work without credentials.
  */
-const { notarize } = require('@electron/notarize');
-
 exports.default = async function afterSign(context) {
   const { electronPlatformName, appOutDir } = context;
 
@@ -35,8 +33,8 @@ exports.default = async function afterSign(context) {
 
   console.log(`[notarize] Notarizing ${appId} at ${appPath} ...`);
 
+  const { notarize } = await import('@electron/notarize');
   await notarize({
-    appBundleId: appId,
     appPath,
     appleId: APPLE_ID,
     appleIdPassword: APPLE_ID_PASSWORD,

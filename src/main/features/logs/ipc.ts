@@ -109,9 +109,9 @@ export function registerLogsIpc(): void {
       }
 
       // Dynamic import archiver
-      const archiver = await import('archiver');
+      const { ZipArchive } = await import('archiver');
       const output = fs.createWriteStream(result.filePath);
-      const archive = archiver.default('zip', { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
 
       return new Promise((resolve) => {
         let settled = false;

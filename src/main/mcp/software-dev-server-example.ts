@@ -723,7 +723,7 @@ async function saveDockerDiagnostics(
 
 // Helper: Execute cliclick command (macOS)
 async function executeCliclick(command: string): Promise<{ stdout: string; stderr: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const platform = require('os').platform();
 
   if (platform !== 'darwin') {
@@ -811,7 +811,7 @@ async function takeScreenshot(outputPath: string): Promise<string> {
   }
 
   // Otherwise, take screenshot from local display
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const platform = require('os').platform();
 
   let command: string;
@@ -920,11 +920,11 @@ async function callVisionAPI(
     const openAIUrl = buildOpenAIChatCompletionsUrl(baseUrl);
 
     // Use Node.js built-in https module for better compatibility
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('https');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const http = require('http');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const url = require('url');
 
     const urlObj = new url.URL(openAIUrl);
@@ -1023,7 +1023,7 @@ async function callVisionAPI(
     });
   } else {
     // Use Anthropic API format
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Anthropic = require('@anthropic-ai/sdk');
     const anthropic = new Anthropic({
       apiKey: apiKey,
@@ -1066,7 +1066,7 @@ async function callVisionAPI(
 // Helper: Get actual screen dimensions
 async function getScreenDimensions(): Promise<{ width: number; height: number }> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const platform = require('os').platform();
 
     // For Docker mode, use the configured Xvfb resolution
@@ -1125,7 +1125,7 @@ async function getScreenDimensions(): Promise<{ width: number; height: number }>
 async function getImageDimensions(imagePath: string): Promise<{ width: number; height: number }> {
   try {
     // Use sips on macOS or identify on Linux to get image dimensions
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const platform = require('os').platform();
 
     if (platform === 'darwin') {
@@ -1328,7 +1328,7 @@ async function analyzeScreenshotWithVision(
 
 // Helper: Bring window to front and focus
 async function focusApplicationWindow(appName?: string): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const platform = require('os').platform();
 
   writeMCPLog(
@@ -1464,7 +1464,7 @@ async function executeGUIInteractionWithVision(
     throw new Error('No GUI application is running');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const platform = require('os').platform();
   const screenshotPath = path.join(WORKSPACE_DIR, 'gui_screenshot.png');
 
@@ -1777,7 +1777,7 @@ async function executeGUIInteraction(
     throw new Error('No GUI application is running');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const platform = require('os').platform();
 
   try {

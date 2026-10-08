@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../src/main/utils/xlsx';
 import { DataCommandService } from '../src/main/data/data-command-service';
 import { DataToolService } from '../src/main/data/data-tool-service';
 import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';

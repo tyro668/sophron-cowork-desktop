@@ -1,6 +1,6 @@
 import { ModelResultStore } from '../src/main/agent/model-result-store';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentToolResult, ExtensionContext } from '@earendil-works/pi-coding-agent';
+import type { AgentToolResult, ExtensionToolContext } from '@earendil-works/pi-coding-agent';
 import type { DataToolDefinition } from '../src/main/data/data-tool-types';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
@@ -31,7 +31,7 @@ function executeDataTool(
     params,
     undefined,
     undefined,
-    undefined as unknown as ExtensionContext
+    undefined as unknown as ExtensionToolContext
   );
 }
 

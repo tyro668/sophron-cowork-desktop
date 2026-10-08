@@ -112,6 +112,7 @@ module.exports = {
   },
 
   mac: {
+    minimumSystemVersion: '13.5',
     icon: 'resources/icon.icns',
     target: [
       {

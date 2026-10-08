@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const NODE_VERSION = 'v22.22.0'; // 使用稳定版本
+const NODE_VERSION = 'v26.11.1'; // Latest stable Node.js release
 const PLATFORMS = {
   darwin: {
     arm64: `node-${NODE_VERSION}-darwin-arm64`,
@@ -150,7 +150,9 @@ async function downloadAndExtract(platform, arch) {
   const archiveName = `${nodeName}.${ext}`;
   const url = `${BASE_URL}/${NODE_VERSION}/${archiveName}`;
   const archivePath = path.join(OUTPUT_DIR, archiveName);
-  const extractDir = path.join(OUTPUT_DIR, `${platform}-${arch}`);
+  const runtimeDir = path.join(OUTPUT_DIR, `${platform}-${arch}`);
+  const extractDir = `${runtimeDir}.download`;
+  const versionFile = path.join(runtimeDir, '.node-version');
 
   // Create output directory
   if (!fs.existsSync(OUTPUT_DIR)) {
@@ -158,10 +160,15 @@ async function downloadAndExtract(platform, arch) {
   }
 
   // Skip if already downloaded
-  if (fs.existsSync(extractDir)) {
-    console.log(`Already exists: ${extractDir}`);
+  const nodeBinary = path.join(runtimeDir, platform === 'win32' ? 'node.exe' : 'bin/node');
+  if (
+    fs.existsSync(nodeBinary) &&
+    fs.existsSync(versionFile) &&
+    fs.readFileSync(versionFile, 'utf8').trim() === NODE_VERSION
+  ) {
+    console.log(`Already exists: ${runtimeDir} (${NODE_VERSION})`);
     // Still apply npx fix in case it was cached without it
-    applyNpxFix(extractDir);
+    applyNpxFix(runtimeDir);
     return;
   }
 
@@ -172,6 +179,7 @@ async function downloadAndExtract(platform, arch) {
 
     // Extract
     console.log(`Extracting to: ${extractDir}`);
+    fs.rmSync(extractDir, { recursive: true, force: true });
     fs.mkdirSync(extractDir, { recursive: true });
 
     if (platform === 'win32') {
@@ -238,6 +246,9 @@ async function downloadAndExtract(platform, arch) {
     }
 
     applyNpxFix(extractDir);
+    fs.writeFileSync(path.join(extractDir, '.node-version'), NODE_VERSION + '\n');
+    fs.rmSync(runtimeDir, { recursive: true, force: true });
+    fs.renameSync(extractDir, runtimeDir);
 
     console.log(`✓ Extracted: ${platform}-${arch}`);
   } catch (error) {
@@ -249,6 +260,7 @@ async function downloadAndExtract(platform, arch) {
     if (fs.existsSync(extractDir)) {
       fs.rmSync(extractDir, { recursive: true, force: true });
     }
+    throw error;
   }
 }
 
@@ -276,4 +288,7 @@ async function main() {
   console.log('\n✓ All Node.js binaries downloaded!');
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

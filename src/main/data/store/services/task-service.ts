@@ -112,6 +112,7 @@ export class TaskService {
     failure?: { message: string };
   }> {
     return this.ctx.runExclusive(async () => {
+      await this.ctx.ensureMetadataReady();
       const runtimeWorkflow = input.workflow
         ? normalizeRuntimeWorkflowInput(id, input.workflow, this.ctx.now())
         : await this.workflows.getRuntimeWorkflow(id);

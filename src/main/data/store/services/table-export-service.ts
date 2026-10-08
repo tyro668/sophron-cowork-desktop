@@ -4,7 +4,7 @@
  * The IPC layer owns the save dialog + file write; this service only builds
  * file payloads.
  */
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../../utils/xlsx';
 import type {
   DataColumnTypeInfo,
   DataExportTableInput,

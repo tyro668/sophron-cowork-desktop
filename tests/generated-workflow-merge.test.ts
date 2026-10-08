@@ -116,7 +116,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
 
     const inserted = merged.nodes.find((n) => n.id !== 'filter_1' && n.type === 'filter');
     expect(inserted?.id).toBe('filter_2');
-    expect(inserted?.config.generatedOrigin).toMatchObject({ nodeId: 'filter_2' });
+    expect(inserted?.config?.generatedOrigin).toMatchObject({ nodeId: 'filter_2' });
     expect(merged.nodeIdMap.get('filter_1')).toBe('filter_2');
   });
 

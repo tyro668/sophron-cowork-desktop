@@ -70,6 +70,7 @@ module.exports = {
         mono: ['JetBrains Mono', 'SF Mono', 'Menlo', 'monospace'],
       },
       boxShadow: {
+        sm: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
         soft: 'var(--shadow-soft)',
         card: 'var(--shadow-card)',
         elevated: 'var(--shadow-elevated)',
@@ -98,6 +99,7 @@ module.exports = {
         96: '0.96',
       },
       borderRadius: {
+        sm: '2px',
         lg: '8px',
         xl: '10px',
         '2xl': '14px',

@@ -62,9 +62,9 @@ This is a comparison of **documented default/product surfaces**, not a claim tha
 
 ### Install
 
-The packaging configuration targets **Windows x64** (`.exe`) and **macOS Apple Silicon** (`.dmg` and `.zip`). Obtain a trusted installer from the project's release channel. A Linux AppImage target exists in the build configuration, but this README does not promise a published Linux release. Installer contents and signing depend on the release build.
+The packaging configuration targets **Windows x64** (`.exe`) and **macOS 13.5+ Apple Silicon** (`.dmg` and `.zip`). Obtain a trusted installer from the project's release channel. A Linux AppImage target exists in the build configuration, but this README does not promise a published Linux release; the bundled Node.js requires glibc 2.28+ and libatomic. Installer contents and signing depend on the release build.
 
-To run from a source checkout, use **Node.js 22 or newer** and npm:
+To run from a source checkout, use **Node.js 22.22.1 or newer** and npm (`.nvmrc` pins the bundled Node.js version):
 
 ```bash
 npm install

@@ -8,6 +8,12 @@
     "preview": "vitepress preview"
   },
   "devDependencies": {
-    "vitepress": "^1.6.4"
+    "vitepress": "1.6.4",
+    "vite": "7.3.7",
+    "@vitejs/plugin-vue": "6.0.9"
+  },
+  "overrides": {
+    "vite": "$vite",
+    "@vitejs/plugin-vue": "$@vitejs/plugin-vue"
   }
 }

@@ -1,0 +1,1046 @@
+{
+  "checkedAt": "2026-10-08",
+  "scope": "Root application and website npm manifests, lockfile dependency trees, bundled Node/Python and GUI Python packages.",
+  "policy": "Latest stable releases where supported; preserve newer existing prereleases; do not bypass peer dependency checks.",
+  "summary": {
+    "rootUpdated": 76,
+    "rootAdded": 5,
+    "rootRemoved": 1,
+    "rootDirectTotal": 93,
+    "websiteDirectTotal": 3
+  },
+  "dependencies": [
+    {
+      "name": "@anthropic-ai/sdk",
+      "section": "dependencies",
+      "before": "^0.39.0",
+      "after": "0.132.0",
+      "registryLatest": "0.132.0",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/autocomplete",
+      "section": "dependencies",
+      "before": "6.20.2",
+      "after": "6.20.3",
+      "registryLatest": "6.20.3",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/commands",
+      "section": "dependencies",
+      "before": "6.10.3",
+      "after": "6.11.1",
+      "registryLatest": "6.11.1",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/lang-sql",
+      "section": "dependencies",
+      "before": "6.10.0",
+      "after": "6.10.0",
+      "registryLatest": "6.10.0",
+      "status": "unchanged"
+    },
+    {
+      "name": "@codemirror/language",
+      "section": "dependencies",
+      "before": "6.12.3",
+      "after": "6.13.1",
+      "registryLatest": "6.13.1",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/lint",
+      "section": "dependencies",
+      "before": "6.9.6",
+      "after": "6.9.7",
+      "registryLatest": "6.9.7",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/state",
+      "section": "dependencies",
+      "before": "6.6.0",
+      "after": "6.7.6",
+      "registryLatest": "6.7.6",
+      "status": "updated"
+    },
+    {
+      "name": "@codemirror/view",
+      "section": "dependencies",
+      "before": "6.43.0",
+      "after": "6.43.14",
+      "registryLatest": "6.43.14",
+      "status": "updated"
+    },
+    {
+      "name": "@daypicker/react",
+      "section": "dependencies",
+      "before": "10.0.1",
+      "after": "10.0.2",
+      "registryLatest": "10.0.2",
+      "status": "updated"
+    },
+    {
+      "name": "@duckdb/node-api",
+      "section": "dependencies",
+      "before": "^1.5.3-r.2",
+      "after": "1.5.6-r.1",
+      "registryLatest": "1.5.6-r.1",
+      "status": "updated"
+    },
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "section": "dependencies",
+      "before": "1.1.0",
+      "after": "1.1.0",
+      "registryLatest": "1.1.0",
+      "status": "unchanged"
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "section": "dependencies",
+      "before": "1.1.0",
+      "after": "1.1.0",
+      "registryLatest": "1.1.0",
+      "status": "unchanged"
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "section": "dependencies",
+      "before": "1.1.0",
+      "after": "1.1.0",
+      "registryLatest": "1.1.0",
+      "status": "unchanged"
+    },
+    {
+      "name": "@glideapps/glide-data-grid",
+      "section": "dependencies",
+      "before": "6.0.3",
+      "after": "6.0.3",
+      "registryLatest": "6.0.3",
+      "status": "unchanged"
+    },
+    {
+      "name": "@google/genai",
+      "section": "dependencies",
+      "before": "^1.44.0",
+      "after": "2.28.0",
+      "registryLatest": "2.28.0",
+      "status": "updated"
+    },
+    {
+      "name": "@larksuiteoapi/node-sdk",
+      "section": "dependencies",
+      "before": "1.73.0",
+      "after": "1.74.0",
+      "registryLatest": "1.74.0",
+      "status": "updated"
+    },
+    {
+      "name": "@lezer/highlight",
+      "section": "dependencies",
+      "before": "1.2.3",
+      "after": "1.2.5",
+      "registryLatest": "1.2.5",
+      "status": "updated"
+    },
+    {
+      "name": "@modelcontextprotocol/sdk",
+      "section": "dependencies",
+      "before": "1.30.0",
+      "after": "1.32.1",
+      "registryLatest": "1.32.1",
+      "status": "updated"
+    },
+    {
+      "name": "@radix-ui/react-dropdown-menu",
+      "section": "dependencies",
+      "before": "2.1.16",
+      "after": "2.1.25",
+      "registryLatest": "2.1.25",
+      "status": "updated"
+    },
+    {
+      "name": "@radix-ui/react-select",
+      "section": "dependencies",
+      "before": "2.2.6",
+      "after": "2.3.8",
+      "registryLatest": "2.3.8",
+      "status": "updated"
+    },
+    {
+      "name": "@radix-ui/react-switch",
+      "section": "dependencies",
+      "before": "1.2.6",
+      "after": "1.3.8",
+      "registryLatest": "1.3.8",
+      "status": "updated"
+    },
+    {
+      "name": "@slack/bolt",
+      "section": "dependencies",
+      "before": "4.7.0",
+      "after": "5.1.0",
+      "registryLatest": "5.1.0",
+      "status": "updated"
+    },
+    {
+      "name": "@slack/web-api",
+      "section": "dependencies",
+      "before": "7.15.1",
+      "after": "8.2.0",
+      "registryLatest": "8.2.0",
+      "status": "updated"
+    },
+    {
+      "name": "@wecom/aibot-node-sdk",
+      "section": "dependencies",
+      "before": "1.0.6",
+      "after": "1.0.7",
+      "registryLatest": "1.0.7",
+      "status": "updated"
+    },
+    {
+      "name": "@xyflow/react",
+      "section": "dependencies",
+      "before": "12.10.2",
+      "after": "12.12.0",
+      "registryLatest": "12.12.0",
+      "status": "updated"
+    },
+    {
+      "name": "acorn",
+      "section": "dependencies",
+      "before": "8.15.0",
+      "after": "8.19.0",
+      "registryLatest": "8.19.0",
+      "status": "updated"
+    },
+    {
+      "name": "archiver",
+      "section": "dependencies",
+      "before": "^7.0.1",
+      "after": "8.0.0",
+      "registryLatest": "8.0.0",
+      "status": "updated"
+    },
+    {
+      "name": "better-sqlite3",
+      "section": "dependencies",
+      "before": "^12.8.0",
+      "after": "13.0.3",
+      "registryLatest": "13.0.3",
+      "status": "updated"
+    },
+    {
+      "name": "chevrotain",
+      "section": "dependencies",
+      "before": "12.0.0",
+      "after": "13.2.0",
+      "registryLatest": "13.2.0",
+      "status": "updated"
+    },
+    {
+      "name": "chokidar",
+      "section": "dependencies",
+      "before": "^4.0.1",
+      "after": "5.0.0",
+      "registryLatest": "5.0.0",
+      "status": "updated"
+    },
+    {
+      "name": "croner",
+      "section": "dependencies",
+      "before": "10.0.1",
+      "after": "10.0.1",
+      "registryLatest": "10.0.1",
+      "status": "unchanged"
+    },
+    {
+      "name": "dingtalk-stream",
+      "section": "dependencies",
+      "before": "2.1.7-beta.1",
+      "after": "2.1.7-beta.1",
+      "registryLatest": "2.1.6-beta.1",
+      "status": "unchanged",
+      "reason": "Installed 2.1.7-beta.1 is newer than the registry latest tag 2.1.6-beta.1; do not downgrade."
+    },
+    {
+      "name": "dotenv",
+      "section": "dependencies",
+      "before": "^17.2.3",
+      "after": "18.0.6",
+      "registryLatest": "18.0.6",
+      "status": "updated"
+    },
+    {
+      "name": "electron-store",
+      "section": "dependencies",
+      "before": "^11.0.2",
+      "after": "11.0.2",
+      "registryLatest": "11.0.2",
+      "status": "updated"
+    },
+    {
+      "name": "electron-updater",
+      "section": "dependencies",
+      "before": "6.8.3",
+      "after": "6.8.9",
+      "registryLatest": "6.8.9",
+      "status": "updated"
+    },
+    {
+      "name": "extract-zip",
+      "section": "dependencies",
+      "before": "^2.0.1",
+      "after": "2.0.1",
+      "registryLatest": "2.0.1",
+      "status": "updated"
+    },
+    {
+      "name": "glob",
+      "section": "dependencies",
+      "before": "^13.0.6",
+      "after": "13.0.6",
+      "registryLatest": "13.0.6",
+      "status": "updated"
+    },
+    {
+      "name": "highlight.js",
+      "section": "dependencies",
+      "before": "^11.11.1",
+      "after": "11.12.0",
+      "registryLatest": "11.12.0",
+      "status": "updated"
+    },
+    {
+      "name": "i18next",
+      "section": "dependencies",
+      "before": "^25.10.1",
+      "after": "26.4.2",
+      "registryLatest": "26.4.2",
+      "status": "updated"
+    },
+    {
+      "name": "i18next-browser-languagedetector",
+      "section": "dependencies",
+      "before": "^8.2.1",
+      "after": "8.2.1",
+      "registryLatest": "8.2.1",
+      "status": "updated"
+    },
+    {
+      "name": "katex",
+      "section": "dependencies",
+      "before": "^0.16.45",
+      "after": "0.19.0",
+      "registryLatest": "0.19.0",
+      "status": "updated"
+    },
+    {
+      "name": "lucide-react",
+      "section": "dependencies",
+      "before": "^1.8.0",
+      "after": "1.52.0",
+      "registryLatest": "1.52.0",
+      "status": "updated"
+    },
+    {
+      "name": "ngrok",
+      "section": "dependencies",
+      "before": "^5.0.0-beta.2",
+      "after": "5.0.0-beta.2",
+      "registryLatest": "5.0.0-beta.2",
+      "status": "updated"
+    },
+    {
+      "name": "openai",
+      "section": "dependencies",
+      "before": "^6.32.0",
+      "after": "7.30.0",
+      "registryLatest": "7.30.0",
+      "status": "updated"
+    },
+    {
+      "name": "patch-package",
+      "section": "dependencies",
+      "before": "8.0.1",
+      "after": "8.0.1",
+      "registryLatest": "8.0.1",
+      "status": "unchanged"
+    },
+    {
+      "name": "qrcode",
+      "section": "dependencies",
+      "before": "1.5.4",
+      "after": "1.5.4",
+      "registryLatest": "1.5.4",
+      "status": "unchanged"
+    },
+    {
+      "name": "react",
+      "section": "dependencies",
+      "before": "^18.3.1",
+      "after": "18.3.1",
+      "registryLatest": "19.3.0",
+      "status": "updated",
+      "reason": "Latest glide-data-grid 6.0.3 declares support only for React 16/17/18; keep latest supported React 18."
+    },
+    {
+      "name": "react-dom",
+      "section": "dependencies",
+      "before": "^18.3.1",
+      "after": "18.3.1",
+      "registryLatest": "19.3.0",
+      "status": "updated",
+      "reason": "Keep aligned with React 18 until glide-data-grid officially supports React 19."
+    },
+    {
+      "name": "react-i18next",
+      "section": "dependencies",
+      "before": "^16.6.0",
+      "after": "17.0.16",
+      "registryLatest": "17.0.16",
+      "status": "updated"
+    },
+    {
+      "name": "react-markdown",
+      "section": "dependencies",
+      "before": "^10.1.0",
+      "after": "10.1.0",
+      "registryLatest": "10.1.0",
+      "status": "updated"
+    },
+    {
+      "name": "rehype-katex",
+      "section": "dependencies",
+      "before": "^7.0.1",
+      "after": "7.0.1",
+      "registryLatest": "7.0.1",
+      "status": "updated"
+    },
+    {
+      "name": "rehype-sanitize",
+      "section": "dependencies",
+      "before": "^6.0.0",
+      "after": "6.0.0",
+      "registryLatest": "6.0.0",
+      "status": "updated"
+    },
+    {
+      "name": "remark-gfm",
+      "section": "dependencies",
+      "before": "^4.0.1",
+      "after": "4.0.1",
+      "registryLatest": "4.0.1",
+      "status": "updated"
+    },
+    {
+      "name": "remark-math",
+      "section": "dependencies",
+      "before": "^6.0.0",
+      "after": "6.0.0",
+      "registryLatest": "6.0.0",
+      "status": "updated"
+    },
+    {
+      "name": "tailwind-merge",
+      "section": "dependencies",
+      "before": "3.7.0",
+      "after": "3.7.0",
+      "registryLatest": "3.7.0",
+      "status": "unchanged"
+    },
+    {
+      "name": "typebox",
+      "section": "dependencies",
+      "before": "1.3.27",
+      "after": "1.3.36",
+      "registryLatest": "1.3.36",
+      "status": "updated"
+    },
+    {
+      "name": "typescript",
+      "section": "dependencies",
+      "before": "^5.3.3",
+      "after": "6.0.3",
+      "registryLatest": "7.0.2",
+      "status": "updated",
+      "reason": "typescript-eslint 8.71.1 supports TypeScript <6.1. Keep 6.0.3, which also retains the compiler API used by workflow authoring."
+    },
+    {
+      "name": "uuid",
+      "section": "dependencies",
+      "before": "^13.0.0",
+      "after": "14.0.2",
+      "registryLatest": "14.0.2",
+      "status": "updated"
+    },
+    {
+      "name": "ws",
+      "section": "dependencies",
+      "before": "^8.19.0",
+      "after": "8.22.0",
+      "registryLatest": "8.22.0",
+      "status": "updated"
+    },
+    {
+      "name": "xlsx",
+      "section": "dependencies",
+      "before": "0.18.5",
+      "after": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+      "registryLatest": "0.18.5",
+      "status": "updated",
+      "reason": "Use the vendor-maintained SheetJS 0.20.3 tarball; npm latest remains the older 0.18.5."
+    },
+    {
+      "name": "zod",
+      "section": "dependencies",
+      "before": "4.4.3",
+      "after": "4.6.5",
+      "registryLatest": "4.6.5",
+      "status": "updated"
+    },
+    {
+      "name": "zustand",
+      "section": "dependencies",
+      "before": "^5.0.12",
+      "after": "5.0.15",
+      "registryLatest": "5.0.15",
+      "status": "updated"
+    },
+    {
+      "name": "@electron/notarize",
+      "section": "devDependencies",
+      "before": "^2.5.0",
+      "after": "3.1.1",
+      "registryLatest": "3.1.1",
+      "status": "updated"
+    },
+    {
+      "name": "@electron/rebuild",
+      "section": "devDependencies",
+      "before": null,
+      "after": "4.2.1",
+      "registryLatest": "4.2.1",
+      "status": "added"
+    },
+    {
+      "name": "@eslint/js",
+      "section": "devDependencies",
+      "before": null,
+      "after": "10.0.1",
+      "registryLatest": "10.0.1",
+      "status": "added"
+    },
+    {
+      "name": "@tailwindcss/postcss",
+      "section": "devDependencies",
+      "before": null,
+      "after": "4.3.3",
+      "registryLatest": "4.3.3",
+      "status": "added"
+    },
+    {
+      "name": "@testing-library/react",
+      "section": "devDependencies",
+      "before": "16.3.3",
+      "after": "16.3.3",
+      "registryLatest": "16.3.3",
+      "status": "unchanged"
+    },
+    {
+      "name": "@types/archiver",
+      "section": "devDependencies",
+      "before": "^7.0.0",
+      "after": "8.0.0",
+      "registryLatest": "8.0.0",
+      "status": "updated"
+    },
+    {
+      "name": "@types/better-sqlite3",
+      "section": "devDependencies",
+      "before": "^7.6.12",
+      "after": "9.6.0",
+      "registryLatest": "9.6.0",
+      "status": "updated"
+    },
+    {
+      "name": "@types/node",
+      "section": "devDependencies",
+      "before": "^25.6.0",
+      "after": "26.6.4",
+      "registryLatest": "26.6.4",
+      "status": "updated"
+    },
+    {
+      "name": "@types/qrcode",
+      "section": "devDependencies",
+      "before": "1.5.6",
+      "after": "1.5.6",
+      "registryLatest": "1.5.6",
+      "status": "unchanged"
+    },
+    {
+      "name": "@types/react",
+      "section": "devDependencies",
+      "before": "^18.3.12",
+      "after": "18.3.31",
+      "registryLatest": "19.3.0",
+      "status": "updated",
+      "reason": "Latest React 18 declarations, aligned with the runtime."
+    },
+    {
+      "name": "@types/react-dom",
+      "section": "devDependencies",
+      "before": "^18.3.1",
+      "after": "18.3.7",
+      "registryLatest": "19.3.0",
+      "status": "updated",
+      "reason": "Latest React 18 declarations, aligned with the runtime."
+    },
+    {
+      "name": "@types/ws",
+      "section": "devDependencies",
+      "before": "^8.18.1",
+      "after": "8.18.2",
+      "registryLatest": "8.18.2",
+      "status": "updated"
+    },
+    {
+      "name": "@typescript-eslint/eslint-plugin",
+      "section": "devDependencies",
+      "before": "^7.0.0",
+      "after": "8.71.1",
+      "registryLatest": "8.71.1",
+      "status": "updated"
+    },
+    {
+      "name": "@typescript-eslint/parser",
+      "section": "devDependencies",
+      "before": "^7.0.0",
+      "after": "8.71.1",
+      "registryLatest": "8.71.1",
+      "status": "updated"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "section": "devDependencies",
+      "before": "^4.3.4",
+      "after": "6.1.2",
+      "registryLatest": "6.1.2",
+      "status": "updated"
+    },
+    {
+      "name": "@vitest/coverage-v8",
+      "section": "devDependencies",
+      "before": "4.1.5",
+      "after": "5.0.3",
+      "registryLatest": "5.0.3",
+      "status": "updated"
+    },
+    {
+      "name": "electron",
+      "section": "devDependencies",
+      "before": "^35.7.5",
+      "after": "44.7.0",
+      "registryLatest": "44.7.0",
+      "status": "updated"
+    },
+    {
+      "name": "electron-builder",
+      "section": "devDependencies",
+      "before": "^26.8.1",
+      "after": "26.15.3",
+      "registryLatest": "26.15.3",
+      "status": "updated"
+    },
+    {
+      "name": "esbuild",
+      "section": "devDependencies",
+      "before": null,
+      "after": "0.28.2",
+      "registryLatest": "0.28.2",
+      "status": "added"
+    },
+    {
+      "name": "eslint",
+      "section": "devDependencies",
+      "before": "^8.56.0",
+      "after": "10.12.0",
+      "registryLatest": "10.12.0",
+      "status": "updated"
+    },
+    {
+      "name": "eslint-plugin-react-hooks",
+      "section": "devDependencies",
+      "before": "^4.6.0",
+      "after": "7.1.1",
+      "registryLatest": "7.1.1",
+      "status": "updated"
+    },
+    {
+      "name": "globals",
+      "section": "devDependencies",
+      "before": null,
+      "after": "17.13.0",
+      "registryLatest": "17.13.0",
+      "status": "added"
+    },
+    {
+      "name": "happy-dom",
+      "section": "devDependencies",
+      "before": "18.0.1",
+      "after": "20.14.5",
+      "registryLatest": "20.14.5",
+      "status": "updated"
+    },
+    {
+      "name": "husky",
+      "section": "devDependencies",
+      "before": "^9.1.7",
+      "after": "9.1.7",
+      "registryLatest": "9.1.7",
+      "status": "updated"
+    },
+    {
+      "name": "lint-staged",
+      "section": "devDependencies",
+      "before": "16.4.0",
+      "after": "17.6.0",
+      "registryLatest": "17.6.0",
+      "status": "updated"
+    },
+    {
+      "name": "postcss",
+      "section": "devDependencies",
+      "before": "^8.5.14",
+      "after": "8.5.29",
+      "registryLatest": "8.5.29",
+      "status": "updated"
+    },
+    {
+      "name": "prettier",
+      "section": "devDependencies",
+      "before": "^3.8.3",
+      "after": "3.9.9",
+      "registryLatest": "3.9.9",
+      "status": "updated"
+    },
+    {
+      "name": "tailwindcss",
+      "section": "devDependencies",
+      "before": "^3.4.16",
+      "after": "4.3.3",
+      "registryLatest": "4.3.3",
+      "status": "updated"
+    },
+    {
+      "name": "vite",
+      "section": "devDependencies",
+      "before": "^7.3.1",
+      "after": "8.3.3",
+      "registryLatest": "8.3.3",
+      "status": "updated"
+    },
+    {
+      "name": "vite-plugin-electron",
+      "section": "devDependencies",
+      "before": "^0.29.1",
+      "after": "1.1.2",
+      "registryLatest": "1.1.2",
+      "status": "updated"
+    },
+    {
+      "name": "vitest",
+      "section": "devDependencies",
+      "before": "^4.1.0",
+      "after": "5.0.3",
+      "registryLatest": "5.0.3",
+      "status": "updated"
+    },
+    {
+      "name": "autoprefixer",
+      "section": "devDependencies",
+      "before": "^10.5.0",
+      "after": null,
+      "status": "removed",
+      "reason": "Tailwind 4 PostCSS integration handles vendor prefixing."
+    }
+  ],
+  "website": [
+    {
+      "name": "vitepress",
+      "before": "^1.6.4",
+      "after": "1.6.4",
+      "registryLatest": "1.6.4"
+    },
+    {
+      "name": "vite",
+      "before": null,
+      "after": "7.3.7",
+      "registryLatest": "8.3.3",
+      "reason": "VitePress 1.6.4 bundle generation is not compatible with Vite 8/Rolldown. Use latest Vite 7.3.7 with plugin-vue 6.0.9; production build passed and audit reports zero vulnerabilities."
+    },
+    {
+      "name": "@vitejs/plugin-vue",
+      "before": null,
+      "after": "6.0.9",
+      "registryLatest": "6.0.9"
+    }
+  ],
+  "overrides": {
+    "before": {
+      "fast-xml-parser": "^5.5.6",
+      "tar": "^7.5.11"
+    },
+    "after": {
+      "fast-xml-parser": "5.11.2",
+      "tar": "7.5.22",
+      "katex": "$katex"
+    },
+    "website": {
+      "vite": "$vite",
+      "@vitejs/plugin-vue": "$@vitejs/plugin-vue"
+    }
+  },
+  "bundledRuntimes": {
+    "node": {
+      "before": "22.22.0",
+      "after": "26.11.1"
+    },
+    "python": {
+      "before": "3.10.19",
+      "after": "3.14.8",
+      "standaloneRelease": "20261003"
+    },
+    "pillow": "12.3.0",
+    "pyobjcFrameworkQuartz": "12.2.2",
+    "sandboxNodeInstallers": "NodeSource 26.x; existing user-managed VMs were not modified"
+  },
+  "installationChanges": [
+    "Electron 44 has an explicit install-electron command; included in root postinstall.",
+    "Use the official @electron/rebuild CLI instead of deprecated npm --runtime/--target flags.",
+    "Version-aware Node/Python caches stage replacements before replacing old runtimes.",
+    "esbuild is now explicit because Vite 8 no longer supplies it transitively."
+  ],
+  "compatibilityChanges": [
+    "ESLint flat configuration with existing process-boundary rules retained. Newly introduced no-useless-assignment and preserve-caught-error checks remain advisory warnings.",
+    "Tailwind 4 PostCSS and explicit source configuration; existing theme and utility appearance retained.",
+    "TypeScript 6 explicit Node types, module resolution and embedded workflow compiler configuration.",
+    "Archiver 8 ZipArchive API and SheetJS Node filesystem registration.",
+    "React Flow native mouse/touch drag events and updated dependency-facing test assertions."
+  ],
+  "baselineRepairs": [
+    "Nullable generated-workflow input and optional test config access; removed two unused test bindings.",
+    "Initialize task metadata before run diagnostics after reopening a DuckDB store.",
+    "Updated the existing full-width skills-page assertion and pi 1.1 edit-tool input fixture."
+  ],
+  "verification": {
+    "platform": "macOS arm64",
+    "fullTests": {
+      "filesPassed": 355,
+      "filesSkipped": 1,
+      "testsPassed": 3693,
+      "testsSkipped": 2
+    },
+    "typecheck": "passed",
+    "lint": {
+      "errors": 0,
+      "warnings": 129
+    },
+    "rootDependencyTree": "npm ls --all passed",
+    "postinstall": "passed, including Electron install and native rebuild",
+    "builds": ["renderer", "Electron main/preload", "MCP", "WSL agent", "Lima agent", "website"],
+    "runtimeChecks": [
+      "Electron 44.7.0 application smoke test using an isolated temporary userData directory",
+      "better-sqlite3 and DuckDB loaded in Electron",
+      "Archiver ZIP round-trip",
+      "Node 26.11.1 and npm 11.20.0",
+      "Python 3.14.8 with Pillow 12.3.0 and PyObjC 12.2.2 imports",
+      "Node/Python version cache reuse"
+    ],
+    "visualChecks": ["light and dark UI primitives", "dialog", "chat", "data-task empty state"],
+    "notRun": [
+      "Windows/Linux runtime verification",
+      "signed distributable packaging and notarization"
+    ]
+  },
+  "requirements": {
+    "sourceNode": ">=22.22.1",
+    "pinnedNode": ".nvmrc: 26.11.1",
+    "macOS": ">=13.5",
+    "linuxBundledNode": "glibc >=2.28 and libatomic"
+  },
+  "securityAudit": {
+    "root": {
+      "info": 0,
+      "low": 0,
+      "moderate": 9,
+      "high": 6,
+      "critical": 0,
+      "total": 15
+    },
+    "website": {
+      "total": 0
+    },
+    "note": "Latest upstream releases still contain the following audit findings. No force downgrade or unverified transitive-major override was applied.",
+    "affectedPackages": [
+      {
+        "name": "@electron/get",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["global-agent"]
+      },
+      {
+        "name": "app-builder-lib",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["@electron/get", "dmg-builder", "electron-builder-squirrel-windows"]
+      },
+      {
+        "name": "braces",
+        "severity": "high",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+            "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+            "range": "<=3.0.3"
+          }
+        ],
+        "via": []
+      },
+      {
+        "name": "dmg-builder",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["app-builder-lib"]
+      },
+      {
+        "name": "electron-builder",
+        "severity": "moderate",
+        "direct": true,
+        "advisories": [],
+        "via": ["app-builder-lib", "dmg-builder"]
+      },
+      {
+        "name": "electron-builder-squirrel-windows",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["app-builder-lib"]
+      },
+      {
+        "name": "extract-zip",
+        "severity": "high",
+        "direct": true,
+        "advisories": [
+          {
+            "title": "extract-zip unvalidated symlink path traversal",
+            "url": "https://github.com/advisories/GHSA-jmr9-qjv8-65gv",
+            "range": "<=2.0.1"
+          },
+          {
+            "title": "extract-zip allows arbitrary file writes through symlink archive entries",
+            "url": "https://github.com/advisories/GHSA-7pqw-9j4j-h8q3",
+            "range": "<=2.0.1"
+          }
+        ],
+        "via": []
+      },
+      {
+        "name": "find-yarn-workspace-root",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "via": ["micromatch"]
+      },
+      {
+        "name": "global-agent",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["roarr"]
+      },
+      {
+        "name": "micromatch",
+        "severity": "high",
+        "direct": false,
+        "advisories": [],
+        "via": ["braces"]
+      },
+      {
+        "name": "ngrok",
+        "severity": "high",
+        "direct": true,
+        "advisories": [
+          {
+            "title": "ngrok is Vulnerable to Command Injection",
+            "url": "https://github.com/advisories/GHSA-qr28-p3wr-mxq3",
+            "range": "=5.0.0-beta.2"
+          }
+        ],
+        "via": ["extract-zip", "uuid"]
+      },
+      {
+        "name": "patch-package",
+        "severity": "high",
+        "direct": true,
+        "advisories": [],
+        "via": ["find-yarn-workspace-root"]
+      },
+      {
+        "name": "roarr",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [],
+        "via": ["sprintf-js"]
+      },
+      {
+        "name": "sprintf-js",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "sprintf-js vulnerable to denial of service through unbounded precision specifiers",
+            "url": "https://github.com/advisories/GHSA-hp3w-g68c-fv3c",
+            "range": "<=1.1.3"
+          }
+        ],
+        "via": []
+      },
+      {
+        "name": "uuid",
+        "severity": "moderate",
+        "direct": false,
+        "advisories": [
+          {
+            "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+            "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+            "range": "<11.1.1"
+          }
+        ],
+        "via": []
+      }
+    ]
+  },
+  "references": [
+    "https://registry.npmjs.org/",
+    "https://docs.sheetjs.com/docs/getting-started/installation/nodejs/",
+    "https://www.electronjs.org/blog/electron-44-0",
+    "https://vite.dev/guide/migration",
+    "https://tailwindcss.com/docs/upgrade-guide",
+    "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html",
+    "https://nodejs.org/dist/index.json",
+    "https://raw.githubusercontent.com/nodejs/node/v26.11.1/BUILDING.md",
+    "https://github.com/astral-sh/python-build-standalone/releases/tag/20261003",
+    "https://pypi.org/project/Pillow/",
+    "https://pypi.org/project/pyobjc-framework-Quartz/"
+  ]
+}

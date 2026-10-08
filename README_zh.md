@@ -62,9 +62,9 @@
 
 ### 安装或从源码运行
 
-当前打包配置面向 **Windows x64**（`.exe`）和 **Apple Silicon macOS**（`.dmg`、`.zip`）。请从项目发布渠道取得可信安装包。配置中还有 Linux AppImage 构建目标，但这里不承诺已发布 Linux 安装包；安装包实际内容与签名以发布构建为准。
+当前打包配置面向 **Windows x64**（`.exe`）和 **macOS 13.5 及以上的 Apple Silicon 设备**（`.dmg`、`.zip`）。请从项目发布渠道取得可信安装包。配置中还有 Linux AppImage 构建目标，但这里不承诺已发布 Linux 安装包；内置 Node.js 要求 glibc 2.28 及以上并安装 libatomic。安装包实际内容与签名以发布构建为准。
 
-已有源码检出时，请使用 **Node.js 22 或更新版本**及 npm：
+已有源码检出时，请使用 **Node.js 22.22.1 或更新版本**及 npm（`.nvmrc` 固定了内置 Node.js 版本）：
 
 ```bash
 npm install

@@ -386,8 +386,8 @@ export class WSLBridge implements SandboxExecutor {
       // Update package list and install Node.js via NodeSource
       const commands = [
         'sudo DEBIAN_FRONTEND=noninteractive apt-get update -y',
-        'curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -',
-        'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs',
+        'curl -fsSL https://deb.nodesource.com/setup_26.x | sudo -E bash -',
+        'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs libatomic1',
       ];
 
       for (const cmd of commands) {

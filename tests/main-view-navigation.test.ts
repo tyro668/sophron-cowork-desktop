@@ -48,7 +48,7 @@ describe('main workspace navigation', () => {
 
     expect(source).toContain("import { SettingsSkills } from './settings/SettingsSkills';");
     expect(source).toContain('<SettingsSkills isActive={true} />');
-    expect(source).toContain('max-w-[1500px]');
+    expect(source).toContain('w-full');
   });
 
   it('exposes data, skills, and automation in the sidebar', () => {

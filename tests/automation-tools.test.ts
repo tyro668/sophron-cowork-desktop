@@ -273,7 +273,7 @@ describe('automation conversation tools', () => {
         schedule: { kind: 'daily', times: ['10:00'], unexpected: true },
         action: { kind: 'data_task', taskId: 'task-1' },
       })
-    ).toThrow('schedule: Invalid input');
+    ).toThrow(/schedule:.*unexpected/i);
 
     expect(
       parseAutomationPrepareScheduleUpdateInput({

@@ -322,7 +322,7 @@ export class PluginRuntimeService {
     if (process.platform === 'darwin' || process.platform === 'linux') {
       try {
         const userShell = getDefaultShell();
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { execSync } = require('child_process');
         const shellOutput = execSync(`${userShell} -l -c "echo $PATH"`, {
           encoding: 'utf-8',
@@ -334,7 +334,7 @@ export class PluginRuntimeService {
       }
     } else if (process.platform === 'win32') {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { execSync } = require('child_process');
         const winPath = execSync(
           "powershell.exe -NoProfile -Command \"[Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')\"",
@@ -431,8 +431,7 @@ export class PluginRuntimeService {
     let parsed: ClaudePluginListOutput | ClaudeInstalledPluginRecord[];
     try {
       parsed = JSON.parse(commandOutput.stdout) as
-        | ClaudePluginListOutput
-        | ClaudeInstalledPluginRecord[];
+        ClaudePluginListOutput | ClaudeInstalledPluginRecord[];
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to parse Claude plugin list JSON: ${message}`);

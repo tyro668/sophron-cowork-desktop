@@ -19,22 +19,6 @@ function setupBridge() {
   };
 }
 
-function renderDialog() {
-  return render(
-    <WorkflowAiGenerateDialog
-      open
-      taskId="task-1"
-      boundInputTable={{ id: 'ds1', name: 'sales' }}
-      anchorNode={{ id: 'n_filter', label: '筛选', type: 'filter' }}
-      draftWorkflow={{ nodes: [], edges: [] }}
-      hasExistingNodes
-      isCanvasDirty={false}
-      onApplied={vi.fn()}
-      onOpenChange={vi.fn()}
-    />
-  );
-}
-
 function ambiguousResult(analysisId: string) {
   return {
     status: 'needs_confirmation',

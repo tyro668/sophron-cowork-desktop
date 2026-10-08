@@ -34,13 +34,18 @@ const OUTPUT_ROOT = path.join(PROJECT_ROOT, 'resources', 'python');
 const DOWNLOAD_DIR = path.join(OUTPUT_ROOT, '.downloads');
 
 // Keep the default minor aligned with the checked-in bundled runtime and fallback URLs.
-const PYTHON_MINOR = process.env.SOPHRON_PYTHON_MINOR || '3.10';
+const PYTHON_MINOR = process.env.SOPHRON_PYTHON_MINOR || '3.14';
+const PYTHON_BUILD_RELEASE = '20261003';
+const PYTHON_RUNTIME_VERSION_FILENAME = '.python-runtime-version';
 const ABI = `cp${PYTHON_MINOR.replace('.', '')}`; // e.g. 3.12 -> cp312
 
 const GITHUB_REPO =
   process.env.SOPHRON_PYTHON_STANDALONE_REPO || 'astral-sh/python-build-standalone';
 const RUNTIME_VERSION_FILENAME = 'runtime-version.txt';
-const BUNDLED_GUI_PACKAGES = ['pillow', 'pyobjc-framework-Quartz'];
+const BUNDLED_GUI_PACKAGES = [
+  'pillow==12.3.0',
+  ...(process.platform === 'darwin' ? ['pyobjc-framework-Quartz==12.2.2'] : []),
+];
 const BUNDLED_RUNTIME_FINGERPRINT = BUNDLED_GUI_PACKAGES.join('|');
 // Use the correct GitHub API endpoint (v3, no trailing slash)
 const RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`;
@@ -48,12 +53,12 @@ const RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases?per_p
 // Default URLs are only used for the checked-in default minor.
 // Other minors fall back to the GitHub releases API or explicit env overrides.
 const DEFAULT_PYTHON_URLS =
-  PYTHON_MINOR === '3.10'
+  PYTHON_MINOR === '3.14'
     ? {
         'aarch64-apple-darwin':
-          'https://github.com/astral-sh/python-build-standalone/releases/download/20260203/cpython-3.10.19+20260203-aarch64-apple-darwin-install_only.tar.gz',
+          'https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.14.8%2B20261003-aarch64-apple-darwin-install_only.tar.gz',
         'x86_64-apple-darwin':
-          'https://github.com/astral-sh/python-build-standalone/releases/download/20260203/cpython-3.10.19+20260203-x86_64-apple-darwin-install_only.tar.gz',
+          'https://github.com/astral-sh/python-build-standalone/releases/download/20261003/cpython-3.14.8%2B20261003-x86_64-apple-darwin-install_only.tar.gz',
       }
     : {};
 
@@ -73,7 +78,7 @@ const TARGETS = {
   linux: {
     x64: {
       triple: 'x86_64-unknown-linux-gnu',
-      platformTag: 'manylinux2014_x86_64',
+      platformTag: 'manylinux_2_28_x86_64',
       envUrlKey: 'SOPHRON_PYTHON_STANDALONE_URL_LINUX_X64',
     },
   },
@@ -337,7 +342,7 @@ function installPackages(siteDir, platformTag, pythonBin) {
 
   // Avoid re-install if already present
   const hasPillow = exists(path.join(siteDir, 'PIL'));
-  const hasQuartz = exists(path.join(siteDir, 'Quartz'));
+  const hasQuartz = process.platform !== 'darwin' || exists(path.join(siteDir, 'Quartz'));
   if (hasPillow && hasQuartz && runtimeMarker === BUNDLED_RUNTIME_FINGERPRINT) {
     console.log(`✓ Python packages already present in ${siteDir}`);
     return;
@@ -492,7 +497,19 @@ async function preparePlatformArch(platform, arch) {
   const target = TARGETS[platform]?.[arch];
   if (!target) return;
 
-  const destDir = path.join(OUTPUT_ROOT, `${platform}-${arch}`);
+  const runtimeDir = path.join(OUTPUT_ROOT, `${platform}-${arch}`);
+  const runtimeFingerprint = [
+    PYTHON_MINOR,
+    PYTHON_BUILD_RELEASE,
+    process.env[target.envUrlKey] || 'default',
+  ].join('|');
+  const versionFile = path.join(runtimeDir, PYTHON_RUNTIME_VERSION_FILENAME);
+  const runtimeReady =
+    exists(path.join(runtimeDir, 'bin', 'python3')) &&
+    exists(versionFile) &&
+    fs.readFileSync(versionFile, 'utf8').trim() === runtimeFingerprint;
+  const destDir = runtimeReady ? runtimeDir : `${runtimeDir}.download`;
+  if (!runtimeReady) fs.rmSync(destDir, { recursive: true, force: true });
   const pythonBin = path.join(destDir, 'bin', 'python3');
   const siteDir = path.join(destDir, 'site-packages');
 
@@ -538,6 +555,11 @@ async function preparePlatformArch(platform, arch) {
 
   // Clean site-packages of non-whitelisted packages (also runs after pip install)
   cleanPythonRuntime(destDir, siteDir);
+  fs.writeFileSync(path.join(destDir, PYTHON_RUNTIME_VERSION_FILENAME), runtimeFingerprint + '\n');
+  if (!runtimeReady) {
+    fs.rmSync(runtimeDir, { recursive: true, force: true });
+    fs.renameSync(destDir, runtimeDir);
+  }
 }
 
 async function main() {

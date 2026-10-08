@@ -26,16 +26,15 @@ import {
   FileAudio2,
   FileVideo,
   Image as ImageIcon,
+  ExternalLink,
   FolderOpen,
   FolderSync,
   File,
-  Check,
   Loader2,
   Plug,
   Wrench,
   MessageSquare,
   Cpu,
-  Copy,
   Layers,
 } from 'lucide-react';
 import type { TraceStep, MCPServerInfo, ContentBlock, ToolUseContent } from '../types';
@@ -57,7 +56,6 @@ export function ContextPanel() {
   const [artifactsOpen, setArtifactsOpen] = useState(true);
   const [expandedConnector, setExpandedConnector] = useState<string | null>(null);
   const [mcpServers, setMcpServers] = useState<MCPServerInfo[]>([]);
-  const [copiedPath, setCopiedPath] = useState(false);
   const [isChangingDir, setIsChangingDir] = useState(false);
   const [recentWorkspaceFiles, setRecentWorkspaceFiles] = useState<
     Array<{
@@ -66,22 +64,6 @@ export function ContextPanel() {
       size: number;
     }>
   >([]);
-
-  const handleCopyPath = async (path: string) => {
-    try {
-      // Escape spaces for shell usage so the path can be pasted into terminal
-      let shellPath = path;
-      if (path.includes(' ')) {
-        const isWindows = window.electronAPI?.platform === 'win32';
-        shellPath = isWindows ? `"${path}"` : path.replace(/ /g, '\\ ');
-      }
-      await navigator.clipboard.writeText(shellPath);
-      setCopiedPath(true);
-      setTimeout(() => setCopiedPath(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy path:', err);
-    }
-  };
 
   const ss = activeSessionId ? sessionStates[activeSessionId] : undefined;
   const steps = ss?.traceSteps ?? EMPTY_STEPS;
@@ -487,15 +469,11 @@ export function ContextPanel() {
             </span>
             {currentWorkingDir && (
               <button
-                onClick={() => handleCopyPath(currentWorkingDir)}
+                onClick={() => window.electronAPI?.showItemInFolder(currentWorkingDir)}
                 className="text-text-muted hover:text-text-primary transition-colors shrink-0 ml-1"
-                title={t('context.copyPath')}
+                title={t('context.openInFileManager')}
               >
-                {copiedPath ? (
-                  <Check className="w-3 h-3 text-success" />
-                ) : (
-                  <Copy className="w-3 h-3" />
-                )}
+                <ExternalLink className="w-3 h-3" />
               </button>
             )}
             <button

@@ -375,7 +375,7 @@ export class GeneratedTaskCommandService {
   private async resolveGenerationAnchor(
     input: Pick<GenerateTaskFromRequirementCommand, 'reuseTaskId' | 'startFromNodeId' | 'workflow'>
   ): Promise<GenerationAnchor | null> {
-    const startFromNodeId = normalizeOptionalName(input.startFromNodeId);
+    const startFromNodeId = normalizeOptionalName(input.startFromNodeId ?? undefined);
     if (!startFromNodeId) return null;
     const taskId = normalizeRequiredName(
       input.reuseTaskId ?? '',

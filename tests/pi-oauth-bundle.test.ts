@@ -23,7 +23,8 @@ it('derives Codex auth in a standalone CJS bundle without missing relative OAuth
           formats: ['cjs'],
           fileName: () => 'smoke.cjs',
         },
-        rollupOptions: {
+        rolldownOptions: {
+          platform: 'node',
           external: [...builtinModules, ...builtinModules.map((name) => `node:${name}`)],
         },
       },

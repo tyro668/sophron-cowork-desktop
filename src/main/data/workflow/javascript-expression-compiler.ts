@@ -709,7 +709,8 @@ function assertWorkflowJavaScriptTypes(
     strictNullChecks: true,
     skipLibCheck: false,
     target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.None,
+    module: ts.ModuleKind.Preserve,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
     types: [],
   };
   const defaultHost = ts.createCompilerHost(options, true);

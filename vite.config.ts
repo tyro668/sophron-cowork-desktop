@@ -30,7 +30,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/main',
             emptyOutDir: true,
-            rollupOptions: {
+            rolldownOptions: {
               external: [
                 ...nodeBuiltins,
                 'better-sqlite3',
@@ -62,10 +62,6 @@ export default defineConfig({
                 'glob',
                 'dotenv',
               ],
-              output: {
-                // Ensure consistent interop for CJS/ESM
-                interop: 'auto',
-              },
             },
           },
         },
@@ -79,7 +75,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron/preload',
             emptyOutDir: true,
-            rollupOptions: {
+            rolldownOptions: {
               external: ['electron'],
             },
           },

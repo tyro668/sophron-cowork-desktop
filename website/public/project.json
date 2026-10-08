@@ -18,7 +18,7 @@
     "macOS": ".dmg"
   },
   "sourceBuild": {
-    "node": ">=22",
+    "node": ">=22.22.1",
     "commands": ["npm install", "npm run rebuild", "npm run dev"]
   },
   "install": [
@@ -77,8 +77,5 @@
     "projectJson": "website/public/project.json",
     "robots": "website/public/robots.txt"
   },
-  "sourcePages": [
-    "README.md",
-    "README_zh.md"
-  ]
+  "sourcePages": ["README.md", "README_zh.md"]
 }

@@ -74,14 +74,14 @@ export async function bootstrap(): Promise<void> {
     log('[SmokeTest] Electron:', process.versions.electron, 'Node:', process.versions.node);
     try {
       // Verify critical native modules load
-      require('better-sqlite3');
+      await import('better-sqlite3');
       log('[SmokeTest] better-sqlite3: OK');
     } catch (e) {
       log('[SmokeTest] FAIL: better-sqlite3 failed to load:', e);
       process.exit(1);
     }
     try {
-      require('@duckdb/node-api');
+      await import('@duckdb/node-api');
       log('[SmokeTest] @duckdb/node-api: OK');
     } catch (e) {
       log('[SmokeTest] FAIL: @duckdb/node-api failed to load:', e);

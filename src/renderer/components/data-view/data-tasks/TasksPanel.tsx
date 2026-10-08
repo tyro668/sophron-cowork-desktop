@@ -387,9 +387,13 @@ function TaskRow({
     >
       <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-            <Workflow className="h-4 w-4" />
-          </div>
+          {indented ? (
+            <Workflow className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+          ) : (
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
+              <Workflow className="h-4 w-4" />
+            </div>
+          )}
           <div className="flex min-w-0 items-center">
             <span className="truncate text-[13px] font-medium text-text-secondary">
               {task.name}

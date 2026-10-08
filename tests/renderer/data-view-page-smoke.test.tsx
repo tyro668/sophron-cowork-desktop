@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n-test';
 import { EMPTY_DASHBOARD } from '../../src/renderer/features/data/model/types';

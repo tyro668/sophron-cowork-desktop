@@ -110,6 +110,7 @@ win:
       to: skills
 
 mac:
+  minimumSystemVersion: '13.5'
   icon: resources/icon.icns
   target:
     - target: dmg

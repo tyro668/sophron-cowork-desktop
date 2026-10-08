@@ -473,7 +473,8 @@ export class LimaBridge implements SandboxExecutor {
     try {
       const commands = [
         'sudo DEBIAN_FRONTEND=noninteractive apt-get update -y',
-        'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm',
+        'curl -fsSL https://deb.nodesource.com/setup_26.x | sudo -E bash -',
+        'sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs libatomic1',
       ];
       for (const command of commands) {
         await execLimaShellWithRetry(command, 300000);

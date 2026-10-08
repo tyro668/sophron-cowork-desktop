@@ -1,8 +1,37 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss' source(none);
+@config '../../../tailwind.config.js';
+
+/* Preserve the existing controls while moving to Tailwind 4 utilities. */
+@utility flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+@utility flex-shrink {
+  flex-shrink: 1;
+}
+
+@utility flex-grow {
+  flex-grow: 1;
+}
+
+@utility outline-none {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+@utility text-accent {
+  color: var(--color-accent-text);
+}
+
+@utility text-accent-hover {
+  color: var(--color-accent-text-hover);
+}
+
+@utility text-accent-muted {
+  color: var(--color-accent-text-muted);
+}
 
 @layer base {
   /*
@@ -807,7 +836,7 @@
   /* Button styles */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150;
-    @apply focus:outline-none focus:ring-2 focus:ring-accent focus:ring-opacity-30;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent/30;
   }
 
   .btn-primary {
@@ -848,7 +877,7 @@
   .input {
     @apply w-full px-3 py-2 rounded-xl bg-surface border border-border-muted text-[13px] shadow-soft;
     @apply text-text-primary placeholder:text-text-muted;
-    @apply focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent focus:ring-opacity-30;
+    @apply focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/30;
     @apply transition-all duration-150;
   }
 

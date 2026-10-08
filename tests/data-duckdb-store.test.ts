@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../src/main/utils/xlsx';
 import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
 import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
 import { getWorkflowUpstreamSignature } from '../src/shared/workflow-plan';

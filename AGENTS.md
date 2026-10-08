@@ -9,7 +9,7 @@ Cross-process contracts live in `src/shared/contracts/` (`config/`, `session/`, 
 - `src/renderer/**` must never import from `src/main/**` or `src/preload/**` — use the `electronAPI` bridge.
 - Shared i18n locale resources live in `src/shared/i18n/locales/` (used by both renderer UI and main-process remote messages).
 
-Enforcement: ESLint `no-restricted-imports` overrides in `.eslintrc.cjs`, plus `src/tests/contracts/architecture-boundaries.test.ts` (vitest scan).
+Enforcement: ESLint `no-restricted-imports` overrides in `eslint.config.cjs`, plus `src/tests/contracts/architecture-boundaries.test.ts` (vitest scan).
 
 ## IPC input validation (enforced)
 

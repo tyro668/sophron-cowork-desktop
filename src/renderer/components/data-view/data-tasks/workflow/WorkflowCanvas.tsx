@@ -421,7 +421,7 @@ function WorkflowCanvasContent({
     [onAddNode, screenToFlowPosition]
   );
   const handleNodeDragStop = useCallback(
-    (_event: ReactMouseEvent, node: WorkflowFlowNode) => {
+    (_event: MouseEvent | TouchEvent, node: WorkflowFlowNode) => {
       const currentNode = flowNodesRef.current.find((item) => item.id === node.id);
       const position = currentNode?.position ?? node.position;
       const snap = getWorkflowAlignmentSnap(node.id, position, flowNodesRef.current);

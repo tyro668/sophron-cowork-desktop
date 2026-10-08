@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../../utils/xlsx';
 import type {
   DataInputTableConfig,
   DataInputTableCsvConfig,

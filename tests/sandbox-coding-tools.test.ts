@@ -144,7 +144,7 @@ describe.skipIf(process.platform === 'win32')('sandbox SDK file round trip', () 
       );
       await tools
         .find((tool) => tool.name === 'edit')!
-        .execute('edit', { path: file, oldText: 'before', newText: 'after' } as never);
+        .execute('edit', { path: file, edits: [{ oldText: 'before', newText: 'after' }] } as never);
       expect(fs.readFileSync(path.join(cwd, file), 'utf8')).toBe('after\n');
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true });
