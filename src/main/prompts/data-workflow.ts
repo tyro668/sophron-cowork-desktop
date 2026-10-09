@@ -31,16 +31,30 @@ export function buildRequirementAnalysisSystemPrompt(): string {
 
 export function buildRequirementAnalysisUserPrompt(input: {
   requirement: string;
+  requirementConversation?: Array<{ role: 'user' | 'assistant'; text: string }>;
   inputColumns: Array<{ name: string; type?: string }>;
 }): string {
-  return JSON.stringify(input, null, 2);
+  return JSON.stringify(
+    {
+      ...input,
+      conversationNote: input.requirementConversation?.length
+        ? 'requirementConversation lists the earlier turns in order: each user message and the assistant analysis feedback it received. requirement contains every user message joined in order, so the newest message at the end usually answers or refines items from that feedback. Interpret short answers against the item they respond to instead of treating them as standalone requests, then classify the complete accumulated requirement.'
+        : undefined,
+    },
+    null,
+    2
+  );
 }
 
 export function buildWorkflowGenerationSystemPrompt(input?: {
   /** Confirmed requirement contract — limits the payload doc to approved ops. */
   operationTypes?: readonly string[];
+  repairFunctionName?: string;
 }): string {
   return renderPromptTemplate(workflowGenerationSystemPrompt, {
+    RESPONSE_CONTRACT: input?.repairFunctionName
+      ? `Return only ${JSON.stringify({ javascriptPatch: { functionName: input.repairFunctionName, replacementSource: 'complete named function declaration(s)' } })}. Include the requested function and any new helpers it needs. Do not return javascriptSource, redefine other existing functions, or include main() unless main is the requested function.`
+      : 'Return {"javascriptSource":"..."}. The program must contain named helper functions and function main().',
     WORKFLOW_CAPABILITIES: getWorkflowJavascriptCapabilityPrompt(input?.operationTypes),
     WORKFLOW_EXPRESSION_CAPABILITIES: getWorkflowExpressionCapabilityPrompt(),
   });
@@ -87,7 +101,9 @@ export function buildWorkflowGenerationUserPrompt(input: {
         sequentialHelpers:
           'A helper may call workflow.step() multiple times in sequence. Bind every intermediate workflow value to a descriptive const, pass it to the next step, and return the final value.',
         mainContract:
-          'The complete program must call workflow.input() exactly once and workflow.output() exactly once. main() must return the exact object returned by workflow.output().',
+          input.failedJavascriptSource && input.repairFunctionName
+            ? `Return only the replacement for ${input.repairFunctionName} and any new helpers it needs. The existing program supplies all unchanged functions; do not reproduce them.`
+            : 'The complete program must call workflow.input() exactly once and workflow.output() exactly once. main() must return the exact object returned by workflow.output().',
       },
       outputJsonSchema:
         input.failedJavascriptSource && input.repairFunctionName

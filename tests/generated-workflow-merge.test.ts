@@ -87,7 +87,22 @@ describe('mergeGeneratedChainAfterAnchor', () => {
     const keptOutput = merged.nodes.find((n) => n.type === 'output');
     expect(keptOutput).toBeTruthy();
     expect(edgeExists(merged.edges, 'limit_1', keptOutput!.id)).toBe(true);
+    expect(merged.edges.filter((edge) => edge.targetNodeId === keptOutput!.id)).toHaveLength(1);
     expect(merged.terminalOutputNodeId).toBe(keptOutput!.id);
+  });
+
+  it('appends after a lone input node with exactly one edge into each new node', () => {
+    const scope = (id: string) => (id.startsWith('task__') ? id : `task__${id}`);
+    const merged = mergeGeneratedChainAfterAnchor(
+      { nodes: [node('task__source', 'input_source')], edges: [] },
+      'task__source',
+      generatedChain(['filter_1', 'filter_2']),
+      scope
+    );
+    expect(merged.edges).toHaveLength(3);
+    for (const node of merged.nodes.filter((node) => node.type !== 'input_source')) {
+      expect(merged.edges.filter((edge) => edge.targetNodeId === node.id)).toHaveLength(1);
+    }
   });
 
   it('inserts before the sink when the anchor is an output node', () => {

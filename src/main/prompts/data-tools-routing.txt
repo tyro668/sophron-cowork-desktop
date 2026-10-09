@@ -49,3 +49,5 @@ Standard fixed-workflow recipes:
 6. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.
 
 </data_processing_tools>
+
+For AI-assisted edits of an existing task, pass reuseTaskId (and startFromNodeId when appending after a node) to data_analyze_task_requirement. The confirmed receipt carries these bindings into generation; do not create a second task or bypass confirmation with direct plan/DSL edits. Application-provided authoring requests also preserve the unsaved canvas snapshot and output binding.

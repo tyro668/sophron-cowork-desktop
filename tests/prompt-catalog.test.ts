@@ -72,6 +72,30 @@ describe('central prompt catalog', () => {
     expect(generationUser.examples).toHaveLength(7);
   });
 
+  it('gives scoped repairs one consistent response contract in system and user prompts', () => {
+    const system = buildWorkflowGenerationSystemPrompt({
+      repairFunctionName: 'filterPositiveProfit',
+    });
+    const user = JSON.parse(
+      buildWorkflowGenerationUserPrompt({
+        inputTableId: 'input',
+        outputTableName: 'output',
+        requirement: '利润大于0',
+        columns: [{ name: '利润', type: 'string' }],
+        failedJavascriptSource: 'function filterPositiveProfit() {}',
+        repairFunctionName: 'filterPositiveProfit',
+        repairStrategy: 'function_patch',
+      })
+    );
+    expect(system).toContain('"javascriptPatch":{"functionName":"filterPositiveProfit"');
+    expect(system).not.toContain('Return {"javascriptSource":"..."}');
+    expect(system).not.toContain('{{');
+    expect(user.outputJsonSchema).not.toHaveProperty('javascriptSource');
+    expect(user.outputJsonSchema.javascriptPatch.functionName).toBe('filterPositiveProfit');
+    expect(user.generationRules.mainContract).toContain('Return only the replacement');
+    expect(user.examples).toBeUndefined();
+  });
+
   it('contains prompt copy for every app-owned custom data and automation tool', () => {
     expect(Object.keys(DATA_TOOL_COPY)).toHaveLength(33);
     expect(Object.keys(AUTOMATION_TOOL_COPY)).toHaveLength(6);

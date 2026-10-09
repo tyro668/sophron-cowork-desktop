@@ -1,3 +1,4 @@
+import { useDataTaskAuthoringCompletion } from '../../../features/data/hooks/use-data-task-authoring';
 import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -54,6 +55,7 @@ export function ActionChainSection({
   appConfig,
   onDraftChange,
   onGeneratedTaskSuccess,
+  workingDirectory,
   tr,
 }: {
   draft: AutomationDraft;
@@ -64,6 +66,7 @@ export function ActionChainSection({
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
   onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  workingDirectory?: string;
   tr: (key: string, fallback: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
@@ -130,6 +133,7 @@ export function ActionChainSection({
               outputTables={outputTables}
               appConfig={appConfig}
               onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+              workingDirectory={workingDirectory}
               onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
               onChange={(next) =>
                 updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
@@ -151,6 +155,7 @@ export function ActionStepCard({
   outputTables,
   appConfig,
   onGeneratedTaskSuccess,
+  workingDirectory,
   onRemove,
   onChange,
   tr,
@@ -162,6 +167,7 @@ export function ActionStepCard({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  workingDirectory?: string;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -193,6 +199,7 @@ export function ActionStepCard({
         outputTables={outputTables}
         appConfig={appConfig}
         onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+        workingDirectory={workingDirectory}
         onChange={onChange}
         tr={tr}
       />
@@ -205,6 +212,7 @@ export function DataProcessActionEditor({
   dataTasks,
   inputTables,
   onGeneratedTaskSuccess,
+  workingDirectory,
   onChange,
   tr,
 }: {
@@ -212,10 +220,48 @@ export function DataProcessActionEditor({
   dataTasks: DataCleaningTask[];
   inputTables: DataDashboard['datasets'];
   onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
   const [generateOpen, setGenerateOpen] = useState(false);
+  const generationSessionId = String(node.config.generationSessionId ?? '');
+  const generationRequestId = String(node.config.generationRequestId ?? '');
+  useDataTaskAuthoringCompletion(
+    generationSessionId && generationRequestId
+      ? { sessionId: generationSessionId, requestId: generationRequestId }
+      : null,
+    (completion) => {
+      const legacy = parseCloudAutomationConfig(node.config.cloudAutomation);
+      if (legacy && legacy.source.location !== 'local') {
+        onChange(
+          createGeneratedCloudTableProcessNode(
+            node,
+            {
+              ...legacy,
+              output: {
+                ...legacy.output,
+                location: 'local',
+                tableName: completion.result.outputTableName,
+              },
+            },
+            completion.result
+          )
+        );
+      } else
+        onChange({
+          ...node,
+          type: 'data.task.run',
+          label: '',
+          config: {
+            taskId: completion.result.taskId,
+            taskName: completion.result.taskName,
+            outputMode: node.config.outputMode ?? 'persisted',
+          },
+        });
+      onGeneratedTaskSuccess(completion.result.workflowDslAvailable);
+    }
+  );
   // Legacy drafts can supply a selected cloud/local source to the shared task
   // authoring dialog. New actions simply reference an existing data task.
   const legacyDraft = parseCloudAutomationConfig(node.config.cloudAutomation);
@@ -318,36 +364,22 @@ export function DataProcessActionEditor({
       {selectedTaskId && <GeneratedTaskReviewCard node={node} tr={tr} />}
       <DataTaskAiGenerateDialog
         open={generateOpen}
+        workingDirectory={workingDirectory}
         boundInputTable={selectedInput ? { id: selectedInput.id, name: selectedInput.name } : null}
         initialSource={legacySource}
         initialRequirement={legacyDraft?.processRequirement}
         initialOutput={legacyDraft ? { ...legacyDraft.output, location: 'local' } : undefined}
         onOpenChange={setGenerateOpen}
-        onApplied={(result, input) => {
-          if (input.source.location === 'cloud' && legacyDraft) {
-            // Preserve cloud refresh for pre-existing cloud authoring drafts.
-            onChange(
-              createGeneratedCloudTableProcessNode(
-                node,
-                {
-                  ...legacyDraft,
-                  processRequirement: input.processRequirement,
-                  output: {
-                    ...legacyDraft.output,
-                    ...input.output,
-                    location: 'local',
-                    tableName: result.outputTableName,
-                    targetTableId: input.output.targetTableId ?? '',
-                  },
-                },
-                result
-              )
-            );
-          } else {
-            selectTask(result.taskId, result.taskName);
-          }
-          onGeneratedTaskSuccess(result.workflowDslAvailable);
-        }}
+        onStarted={(sessionId, request) =>
+          onChange({
+            ...node,
+            config: {
+              ...node.config,
+              generationSessionId: sessionId,
+              generationRequestId: request.id,
+            },
+          })
+        }
       />
     </div>
   );
@@ -458,6 +490,7 @@ export function ActionConfigEditor({
   outputTables,
   appConfig,
   onGeneratedTaskSuccess,
+  workingDirectory,
   onChange,
   tr,
 }: {
@@ -467,6 +500,7 @@ export function ActionConfigEditor({
   outputTables: DataDashboard['outputTables'];
   appConfig: AppConfig | null;
   onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -499,6 +533,7 @@ export function ActionConfigEditor({
           dataTasks={dataTasks}
           inputTables={inputTables}
           onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+          workingDirectory={workingDirectory}
           onChange={onChange}
           tr={tr}
         />

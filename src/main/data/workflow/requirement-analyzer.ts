@@ -2,6 +2,7 @@ import type {
   AgentRuntimeConfig,
   DataAnalyzeTaskRequirementResult,
   DataTaskRequirementAnalysisItem,
+  DataTaskRequirementConversationEntry,
 } from '../../../shared/contracts';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../agent/pi-ai-one-shot';
 import {
@@ -16,15 +17,19 @@ const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
 
 export async function analyzeDataTaskRequirement({
   requirement,
+  requirementConversation,
   columns,
   runtimeConfig,
   onModelUsage,
+  onActivity,
   signal,
 }: {
   requirement: string;
+  requirementConversation?: DataTaskRequirementConversationEntry[];
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
   onModelUsage?: (result: PiAiOneShotResult) => void;
+  onActivity?: () => void;
   signal?: AbortSignal;
 }): Promise<DataAnalyzeTaskRequirementResult> {
   if (!runtimeConfig?.model?.trim()) {
@@ -33,13 +38,37 @@ export async function analyzeDataTaskRequirement({
       'Model configuration is required to analyze a data task'
     );
   }
-  const response = await runPiAiOneShot(
-    buildRequirementAnalysisUserPrompt({ requirement, inputColumns: columns }),
-    buildRequirementAnalysisSystemPrompt(),
-    runtimeConfig,
-    { temperature: 0, maxTokens: 2_000, signal }
-  );
-  onModelUsage?.(response);
+  const prompt = buildRequirementAnalysisUserPrompt({
+    requirement,
+    requirementConversation,
+    inputColumns: columns,
+  });
+  const systemPrompt = buildRequirementAnalysisSystemPrompt();
+  const analyze = async (maxTokens: number) => {
+    const result = await runPiAiOneShot(prompt, systemPrompt, runtimeConfig, {
+      temperature: 0,
+      maxTokens,
+      signal,
+      // Classification needs concise JSON, not a separate reasoning transcript.
+      reasoning: 'off',
+      onActivity,
+    });
+    onModelUsage?.(result);
+    return result;
+  };
+  // Reasoning shares the provider's output budget. A 2k cap can leave no JSON
+  // at all; retry only truncation, once, and account for both model calls.
+  let response = await analyze(8_192);
+  if (response.stopReason === 'length') {
+    signal?.throwIfAborted();
+    response = await analyze(16_384);
+  }
+  if (response.stopReason === 'length') {
+    throw new DataCommandError(
+      'GENERATION_FAILED',
+      'Requirement analysis reached the output token limit after a bounded retry. Shorten the requirement or use a model with a larger output budget.'
+    );
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(extractJsonObject(response.text));

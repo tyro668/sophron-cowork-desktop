@@ -187,6 +187,9 @@ export async function runPiAiOneShot(
     temperature?: number;
     maxTokens?: number;
     signal?: AbortSignal;
+    reasoning?: NonNullable<Parameters<typeof completeSimple>[2]>['reasoning'] | 'off';
+    thinkingBudgets?: NonNullable<Parameters<typeof completeSimple>[2]>['thinkingBudgets'];
+    onActivity?: () => void;
     onTextDelta?: (delta: string) => void;
     onThinkingDelta?: (delta: string) => void;
   }
@@ -281,7 +284,7 @@ export async function runPiAiOneShot(
     'api:',
     resolvedModel.api
   );
-  const { onTextDelta, onThinkingDelta, ...requestOptions } = options ?? {};
+  const { onTextDelta, onThinkingDelta, onActivity, reasoning, ...requestOptions } = options ?? {};
   // The ChatGPT Codex backend rejects sampling params: {"detail":"Unsupported parameter: temperature"}.
   if (resolvedModel.api === 'openai-codex-responses') {
     delete requestOptions.temperature;
@@ -290,14 +293,23 @@ export async function runPiAiOneShot(
     systemPrompt,
     messages: [userMsg],
   };
-  const requestOptionsWithAuth = { ...requestOptions, apiKey: apiKey || undefined };
+  options?.signal?.throwIfAborted();
+  const requestOptionsWithAuth = {
+    ...requestOptions,
+    // One-shot callers own their output budget; conversation thinking settings
+    // must not implicitly enable expensive reasoning for titles/classification.
+    reasoning: reasoning === 'off' ? undefined : reasoning,
+    apiKey: apiKey || undefined,
+  };
   const response =
-    onTextDelta || onThinkingDelta
+    onTextDelta || onThinkingDelta || onActivity
       ? await streamPiAiOneShotResponse(resolvedModel, context, requestOptionsWithAuth, {
           onTextDelta,
           onThinkingDelta,
+          onActivity,
         })
       : await completeSimple(resolvedModel, context, requestOptionsWithAuth);
+  options?.signal?.throwIfAborted();
 
   // pi-ai resolves (not rejects) on provider errors — the error details
   // live in stopReason/errorMessage on the response object.  Surface them
@@ -347,16 +359,23 @@ async function streamPiAiOneShotResponse(
   callbacks: {
     onTextDelta?: (delta: string) => void;
     onThinkingDelta?: (delta: string) => void;
+    onActivity?: () => void;
   }
 ): Promise<Awaited<ReturnType<typeof completeSimple>>> {
   const stream = streamSimple(model, context, options);
   for await (const event of stream) {
     if (event.type === 'text_delta') {
       const delta = normalizeStreamDelta(event.delta);
-      if (delta) callbacks.onTextDelta?.(delta);
+      if (delta) {
+        callbacks.onActivity?.();
+        callbacks.onTextDelta?.(delta);
+      }
     } else if (event.type === 'thinking_delta') {
       const delta = normalizeStreamDelta(event.delta);
-      if (delta) callbacks.onThinkingDelta?.(delta);
+      if (delta) {
+        callbacks.onActivity?.();
+        callbacks.onThinkingDelta?.(delta);
+      }
     } else if (event.type === 'error') {
       logWarn(
         '[OneShot] Streaming provider error-as-event:',

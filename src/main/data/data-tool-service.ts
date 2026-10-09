@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+import { pendingDataTaskRequest } from '../../shared/data-task-authoring';
 import type { BeforeSessionRunContext } from '../extensions/agent-runtime-extension';
 import type { DataCommandService } from './data-command-service';
 import type {
@@ -94,7 +96,7 @@ export class DataToolService {
   private readonly generationInFlight = new Map<string, Promise<DataToolResult>>();
   private readonly executionContexts = new Map<
     string,
-    Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>
+    Omit<DataToolExecutionContext, 'toolCallId' | 'signal' | 'onActivity'>
   >();
   private readonly sessionResources = new Map<string, SessionResourceLedger>();
 
@@ -103,7 +105,9 @@ export class DataToolService {
     private readonly analysisReceipts: RequirementAnalysisReceiptStore
   ) {}
 
-  updateExecutionContext(context: Omit<DataToolExecutionContext, 'toolCallId' | 'signal'>): void {
+  updateExecutionContext(
+    context: Omit<DataToolExecutionContext, 'toolCallId' | 'signal' | 'onActivity'>
+  ): void {
     this.executionContexts.set(context.sessionId, context);
   }
 
@@ -124,6 +128,10 @@ export class DataToolService {
     this.executionContexts.delete(sessionId);
     this.analysisReceipts.deleteForSession(sessionId);
     this.sessionResources.delete(sessionId);
+  }
+
+  hasSupportedAnalysis(sessionId: string): boolean {
+    return this.analysisReceipts.hasSupportedForSession(sessionId);
   }
 
   hasPendingAnalysis(sessionId: string): boolean {
@@ -220,6 +228,25 @@ export class DataToolService {
   async resolveConversationContext(
     context: BeforeSessionRunContext
   ): Promise<DataToolPromptContext> {
+    if (!this.sessionResources.has(context.session.id)) {
+      for (const message of context.existingMessages) {
+        if (message.role !== 'assistant') continue;
+        for (const block of message.content) {
+          if (block.type !== 'tool_result' || block.isError || !block.dataTaskCompletion) continue;
+          const result = block.dataTaskCompletion.result;
+          this.rememberResolvedResources(
+            context.session.id,
+            'data_generate_task_from_requirement',
+            {},
+            {
+              task: { id: result.taskId, name: result.taskName },
+              outputTable: { id: result.outputTableId, name: result.outputTableName },
+            }
+          );
+        }
+      }
+    }
+    const authoringRequest = pendingDataTaskRequest(context.existingMessages);
     const ledger = this.sessionResources.get(context.session.id);
     const latest = (kind: (typeof SESSION_RESOURCE_KINDS)[number]) => ledger?.current[kind];
     const selectedIds = new Set(
@@ -249,9 +276,10 @@ export class DataToolService {
     return {
       sessionId: context.session.id,
       workspacePath: context.session.cwd,
-      selectedDataTaskId: selectedTask?.id,
+      authoringRequest,
+      selectedDataTaskId: authoringRequest?.reuseTaskId ?? selectedTask?.id,
       selectedDataTaskName: selectedTask?.name,
-      selectedInputTableId: selectedInput?.id,
+      selectedInputTableId: authoringRequest?.source.tableId ?? selectedInput?.id,
       selectedInputTableName: selectedInput?.name,
       selectedOutputTableId: selectedOutput?.id,
       selectedOutputTableName: selectedOutput?.name,
@@ -516,13 +544,25 @@ export class DataToolService {
     input: AnalyzeDataTaskRequirementToolInput,
     context: DataToolExecutionContext
   ): Promise<DataToolResult> {
+    const request = context.authoringRequest ?? {
+      id: randomUUID(),
+      source: { location: 'local' as const, tableId: input.inputTableId },
+      reuseTaskId: input.reuseTaskId,
+      startFromNodeId: input.startFromNodeId,
+    };
     const result = await this.commandService.analyzeTaskRequirement({
-      source: { location: 'local', tableId: input.inputTableId },
+      authoringRequest: request,
+      source: request.source,
+      reuseTaskId: request.reuseTaskId,
+      startFromNodeId: request.startFromNodeId,
+      workflow: request.workflow,
       processRequirement: input.processRequirement,
+      requirementConversation: context.requirementConversation,
       runtimeConfig: context.runtimeConfig,
       usageTraceId: context.sessionId,
       sourceUserMessageId: context.currentUserMessageId,
       signal: context.signal,
+      onActivity: context.onActivity,
     });
     const receipt = this.analysisReceipts.get(result.analysisId);
     if (!receipt) {
@@ -614,7 +654,10 @@ export class DataToolService {
     const currentSchemaHash = hashColumns(
       normalizeColumnSnapshot(currentPreview.preview.columnTypes, receipt.analysis.columnsSnapshot)
     );
-    if (currentSchemaHash !== receipt.inputSchemaHash) {
+    if (
+      !receipt.authoringRequest.startFromNodeId &&
+      currentSchemaHash !== receipt.inputSchemaHash
+    ) {
       throw new DataCommandError(
         'ANALYSIS_STALE',
         'The input table schema changed after analysis. Analyze the requirement again.'
@@ -623,7 +666,8 @@ export class DataToolService {
     if (receipt.generatedResult) {
       return formatGeneratedTaskToolResult(receipt, receipt.generatedResult);
     }
-    const output = resolveGeneratedTaskOutput(input);
+    const request = receipt.authoringRequest;
+    const output = request.output ?? resolveGeneratedTaskOutput(input);
 
     const result = await this.commandService.generateTaskFromRequirement({
       source: {
@@ -633,12 +677,16 @@ export class DataToolService {
         columnsSnapshot: receipt.analysis.columnsSnapshot,
       },
       processRequirement: receipt.processRequirement,
+      reuseTaskId: request.reuseTaskId,
+      startFromNodeId: request.startFromNodeId,
+      workflow: request.workflow,
       output,
       taskName: input.taskName,
       runtimeConfig: context.runtimeConfig,
       usageTraceId: receipt.sessionId,
       analysisId: receipt.id,
       signal: context.signal,
+      onActivity: context.onActivity,
       outputConflictPolicy: 'unique',
     });
     this.analysisReceipts.saveGeneratedResult(receipt.id, result);
@@ -895,6 +943,10 @@ function formatGeneratedTaskToolResult(
     ].join('\n'),
     {
       status: 'ready',
+      dataTaskCompletion: {
+        requestId: receipt.authoringRequest.id,
+        result: { ...result, workflowDsl: undefined },
+      },
       analysisId: receipt.id,
       task: {
         id: result.taskId,

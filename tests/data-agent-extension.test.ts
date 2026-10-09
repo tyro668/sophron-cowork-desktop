@@ -24,6 +24,7 @@ function createService() {
     })),
     updateExecutionContext: vi.fn(),
     hasPendingAnalysis: vi.fn(() => false),
+    hasSupportedAnalysis: vi.fn(() => true),
     clearConversationContext: vi.fn(),
   } as unknown as DataToolService;
 }
@@ -41,6 +42,27 @@ const session: Session = {
 };
 
 describe('data agent extension', () => {
+  it('keeps analysis available for short clarification replies without domain keywords', async () => {
+    const service = createService();
+    vi.mocked(service.hasPendingAnalysis).mockReturnValue(true);
+    vi.mocked(service.hasSupportedAnalysis).mockReturnValue(false);
+    const extension = createDataAgentRuntimeExtension(service);
+    const result = await extension.beforeSessionRun?.({
+      session,
+      prompt: 'region 就是省份',
+      existingMessages: [],
+      isColdStart: true,
+    });
+    expect(result?.activateTools).toContain('data_analyze_task_requirement');
+    const confirmed = await extension.beforeSessionRun?.({
+      session,
+      prompt: '好的',
+      existingMessages: [],
+      isColdStart: false,
+    });
+    expect(confirmed?.activateTools).toEqual([...DATA_TOOL_PACKS['data.generate'].tools]);
+  });
+
   it('registers the full catalog but activates only intent-scoped packs', async () => {
     const service = createService();
     const extension = createDataAgentRuntimeExtension(service);
@@ -170,7 +192,8 @@ describe('data agent extension', () => {
       existingMessages: [],
       isColdStart: true,
     });
-    expect(confirmed?.activateTools).toEqual(['data_generate_task_from_requirement']);
+    expect(confirmed?.activateTools).toEqual([...DATA_TOOL_PACKS['data.generate'].tools]);
+    expect(confirmed?.activateTools).not.toContain('data_apply_workflow_plan');
     const unrelated = await extension.beforeSessionRun?.({
       session,
       prompt: '帮我写诗',

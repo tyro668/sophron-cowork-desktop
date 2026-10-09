@@ -1,3 +1,4 @@
+import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
 import { randomUUID } from 'crypto';
 import type {
   AnalyzedTaskRequirement,
@@ -19,6 +20,7 @@ export interface RequirementAnalysisReceipt {
   createdAt: number;
   expiresAt: number;
   generatedResult?: GenerateTaskFromRequirementResult;
+  authoringRequest: DataTaskAuthoringRequest;
 }
 
 export interface RequirementAnalysisReceiptStoreOptions {
@@ -42,12 +44,26 @@ export class RequirementAnalysisReceiptStore {
   }
 
   create(
-    input: Omit<RequirementAnalysisReceipt, 'id' | 'createdAt' | 'expiresAt' | 'generatedResult'>
+    input: Omit<
+      RequirementAnalysisReceipt,
+      'id' | 'createdAt' | 'expiresAt' | 'generatedResult' | 'authoringRequest'
+    > & { authoringRequest?: DataTaskAuthoringRequest }
   ): RequirementAnalysisReceipt {
     this.deleteExpired();
     const createdAt = this.now();
     const receipt: RequirementAnalysisReceipt = {
       ...input,
+      // Snapshot bindings once: later turns may no longer carry the UI request.
+      authoringRequest: structuredClone(
+        input.authoringRequest ?? {
+          id: randomUUID(),
+          source: {
+            location: 'local',
+            tableId: input.inputTableId,
+            tableName: input.inputTableName,
+          },
+        }
+      ),
       id: randomUUID(),
       createdAt,
       expiresAt: createdAt + this.ttlMs,
@@ -84,6 +100,14 @@ export class RequirementAnalysisReceiptStore {
       if (receipt.sessionId === sessionId && !receipt.generatedResult) return true;
     }
     return false;
+  }
+
+  hasSupportedForSession(sessionId: string): boolean {
+    this.deleteExpired();
+    const latest = [...this.receipts.values()]
+      .filter((receipt) => receipt.sessionId === sessionId && !receipt.generatedResult)
+      .at(-1);
+    return latest?.analysis.status === 'supported';
   }
 
   deleteExpired(): void {

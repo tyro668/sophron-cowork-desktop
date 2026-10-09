@@ -3,6 +3,7 @@ import type { AppConfig } from '../src/main/config/config-store';
 
 const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
+  streamSimple: vi.fn(),
   setRuntimeApiKey: vi.fn(),
   resolvePiRegistryModel: vi.fn(),
   buildSyntheticPiModel: vi.fn(),
@@ -46,6 +47,7 @@ vi.mock('electron-store', () => {
 
 vi.mock('@earendil-works/pi-ai/compat', () => ({
   completeSimple: mocks.completeSimple,
+  streamSimple: mocks.streamSimple,
 }));
 
 vi.mock('../src/main/agent/shared-auth', () => ({
@@ -134,7 +136,7 @@ vi.mock('../src/main/agent/pi-model-resolution', () => ({
   },
 }));
 
-import { probeWithPiAi } from '../src/main/agent/pi-ai-one-shot';
+import { probeWithPiAi, runPiAiOneShot } from '../src/main/agent/pi-ai-one-shot';
 
 function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -174,6 +176,7 @@ function createConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 describe('probeWithPiAi', () => {
   beforeEach(() => {
     mocks.completeSimple.mockReset();
+    mocks.streamSimple.mockReset();
     mocks.setRuntimeApiKey.mockReset();
     mocks.resolvePiRegistryModel.mockReset();
     mocks.buildSyntheticPiModel.mockReset();
@@ -187,6 +190,45 @@ describe('probeWithPiAi', () => {
     mocks.completeSimple.mockResolvedValue({
       content: [{ type: 'text', text: 'sdk_probe_ok' }],
     });
+  });
+
+  it('uses per-call reasoning without inheriting or changing conversation thinking settings', async () => {
+    const config = createConfig({ enableThinking: true, thinkingLevel: 'high' });
+    await runPiAiOneShot('test', '', config);
+    expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBeUndefined();
+    await runPiAiOneShot('test', '', config, { reasoning: 'low' });
+    expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBe('low');
+    await runPiAiOneShot('test', '', config, { reasoning: 'off' });
+    expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBeUndefined();
+    expect(config.enableThinking).toBe(true);
+  });
+
+  it('reports real streamed model activity without exposing reasoning to the caller', async () => {
+    const onActivity = vi.fn();
+    mocks.streamSimple.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'start' };
+        yield { type: 'thinking_delta', delta: 'internal reasoning' };
+        yield { type: 'thinking_delta', delta: '' };
+        yield { type: 'text_delta', delta: '{}' };
+      },
+      result: async () => ({ content: [{ type: 'text', text: '{}' }], stopReason: 'stop' }),
+    });
+    const result = await runPiAiOneShot('test', '', createConfig(), { onActivity });
+    expect(result.text).toBe('{}');
+    expect(onActivity.mock.calls).toEqual([[], []]);
+    expect(mocks.completeSimple).not.toHaveBeenCalled();
+  });
+
+  it('rejects cancellation even when the provider resolves an aborted response', async () => {
+    const controller = new AbortController();
+    mocks.completeSimple.mockImplementationOnce(async () => {
+      controller.abort();
+      return { content: [], stopReason: 'aborted', errorMessage: 'aborted' };
+    });
+    await expect(
+      runPiAiOneShot('test', '', createConfig(), { signal: controller.signal })
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('does not fall back to saved api key when the draft explicitly clears it', async () => {

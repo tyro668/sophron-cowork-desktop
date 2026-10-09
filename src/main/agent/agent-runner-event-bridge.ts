@@ -1,3 +1,4 @@
+import type { DataTaskAuthoringCompletion } from '../../shared/data-task-authoring';
 /**
  * AgentRunEventBridge — bridges sophron agent SDK session events into the
  * application's ServerEvent protocol during a single AgentRunner.run()
@@ -739,6 +740,15 @@ export class AgentRunEventBridge {
                 type: 'tool_result',
                 toolUseId: toolCallId,
                 content: outputText,
+                ...(!isError && event.toolName === 'data_generate_task_from_requirement'
+                  ? {
+                      dataTaskCompletion: (
+                        event.result as {
+                          details?: { dataTaskCompletion?: DataTaskAuthoringCompletion };
+                        }
+                      )?.details?.dataTaskCompletion,
+                    }
+                  : {}),
                 isError,
                 ...(normalizedToolResult.images.length > 0
                   ? { images: normalizedToolResult.images }

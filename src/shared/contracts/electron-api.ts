@@ -49,11 +49,8 @@ import type {
   DataDataset,
   DataDeleteInputTableNormalizerVersionInput,
   DataDeleteInputTableNormalizerVersionResult,
-  DataAnalyzeTaskRequirementResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
-  DataGenerateTaskFromRequirementInput,
-  DataGenerateTaskFromRequirementResult,
   DataInputTableNormalizerDraftProgressEvent,
   DataInputTablePreview,
   DataInputTableSourceSummary,
@@ -220,12 +217,6 @@ export interface ElectronApi {
     generateInputTableNormalizerDraft: (
       payload: DataGenerateInputTableNormalizerDraftInput
     ) => Promise<DataGenerateInputTableNormalizerDraftResult>;
-    generateTaskFromRequirement: (
-      payload: DataGenerateTaskFromRequirementInput
-    ) => Promise<DataGenerateTaskFromRequirementResult>;
-    analyzeTaskRequirement: (
-      payload: DataGenerateTaskFromRequirementInput
-    ) => Promise<DataAnalyzeTaskRequirementResult>;
     onInputTableNormalizerDraftProgress: (
       callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
     ) => () => void;

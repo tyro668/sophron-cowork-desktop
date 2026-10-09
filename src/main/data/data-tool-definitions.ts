@@ -80,6 +80,18 @@ const ProcessingStrategySchema = Type.Union([
   }),
 ]);
 
+/** Publish activity only on real model deltas; never expose internal reasoning
+ * or manufacture heartbeat events while the provider is idle. */
+function modelActivityUpdates(onUpdate: Parameters<DataToolDefinition['execute']>[3]): () => void {
+  let lastSent: number | undefined;
+  return () => {
+    const now = Date.now();
+    if (lastSent !== undefined && now - lastSent < 1_000) return;
+    lastSent = now;
+    onUpdate?.({ content: [], details: { activity: 'model' } });
+  };
+}
+
 export function createDataCustomTools(
   dataToolService: DataToolService,
   context?: DataToolPromptContext,
@@ -391,16 +403,33 @@ export function createDataCustomTools(
             maxLength: 10_000,
             description: TOOL_SCHEMA_COPY.data.processRequirement,
           }),
+          reuseTaskId: Type.Optional(
+            Type.String({
+              minLength: 1,
+              description:
+                'Existing task to edit; generation updates this task after confirmation.',
+            })
+          ),
+          startFromNodeId: Type.Optional(
+            Type.String({
+              minLength: 1,
+              description: 'Continue after this saved workflow node. Requires reuseTaskId.',
+            })
+          ),
         },
         { additionalProperties: false }
       ),
-      execute: async (toolCallId, params, signal) =>
-        dataToolService.analyzeTaskRequirement(
-          params as never,
-          executionContext
+      execute: async (toolCallId, params, signal, onUpdate) =>
+        dataToolService.analyzeTaskRequirement(params as never, {
+          ...(executionContext
             ? { ...executionContext, toolCallId, signal }
-            : dataToolService.resolveExecutionContext(context?.sessionId ?? '', toolCallId, signal)
-        ),
+            : dataToolService.resolveExecutionContext(
+                context?.sessionId ?? '',
+                toolCallId,
+                signal
+              )),
+          onActivity: modelActivityUpdates(onUpdate),
+        }),
     },
     {
       name: 'data_generate_task_from_requirement',
@@ -434,13 +463,17 @@ export function createDataCustomTools(
         },
         { additionalProperties: false }
       ),
-      execute: async (toolCallId, params, signal) =>
-        dataToolService.generateTaskFromAnalysis(
-          params as never,
-          executionContext
+      execute: async (toolCallId, params, signal, onUpdate) =>
+        dataToolService.generateTaskFromAnalysis(params as never, {
+          ...(executionContext
             ? { ...executionContext, toolCallId, signal }
-            : dataToolService.resolveExecutionContext(context?.sessionId ?? '', toolCallId, signal)
-        ),
+            : dataToolService.resolveExecutionContext(
+                context?.sessionId ?? '',
+                toolCallId,
+                signal
+              )),
+          onActivity: modelActivityUpdates(onUpdate),
+        }),
     },
     {
       name: 'data_update_task',

@@ -1,3 +1,4 @@
+import { useDataWorkspaceActivation } from '../../../../features/data/hooks/use-data-workspace-activation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Connection } from '@xyflow/react';
@@ -292,6 +293,11 @@ export function TaskEditor({
     Boolean(workflowSignature) &&
     Boolean(savedWorkflowSignature) &&
     workflowSignature !== savedWorkflowSignature;
+  useDataWorkspaceActivation(() => {
+    if (isWorkflowDirty) return;
+    void loadWorkflow();
+    void loadOutputTableChoices();
+  });
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null,
     [nodes, selectedNodeId]
@@ -1475,9 +1481,6 @@ export function TaskEditor({
         isCanvasDirty={isWorkflowDirty}
         onApplied={async () => {
           await loadWorkflow();
-          // Generation may have created a new output table — the tasks-tab
-          // dashboard reload does not fetch output tables, so refresh the
-          // inspector's choices here or the bound id shows instead of a name.
           await loadOutputTableChoices();
           await onWorkflowSaved();
         }}

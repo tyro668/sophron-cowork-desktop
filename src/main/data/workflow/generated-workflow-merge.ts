@@ -130,10 +130,11 @@ export function mergeGeneratedChainAfterAnchor(
     };
   }
 
-  // Internal chain edges (op_i → op_{i+1}) remapped onto the merged ids —
-  // without them multi-step chains dead-end at the head operator.
+  // Only copy edges between operators. The sink edge is wired once below;
+  // nodeIdMap also contains the retained output for an open tail.
+  const operatorIds = new Set(chain.map((node) => node.id));
   const chainEdges = generated.edges
-    .filter((edge) => nodeIdMap.has(edge.sourceNodeId) && nodeIdMap.has(edge.targetNodeId))
+    .filter((edge) => operatorIds.has(edge.sourceNodeId) && operatorIds.has(edge.targetNodeId))
     .map((edge) =>
       makeEdge(
         nodeIdMap.get(edge.sourceNodeId)!,

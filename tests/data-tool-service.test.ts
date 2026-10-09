@@ -402,6 +402,7 @@ describe('DataToolService', () => {
         capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
       };
       const receipt = analysisReceipts.create({
+        authoringRequest: input.authoringRequest,
         sessionId: input.usageTraceId!,
         sourceUserMessageId: input.sourceUserMessageId,
         inputTableId: result.inputTableId,
@@ -567,6 +568,14 @@ describe('DataToolService', () => {
         },
       })
     );
+    const nativeRequest = analysisReceipts.get(analysisId)!.authoringRequest;
+    expect(nativeRequest).toMatchObject({
+      id: expect.any(String),
+      source: { location: 'local', tableId: 'input_1' },
+    });
+    expect(generated.details).toMatchObject({
+      dataTaskCompletion: { requestId: nativeRequest.id, result: { taskId: 'task_1' } },
+    });
     expect(firstText(generated)).toContain('Temporary execution validation passed');
     expect(JSON.stringify(generated)).not.toContain('must not reach the outer model');
 
@@ -587,9 +596,13 @@ describe('DataToolService', () => {
     const replacementAnalysis = await executeDataTool(analyzeTool, 'analysis_call_2', {
       inputTableId: 'input_1',
       processRequirement: '过滤 Sales 小于 100 的记录',
+      reuseTaskId: 'task_1',
     });
     const replacementAnalysisId = (replacementAnalysis.details as { analysisId: string })
       .analysisId;
+    expect(analysisReceipts.get(replacementAnalysisId)!.authoringRequest.id).not.toBe(
+      nativeRequest.id
+    );
     service.updateExecutionContext({
       sessionId: 'session_1',
       currentUserMessageId: 'user_message_4',
@@ -604,6 +617,7 @@ describe('DataToolService', () => {
     });
     expect(generateTaskFromRequirement).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        reuseTaskId: 'task_1',
         output: {
           location: 'local',
           writeMode: 'replace',
@@ -636,6 +650,7 @@ describe('DataToolService', () => {
         capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
       };
       const receipt = analysisReceipts.create({
+        authoringRequest: input.authoringRequest,
         sessionId: input.usageTraceId!,
         sourceUserMessageId: input.sourceUserMessageId,
         inputTableId: result.inputTableId,

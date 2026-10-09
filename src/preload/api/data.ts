@@ -1,6 +1,5 @@
 import { ipcRenderer } from 'electron';
 import type {
-  DataAnalyzeTaskRequirementResult,
   DataCleaningTask,
   DataColumnTypeInfo,
   DataCreateOutputTableInput,
@@ -12,8 +11,6 @@ import type {
   DataDeleteInputTableNormalizerVersionResult,
   DataGenerateInputTableNormalizerDraftInput,
   DataGenerateInputTableNormalizerDraftResult,
-  DataGenerateTaskFromRequirementInput,
-  DataGenerateTaskFromRequirementResult,
   DataImportDatasetInput,
   DataInputTableNormalizerDraftProgressEvent,
   DataInputTableNormalizerVersionSaveResult,
@@ -173,14 +170,6 @@ export function createDataApi(): ElectronApi['data'] {
       payload: DataGenerateInputTableNormalizerDraftInput
     ): Promise<DataGenerateInputTableNormalizerDraftResult> =>
       ipcRenderer.invoke('data.generateInputTableNormalizerDraft', payload),
-    generateTaskFromRequirement: (
-      payload: DataGenerateTaskFromRequirementInput
-    ): Promise<DataGenerateTaskFromRequirementResult> =>
-      ipcRenderer.invoke('data.generateTaskFromRequirement', payload),
-    analyzeTaskRequirement: (
-      payload: DataGenerateTaskFromRequirementInput
-    ): Promise<DataAnalyzeTaskRequirementResult> =>
-      ipcRenderer.invoke('data.analyzeTaskRequirement', payload),
     onInputTableNormalizerDraftProgress: (
       callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
     ) => {

@@ -11,6 +11,7 @@ import {
 } from '../src/main/agent/pi-model-resolution';
 import { API_PROVIDER_PRESETS } from '../src/shared/api-model-presets';
 import type { Api, Model, OpenAICompletionsCompat } from '@earendil-works/pi-ai';
+import { completeSimple } from '@earendil-works/pi-ai/compat';
 
 /**
  * The models exercised here all resolve through the openai-completions api,
@@ -21,6 +22,54 @@ function completionsCompat(model: Model<Api>): OpenAICompletionsCompat | undefin
 }
 
 describe('pi model resolution helpers', () => {
+  it.each([false, true])(
+    'serializes the real DashScope thinking switch (enabled=%s)',
+    async (enabled) => {
+      const model = applyPiModelRuntimeOverrides(
+        buildSyntheticPiModel(
+          'qwen3.8-flash',
+          'aliyun',
+          'openai',
+          'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        ),
+        { rawProvider: 'aliyun' }
+      );
+      let body: Record<string, unknown> | undefined;
+      // Capture the SDK's actual wire payload, then stop before any network call.
+      await completeSimple(
+        model,
+        { messages: [{ role: 'user', content: 'test', timestamp: 0 }] },
+        {
+          apiKey: 'offline-test',
+          reasoning: enabled ? 'low' : undefined,
+          thinkingBudgets: { low: 1024 },
+          maxTokens: 4000,
+          onPayload(payload) {
+            body = payload as Record<string, unknown>;
+            throw new Error('offline payload capture');
+          },
+        }
+      );
+      expect(body).toBeDefined();
+      expect(body?.enable_thinking).toBe(enabled);
+      expect(body?.reasoning_effort).toBeUndefined();
+      expect(body?.thinking_budget).toBe(enabled ? 1024 : undefined);
+    }
+  );
+
+  it('does not apply DashScope switches to Qwen served by other providers', () => {
+    const model = applyPiModelRuntimeOverrides(
+      buildSyntheticPiModel(
+        'qwen3.8-flash',
+        'openrouter',
+        'openai',
+        'https://openrouter.ai/api/v1'
+      ),
+      { rawProvider: 'openrouter' }
+    );
+    expect(completionsCompat(model)?.thinkingFormat).not.toBe('qwen');
+    expect(completionsCompat(model)?.thinkingTokenBudgetField).toBeUndefined();
+  });
   it('skips invalid custom raw provider lookups and deduplicates candidates', () => {
     const candidates = buildPiModelLookupCandidates('openai/gpt-5.4', {
       configProvider: 'openai',
@@ -631,9 +680,8 @@ describe('pi model resolution helpers', () => {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 128000,
         maxTokens: 16384,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         compat: { supportsStreaming: true } as any,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
       {
         configProvider: 'custom',
@@ -644,7 +692,7 @@ describe('pi model resolution helpers', () => {
 
     expect(completionsCompat(model)?.supportsDeveloperRole).toBe(false);
     expect(completionsCompat(model)?.supportsStore).toBe(false);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     expect((model.compat as any)?.supportsStreaming).toBe(true);
   });
 

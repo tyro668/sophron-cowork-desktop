@@ -187,6 +187,7 @@ export class GeneratedTaskCommandService {
           repairBudget,
           onModelUsage,
           signal: input.signal,
+          onActivity: input.onActivity,
         });
         let validation = await this.validateGeneratedWorkflowCandidate({
           taskId: task.id,
@@ -240,6 +241,7 @@ export class GeneratedTaskCommandService {
             repairBudget,
             onModelUsage,
             signal: input.signal,
+            onActivity: input.onActivity,
           });
           validation = await this.validateGeneratedWorkflowCandidate({
             taskId: task.id,
@@ -329,9 +331,11 @@ export class GeneratedTaskCommandService {
     const analysisColumns = anchor ? anchor.columns : preparedInput.columnsSnapshot;
     const analysis = await analyzeDataTaskRequirement({
       requirement: processRequirement,
+      requirementConversation: input.requirementConversation,
       columns: analysisColumns,
       runtimeConfig: input.runtimeConfig,
       signal: input.signal,
+      onActivity: input.onActivity,
       onModelUsage: (result) => {
         this.recordOneShotUsage({
           generationId,
@@ -354,6 +358,13 @@ export class GeneratedTaskCommandService {
       capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
     };
     const receipt = this.analysisReceipts.create({
+      authoringRequest: input.authoringRequest ?? {
+        id: randomUUID(),
+        source: input.source,
+        reuseTaskId: input.reuseTaskId,
+        startFromNodeId: input.startFromNodeId,
+        workflow: input.workflow,
+      },
       sessionId: generationId,
       sourceUserMessageId: normalizeOptionalName(input.sourceUserMessageId),
       inputTableId: result.inputTableId,

@@ -339,6 +339,24 @@ export function applyPiModelRuntimeOverrides(
   }
 
   const effectiveProvider = options.rawProvider || options.configProvider;
+  // DashScope does not use OpenAI's reasoning_effort switch. Without this
+  // mapping hybrid Qwen models fall back to the server's default thinking mode.
+  if (
+    effectiveProvider === 'aliyun' &&
+    nextModel.api === 'openai-completions' &&
+    /(?:^|\/)qwen/i.test(nextModel.id) &&
+    nextModel.reasoning
+  ) {
+    nextModel = {
+      ...nextModel,
+      compat: {
+        ...(nextModel.compat || {}),
+        thinkingFormat: 'qwen',
+        supportsReasoningEffort: false,
+        thinkingTokenBudgetField: 'thinking_budget',
+      },
+    } as typeof nextModel;
+  }
   if (
     options.customBaseUrl &&
     isCustomProvider &&
@@ -436,7 +454,6 @@ export function resolvePiRegistryModel(
   options: PiModelLookupOptions = {}
 ): Model<Api> | undefined {
   for (const candidate of buildPiModelLookupCandidates(modelString, options)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const model = (getModel as (...args: unknown[]) => Model<Api> | undefined)(
       candidate.provider as PiRegistryProvider,
       candidate.model

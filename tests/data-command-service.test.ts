@@ -17,6 +17,7 @@ import {
   repairGeneratedWorkflowFromDiagnostics,
   type WorkflowModelUsageEvent,
 } from '../src/main/data/workflow';
+import { createWorkflowRepairBudget } from '../src/main/data/workflow/workflow-failure';
 import type { WorkflowFailureDiagnostic } from '../src/main/data/workflow/workflow-failure';
 
 type WorkflowStepFixture = readonly [type: string, payload: string];
@@ -1486,6 +1487,103 @@ function main() {
     expect(pairs).not.toContain(`${filterNode.id}->${outputNode.id}`);
     // The merged tail feeds the existing output sink — no new output table.
     expect(second.outputTableId).toBe(first.outputTableId);
+  });
+
+  it('generates and validates a confirmed chain after a lone unsaved input node', async () => {
+    const onActivity = vi.fn();
+    const receipts = new RequirementAnalysisReceiptStore();
+    const { service, store, tempRoot } = createService({ requirementAnalysisReceipts: receipts });
+    const csvPath = path.join(tempRoot, 'open-tail.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createInputTable({
+      name: 'open tail input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+    const { task } = await service.createTask({
+      name: 'open tail task',
+      sourceInputTableId: input.inputTable.id,
+    });
+    const toolService = new DataToolService(service, receipts);
+    const authoringRequest = {
+      id: 'open-tail-request',
+      source: { location: 'local' as const, tableId: input.inputTable.id },
+      output: {
+        location: 'local' as const,
+        writeMode: 'create' as const,
+        tableName: 'open tail result',
+      },
+      reuseTaskId: task.id,
+      startFromNodeId: 'input',
+      workflow: {
+        nodes: [
+          {
+            id: 'input',
+            type: 'input_source' as const,
+            label: 'Input',
+            x: 0,
+            y: 0,
+            config: { source: 'dataset', datasetId: input.inputTable.id },
+          },
+        ],
+        edges: [],
+      },
+    };
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({
+        items: [
+          {
+            requirement: '过滤掉 Market 为 EU 的数据',
+            status: 'supported',
+            capabilities: ['filter.boolean_predicate'],
+          },
+        ],
+      }),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
+    const analysis = await toolService.analyzeTaskRequirement(
+      { inputTableId: input.inputTable.id, processRequirement: '过滤掉 Market 为 EU 的数据' },
+      {
+        sessionId: 'open-tail-chat',
+        currentUserMessageId: 'request',
+        authoringRequest,
+        runtimeConfig: { ...testRuntimeConfig, enableThinking: true },
+        onActivity,
+      }
+    );
+    const result = await toolService.generateTaskFromAnalysis(
+      {
+        analysisId: (analysis.details as { analysisId: string }).analysisId,
+        confirmed: true,
+        outputMode: 'create',
+      },
+      {
+        sessionId: 'open-tail-chat',
+        currentUserMessageId: 'confirmed',
+        runtimeConfig: { ...testRuntimeConfig, enableThinking: true },
+        onActivity,
+      }
+    );
+    expect(result.details).toMatchObject({
+      dataTaskCompletion: { requestId: authoringRequest.id, result: { taskId: task.id } },
+      validation: { temporaryRun: 'passed' },
+    });
+    expect(vi.mocked(runPiAiOneShot).mock.calls.map((call) => call[3]?.onActivity)).toEqual([
+      onActivity,
+      onActivity,
+    ]);
+    expect(vi.mocked(runPiAiOneShot).mock.calls.map((call) => call[3]?.reasoning)).toEqual([
+      'off',
+      'low',
+    ]);
+    expect(vi.mocked(runPiAiOneShot).mock.calls[1][3]?.thinkingBudgets).toEqual({ low: 1024 });
+    const saved = await store.getTaskWorkflow(task.id);
+    expect(saved.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
+    expect(saved.edges).toHaveLength(2);
+    const outputNode = saved.nodes.find((node) => node.type === 'output')!;
+    expect(saved.edges.filter((edge) => edge.targetNodeId === outputNode.id)).toHaveLength(1);
   });
 
   it('rejects anchored generation when the start node is missing', async () => {
@@ -3575,6 +3673,113 @@ function main() {
       },
     });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['helper', 'complete program'])(
+    'recovers the reported profit-filter repair when javascriptSource contains a %s',
+    async (shape) => {
+      const helper = (expression: string) => `function filterPositiveProfit(input) {
+  return workflow.step(input, "filter", { condition: expr(row => row["利润"] === "待确认" ? false : ${expression} > 0) });
+}`;
+      const main = `function main() {
+  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const filtered = filterPositiveProfit(input);
+  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });
+}`;
+      const original = `${helper('cast(row["利润"], "float")')}\n\n${main}`;
+      const replacement = helper('cast(replace(row["利润"], ",", ""), "float")');
+      const repaired = `${replacement}\n\n${main}`;
+      const response = (javascriptSource: string) => ({
+        text: JSON.stringify({ javascriptSource }),
+        hasThinking: false,
+        durationMs: 1,
+        ...ONE_SHOT_RESULT_DEFAULTS,
+      });
+      vi.mocked(runPiAiOneShot)
+        .mockResolvedValueOnce(response(original))
+        .mockResolvedValueOnce(response(shape === 'helper' ? replacement : repaired));
+      if (shape === 'complete program')
+        vi.mocked(runPiAiOneShot).mockResolvedValueOnce(response(repaired));
+      const { service, tempRoot } = createService();
+      const csvPath = path.join(tempRoot, 'profit-repair.csv');
+      fs.writeFileSync(
+        csvPath,
+        '区域,利润\n东区,"1,234.50"\n西区,-2.00\n南区,0\n北区,3.25\n中区,待确认\n',
+        'utf8'
+      );
+      const input = await service.createInputTable({
+        name: '利润输入',
+        sourceKind: 'csv',
+        filePath: csvPath,
+      });
+      const generated = await service.generateTaskFromRequirement({
+        source: { location: 'local', tableId: input.inputTable.id },
+        processRequirement: '筛选利润大于0的数据',
+        output: { location: 'local', writeMode: 'create', tableName: '利润输出' },
+        runtimeConfig: testRuntimeConfig,
+      });
+      expect(runPiAiOneShot).toHaveBeenCalledTimes(shape === 'helper' ? 2 : 3);
+      const patchPrompt = JSON.parse(vi.mocked(runPiAiOneShot).mock.calls[1][0]);
+      expect(patchPrompt.outputJsonSchema.javascriptPatch.functionName).toBe(
+        'filterPositiveProfit'
+      );
+      expect(vi.mocked(runPiAiOneShot).mock.calls[1][1]).toContain(
+        '"javascriptPatch":{"functionName":"filterPositiveProfit"'
+      );
+      expect(vi.mocked(runPiAiOneShot).mock.calls[1][1]).not.toContain(
+        'Return {"javascriptSource":"..."}'
+      );
+      if (shape === 'complete program') {
+        const fallbackPrompt = JSON.parse(vi.mocked(runPiAiOneShot).mock.calls[2][0]);
+        expect(fallbackPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
+        expect(fallbackPrompt.previousFailedAttempt.failedJavascriptSource).toBe(original);
+      }
+      const run = await service.runTask({ taskId: generated.taskId });
+      expect(run.preview?.rows.map((row) => row['区域'])).toEqual(['东区', '北区']);
+    }
+  );
+
+  it('does not apply an out-of-scope javascriptSource response or exceed the repair budget', async () => {
+    const source = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] > 100) }',
+    ]);
+    const replacement = asFunctionWorkflow([
+      'filter',
+      '{ condition: expr(row => row["Market"] !== "US") }',
+    ]);
+    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+      text: JSON.stringify({ javascriptSource: replacement }),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
+    await expect(
+      repairGeneratedWorkflowFromDiagnostics({
+        inputTableId: 'input',
+        outputTableName: 'output',
+        requirement: '过滤掉EU',
+        columns: [{ name: 'Market', type: 'string' }],
+        runtimeConfig: testRuntimeConfig,
+        failedJavascriptSource: source,
+        diagnostics: [
+          {
+            severity: 'error',
+            code: 'JAVASCRIPT_TYPE_ERROR_2365',
+            message: 'Invalid comparison',
+            functionName: 'step1',
+            failureStage: 'javascript_compile',
+            repairClass: 'function_patch',
+            commandErrorCode: 'VALIDATION_FAILED',
+          } as WorkflowFailureDiagnostic,
+        ],
+        repairBudget: createWorkflowRepairBudget(1),
+      })
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: { repairStopReason: 'exhausted' },
+    });
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a repaired workflowDsl response when a function patch is required', async () => {

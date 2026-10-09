@@ -1,3 +1,4 @@
+import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
 import type {
   AgentRuntimeConfig,
   DataAnalyzeTaskRequirementResult,
@@ -167,6 +168,7 @@ export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirement
   runtimeConfig?: AgentRuntimeConfig;
   taskName?: string;
   signal?: AbortSignal;
+  onActivity?: () => void;
   outputConflictPolicy?: 'reuse' | 'unique' | 'error';
 };
 
@@ -174,13 +176,16 @@ export type AnalyzeTaskRequirementCommand = Pick<
   GenerateTaskFromRequirementCommand,
   | 'source'
   | 'processRequirement'
+  | 'requirementConversation'
   | 'usageTraceId'
   | 'runtimeConfig'
   | 'signal'
+  | 'onActivity'
   | 'reuseTaskId'
   | 'startFromNodeId'
   | 'workflow'
 > & {
+  authoringRequest?: DataTaskAuthoringRequest;
   /** User message that initiated a tool-driven analysis; used to enforce a later confirmation turn. */
   sourceUserMessageId?: string;
 };

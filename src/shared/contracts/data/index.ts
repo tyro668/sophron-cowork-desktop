@@ -586,10 +586,21 @@ export interface DataAutomationOutputBinding {
   localOutputTableId?: string;
 }
 
+export interface DataTaskRequirementConversationEntry {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 export interface DataGenerateTaskFromRequirementInput {
   source: DataAutomationSourceBinding;
   processRequirement: string;
   output: DataAutomationOutputBinding;
+  /**
+   * Earlier requirement↔analysis turns (user messages plus the analysis feedback
+   * they produced), in order. Gives the analyzer context so a short follow-up
+   * message can be mapped back to the question it answers. Analysis only.
+   */
+  requirementConversation?: DataTaskRequirementConversationEntry[];
   /** Correlates requirement analysis, generation, and repair calls from one UI flow. */
   usageTraceId?: string;
   /** Short-lived backend receipt binding a confirmed analysis to this generation request. */

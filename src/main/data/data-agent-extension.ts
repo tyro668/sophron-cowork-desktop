@@ -23,6 +23,21 @@ export function createDataAgentRuntimeExtension(
         sessionId: context.session.id,
         currentUserMessageId: currentUserMessage?.id,
         runtimeConfig: context.runtimeConfig,
+        authoringRequest: dataContext.authoringRequest,
+        requirementConversation: context.existingMessages
+          .slice(-30)
+          .filter(
+            (message) =>
+              message.id !== currentUserMessage?.id &&
+              (message.role === 'user' || message.role === 'assistant')
+          )
+          .flatMap((message) => {
+            const text = message.content
+              .filter((block) => block.type === 'text')
+              .map((block) => block.text)
+              .join('\n');
+            return text ? [{ role: message.role as 'user' | 'assistant', text }] : [];
+          }),
       });
 
       // The full catalog stays registered every turn so packs can be activated
@@ -36,12 +51,14 @@ export function createDataAgentRuntimeExtension(
         },
       ];
       const hasPendingReceipts = dataToolService.hasPendingAnalysis(context.session.id);
+      const needsClarification =
+        hasPendingReceipts && !dataToolService.hasSupportedAnalysis(context.session.id);
       const intent = detectDataIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
         hasPendingReceipts,
         hasSelectedTask: !!dataContext.selectedDataTaskId,
       });
-      if (!intent.active) {
+      if (!intent.active && !dataContext.authoringRequest && !needsClarification) {
         activations.clear(context.session.id);
         return {
           customTools: catalog,
@@ -53,14 +70,21 @@ export function createDataAgentRuntimeExtension(
 
       const previous = activations.activePacks(context.session.id);
       const packNames =
-        intent.continuation && previous.size > 0
+        intent.continuation &&
+        previous.size > 0 &&
+        !dataContext.authoringRequest &&
+        !hasPendingReceipts
           ? [...previous]
           : [
-              intent.generate ? 'data.generate' : intent.run ? 'data.run' : 'data.core',
+              intent.generate || dataContext.authoringRequest || hasPendingReceipts
+                ? 'data.generate'
+                : intent.run
+                  ? 'data.run'
+                  : 'data.core',
               ...(intent.file ? ['data.tables'] : []),
               ...(intent.normalizer ? ['data.normalizer'] : []),
               ...(intent.cloud ? ['data.cloud'] : []),
-              ...(intent.authoring ? ['data.authoring'] : []),
+              ...(intent.authoring && !dataContext.authoringRequest ? ['data.authoring'] : []),
             ];
       const packs = activations.activate(context.session.id, packNames);
       let activateTools = [
@@ -70,10 +94,12 @@ export function createDataAgentRuntimeExtension(
           )
         ),
       ];
-      if (hasPendingReceipts && intent.continuation) {
-        activateTools = ['data_generate_task_from_requirement'];
-      } else if (
+      // Confirmation does not remove inspection/re-analysis: a failed generation
+      // may need both in the same run. Receipts enforce the confirmation boundary.
+      if (
         intent.run &&
+        !dataContext.authoringRequest &&
+        !hasPendingReceipts &&
         !intent.authoring &&
         (/taskId\s*[=:]/i.test(context.prompt) ||
           (dataContext.selectedDataTaskId &&

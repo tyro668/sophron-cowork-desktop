@@ -48,11 +48,31 @@ const controllableChannelType = z.enum(['feishu', 'lark', 'wechat', 'dingtalk', 
 const inputTableSourceKind = z.enum(['excel', 'csv', 'folder']);
 const memoryItemStatus = z.enum(['active', 'pending', 'rejected', 'archived']);
 
-const contentBlock = z.looseObject({ type: str });
+const contentBlock = z.looseObject({ type: str }).superRefine((value, ctx) => {
+  if (value.type !== 'data_task_request') return;
+  const parsed = dataTaskAuthoringRequestSchema.safeParse(value.request);
+  if (!parsed.success)
+    ctx.addIssue({ code: 'custom', message: 'Invalid data task authoring request' });
+});
 
 // ---------------------------------------------------------------------------
 // client-event / client-invoke payload (ClientEvent union)
 // ---------------------------------------------------------------------------
+const dataTaskAuthoringRequestSchema = z.lazy(() =>
+  z.object({
+    id: z.string().min(1),
+    source: z.looseObject({ location: z.enum(['local', 'cloud']), tableId: z.string().min(1) }),
+    output: z
+      .looseObject({
+        location: z.enum(['local', 'cloud']),
+        writeMode: z.enum(['create', 'replace']),
+      })
+      .optional(),
+    reuseTaskId: strNullish,
+    startFromNodeId: strNullish,
+    workflow: dataWorkflowSaveInput.nullish(),
+  })
+);
 const sessionStartPayload = z.looseObject({
   title: str,
   prompt: str,
@@ -691,37 +711,6 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       model: strNullish,
       primaryLanguage: z.enum(['python', 'node']).optional(),
       progressId: strOpt,
-    }),
-  ],
-  'data.generateTaskFromRequirement': [
-    z.looseObject({
-      source: z.looseObject({ location: z.enum(['cloud', 'local']), tableId: str }),
-      processRequirement: str,
-      output: z.looseObject({
-        location: z.enum(['cloud', 'local']),
-        writeMode: z.enum(['create', 'replace']),
-      }),
-      usageTraceId: strOpt,
-      analysisId: strNullish,
-      modelConfigSetId: strNullish,
-      model: strNullish,
-      reuseTaskId: strNullish,
-      currentVersion: numNullish,
-      startFromNodeId: strNullish,
-      workflow: dataWorkflowSaveInput.nullish(),
-    }),
-  ],
-  'data.analyzeTaskRequirement': [
-    z.looseObject({
-      source: z.looseObject({ location: z.enum(['cloud', 'local']), tableId: str }),
-      processRequirement: str,
-      output: objOpt,
-      usageTraceId: strOpt,
-      modelConfigSetId: strNullish,
-      model: strNullish,
-      reuseTaskId: strNullish,
-      startFromNodeId: strNullish,
-      workflow: dataWorkflowSaveInput.nullish(),
     }),
   ],
   'data.previewInputTableNormalizerVersion': [

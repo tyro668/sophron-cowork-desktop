@@ -17,6 +17,7 @@
  *
  * Dependencies: session-manager, mcp-manager, config-store, skills-manager
  */
+import { bindAgentRunCancellation } from './agent-run-cancellation';
 import {
   createAgentSession,
   getAgentDir,
@@ -1691,9 +1692,11 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       });
       const unsubscribe = eventBridge.subscribe();
       this.activeEventBridges.set(session.id, eventBridge);
+      const unbindCancellation = bindAgentRunCancellation(piSession, controller.signal);
 
       // Execute the prompt — unsubscribe in finally to prevent event listener leak
       try {
+        controller.signal.throwIfAborted();
         eventBridge.resetActivityTimeout();
         if (provider === 'ollama') {
           log(
@@ -1710,6 +1713,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           );
         }
         const promptResult = await piSession.prompt(contextualPrompt);
+        controller.signal.throwIfAborted();
         log(
           '[AgentRunner] prompt() returned:',
           JSON.stringify(promptResult ?? 'void').substring(0, 1000)
@@ -1729,6 +1733,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           eventBridge.resetProtocolRetryState();
           eventBridge.resetActivityTimeout();
           await piSession.agent.continue();
+          controller.signal.throwIfAborted();
         }
 
         if (eventBridge.retryableProtocolViolation) {
@@ -1773,6 +1778,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           }
         }
       } finally {
+        unbindCancellation();
         this.activeEventBridges.delete(session.id);
         if (modelClock.startedAt) {
           evaluationMetrics.modelDurationMs += Date.now() - modelClock.startedAt;

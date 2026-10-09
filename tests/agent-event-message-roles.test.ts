@@ -25,7 +25,9 @@ function harness() {
     },
     controller: new AbortController(),
     modelClock: {},
-    evaluationMetrics: { modelCallCount: 0 },
+    evaluationMetrics: { modelCallCount: 0, toolDurationMs: 0, toolErrorCount: 0 },
+    toolStartedAt: new Map(),
+    getToolDisplayName: (name: string) => name,
     sendMessage,
     sendToRenderer: vi.fn(),
     sendTraceUpdate: vi.fn(),
@@ -38,6 +40,27 @@ function harness() {
 }
 
 describe('SDK message role routing', () => {
+  it('persists structured task completion only for successful generation tools', () => {
+    const { emit, sendMessage } = harness();
+    const completion = { requestId: 'request', result: { taskId: 'task' } };
+    const event = {
+      type: 'tool_execution_end',
+      toolCallId: 'tool',
+      toolName: 'data_generate_task_from_requirement',
+      isError: false,
+      result: {
+        content: [{ type: 'text', text: 'Saved' }],
+        details: { dataTaskCompletion: completion },
+      },
+    };
+    emit(event);
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toEqual(completion);
+    emit({ ...event, isError: true });
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toBeUndefined();
+    emit({ ...event, toolName: 'other_tool' });
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toBeUndefined();
+  });
+
   it.each([
     { role: 'system', content: 'System prompt' },
     { role: 'user', content: [{ type: 'text', text: 'Continue' }] },

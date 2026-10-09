@@ -21,17 +21,26 @@ vi.mock('../../src/renderer/components/LlmPromptComposer', () => ({
     value,
     onChange,
     disabled,
+    onSubmit,
+    submitDisabled,
   }: {
     value: string;
     onChange: (value: string) => void;
     disabled: boolean;
+    onSubmit?: () => void;
+    submitDisabled?: boolean;
   }) => (
-    <textarea
-      aria-label="requirement"
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <>
+      <textarea
+        aria-label="requirement"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button type="button" onClick={onSubmit} disabled={submitDisabled}>
+        发送
+      </button>
+    </>
   ),
 }));
 vi.mock('../../src/renderer/components/GlassSelect', () => ({
@@ -52,6 +61,11 @@ vi.mock('../../src/renderer/components/GlassSelect', () => ({
       ))}
     </select>
   ),
+}));
+const startSession = vi.hoisted(() => vi.fn());
+const getSessionMessages = vi.hoisted(() => vi.fn());
+vi.mock('../../src/renderer/hooks/useIPC', () => ({
+  useIPC: () => ({ startSession, getSessionMessages }),
 }));
 const analyze = vi.fn();
 const generate = vi.fn();
@@ -84,7 +98,13 @@ const tr = (key: string, fallback: string) => i18n.t(key, { defaultValue: fallba
 beforeEach(async () => {
   vi.resetAllMocks();
   await i18n.changeLanguage('zh');
-  useAppStore.setState({ appConfig: { activeConfigSetId: 'model-config' } as never });
+  useAppStore.setState({
+    appConfig: { activeConfigSetId: 'model-config' } as never,
+    sessionStates: {},
+    workingDir: '/workspace',
+  });
+  startSession.mockResolvedValue({ id: 'chat' });
+  getSessionMessages.mockResolvedValue([]);
   (window as { electronAPI?: unknown }).electronAPI = {
     data: { analyzeTaskRequirement: analyze, generateTaskFromRequirement: generate, getDashboard },
   };
@@ -94,11 +114,30 @@ beforeEach(async () => {
 });
 afterEach(cleanup);
 
-async function generateFromDialog() {
+async function sendToChat() {
   fireEvent.change(screen.getByLabelText('requirement'), { target: { value: 'Filter sales' } });
-  fireEvent.click(screen.getByText('分析可行性'));
-  await screen.findByText('可生成');
-  fireEvent.click(screen.getByText('生成并保存任务'));
+  fireEvent.click(screen.getByText('发送'));
+  await waitFor(() => expect(startSession).toHaveBeenCalledOnce());
+  return startSession.mock.calls[0][1][1].request;
+}
+function complete(requestId: string, isError = false) {
+  act(() =>
+    useAppStore.getState().addMessage('chat', {
+      id: crypto.randomUUID(),
+      sessionId: 'chat',
+      role: 'assistant',
+      timestamp: 1,
+      content: [
+        {
+          type: 'tool_result',
+          toolUseId: 'generate',
+          content: 'Saved',
+          isError,
+          dataTaskCompletion: { requestId, result },
+        },
+      ],
+    })
+  );
 }
 
 function AutomationEditor({
@@ -127,7 +166,7 @@ function AutomationEditor({
 }
 
 describe('shared data-task authoring', () => {
-  it('creates a reusable task from the selected table using the confirmed analysis', async () => {
+  it('passes selected bindings into a project conversation and refreshes from its saved result', async () => {
     const applied = vi.fn();
     render(
       <DataTaskAiGenerateDialog
@@ -137,52 +176,34 @@ describe('shared data-task authoring', () => {
         onOpenChange={vi.fn()}
       />
     );
-    expect(screen.getByText(/Sales/)).toBeTruthy();
-    await generateFromDialog();
+    const request = await sendToChat();
+    expect(request).toMatchObject({
+      source: { location: 'local', tableId: 'input' },
+      output: { location: 'local', writeMode: 'create' },
+    });
+    expect(startSession.mock.calls[0][2]).toBe('/workspace');
+    expect(analyze).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    complete('unrelated');
+    expect(applied).not.toHaveBeenCalled();
+    complete(request.id);
     await waitFor(() =>
       expect(applied).toHaveBeenCalledWith(
         result,
-        expect.objectContaining({
-          source: { location: 'local', tableId: 'input', tableName: 'Sales' },
-          analysisId: 'receipt',
-          reuseTaskId: undefined,
-          modelConfigSetId: 'model-config',
-          output: { location: 'local', writeMode: 'create', tableName: undefined },
-        })
+        expect.objectContaining({ source: request.source })
       )
     );
-    expect(generate.mock.calls[0][0].usageTraceId).toBe(analyze.mock.calls[0][0].usageTraceId);
   });
-
-  it('invalidates the receipt when output requirements change', async () => {
-    render(
-      <DataTaskAiGenerateDialog
-        open
-        boundInputTable={{ id: 'input', name: 'Sales' }}
-        onApplied={vi.fn()}
-        onOpenChange={vi.fn()}
-      />
-    );
-    fireEvent.change(screen.getByLabelText('requirement'), { target: { value: 'Filter sales' } });
-    fireEvent.click(screen.getByText('分析可行性'));
-    await screen.findByText('可生成');
-    fireEvent.change(screen.getByLabelText('结果表名（留空自动生成）'), {
-      target: { value: 'Other output' },
-    });
-    expect((screen.getByText('生成并保存任务') as HTMLButtonElement).disabled).toBe(true);
-    expect(generate).not.toHaveBeenCalled();
-  });
-
   it('loads all input pages when no table is preselected', async () => {
     getDashboard
       .mockResolvedValueOnce({
         datasets: Array.from({ length: 200 }, (_, i) => ({ id: `i${i}`, name: `Input ${i}` })),
       })
-      .mockResolvedValueOnce({ datasets: [{ id: 'last', name: 'Last input' }] });
-    render(<DataTaskAiGenerateDialog open onApplied={vi.fn()} onOpenChange={vi.fn()} />);
+      .mockResolvedValueOnce({ datasets: [{ id: 'last', name: 'Last' }] });
+    render(<DataTaskAiGenerateDialog open onOpenChange={vi.fn()} />);
     await waitFor(() => expect(getDashboard).toHaveBeenCalledTimes(2));
     expect(getDashboard.mock.calls[1][0].datasetOffset).toBe(200);
-    expect((screen.getByText('分析可行性') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('发送') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -219,15 +240,9 @@ describe('automation task references', () => {
     expect(generate).not.toHaveBeenCalled();
   });
 
-  it('invokes the same authoring dialog and binds only after the task is saved', async () => {
+  it('uses the project conversation and binds only its successful persisted result', async () => {
     const changed = vi.fn();
     const generated = vi.fn();
-    let resolve!: (value: DataGenerateTaskFromRequirementResult) => void;
-    generate.mockReturnValue(
-      new Promise<DataGenerateTaskFromRequirementResult>((done) => {
-        resolve = done;
-      })
-    );
     render(
       <AutomationEditor
         changed={changed}
@@ -236,29 +251,58 @@ describe('automation task references', () => {
           id: 'action',
           type: 'data.task.run',
           enabled: true,
-          config: { taskId: 'existing', outputMode: 'persisted' },
+          config: { taskId: 'existing', outputMode: 'temporary' },
         }}
       />
     );
     fireEvent.click(screen.getByText('AI 生成数据任务'));
-    expect(screen.getByText(i18n.t('data.workflow.aiInputBound', { name: 'Sales' }))).toBeTruthy();
-    await generateFromDialog();
-    expect(changed).not.toHaveBeenCalled();
-    await act(async () => resolve(result));
-    expect(changed).toHaveBeenCalledWith(
+    const request = await sendToChat();
+    expect(changed).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        type: 'data.task.run',
-        config: { taskId: 'generated', taskName: 'Sales processing', outputMode: 'persisted' },
+        config: expect.objectContaining({
+          taskId: 'existing',
+          generationSessionId: 'chat',
+          generationRequestId: request.id,
+        }),
       })
     );
-    expect(generated).toHaveBeenCalledWith(true);
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('option', { name: 'Sales processing' })).toBeTruthy();
+    complete('unrelated');
+    complete(request.id, true);
+    expect(generated).not.toHaveBeenCalled();
+    complete(request.id);
+    await waitFor(() => expect(generated).toHaveBeenCalledWith(true));
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'data.task.run',
+        config: { taskId: 'generated', taskName: 'Sales processing', outputMode: 'temporary' },
+      })
+    );
   });
-
-  it('retains the existing task when generation fails or is cancelled', async () => {
+  it('does not replace a task the user selected while the authoring chat was running', async () => {
     const changed = vi.fn();
-    generate.mockRejectedValue(new Error('Generation unavailable'));
+    const generated = vi.fn();
+    render(
+      <AutomationEditor
+        changed={changed}
+        generated={generated}
+        initial={{
+          id: 'action',
+          type: 'data.task.run',
+          enabled: true,
+          config: { taskId: 'existing' },
+        }}
+      />
+    );
+    fireEvent.click(screen.getByText('AI 生成数据任务'));
+    const request = await sendToChat();
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'existing' } });
+    complete(request.id);
+    expect(generated).not.toHaveBeenCalled();
+    expect(changed.mock.calls.at(-1)?.[0].config.taskId).toBe('existing');
+  });
+  it('leaves the old binding intact when starting the conversation fails', async () => {
+    startSession.mockRejectedValue(new Error('Cannot start'));
+    const changed = vi.fn();
     render(
       <AutomationEditor
         changed={changed}
@@ -271,11 +315,9 @@ describe('automation task references', () => {
       />
     );
     fireEvent.click(screen.getByText('AI 生成数据任务'));
-    await generateFromDialog();
-    await screen.findByText('Generation unavailable');
-    expect(changed).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('取消'));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(screen.getByLabelText('requirement'), { target: { value: 'Filter sales' } });
+    fireEvent.click(screen.getByText('发送'));
+    await screen.findByText('Cannot start');
     expect(changed).not.toHaveBeenCalled();
   });
 

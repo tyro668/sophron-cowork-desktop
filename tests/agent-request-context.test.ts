@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
 import { Type } from 'typebox';
 import { AgentRuntimeExtensionManager } from '../src/main/extensions/agent-runtime-extension-manager';
@@ -11,6 +11,7 @@ import {
   type AssistantMessage,
   type Message,
   type Model,
+  type ToolCall,
 } from '@earendil-works/pi-ai';
 import { AgentRequestContext } from '../src/main/agent/agent-request-context';
 import {
@@ -18,6 +19,8 @@ import {
   selectActiveToolsForTurn,
 } from '../src/main/agent/agent-runner-tools';
 import { createCapabilitiesSearchTool } from '../src/main/agent/agent-capabilities-tool';
+import { createDataAgentRuntimeExtension } from '../src/main/data/data-agent-extension';
+import type { DataToolService } from '../src/main/data/data-tool-service';
 
 const model: Model<'openai-completions'> = {
   baseUrl: 'http://offline.invalid',
@@ -68,6 +71,79 @@ function response(content: AssistantMessage['content']) {
 }
 
 describe('request-only domain context with the real SDK', () => {
+  it('can inspect and re-analyze after generation fails in the confirmation turn', async () => {
+    const ok = { content: [{ type: 'text' as const, text: 'ok' }], details: {} };
+    const generate = vi.fn(async () => {
+      throw new Error('generation validation failed');
+    });
+    const inspect = vi.fn(async () => ok);
+    const analyze = vi.fn(async () => ok);
+    const extension = createDataAgentRuntimeExtension({
+      resolveConversationContext: async () => ({
+        sessionId: 'chat',
+        selectedDataTaskId: 'task',
+        capabilities: {},
+      }),
+      updateExecutionContext: vi.fn(),
+      hasPendingAnalysis: () => true,
+      hasSupportedAnalysis: () => true,
+      resolveExecutionContext: () => ({ sessionId: 'chat', currentUserMessageId: 'confirmed' }),
+      rememberResolvedResources: vi.fn(),
+      generateTaskFromAnalysis: generate,
+      getTaskWorkflow: inspect,
+      analyzeTaskRequirement: analyze,
+    } as unknown as DataToolService);
+    const activated = (await extension.beforeSessionRun!({
+      session: { id: 'chat' } as BeforeSessionRunContext['session'],
+      prompt: '确认',
+      existingMessages: [],
+      isColdStart: false,
+    }))!;
+    const tools: AgentTool[] = activated
+      .customTools!.filter((tool) => activated.activateTools!.includes(tool.name))
+      .map((tool) => ({
+        ...tool,
+        execute: (id, args, signal, update) =>
+          tool.execute(id, args, signal, update, undefined as never),
+      }));
+    const calls: Array<Pick<ToolCall, 'name' | 'arguments'>> = [
+      {
+        name: 'data_generate_task_from_requirement',
+        arguments: { analysisId: 'receipt', confirmed: true, outputMode: 'create' },
+      },
+      { name: 'data_get_task_workflow', arguments: { taskId: 'task' } },
+      {
+        name: 'data_analyze_task_requirement',
+        arguments: {
+          inputTableId: 'input',
+          processRequirement: 'Filter profit > 0',
+          reuseTaskId: 'task',
+        },
+      },
+    ];
+    let index = 0;
+    const agent = new Agent({
+      initialState: { model, tools },
+      streamFn: (_model, request) => {
+        const call = calls[index++];
+        if (!call) return response([{ type: 'text', text: 'done' }]);
+        expect(getCurrentTools(request.messages).map((tool) => tool.name)).toContain(call.name);
+        return response([{ type: 'toolCall', id: `call-${index}`, ...call }]);
+      },
+    });
+    const context = new AgentRequestContext();
+    context.update(activated);
+    context.setActiveTools(activated.activateTools!);
+    context.install(agent);
+    await agent.prompt('确认');
+    expect(generate).toHaveBeenCalledOnce();
+    expect(inspect).toHaveBeenCalledOnce();
+    expect(analyze).toHaveBeenCalledOnce();
+    const results = agent.state.messages.filter((message) => message.role === 'toolResult');
+    expect(results.map((message) => message.isError)).toEqual([true, false, false]);
+    expect(JSON.stringify(results)).not.toContain('not found');
+  });
+
   it('keeps exactly one current state outside history through warm turns and history replacement', async () => {
     const seen: Array<{ system: string; history: string }> = [];
     const agent = new Agent({

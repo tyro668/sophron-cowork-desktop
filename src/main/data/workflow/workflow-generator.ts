@@ -219,6 +219,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   runtimeConfig,
   repairBudget,
   onModelUsage,
+  onActivity,
   signal,
 }: {
   inputTableId: string;
@@ -229,6 +230,7 @@ export async function generateDataTaskWorkflowFromRequirement({
   runtimeConfig?: AgentRuntimeConfig;
   repairBudget?: WorkflowRepairBudget;
   onModelUsage?: WorkflowModelUsageObserver;
+  onActivity?: () => void;
   signal?: AbortSignal;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
@@ -248,7 +250,14 @@ export async function generateDataTaskWorkflowFromRequirement({
           : undefined,
       }),
       config,
-      { temperature: 0, maxTokens: 4_000, signal }
+      {
+        temperature: 0,
+        maxTokens: 4_000,
+        signal,
+        onActivity,
+        reasoning: config.enableThinking ? 'low' : 'off',
+        thinkingBudgets: { low: 1_024 },
+      }
     );
     onModelUsage?.({ phase: 'initial_generation', result: response });
     if (response.stopReason === 'length') {
@@ -264,6 +273,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         diagnostics: createModelOutputTruncatedDiagnostics(),
         repairBudget: sharedRepairBudget,
         onModelUsage,
+        onActivity,
         signal,
       });
     }
@@ -298,6 +308,7 @@ export async function generateDataTaskWorkflowFromRequirement({
         diagnostics,
         repairBudget: sharedRepairBudget,
         onModelUsage,
+        onActivity,
         signal,
       });
     }
@@ -322,6 +333,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   diagnostics,
   repairBudget,
   onModelUsage,
+  onActivity,
   signal,
 }: {
   inputTableId: string;
@@ -334,6 +346,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   diagnostics: PrepDiagnostic[];
   repairBudget?: WorkflowRepairBudget;
   onModelUsage?: WorkflowModelUsageObserver;
+  onActivity?: () => void;
   signal?: AbortSignal;
 }): Promise<GeneratedDataTaskWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
@@ -399,12 +412,20 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           repairStrategy,
         }),
         buildWorkflowGenerationSystemPrompt({
+          repairFunctionName,
           operationTypes: requirementContract
             ? getRequirementCapabilityContractOperationTypes(requirementContract)
             : undefined,
         }),
         config,
-        { temperature: 0, maxTokens: maxOutputTokens, signal }
+        {
+          temperature: 0,
+          maxTokens: maxOutputTokens,
+          signal,
+          onActivity,
+          reasoning: config.enableThinking ? 'low' : 'off',
+          thinkingBudgets: { low: 1_024 },
+        }
       );
       const recordRepairUsage = (repairOutcome: WorkflowRepairOutcome): void => {
         onModelUsage?.({
@@ -441,6 +462,14 @@ export async function repairGeneratedWorkflowFromDiagnostics({
         recordRepairUsage('success');
         return repairedWorkflow;
       } catch (error) {
+        if (error instanceof WorkflowRepairResponseFormatError) {
+          // Never apply a full-program response as a scoped patch. Ask for a
+          // complete repair against the last valid baseline within the same budget.
+          recordRepairUsage('escalated');
+          forceFullRegeneration = true;
+          duplicateRewrite = false;
+          continue;
+        }
         const repairError = contextualizeWorkflowError(error, {
           failureStage: 'generation_response',
           commandErrorCode: 'VALIDATION_FAILED',
@@ -602,8 +631,9 @@ function compileRepairResponse({
 }): GeneratedDataTaskWorkflow {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as unknown;
+    parsed = parseRepairResponse(text, failedJavascriptSource, repairFunctionName);
   } catch (error) {
+    if (error instanceof WorkflowRepairResponseFormatError) throw error;
     throw new DataCommandError(
       'VALIDATION_FAILED',
       `Repair generation response must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
@@ -654,6 +684,49 @@ function compileRepairResponse({
   });
 }
 
+class WorkflowRepairResponseFormatError extends DataCommandError {
+  constructor() {
+    super(
+      'VALIDATION_FAILED',
+      'The model returned JavaScript outside the requested function patch scope'
+    );
+  }
+}
+
+/** Some models put a replacement helper under javascriptSource. Normalize only
+ * a structurally scoped patch; full programs and ambiguous source need a new
+ * full-generation request, never an implicit overwrite of unrelated functions. */
+function parseRepairResponse(
+  text: string,
+  failedJavascriptSource: string,
+  repairFunctionName?: string
+): unknown {
+  const parsed: unknown = JSON.parse(text);
+  if (
+    !repairFunctionName ||
+    !isRecord(parsed) ||
+    'javascriptPatch' in parsed ||
+    typeof parsed.javascriptSource !== 'string'
+  )
+    return parsed;
+  try {
+    indexJavaScriptFunctions(parsed.javascriptSource);
+    createWorkflowFunctionPatchCandidate(
+      failedJavascriptSource,
+      repairFunctionName,
+      parsed.javascriptSource
+    );
+  } catch {
+    throw new WorkflowRepairResponseFormatError();
+  }
+  return {
+    javascriptPatch: {
+      functionName: repairFunctionName,
+      replacementSource: parsed.javascriptSource,
+    },
+  };
+}
+
 function resolveRepairFunctionName(
   javascriptSource: string,
   diagnostics: PrepDiagnostic[]
@@ -686,7 +759,7 @@ function extractRepairJavascriptCandidate({
   repairFunctionName?: string;
 }): string | null {
   try {
-    const parsed = JSON.parse(text) as unknown;
+    const parsed = parseRepairResponse(text, failedJavascriptSource, repairFunctionName);
     if (isRecord(parsed) && isRecord(parsed.javascriptPatch)) {
       const functionName = parsed.javascriptPatch.functionName;
       const replacementSource = parsed.javascriptPatch.replacementSource;

@@ -59,6 +59,7 @@ export const DATA_TOOL_PACKS = {
     tools: [
       'data_list_input_tables',
       'data_list_output_tables',
+      'data_get_task_workflow',
       'data_analyze_task_requirement',
       'data_generate_task_from_requirement',
     ],

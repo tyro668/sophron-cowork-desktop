@@ -1,6 +1,10 @@
+import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { TSchema } from 'typebox';
-import type { AgentRuntimeConfig } from '../../shared/contracts';
+import type {
+  DataTaskRequirementConversationEntry,
+  AgentRuntimeConfig,
+} from '../../shared/contracts';
 
 export type DataToolDefinition = ToolDefinition<TSchema, unknown>;
 
@@ -15,6 +19,7 @@ export interface DataResourceRef {
 export interface DataToolPromptContext {
   sessionId: string;
   workspacePath?: string;
+  authoringRequest?: DataTaskAuthoringRequest;
   selectedDataTaskId?: string;
   selectedDataTaskName?: string;
   selectedInputTableId?: string;
@@ -37,14 +42,19 @@ export interface DataToolPromptContext {
 export interface DataToolExecutionContext {
   sessionId: string;
   currentUserMessageId?: string;
+  requirementConversation?: DataTaskRequirementConversationEntry[];
+  authoringRequest?: DataTaskAuthoringRequest;
   runtimeConfig?: AgentRuntimeConfig;
   toolCallId?: string;
   signal?: AbortSignal;
+  onActivity?: () => void;
 }
 
 export interface AnalyzeDataTaskRequirementToolInput {
   inputTableId: string;
   processRequirement: string;
+  reuseTaskId?: string;
+  startFromNodeId?: string;
 }
 
 export interface GenerateDataTaskFromAnalysisToolInput {

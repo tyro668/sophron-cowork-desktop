@@ -1,3 +1,4 @@
+import { useDataWorkspaceActivation } from '../hooks/use-data-workspace-activation';
 /**
  * Data workspace page — composition layer. Wires the domain hooks together
  * (ui / server state / editor state / preview / actions / navigation) and
@@ -121,6 +122,11 @@ export function DataViewPage() {
   const { setPendingNavigationTab, setLoadingTab, setError } = ui;
   const { loadDashboard, invalidateRequests } = dashboard;
   const { loadInputTables } = inputTables;
+  useDataWorkspaceActivation(() => {
+    if (!isDataApiAvailable) return;
+    if (activeTab === 'input_tables') void loadInputTables();
+    else void loadDashboard({ preserveError: true });
+  });
 
   useEffect(() => {
     if (error) {
@@ -296,7 +302,6 @@ export function DataViewPage() {
                     isLoading={isTasksLoading}
                     isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
                     onCreate={actions.handleCreateTask}
-                    onAiGenerate={() => setAiTaskRequest({})}
                     onSearchChange={handleSearchChange}
                     onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
                     onGroupPageChange={dashboard.setTaskGroupPage}
@@ -398,6 +403,7 @@ export function DataViewPage() {
         )}
       </div>
       <DataTaskAiGenerateDialog
+        onApplied={actions.handleGeneratedTask}
         open={aiTaskRequest !== null}
         boundInputTable={
           aiTaskRequest?.input
@@ -407,7 +413,6 @@ export function DataViewPage() {
         onOpenChange={(open) => {
           if (!open) setAiTaskRequest(null);
         }}
-        onApplied={actions.handleGeneratedTask}
       />
     </div>
   );

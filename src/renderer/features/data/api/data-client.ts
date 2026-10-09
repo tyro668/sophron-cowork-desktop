@@ -115,12 +115,6 @@ export const dataClient = {
     ...args: Parameters<DataApi['onInputTableNormalizerDraftProgress']>
   ) => dataApi().onInputTableNormalizerDraftProgress(...args),
 
-  // ---- task generation ----
-  generateTaskFromRequirement: (...args: Parameters<DataApi['generateTaskFromRequirement']>) =>
-    dataApi().generateTaskFromRequirement(...args),
-  analyzeTaskRequirement: (...args: Parameters<DataApi['analyzeTaskRequirement']>) =>
-    dataApi().analyzeTaskRequirement(...args),
-
   // ---- cloud ----
   listCloudSpaces: (...args: Parameters<DataApi['listCloudSpaces']>) =>
     dataApi().listCloudSpaces(...args),

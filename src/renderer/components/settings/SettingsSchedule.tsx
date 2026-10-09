@@ -181,7 +181,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         setAutomationGroups(groups);
         setActionDefinitions(actions);
         setDataDashboard(dashboard);
-        if (!skipNextAutoSelectRef.current && !selectedIdRef.current && automationRows[0]) {
+        if (
+          !skipNextAutoSelectRef.current &&
+          !suppressSelectedAutomationSyncRef.current &&
+          !selectedIdRef.current &&
+          automationRows[0]
+        ) {
           setSelectedId(automationRows[0].id);
           setDraft(automationToDraft(automationRows[0]));
         }
@@ -731,13 +736,17 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             </div>
           </div>
           <ActionChainSection
+            workingDirectory={projects.find((project) => project.id === draft.projectId)?.cwd}
             draft={draft}
             actionDefinitions={actionDefinitions}
             dataTasks={dataTasks}
             inputTables={inputTables}
             outputTables={outputTables}
             appConfig={appConfig}
-            onDraftChange={setDraft}
+            onDraftChange={(next) => {
+              suppressSelectedAutomationSyncRef.current = true;
+              setDraft(next);
+            }}
             onGeneratedTaskSuccess={(workflowDslAvailable) => {
               void loadDataTaskResources()
                 .then((resources) => {
