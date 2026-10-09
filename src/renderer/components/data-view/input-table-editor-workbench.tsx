@@ -1,3 +1,4 @@
+import { InputTableCloudSourceDialog } from './input-table-cloud-source-dialog';
 import { InputTableAutomations } from './table-automations';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
@@ -6,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
-  Cloud,
   Copy,
   Eye,
   FileCode2,
@@ -46,11 +46,9 @@ import {
   formatDateTime,
   formatDisplayPath,
   getCloudMirror,
-  getCloudMirrorSourceMeta,
   getInputTableSourceMeta,
   underlineTabListClass,
   underlineTabTriggerClass,
-  type CloudMirrorInfo,
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -104,8 +102,7 @@ export type InputTableEditorProps = {
   ) => void | Promise<void>;
   onCreateTask?: (dataset: DataDataset) => void;
   onAiGenerateTask?: (dataset: DataDataset) => void;
-  onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
-  onOpenCloudSource?: (mirror: CloudMirrorInfo) => void;
+  onSyncCloudSource?: (dataset: DataDataset) => Promise<DataDataset | undefined>;
 };
 
 export type InputTableEditorTab = 'rules' | 'code' | 'versions';
@@ -123,15 +120,25 @@ export function InputTableEditorWorkbench({
   onCreateTask,
   onAiGenerateTask,
   onSyncCloudSource,
-  onOpenCloudSource,
 }: InputTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
   const appConfig = useAppStore((state) => state.appConfig);
   const targetId = draft?.id ?? dataset?.id ?? '';
   const initialName = draft?.name ?? dataset?.name ?? '';
-  const initialSourceKind = dataset?.sourceKind ?? 'excel';
-  const initialConfig = dataset?.inputConfig ?? getDefaultInputTableConfig(initialSourceKind);
+  const savedCloudSource = getCloudMirror(dataset);
+  const initialSourceKind = savedCloudSource ? 'cloud' : (dataset?.sourceKind ?? 'excel');
+  const initialConfig = useMemo<DataInputTableConfig>(
+    () =>
+      savedCloudSource
+        ? {
+            sourceKind: 'cloud',
+            cloudMirror: savedCloudSource,
+            dataProcessing: dataset?.inputConfig.dataProcessing,
+          }
+        : (dataset?.inputConfig ?? getDefaultInputTableConfig(initialSourceKind)),
+    [dataset?.inputConfig, savedCloudSource, initialSourceKind]
+  );
   // Keyed on serialized content, not object identity: a dataset refetch after a
   // failed save produces an equal config object, and must not reset in-progress
   // edits (an unpublished customize draft lives in localConfig).
@@ -176,11 +183,17 @@ export function InputTableEditorWorkbench({
   const lastSourcePath = useRef<string | null>(dataset?.sourcePath ?? null);
   const trimmedName = localName.trim();
   const isConfigured = Boolean(dataset);
-  const cloudMirror = getCloudMirror(dataset);
+  const cloudMirror =
+    localConfig.sourceKind === 'cloud' && localConfig.cloudMirror.tableId
+      ? localConfig.cloudMirror
+      : undefined;
+  const [cloudSourceDialogOpen, setCloudSourceDialogOpen] = useState(false);
+  const localFileSource =
+    dataset && !savedCloudSource && localSourceKind === initialSourceKind
+      ? dataset.sourcePath
+      : undefined;
   const [cloudSyncBusy, setCloudSyncBusy] = useState(false);
-  const sourceMeta = cloudMirror
-    ? getCloudMirrorSourceMeta()
-    : getInputTableSourceMeta(localSourceKind);
+  const sourceMeta = getInputTableSourceMeta(localSourceKind);
   const SourceIcon = sourceMeta.Icon;
   const excelConfig =
     localConfig.sourceKind === 'excel' ? localConfig : getDefaultExcelInputTableConfig();
@@ -194,12 +207,12 @@ export function InputTableEditorWorkbench({
   const hasNameChanges = Boolean(dataset && trimmedName && trimmedName !== dataset.name);
   const canSaveConfig =
     Boolean(dataset) &&
-    localSourceKind === dataset?.sourceKind &&
+    localSourceKind === initialSourceKind &&
     !isInputTableConfigEqual(localConfig, dataset?.inputConfig);
   const canSave = Boolean(dataset && trimmedName && !isBusy && (hasNameChanges || canSaveConfig));
   const canPreview = Boolean(
     dataset &&
-    localSourceKind === dataset.sourceKind &&
+    localSourceKind === initialSourceKind &&
     !isBusy &&
     dataClient.has('previewInputTable')
   );
@@ -259,11 +272,14 @@ export function InputTableEditorWorkbench({
     setDeletingNormalizerVersionId(null);
     setActiveEditorTab('rules');
     setSelectedNormalizerFilePath('');
-    setActiveViewTab('config');
     setPreviewData(null);
     setPreviewError(null);
     setPreviewPage(1);
   }, [initialConfigKey, initialName, initialSourceKind, targetId]);
+
+  useEffect(() => {
+    setActiveViewTab('config');
+  }, [targetId]);
 
   useEffect(() => {
     if (!isNameEditing) return;
@@ -309,7 +325,8 @@ export function InputTableEditorWorkbench({
   };
 
   const handleSourceKindChange = (sourceKind: DataInputTableSourceKind) => {
-    const nextConfig = getDefaultInputTableConfig(sourceKind);
+    const nextConfig =
+      sourceKind === initialSourceKind ? initialConfig : getDefaultInputTableConfig(sourceKind);
     setLocalSourceKind(sourceKind);
     setLocalConfig(nextConfig);
   };
@@ -496,16 +513,16 @@ export function InputTableEditorWorkbench({
     }
   };
 
-  const loadPreviewPage = async (page: number) => {
-    if (!dataset || !dataClient.has('previewInputTable')) return;
+  const loadPreviewPage = async (page: number, source = dataset, config = localConfig) => {
+    if (!source || !dataClient.has('previewInputTable')) return;
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewPage(page);
     try {
       const nextPreview = await dataClient.previewInputTable({
-        filePath: dataset.sourcePath,
-        sourceKind: localSourceKind,
-        config: localConfig,
+        filePath: source.sourcePath,
+        sourceKind: config.sourceKind,
+        config,
         limit: INPUT_TABLE_PREVIEW_PAGE_SIZE,
         offset: (page - 1) * INPUT_TABLE_PREVIEW_PAGE_SIZE,
       });
@@ -514,6 +531,25 @@ export function InputTableEditorWorkbench({
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  const refreshData = async () => {
+    if (!dataset || !savedCloudSource || !onSyncCloudSource) {
+      await loadPreviewPage(previewPage);
+      return;
+    }
+    setCloudSyncBusy(true);
+    setPreviewError(null);
+    try {
+      const refreshed = await onSyncCloudSource(dataset);
+      if (refreshed) {
+        await loadPreviewPage(1, refreshed, refreshed.inputConfig);
+      }
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCloudSyncBusy(false);
     }
   };
 
@@ -811,20 +847,22 @@ export function InputTableEditorWorkbench({
                 <span>
                   {t('data.outputTables.editor.dataMeta', {
                     rows: previewData.totalRows,
-                    time: formatDateTime(dataset.updatedAt),
+                    time: formatDateTime(savedCloudSource?.syncedAt ?? dataset.updatedAt),
                   })}
                 </span>
               )}
               {activeViewTab === 'data' && canPreview && (
                 <button
                   type="button"
-                  onClick={() => void loadPreviewPage(previewPage)}
-                  disabled={previewLoading}
+                  onClick={() => void refreshData()}
+                  disabled={previewLoading || cloudSyncBusy}
                   className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
                   aria-label={t('data.actions.refresh')}
                   title={t('data.actions.refresh')}
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${previewLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${previewLoading || cloudSyncBusy ? 'animate-spin' : ''}`}
+                  />
                 </button>
               )}
             </div>
@@ -845,6 +883,7 @@ export function InputTableEditorWorkbench({
                     { value: 'excel', label: t('data.inputTables.editor.excel') },
                     { value: 'csv', label: t('data.inputTables.editor.csv') },
                     { value: 'folder', label: t('data.inputTables.editor.folder') },
+                    { value: 'cloud', label: t('data.inputTables.sources.cloud') },
                   ]}
                   disabled={isBusy}
                   triggerIcon={
@@ -861,9 +900,11 @@ export function InputTableEditorWorkbench({
 
               <InputTableConfigRow
                 label={
-                  localSourceKind === 'folder'
-                    ? t('data.inputTables.editor.folderPath')
-                    : t('data.inputTables.editor.file')
+                  localSourceKind === 'cloud'
+                    ? t('data.inputTables.sources.cloud')
+                    : localSourceKind === 'folder'
+                      ? t('data.inputTables.editor.folderPath')
+                      : t('data.inputTables.editor.file')
                 }
               >
                 <div className="flex min-w-0 items-stretch">
@@ -875,120 +916,41 @@ export function InputTableEditorWorkbench({
                     </span>
                     <div
                       className="min-w-0 truncate text-[13px] font-medium text-text-primary"
-                      title={dataset?.sourcePath ?? undefined}
+                      title={cloudMirror ? formatCloudMirrorLocation(cloudMirror) : localFileSource}
                     >
                       {cloudMirror
                         ? formatCloudMirrorLocation(cloudMirror)
-                        : dataset
-                          ? formatDisplayPath(dataset.sourcePath)
+                        : localFileSource
+                          ? formatDisplayPath(localFileSource)
                           : t('data.inputTables.editor.noSource')}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => chooseSource(localSourceKind)}
+                    onClick={() =>
+                      localSourceKind === 'cloud'
+                        ? setCloudSourceDialogOpen(true)
+                        : chooseSource(localSourceKind)
+                    }
                     disabled={isBusy || !trimmedName}
                     className="inline-flex h-8 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    {dataset?.sourcePath
-                      ? localSourceKind === 'folder'
-                        ? t('data.inputTables.editor.changeFolder')
-                        : t('data.inputTables.editor.changeFile')
-                      : localSourceKind === 'folder'
-                        ? t('data.inputTables.editor.chooseFolder')
-                        : t('data.inputTables.editor.chooseFile')}
+                    {localSourceKind === 'cloud'
+                      ? t(
+                          cloudMirror
+                            ? 'data.inputTables.editor.cloudSource.change'
+                            : 'data.inputTables.editor.cloudSource.choose'
+                        )
+                      : localFileSource
+                        ? localSourceKind === 'folder'
+                          ? t('data.inputTables.editor.changeFolder')
+                          : t('data.inputTables.editor.changeFile')
+                        : localSourceKind === 'folder'
+                          ? t('data.inputTables.editor.chooseFolder')
+                          : t('data.inputTables.editor.chooseFile')}
                   </button>
                 </div>
               </InputTableConfigRow>
-
-              {dataset && cloudMirror && (
-                <InputTableConfigRow label={t('data.inputTables.editor.cloudSource.title')}>
-                  <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2.5 shadow-soft">
-                    <div className="flex min-w-0 items-center gap-2 text-[13px] text-text-secondary">
-                      <span className="flex-shrink-0 text-text-muted">
-                        {t('data.inputTables.editor.cloudSource.location')}
-                      </span>
-                      <span
-                        className="min-w-0 truncate font-medium text-text-primary"
-                        title={formatCloudMirrorLocation(cloudMirror)}
-                      >
-                        {formatCloudMirrorLocation(cloudMirror)}
-                      </span>
-                      {cloudMirror.tableKind && (
-                        <span className="inline-flex h-5 flex-shrink-0 items-center rounded bg-surface-active px-1.5 text-[11px] font-medium text-text-secondary">
-                          {cloudMirror.tableKind === 'base'
-                            ? t('cloudData.kindBase')
-                            : t('cloudData.kindAnalysis')}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
-                      <span>
-                        {t('data.inputTables.editor.cloudSource.localSnapshot', {
-                          rows: dataset.rowCount.toLocaleString(),
-                        })}
-                      </span>
-                      <span>
-                        {t('data.inputTables.editor.cloudSource.lastSync', {
-                          time: cloudMirror.syncedAt
-                            ? formatDateTime(cloudMirror.syncedAt)
-                            : formatDateTime(dataset.updatedAt),
-                        })}
-                      </span>
-                      <span className="min-w-0 truncate" title={cloudMirror.sourceVersion}>
-                        {t('data.inputTables.editor.cloudSource.sourceUpdated', {
-                          time:
-                            cloudMirror.sourceVersion ||
-                            t('data.inputTables.editor.cloudSource.unknownTime'),
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {onSyncCloudSource && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCloudSyncBusy(true);
-                            void Promise.resolve(onSyncCloudSource(dataset)).finally(() =>
-                              setCloudSyncBusy(false)
-                            );
-                          }}
-                          disabled={
-                            isBusy ||
-                            cloudSyncBusy ||
-                            !cloudMirror.spaceId ||
-                            !cloudMirror.projectId
-                          }
-                          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                          title={
-                            !cloudMirror.spaceId || !cloudMirror.projectId
-                              ? t('data.inputTables.editor.cloudSource.syncUnavailable')
-                              : undefined
-                          }
-                        >
-                          <RefreshCw
-                            className={`h-3.5 w-3.5 ${cloudSyncBusy ? 'animate-spin' : ''}`}
-                          />
-                          {cloudSyncBusy
-                            ? t('data.inputTables.editor.cloudSource.syncing')
-                            : t('data.inputTables.editor.cloudSource.sync')}
-                        </button>
-                      )}
-                      {onOpenCloudSource && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenCloudSource(cloudMirror)}
-                          disabled={!cloudMirror.spaceId || !cloudMirror.projectId}
-                          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          <Cloud className="h-3.5 w-3.5" />
-                          {t('data.inputTables.editor.cloudSource.openInCloud')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </InputTableConfigRow>
-              )}
 
               <InputTableConfigRow label={t('data.inputTables.editor.processingStrategy')}>
                 <GlassSelect
@@ -1467,6 +1429,15 @@ export function InputTableEditorWorkbench({
           </TabsContent>
         </Tabs>
       </section>
+      {cloudSourceDialogOpen && (
+        <InputTableCloudSourceDialog
+          initialSource={cloudMirror}
+          onClose={() => setCloudSourceDialogOpen(false)}
+          onSelect={(source) =>
+            chooseSource('cloud', { sourceKind: 'cloud', cloudMirror: source, dataProcessing })
+          }
+        />
+      )}
       {previewOpen && (
         <InputTablePreviewDialog
           tableKind="input"

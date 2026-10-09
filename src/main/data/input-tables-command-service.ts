@@ -425,7 +425,12 @@ function resolveInputSourceKindForCommand(
   input: Pick<CreateInputTableCommand, 'sourceKind' | 'folderPath'>,
   sourcePath: string
 ): DataInputTableSourceKind {
-  if (input.sourceKind === 'excel' || input.sourceKind === 'csv' || input.sourceKind === 'folder') {
+  if (
+    input.sourceKind === 'excel' ||
+    input.sourceKind === 'csv' ||
+    input.sourceKind === 'folder' ||
+    input.sourceKind === 'cloud'
+  ) {
     return input.sourceKind;
   }
   if (input.folderPath) {
@@ -468,6 +473,10 @@ function withInputTableDataProcessing(
       keepSourceFileName: folderConfig?.keepSourceFileName !== false,
       dataProcessing,
     };
+  }
+
+  if (sourceKind === 'cloud' && config?.sourceKind === 'cloud') {
+    return { ...config, dataProcessing };
   }
 
   const csvConfig = config?.sourceKind === 'csv' ? config : undefined;

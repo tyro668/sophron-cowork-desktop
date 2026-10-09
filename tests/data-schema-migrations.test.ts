@@ -348,6 +348,73 @@ describe('metadata migrations', () => {
     );
   });
 
+  it('migrates cloud CSV mirrors once without moving cache files or changing table identity', async () => {
+    const root = makeTempRoot();
+    const raw = new Database(path.join(root, 'meta.sqlite'));
+    rawDbs.push(raw);
+    seedLegacyFixture(raw);
+    const mirror = {
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+      contentHash: 'hash',
+      automationSyncKey: 'sync',
+    };
+    const legacy = {
+      sourceKind: 'csv',
+      header: 'auto',
+      delimiter: 'auto',
+      encoding: 'auto',
+      dataRegion: 'auto',
+      cloudMirror: mirror,
+      dataProcessing: { strategy: 'auto' },
+    };
+    raw
+      .prepare(
+        `INSERT INTO data_datasets (id, name, source_path, source_kind, config_json, table_name, row_count, column_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        'cloud-input',
+        'Cloud input',
+        '/hidden/cache.csv',
+        'csv',
+        JSON.stringify(legacy),
+        'cloud_input',
+        2,
+        1,
+        10,
+        20
+      );
+    const store = openStore(path.join(root, 'workspace.duckdb'), raw);
+    const migrated = await store.getInputTableRecord('cloud-input');
+    expect(migrated).toMatchObject({
+      id: 'cloud-input',
+      sourceKind: 'cloud',
+      sourcePath: '/hidden/cache.csv',
+      tableName: 'cloud_input',
+      updatedAt: 20,
+      inputConfig: {
+        sourceKind: 'cloud',
+        cloudMirror: mirror,
+        dataProcessing: { strategy: 'auto' },
+      },
+    });
+    expect(migrated?.inputConfig).not.toHaveProperty('delimiter');
+    expect((await store.findInputTableByAutomationSyncKey('sync'))?.id).toBe('cloud-input');
+    const firstStamp = raw
+      .prepare('SELECT applied_at FROM data_schema_migrations WHERE version = 14')
+      .get();
+    await store.close();
+    stores.pop();
+    const reopened = openStore(path.join(root, 'workspace.duckdb'), raw);
+    expect((await reopened.getInputTableRecord('cloud-input'))?.inputConfig).toEqual(
+      migrated?.inputConfig
+    );
+    expect(
+      raw.prepare('SELECT applied_at FROM data_schema_migrations WHERE version = 14').get()
+    ).toEqual(firstStamp);
+  });
+
   it('upgrades a legacy fixture through every pending migration', async () => {
     const tempRoot = makeTempRoot();
     const metaPath = path.join(tempRoot, 'meta.sqlite');
@@ -360,7 +427,9 @@ describe('metadata migrations', () => {
 
     // Ledger records every migration in order.
     const ledger = ledgerRows(raw);
-    expect(ledger.map((row) => row.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(ledger.map((row) => row.version)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+    ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
       'drop_legacy_demo_rows',
@@ -375,6 +444,7 @@ describe('metadata migrations', () => {
       'merge_cloud_sync_action_types',
       'data_list_groups',
       'data_task_runs',
+      'cloud_input_table_source',
     ]);
 
     // v12: group table + member columns exist.

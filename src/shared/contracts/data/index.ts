@@ -70,7 +70,7 @@ export interface DataCleaningTask {
   lastRunAt: number | null;
 }
 
-export type DataInputTableSourceKind = 'excel' | 'csv' | 'folder';
+export type DataInputTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud';
 
 export type DataInputTableProcessingStrategy = 'auto' | 'customize';
 
@@ -333,21 +333,30 @@ export interface DataInputTableCsvConfig {
   encoding: 'auto';
   delimiter: 'auto';
   dataProcessing?: DataInputTableProcessingConfig;
-  cloudMirror?: {
-    automationSyncKey?: string;
-    tableId: string;
-    spaceId?: string;
-    projectId?: string;
-    spaceName?: string;
-    projectName?: string;
-    tableKind?: 'base' | 'analysis';
-    tableName?: string;
-    /** Cloud table `updatedAt` captured at the last successful sync. */
-    sourceVersion?: string;
-    /** Epoch ms of the last successful cloud import/sync. */
-    syncedAt?: number;
-    contentHash: string;
-  };
+  /** Legacy CSV imports; new cloud imports use DataInputTableCloudConfig. */
+  cloudMirror?: DataInputTableCloudSource;
+}
+
+export interface DataInputTableCloudSource {
+  automationSyncKey?: string;
+  tableId: string;
+  spaceId?: string;
+  projectId?: string;
+  spaceName?: string;
+  projectName?: string;
+  tableKind?: 'base' | 'analysis';
+  tableName?: string;
+  /** Cloud table `updatedAt` captured at the last successful sync. */
+  sourceVersion?: string;
+  /** Epoch ms of the last successful cloud import/sync. */
+  syncedAt?: number;
+  contentHash: string;
+}
+
+export interface DataInputTableCloudConfig {
+  sourceKind: 'cloud';
+  cloudMirror: DataInputTableCloudSource;
+  dataProcessing?: DataInputTableProcessingConfig;
 }
 
 export interface DataInputTableFolderConfig {
@@ -361,12 +370,16 @@ export interface DataInputTableFolderConfig {
 }
 
 export type DataInputTableConfig =
-  DataInputTableExcelConfig | DataInputTableCsvConfig | DataInputTableFolderConfig;
+  | DataInputTableExcelConfig
+  | DataInputTableCsvConfig
+  | DataInputTableFolderConfig
+  | DataInputTableCloudConfig;
 
 export interface DataDataset {
   id: string;
   name: string;
   groupId: string | null;
+  /** Runtime source; for cloud tables this is a private cache path, never a UI source binding. */
   sourcePath: string;
   sourceKind: DataInputTableSourceKind;
   inputConfig: DataInputTableConfig;
@@ -823,6 +836,8 @@ export interface PreviewCloudTableResult {
 }
 
 export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
+  /** Rebind this input table instead of creating another one. */
+  inputTableId?: string;
   tableId: string;
   spaceId?: string;
   projectId?: string;

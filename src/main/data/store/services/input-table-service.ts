@@ -100,6 +100,23 @@ export class InputTableService {
   private async updateDatasetUnsafe(input: DataUpdateDatasetInput): Promise<DataDataset> {
     await this.ctx.ensureMetadataReady();
     const dataset = await this.datasets.requireDataset(input.id);
+    // A cloud binding must be materialized by the cloud import service first.
+    // A config-only save may change processing settings, never relabel stale rows.
+    if (!input.filePath && input.config?.sourceKind === 'cloud') {
+      const previous =
+        dataset.inputConfig.sourceKind === 'cloud' || dataset.inputConfig.sourceKind === 'csv'
+          ? dataset.inputConfig.cloudMirror
+          : undefined;
+      const next = input.config.cloudMirror;
+      if (
+        !previous ||
+        previous.tableId !== next.tableId ||
+        previous.spaceId !== next.spaceId ||
+        previous.projectId !== next.projectId
+      ) {
+        throw new Error('Use cloud import to change the linked cloud table');
+      }
+    }
     const name = input.name?.trim();
     const shouldReimport =
       Boolean(input.filePath) || Boolean(input.config) || Boolean(input.sourceKind);

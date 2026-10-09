@@ -4,6 +4,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import * as XLSX from '../../utils/xlsx';
 import type {
   DataInputTableConfig,
+  DataInputTableCloudConfig,
   DataInputTableCsvConfig,
   DataInputTableExcelConfig,
   DataInputTableExcelMergedCellSummary,
@@ -49,7 +50,7 @@ export interface PreparedInputTableImport {
 }
 
 export function normalizeInputTableNormalizerSourceKind(value: string): DataInputTableSourceKind {
-  if (value === 'excel' || value === 'csv' || value === 'folder') {
+  if (value === 'excel' || value === 'csv' || value === 'folder' || value === 'cloud') {
     return value;
   }
   return 'excel';
@@ -59,7 +60,7 @@ export function normalizeStoredInputTableSourceKind(
   value: string | null,
   sourcePath: string
 ): DataInputTableSourceKind {
-  if (value === 'excel' || value === 'csv' || value === 'folder') {
+  if (value === 'excel' || value === 'csv' || value === 'folder' || value === 'cloud') {
     return value;
   }
   if (sourcePath.endsWith('/') || !extname(sourcePath)) {
@@ -259,6 +260,11 @@ export function normalizeInputTableConfig(
   sourceKind: DataInputTableSourceKind,
   sourcePath: string
 ): DataInputTableConfig {
+  if (sourceKind === 'cloud') {
+    const cloudConfig = defaultCloudConfig(config);
+    if (!cloudConfig.cloudMirror.tableId.trim()) throw new Error('Cloud tableId is required');
+    return cloudConfig;
+  }
   if (sourceKind === 'excel') {
     const fallback = defaultExcelConfig(sourcePath);
     if (config?.sourceKind !== 'excel') {
@@ -302,6 +308,7 @@ export function normalizeStoredInputTableConfig(
   sourceKind: DataInputTableSourceKind,
   sourcePath: string
 ): DataInputTableConfig {
+  if (sourceKind === 'cloud') return defaultCloudConfig(config);
   if (sourceKind === 'excel') {
     const storedSheetNames =
       config?.sourceKind === 'excel'
@@ -349,6 +356,17 @@ export function defaultExcelConfig(filePath?: string): DataInputTableExcelConfig
     headerMode: 'auto',
     headerRow: 1,
     dataProcessing: defaultInputTableDataProcessing(),
+  };
+}
+
+export function defaultCloudConfig(config?: DataInputTableConfig): DataInputTableCloudConfig {
+  return {
+    sourceKind: 'cloud',
+    cloudMirror:
+      (config?.sourceKind === 'cloud' || config?.sourceKind === 'csv') && config.cloudMirror
+        ? { ...config.cloudMirror }
+        : { tableId: '', contentHash: '' },
+    dataProcessing: normalizeInputTableDataProcessing(config?.dataProcessing),
   };
 }
 

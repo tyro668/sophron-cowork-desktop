@@ -45,7 +45,7 @@ const channelType = z.enum([
   'slack',
 ]);
 const controllableChannelType = z.enum(['feishu', 'lark', 'wechat', 'dingtalk', 'wecom']);
-const inputTableSourceKind = z.enum(['excel', 'csv', 'folder']);
+const inputTableSourceKind = z.enum(['excel', 'csv', 'folder', 'cloud']);
 const memoryItemStatus = z.enum(['active', 'pending', 'rejected', 'archived']);
 
 const contentBlock = z.looseObject({ type: str }).superRefine((value, ctx) => {
@@ -374,7 +374,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'shell.showItemInFolder': [str, strOpt],
   'reports.openGeneratedReport': [str, strOpt],
   'dialog.selectFiles': [],
-  'dialog.selectInputTableSource': [inputTableSourceKind.optional()],
+  'dialog.selectInputTableSource': [inputTableSourceKind.exclude(['cloud']).optional()],
   'artifacts.listRecentFiles': [str, num, numOpt],
   // config
   'config.get': [],
@@ -738,6 +738,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   ],
   'data.importCloudTable': [
     personalAnalysisConnection.extend({
+      inputTableId: strOpt,
       tableId: str,
       spaceId: strOpt,
       projectId: strOpt,

@@ -342,16 +342,9 @@
         "folder": "文件夹",
         "folderDesc": "读取文件夹下的 Excel 和 CSV 文件，并合并为一张输入表。",
         "cloudSource": {
-          "title": "云端来源",
-          "location": "位置",
-          "localSnapshot": "本地快照 {{rows}} 行",
-          "lastSync": "上次同步 {{time}}",
-          "sourceUpdated": "源更新 {{time}}",
-          "unknownTime": "未知",
-          "sync": "同步最新数据",
-          "syncing": "同步中…",
-          "syncUnavailable": "云端来源信息不完整，请从云空间重新导入",
-          "openInCloud": "在云空间中查看"
+          "choose": "选择云端表",
+          "change": "更换云端表",
+          "bind": "关联表"
         },
         "tabs": {
           "config": "配置",
@@ -374,7 +367,7 @@
         "folder": "文件夹",
         "file": "文件",
         "notConfigured": "未配置",
-        "cloud": "云表"
+        "cloud": "云端表"
       }
     },
     "outputTables": {

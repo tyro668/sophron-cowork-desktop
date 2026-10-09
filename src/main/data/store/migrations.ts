@@ -671,6 +671,36 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       );
     },
   },
+  {
+    version: 14,
+    name: 'cloud_input_table_source',
+    up: async (ctx) => {
+      const rows = await ctx.metaQueryRows<{ id: string; config_json: string }>(
+        `SELECT id, config_json FROM data_datasets WHERE source_kind = 'csv' OR source_kind IS NULL`
+      );
+      for (const row of rows) {
+        let config;
+        try {
+          config = JSON.parse(row.config_json);
+        } catch {
+          continue;
+        }
+        if (
+          config?.sourceKind !== 'csv' ||
+          typeof config.cloudMirror?.tableId !== 'string' ||
+          !config.cloudMirror.tableId.trim()
+        )
+          continue;
+        const cloudConfig = { ...config, sourceKind: 'cloud' };
+        for (const key of ['header', 'dataRegion', 'encoding', 'delimiter'])
+          delete cloudConfig[key];
+        await ctx.metaRunSql(
+          `UPDATE data_datasets SET source_kind = 'cloud', config_json = $config WHERE id = $id`,
+          { id: row.id, config: JSON.stringify(cloudConfig) }
+        );
+      }
+    },
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

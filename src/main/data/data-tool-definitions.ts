@@ -9,7 +9,12 @@ import type { DataToolService } from './data-tool-service';
 import { DATA_TOOL_COPY, TOOL_SCHEMA_COPY } from '../prompts/tool-copy';
 
 const SourceKindSchema = Type.Optional(
-  Type.Union([Type.Literal('excel'), Type.Literal('csv'), Type.Literal('folder')])
+  Type.Union([
+    Type.Literal('excel'),
+    Type.Literal('csv'),
+    Type.Literal('folder'),
+    Type.Literal('cloud'),
+  ])
 );
 
 const ConfigSchema = Type.Optional(
@@ -170,6 +175,7 @@ export function createDataCustomTools(
       ...DATA_TOOL_COPY.data_import_cloud_table,
       parameters: Type.Object({
         ...CloudConnectionProperties,
+        inputTableId: Type.Optional(Type.String({ minLength: 1 })),
         tableId: Type.String({ minLength: 1 }),
         spaceId: Type.Optional(
           Type.String({

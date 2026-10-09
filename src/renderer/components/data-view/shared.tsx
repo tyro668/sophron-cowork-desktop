@@ -516,6 +516,8 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
         className: 'bg-success/10 text-success',
         badgeClassName: 'bg-success/10 text-success',
       };
+    case 'cloud':
+      return getCloudMirrorSourceMeta();
     case 'csv':
       return {
         Icon: FileText,
@@ -541,15 +543,17 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
 }
 
 export type CloudMirrorInfo = NonNullable<
-  Extract<DataDataset['inputConfig'], { sourceKind: 'csv' }>['cloudMirror']
+  Extract<DataDataset['inputConfig'], { sourceKind: 'cloud' }>['cloudMirror']
 >;
 
-/** Cloud provenance persisted on csv input tables imported/synced from a cloud table. */
+/** Includes legacy CSV mirrors while older records are being migrated. */
 export function getCloudMirror(
   dataset: Pick<DataDataset, 'inputConfig'> | null | undefined
 ): CloudMirrorInfo | undefined {
   const config = dataset?.inputConfig;
-  return config?.sourceKind === 'csv' ? config.cloudMirror : undefined;
+  return config?.sourceKind === 'cloud' || config?.sourceKind === 'csv'
+    ? config.cloudMirror
+    : undefined;
 }
 
 export function getCloudMirrorSourceMeta(): ReturnType<typeof getInputTableSourceMeta> {

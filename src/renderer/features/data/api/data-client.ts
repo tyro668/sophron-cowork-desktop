@@ -145,6 +145,7 @@ export const dataClient = {
   pickInputTableSourcePath: async (
     kind: Parameters<NonNullable<ElectronApi['selectInputTableSource']>>[0]
   ): Promise<string | null> => {
+    if (kind === 'cloud') return null;
     if (window.electronAPI?.selectInputTableSource) {
       const selection = await window.electronAPI.selectInputTableSource(kind);
       return selection?.path ?? null;

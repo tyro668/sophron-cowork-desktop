@@ -166,10 +166,19 @@ export function CloudResourceSelector({
           value={spaceId}
           options={withSavedOption(
             spaces.map((space) => ({ value: space.spaceId, label: space.spaceName })),
-            spaceId
+            spaceId,
+            String(config.spaceName ?? '')
           )}
           placeholder={t('schedule.cloudSync.selectSpace')}
-          onChange={(spaceId) => onChange({ ...clearTarget, spaceId, projectId: '' })}
+          onChange={(spaceId) =>
+            onChange({
+              ...clearTarget,
+              spaceId,
+              spaceName: spaces.find((space) => space.spaceId === spaceId)?.spaceName,
+              projectId: '',
+              projectName: undefined,
+            })
+          }
         />
       </FieldStack>
       <FieldStack label={t('schedule.cloudSync.project')}>
@@ -177,10 +186,17 @@ export function CloudResourceSelector({
           value={projectId}
           options={withSavedOption(
             projects.map((project) => ({ value: project.projectId, label: project.projectName })),
-            projectId
+            projectId,
+            String(config.projectName ?? '')
           )}
           placeholder={t('schedule.cloudSync.selectProject')}
-          onChange={(projectId) => onChange({ ...clearTarget, projectId })}
+          onChange={(projectId) =>
+            onChange({
+              ...clearTarget,
+              projectId,
+              projectName: projects.find((project) => project.projectId === projectId)?.projectName,
+            })
+          }
         />
       </FieldStack>
       {!create && (

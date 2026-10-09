@@ -283,6 +283,7 @@ export interface SearchCloudTablesCommand
 export type SearchCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface ImportCloudTableCommand extends PersonalAnalysisConnectionCommand {
+  inputTableId?: string;
   tableId: string;
   spaceId?: string;
   projectId?: string;

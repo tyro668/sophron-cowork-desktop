@@ -50,7 +50,7 @@ afterEach(async () => {
 });
 async function cloudMirrorOf(inputTableId: string) {
   const dataset = await store.getInputTableRecord(inputTableId);
-  return dataset?.inputConfig.sourceKind === 'csv' ? dataset.inputConfig.cloudMirror : undefined;
+  return dataset?.inputConfig.sourceKind === 'cloud' ? dataset.inputConfig.cloudMirror : undefined;
 }
 
 function service(cloudImportDir?: string) {
@@ -111,6 +111,8 @@ describe('cloud input table automation', () => {
       name: 'Imported sales',
     });
     const dataset = result.inputTable;
+    expect(dataset.sourceKind).toBe('cloud');
+    expect(dataset.inputConfig.sourceKind).toBe('cloud');
     expect(dataset.sourcePath.startsWith(importDir)).toBe(true);
     expect(existsSync(dataset.sourcePath)).toBe(true);
     const mirror = await cloudMirrorOf(dataset.id);
@@ -160,6 +162,77 @@ describe('cloud input table automation', () => {
     expect(mirror?.tableName).toBe('Remote sales v2');
     expect((mirror?.syncedAt ?? 0) >= (firstMirror?.syncedAt ?? 0)).toBe(true);
     expect((await store.getDashboard()).totalDatasets).toBe(1);
+  });
+  it('rebinds an existing input by cloud identity and keeps its task references', async () => {
+    const created = await service().importCloudTable({
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+      spaceName: 'Alpha',
+      projectName: 'Beta',
+      name: 'Sales',
+    });
+    const task = await store.createTask({
+      name: 'Process sales',
+      sourceDatasetId: created.inputTable.id,
+    });
+    findTable.mockResolvedValue({ tableId: 'next', tableName: 'Next table', kind: 'base' });
+    exportTableCsv.mockResolvedValue('id,amount\n3,100\n');
+    const rebound = await service().importCloudTable({
+      inputTableId: created.inputTable.id,
+      tableId: 'next',
+      spaceId: 's2',
+      projectId: 'p2',
+      spaceName: 'Gamma',
+      projectName: 'Delta',
+    });
+    expect(rebound.inputTable).toMatchObject({
+      id: created.inputTable.id,
+      name: 'Sales',
+      sourceKind: 'cloud',
+      rowCount: 1,
+    });
+    expect((await store.getTask(task.id))?.sourceDatasetId).toBe(created.inputTable.id);
+    expect(await cloudMirrorOf(created.inputTable.id)).toMatchObject({
+      tableId: 'next',
+      spaceId: 's2',
+      spaceName: 'Gamma',
+      projectName: 'Delta',
+    });
+    await service().refreshCloudInputTable({ inputTableId: created.inputTable.id });
+    expect(await cloudMirrorOf(created.inputTable.id)).toMatchObject({
+      spaceName: 'Gamma',
+      projectName: 'Delta',
+    });
+    expect((await store.getDashboard()).totalDatasets).toBe(1);
+    await expect(
+      store.updateDataset({
+        id: created.inputTable.id,
+        config: {
+          sourceKind: 'cloud',
+          cloudMirror: { tableId: 'unfetched', contentHash: '' },
+        },
+      })
+    ).rejects.toThrow('Use cloud import');
+    expect((await cloudMirrorOf(created.inputTable.id))?.tableId).toBe('next');
+  });
+  it('leaves the old cloud binding intact when a replacement cannot be downloaded', async () => {
+    const created = await service().importCloudTable({
+      tableId: 'remote',
+      spaceId: 's',
+      projectId: 'p',
+    });
+    exportTableCsv.mockRejectedValueOnce(new Error('Cloud unavailable'));
+    await expect(
+      service().importCloudTable({
+        inputTableId: created.inputTable.id,
+        tableId: 'next',
+        spaceId: 's',
+        projectId: 'p',
+      })
+    ).rejects.toThrow('Cloud unavailable');
+    expect((await cloudMirrorOf(created.inputTable.id))?.tableId).toBe('remote');
+    expect((await store.getInputTableRecord(created.inputTable.id))?.rowCount).toBe(2);
   });
   it('rejects refresh for non-cloud tables and incomplete legacy linkage', async () => {
     writeFileSync(join(directory, 'local.csv'), 'id\n1\n');

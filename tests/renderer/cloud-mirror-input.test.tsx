@@ -1,9 +1,6 @@
 // @vitest-environment happy-dom
-/**
- * Cloud-mirrored input tables: the list and editor surface cloud provenance
- * (space / project / table, last sync, source version) instead of the raw
- * temp file path, and the editor exposes sync + view-in-cloud actions.
- */
+/** Cloud bindings stay in configuration; data refresh and timestamps stay in the data tab. */
+import { useState } from 'react';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n-test';
@@ -15,6 +12,7 @@ import {
 import { ConfirmDialogProvider } from '../../src/renderer/components/ConfirmDialog';
 import {
   formatCloudMirrorLocation,
+  formatDateTime,
   getCloudMirror,
 } from '../../src/renderer/components/data-view/shared';
 import {
@@ -46,7 +44,7 @@ function makeCloudDataset(overrides?: Partial<DataDataset>): DataDataset {
     name: 'Imported sales',
     groupId: null,
     sourcePath: '/data/cloud-imports/cloud-remote.csv',
-    sourceKind: 'csv',
+    sourceKind: 'cloud',
     fileCount: 1,
     tableName: 'dataset_ds1',
     rowCount: 2,
@@ -55,11 +53,7 @@ function makeCloudDataset(overrides?: Partial<DataDataset>): DataDataset {
     createdAt: 1,
     updatedAt: 2,
     inputConfig: {
-      sourceKind: 'csv',
-      header: 'auto',
-      dataRegion: 'auto',
-      encoding: 'auto',
-      delimiter: 'auto',
+      sourceKind: 'cloud',
       cloudMirror: { ...MIRROR },
     },
     ...overrides,
@@ -99,24 +93,31 @@ function renderPanel() {
 }
 
 function renderEditor(handlers?: {
-  onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
-  onOpenCloudSource?: (mirror: unknown) => void;
+  onSyncCloudSource?: (dataset: DataDataset) => Promise<DataDataset | undefined>;
 }) {
-  (window as { electronAPI?: unknown }).electronAPI = { data: {} };
-  return render(
-    <ConfirmDialogProvider>
-      <InputTableEditor
-        dataset={makeCloudDataset()}
-        isBusy={false}
-        onBack={vi.fn()}
-        onRenameDataset={vi.fn()}
-        onChooseDatasetSource={vi.fn()}
-        onUpdateDatasetConfig={vi.fn()}
-        onSyncCloudSource={handlers?.onSyncCloudSource}
-        onOpenCloudSource={handlers?.onOpenCloudSource}
-      />
-    </ConfirmDialogProvider>
-  );
+  const previewInputTable = vi.fn(async () => ({ columns: [], rows: [], totalRows: 2 }));
+  (window as { electronAPI?: unknown }).electronAPI = { data: { previewInputTable } };
+  function Editor() {
+    const [dataset, setDataset] = useState(makeCloudDataset());
+    return (
+      <ConfirmDialogProvider>
+        <InputTableEditor
+          dataset={dataset}
+          isBusy={false}
+          onBack={vi.fn()}
+          onRenameDataset={vi.fn()}
+          onChooseDatasetSource={vi.fn()}
+          onUpdateDatasetConfig={vi.fn()}
+          onSyncCloudSource={async (source) => {
+            const refreshed = await handlers?.onSyncCloudSource?.(source);
+            if (refreshed) setDataset(refreshed);
+            return refreshed;
+          }}
+        />
+      </ConfirmDialogProvider>
+    );
+  }
+  return { ...render(<Editor />), previewInputTable };
 }
 
 function renderActions(overrides?: Partial<DataActionsDeps>) {
@@ -154,7 +155,8 @@ describe('cloud-mirrored input table', () => {
   });
 
   it('shows a cloud badge and source breadcrumb instead of the snapshot path', () => {
-    renderPanel();
+    const { container } = renderPanel();
+    expect(container.innerHTML).not.toContain('cloud-remote.csv');
     expect(screen.getByText('Cloud table')).toBeTruthy();
     expect(screen.getByText('Alpha space / Beta project / Remote sales')).toBeTruthy();
     expect(screen.queryByText(/cloud-remote\.csv/)).toBeNull();
@@ -163,6 +165,7 @@ describe('cloud-mirrored input table', () => {
   it('keeps plain CSV rows unchanged', () => {
     const plain = makeCloudDataset({
       id: 'ds2',
+      sourceKind: 'csv',
       name: 'Plain csv',
       sourcePath: '/data/local.csv',
       inputConfig: {
@@ -207,24 +210,49 @@ describe('cloud-mirrored input table', () => {
     expect(screen.queryByText('Alpha space / Beta project / Remote sales')).toBeNull();
   });
 
-  it('shows provenance fields and triggers sync/open actions from the editor', () => {
-    const onSyncCloudSource = vi.fn(async () => undefined);
-    const onOpenCloudSource = vi.fn();
-    renderEditor({ onSyncCloudSource, onOpenCloudSource });
+  it('keeps configuration compact and refreshes cloud data from the data tab', async () => {
+    const refreshed = makeCloudDataset({
+      sourcePath: '/data/cloud-imports/new.csv',
+      updatedAt: 1750000005000,
+      inputConfig: {
+        sourceKind: 'cloud',
+        cloudMirror: { ...MIRROR, syncedAt: 1750000005000, contentHash: 'new-hash' },
+      },
+    });
+    const onSyncCloudSource = vi.fn(async () => refreshed);
+    const { container, previewInputTable } = renderEditor({ onSyncCloudSource });
+    expect(container.innerHTML).not.toContain('cloud-remote.csv');
+    expect(screen.queryByRole('button', { name: 'Change file' })).toBeNull();
+    expect(screen.getAllByRole('combobox')[0].textContent).toContain('Cloud table');
+    expect(screen.getByRole('button', { name: 'Change cloud table' })).toBeTruthy();
+    expect(screen.getAllByText('Alpha space / Beta project / Remote sales')).toHaveLength(1);
+    expect(screen.queryByText('Cloud source')).toBeNull();
+    expect(screen.queryByText(/Last synced/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sync latest data' })).toBeNull();
 
-    expect(screen.getByText('Cloud source')).toBeTruthy();
-    expect(screen.getByText('Local snapshot: 2 rows')).toBeTruthy();
-    expect(screen.getByText(/Last synced/)).toBeTruthy();
-    expect(screen.getByText(/Source updated 2026-09-22/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Sync latest data' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('tab', { name: 'Data' }));
+    });
+    expect(onSyncCloudSource).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    });
     expect(onSyncCloudSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'ds1' }));
-
-    fireEvent.click(screen.getByRole('button', { name: 'View in Cloud Space' }));
-    expect(onOpenCloudSource).toHaveBeenCalledWith(expect.objectContaining({ tableId: 'remote' }));
+    expect(previewInputTable).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filePath: refreshed.sourcePath, config: refreshed.inputConfig })
+    );
+    expect(screen.getByRole('tab', { name: 'Data' }).getAttribute('aria-selected')).toBe('true');
+    expect(
+      screen.getByText(
+        i18n.t('data.outputTables.editor.dataMeta', {
+          rows: 2,
+          time: formatDateTime(refreshed.updatedAt),
+        })
+      )
+    ).toBeTruthy();
   });
 
-  it('extracts mirror info only from csv configs and formats breadcrumbs', () => {
+  it('extracts cloud linkage and formats breadcrumbs', () => {
     expect(getCloudMirror(makeCloudDataset())).toMatchObject({ tableId: 'remote' });
     const excel = makeCloudDataset({
       sourceKind: 'excel',
@@ -245,6 +273,69 @@ describe('cloud-mirrored input table', () => {
         contentHash: 'h',
       })
     ).toBe('s / p / remote');
+  });
+
+  it('creates a cloud input from a draft through the same import flow', async () => {
+    const importCloudTable = vi.fn(async () => ({ inputTable: makeCloudDataset() }));
+    const pickFile = vi.fn();
+    (window as { electronAPI?: unknown }).electronAPI = {
+      data: { importCloudTable },
+      selectInputTableSource: pickFile,
+    };
+    const removeDraft = vi.fn();
+    const upsertDataset = vi.fn();
+    const { hook } = renderActions({
+      drafts: { removeDraft } as unknown as InputTableDraftsState,
+      inputTables: {
+        upsertDataset,
+        setDatasetPage: vi.fn(),
+        loadInputTables: vi.fn(async () => undefined),
+      } as unknown as InputTablesState,
+      editors: {
+        setEditingInputTableDraftId: vi.fn(),
+        setEditingInputTableDatasetId: vi.fn(),
+      } as unknown as DataViewEditors,
+    });
+    await act(async () => {
+      await hook.result.current.handleImportInputTableSource(
+        { id: 'draft', name: 'New input' } as never,
+        'cloud',
+        { sourceKind: 'cloud', cloudMirror: MIRROR }
+      );
+    });
+    expect(importCloudTable).toHaveBeenCalledWith(
+      expect.objectContaining({ tableId: 'remote', name: 'New input' })
+    );
+    expect(pickFile).not.toHaveBeenCalled();
+    expect(removeDraft).toHaveBeenCalledWith('draft');
+    expect(upsertDataset).toHaveBeenCalled();
+  });
+
+  it('rebinds through cloud import without opening a file picker', async () => {
+    const importCloudTable = vi.fn(async () => ({ inputTable: makeCloudDataset() }));
+    const pickFile = vi.fn();
+    (window as { electronAPI?: unknown }).electronAPI = {
+      data: { importCloudTable, updateDataset: vi.fn() },
+      selectInputTableSource: pickFile,
+    };
+    const updateDatasetRow = vi.fn();
+    const { hook } = renderActions({
+      inputTables: {
+        updateDatasetRow,
+        loadInputTables: vi.fn(async () => undefined),
+      } as unknown as InputTablesState,
+    });
+    await act(async () => {
+      await hook.result.current.handleUpdateInputTableSource(makeCloudDataset(), 'cloud', {
+        sourceKind: 'cloud',
+        cloudMirror: { ...MIRROR, tableId: 'next' },
+      });
+    });
+    expect(importCloudTable).toHaveBeenCalledWith(
+      expect.objectContaining({ inputTableId: 'ds1', tableId: 'next' })
+    );
+    expect(pickFile).not.toHaveBeenCalled();
+    expect(updateDatasetRow).toHaveBeenCalled();
   });
 
   it('refresh action calls the bridge and reloads the lists', async () => {

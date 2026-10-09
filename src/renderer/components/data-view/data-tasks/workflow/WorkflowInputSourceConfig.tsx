@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Cloud,
   Columns3,
   Database,
   FileSpreadsheet,
@@ -14,6 +15,7 @@ import { GlassSelect } from '../../../GlassSelect';
 import { stringValue } from './workflow-summary';
 
 const SOURCE_KIND_ICONS: Record<DataInputTableSourceKind, LucideIcon> = {
+  cloud: Cloud,
   excel: FileSpreadsheet,
   csv: FileText,
   folder: Folder,

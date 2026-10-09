@@ -28,12 +28,7 @@ export interface GenerateInputTableNormalizerProjectInput {
 
 export type InputTableNormalizerSourceStructureAnalysis = Record<string, unknown>;
 export type InputTableNormalizerProjectProgressPhase =
-  | 'source_summary'
-  | 'source_analysis'
-  | 'code_generation'
-  | 'saving'
-  | 'complete'
-  | 'error';
+  'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
 export interface InputTableNormalizerProjectProgressEvent {
   phase: InputTableNormalizerProjectProgressPhase;
   kind: 'message' | 'delta';
@@ -245,7 +240,7 @@ function buildSourceAnalysisUserPrompt(
         'Describe robust runtime heuristics so the final code can process similar files, not just the exact sample.',
       ],
       outputJsonSchema: {
-        sourceKind: 'excel | csv | folder',
+        sourceKind: 'excel | csv | folder | cloud (downloaded CSV snapshot)',
         sourceShape: 'short structural summary',
         sampleFindings: ['finding'],
         sheetSelection: {

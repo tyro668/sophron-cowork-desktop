@@ -80,7 +80,9 @@ export class AutomationInputResolver {
       const existing = await this.resources.findInputTableByExactName(mirrorName);
       const sourceVersion = normalizeOptionalName(source.updatedAt);
       const existingMirror =
-        existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig.cloudMirror : undefined;
+        existing?.inputConfig.sourceKind === 'cloud' || existing?.inputConfig.sourceKind === 'csv'
+          ? existing.inputConfig.cloudMirror
+          : undefined;
       if (
         existing &&
         sourceVersion &&
@@ -118,11 +120,7 @@ export class AutomationInputResolver {
         return result;
       }
       const mirrorConfig = {
-        sourceKind: 'csv' as const,
-        header: 'auto' as const,
-        dataRegion: 'auto' as const,
-        encoding: 'auto' as const,
-        delimiter: 'auto' as const,
+        sourceKind: 'cloud' as const,
         cloudMirror: {
           tableId,
           sourceVersion,
@@ -154,7 +152,7 @@ export class AutomationInputResolver {
       try {
         const result = await this.inputTables.createInputTable({
           name: mirrorName,
-          sourceKind: 'csv',
+          sourceKind: 'cloud',
           filePath: downloaded.downloadedFilePath,
           config: mirrorConfig,
           previewRows: 50,
@@ -188,12 +186,12 @@ export class AutomationInputResolver {
     id: string,
     name: string,
     filePath: string,
-    config: Extract<DataDataset['inputConfig'], { sourceKind: 'csv' }>
+    config: Extract<DataDataset['inputConfig'], { sourceKind: 'cloud' }>
   ): Promise<InputTableResult> {
     return this.inputTables.updateInputTable({
       id,
       name,
-      sourceKind: 'csv',
+      sourceKind: 'cloud',
       filePath,
       config,
       previewRows: 50,

@@ -204,11 +204,12 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setActionId(`cloud-sync:${dataset.id}`);
       ui.setError(null);
       try {
-        await dataClient.refreshCloudInputTable({ inputTableId: dataset.id });
+        const result = await dataClient.refreshCloudInputTable({ inputTableId: dataset.id });
         await Promise.all([
           loadInputTables({ preserveError: true }),
           loadDashboard({ preserveError: true }),
         ]);
+        return result.inputTable;
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
         await loadDashboard({ preserveError: true });
@@ -293,15 +294,26 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setActionId(draft.id);
       ui.setError(null);
       try {
-        const sourcePath = await dataClient.pickInputTableSourcePath(sourceKind);
-        if (!sourcePath) return;
+        const sourcePath =
+          sourceKind === 'cloud'
+            ? undefined
+            : await dataClient.pickInputTableSourcePath(sourceKind);
+        if (sourceKind !== 'cloud' && !sourcePath) return;
         ui.setActiveTab('input_tables');
-        const imported = await dataClient.importDataset({
-          filePath: sourcePath,
-          name: name?.trim() || draft.name,
-          sourceKind,
-          config,
-        });
+        const imported =
+          config.sourceKind === 'cloud'
+            ? (
+                await dataClient.importCloudTable({
+                  ...config.cloudMirror,
+                  name: name?.trim() || draft.name,
+                })
+              ).inputTable
+            : await dataClient.importDataset({
+                filePath: sourcePath!,
+                name: name?.trim() || draft.name,
+                sourceKind,
+                config,
+              });
         drafts.removeDraft(draft.id);
         inputTables.upsertDataset(imported, true);
         editors.setEditingInputTableDraftId(null);
@@ -363,15 +375,27 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setActionId(dataset.id);
       ui.setError(null);
       try {
-        const sourcePath = await dataClient.pickInputTableSourcePath(sourceKind);
-        if (!sourcePath) return;
-        const updated = await dataClient.updateDataset({
-          id: dataset.id,
-          filePath: sourcePath,
-          name: name?.trim() || dataset.name,
-          sourceKind,
-          config,
-        });
+        const sourcePath =
+          sourceKind === 'cloud'
+            ? undefined
+            : await dataClient.pickInputTableSourcePath(sourceKind);
+        if (sourceKind !== 'cloud' && !sourcePath) return;
+        const updated =
+          config.sourceKind === 'cloud'
+            ? (
+                await dataClient.importCloudTable({
+                  ...config.cloudMirror,
+                  inputTableId: dataset.id,
+                  name: name?.trim() || dataset.name,
+                })
+              ).inputTable
+            : await dataClient.updateDataset({
+                id: dataset.id,
+                filePath: sourcePath!,
+                name: name?.trim() || dataset.name,
+                sourceKind,
+                config,
+              });
         inputTables.updateDatasetRow(updated);
         await loadInputTables({ preserveError: true });
       } catch (err) {

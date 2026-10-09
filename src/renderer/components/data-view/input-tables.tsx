@@ -38,7 +38,6 @@ import {
   getCloudMirror,
   getCloudMirrorSourceMeta,
   getInputTableSourceMeta,
-  type CloudMirrorInfo,
   matchesSearchText,
 } from './shared';
 import {
@@ -211,7 +210,7 @@ export function InputTablesPanel({
         <td className="px-2">
           <div
             className="truncate text-[13px] font-medium text-text-secondary"
-            title={dataset?.sourcePath ?? undefined}
+            title={cloudMirror ? formatCloudMirrorLocation(cloudMirror) : dataset?.sourcePath}
           >
             {cloudMirror
               ? formatCloudMirrorLocation(cloudMirror)
@@ -477,7 +476,6 @@ export function InputTableEditor({
   onCreateTask,
   onAiGenerateTask,
   onSyncCloudSource,
-  onOpenCloudSource,
 }: {
   draft?: InputTableDraft;
   dataset?: DataDataset;
@@ -504,8 +502,7 @@ export function InputTableEditor({
   ) => void | Promise<void>;
   onCreateTask?: (dataset: DataDataset) => void;
   onAiGenerateTask?: (dataset: DataDataset) => void;
-  onSyncCloudSource?: (dataset: DataDataset) => void | Promise<void>;
-  onOpenCloudSource?: (mirror: CloudMirrorInfo) => void;
+  onSyncCloudSource?: (dataset: DataDataset) => Promise<DataDataset | undefined>;
 }) {
   return (
     <InputTableEditorWorkbench
@@ -521,7 +518,6 @@ export function InputTableEditor({
       onCreateTask={onCreateTask}
       onAiGenerateTask={onAiGenerateTask}
       onSyncCloudSource={onSyncCloudSource}
-      onOpenCloudSource={onOpenCloudSource}
     />
   );
 }

@@ -9,10 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
-import {
-  CloudAnalysisPanel,
-  type CloudFocusTarget,
-} from '../../../components/data-view/cloud-analysis';
+import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
 import { TaskEditor, TasksPanel } from '../../../components/data-view/data-tasks';
 import {
   InputTableEditor,
@@ -91,22 +88,6 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
-  const [cloudFocus, setCloudFocus] = useState<CloudFocusTarget | null>(null);
-  const handleOpenCloudSource = useCallback(
-    (mirror: { spaceId?: string; projectId?: string; tableId: string }) => {
-      if (!mirror.spaceId || !mirror.projectId) return;
-      setCloudFocus({
-        spaceId: mirror.spaceId,
-        projectId: mirror.projectId,
-        tableId: mirror.tableId,
-        nonce: Date.now(),
-      });
-      // The editor replaces the whole tab area — close it so the cloud tab shows.
-      editors.setEditingInputTableDatasetId(null);
-      ui.setActiveTab('cloud_analysis');
-    },
-    [editors, ui]
-  );
   const taskGroups = useMemo(
     () => dashboard.dashboard.groups.filter((group) => group.scope === 'task'),
     [dashboard.dashboard.groups]
@@ -252,7 +233,6 @@ export function DataViewPage() {
             onCreateTask={actions.handleCreateTaskFromTable}
             onAiGenerateTask={generateTaskFromTable}
             onSyncCloudSource={actions.handleRefreshCloudInputTable}
-            onOpenCloudSource={handleOpenCloudSource}
           />
         ) : editors.editingOutputTable ? (
           <OutputTableEditor
@@ -378,7 +358,7 @@ export function DataViewPage() {
                   />
                 </TabsContent>
                 <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
-                  <CloudAnalysisPanel focusTarget={cloudFocus} />
+                  <CloudAnalysisPanel />
                 </TabsContent>
               </Tabs>
             </section>

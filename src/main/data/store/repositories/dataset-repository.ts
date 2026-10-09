@@ -61,7 +61,7 @@ export class DatasetRepository {
   async findInputTableByAutomationSyncKey(syncKey: string): Promise<DataDataset | null> {
     await this.ctx.ensureMetadataReady();
     const rows = await this.ctx.metaQueryRows<DataDatasetRow>(
-      `SELECT * FROM data_datasets WHERE ${storedDatasetSourceKindSql()} = 'csv' AND config_json LIKE $pattern ESCAPE '\\'`,
+      `SELECT * FROM data_datasets WHERE ${storedDatasetSourceKindSql()} IN ('cloud', 'csv') AND config_json LIKE $pattern ESCAPE '\\'`,
       { pattern: `%${JSON.stringify(syncKey).replace(/[%_\\]/g, '\\$&')}%` }
     );
     return (
@@ -69,7 +69,7 @@ export class DatasetRepository {
         .map(mapDatasetRow)
         .find(
           (table) =>
-            table.inputConfig.sourceKind === 'csv' &&
+            (table.inputConfig.sourceKind === 'cloud' || table.inputConfig.sourceKind === 'csv') &&
             table.inputConfig.cloudMirror?.automationSyncKey === syncKey
         ) ?? null
     );

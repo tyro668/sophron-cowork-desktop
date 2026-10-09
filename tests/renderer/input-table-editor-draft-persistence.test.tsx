@@ -103,7 +103,6 @@ function renderWorkbench(options: {
         onUpdateDatasetConfig={(onUpdateDatasetConfig ?? options.onUpdateDatasetConfig) as never}
         onCreateTask={vi.fn()}
         onSyncCloudSource={vi.fn()}
-        onOpenCloudSource={vi.fn()}
       />
     </ConfirmDialogProvider>
   );

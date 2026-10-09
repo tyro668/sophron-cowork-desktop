@@ -45,10 +45,7 @@ export function createNormalizerGenerationProgressId(): string {
  * re-render the markdown pipeline.
  */
 export type NormalizerGenerationStepPhase =
-  | 'source_summary'
-  | 'source_analysis'
-  | 'code_generation'
-  | 'saving';
+  'source_summary' | 'source_analysis' | 'code_generation' | 'saving';
 
 export type NormalizerGenerationStepStatus = 'active' | 'done' | 'error';
 
@@ -315,6 +312,13 @@ export function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataN
 export function getDefaultInputTableConfig(
   sourceKind: DataInputTableSourceKind
 ): DataInputTableConfig {
+  if (sourceKind === 'cloud') {
+    return {
+      sourceKind: 'cloud',
+      cloudMirror: { tableId: '', contentHash: '' },
+      dataProcessing: getDefaultInputTableDataProcessing(),
+    };
+  }
   if (sourceKind === 'excel') {
     return getDefaultExcelInputTableConfig();
   }

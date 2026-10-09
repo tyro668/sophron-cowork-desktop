@@ -47,7 +47,11 @@ import type {
   PersonalAnalysisDatasource,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
-import type { DataInputTableCsvConfig, DataInputTablePreview } from '../../shared/contracts';
+import type {
+  DataInputTableConfig,
+  DataInputTableCloudConfig,
+  DataInputTablePreview,
+} from '../../shared/contracts';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
 const MAX_PREVIEW_LIMIT = 100;
@@ -136,21 +140,40 @@ export class CloudAnalysisCommandService {
 
   async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
     const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
+    const existing = input.inputTableId
+      ? await this.store.getInputTableRecord(input.inputTableId)
+      : null;
+    if (input.inputTableId && !existing)
+      throw new DataCommandError(
+        'RESOURCE_NOT_FOUND',
+        `Input table not found: ${input.inputTableId}`
+      );
+    if (existing && !this.options.updateInputTable)
+      throw new Error('Input table sync is unavailable');
     const client = await this.createPersonalAnalysisClient(input);
     try {
       const cloudTable =
         input.spaceId && input.projectId
           ? await client.findTable(input.spaceId, input.projectId, tableId)
           : undefined;
+      if (input.spaceId && input.projectId && !cloudTable) {
+        throw new DataCommandError(
+          'RESOURCE_NOT_FOUND',
+          'Cloud table not found in the selected project'
+        );
+      }
       const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await this.writeCloudSnapshotFile(tableId, csv);
-      const result = await this.options.createInputTable({
+      const command = {
         name:
-          normalizeOptionalName(input.name) || cloudTable?.tableName || `Cloud table ${tableId}`,
-        sourceKind: 'csv',
+          normalizeOptionalName(input.name) ||
+          existing?.name ||
+          cloudTable?.tableName ||
+          `Cloud table ${tableId}`,
+        sourceKind: 'cloud' as const,
         filePath: downloadedFilePath,
         previewRows: input.previewRows,
-        config: buildCloudCsvConfig(undefined, {
+        config: buildCloudTableConfig(existing?.inputConfig, {
           contentHash: createHash('sha256').update(csv).digest('hex'),
           tableId,
           spaceId: normalizeOptionalName(input.spaceId),
@@ -161,7 +184,10 @@ export class CloudAnalysisCommandService {
           tableName: cloudTable?.tableName ?? normalizeOptionalName(input.name),
           sourceVersion: cloudTable?.updatedAt,
         }),
-      });
+      };
+      const result = existing
+        ? await this.options.updateInputTable!({ ...command, id: existing.id })
+        : await this.options.createInputTable(command);
       return {
         ...result,
         cloudTableId: tableId,
@@ -266,31 +292,28 @@ export class CloudAnalysisCommandService {
         );
       const csv = await client.exportTableCsv(config.tableId);
       const filePath = await this.writeCloudSnapshotFile(config.tableId, csv);
-      const inputConfig = buildCloudCsvConfig(
-        existing?.inputConfig.sourceKind === 'csv' ? existing.inputConfig : undefined,
-        {
-          contentHash: createHash('sha256').update(csv).digest('hex'),
-          tableId: config.tableId,
-          spaceId: config.spaceId,
-          projectId: config.projectId,
-          tableKind: source.kind ?? config.tableKind,
-          tableName: source.tableName ?? config.tableName,
-          sourceVersion: source.updatedAt,
-          automationSyncKey: syncKey,
-        }
-      );
+      const inputConfig = buildCloudTableConfig(existing?.inputConfig, {
+        contentHash: createHash('sha256').update(csv).digest('hex'),
+        tableId: config.tableId,
+        spaceId: config.spaceId,
+        projectId: config.projectId,
+        tableKind: source.kind ?? config.tableKind,
+        tableName: source.tableName ?? config.tableName,
+        sourceVersion: source.updatedAt,
+        automationSyncKey: syncKey,
+      });
       if (existing && !this.options.updateInputTable)
         throw new Error('Input table sync is unavailable');
       const result = existing
         ? await this.options.updateInputTable!({
             id: existing.id,
-            sourceKind: 'csv',
+            sourceKind: 'cloud',
             filePath,
             config: inputConfig,
           })
         : await this.options.createInputTable({
             name: config.inputTableName,
-            sourceKind: 'csv',
+            sourceKind: 'cloud',
             filePath,
             config: inputConfig,
           });
@@ -310,7 +333,9 @@ export class CloudAnalysisCommandService {
       throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${inputTableId}`);
     }
     const mirror =
-      existing.inputConfig.sourceKind === 'csv' ? existing.inputConfig.cloudMirror : undefined;
+      existing.inputConfig.sourceKind === 'cloud' || existing.inputConfig.sourceKind === 'csv'
+        ? existing.inputConfig.cloudMirror
+        : undefined;
     if (!mirror) {
       throw new DataCommandError('INVALID_ARGUMENT', 'Input table is not linked to a cloud table');
     }
@@ -587,7 +612,7 @@ function driveFilePreviewToDataPreview(result: {
   };
 }
 
-interface CloudCsvMirrorInput {
+interface CloudTableSourceInput {
   contentHash: string;
   tableId: string;
   spaceId?: string;
@@ -600,11 +625,20 @@ interface CloudCsvMirrorInput {
   automationSyncKey?: string;
 }
 
-function buildCloudCsvConfig(
-  existing: DataInputTableCsvConfig | undefined,
-  mirror: CloudCsvMirrorInput
-): DataInputTableCsvConfig {
-  const cloudMirror: NonNullable<DataInputTableCsvConfig['cloudMirror']> = {
+function buildCloudTableConfig(
+  existing: DataInputTableConfig | undefined,
+  mirror: CloudTableSourceInput
+): DataInputTableCloudConfig {
+  const previous =
+    existing?.sourceKind === 'cloud' || existing?.sourceKind === 'csv'
+      ? existing.cloudMirror
+      : undefined;
+  const sameSource =
+    previous?.tableId === mirror.tableId &&
+    previous?.spaceId === mirror.spaceId &&
+    previous?.projectId === mirror.projectId;
+  const cloudMirror: DataInputTableCloudConfig['cloudMirror'] = {
+    ...(sameSource ? previous : {}),
     tableId: mirror.tableId,
     contentHash: mirror.contentHash,
     syncedAt: Date.now(),
@@ -618,11 +652,7 @@ function buildCloudCsvConfig(
   if (mirror.sourceVersion) cloudMirror.sourceVersion = mirror.sourceVersion;
   if (mirror.automationSyncKey) cloudMirror.automationSyncKey = mirror.automationSyncKey;
   return {
-    sourceKind: 'csv',
-    header: 'auto',
-    dataRegion: 'auto',
-    encoding: 'auto',
-    delimiter: 'auto',
+    sourceKind: 'cloud',
     ...(existing?.dataProcessing ? { dataProcessing: existing.dataProcessing } : {}),
     cloudMirror,
   };

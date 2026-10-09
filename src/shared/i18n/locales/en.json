@@ -342,16 +342,9 @@
         "folder": "Folder",
         "folderDesc": "Read Excel and CSV files in the folder and merge them into one input table.",
         "cloudSource": {
-          "title": "Cloud source",
-          "location": "Location",
-          "localSnapshot": "Local snapshot: {{rows}} rows",
-          "lastSync": "Last synced {{time}}",
-          "sourceUpdated": "Source updated {{time}}",
-          "unknownTime": "unknown",
-          "sync": "Sync latest data",
-          "syncing": "Syncing…",
-          "syncUnavailable": "Cloud source linkage is incomplete; re-import the table from the Cloud Space panel",
-          "openInCloud": "View in Cloud Space"
+          "choose": "Choose cloud table",
+          "change": "Change cloud table",
+          "bind": "Link table"
         },
         "tabs": {
           "config": "Configuration",
