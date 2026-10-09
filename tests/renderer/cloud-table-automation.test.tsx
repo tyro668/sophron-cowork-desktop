@@ -21,6 +21,25 @@ vi.mock('../../src/renderer/components/settings/schedule/editor-controls', () =>
       {children}
     </label>
   ),
+  FieldStack: ({ label, children }: { label: React.ReactNode; children: React.ReactNode }) => (
+    <label>
+      {label}
+      {children}
+    </label>
+  ),
+  ConfigSection: ({
+    title,
+    children,
+  }: {
+    icon: React.ReactNode;
+    title: string;
+    children: React.ReactNode;
+  }) => (
+    <section>
+      {title}
+      {children}
+    </section>
+  ),
   SelectLine: ({
     value,
     options,

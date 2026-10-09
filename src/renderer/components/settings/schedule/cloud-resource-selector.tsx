@@ -8,7 +8,7 @@ import {
   getPersonalAnalysisErrorMessage,
 } from '../../../../shared/personal-analysis';
 import { Button } from '../../ui/button';
-import { ConfigRow, SelectLine } from './editor-controls';
+import { FieldStack, SelectLine } from './editor-controls';
 
 export function withSavedOption(
   options: Array<{ value: string; label: string }>,
@@ -161,7 +161,7 @@ export function CloudResourceSelector({
           </Button>
         </div>
       )}
-      <ConfigRow label={t('schedule.cloudSync.space')}>
+      <FieldStack label={t('schedule.cloudSync.space')}>
         <SelectLine
           value={spaceId}
           options={withSavedOption(
@@ -171,8 +171,8 @@ export function CloudResourceSelector({
           placeholder={t('schedule.cloudSync.selectSpace')}
           onChange={(spaceId) => onChange({ ...clearTarget, spaceId, projectId: '' })}
         />
-      </ConfigRow>
-      <ConfigRow label={t('schedule.cloudSync.project')}>
+      </FieldStack>
+      <FieldStack label={t('schedule.cloudSync.project')}>
         <SelectLine
           value={projectId}
           options={withSavedOption(
@@ -182,9 +182,9 @@ export function CloudResourceSelector({
           placeholder={t('schedule.cloudSync.selectProject')}
           onChange={(projectId) => onChange({ ...clearTarget, projectId })}
         />
-      </ConfigRow>
+      </FieldStack>
       {!create && (
-        <ConfigRow
+        <FieldStack
           label={t(
             resource === 'drive' ? 'schedule.cloudSync.target' : 'schedule.cloudInput.sourceTable'
           )}
@@ -214,7 +214,7 @@ export function CloudResourceSelector({
               </Button>
             )}
           </div>
-        </ConfigRow>
+        </FieldStack>
       )}
       {error && (
         <p role="alert" className="text-xs text-error">

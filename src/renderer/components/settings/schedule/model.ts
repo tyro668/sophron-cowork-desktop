@@ -29,8 +29,6 @@ export function createEmptyDraft(name: string): AutomationDraft {
     times: ['09:00'],
     timezone: SYSTEM_TIMEZONE,
   };
-  const conversationNodeId = crypto.randomUUID();
-  const dataTaskNodeId = crypto.randomUUID();
   return {
     name,
     description: '',
@@ -41,38 +39,8 @@ export function createEmptyDraft(name: string): AutomationDraft {
     trigger,
     actionGraph: {
       version: 1,
-      nodes: [
-        {
-          id: conversationNodeId,
-          type: 'conversation.run',
-          label: '',
-          enabled: true,
-          config: {
-            prompt: '',
-            selectedSkillNames: [],
-            projectId: '',
-            modelConfigSetId: null,
-            model: null,
-            completionMode: 'wait',
-            timeoutMs: 30 * 60 * 1000,
-            collectArtifacts: true,
-            permissionPolicy: 'full_access',
-          },
-        },
-        {
-          id: dataTaskNodeId,
-          type: 'data.task.run',
-          label: '',
-          enabled: true,
-          config: {
-            taskId: '',
-            outputMode: 'persisted',
-          },
-        },
-      ],
-      edges: [
-        { id: crypto.randomUUID(), sourceNodeId: conversationNodeId, targetNodeId: dataTaskNodeId },
-      ],
+      nodes: [],
+      edges: [],
     },
   };
 }

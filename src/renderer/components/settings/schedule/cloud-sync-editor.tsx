@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
+import { CloudDownload, Database, FileUp } from 'lucide-react';
 import type { AutomationActionNode, DataDataset, DataOutputTable } from '../../../types';
 import { Input } from '../../ui/input';
-import { ConfigRow, SelectLine } from './editor-controls';
+import { ConfigSection, FieldStack, SelectLine } from './editor-controls';
 import { CloudResourceSelector, withSavedOption } from './cloud-resource-selector';
 
 export function CloudSyncEditor({
@@ -52,7 +53,7 @@ export function CloudSyncEditor({
   };
   return (
     <div className="space-y-3">
-      <ConfigRow label={t('schedule.cloudSync.direction')}>
+      <FieldStack label={t('schedule.cloudSync.direction')}>
         <SelectLine
           value={direction}
           placeholder={t('schedule.cloudSync.selectDirection')}
@@ -62,54 +63,64 @@ export function CloudSyncEditor({
           ]}
           onChange={setDirection}
         />
-      </ConfigRow>
+      </FieldStack>
       {direction === 'input' && (
-        <>
-          <ConfigRow label={t('schedule.cloudInput.sourceKind')}>
-            <SelectLine
-              value={kind}
-              placeholder={t('schedule.cloudInput.sourceKind')}
-              options={['analysis', 'base'].map((value) => ({
-                value,
-                label: t(`schedule.cloudInput.${value}`),
-              }))}
-              onChange={(tableKind) =>
-                update({ tableKind, tableId: undefined, tableName: undefined })
-              }
-            />
-          </ConfigRow>
-          <CloudResourceSelector config={config} resource={kind} onChange={update} />
-          <ConfigRow label={t('schedule.cloudInput.target')}>
-            <SelectLine
-              value={String(config.inputTableId ?? '')}
-              options={[
-                { value: '__create__', label: t('schedule.cloudInput.create') },
-                ...withSavedOption(
-                  inputTables.map((table) => ({ value: table.id, label: table.name })),
-                  String(config.inputTableId ?? ''),
-                  String(config.inputTableName ?? '')
-                ),
-              ]}
-              placeholder={t('schedule.inputTablePlaceholder')}
-              onChange={(value) => {
-                const table = inputTables.find((table) => table.id === value);
-                update({
-                  inputTableId: value === '__create__' ? undefined : value,
-                  inputTableName: table?.name,
-                  ...(value === '__create__' ? { syncKey: crypto.randomUUID() } : {}),
-                });
-              }}
-            />
-          </ConfigRow>
-          {!config.inputTableId && (
-            <ConfigRow label={t('schedule.cloudInput.name')}>
-              <Input
-                value={String(config.inputTableName ?? '')}
-                onChange={(event) => update({ inputTableName: event.target.value })}
+        <div className="grid gap-3 md:grid-cols-2">
+          <ConfigSection
+            icon={<CloudDownload className="h-3.5 w-3.5 text-accent" />}
+            title={t('schedule.cloudInput.sourceSection')}
+          >
+            <FieldStack label={t('schedule.cloudInput.sourceKind')}>
+              <SelectLine
+                value={kind}
+                placeholder={t('schedule.cloudInput.sourceKind')}
+                options={['analysis', 'base'].map((value) => ({
+                  value,
+                  label: t(`schedule.cloudInput.${value}`),
+                }))}
+                onChange={(tableKind) =>
+                  update({ tableKind, tableId: undefined, tableName: undefined })
+                }
               />
-            </ConfigRow>
-          )}
-        </>
+            </FieldStack>
+            <CloudResourceSelector config={config} resource={kind} onChange={update} />
+          </ConfigSection>
+          <ConfigSection
+            icon={<Database className="h-3.5 w-3.5 text-accent" />}
+            title={t('schedule.cloudInput.targetSection')}
+          >
+            <FieldStack label={t('schedule.cloudInput.target')}>
+              <SelectLine
+                value={String(config.inputTableId ?? '')}
+                options={[
+                  { value: '__create__', label: t('schedule.cloudInput.create') },
+                  ...withSavedOption(
+                    inputTables.map((table) => ({ value: table.id, label: table.name })),
+                    String(config.inputTableId ?? ''),
+                    String(config.inputTableName ?? '')
+                  ),
+                ]}
+                placeholder={t('schedule.inputTablePlaceholder')}
+                onChange={(value) => {
+                  const table = inputTables.find((table) => table.id === value);
+                  update({
+                    inputTableId: value === '__create__' ? undefined : value,
+                    inputTableName: table?.name,
+                    ...(value === '__create__' ? { syncKey: crypto.randomUUID() } : {}),
+                  });
+                }}
+              />
+            </FieldStack>
+            {!config.inputTableId && (
+              <FieldStack label={t('schedule.cloudInput.name')}>
+                <Input
+                  value={String(config.inputTableName ?? '')}
+                  onChange={(event) => update({ inputTableName: event.target.value })}
+                />
+              </FieldStack>
+            )}
+          </ConfigSection>
+        </div>
       )}
       {direction === 'output' && (
         <>
@@ -118,58 +129,72 @@ export function CloudSyncEditor({
               {t('schedule.cloudSync.legacyTarget')}
             </p>
           )}
-          <ConfigRow label={t('schedule.outputDataLabel')}>
-            <SelectLine
-              value={String(config.outputTableId ?? '')}
-              options={withSavedOption(
-                outputTables.map((table) => ({ value: table.id, label: table.name })),
-                String(config.outputTableId ?? '')
-              )}
-              placeholder={t('schedule.outputTablePlaceholder')}
-              onChange={(outputTableId) => update({ outputTableId })}
-            />
-          </ConfigRow>
-          <ConfigRow label={t('schedule.cloudSync.writeMode')}>
-            <SelectLine
-              value={writeMode}
-              placeholder={t('schedule.cloudSync.selectMode')}
-              options={['create', 'replace', 'append'].map((value) => ({
-                value,
-                label: t(`schedule.cloudSync.${value}`),
-              }))}
-              onChange={(writeMode) =>
-                update({
-                  type: 'drive_file',
-                  writeMode,
-                  tableId: undefined,
-                  tableName: undefined,
-                  ...(writeMode === 'create' || legacy
-                    ? {
-                        fileId: undefined,
-                        fileName: undefined,
-                        version: undefined,
-                        syncKey: crypto.randomUUID(),
-                      }
-                    : {}),
-                })
-              }
-            />
-          </ConfigRow>
-          <CloudResourceSelector
-            config={config}
-            resource="drive"
-            create={writeMode === 'create'}
-            onChange={update}
-          />
-          {writeMode === 'create' && (
-            <ConfigRow label={t('schedule.cloudSync.name')}>
-              <Input
-                value={String(config.fileName ?? '')}
-                onChange={(event) => update({ fileName: event.target.value || undefined })}
-                placeholder={outputTables.find((table) => table.id === config.outputTableId)?.name}
+          <div className="grid gap-3 md:grid-cols-2">
+            <ConfigSection
+              icon={<Database className="h-3.5 w-3.5 text-accent" />}
+              title={t('schedule.cloudSync.outputSection')}
+            >
+              <FieldStack label={t('schedule.outputDataLabel')}>
+                <SelectLine
+                  value={String(config.outputTableId ?? '')}
+                  options={withSavedOption(
+                    outputTables.map((table) => ({ value: table.id, label: table.name })),
+                    String(config.outputTableId ?? '')
+                  )}
+                  placeholder={t('schedule.outputTablePlaceholder')}
+                  onChange={(outputTableId) => update({ outputTableId })}
+                />
+              </FieldStack>
+              <FieldStack label={t('schedule.cloudSync.writeMode')}>
+                <SelectLine
+                  value={writeMode}
+                  placeholder={t('schedule.cloudSync.selectMode')}
+                  options={['create', 'replace', 'append'].map((value) => ({
+                    value,
+                    label: t(`schedule.cloudSync.${value}`),
+                  }))}
+                  onChange={(writeMode) =>
+                    update({
+                      type: 'drive_file',
+                      writeMode,
+                      tableId: undefined,
+                      tableName: undefined,
+                      ...(writeMode === 'create' || legacy
+                        ? {
+                            fileId: undefined,
+                            fileName: undefined,
+                            version: undefined,
+                            syncKey: crypto.randomUUID(),
+                          }
+                        : {}),
+                    })
+                  }
+                />
+              </FieldStack>
+            </ConfigSection>
+            <ConfigSection
+              icon={<FileUp className="h-3.5 w-3.5 text-accent" />}
+              title={t('schedule.cloudSync.targetSection')}
+            >
+              <CloudResourceSelector
+                config={config}
+                resource="drive"
+                create={writeMode === 'create'}
+                onChange={update}
               />
-            </ConfigRow>
-          )}
+              {writeMode === 'create' && (
+                <FieldStack label={t('schedule.cloudSync.name')}>
+                  <Input
+                    value={String(config.fileName ?? '')}
+                    onChange={(event) => update({ fileName: event.target.value || undefined })}
+                    placeholder={
+                      outputTables.find((table) => table.id === config.outputTableId)?.name
+                    }
+                  />
+                </FieldStack>
+              )}
+            </ConfigSection>
+          </div>
         </>
       )}
     </div>

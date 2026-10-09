@@ -1,5 +1,5 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
-import { Search } from 'lucide-react';
+import type { MouseEvent, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { AppConfig } from '../../../types';
 import { GlassSelect } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
@@ -51,6 +51,37 @@ export function ConfigRow({ label, children }: { label: string; children: ReactN
   );
 }
 
+// Label-above-field variant for grouped section cards (e.g. cloud sync panels).
+export function FieldStack({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[11px] font-medium text-text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+// Grouped configuration card: muted surface, icon + title header, stacked fields.
+export function ConfigSection({
+  icon,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="min-w-0 rounded-lg border border-border-muted bg-surface-muted/40 p-3">
+      <div className="mb-2.5 flex items-center gap-1.5 text-[12px] font-medium text-text-secondary">
+        {icon}
+        <span className="min-w-0 truncate">{title}</span>
+      </div>
+      <div className="flex flex-col gap-2.5">{children}</div>
+    </section>
+  );
+}
+
 export function SelectLine({
   value,
   options,
@@ -74,8 +105,8 @@ export function SelectLine({
   );
 }
 
-// A dropdown paired with a client-side name filter, mirroring the cloud table picker layout.
-// Use for local input/output tables, where the full list can be large.
+// A searchable dropdown for long local lists (data tasks, input/output tables);
+// the filter input lives at the top of the dropdown itself.
 export function LocalTableSelect({
   value,
   tables,
@@ -89,38 +120,22 @@ export function LocalTableSelect({
   searchPlaceholder: string;
   onChange: (value: string) => void;
 }) {
-  const [keyword, setKeyword] = useState('');
-  const normalized = keyword.trim().toLowerCase();
-  const filtered = normalized
-    ? tables.filter((table) => table.name.toLowerCase().includes(normalized))
-    : tables;
-  const selected = tables.find((table) => table.id === value);
-  // Keep the selected table in the option list even when filtered out, so its label still shows.
-  const visible =
-    selected && !filtered.some((table) => table.id === value) ? [selected, ...filtered] : filtered;
+  const { t } = useTranslation();
   return (
-    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(11rem,0.5fr)]">
-      <GlassSelect
-        value={value}
-        options={[
-          { value: '', label: placeholder },
-          ...visible.map((table) => ({ value: table.id, label: table.name })),
-        ]}
-        onValueChange={onChange}
-        placeholder={placeholder}
-        triggerClassName="h-9 w-full justify-between"
-        contentClassName="w-[var(--radix-select-trigger-width)]"
-      />
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-        <input
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder={searchPlaceholder}
-          className="input h-9 w-full pr-3 pl-8 text-xs"
-        />
-      </div>
-    </div>
+    <GlassSelect
+      value={value}
+      options={[
+        { value: '', label: placeholder },
+        ...tables.map((table) => ({ value: table.id, label: table.name })),
+      ]}
+      onValueChange={onChange}
+      placeholder={placeholder}
+      searchable
+      searchPlaceholder={searchPlaceholder}
+      searchEmptyText={t('common.noResults', '暂无结果')}
+      triggerClassName="h-9 w-full justify-between"
+      contentClassName="w-[var(--radix-select-trigger-width)]"
+    />
   );
 }
 
@@ -177,7 +192,7 @@ export function AutomationPromptPermissionFields({
 }) {
   return (
     <>
-      <ConfigRow label={label ?? tr('schedule.conversationPrompt', '指令内容')}>
+      <FieldStack label={label ?? tr('schedule.conversationPrompt', '指令内容')}>
         <LlmPromptComposer
           value={value}
           onChange={onChange}
@@ -191,7 +206,7 @@ export function AutomationPromptPermissionFields({
           placeholder={placeholder}
           onModelSelect={onModelSelect}
         />
-      </ConfigRow>
+      </FieldStack>
     </>
   );
 }

@@ -13,7 +13,7 @@ import type { DataTaskAuthoringRequest } from '../../../../shared/data-task-auth
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '../../ui/dialog';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
+import { GlassSelect } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
 import { useDataTaskAuthoring } from '../../../features/data/hooks/use-data-task-authoring';
 import { useTaskGenerationInputs } from '../../../features/data/hooks/use-task-generation-inputs';
@@ -56,7 +56,6 @@ export function DataTaskAiGenerateDialog({
   const { startAuthoring } = useDataTaskAuthoring({ taskId, workingDirectory, onApplied });
   const [requirement, setRequirement] = useState('');
   const [chosenInputId, setChosenInputId] = useState('');
-  const [inputSearch, setInputSearch] = useState('');
   const [outputName, setOutputName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +86,6 @@ export function DataTaskAiGenerateDialog({
     if (!open) return;
     setRequirement(initialRequirement);
     setChosenInputId('');
-    setInputSearch('');
     setOutputName(initialOutput?.tableName ?? '');
     setError(null);
   }, [open, initialRequirement, initialOutput?.tableName]);
@@ -148,37 +146,19 @@ export function DataTaskAiGenerateDialog({
           </div>
         ) : (
           <div className="grid gap-2">
-            <Input
-              aria-label={t('data.aiTaskInputSearch')}
-              placeholder={t('data.aiTaskInputSearch')}
-              value={inputSearch}
-              onChange={(event) => setInputSearch(event.target.value)}
-              disabled={busy}
-            />
-            <Select
+            <GlassSelect
               value={chosenInputId}
               disabled={busy || inputs.loading}
               onValueChange={setChosenInputId}
-            >
-              <SelectTrigger aria-label={t('data.aiTaskInputTable')}>
-                <SelectValue
-                  placeholder={t(inputs.loading ? 'common.loading' : 'data.aiTaskInputTable')}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {inputs.tables
-                  .filter(
-                    (table) =>
-                      table.id === chosenInputId ||
-                      table.name.toLowerCase().includes(inputSearch.trim().toLowerCase())
-                  )
-                  .map((table) => (
-                    <SelectItem key={table.id} value={table.id}>
-                      {table.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              options={inputs.tables.map((table) => ({ value: table.id, label: table.name }))}
+              ariaLabel={t('data.aiTaskInputTable')}
+              placeholder={t(inputs.loading ? 'common.loading' : 'data.aiTaskInputTable')}
+              searchable
+              searchPlaceholder={t('data.aiTaskInputSearch')}
+              searchEmptyText={t('common.noResults')}
+              triggerClassName="h-9 w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
             {inputs.error && (
               <p role="alert" className="text-xs text-error">
                 {inputs.error}

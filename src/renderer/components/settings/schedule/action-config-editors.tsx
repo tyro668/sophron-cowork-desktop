@@ -3,6 +3,7 @@ import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ChevronRight,
   Database,
   Loader2,
   MessagesSquare,
@@ -37,6 +38,7 @@ import {
 import {
   AutomationPromptPermissionFields,
   ConfigRow,
+  FieldStack,
   LocalTableSelect,
   MiniIcon,
   SelectLine,
@@ -299,23 +301,30 @@ export function DataProcessActionEditor({
     : null;
   return (
     <div className="space-y-3">
-      <ConfigRow label={tr('schedule.dataTaskLabel', '数据任务')}>
-        <LocalTableSelect
-          value={selectedTaskId}
-          tables={taskOptions}
-          placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
-          searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
-          onChange={(value) => selectTask(value)}
-        />
-      </ConfigRow>
-      <div className="flex justify-end">
-        <Button variant="secondary" size="sm" onClick={() => setGenerateOpen(true)}>
-          <Sparkles className="h-3.5 w-3.5" />
-          {tr('data.aiTaskGenerate', 'AI 生成数据任务')}
-        </Button>
-      </div>
+      <FieldStack label={tr('schedule.dataTaskLabel', '数据任务')}>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <LocalTableSelect
+              value={selectedTaskId}
+              tables={taskOptions}
+              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
+              searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
+              onChange={(value) => selectTask(value)}
+            />
+          </div>
+          <Button
+            variant="secondary"
+            size="lg"
+            className="shrink-0"
+            onClick={() => setGenerateOpen(true)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {tr('data.aiTaskGenerate', 'AI 生成数据任务')}
+          </Button>
+        </div>
+      </FieldStack>
       {selectedTaskId && (
-        <ConfigRow label={tr('schedule.executionMode', '执行方式')}>
+        <FieldStack label={tr('schedule.executionMode', '执行方式')}>
           <GlassSelect
             value={String(node.config.outputMode ?? 'persisted')}
             options={[
@@ -328,7 +337,7 @@ export function DataProcessActionEditor({
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
-        </ConfigRow>
+        </FieldStack>
       )}
       {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
         (node.config.output as { location?: string } | undefined)?.location !== 'local' && (
@@ -393,6 +402,7 @@ export function GeneratedTaskReviewCard({
   tr: (key: string, fallback: string) => string;
 }) {
   const taskId = String(node.config.taskId ?? '').trim();
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const [workflowDsl, setWorkflowDsl] = useState('');
   const workflowRequestSeq = useRef(0);
   const [isLoadingWorkflowDsl, setIsLoadingWorkflowDsl] = useState(false);
@@ -425,60 +435,68 @@ export function GeneratedTaskReviewCard({
   }, [taskId]);
 
   useEffect(() => {
+    setWorkflowOpen(false);
     setWorkflowDsl('');
     setWorkflowDslLoadFailed(false);
-    void loadCurrentWorkflowDsl();
     return () => {
       workflowRequestSeq.current += 1;
     };
   }, [loadCurrentWorkflowDsl]);
 
   return (
-    <div className="rounded-md bg-surface-muted/60 p-3">
-      <div className="mb-2 text-[12px] font-semibold text-text-secondary">
-        <span>{tr('schedule.dataTaskLogic', '任务逻辑')}</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-text-muted">
+          {tr('schedule.dataTaskLogic', '任务逻辑')}
+        </span>
+        {taskId && (
+          <button
+            type="button"
+            className="flex items-center gap-1 text-[12px] font-medium text-accent"
+            onClick={() => {
+              const next = !workflowOpen;
+              setWorkflowOpen(next);
+              if (next) void loadCurrentWorkflowDsl();
+            }}
+          >
+            <ChevronRight
+              className={`h-3 w-3 transition-transform ${workflowOpen ? 'rotate-90' : ''}`}
+            />
+            {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
+          </button>
+        )}
       </div>
       {requiredColumns.length > 0 && (
-        <div className="mb-2 text-[12px] leading-5 text-text-muted">
+        <div className="text-[12px] leading-5 text-text-muted">
           {tr('schedule.requiredColumnsValue', '所需字段：{{columns}}').replace(
             '{{columns}}',
             requiredColumns.join(', ')
           )}
         </div>
       )}
-      {taskId && (
-        <details
-          className="group"
-          onToggle={(event) => {
-            if (event.currentTarget.open) void loadCurrentWorkflowDsl();
-          }}
-        >
-          <summary className="cursor-pointer text-[12px] font-medium text-accent">
-            {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
-          </summary>
-          {isLoadingWorkflowDsl ? (
-            <div
-              className="mt-2 flex items-center gap-2 text-[12px] text-text-muted"
-              role="status"
-              aria-live="polite"
-            >
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
-            </div>
-          ) : workflowDslLoadFailed ? (
-            <div
-              className="mt-2 rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
-              role="alert"
-            >
-              {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
-            </div>
-          ) : (
-            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
-              {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
-            </pre>
-          )}
-        </details>
-      )}
+      {workflowOpen &&
+        taskId &&
+        (isLoadingWorkflowDsl ? (
+          <div
+            className="flex items-center gap-2 text-[12px] text-text-muted"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
+          </div>
+        ) : workflowDslLoadFailed ? (
+          <div
+            className="rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
+            role="alert"
+          >
+            {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
+          </div>
+        ) : (
+          <pre className="max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
+            {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
+          </pre>
+        ))}
     </div>
   );
 }

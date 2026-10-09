@@ -354,6 +354,7 @@ export function InputTableSelect({
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <label className="block">
       <GlassSelect
@@ -361,6 +362,9 @@ export function InputTableSelect({
         disabled={disabled}
         onValueChange={onChange}
         options={options}
+        searchable
+        searchPlaceholder={t('data.aiTaskInputSearch')}
+        searchEmptyText={t('common.noResults')}
         triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />

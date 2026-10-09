@@ -1,6 +1,6 @@
 import * as Select from '@radix-ui/react-select';
-import type { ReactNode } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Check, ChevronDown, Search } from 'lucide-react';
 import { cn, selectContentClass, selectItemClass, selectTriggerClass } from './ui';
 
 const EMPTY_SELECT_VALUE = '__sophron_glass_select_empty_value__';
@@ -26,6 +26,10 @@ interface GlassSelectProps {
   side?: Select.SelectContentProps['side'];
   align?: Select.SelectContentProps['align'];
   sideOffset?: number;
+  /** Render a filter input at the top of the dropdown; options filter by label. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  searchEmptyText?: string;
 }
 
 export function GlassSelect({
@@ -43,12 +47,23 @@ export function GlassSelect({
   side = 'bottom',
   align = 'start',
   sideOffset = 2,
+  searchable = false,
+  searchPlaceholder,
+  searchEmptyText,
 }: GlassSelectProps) {
+  const [search, setSearch] = useState('');
   const normalizedValue = value === undefined ? undefined : normalizeSelectValue(value);
   const normalizedOptions = options.map((option) => ({
     ...option,
     value: normalizeSelectValue(option.value),
   }));
+  const normalizedSearch = searchable ? search.trim().toLowerCase() : '';
+  const visibleOptions = normalizedSearch
+    ? normalizedOptions.filter(
+        (option) =>
+          option.value === normalizedValue || option.label.toLowerCase().includes(normalizedSearch)
+      )
+    : normalizedOptions;
   const selectedOption = normalizedOptions.find((option) => option.value === normalizedValue);
   const displayLabel = selectedOption?.label ?? placeholder ?? '';
 
@@ -57,7 +72,10 @@ export function GlassSelect({
       value={normalizedValue}
       onValueChange={(nextValue) => onValueChange(denormalizeSelectValue(nextValue))}
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setSearch('');
+        onOpenChange?.(nextOpen);
+      }}
       disabled={disabled}
     >
       <Select.Trigger
@@ -80,11 +98,42 @@ export function GlassSelect({
           className={cn(
             selectContentClass,
             'min-w-[var(--radix-select-trigger-width)] max-h-64',
+            searchable && 'flex flex-col',
             contentClassName
           )}
         >
-          <Select.Viewport className="p-1">
-            {normalizedOptions.map((option) => (
+          {searchable && (
+            <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2 py-1">
+              <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+              <input
+                ref={(element) => {
+                  // Radix focuses the content wrapper on open; defer so the
+                  // search input wins focus.
+                  if (element) window.setTimeout(() => element.focus(), 0);
+                }}
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  // Keep Radix handling for navigation/dismiss keys; typing must
+                  // not trigger option typeahead.
+                  if (!['Escape', 'ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)) {
+                    event.stopPropagation();
+                  }
+                }}
+                placeholder={searchPlaceholder}
+                className="h-7 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+              />
+            </div>
+          )}
+          <Select.Viewport className={cn('p-1', searchable && 'min-h-0 flex-1 overflow-y-auto')}>
+            {searchable && visibleOptions.length === 0 && (
+              <div className="px-2.5 py-3 text-center text-[12px] text-text-muted">
+                {searchEmptyText}
+              </div>
+            )}
+            {visibleOptions.map((option) => (
               <Select.Item
                 key={option.value}
                 value={option.value}

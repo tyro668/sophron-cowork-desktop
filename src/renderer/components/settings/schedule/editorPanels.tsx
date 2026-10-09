@@ -13,7 +13,7 @@ import {
   getProjectOptionLabel,
 } from './types';
 import { normalizeDraftTrigger } from './model';
-import { ConfigRow, SegmentedControl, splitCsv } from './editor-controls';
+import { FieldStack, SegmentedControl, splitCsv } from './editor-controls';
 import { MonthlyDayPicker, TimesEditor, WeekdayPicker } from './schedule-time-pickers';
 import { flatToolbarRowClass } from '../../data-view/shared';
 
@@ -256,7 +256,7 @@ export function TriggerConditionPanel({
         {tr('schedule.triggerTitle', '触发条件')}
       </h2>
       <div>
-        <ConfigRow label={tr('schedule.triggerMethod', '触发方式')}>
+        <FieldStack label={tr('schedule.triggerMethod', '触发方式')}>
           <GlassSelect
             value={triggerMethod}
             options={[
@@ -272,7 +272,7 @@ export function TriggerConditionPanel({
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
-        </ConfigRow>
+        </FieldStack>
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
@@ -316,7 +316,7 @@ function ScheduledConfigCard({
   return (
     <div className="space-y-3">
       <div className="space-y-3.5">
-        <ConfigRow label={tr('schedule.frequency', '执行频率')}>
+        <FieldStack label={tr('schedule.frequency', '执行频率')}>
           <SegmentedControl<'recurring' | 'interval' | 'once'>
             value={mode === 'interval' ? 'interval' : mode === 'once' ? 'once' : 'recurring'}
             options={[
@@ -331,9 +331,9 @@ function ScheduledConfigCard({
               )
             }
           />
-        </ConfigRow>
+        </FieldStack>
         {(mode === 'daily' || mode === 'weekly' || mode === 'monthly') && (
-          <ConfigRow label={tr('schedule.repeat', '重复')}>
+          <FieldStack label={tr('schedule.repeat', '重复')}>
             <GlassSelect
               value={mode}
               options={[
@@ -344,10 +344,10 @@ function ScheduledConfigCard({
               onValueChange={(value: string) => onModeChange(value as TriggerMode)}
               triggerClassName="h-9 w-full justify-between"
             />
-          </ConfigRow>
+          </FieldStack>
         )}
         {trigger.kind === 'once' && (
-          <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+          <FieldStack label={tr('schedule.executionTime', '执行时间')}>
             <div className="space-y-1.5">
               <GlassDateTimePicker
                 value={trigger.runAt}
@@ -362,57 +362,57 @@ function ScheduledConfigCard({
                 </p>
               )}
             </div>
-          </ConfigRow>
+          </FieldStack>
         )}
         {trigger.kind === 'daily' && (
-          <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+          <FieldStack label={tr('schedule.executionTime', '执行时间')}>
             <TimesEditor
               times={trigger.times}
               onChange={(times) => onChange({ ...trigger, times })}
               tr={tr}
             />
-          </ConfigRow>
+          </FieldStack>
         )}
         {trigger.kind === 'weekly' && (
           <>
-            <ConfigRow label={tr('schedule.weekday', '执行星期')}>
+            <FieldStack label={tr('schedule.weekday', '执行星期')}>
               <WeekdayPicker
                 value={trigger.weekdays}
                 onChange={(weekdays) => onChange({ ...trigger, weekdays })}
                 tr={tr}
               />
-            </ConfigRow>
-            <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+            </FieldStack>
+            <FieldStack label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
               />
-            </ConfigRow>
+            </FieldStack>
           </>
         )}
         {trigger.kind === 'monthly' && (
           <>
-            <ConfigRow label={tr('schedule.monthDay', '执行日期')}>
+            <FieldStack label={tr('schedule.monthDay', '执行日期')}>
               <MonthlyDayPicker
                 daysOfMonth={trigger.daysOfMonth}
                 includeLastDay={trigger.includeLastDay}
                 onChange={(next) => onChange({ ...trigger, ...next })}
                 tr={tr}
               />
-            </ConfigRow>
-            <ConfigRow label={tr('schedule.executionTime', '执行时间')}>
+            </FieldStack>
+            <FieldStack label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
               />
-            </ConfigRow>
+            </FieldStack>
           </>
         )}
         {trigger.kind === 'interval' && (
           <>
-            <ConfigRow label={tr('schedule.every', '每')}>
+            <FieldStack label={tr('schedule.every', '每')}>
               <div className="grid grid-cols-[1fr_108px] gap-2">
                 <input
                   type="number"
@@ -436,8 +436,8 @@ function ScheduledConfigCard({
                   triggerClassName="h-9 w-full justify-between"
                 />
               </div>
-            </ConfigRow>
-            <ConfigRow label={tr('schedule.startAt', '开始')}>
+            </FieldStack>
+            <FieldStack label={tr('schedule.startAt', '开始')}>
               <GlassDateTimePicker
                 value={trigger.startAt}
                 onChange={(startAt) =>
@@ -451,8 +451,8 @@ function ScheduledConfigCard({
                   })
                 }
               />
-            </ConfigRow>
-            <ConfigRow label={tr('schedule.endAtLabel', '结束')}>
+            </FieldStack>
+            <FieldStack label={tr('schedule.endAtLabel', '结束')}>
               {trigger.endAt == null ? (
                 <button
                   type="button"
@@ -475,7 +475,7 @@ function ScheduledConfigCard({
                   onChange={(endAt) => onChange({ ...trigger, endAt })}
                 />
               )}
-            </ConfigRow>
+            </FieldStack>
           </>
         )}
       </div>
@@ -503,7 +503,7 @@ function FileChangeConfigCard({
   return (
     <div>
       <div className="space-y-3.5">
-        <ConfigRow label={tr('schedule.watchProject', '监听项目')}>
+        <FieldStack label={tr('schedule.watchProject', '监听项目')}>
           <GlassSelect
             value={projectId ?? ''}
             options={[
@@ -518,8 +518,8 @@ function FileChangeConfigCard({
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
-        </ConfigRow>
-        <ConfigRow label={tr('schedule.watchPatterns', '文件范围')}>
+        </FieldStack>
+        <FieldStack label={tr('schedule.watchPatterns', '文件范围')}>
           <input
             value={trigger.patterns.join(', ')}
             onChange={(event) =>
@@ -528,8 +528,8 @@ function FileChangeConfigCard({
             placeholder="**/*, **/*.csv"
             className="input h-9 w-full text-xs"
           />
-        </ConfigRow>
-        <ConfigRow label={tr('schedule.debounceSeconds', '防抖秒数')}>
+        </FieldStack>
+        <FieldStack label={tr('schedule.debounceSeconds', '防抖秒数')}>
           <input
             type="number"
             min={1}
@@ -542,7 +542,7 @@ function FileChangeConfigCard({
             }
             className="input h-9 w-full text-xs"
           />
-        </ConfigRow>
+        </FieldStack>
       </div>
     </div>
   );
