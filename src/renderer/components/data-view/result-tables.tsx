@@ -679,8 +679,11 @@ export function ResultTableEditor({
 
             <div className="col-span-full border-t border-border-subtle" />
 
-            <div className="col-span-full">
-              <ResultTableAutomations key={resultTable.id} resultTable={resultTable} />
+            <RawTableFormLabel className="lg:self-start lg:pt-1.5">
+              {t('data.resultTables.automation.title')}
+            </RawTableFormLabel>
+            <div className="min-w-0">
+              <ResultTableAutomations key={resultTable.id} resultTable={resultTable} embedded />
             </div>
           </div>
         </TabsContent>

@@ -8,8 +8,14 @@ import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { RawTableSelect, formatDateTime } from './shared';
 
-export function ResultTableAutomations({ resultTable }: { resultTable: DataResultTable }) {
-  return <TableAutomations table={resultTable} kind="result" />;
+export function ResultTableAutomations({
+  resultTable,
+  embedded,
+}: {
+  resultTable: DataResultTable;
+  embedded?: boolean;
+}) {
+  return <TableAutomations table={resultTable} kind="result" embedded={embedded} />;
 }
 export function RawTableAutomations({ rawTable }: { rawTable: DataRawTable }) {
   return <TableAutomations table={rawTable} kind="raw" />;
@@ -17,9 +23,11 @@ export function RawTableAutomations({ rawTable }: { rawTable: DataRawTable }) {
 function TableAutomations({
   table,
   kind,
+  embedded,
 }: {
   table: { id: string; name: string };
   kind: 'raw' | 'result';
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
   const mainView = useAppStore((state) => state.mainView);
@@ -87,45 +95,57 @@ function TableAutomations({
     if (!saved) throw new Error(t('data.resultTables.automation.missing'));
     setSelectedId('');
   };
+  const createButton = (size: 'sm' | 'md') => (
+    <Button size={size} onClick={() => navigate(navigation)} disabled={busy}>
+      <Plus size={14} />
+      {t('data.resultTables.automation.create')}
+    </Button>
+  );
+  const linkControls = (
+    <>
+      <div className="min-w-0 flex-1">
+        <RawTableSelect
+          value={selectedId}
+          disabled={busy}
+          options={[
+            { value: '', label: t('data.resultTables.automation.select') },
+            ...available.map((a) => ({ value: a.id, label: a.name })),
+          ]}
+          onChange={setSelectedId}
+        />
+      </div>
+      <Button
+        size="md"
+        disabled={loading || busy || !selectedId}
+        onClick={() =>
+          kind === 'raw'
+            ? navigate({ automationId: selectedId, rawTable: table })
+            : void execute(() => bind(selectedId, true))
+        }
+      >
+        {t('data.resultTables.automation.link')}
+      </Button>
+    </>
+  );
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[13px] font-medium text-text-primary">
-          {t('data.resultTables.automation.title')}
-        </h3>
-        <Button size="sm" onClick={() => navigate(navigation)} disabled={busy}>
-          <Plus size={14} />
-          {t('data.resultTables.automation.create')}
-        </Button>
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <RawTableSelect
-            value={selectedId}
-            disabled={busy}
-            options={[
-              { value: '', label: t('data.resultTables.automation.select') },
-              ...available.map((a) => ({ value: a.id, label: a.name })),
-            ]}
-            onChange={setSelectedId}
-          />
+      {embedded ? (
+        <div className="flex items-center gap-2">
+          {linkControls}
+          {createButton('md')}
         </div>
-        <Button
-          size="sm"
-          disabled={loading || busy || !selectedId}
-          onClick={() =>
-            kind === 'raw'
-              ? navigate({ automationId: selectedId, rawTable: table })
-              : void execute(() => bind(selectedId, true))
-          }
-        >
-          {t('data.resultTables.automation.link')}
-        </Button>
-      </div>
-      {loading && <p className="text-xs text-text-muted">{t('common.loading')}</p>}
-      {!loading && linked.length === 0 && (
-        <p className="text-xs text-text-muted">{t('data.resultTables.automation.empty')}</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-[13px] font-medium text-text-primary">
+              {t('data.resultTables.automation.title')}
+            </h3>
+            {createButton('sm')}
+          </div>
+          <div className="flex items-center gap-2">{linkControls}</div>
+        </>
       )}
+      {loading && <p className="text-xs text-text-muted">{t('common.loading')}</p>}
       {linked.map((automation) => {
         const binding = automation.outputBindings?.find((b) => b.resultTableId === table.id);
         return (
