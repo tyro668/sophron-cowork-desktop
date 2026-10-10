@@ -486,7 +486,7 @@ describe('calculation function registry', () => {
         parameters: { dateField: 'date', granularity: 'month' },
       })
     ).toBe(
-      'compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])'
+      'compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])'
     );
     expect(
       buildCalculationFunctionDslExpression({
@@ -495,16 +495,16 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', aggregation: 'sum', fiscalStartMonth: '4' },
       })
-    ).toBe('accumulate(yeartodate(sum([sales]), [date], 4)) over(partition by [region])');
+    ).toBe('accumulate(year_to_date(sum([sales]), [date], 4)) over(partition by [region])');
   });
 
   it('normalizes domain DSL spacing', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'compare( sameperiodlastyear( [sales] , [date] , "month" , "value" ) ) over( partition by [region] )'
+        'compare( same_period_last_year( [sales] , [date] , "month" , "value" ) ) over( partition by [region] )'
       )
     ).toBe(
-      'compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])'
+      'compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])'
     );
   });
 
@@ -581,7 +581,7 @@ describe('calculation function registry', () => {
         orderBy,
       })
     ).toBe(
-      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
+      'reference(offset_difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
     expect(
       buildCalculationFunctionDslExpression({
@@ -592,7 +592,7 @@ describe('calculation function registry', () => {
         orderBy,
       })
     ).toBe(
-      'reference(rate([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
+      'reference(offset_rate([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
   });
 
@@ -604,7 +604,7 @@ describe('calculation function registry', () => {
         value: 'sales',
         orderBy,
       })
-    ).toBe('reference(first([sales])) over(order by [date])');
+    ).toBe('reference(first_value([sales])) over(order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'last_value',
@@ -612,7 +612,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         orderBy,
       })
-    ).toBe('reference(last([sales])) over(partition by [region] order by [date])');
+    ).toBe('reference(last_value([sales])) over(partition by [region] order by [date])');
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'nth_value',
@@ -620,15 +620,15 @@ describe('calculation function registry', () => {
         extraParameter: '3',
         orderBy,
       })
-    ).toBe('reference(nth([sales], 3)) over(order by [date])');
+    ).toBe('reference(nth_value([sales], 3)) over(order by [date])');
   });
 
   it('parses offset domain DSL back into a structured input', () => {
     const parsed = normalizeCalculationDomainExpression(
-      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
+      'reference(offset_difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
     expect(parsed).toBe(
-      'reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
+      'reference(offset_difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])'
     );
   });
 
@@ -696,7 +696,7 @@ describe('calculation function registry', () => {
         value: 'amount',
         partitionBy: ['region'],
       })
-    ).toBe('group(percentoftotal([amount])) over(partition by [region])');
+    ).toBe('group(percent_of_total([amount])) over(partition by [region])');
   });
 
   it('builds canonical cumulative and moving window domain DSL', () => {
@@ -781,7 +781,7 @@ describe('calculation function registry', () => {
     ).toThrow(/does not allow a window frame/);
     expect(() =>
       normalizeCalculationDomainExpression(
-        'reference(difference([sales], 2)) over(order by [date] rows between 1 preceding and current row)'
+        'reference(offset_difference([sales], 2)) over(order by [date] rows between 1 preceding and current row)'
       )
     ).toThrow(/does not allow a window frame/);
   });

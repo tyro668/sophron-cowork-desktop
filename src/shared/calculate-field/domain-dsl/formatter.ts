@@ -65,7 +65,7 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
       ? 'value'
       : input.functionId.endsWith('_difference')
         ? 'difference'
-        : 'percentchange';
+        : 'change_rate';
     args.push(quoteString(result));
     return wrapScene(definition, `${canonicalId}(${args.join(', ')})`) + over;
   }
@@ -86,7 +86,7 @@ export function buildCalculationFunctionDslExpression(input: CalculationFunction
     return (
       wrapScene(
         definition,
-        `rolling(${aggregate}, ${date}, ${size}, ${quoteString(intervalUnit)})`
+        `rolling_time(${aggregate}, ${date}, ${size}, ${quoteString(intervalUnit)})`
       ) + over
     );
   }

@@ -2,6 +2,7 @@ import { splitTopLevel } from '../../prep-dsl/syntax/scanner';
 import {
   getCalculationFunctionBySceneOperation,
   isCalculationSceneDslId,
+  normalizeCalculationOperationDslId,
   LEGACY_DOMAIN_FUNCTION_IDS,
   MAX_CALCULATION_WINDOW_SIZE,
   MAX_FISCAL_START_MONTH,
@@ -58,7 +59,7 @@ export function parseDomainExpression(
   if (!operationToken || operationToken.type !== 'Ident' || openToken?.type !== 'ParenOpen') {
     throw new Error(`Calculation scene '${scene}' requires one operation call`);
   }
-  const functionId = operationToken.value.toLowerCase();
+  const functionId = normalizeCalculationOperationDslId(scene, operationToken.value);
   const closeToken = findMatchingParenToken(operationTokens, 1);
   if (!closeToken) {
     throw new Error(`Calculation function '${functionId}' has an unclosed argument list`);
@@ -73,7 +74,7 @@ export function parseDomainExpression(
   let result: string | undefined;
   if (scene === 'compare') {
     const expectedArguments =
-      functionId === 'previous' ? 3 : functionId === 'sameperiodlastyear' ? 4 : undefined;
+      functionId === 'previous_record' ? 3 : functionId === 'same_period_last_year' ? 4 : undefined;
     if (!expectedArguments) {
       throw new Error(`Calculation scene '${scene}' does not support operation '${functionId}'`);
     }
@@ -197,12 +198,12 @@ export function parseDomainExpression(
   const partitionBy = parsePartition(tail);
 
   if (definition.category === 'period_compare') {
-    if (functionId === 'previous') {
+    if (functionId === 'previous_record') {
       return domainInput(definition.id, requiredValue(functionId, args[0], 1), partitionBy, {
         dateField: requiredField(functionId, args[1], 2),
       });
     }
-    if (functionId === 'sameperiodlastyear') {
+    if (functionId === 'same_period_last_year') {
       const granularity = requiredString(functionId, args[2], 3);
       if (!PERIOD_GRAINS.has(granularity)) {
         throw new Error(

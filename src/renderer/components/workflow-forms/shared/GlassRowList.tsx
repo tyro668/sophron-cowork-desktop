@@ -43,6 +43,8 @@ interface GlassRowListProps<T> {
   canAct?: (action: RowAction, index: number) => boolean;
   renderExtraActions?: (index: number) => ReactNode;
   draggable?: boolean;
+  /** Drag handle placement: before the columns (default) or after the action buttons. */
+  dragHandlePosition?: 'start' | 'end';
   /** Stable React key per row; required whenever rows carry internal state
    *  (e.g. expression editors) and can be removed or reordered. */
   getKey?: (item: T, index: number) => string;
@@ -55,6 +57,8 @@ interface GlassRowListProps<T> {
   hideHeader?: boolean;
   headerClassName?: string;
   gapClassName?: string;
+  /** Row horizontal padding; use px-0 to align row content with sibling controls. */
+  rowPaddingClassName?: string;
 }
 
 const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>> = {
@@ -90,6 +94,7 @@ export function GlassRowList<T>({
   canAct,
   renderExtraActions,
   draggable = false,
+  dragHandlePosition = 'start',
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -100,6 +105,7 @@ export function GlassRowList<T>({
   hideHeader,
   headerClassName,
   gapClassName = 'gap-1',
+  rowPaddingClassName = 'px-2',
 }: GlassRowListProps<T>) {
   const tr = useFormTranslation('rowList');
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -123,7 +129,11 @@ export function GlassRowList<T>({
     }
   }
   const extraActionsWidth = renderExtraActions ? 32 : 0;
-  const actionsWidth = actions.length * 32 + (actions.length - 1) * 4 + extraActionsWidth;
+  const actionsWidth =
+    actions.length * 32 +
+    (actions.length - 1) * 4 +
+    extraActionsWidth +
+    (draggable && dragHandlePosition === 'end' ? 36 : 0);
 
   return (
     <div ref={listRef} className={`flex flex-col ${gapClassName}`}>
@@ -131,7 +141,7 @@ export function GlassRowList<T>({
         <div
           className={`flex min-h-8 items-center gap-1 px-2 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
         >
-          {draggable && (
+          {draggable && dragHandlePosition === 'start' && (
             <span
               className="flex h-8 w-8 flex-shrink-0 items-center justify-center"
               aria-hidden="true"
@@ -152,44 +162,43 @@ export function GlassRowList<T>({
       )}
 
       {items.map((item, index) => {
+        const dragHandle = draggable ? (
+          <button
+            type="button"
+            draggable
+            onDragStart={() => onDragStart?.(index)}
+            onDragEnd={() => onDragEnd?.()}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+              const targetIndex = getReorderTargetIndex(items.length, index, direction);
+              if (targetIndex === null || !onKeyboardMove) return;
+              onKeyboardMove(index, direction);
+              requestAnimationFrame(() => {
+                const handles =
+                  listRef.current?.querySelectorAll<HTMLButtonElement>('[data-row-drag-handle]');
+                handles?.[targetIndex]?.focus();
+              });
+            }}
+            className="flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
+            title={dragTitle ?? tr('dragToReorder')}
+            aria-label={dragTitle ?? tr('dragToReorder')}
+            aria-keyshortcuts="ArrowUp ArrowDown"
+            data-row-drag-handle
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : null;
         return (
           <div
             key={getKey ? getKey(item, index) : index}
-            className={`flex min-h-10 items-center gap-1 rounded-lg px-2 py-1 transition-colors hover:bg-surface-hover/40 ${
+            className={`flex min-h-10 items-center gap-1 rounded-lg ${rowPaddingClassName} py-1 transition-colors hover:bg-surface-hover/40 ${
               getRowOpacity?.(index) ? 'opacity-50' : ''
             }`}
             onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
           >
-            {draggable && (
-              <button
-                type="button"
-                draggable
-                onDragStart={() => onDragStart?.(index)}
-                onDragEnd={() => onDragEnd?.()}
-                onKeyDown={(event) => {
-                  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-                  event.preventDefault();
-                  const direction = event.key === 'ArrowUp' ? 'up' : 'down';
-                  const targetIndex = getReorderTargetIndex(items.length, index, direction);
-                  if (targetIndex === null || !onKeyboardMove) return;
-                  onKeyboardMove(index, direction);
-                  requestAnimationFrame(() => {
-                    const handles =
-                      listRef.current?.querySelectorAll<HTMLButtonElement>(
-                        '[data-row-drag-handle]'
-                      );
-                    handles?.[targetIndex]?.focus();
-                  });
-                }}
-                className="flex h-8 w-8 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
-                title={dragTitle ?? tr('dragToReorder')}
-                aria-label={dragTitle ?? tr('dragToReorder')}
-                aria-keyshortcuts="ArrowUp ArrowDown"
-                data-row-drag-handle
-              >
-                <GripVertical className="h-4 w-4" />
-              </button>
-            )}
+            {dragHandlePosition === 'start' && dragHandle}
 
             {columns.map((col, i) => (
               <div
@@ -246,6 +255,7 @@ export function GlassRowList<T>({
                   </button>
                 );
               })}
+              {dragHandlePosition === 'end' && dragHandle}
             </div>
           </div>
         );

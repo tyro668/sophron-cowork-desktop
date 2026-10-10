@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { isTemporalDataFieldType } from '../../../../shared/data-field-types';
 import {
   calculationFunctionsByCategory,
@@ -23,8 +24,9 @@ import {
   formatCalculationFrameBound,
   type CalculationFrameBoundType,
 } from '../../../../shared/calculate-field/wizard-state';
+import { AlertCircle, Check } from 'lucide-react';
 import { useDragReorder } from '../../../hooks/useDragReorder';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
+import { Button } from '../../ui/button';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from '../shared/GlassOptionMultiSelect';
@@ -66,6 +68,15 @@ const BOUND_LABEL_KEYS: Record<CalculationFrameBoundType, string> = {
   'unbounded following': 'calcFieldUnboundedFoll',
 };
 
+type WizardStep = 'basic' | 'fields' | 'window' | 'preview';
+
+const WIZARD_STEP_LABEL_KEYS: Record<WizardStep, string> = {
+  basic: 'calcFieldBasicConfig',
+  fields: 'calcFieldFieldConfig',
+  window: 'calcFieldSpecialConfig',
+  preview: 'calcFieldExpressionPreview',
+};
+
 export function CalculationFunctionWizard({
   fieldCompletions,
   columnTypes,
@@ -89,7 +100,6 @@ export function CalculationFunctionWizard({
     initialInput?.parameters ?? {}
   );
   const [partitionBy, setPartitionBy] = useState<string[]>(initialInput?.partitionBy ?? []);
-  const [partitionOpen, setPartitionOpen] = useState(true);
   const [orderBy, setOrderBy] = useState<CalculationOrderField[]>(initialInput?.orderBy ?? []);
   const [frameType, setFrameType] = useState<CalculationWindowFrame['type']>(
     initialFrame?.type ?? 'rows'
@@ -107,6 +117,7 @@ export function CalculationFunctionWizard({
   const [frameExclude, setFrameExclude] = useState<CalculationWindowFrame['exclude']>(
     initialFrame?.exclude ?? 'no others'
   );
+  const [stepIndex, setStepIndex] = useState(0);
 
   const definitions = useMemo(() => calculationFunctionsByCategory(category), [category]);
   const definition = definitions.find((item) => item.id === functionId) ?? definitions[0];
@@ -166,21 +177,23 @@ export function CalculationFunctionWizard({
     usesTemporalRangeUnit,
   ]);
 
-  const preview = useMemo(() => {
-    const localizedError = (): string => {
-      if (definition.valueArgument !== 'none' && !value.trim()) {
-        return tr('calcFieldErrValueRequired');
-      }
-      if (definition.order === 'required' && configuredOrderBy.length === 0) {
-        return tr('calcFieldErrOrderRequired');
-      }
-      const extra = definition.extraParameter;
-      if (extra && extra.kind !== 'text') {
-        const raw = effectiveExtraParameter.trim();
-        const name = tr(extra.labelKey);
-        if (!/^\d+(?:\.\d+)?$/.test(raw)) {
-          return tr('calcFieldErrParamNumeric', { name });
-        }
+  // Per-field validation errors — rendered as red icons on the owning control
+  // rows instead of a single message in the preview footer.
+  const fieldErrors = useMemo<Record<string, string>>(() => {
+    const errors: Record<string, string> = {};
+    if (definition.valueArgument !== 'none' && !value.trim()) {
+      errors.value = tr('calcFieldErrValueRequired');
+    }
+    if (definition.order === 'required' && configuredOrderBy.length === 0) {
+      errors.order = tr('calcFieldErrOrderRequired');
+    }
+    const extra = definition.extraParameter;
+    if (extra && extra.kind !== 'text') {
+      const raw = effectiveExtraParameter.trim();
+      const name = tr(extra.labelKey);
+      if (!/^\d+(?:\.\d+)?$/.test(raw)) {
+        errors.extra = tr('calcFieldErrParamNumeric', { name });
+      } else {
         const parsed = Number(raw);
         if (
           !Number.isFinite(parsed) ||
@@ -188,44 +201,55 @@ export function CalculationFunctionWizard({
           (extra.min !== undefined && parsed < extra.min) ||
           (extra.max !== undefined && parsed > extra.max)
         ) {
-          return tr('calcFieldErrParamRange', { name });
+          errors.extra = tr('calcFieldErrParamRange', { name });
         }
       }
-      for (const parameter of definition.parameters ?? []) {
-        const raw = (effectiveParameterValues[parameter.key] ?? '').trim();
-        const name = tr(parameter.labelKey);
-        if (parameter.kind === 'temporal-field' && !raw) {
-          return tr('calcFieldErrParamRequired', { name });
-        }
-        if (parameter.kind === 'integer') {
-          if (!/^\d+$/.test(raw)) {
-            return tr('calcFieldErrParamInteger', { name });
-          }
+    }
+    for (const parameter of definition.parameters ?? []) {
+      const raw = (effectiveParameterValues[parameter.key] ?? '').trim();
+      const name = tr(parameter.labelKey);
+      if (parameter.kind === 'temporal-field' && !raw) {
+        errors[`param.${parameter.key}`] = tr('calcFieldErrParamRequired', { name });
+      }
+      if (parameter.kind === 'integer') {
+        if (!/^\d+$/.test(raw)) {
+          errors[`param.${parameter.key}`] = tr('calcFieldErrParamInteger', { name });
+        } else {
           const parsed = Number(raw);
           if (
             !Number.isSafeInteger(parsed) ||
             parsed < (parameter.min ?? 1) ||
             parsed > (parameter.max ?? MAX_CALCULATION_WINDOW_SIZE)
           ) {
-            return tr('calcFieldErrParamRange', { name });
+            errors[`param.${parameter.key}`] = tr('calcFieldErrParamRange', { name });
           }
         }
       }
-      if (usesRangeOffset && configuredOrderBy.length !== 1) {
-        return tr('calcFieldErrRangeNeedsOrder');
-      }
-      if (
-        definition.category === 'time_intelligence' &&
-        value.trim() === '*' &&
-        effectiveParameterValues.aggregation !== 'count'
-      ) {
-        return tr('calcFieldErrTimeAggStar');
-      }
-      return '';
-    };
-    const error = localizedError();
-    if (error) {
-      return { expression: '', error };
+    }
+    if (usesRangeOffset && configuredOrderBy.length !== 1) {
+      errors.order ??= tr('calcFieldErrRangeNeedsOrder');
+    }
+    if (
+      definition.category === 'time_intelligence' &&
+      value.trim() === '*' &&
+      effectiveParameterValues.aggregation !== 'count'
+    ) {
+      errors['param.aggregation'] ??= tr('calcFieldErrTimeAggStar');
+    }
+    return errors;
+  }, [
+    configuredOrderBy.length,
+    definition,
+    effectiveExtraParameter,
+    effectiveParameterValues,
+    tr,
+    usesRangeOffset,
+    value,
+  ]);
+
+  const preview = useMemo(() => {
+    if (Object.keys(fieldErrors).length > 0) {
+      return { expression: '', error: '' };
     }
     try {
       return {
@@ -244,15 +268,14 @@ export function CalculationFunctionWizard({
       return { expression: '', error: tr('calcFieldErrInvalidConfig') };
     }
   }, [
-    configuredOrderBy.length,
     definition,
     effectiveExtraParameter,
     effectiveParameterValues,
+    fieldErrors,
     frame,
     orderBy,
     partitionBy,
     tr,
-    usesRangeOffset,
     value,
   ]);
 
@@ -262,6 +285,7 @@ export function CalculationFunctionWizard({
     setFunctionId(firstDefinition.id);
     setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
     setParameterValues(defaultCalculationParameterValues(firstDefinition.parameters));
+    setStepIndex(0);
   }
 
   function selectFunction(nextFunctionId: string): void {
@@ -269,6 +293,7 @@ export function CalculationFunctionWizard({
     setFunctionId(nextFunctionId);
     setExtraParameter(nextDefinition?.extraParameter?.defaultValue ?? '');
     setParameterValues(defaultCalculationParameterValues(nextDefinition?.parameters));
+    setStepIndex(0);
   }
 
   const allowsStar =
@@ -305,298 +330,475 @@ export function CalculationFunctionWizard({
   }
 
   const hasSpecialConfig = definition.frame === 'custom';
-  const temporalFields = fieldCompletions.filter((field) =>
-    isTemporalDataFieldType(columnTypes?.[field])
+  const hasBasicConfig =
+    definition.valueArgument !== 'none' ||
+    !!definition.extraParameter ||
+    (definition.parameters?.length ?? 0) > 0;
+  // Column types load asynchronously; when unknown, don't filter every field out.
+  const columnTypesKnown = columnTypes != null && Object.keys(columnTypes).length > 0;
+  const temporalFields = columnTypesKnown
+    ? fieldCompletions.filter((field) => isTemporalDataFieldType(columnTypes[field]))
+    : fieldCompletions;
+  const showNoTemporalFieldHint = columnTypesKnown && temporalFields.length === 0;
+
+  const steps = useMemo<WizardStep[]>(
+    () =>
+      hasSpecialConfig ? ['basic', 'fields', 'window', 'preview'] : ['basic', 'fields', 'preview'],
+    [hasSpecialConfig]
+  );
+  const currentStepIndex = Math.min(stepIndex, steps.length - 1);
+  const activeStep = steps[currentStepIndex];
+
+  const basicRows = (
+    <>
+      {definition.valueArgument !== 'none' && (
+        <FormRow label={tr('expression.expressionFunctionArgument')}>
+          <FieldError error={fieldErrors.value}>
+            <GlassFieldSingleSelect
+              value={value}
+              options={valueOptions}
+              columnTypes={columnTypes}
+              onChange={setValue}
+              placeholder={tr('expressionFunctionArgumentPlaceholder')}
+              className="h-8 w-full"
+            />
+          </FieldError>
+        </FormRow>
+      )}
+
+      {definition.extraParameter && (
+        <FormRow label={tr(definition.extraParameter.labelKey)}>
+          <FieldError error={fieldErrors.extra}>
+            <GlassFormTextInput
+              inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
+              value={effectiveExtraParameter}
+              onChange={setExtraParameter}
+              className="h-8 w-full rounded-md px-2 text-[12px]"
+            />
+          </FieldError>
+        </FormRow>
+      )}
+
+      {definition.parameters?.map((parameter) => (
+        <FormRow key={parameter.key} label={tr(parameter.labelKey)}>
+          <FieldError
+            error={
+              parameter.kind === 'temporal-field' && showNoTemporalFieldHint
+                ? `${fieldErrors[`param.${parameter.key}`] ?? ''}\n${tr('calcFieldNoTemporalField')}`.trim()
+                : fieldErrors[`param.${parameter.key}`]
+            }
+          >
+            {parameter.kind === 'temporal-field' ? (
+              <GlassFieldSingleSelect
+                value={effectiveParameterValues[parameter.key]}
+                options={temporalFields}
+                columnTypes={columnTypes}
+                onChange={(nextValue) =>
+                  setParameterValues((current) => ({
+                    ...current,
+                    [parameter.key]: nextValue,
+                  }))
+                }
+                placeholder={tr('expressionFunctionArgumentPlaceholder')}
+                className="h-8 w-full"
+              />
+            ) : parameter.kind === 'option' ? (
+              <GlassOptionSingleSelect
+                value={effectiveParameterValues[parameter.key]}
+                groups={[
+                  {
+                    key: parameter.key,
+                    items: (parameter.options ?? []).map((option) => ({
+                      value: option.value,
+                      label: tr(option.labelKey),
+                    })),
+                  },
+                ]}
+                onChange={(nextValue) =>
+                  setParameterValues((current) => ({
+                    ...current,
+                    [parameter.key]: nextValue,
+                  }))
+                }
+                className="h-8 w-full text-[12px]"
+              />
+            ) : (
+              <GlassFormTextInput
+                inputMode="numeric"
+                value={effectiveParameterValues[parameter.key]}
+                onChange={(nextValue) =>
+                  setParameterValues((current) => ({
+                    ...current,
+                    [parameter.key]: nextValue,
+                  }))
+                }
+                className="h-8 w-full rounded-md px-2 text-[12px]"
+              />
+            )}
+          </FieldError>
+        </FormRow>
+      ))}
+    </>
+  );
+
+  const fieldRows = (
+    <>
+      <FormRow label={tr('calcFieldPartitionBy')}>
+        <GlassOptionMultiSelect
+          options={fieldCompletions}
+          selected={partitionBy}
+          onChange={setPartitionBy}
+          onClear={() => setPartitionBy([])}
+          optionTypes={columnTypes}
+          maxHeight="240px"
+          placeholder={tr('noFieldsSelected')}
+        />
+      </FormRow>
+
+      <FormRow label={tr('calcFieldOrderBy')}>
+        <FieldError error={fieldErrors.order}>
+          {definition.order === 'required' ? (
+            <GlassRowList
+              hideHeader
+              rowPaddingClassName="px-0"
+              items={activeOrderBy}
+              columns={[
+                {
+                  flex: 'flex-[3]',
+                  header: tr('sortKeys.sortFieldHeader'),
+                  render: (item, index) => {
+                    const disabledOptions = new Set(
+                      activeOrderBy.map((entry) => entry.field).filter(Boolean)
+                    );
+                    disabledOptions.delete(item.field);
+                    return (
+                      <GlassFieldSingleSelect
+                        value={item.field}
+                        options={fieldCompletions}
+                        columnTypes={columnTypes}
+                        disabledOptions={disabledOptions}
+                        onChange={(field) => updateOrderField(index, { field })}
+                        placeholder={tr('expressionFunctionArgumentPlaceholder')}
+                        className="w-full"
+                      />
+                    );
+                  },
+                },
+                {
+                  flex: 'flex-[1.4]',
+                  header: tr('sortKeys.sortDirectionHeader'),
+                  render: (item, index) => (
+                    <GlassDirectionToggle
+                      value={item.direction}
+                      onChange={(direction) => updateOrderField(index, { direction })}
+                      className="h-6 w-full px-1 text-[11px]"
+                    />
+                  ),
+                },
+              ]}
+              onAdd={addOrderField}
+              onRemove={removeOrderField}
+              addTitle={tr('sortKeys.sortAddKey')}
+              removeTitle={tr('sortKeys.sortRemoveKey')}
+              canAct={(action) =>
+                action !== 'add' ||
+                (!(definition.frame === 'custom' && usesRangeOffset) &&
+                  !activeOrderBy.some((item) => !item.field) &&
+                  activeOrderBy.length < fieldCompletions.length)
+              }
+              draggable
+              dragHandlePosition="end"
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onKeyboardMove={handleKeyboardMove}
+              getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
+              dragTitle={tr('rowList.dragToReorder')}
+            />
+          ) : (
+            <div className="rounded-md bg-surface px-3 py-2 text-[11px] text-text-muted">
+              {tr('calcFieldOrderNotRequired')}
+            </div>
+          )}
+        </FieldError>
+      </FormRow>
+    </>
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-muted/60">
-        <Tabs
-          value={category}
-          onValueChange={(v) => selectCategory(v as CalculationFunctionCategory)}
-          className="contents"
+    <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
+      <div className="flex w-[17.5rem] shrink-0 border-r border-border-muted/60">
+        <div
+          role="listbox"
+          aria-label={tr('calcFieldOpenWizard')}
+          className="scrollbar-hover w-28 shrink-0 overflow-y-auto border-r border-border-muted/60 py-1.5"
         >
-          <TabsList
-            aria-label={tr('calcFieldOpenWizard')}
-            className="flex w-full items-stretch gap-0 overflow-x-auto overflow-y-hidden rounded-none border-0 border-b border-border-muted/60 bg-surface px-2"
-          >
-            {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
-              <TabsTrigger
-                key={item}
-                value={item}
-                className="h-8 shrink-0 rounded-none border-b-2 px-3 text-[12px] shadow-none data-[state=active]:border-accent data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-accent data-[state=active]:shadow-none"
-              >
-                {tr(CATEGORY_LABEL_KEYS[item])}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <TabsContent
-            value={category}
-            forceMount
-            className="scrollbar-hover min-h-0 flex-1 overflow-y-auto pr-1"
-          >
-            <section className="p-3">
-              <SectionTitle>{tr('calcFieldBasicConfig')}</SectionTitle>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <WizardLabel text={tr('calcFieldFunction')}>
-                  <GlassOptionSingleSelect
-                    value={definition.id}
-                    groups={[
-                      {
-                        key: category,
-                        items: definitions.map((item) => ({
-                          value: item.id,
-                          label: tr(item.labelKey),
-                        })),
-                      },
-                    ]}
-                    onChange={selectFunction}
-                    className="h-8 w-full text-[12px]"
-                  />
-                </WizardLabel>
-
-                {definition.valueArgument !== 'none' && (
-                  <WizardLabel text={tr('expression.expressionFunctionArgument')}>
-                    <GlassFieldSingleSelect
-                      value={value}
-                      options={valueOptions}
-                      columnTypes={columnTypes}
-                      onChange={setValue}
-                      placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                      className="h-8 w-full"
-                    />
-                  </WizardLabel>
-                )}
-
-                {definition.extraParameter && (
-                  <WizardLabel text={tr(definition.extraParameter.labelKey)}>
-                    <GlassFormTextInput
-                      inputMode={definition.extraParameter.kind === 'text' ? undefined : 'numeric'}
-                      value={effectiveExtraParameter}
-                      onChange={setExtraParameter}
-                      className="h-8 w-full rounded-md px-2 text-[12px]"
-                    />
-                  </WizardLabel>
-                )}
-
-                {definition.parameters?.map((parameter) => (
-                  <WizardLabel key={parameter.key} text={tr(parameter.labelKey)}>
-                    {parameter.kind === 'temporal-field' ? (
-                      <GlassFieldSingleSelect
-                        value={effectiveParameterValues[parameter.key]}
-                        options={temporalFields}
-                        columnTypes={columnTypes}
-                        onChange={(nextValue) =>
-                          setParameterValues((current) => ({
-                            ...current,
-                            [parameter.key]: nextValue,
-                          }))
-                        }
-                        placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                        className="h-8 w-full"
-                      />
-                    ) : parameter.kind === 'option' ? (
-                      <GlassOptionSingleSelect
-                        value={effectiveParameterValues[parameter.key]}
-                        groups={[
-                          {
-                            key: parameter.key,
-                            items: (parameter.options ?? []).map((option) => ({
-                              value: option.value,
-                              label: tr(option.labelKey),
-                            })),
-                          },
-                        ]}
-                        onChange={(nextValue) =>
-                          setParameterValues((current) => ({
-                            ...current,
-                            [parameter.key]: nextValue,
-                          }))
-                        }
-                        className="h-8 w-full text-[12px]"
-                      />
-                    ) : (
-                      <GlassFormTextInput
-                        inputMode="numeric"
-                        value={effectiveParameterValues[parameter.key]}
-                        onChange={(nextValue) =>
-                          setParameterValues((current) => ({
-                            ...current,
-                            [parameter.key]: nextValue,
-                          }))
-                        }
-                        className="h-8 w-full rounded-md px-2 text-[12px]"
-                      />
-                    )}
-                  </WizardLabel>
-                ))}
-              </div>
-            </section>
-
-            <div className="grid grid-cols-1 border-t border-border-muted/60 md:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.65fr)]">
-              <section className="flex min-w-0 flex-col gap-3 p-3">
-                <SectionTitle>{tr('calcFieldFieldConfig')}</SectionTitle>
-                <div className="flex min-h-0 flex-col gap-1.5">
-                  <span className="text-[11px] font-medium text-text-muted">
-                    {tr('calcFieldPartitionBy')}
-                  </span>
-                  <GlassOptionMultiSelect
-                    options={fieldCompletions}
-                    selected={partitionBy}
-                    onChange={setPartitionBy}
-                    onClear={() => setPartitionBy([])}
-                    open={partitionOpen}
-                    onToggle={() => setPartitionOpen((current) => !current)}
-                    dropdown="inline"
-                    overflow="scroll"
-                    optionTypes={columnTypes}
-                    maxHeight="132px"
-                    variant="flat"
-                    placeholder={tr('noFieldsSelected')}
-                  />
-                </div>
-
-                <div className="border-t border-border-muted/60 pt-3">
-                  <div className="mb-1.5 text-[11px] font-medium text-text-muted">
-                    {tr('calcFieldOrderBy')}
-                  </div>
-                  {definition.order === 'required' ? (
-                    <GlassRowList
-                      headerClassName=""
-                      items={activeOrderBy}
-                      columns={[
-                        {
-                          flex: 'flex-[3]',
-                          header: tr('sortKeys.sortFieldHeader'),
-                          render: (item, index) => {
-                            const disabledOptions = new Set(
-                              activeOrderBy.map((entry) => entry.field).filter(Boolean)
-                            );
-                            disabledOptions.delete(item.field);
-                            return (
-                              <GlassFieldSingleSelect
-                                value={item.field}
-                                options={fieldCompletions}
-                                columnTypes={columnTypes}
-                                disabledOptions={disabledOptions}
-                                onChange={(field) => updateOrderField(index, { field })}
-                                placeholder={tr('expressionFunctionArgumentPlaceholder')}
-                                className="w-full"
-                              />
-                            );
-                          },
-                        },
-                        {
-                          flex: 'flex-[1.4]',
-                          header: tr('sortKeys.sortDirectionHeader'),
-                          render: (item, index) => (
-                            <GlassDirectionToggle
-                              value={item.direction}
-                              onChange={(direction) => updateOrderField(index, { direction })}
-                              className="h-6 w-full px-1 text-[11px]"
-                            />
-                          ),
-                        },
-                      ]}
-                      onAdd={addOrderField}
-                      onRemove={removeOrderField}
-                      addTitle={tr('sortKeys.sortAddKey')}
-                      removeTitle={tr('sortKeys.sortRemoveKey')}
-                      canAct={(action) =>
-                        action !== 'add' ||
-                        (!(definition.frame === 'custom' && usesRangeOffset) &&
-                          !activeOrderBy.some((item) => !item.field) &&
-                          activeOrderBy.length < fieldCompletions.length)
-                      }
-                      draggable
-                      onDragStart={handleDragStart}
-                      onDragOver={handleDragOver}
-                      onDragEnd={handleDragEnd}
-                      onKeyboardMove={handleKeyboardMove}
-                      getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
-                      dragTitle={tr('rowList.dragToReorder')}
-                    />
-                  ) : (
-                    <div className="rounded-md bg-surface p-2 text-[11px] text-text-muted">
-                      {tr('calcFieldOrderNotRequired')}
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section className="flex min-w-0 flex-col border-t border-border-muted/60 p-3 md:border-l md:border-t-0">
-                <SectionTitle>{tr('calcFieldSpecialConfig')}</SectionTitle>
-                {!hasSpecialConfig && (
-                  <div className="flex min-h-32 flex-1 items-center justify-center rounded-md bg-surface px-4 text-center text-[11px] leading-5 text-text-muted">
-                    {tr('calcFieldNoSpecialConfig')}
-                  </div>
-                )}
-                {definition.frame === 'custom' && (
-                  <FrameEditor
-                    frameType={frameType}
-                    setFrameType={setFrameType}
-                    startType={frameStartType}
-                    setStartType={setFrameStartType}
-                    startOffset={frameStartOffset}
-                    setStartOffset={setFrameStartOffset}
-                    startUnit={frameStartUnit}
-                    setStartUnit={setFrameStartUnit}
-                    endType={frameEndType}
-                    setEndType={setFrameEndType}
-                    endOffset={frameEndOffset}
-                    setEndOffset={setFrameEndOffset}
-                    endUnit={frameEndUnit}
-                    setEndUnit={setFrameEndUnit}
-                    exclude={frameExclude}
-                    setExclude={setFrameExclude}
-                    usesTemporalRangeUnit={usesTemporalRangeUnit}
-                    tr={tr}
-                  />
-                )}
-              </section>
-            </div>
-          </TabsContent>
-        </Tabs>
+          {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => selectCategory(item)}
+              className={`flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors ${
+                item === category
+                  ? 'bg-accent-muted font-medium text-accent'
+                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              }`}
+            >
+              {tr(CATEGORY_LABEL_KEYS[item])}
+            </button>
+          ))}
+        </div>
+        <div className="scrollbar-hover min-w-0 flex-1 overflow-y-auto p-2">
+          <div className="flex flex-col gap-1.5">
+            {definitions.map((item) => {
+              const selected = item.id === definition.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => selectFunction(item.id)}
+                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[12px] transition-colors ${
+                    selected
+                      ? 'border-accent/40 bg-accent-muted font-medium text-accent'
+                      : 'border-border-muted/60 bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted/50 hover:text-text-primary'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-end gap-3 rounded-lg border border-border-muted/60 bg-surface p-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 text-[10px] font-medium text-text-muted">
-            {tr('calcFieldExpressionPreview')}
-          </div>
-          <pre
-            className={`scrollbar-hover max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
-              preview.error ? 'text-error' : 'text-text-secondary'
-            }`}
-          >
-            {preview.error || preview.expression}
-          </pre>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto">
+          {!hasSpecialConfig && (
+            <section className="flex flex-col gap-3 px-4 py-3">
+              {basicRows}
+              {hasBasicConfig && <div className="border-t border-border-muted/60" />}
+              {fieldRows}
+            </section>
+          )}
+          {hasSpecialConfig && activeStep === 'basic' && (
+            <section className="flex max-w-[34rem] flex-col gap-3 px-4 py-3">{basicRows}</section>
+          )}
+
+          {hasSpecialConfig && activeStep === 'fields' && (
+            <section className="flex min-w-0 flex-col gap-4 px-4 py-3">{fieldRows}</section>
+          )}
+
+          {hasSpecialConfig && activeStep === 'window' && (
+            <section className="flex max-w-[34rem] flex-col gap-3 px-4 py-3">
+              <FrameEditor
+                frameType={frameType}
+                setFrameType={setFrameType}
+                startType={frameStartType}
+                setStartType={setFrameStartType}
+                startOffset={frameStartOffset}
+                setStartOffset={setFrameStartOffset}
+                startUnit={frameStartUnit}
+                setStartUnit={setFrameStartUnit}
+                endType={frameEndType}
+                setEndType={setFrameEndType}
+                endOffset={frameEndOffset}
+                setEndOffset={setFrameEndOffset}
+                endUnit={frameEndUnit}
+                setEndUnit={setFrameEndUnit}
+                exclude={frameExclude}
+                setExclude={setFrameExclude}
+                usesTemporalRangeUnit={usesTemporalRangeUnit}
+                tr={tr}
+              />
+            </section>
+          )}
+
+          {hasSpecialConfig && activeStep === 'preview' && (
+            <section className="flex h-full flex-col p-4">
+              <pre
+                className={`scrollbar-hover min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-surface p-3 font-mono text-[12px] leading-6 ${
+                  preview.error ? 'text-error' : 'text-text-secondary'
+                }`}
+              >
+                {preview.error || preview.expression}
+              </pre>
+            </section>
+          )}
         </div>
-        <button
-          type="button"
-          disabled={!preview.expression}
-          onClick={() => onInsert(preview.expression)}
-          className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {tr('calcFieldInsertExpression')}
-        </button>
+
+        {!hasSpecialConfig ? (
+          <div className="flex items-end gap-3 border-t border-border-muted/60 bg-surface px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 text-[10px] font-medium text-text-muted">
+                {tr('calcFieldExpressionPreview')}
+              </div>
+              <pre
+                className={`scrollbar-hover max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
+                  preview.error ? 'text-error' : 'text-text-secondary'
+                }`}
+              >
+                {preview.error || preview.expression}
+              </pre>
+            </div>
+            <button
+              type="button"
+              disabled={!preview.expression}
+              onClick={() => onInsert(preview.expression)}
+              className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {tr('calcFieldInsertExpression')}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2 border-t border-border-muted/60 bg-surface px-3 py-2">
+            <div className="flex min-w-0 items-center" role="list">
+              {steps.map((step, index) => (
+                <WizardStepArrow
+                  key={step}
+                  index={index}
+                  label={tr(WIZARD_STEP_LABEL_KEYS[step])}
+                  active={index === currentStepIndex}
+                  first={index === 0}
+                  last={index === steps.length - 1}
+                  onClick={() => setStepIndex(index)}
+                />
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {currentStepIndex > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setStepIndex(currentStepIndex - 1)}
+                >
+                  {tr('calcFieldStepPrev')}
+                </Button>
+              )}
+              {activeStep === 'preview' ? (
+                <button
+                  type="button"
+                  disabled={!preview.expression}
+                  onClick={() => onInsert(preview.expression)}
+                  className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {tr('calcFieldInsertExpression')}
+                </button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="border-accent/30 text-accent"
+                  onClick={() => setStepIndex(currentStepIndex + 1)}
+                >
+                  {tr('calcFieldStepNext')}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="mb-2 text-[11px] font-medium text-text-secondary">{children}</div>;
+function WizardStepArrow({
+  label,
+  index,
+  active,
+  first,
+  last,
+  onClick,
+}: {
+  label: string;
+  index: number;
+  active: boolean;
+  first: boolean;
+  last: boolean;
+  onClick: () => void;
+}) {
+  const clipPath = last
+    ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 10px 50%)'
+    : first
+      ? 'polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%)'
+      : 'polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%, 10px 50%)';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ clipPath }}
+      className={`flex h-7 shrink-0 items-center text-[11px] font-medium transition-colors ${
+        first ? 'pl-3' : 'pl-4'
+      } ${last ? 'pr-3' : 'pr-5'} ${
+        active
+          ? 'bg-accent text-accent-foreground'
+          : 'bg-surface-active/60 text-text-muted hover:text-text-secondary'
+      }`}
+    >
+      {index + 1} {label}
+    </button>
+  );
 }
 
-function WizardLabel({ text, children }: { text: string; children: React.ReactNode }) {
+function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] font-medium text-text-muted">{text}</span>
-      {children}
-    </label>
+    <div className="grid grid-cols-[7rem_minmax(0,1fr)] items-start gap-x-4">
+      <div className="pt-[7px] text-[12px] font-medium text-text-secondary">{label}</div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+const FIELD_ERROR_TOOLTIP_WIDTH = 224;
+
+// The tooltip is portaled to document.body with fixed positioning — an
+// absolutely-positioned tooltip inside the scrollable form area gets clipped
+// by the container's overflow and collapses to the icon's width.
+function FieldError({ error, children }: { error?: string; children: React.ReactNode }) {
+  const iconRef = useRef<HTMLSpanElement>(null);
+  const [tooltipStyle, setTooltipStyle] = useState<{ top: number; left: number } | null>(null);
+
+  function showTooltip(): void {
+    const rect = iconRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const fitsBelow = rect.bottom + 96 < window.innerHeight;
+    setTooltipStyle({
+      left: Math.max(8, rect.right - FIELD_ERROR_TOOLTIP_WIDTH),
+      top: fitsBelow ? rect.bottom + 6 : Math.max(8, rect.top - 96),
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="min-w-0 flex-1">{children}</div>
+      {error && (
+        <>
+          <span
+            ref={iconRef}
+            className="inline-flex shrink-0"
+            onMouseEnter={showTooltip}
+            onMouseLeave={() => setTooltipStyle(null)}
+          >
+            <AlertCircle className="h-4 w-4 text-error" />
+          </span>
+          {tooltipStyle &&
+            createPortal(
+              <div
+                role="tooltip"
+                style={{
+                  top: tooltipStyle.top,
+                  left: tooltipStyle.left,
+                  width: FIELD_ERROR_TOOLTIP_WIDTH,
+                }}
+                className="fixed z-[10000] whitespace-pre-line rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px] leading-5 text-error shadow-elevated"
+              >
+                {error}
+              </div>,
+              document.body
+            )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -627,15 +829,15 @@ function FrameEditor(props: FrameEditorProps) {
     label: trFrameType(value, props.tr),
   }));
   return (
-    <div className="flex flex-col gap-2">
-      <WizardLabel text={props.tr('calcFieldFrameType')}>
+    <>
+      <FormRow label={props.tr('calcFieldFrameType')}>
         <GlassOptionSingleSelect
           value={props.frameType}
           groups={[{ key: 'frameType', items: typeOptions }]}
           onChange={(value) => props.setFrameType(value as CalculationWindowFrame['type'])}
-          className="h-8 w-full text-[11px]"
+          className="h-8 w-full text-[12px]"
         />
-      </WizardLabel>
+      </FormRow>
       <BoundEditor
         label={props.tr('calcFieldBoundStart')}
         options={START_BOUND_TYPES}
@@ -660,7 +862,7 @@ function FrameEditor(props: FrameEditorProps) {
         usesTemporalRangeUnit={props.usesTemporalRangeUnit}
         tr={props.tr}
       />
-      <WizardLabel text={props.tr('calcFieldFrameExclude')}>
+      <FormRow label={props.tr('calcFieldFrameExclude')}>
         <GlassOptionSingleSelect
           value={props.exclude ?? 'no others'}
           groups={[
@@ -675,10 +877,10 @@ function FrameEditor(props: FrameEditorProps) {
             },
           ]}
           onChange={(value) => props.setExclude(value as CalculationWindowFrame['exclude'])}
-          className="h-8 w-full text-[11px]"
+          className="h-8 w-full text-[12px]"
         />
-      </WizardLabel>
-    </div>
+      </FormRow>
+    </>
   );
 }
 
@@ -698,9 +900,8 @@ interface BoundEditorProps {
 function BoundEditor(props: BoundEditorProps) {
   const needsOffset = props.type === 'preceding' || props.type === 'following';
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] text-text-muted">{props.label}</span>
-      <div className="flex gap-1">
+    <FormRow label={props.label}>
+      <div className="flex gap-2">
         <GlassOptionSingleSelect
           value={props.type}
           groups={[
@@ -713,14 +914,14 @@ function BoundEditor(props: BoundEditorProps) {
             },
           ]}
           onChange={(value) => props.setType(value as CalculationFrameBoundType)}
-          className="h-8 min-w-0 flex-1 text-[10px]"
+          className="h-8 min-w-0 flex-1 text-[12px]"
         />
         {needsOffset && (
           <GlassFormTextInput
             inputMode="numeric"
             value={props.offset}
             onChange={props.setOffset}
-            className="h-8 w-12 rounded-md px-1 text-center text-[11px]"
+            className="h-8 w-16 rounded-md px-1 text-center text-[12px]"
           />
         )}
         {needsOffset && props.usesTemporalRangeUnit && (
@@ -733,11 +934,11 @@ function BoundEditor(props: BoundEditorProps) {
               },
             ]}
             onChange={props.setUnit}
-            className="h-8 w-16 text-[10px]"
+            className="h-8 w-20 text-[12px]"
           />
         )}
       </div>
-    </div>
+    </FormRow>
   );
 }
 

@@ -237,7 +237,7 @@ export function GlassValueInput({
               width: position.width,
               maxHeight,
             }}
-            className="operator-ui scrollbar-hover fixed z-50 overflow-y-auto overflow-x-hidden rounded-lg border border-border-muted bg-surface py-1 shadow-elevated"
+            className="operator-ui scrollbar-hover fixed z-[10000] overflow-y-auto overflow-x-hidden rounded-lg border border-border-muted bg-surface py-1 shadow-elevated"
           >
             {filtered.map((s) => (
               <button

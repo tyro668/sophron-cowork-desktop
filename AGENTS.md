@@ -77,6 +77,7 @@ All UI work under `src/renderer` must follow [`UI_STYLE_GUIDE.md`](UI_STYLE_GUID
 - Base controls come from `src/renderer/components/ui/` (Button/Input/Select/DropdownMenu/Switch/Dialog/Badge/Tabs + canonical class strings — see its README); `components/Glass*` are compatibility facades. Compose primitives instead of pasting new control class strings; `ui/` code must not touch `electronAPI` or business models.
 - Use semantic theme tokens; do not hard-code accent colors in components.
 - Keep configuration screens compact and omit helper descriptions below fields.
+- Controls on the same row must share the same height. `RawTableSelect`/`GlassSelect` triggers and `Input` are `h-8` — place them with `Button size="md"` (h-8), not `size="sm"` (h-7); use `sm` only alongside other h-7 controls or in title/list rows that contain no form inputs.
 - Do not introduce gradients, glass blur, glow effects, or heavy shadows.
 - All UI code must natively support i18n: never hard-code user-facing text in components — use `useTranslation`/`useFormTranslation` keys, and keep `zh.json` and `en.json` in sync.
 - Visually verify affected screens after UI changes.

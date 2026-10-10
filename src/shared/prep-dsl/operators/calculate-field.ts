@@ -27,7 +27,15 @@ export const calculateFieldCodec: OperatorDslCodec = {
   format: (config) => {
     const calculations = objectArray(config?.calculations)
       .filter(isCompleteCalculation)
-      .map(formatCalculation);
+      .map((calculation) =>
+        formatCalculation({
+          ...calculation,
+          expression: normalizeCalculationDomainExpression(
+            String(calculation.expression ?? 'null'),
+            { allowLegacySql: true }
+          ),
+        })
+      );
     if (calculations.length === 0) return null;
     return `derive ${calculations.join(', ')}`;
   },

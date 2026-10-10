@@ -258,7 +258,7 @@ export function GlassFieldSingleSelect({
               maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="operator-ui fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-elevated"
+            className="operator-ui fixed z-[10000] flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-elevated"
           >
             <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
               <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />

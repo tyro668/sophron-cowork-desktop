@@ -92,24 +92,24 @@ describe('FormCalculateField - config and DSL', () => {
   });
 
   it.each([
-    'derive [previous_sales] = compare(previous([sales], [date], "value")) over(partition by [region])',
-    'derive [yoy_sales] = compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])',
-    'derive [year_sales] = accumulate(yeartodate(sum([sales]), [date], 4)) over(partition by [region])',
-    'derive [rolling_sales] = accumulate(rolling(avg([sales]), [date], 7, "day")) over(partition by [region])',
+    'derive [previous_sales] = compare(previous_record([sales], [date], "value")) over(partition by [region])',
+    'derive [yoy_sales] = compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])',
+    'derive [year_sales] = accumulate(year_to_date(sum([sales]), [date], 4)) over(partition by [region])',
+    'derive [rolling_sales] = accumulate(rolling_time(avg([sales]), [date], 7, "day")) over(partition by [region])',
     'derive [prev_sales] = reference(lag([sales])) over(partition by [region] order by [date])',
     'derive [next_sales] = reference(lead([sales], 2)) over(partition by [region] order by [date])',
-    'derive [first_sales] = reference(first([sales])) over(order by [date])',
-    'derive [last_sales] = reference(last([sales])) over(partition by [region] order by [date])',
-    'derive [nth_sales] = reference(nth([sales], 3)) over(order by [date])',
-    'derive [sales_diff] = reference(difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])',
-    'derive [sales_rate] = reference(rate([sales], 2)) over(partition by [region] order by [date])',
+    'derive [first_sales] = reference(first_value([sales])) over(order by [date])',
+    'derive [last_sales] = reference(last_value([sales])) over(partition by [region] order by [date])',
+    'derive [nth_sales] = reference(nth_value([sales], 3)) over(order by [date])',
+    'derive [sales_diff] = reference(offset_difference([sales], 2)) over(partition by [region] order by [amount] desc, [date])',
+    'derive [sales_rate] = reference(offset_rate([sales], 2)) over(partition by [region] order by [date])',
     'derive [group_sales] = group(sum([sales])) over(partition by [region])',
     'derive [group_variance] = group(var_pop([sales])) over(partition by [region])',
     'derive [group_all] = group(bool_and([flag])) over(partition by [region])',
     'derive [group_any] = group(bool_or([flag])) over(partition by [region])',
     'derive [group_customers] = group(count_distinct([customer])) over(partition by [region])',
     'derive [group_median] = group(quantile_cont([sales], 0.5)) over(partition by [region])',
-    'derive [group_share] = group(percentoftotal([sales])) over(partition by [region])',
+    'derive [group_share] = group(percent_of_total([sales])) over(partition by [region])',
     'derive [group_names] = group(string_agg([name], ", ")) over(partition by [region])',
     'derive [cum_sales] = running(sum([sales])) over(partition by [region] order by [date])',
     'derive [mov_sales] = moving(avg([sales])) over(partition by [region] order by [date] rows between 1 preceding and current row)',
@@ -135,7 +135,7 @@ describe('FormCalculateField - config and DSL', () => {
 
   it('normalizes calculation domain function spacing on export', () => {
     const parsed = parsePrepOperatorDsl(
-      'derive [x] = compare(sameperiodlastyear( [sales] , [date] , "month" , "value")) over( partition by [region] )',
+      'derive [x] = compare(same_period_last_year( [sales] , [date] , "month" , "value")) over( partition by [region] )',
       'calculate_field'
     );
 
@@ -147,20 +147,20 @@ describe('FormCalculateField - config and DSL', () => {
         config: parsed.operator!.config,
       })
     ).toBe(
-      'derive [x] = compare(sameperiodlastyear([sales], [date], "month", "value")) over(partition by [region])'
+      'derive [x] = compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])'
     );
   });
 
   it.each([
-    'derive [x] = compare(previous([sales], "value"))',
-    'derive [x] = compare(sameperiodlastyear([sales], [date], "months", "value"))',
-    'derive [x] = accumulate(yeartodate([sales], [date]))',
-    'derive [x] = accumulate(quartertodate(sum([sales]), [date], 4))',
-    'derive [x] = accumulate(rolling(sum([sales]), [date], 0, "day"))',
-    'derive [x] = accumulate(rolling(sum([sales]), [date], 7, "hour"))',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(order by [date])',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) extra',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date]));',
+    'derive [x] = compare(previous_record([sales], "value"))',
+    'derive [x] = compare(same_period_last_year([sales], [date], "months", "value"))',
+    'derive [x] = accumulate(year_to_date([sales], [date]))',
+    'derive [x] = accumulate(quarter_to_date(sum([sales]), [date], 4))',
+    'derive [x] = accumulate(rolling_time(sum([sales]), [date], 0, "day"))',
+    'derive [x] = accumulate(rolling_time(sum([sales]), [date], 7, "hour"))',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(order by [date])',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) extra',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date]));',
     'derive [x] = running(sum([sales])) over(order by [date] rows between 1 preceding and current row)',
     'derive [x] = moving(avg([sales])) over(order by [date])',
     'derive [x] = moving(avg([sales])) over(order by [date] rows between 1 following and current row)',
@@ -175,10 +175,10 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [x] = ranking(ntile()) over(order by [date])',
     'derive [x] = ranking(ntile(0)) over(order by [date])',
     'derive [x] = ranking(row_number(2)) over(order by [date])',
-    'derive [x] = reference(first([sales], 2)) over(order by [date])',
-    'derive [x] = reference(last([sales], 2)) over(order by [date])',
-    'derive [x] = reference(nth([sales])) over(order by [date])',
-    'derive [x] = reference(nth([sales], 0)) over(order by [date])',
+    'derive [x] = reference(first_value([sales], 2)) over(order by [date])',
+    'derive [x] = reference(last_value([sales], 2)) over(order by [date])',
+    'derive [x] = reference(nth_value([sales])) over(order by [date])',
+    'derive [x] = reference(nth_value([sales], 0)) over(order by [date])',
     'derive [x] = group()',
     'derive [x] = group(sum())',
     'derive [x] = ranking()',
@@ -199,11 +199,11 @@ describe('FormCalculateField - config and DSL', () => {
   });
 
   it.each([
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(partition by [region] [product])',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(partition by , [region])',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(partition by [region],)',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(partition by [region],, [product])',
-    'derive [x] = accumulate(yeartodate(sum([sales]), [date])) over(partition by [region]',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region] [product])',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by , [region])',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region],)',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region],, [product])',
+    'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region]',
   ])('rejects malformed domain partition lists: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
 

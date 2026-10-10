@@ -85,16 +85,14 @@ export function usesTemporalCalculationRangeUnit(
 }
 
 const groupMetricFunctions: CalculationFunctionDefinition[] = [
-  ...['sum', 'avg', 'min', 'max'].map(
-    (id): CalculationFunctionDefinition => ({
-      id,
-      category: 'group_metrics',
-      labelKey: `calcFieldFn_${id}`,
-      valueArgument: 'field',
-      order: 'none',
-      frame: 'none',
-    })
-  ),
+  ...['sum', 'avg', 'min', 'max'].map((id): CalculationFunctionDefinition => ({
+    id,
+    category: 'group_metrics',
+    labelKey: `calcFieldFn_${id}`,
+    valueArgument: 'field',
+    order: 'none',
+    frame: 'none',
+  })),
   {
     id: 'percentage',
     category: 'group_metrics',
@@ -201,16 +199,14 @@ const cumulativeFunctions = ['sum', 'avg', 'count', 'min', 'max', 'product'].map
 );
 
 const offsetFunctions: CalculationFunctionDefinition[] = [
-  ...['first_value', 'last_value'].map(
-    (id): CalculationFunctionDefinition => ({
-      id,
-      category: 'offset',
-      labelKey: `calcFieldFn_${id}`,
-      valueArgument: 'field',
-      order: 'required',
-      frame: 'none',
-    })
-  ),
+  ...['first_value', 'last_value'].map((id): CalculationFunctionDefinition => ({
+    id,
+    category: 'offset',
+    labelKey: `calcFieldFn_${id}`,
+    valueArgument: 'field',
+    order: 'required',
+    frame: 'none',
+  })),
   {
     id: 'nth_value',
     category: 'offset',
@@ -226,41 +222,37 @@ const offsetFunctions: CalculationFunctionDefinition[] = [
       labelKey: 'calcFieldPlaceholderNth',
     },
   },
-  ...['lag', 'lead'].map(
-    (id): CalculationFunctionDefinition => ({
-      id,
-      category: 'offset',
-      labelKey: `calcFieldFn_${id}`,
-      valueArgument: 'field',
-      order: 'required',
-      frame: 'none',
-      extraParameter: {
-        kind: 'integer',
-        defaultValue: '1',
-        min: 1,
-        max: MAX_CALCULATION_WINDOW_SIZE,
-        labelKey: 'calcFieldPlaceholderOffset',
-      },
-    })
-  ),
-  ...(['offset_difference', 'offset_rate'] as const).map(
-    (id): CalculationFunctionDefinition => ({
-      id,
-      category: 'offset',
-      labelKey: `calcFieldFn_${id}`,
-      valueArgument: 'field',
-      order: 'required',
-      frame: 'none',
-      expressionKind: id === 'offset_difference' ? 'offset-diff' : 'offset-rate',
-      extraParameter: {
-        kind: 'integer',
-        defaultValue: '1',
-        min: 1,
-        max: MAX_CALCULATION_WINDOW_SIZE,
-        labelKey: 'calcFieldPlaceholderOffset',
-      },
-    })
-  ),
+  ...['lag', 'lead'].map((id): CalculationFunctionDefinition => ({
+    id,
+    category: 'offset',
+    labelKey: `calcFieldFn_${id}`,
+    valueArgument: 'field',
+    order: 'required',
+    frame: 'none',
+    extraParameter: {
+      kind: 'integer',
+      defaultValue: '1',
+      min: 1,
+      max: MAX_CALCULATION_WINDOW_SIZE,
+      labelKey: 'calcFieldPlaceholderOffset',
+    },
+  })),
+  ...(['offset_difference', 'offset_rate'] as const).map((id): CalculationFunctionDefinition => ({
+    id,
+    category: 'offset',
+    labelKey: `calcFieldFn_${id}`,
+    valueArgument: 'field',
+    order: 'required',
+    frame: 'none',
+    expressionKind: id === 'offset_difference' ? 'offset-diff' : 'offset-rate',
+    extraParameter: {
+      kind: 'integer',
+      defaultValue: '1',
+      min: 1,
+      max: MAX_CALCULATION_WINDOW_SIZE,
+      labelKey: 'calcFieldPlaceholderOffset',
+    },
+  })),
 ];
 
 const movingWindowFunctions = ['sum', 'avg', 'count', 'min', 'max'].map(
@@ -438,25 +430,45 @@ export function isCalculationSceneDslId(value: string): boolean {
 
 export function calculationOperationDslId(definition: CalculationFunctionDefinition): string {
   const ids: Record<string, string> = {
-    percentage: 'percentoftotal',
+    percentage: 'percent_of_total',
     var: 'var_pop',
-    first_value: 'first',
-    last_value: 'last',
-    nth_value: 'nth',
-    offset_difference: 'difference',
-    offset_rate: 'rate',
-    rolling_time: 'rolling',
-    year_to_date: 'yeartodate',
-    quarter_to_date: 'quartertodate',
-    month_to_date: 'monthtodate',
-    week_to_date: 'weektodate',
+    stddev: 'stddev_samp',
   };
   if (definition.category === 'period_compare') {
-    return definition.id.startsWith('previous_') ? 'previous' : 'sameperiodlastyear';
+    return definition.id.startsWith('previous_') ? 'previous_record' : 'same_period_last_year';
   }
   if (definition.category === 'cumulative') return definition.id.slice('cumulative_'.length);
   if (definition.category === 'moving_window') return definition.id.slice('moving_'.length);
   return ids[definition.id] ?? definition.id;
+}
+
+/** Canonical DSL names use lower_snake_case. Aliases are read-only compatibility. */
+const CALCULATION_OPERATION_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  group: { percentoftotal: 'percent_of_total', stddev: 'stddev_samp' },
+  reference: {
+    first: 'first_value',
+    last: 'last_value',
+    nth: 'nth_value',
+    difference: 'offset_difference',
+    rate: 'offset_rate',
+  },
+  compare: { previous: 'previous_record', sameperiodlastyear: 'same_period_last_year' },
+  accumulate: {
+    rolling: 'rolling_time',
+    yeartodate: 'year_to_date',
+    quartertodate: 'quarter_to_date',
+    monthtodate: 'month_to_date',
+    weektodate: 'week_to_date',
+  },
+};
+
+export function normalizeCalculationOperationDslId(scene: string, operation: string): string {
+  const canonicalScene = scene.toLowerCase();
+  const canonicalOperation = operation.toLowerCase();
+  const aliases = CALCULATION_OPERATION_ALIASES[canonicalScene];
+  return aliases && Object.hasOwn(aliases, canonicalOperation)
+    ? aliases[canonicalOperation]
+    : canonicalOperation;
 }
 
 export function getCalculationFunctionBySceneOperation(
@@ -464,11 +476,12 @@ export function getCalculationFunctionBySceneOperation(
   operation: string,
   result?: string
 ): CalculationFunctionDefinition | undefined {
+  const canonicalOperation = normalizeCalculationOperationDslId(scene, operation);
   return CALCULATION_FUNCTIONS.find((definition) => {
-    if (calculationSceneDslId(definition.category) !== scene) return false;
-    if (calculationOperationDslId(definition) !== operation) return false;
+    if (calculationSceneDslId(definition.category) !== scene.toLowerCase()) return false;
+    if (calculationOperationDslId(definition) !== canonicalOperation) return false;
     if (definition.category !== 'period_compare') return true;
-    const suffix = result === 'percentchange' ? 'rate' : result;
+    const suffix = result === 'percentchange' || result === 'change_rate' ? 'rate' : result;
     return definition.id.endsWith(`_${suffix}`);
   });
 }

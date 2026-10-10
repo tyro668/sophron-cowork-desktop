@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Trash2 } from 'lucide-react';
+import { ChevronDown, CircleX } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
@@ -159,24 +159,12 @@ export function GlassOptionMultiSelect({
           event.preventDefault();
           toggle();
         }}
-        className={`relative flex h-8 min-h-8 w-full min-w-0 items-center overflow-hidden rounded-md border border-border-muted bg-surface pl-[5px] text-[13px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        className={`group relative flex h-8 min-h-8 w-full min-w-0 items-center overflow-hidden rounded-md border border-border-muted bg-surface pl-[5px] text-[13px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
           isOpen && dropdown === 'inline' ? 'rounded-b-none' : ''
         } ${
           disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-surface-hover'
         } ${className}`}
       >
-        {onClear && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center self-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30"
-            title={tr('clearAll')}
-            aria-label={tr('clearAll')}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        )}
-
         {overflow === 'scroll' ? (
           <div className="scrollbar-hover flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {selected.length === 0 && placeholder && (
@@ -204,6 +192,18 @@ export function GlassOptionMultiSelect({
             missing={missingValues}
             missingTitle={missingTitle}
           />
+        )}
+
+        {onClear && selected.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="invisible inline-flex h-8 w-6 flex-shrink-0 items-center justify-center self-center rounded text-text-muted outline-none transition-colors hover:bg-error/10 hover:text-error focus-visible:ring-2 focus-visible:ring-accent/30 group-hover:visible"
+            title={tr('clearAll')}
+            aria-label={tr('clearAll')}
+          >
+            <CircleX className="h-3.5 w-3.5" />
+          </button>
         )}
 
         <button
@@ -248,7 +248,7 @@ export function GlassOptionMultiSelect({
               maxWidth: internal.position.maxWidth,
               maxHeight: internal.maxHeight,
             }}
-            className="operator-ui fixed z-50 overflow-hidden rounded-lg border border-border-muted bg-surface shadow-elevated"
+            className="operator-ui fixed z-[10000] overflow-hidden rounded-lg border border-border-muted bg-surface shadow-elevated"
           >
             {list}
           </div>,

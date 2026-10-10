@@ -14,8 +14,9 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, placeholder, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
-import { Tag, tags } from '@lezer/highlight';
+import { tags } from '@lezer/highlight';
 import { DataTypeIcon } from './DataTypeIcon';
+import { isCalculationSceneDslId } from '../../../../shared/calculate-field/function-registry';
 import { Button } from '../../ui/button';
 import { Dialog } from '../../ui/dialog';
 
@@ -61,9 +62,9 @@ export function functionToken(
 }
 
 const FN_CHIP =
-  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] uppercase text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const FN_CHIP_HOVERED =
-  'flex min-h-8 w-full cursor-pointer items-center bg-accent-muted px-3 text-left font-mono text-[12px] uppercase text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  'flex min-h-8 w-full cursor-pointer items-center bg-accent-muted px-3 text-left font-mono text-[12px] text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
 const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
 const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
 const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
@@ -551,8 +552,8 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
     i18nKey: 'expressionFunctionCategoryType',
     tokens: [
       {
-        label: 'CAST',
-        apply: 'CAST( AS )',
+        label: 'cast',
+        apply: 'cast( as )',
         cursorOffset: 5,
         i18nDescKey: 'expressionFunctionDesc_cast',
         params: [
@@ -560,11 +561,11 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
           { name: 'type', type: 'type' },
         ],
         returnType: 'any',
-        examples: ['CAST([amount] AS double)', 'CAST([date] AS date)'],
+        examples: ['cast([amount] as double)', 'cast([date] as date)'],
       },
       {
         label: 'try_cast',
-        apply: 'try_cast( AS )',
+        apply: 'try_cast( as )',
         cursorOffset: 9,
         i18nDescKey: 'expressionFunctionDesc_try_cast',
         params: [
@@ -572,7 +573,7 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
           { name: 'type', type: 'type' },
         ],
         returnType: 'any',
-        examples: ['try_cast([amount] AS int)', 'try_cast([revenue] AS double)'],
+        examples: ['try_cast([amount] as int)', 'try_cast([revenue] as double)'],
       },
       functionToken(
         'typeof',
@@ -596,17 +597,70 @@ export interface GlassExpressionInputProps {
   assistantPanel?: ExpressionAssistantPanel;
 }
 
-const exprLanguage = StreamLanguage.define({
+const EXPR_KEYWORDS = new Set([
+  // SQL/expression keywords
+  'if',
+  'then',
+  'else',
+  'end',
+  'null',
+  'and',
+  'or',
+  'not',
+  'as',
+  'case',
+  'when',
+  'in',
+  'is',
+  'like',
+  'distinct',
+  'between',
+  // calculation DSL window/scene clause keywords
+  'over',
+  'partition',
+  'by',
+  'order',
+  'asc',
+  'desc',
+  'unbounded',
+  'preceding',
+  'following',
+  'current',
+  'row',
+  'rows',
+  'range',
+  'groups',
+  'exclude',
+  'interval',
+  'no',
+  'others',
+  'ties',
+]);
+
+const FUNCTION_CALL_TAG = tags.function(tags.name);
+
+export const exprLanguage = StreamLanguage.define({
   name: 'aggregate-expr',
+  // `tags.function` is a modifier, not a Tag — route the token name through a
+  // proper modified tag so call identifiers actually highlight.
+  tokenTable: { function: FUNCTION_CALL_TAG },
   token(stream) {
     if (stream.eatSpace()) return null;
     if (stream.match(/\[[^\]]*\]/)) return 'variableName';
     if (stream.match(/'(?:[^'\\]|\\.)*'/)) return 'string';
     if (stream.match(/"(?:[^"\\]|\\.)*"/)) return 'string';
     if (stream.match(/\d+(?:\.\d+)?/)) return 'number';
-    if (stream.match(/\b(?:if|then|else|end|null|and|or|not|as|case|when)\b/)) return 'keyword';
-    if (stream.match(/\b(?:true|false)\b/)) return 'atom';
-    if (stream.match(/[A-Za-z_][A-Za-z0-9_]*/)) return 'function';
+    const identMatch = stream.match(/[A-Za-z_][A-Za-z0-9_]*/);
+    if (identMatch) {
+      const word = (Array.isArray(identMatch) ? String(identMatch[0]) : '').toLowerCase();
+      if (word === 'true' || word === 'false') return 'atom';
+      if (EXPR_KEYWORDS.has(word)) return 'keyword';
+      if (stream.peek() === '(') {
+        // scene(operation(...)) — scene wrappers get their own color
+        return isCalculationSceneDslId(word) ? 'namespace' : 'function';
+      }
+      return 'variableName';
+    }
     if (stream.match(/[+\-*/%=<>!]+/)) return 'operator';
     if (stream.match(/[,;:()[\]]/)) return 'punctuation';
     stream.next();
@@ -620,7 +674,8 @@ const exprHighlightStyle = HighlightStyle.define([
   { tag: tags.number, color: '#7c3aed' },
   { tag: tags.atom, color: '#2563eb' },
   { tag: tags.keyword, color: '#0f766e', fontWeight: '500' },
-  { tag: tags.function as unknown as Tag, color: '#0891b2', fontWeight: '500' },
+  { tag: tags.namespace, color: '#db2777', fontWeight: '600' },
+  { tag: FUNCTION_CALL_TAG, color: '#0891b2', fontWeight: '500' },
   { tag: tags.operator, color: '#dc2626' },
   { tag: tags.punctuation, color: '#64748b' },
 ]);
@@ -1044,31 +1099,40 @@ function ExpressionEditorDialog({
         </Button>
       </div>
       <div className="flex flex-1 flex-col overflow-hidden p-4">
-        <div ref={hostRef} className="shrink-0" style={{ height: editorHeight }} />
+        {/* Keep the CodeMirror host mounted (display:none) while the assistant
+            wizard takes over the whole dialog body — unmounting would drop the
+            editor DOM and blank the input on return. */}
         <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
-          aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
-          aria-valuenow={editorHeight}
-          tabIndex={0}
-          onPointerDown={handleEditorResizeStart}
-          onPointerMove={handleEditorResizeMove}
-          onPointerUp={handleEditorResizeEnd}
-          onPointerCancel={handleEditorResizeEnd}
-          onKeyDown={(event) => {
-            if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-            event.preventDefault();
-            const delta =
-              event.key === 'ArrowUp'
-                ? -EXPRESSION_EDITOR_RESIZE_STEP
-                : EXPRESSION_EDITOR_RESIZE_STEP;
-            setEditorHeight((current) => clampEditorHeight(current + delta));
-          }}
-          className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
-        >
-          <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
-        </div>
+          ref={hostRef}
+          className={showAssistantPanel ? 'hidden' : 'shrink-0'}
+          style={{ height: editorHeight }}
+        />
+        {!showAssistantPanel && (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
+            aria-valuenow={editorHeight}
+            tabIndex={0}
+            onPointerDown={handleEditorResizeStart}
+            onPointerMove={handleEditorResizeMove}
+            onPointerUp={handleEditorResizeEnd}
+            onPointerCancel={handleEditorResizeEnd}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+              event.preventDefault();
+              const delta =
+                event.key === 'ArrowUp'
+                  ? -EXPRESSION_EDITOR_RESIZE_STEP
+                  : EXPRESSION_EDITOR_RESIZE_STEP;
+              setEditorHeight((current) => clampEditorHeight(current + delta));
+            }}
+            className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
+          >
+            <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
+          </div>
+        )}
         {showAssistantPanel && assistantPanel ? (
           assistantPanel.render({
             currentExpression: draft,
@@ -1152,9 +1216,11 @@ function ExpressionEditorDialog({
         <Button variant="secondary" size="sm" onClick={onClose} className="text-[12px]">
           {tr('cancel')}
         </Button>
-        <Button variant="primary" size="sm" onClick={handleConfirm} className="text-[12px]">
-          {tr('confirm')}
-        </Button>
+        {!showAssistantPanel && (
+          <Button variant="primary" size="sm" onClick={handleConfirm} className="text-[12px]">
+            {tr('confirm')}
+          </Button>
+        )}
       </div>
     </Dialog>
   );
