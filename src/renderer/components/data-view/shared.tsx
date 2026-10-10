@@ -75,12 +75,14 @@ export function DataToolbarButton({
   label,
   disabled,
   danger,
+  active,
   onClick,
 }: {
   icon: ReactNode;
   label: string;
   disabled?: boolean;
   danger?: boolean;
+  active?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -89,10 +91,13 @@ export function DataToolbarButton({
       size="md"
       onClick={onClick}
       disabled={disabled}
-      className={`px-2.5 text-xs text-text-secondary shadow-soft disabled:opacity-45 ${
-        danger
-          ? 'hover:border-error/30 hover:bg-error/10 hover:text-error'
-          : 'hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
+      className={`px-2.5 text-xs shadow-soft disabled:opacity-45 ${
+        active
+          ? 'border-accent/40 bg-accent-muted text-accent'
+          : 'text-text-secondary ' +
+            (danger
+              ? 'hover:border-error/30 hover:bg-error/10 hover:text-error'
+              : 'hover:border-accent/30 hover:bg-accent-muted hover:text-accent')
       }`}
       title={label}
     >

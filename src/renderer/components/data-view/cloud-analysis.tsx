@@ -19,7 +19,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Table2,
-  X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
@@ -1616,49 +1615,115 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
             </aside>
 
             <section className="flex min-w-0 flex-1 flex-col">
-              <div className="flex h-10 flex-shrink-0 items-center justify-end gap-2 border-b border-border-subtle px-3">
-                <DataToolbarButton
-                  icon={<Eye className="h-3.5 w-3.5" />}
-                  label={t('cloudData.preview')}
-                  disabled={listTab === 'files' ? !singleSelectedFile : !singleSelectedTable}
-                  onClick={() => {
-                    if (listTab === 'files') {
-                      if (singleSelectedFile) void previewFile(singleSelectedFile);
-                    } else if (singleSelectedTable) {
-                      void previewTable(singleSelectedTable, 1);
+              <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+                <div className="flex min-w-0 items-center gap-3 text-xs font-medium text-text-muted">
+                  {listTab === 'tables' && !showTableLocator && (
+                    <>
+                      <span className="truncate">
+                        {t('cloudData.tableCountLoaded', {
+                          count: tables.length,
+                          total: tablePageInfo.total,
+                        })}
+                      </span>
+                      {selectedTables.length > 0 && (
+                        <span className="text-text-secondary">
+                          {t('cloudData.selectedTableCount', { count: selectedTables.length })}
+                        </span>
+                      )}
+                      {tablePageInfo.hasMore && (
+                        <button
+                          onClick={loadMoreTables}
+                          disabled={loadingMoreTables}
+                          className="inline-flex items-center gap-1 text-accent transition-colors hover:text-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {loadingMoreTables ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          {t('cloudData.loadMoreTables')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {listTab === 'files' && !showFileLocator && (
+                    <>
+                      <span className="truncate">
+                        {t('cloudData.fileCountLoaded', {
+                          count: driveFiles.length,
+                          total: driveFilePageInfo.total,
+                        })}
+                      </span>
+                      {selectedFiles.length > 0 && (
+                        <span className="text-text-secondary">
+                          {t('cloudData.selectedFileCount', { count: selectedFiles.length })}
+                        </span>
+                      )}
+                      {driveFilePageInfo.hasMore && (
+                        <button
+                          onClick={loadMoreFiles}
+                          disabled={loadingMoreDriveFiles}
+                          className="inline-flex items-center gap-1 text-accent transition-colors hover:text-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {loadingMoreDriveFiles ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          {t('cloudData.loadMoreFiles')}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <DataToolbarButton
+                    icon={<Eye className="h-3.5 w-3.5" />}
+                    label={t('cloudData.preview')}
+                    disabled={listTab === 'files' ? !singleSelectedFile : !singleSelectedTable}
+                    onClick={() => {
+                      if (listTab === 'files') {
+                        if (singleSelectedFile) void previewFile(singleSelectedFile);
+                      } else if (singleSelectedTable) {
+                        void previewTable(singleSelectedTable, 1);
+                      }
+                    }}
+                  />
+                  <DataToolbarButton
+                    icon={<ListChecks className="h-3.5 w-3.5" />}
+                    label={
+                      batchSelectMode ? t('cloudData.exitBatchSelect') : t('cloudData.batchSelect')
                     }
-                  }}
-                />
-                <DataToolbarButton
-                  icon={<ListChecks className="h-3.5 w-3.5" />}
-                  label={t('cloudData.batchSelect')}
-                  onClick={toggleBatchSelectMode}
-                />
-                <DataMoreMenu
-                  items={[
-                    {
-                      key: 'import-raw-table',
-                      label: t('cloudData.importAsInput'),
-                      icon: <Database className="h-3.5 w-3.5" />,
-                      disabled: listTab !== 'tables' || !singleSelectedTable,
-                      onClick: () => {
-                        if (singleSelectedTable) {
-                          importTable(singleSelectedTable);
-                        }
+                    active={batchSelectMode}
+                    onClick={toggleBatchSelectMode}
+                  />
+                  <DataMoreMenu
+                    items={[
+                      {
+                        key: 'import-raw-table',
+                        label: t('cloudData.importAsInput'),
+                        icon: <Database className="h-3.5 w-3.5" />,
+                        disabled: listTab !== 'tables' || !singleSelectedTable,
+                        onClick: () => {
+                          if (singleSelectedTable) {
+                            importTable(singleSelectedTable);
+                          }
+                        },
                       },
-                    },
-                    {
-                      key: 'add-to-chat',
-                      label:
-                        selectedTables.length > 0
-                          ? `${t('cloudData.addToChat')} (${selectedTables.length})`
-                          : t('cloudData.addToChat'),
-                      icon: <MessageSquarePlus className="h-3.5 w-3.5" />,
-                      disabled: listTab !== 'tables' || selectedTables.length === 0 || addingToChat,
-                      onClick: () => void addSelectedTablesToChat(),
-                    },
-                  ]}
-                />
+                      {
+                        key: 'add-to-chat',
+                        label:
+                          selectedTables.length > 0
+                            ? `${t('cloudData.addToChat')} (${selectedTables.length})`
+                            : t('cloudData.addToChat'),
+                        icon: <MessageSquarePlus className="h-3.5 w-3.5" />,
+                        disabled:
+                          listTab !== 'tables' || selectedTables.length === 0 || addingToChat,
+                        onClick: () => void addSelectedTablesToChat(),
+                      },
+                    ]}
+                  />
+                </div>
               </div>
               {showListLocator ? (
                 <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto">
@@ -1890,94 +1955,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                       </table>
                     )}
                   </div>
-                  {listTab === 'tables' && !showTableLocator && (
-                    <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
-                      <span>
-                        {t('cloudData.tableCountLoaded', {
-                          count: tables.length,
-                          total: tablePageInfo.total,
-                        })}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        {selectedTables.length > 0 && (
-                          <span>
-                            {t('cloudData.selectedTableCount', { count: selectedTables.length })}
-                          </span>
-                        )}
-                        {batchSelectMode && (
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            onClick={toggleBatchSelectMode}
-                            className="text-text-secondary shadow-soft"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            {t('cloudData.exitBatchSelect')}
-                          </Button>
-                        )}
-                        {tablePageInfo.hasMore && (
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            onClick={loadMoreTables}
-                            disabled={loadingMoreTables}
-                            className="text-text-secondary shadow-soft"
-                          >
-                            {loadingMoreTables ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                            {t('cloudData.loadMoreTables')}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {listTab === 'files' && !showFileLocator && (
-                    <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
-                      <span>
-                        {t('cloudData.fileCountLoaded', {
-                          count: driveFiles.length,
-                          total: driveFilePageInfo.total,
-                        })}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        {selectedFiles.length > 0 && (
-                          <span>
-                            {t('cloudData.selectedFileCount', { count: selectedFiles.length })}
-                          </span>
-                        )}
-                        {batchSelectMode && (
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            onClick={toggleBatchSelectMode}
-                            className="text-text-secondary shadow-soft"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                            {t('cloudData.exitBatchSelect')}
-                          </Button>
-                        )}
-                        {driveFilePageInfo.hasMore && (
-                          <Button
-                            variant="secondary"
-                            size="md"
-                            onClick={loadMoreFiles}
-                            disabled={loadingMoreDriveFiles}
-                            className="text-text-secondary shadow-soft"
-                          >
-                            {loadingMoreDriveFiles ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                            {t('cloudData.loadMoreFiles')}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
                   <div className="flex h-10 flex-shrink-0 items-stretch border-t border-border-muted">
                     {(['tables', 'files'] as const).map((tab) => (
                       <button
