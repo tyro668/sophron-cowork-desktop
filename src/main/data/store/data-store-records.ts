@@ -69,7 +69,7 @@ export interface DataRawTableRow {
   source_kind: string | null;
   config_json: string | null;
   file_count: number | string | null;
-  related_task_names?: string | null;
+  related_pipeline_names?: string | null;
   related_pipeline_ids?: string | null;
   table_name: string;
   row_count: number | string;
@@ -110,7 +110,7 @@ export interface DataRawTableNormalizerArtifactVersionRow {
 }
 
 export interface DashboardSummaryRow {
-  task_count: number | string;
+  pipeline_count: number | string;
   workflow_node_count: number | string | null;
   running_count: number | string | null;
   today_schedule_count: number | string | null;
@@ -201,7 +201,7 @@ export function mapRawTableRow(row: DataRawTableRow): DataRawTable {
     sourceKind,
     inputConfig: parseRawTableConfig(row.config_json, sourceKind, sourcePath),
     fileCount: row.file_count === null ? 1 : toNumber(row.file_count),
-    relatedPipelineNames: parseRelatedPipelineNames(row.related_task_names),
+    relatedPipelineNames: parseRelatedPipelineNames(row.related_pipeline_names),
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
@@ -278,7 +278,7 @@ export function mapResultTableRow(row: DataRawTableRow): DataResultTable {
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
-    relatedPipelineNames: parseRelatedPipelineNames(row.related_task_names),
+    relatedPipelineNames: parseRelatedPipelineNames(row.related_pipeline_names),
     relatedPipelineIds: parseRelatedPipelineIds(row.related_pipeline_ids),
     groupId: row.group_id ? String(row.group_id) : null,
     createdAt: toNumber(row.created_at),

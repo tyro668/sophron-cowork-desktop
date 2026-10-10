@@ -223,7 +223,7 @@ export class RawTableRepository {
       `
           SELECT
             d.*,
-            ${this.ctx.resultTableRelatedPipelineNamesSql('d')} AS related_task_names,
+            ${this.ctx.resultTableRelatedPipelineNamesSql('d')} AS related_pipeline_names,
             ${this.ctx.resultTableRelatedPipelineIdsSql('d')} AS related_pipeline_ids
           FROM data_raw_tables d
           WHERE d.id = $id

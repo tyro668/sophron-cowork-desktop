@@ -63,7 +63,7 @@ export class WorkflowValidator {
             pipelineNode,
             index === 0
               ? pipeline.resultTable || tableNameFromId('clean_pipeline', pipeline.id)
-              : tableNameFromId('task_sink', `${pipeline.id}_${planNode.id}`)
+              : tableNameFromId('pipeline_sink', `${pipeline.id}_${planNode.id}`)
           );
           const targetKey = target.tableName.toLowerCase();
           const claimant = claimedOutputTargets.get(targetKey);

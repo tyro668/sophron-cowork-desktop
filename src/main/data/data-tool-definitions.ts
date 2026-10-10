@@ -482,8 +482,8 @@ export function createDataCustomTools(
         }),
     },
     {
-      name: 'data_update_task',
-      ...DATA_TOOL_COPY.data_update_task,
+      name: 'data_update_pipeline',
+      ...DATA_TOOL_COPY.data_update_pipeline,
       parameters: Type.Object({
         id: Type.String({ minLength: 1 }),
         name: Type.Optional(Type.String({ minLength: 1 })),

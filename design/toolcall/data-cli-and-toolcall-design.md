@@ -1685,7 +1685,7 @@ data_update_input_table
 data_preview_table
 data_list_tasks
 data_create_task
-data_update_task
+data_update_pipeline
 data_get_task_workflow
 data_get_workflow_dsl_reference
 data_validate_workflow_dsl

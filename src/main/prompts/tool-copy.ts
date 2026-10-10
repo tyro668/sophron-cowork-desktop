@@ -108,7 +108,7 @@ export const DATA_TOOL_COPY = {
     description:
       'Generate, compile, temporarily execute, validate, and save a reusable native-node data pipeline from a supported analysis receipt. Call only after showing the analysis to the user and receiving explicit confirmation in a new user message. Pass outputMode, resultTableName, and resultTableId as flat fields; never serialize nested JSON into a string. Never provide or generate workflow DSL.',
   },
-  data_update_task: {
+  data_update_pipeline: {
     label: 'Update data pipeline',
     description: 'Rename an existing data pipeline.',
   },

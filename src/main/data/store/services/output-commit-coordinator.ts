@@ -88,7 +88,7 @@ export class OutputCommitCoordinator {
         const fallback =
           index === 0
             ? pipeline.resultTable || tableNameFromId('clean_pipeline', pipeline.id)
-            : tableNameFromId('task_sink', `${pipeline.id}_${sink.nodeId || index}`);
+            : tableNameFromId('pipeline_sink', `${pipeline.id}_${sink.nodeId || index}`);
         const target = await this.binding.resolveWorkflowOutputTarget(outputNode, fallback);
         const targetKey = target.tableName.toLowerCase();
         if (claimedTargets.has(targetKey)) {

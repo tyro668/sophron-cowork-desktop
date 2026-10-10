@@ -42,7 +42,7 @@ export class DashboardService {
       ? await this.ctx.metaQueryRows<DashboardSummaryRow>(
           `
               SELECT
-                count(*) AS task_count,
+                count(*) AS pipeline_count,
                 coalesce(sum(node_count), 0) AS workflow_node_count,
                 coalesce(sum(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0) AS running_count,
                 coalesce(sum(CASE WHEN scheduled_for >= $todayStart AND scheduled_for < $todayEnd THEN 1 ELSE 0 END), 0) AS today_schedule_count,
@@ -57,7 +57,7 @@ export class DashboardService {
         )
       : [];
     const summary = summaryRows[0] ?? {
-      task_count: 0,
+      pipeline_count: 0,
       workflow_node_count: 0,
       running_count: 0,
       today_schedule_count: 0,
@@ -78,7 +78,7 @@ export class DashboardService {
             `,
           { query: normalizedQuery, like }
         )
-      : [{ count: includeSummary ? summary.task_count : 0 }];
+      : [{ count: includeSummary ? summary.pipeline_count : 0 }];
     const pipelineGroupIdSet = query.pipelineGroupId !== undefined ? 1 : 0;
     const pipelineGroupId = query.pipelineGroupId ?? null;
     const pipelinePerGroupLimit = query.pipelinePerGroupLimit ?? 0;
@@ -204,7 +204,7 @@ export class DashboardService {
               )
               SELECT
                 matched.*,
-                ${this.ctx.rawTableRelatedPipelineNamesSql('matched')} AS related_task_names
+                ${this.ctx.rawTableRelatedPipelineNamesSql('matched')} AS related_pipeline_names
               FROM matched
               WHERE $rawTableGroupIdSet = 1 OR ($rawTablePerGroupLimit > 0 AND group_rn <= $rawTablePerGroupLimit)
               LIMIT ${rawTableGroupIdSet ? rawTableWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${rawTableGroupIdSet ? rawTableWindow.offset : 0}
@@ -238,7 +238,7 @@ export class DashboardService {
               )
               SELECT
                 page.*,
-                ${this.ctx.rawTableRelatedPipelineNamesSql('page')} AS related_task_names
+                ${this.ctx.rawTableRelatedPipelineNamesSql('page')} AS related_pipeline_names
               FROM page
             `,
             { query: normalizedQuery, like, sourceKind: rawTableSourceKind }
@@ -314,7 +314,7 @@ export class DashboardService {
               )
               SELECT
                 matched.*,
-                ${this.ctx.resultTableRelatedPipelineNamesSql('matched')} AS related_task_names,
+                ${this.ctx.resultTableRelatedPipelineNamesSql('matched')} AS related_pipeline_names,
                 ${this.ctx.resultTableRelatedPipelineIdsSql('matched')} AS related_pipeline_ids
               FROM matched
               WHERE $outputGroupIdSet = 1 OR ($outputPerGroupLimit > 0 AND group_rn <= $outputPerGroupLimit)
@@ -326,7 +326,7 @@ export class DashboardService {
             `
               SELECT
                 d.*,
-                ${this.ctx.resultTableRelatedPipelineNamesSql('d')} AS related_task_names,
+                ${this.ctx.resultTableRelatedPipelineNamesSql('d')} AS related_pipeline_names,
                 ${this.ctx.resultTableRelatedPipelineIdsSql('d')} AS related_pipeline_ids
               FROM data_raw_tables d
               LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
@@ -379,7 +379,7 @@ export class DashboardService {
 
     return {
       summary: {
-        pipelineCount: toNumber(summary.task_count),
+        pipelineCount: toNumber(summary.pipeline_count),
         workflowNodeCount: toNumber(summary.workflow_node_count),
         runningCount: statusCounts.running,
         todayScheduleCount: toNumber(summary.today_schedule_count),
