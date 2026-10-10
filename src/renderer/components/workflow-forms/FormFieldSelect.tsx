@@ -131,14 +131,14 @@ export default function FormFieldSelect({
           ariaLabel={tr('fieldSelectMode')}
         />
 
-        <div className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-surface px-2.5 py-1">
+        <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-surface px-2.5">
           <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           <input
             type="text"
             value={rightSearch}
             onChange={(event) => setRightSearch(event.target.value)}
             placeholder={tr('fieldPicker.searchField')}
-            className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
           />
           <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
             <input
@@ -175,7 +175,10 @@ export default function FormFieldSelect({
           <GlassRowList
             items={visibleFields}
             hideHeader
+            rowPaddingClassName="px-0"
+            actionsOnHover
             draggable
+            dragHandlePosition="end"
             onDragStart={(i) => {
               const field = visibleFields[i];
               handleDragStart(orderedFields.indexOf(field));
@@ -198,6 +201,12 @@ export default function FormFieldSelect({
             getRowOpacity={(i) => {
               const field = visibleFields[i];
               return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
+            }}
+            getDropMarker={(i) => {
+              const field = visibleFields[i];
+              return isDragging && dragIndexRef.current === orderedFields.indexOf(field)
+                ? 'before'
+                : null;
             }}
             dragTitle={tr('rowList.dragToReorder')}
             actions={['toTop', 'toBottom']}

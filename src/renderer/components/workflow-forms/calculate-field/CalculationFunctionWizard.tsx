@@ -513,6 +513,9 @@ export function CalculationFunctionWizard({
               onDragEnd={handleDragEnd}
               onKeyboardMove={handleKeyboardMove}
               getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
+              getDropMarker={(index) =>
+                isDragging && dragIndexRef.current === index ? 'before' : null
+              }
               dragTitle={tr('rowList.dragToReorder')}
             />
           ) : (

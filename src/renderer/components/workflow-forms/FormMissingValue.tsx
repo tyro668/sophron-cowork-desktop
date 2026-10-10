@@ -291,6 +291,7 @@ export default function FormMissingValue({
         </>
       ) : (
         <GlassRowList
+          rowPaddingClassName="px-0"
           items={activeRules}
           getKey={(item, index) => item.id ?? `rule-${index}`}
           columns={[
@@ -427,11 +428,13 @@ export default function FormMissingValue({
           copyTitle={tr('rowList.copyRow')}
           removeTitle={tr('missingRemoveRow')}
           draggable
+          dragHandlePosition="end"
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
           onKeyboardMove={handleKeyboardMove}
           getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+          getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
           dragTitle={tr('missingDragToReorder')}
         />
       )}

@@ -19,6 +19,8 @@ interface SortKeysEditorProps {
   onChange: (keys: SortKey[]) => void;
   /** Whether rows offer a copy action (sort keeps it; deduplicate hides it). */
   copyable?: boolean;
+  /** Hide the column header row (limit form keeps rows headerless). */
+  hideHeader?: boolean;
 }
 
 /** Shared sort-key editor (field / direction / nulls) used by sort and
@@ -30,6 +32,7 @@ export function SortKeysEditor({
   columnTypes,
   onChange,
   copyable = true,
+  hideHeader,
 }: SortKeysEditorProps) {
   const tr = useFormTranslation('sortKeys');
   const displayKeys = useMemo(
@@ -107,6 +110,8 @@ export function SortKeysEditor({
   return (
     <GlassRowList
       headerClassName=""
+      hideHeader={hideHeader}
+      rowPaddingClassName="px-0"
       items={activeItems}
       getKey={(item, index) => item.id ?? `sort-key-${index}`}
       columns={[
@@ -134,7 +139,6 @@ export function SortKeysEditor({
         {
           flex: 'flex-[1]',
           header: tr('sortDirectionHeader'),
-          align: 'center',
           render: (key: SortKey, i) => (
             <GlassDirectionToggle
               value={key.direction}
@@ -175,11 +179,13 @@ export function SortKeysEditor({
       addTitle={tr('sortAddKey')}
       removeTitle={tr('sortRemoveKey')}
       draggable
+      dragHandlePosition="end"
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onKeyboardMove={handleKeyboardMove}
       getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+      getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
     />
   );
 }

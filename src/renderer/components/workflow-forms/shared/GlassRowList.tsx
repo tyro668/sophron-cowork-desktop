@@ -53,12 +53,16 @@ interface GlassRowListProps<T> {
   onDragEnd?: () => void;
   onKeyboardMove?: (index: number, direction: ReorderDirection) => void;
   getRowOpacity?: (index: number) => boolean;
+  /** Accent insertion line at a row edge marking the pending drop position. */
+  getDropMarker?: (index: number) => 'before' | 'after' | null | undefined;
   dragTitle?: string;
   hideHeader?: boolean;
   headerClassName?: string;
   gapClassName?: string;
   /** Row horizontal padding; use px-0 to align row content with sibling controls. */
   rowPaddingClassName?: string;
+  /** Reveal action buttons (and an end-positioned drag handle) only on row hover. */
+  actionsOnHover?: boolean;
 }
 
 const ACTION_ICON: Record<RowAction, React.ComponentType<{ className?: string }>> = {
@@ -100,12 +104,14 @@ export function GlassRowList<T>({
   onDragEnd,
   onKeyboardMove,
   getRowOpacity,
+  getDropMarker,
   dragTitle,
   getKey,
   hideHeader,
   headerClassName,
   gapClassName = 'gap-1',
   rowPaddingClassName = 'px-2',
+  actionsOnHover = false,
 }: GlassRowListProps<T>) {
   const tr = useFormTranslation('rowList');
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -131,7 +137,7 @@ export function GlassRowList<T>({
   const extraActionsWidth = renderExtraActions ? 32 : 0;
   const actionsWidth =
     actions.length * 32 +
-    (actions.length - 1) * 4 +
+    Math.max(0, actions.length - 1) * 4 +
     extraActionsWidth +
     (draggable && dragHandlePosition === 'end' ? 36 : 0);
 
@@ -139,7 +145,7 @@ export function GlassRowList<T>({
     <div ref={listRef} className={`flex flex-col ${gapClassName}`}>
       {!hideHeader && (
         <div
-          className={`flex min-h-8 items-center gap-1 px-2 text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
+          className={`flex min-h-8 items-center gap-1 ${rowPaddingClassName} text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
         >
           {draggable && dragHandlePosition === 'start' && (
             <span
@@ -162,6 +168,7 @@ export function GlassRowList<T>({
       )}
 
       {items.map((item, index) => {
+        const dropMarker = getDropMarker?.(index);
         const dragHandle = draggable ? (
           <button
             type="button"
@@ -193,11 +200,19 @@ export function GlassRowList<T>({
         return (
           <div
             key={getKey ? getKey(item, index) : index}
-            className={`flex min-h-10 items-center gap-1 rounded-lg ${rowPaddingClassName} py-1 transition-colors hover:bg-surface-hover/40 ${
+            className={`${actionsOnHover ? 'group ' : ''}relative flex min-h-10 items-center gap-1 rounded-lg ${rowPaddingClassName} py-1 transition-colors hover:bg-surface-hover/40 ${
               getRowOpacity?.(index) ? 'opacity-50' : ''
             }`}
             onDragOver={draggable ? (e) => onDragOver?.(e, index) : undefined}
           >
+            {dropMarker && (
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-accent ${
+                  dropMarker === 'before' ? '-top-0.5' : '-bottom-0.5'
+                }`}
+              />
+            )}
             {dragHandlePosition === 'start' && dragHandle}
 
             {columns.map((col, i) => (
@@ -211,7 +226,13 @@ export function GlassRowList<T>({
               </div>
             ))}
 
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div
+              className={`flex items-center gap-1 flex-shrink-0 ${
+                actionsOnHover
+                  ? 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100'
+                  : ''
+              }`}
+            >
               {renderExtraActions?.(index)}
               {actions.map((action) => {
                 const Icon = ACTION_ICON[action];

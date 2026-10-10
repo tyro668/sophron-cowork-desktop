@@ -139,6 +139,7 @@ export default function FormTypeConvert({
     <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
       <GlassRowList
         headerClassName=""
+        rowPaddingClassName="px-0"
         items={activeConversions}
         getKey={(conversion, index) => conversion.id ?? `conversion-${index}`}
         columns={[
@@ -288,11 +289,13 @@ export default function FormTypeConvert({
           action === 'remove' ? true : activeConversions.length < fieldCompletions.length
         }
         draggable
+        dragHandlePosition="end"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onKeyboardMove={handleKeyboardMove}
         getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+        getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
         dragTitle={tr('rowList.dragToReorder')}
       />
     </div>

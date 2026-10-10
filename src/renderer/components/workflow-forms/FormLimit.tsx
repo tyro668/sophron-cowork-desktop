@@ -230,6 +230,7 @@ export default function FormLimit({
               fieldCompletions={fieldCompletions}
               columnTypes={columnTypes}
               onChange={commitSortKeys}
+              hideHeader
             />
             {hasSort && (
               <label className="mt-1 flex h-8 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary select-none">

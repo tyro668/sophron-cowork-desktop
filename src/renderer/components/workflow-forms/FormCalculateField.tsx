@@ -207,11 +207,13 @@ export default function FormCalculateField({
           canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
         }
         draggable
+        dragHandlePosition="end"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onKeyboardMove={handleKeyboardMove}
         getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+        getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
         dragTitle={tr('rowList.dragToReorder')}
       />
     </div>

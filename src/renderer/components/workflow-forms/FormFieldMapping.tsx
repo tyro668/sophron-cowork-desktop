@@ -201,6 +201,7 @@ export default function FormFieldMapping({
     <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
       <GlassRowList
         headerClassName=""
+        rowPaddingClassName="px-0"
         items={activeMappings}
         getKey={(mapping, index) => mapping.id ?? `mapping-${index}`}
         columns={columns}
@@ -218,11 +219,13 @@ export default function FormFieldMapping({
               : true
         }
         draggable
+        dragHandlePosition="end"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onKeyboardMove={handleKeyboardMove}
         getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
+        getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
         dragTitle={tr('rowList.dragToReorder')}
       />
     </div>

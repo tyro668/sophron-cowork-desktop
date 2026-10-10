@@ -6,6 +6,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -13,23 +14,13 @@ import {
   removeRowAt,
 } from './shared/rowListOperations';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
-import { useDragReorder, getReorderTargetIndex } from '../../hooks/useDragReorder';
+import { useDragReorder } from '../../hooks/useDragReorder';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { DropdownMenuSeparator } from '../ui';
-import {
-  ChevronDown,
-  Copy,
-  Ellipsis,
-  GripVertical,
-  Loader2,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { ChevronDown, Copy, Ellipsis, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   normalizePivotAxes,
   togglePivotAxisValue,
@@ -177,7 +168,48 @@ export default function FormPivot({
   }, [using, isMetricDragging, resetMetricDrag]);
 
   const canAddMetric = canAppendRow(activeMetrics.length, MAX_USING_COUNT);
-  const listRef = useRef<HTMLDivElement>(null);
+
+  const metricColumns: GlassRowListColumn<PivotMetric>[] = [
+    {
+      flex: 'flex-[0.8]',
+      header: tr('aggregateFns.aggregateFunction'),
+      render: (metric, index) => (
+        <GlassOptionSingleSelect
+          value={metric.function}
+          groups={fnGroups}
+          onChange={(value) => updateMetric(index, { function: value as PivotMetric['function'] })}
+          className="h-8 w-full text-[12px] [&>span]:text-left"
+        />
+      ),
+    },
+    {
+      flex: 'flex-[1.6]',
+      header: tr('aggregate.aggregateExpressionColumn'),
+      render: (metric, index) => (
+        <GlassExpressionInput
+          value={metric.expression}
+          onChange={(value) => updateMetric(index, { expression: value })}
+          fieldCompletions={fieldCompletions}
+          columnTypes={columnTypes}
+          placeholder={tr('pivotExpressionPlaceholder')}
+        />
+      ),
+    },
+    {
+      flex: 'flex-[1]',
+      header: tr('pivotSuffixLabel'),
+      render: (metric, index) => (
+        <GlassFormTextInput
+          value={metric.alias ?? ''}
+          onChange={(value) => updateMetric(index, { alias: value })}
+          placeholder={tr('pivotDefaultSuffix', {
+            suffix: getPivotMetricDefaultSuffix(metric.function),
+          })}
+          className="h-8 w-full px-2 text-[12px]"
+        />
+      ),
+    },
+  ];
 
   return (
     <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto px-3 py-2">
@@ -254,123 +286,63 @@ export default function FormPivot({
         </button>
       </div>
 
-      <div ref={listRef} className="overflow-hidden rounded-lg border border-border-muted">
-        <div className="flex h-7 items-center gap-2 border-b border-border-muted bg-[var(--data-grid-header-surface)] px-2 text-[12px] font-medium text-text-muted">
-          <span className="w-6 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-[0.8] truncate px-2">
-            {tr('aggregateFns.aggregateFunction')}
-          </span>
-          <span className="min-w-0 flex-[1.6] truncate px-2">
-            {tr('aggregate.aggregateExpressionColumn')}
-          </span>
-          <span className="min-w-0 flex-[1] truncate px-2">{tr('pivotSuffixLabel')}</span>
-          <span className="w-8 shrink-0" aria-hidden="true" />
-        </div>
-        {activeMetrics.map((metric, index) => (
-          <div
-            key={metric.id ?? `metric-${index}`}
-            className={`flex items-center gap-2 border-b border-border-subtle px-2 py-1 transition-colors last:border-b-0 hover:bg-surface-hover/40 ${
-              isMetricDragging && metricDragIndexRef.current === index ? 'opacity-50' : ''
-            }`}
-            onDragOver={(event) => handleMetricDragOver(event, index)}
-          >
-            <button
-              type="button"
-              draggable
-              onDragStart={() => handleMetricDragStart(index)}
-              onDragEnd={handleMetricDragEnd}
-              onKeyDown={(event) => {
-                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-                event.preventDefault();
-                const direction = event.key === 'ArrowUp' ? 'up' : 'down';
-                const targetIndex = getReorderTargetIndex(activeMetrics.length, index, direction);
-                if (targetIndex === null) return;
-                handleMetricKeyboardMove(index, direction);
-                requestAnimationFrame(() => {
-                  const handles =
-                    listRef.current?.querySelectorAll<HTMLButtonElement>('[data-row-drag-handle]');
-                  handles?.[targetIndex]?.focus();
-                });
-              }}
-              className="flex h-8 w-6 flex-shrink-0 cursor-grab items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing"
-              title={tr('rowList.dragToReorder')}
-              aria-label={tr('rowList.dragToReorder')}
-              aria-keyshortcuts="ArrowUp ArrowDown"
-              data-row-drag-handle
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
-            <div className="min-w-0 flex-[0.8]">
-              <GlassOptionSingleSelect
-                value={metric.function}
-                groups={fnGroups}
-                onChange={(value) =>
-                  updateMetric(index, { function: value as PivotMetric['function'] })
-                }
-                className="h-8 w-full text-[12px] [&>span]:text-left"
-              />
-            </div>
-            <div className="min-w-0 flex-[1.6]">
-              <GlassExpressionInput
-                value={metric.expression}
-                onChange={(value) => updateMetric(index, { expression: value })}
-                fieldCompletions={fieldCompletions}
-                columnTypes={columnTypes}
-                placeholder={tr('pivotExpressionPlaceholder')}
-              />
-            </div>
-            <div className="min-w-0 flex-[1]">
-              <GlassFormTextInput
-                value={metric.alias ?? ''}
-                onChange={(value) => updateMetric(index, { alias: value })}
-                placeholder={tr('pivotDefaultSuffix', {
-                  suffix: getPivotMetricDefaultSuffix(metric.function),
-                })}
-                className="h-8 w-full px-2 text-[12px]"
-              />
-            </div>
-            <div className="flex w-8 flex-shrink-0 justify-center">
-              <GlassDropdownMenu
-                trigger={
-                  <button
-                    type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30"
-                    title={tr('aggregate.aggregateMetricActions')}
-                    aria-label={tr('aggregate.aggregateMetricActions')}
-                  >
-                    <Ellipsis className="h-4 w-4" />
-                  </button>
-                }
-                align="end"
-                side="bottom"
+      <GlassRowList
+        rowPaddingClassName="px-0"
+        items={activeMetrics}
+        getKey={(metric, index) => metric.id ?? `metric-${index}`}
+        columns={metricColumns}
+        actions={[]}
+        renderExtraActions={(index) => (
+          <GlassDropdownMenu
+            trigger={
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30"
+                title={tr('aggregate.aggregateMetricActions')}
+                aria-label={tr('aggregate.aggregateMetricActions')}
               >
-                <GlassMenuItem
-                  icon={<Plus className="h-3.5 w-3.5" />}
-                  disabled={!canAddMetric}
-                  onSelect={() => addMetricAfter(index)}
-                >
-                  {tr('pivotAddMetric')}
-                </GlassMenuItem>
-                <GlassMenuItem
-                  icon={<Copy className="h-3.5 w-3.5" />}
-                  disabled={!canAddMetric}
-                  onSelect={() => copyMetric(index)}
-                >
-                  {tr('rowList.copyRow')}
-                </GlassMenuItem>
-                <DropdownMenuSeparator />
-                <GlassMenuItem
-                  icon={<Trash2 className="h-3.5 w-3.5" />}
-                  danger
-                  onSelect={() => removeMetric(index)}
-                >
-                  {tr('pivotRemoveMetric')}
-                </GlassMenuItem>
-              </GlassDropdownMenu>
-            </div>
-          </div>
-        ))}
-      </div>
+                <Ellipsis className="h-4 w-4" />
+              </button>
+            }
+            align="end"
+            side="bottom"
+          >
+            <GlassMenuItem
+              icon={<Plus className="h-3.5 w-3.5" />}
+              disabled={!canAddMetric}
+              onSelect={() => addMetricAfter(index)}
+            >
+              {tr('pivotAddMetric')}
+            </GlassMenuItem>
+            <GlassMenuItem
+              icon={<Copy className="h-3.5 w-3.5" />}
+              disabled={!canAddMetric}
+              onSelect={() => copyMetric(index)}
+            >
+              {tr('rowList.copyRow')}
+            </GlassMenuItem>
+            <DropdownMenuSeparator />
+            <GlassMenuItem
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              danger
+              onSelect={() => removeMetric(index)}
+            >
+              {tr('pivotRemoveMetric')}
+            </GlassMenuItem>
+          </GlassDropdownMenu>
+        )}
+        draggable
+        dragHandlePosition="end"
+        onDragStart={handleMetricDragStart}
+        onDragOver={handleMetricDragOver}
+        onDragEnd={handleMetricDragEnd}
+        onKeyboardMove={handleMetricKeyboardMove}
+        getRowOpacity={(index) => !!(isMetricDragging && metricDragIndexRef.current === index)}
+        getDropMarker={(index) =>
+          isMetricDragging && metricDragIndexRef.current === index ? 'before' : null
+        }
+        dragTitle={tr('rowList.dragToReorder')}
+      />
     </div>
   );
 }
