@@ -231,8 +231,6 @@ export function DataViewPage() {
             onRenameRawTable={actions.handleRenameRawTable}
             onChooseRawTableSource={actions.handleUpdateRawTableSource}
             onUpdateRawTableConfig={actions.handleUpdateRawTableConfig}
-            onCreatePipeline={actions.handleCreatePipelineFromTable}
-            onAiGeneratePipeline={generatePipelineFromTable}
             onSyncCloudSource={actions.handleRefreshCloudRawTable}
           />
         ) : editors.editingResultTable ? (

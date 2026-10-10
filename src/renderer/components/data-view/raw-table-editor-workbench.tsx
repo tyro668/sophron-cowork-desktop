@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
+  CalendarClock,
   Check,
   Copy,
   Eye,
@@ -15,7 +16,6 @@ import {
   RefreshCw,
   Save,
   Sparkles,
-  Workflow,
 } from 'lucide-react';
 import type {
   DataRawTable,
@@ -37,6 +37,7 @@ import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
 import {
+  DataMoreMenu,
   RAW_TABLE_PREVIEW_PAGE_SIZE,
   RawTableCheckbox,
   RawTableSelect,
@@ -97,8 +98,6 @@ export type RawTableEditorProps = {
     config: DataRawTableConfig,
     name?: string
   ) => void | Promise<void>;
-  onCreatePipeline?: (rawTable: DataRawTable) => void;
-  onAiGeneratePipeline?: (rawTable: DataRawTable) => void;
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
 };
 
@@ -114,8 +113,6 @@ export function RawTableEditorWorkbench({
   onChooseDraftSource,
   onChooseRawTableSource,
   onUpdateRawTableConfig,
-  onCreatePipeline,
-  onAiGeneratePipeline,
   onSyncCloudSource,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
@@ -761,33 +758,27 @@ export function RawTableEditorWorkbench({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {rawTable && onAiGeneratePipeline && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={isBusy}
-                onClick={() => onAiGeneratePipeline(rawTable)}
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                {t('data.aiPipelineGenerate')}
-              </Button>
-            )}
-            {rawTable && onCreatePipeline && (
-              <button
-                type="button"
-                onClick={() => onCreatePipeline(rawTable)}
-                disabled={isBusy}
-                className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Workflow className="h-3.5 w-3.5" />
-                {t('data.rawTables.actions.createPipeline')}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={saveRawTable}
+              disabled={!canSave}
+              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {isBusy ? t('common.saving') : t('common.save')}
+            </button>
             {rawTable && (
               <>
-                <Button size="sm" onClick={() => setAutomationsOpen(true)}>
-                  {t('data.resultTables.automation.title')}
-                </Button>
+                <DataMoreMenu
+                  items={[
+                    {
+                      key: 'automations',
+                      label: t('data.resultTables.automation.title'),
+                      icon: <CalendarClock className="h-3.5 w-3.5" />,
+                      onClick: () => setAutomationsOpen(true),
+                    },
+                  ]}
+                />
                 <Dialog
                   open={automationsOpen}
                   onOpenChange={setAutomationsOpen}
@@ -803,16 +794,6 @@ export function RawTableEditorWorkbench({
                 </Dialog>
               </>
             )}
-
-            <button
-              type="button"
-              onClick={saveRawTable}
-              disabled={!canSave}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {isBusy ? t('common.saving') : t('common.save')}
-            </button>
           </div>
         </div>
 

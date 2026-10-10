@@ -453,7 +453,7 @@
         "dataEmpty": "该结果表暂无数据"
       },
       "automation": {
-        "title": "自动化动作",
+        "title": "关联自动化",
         "create": "新建自动化",
         "select": "选择已有自动化",
         "link": "关联",

@@ -101,7 +101,6 @@ function renderWorkbench(options: {
         onRenameRawTable={vi.fn()}
         onChooseRawTableSource={vi.fn()}
         onUpdateRawTableConfig={(onUpdateRawTableConfig ?? options.onUpdateRawTableConfig) as never}
-        onCreatePipeline={vi.fn()}
         onSyncCloudSource={vi.fn()}
       />
     </ConfirmDialogProvider>

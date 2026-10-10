@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
+  CalendarClock,
   CloudDownload,
   Eye,
   FolderInput,
@@ -21,7 +22,9 @@ import type {
   DataRawTableSourceKind,
 } from '../../types';
 import { Button } from '../ui/button';
+import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
+import { RawTableAutomations } from './table-automations';
 import {
   DataMoreMenu,
   DataTableSearch,
@@ -109,6 +112,7 @@ export function RawTablesPanel({
   const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const [selectedRawTableId, setSelectedRawTableId] = useState<string | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const filteredDrafts = useMemo(
@@ -349,6 +353,13 @@ export function RawTablesPanel({
                 ],
               },
               {
+                key: 'automations',
+                label: t('data.resultTables.automation.title'),
+                icon: <CalendarClock className="h-3.5 w-3.5" />,
+                disabled: !selectedRawTable || bulkBusy,
+                onClick: () => setAutomationsOpen(true),
+              },
+              {
                 key: 'refresh',
                 label: t('data.actions.refresh'),
                 icon: <RefreshCw className="h-3.5 w-3.5" />,
@@ -471,6 +482,21 @@ export function RawTablesPanel({
           setRenameTarget(null);
         }}
       />
+      {selectedRawTable && (
+        <Dialog
+          open={automationsOpen}
+          onOpenChange={setAutomationsOpen}
+          ariaLabel={t('data.resultTables.automation.title')}
+          className="w-full max-w-2xl p-5"
+        >
+          <RawTableAutomations rawTable={selectedRawTable} />
+          <div className="mt-4 flex justify-end">
+            <Button size="sm" onClick={() => setAutomationsOpen(false)}>
+              {t('common.close')}
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -485,8 +511,6 @@ export function RawTableEditor({
   onChooseDraftSource,
   onChooseRawTableSource,
   onUpdateRawTableConfig,
-  onCreatePipeline,
-  onAiGeneratePipeline,
   onSyncCloudSource,
 }: {
   draft?: RawTableDraft;
@@ -512,8 +536,6 @@ export function RawTableEditor({
     config: DataRawTableConfig,
     name?: string
   ) => void | Promise<void>;
-  onCreatePipeline?: (rawTable: DataRawTable) => void;
-  onAiGeneratePipeline?: (rawTable: DataRawTable) => void;
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
 }) {
   return (
@@ -527,8 +549,6 @@ export function RawTableEditor({
       onChooseDraftSource={onChooseDraftSource}
       onChooseRawTableSource={onChooseRawTableSource}
       onUpdateRawTableConfig={onUpdateRawTableConfig}
-      onCreatePipeline={onCreatePipeline}
-      onAiGeneratePipeline={onAiGeneratePipeline}
       onSyncCloudSource={onSyncCloudSource}
     />
   );

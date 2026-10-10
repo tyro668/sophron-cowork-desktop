@@ -453,7 +453,7 @@
         "dataEmpty": "No data in this result table yet"
       },
       "automation": {
-        "title": "Automations",
+        "title": "Linked automations",
         "create": "New automation",
         "select": "Select an automation",
         "link": "Link",
