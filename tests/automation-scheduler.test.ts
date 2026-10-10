@@ -19,7 +19,7 @@ describe('automation scheduler recovery', () => {
       nextRunAt: 2000,
     };
     const service = {
-      list: () => [record],
+      list: () => ({ automations: [record], groupCounts: {} }),
       runDueAutomations: vi.fn(async () => {
         record.nextRunAt = 10000;
       }),
@@ -50,7 +50,7 @@ describe('automation scheduler recovery', () => {
       nextRunAt: 1000,
     };
     const service = {
-      list: () => [record],
+      list: () => ({ automations: [record], groupCounts: {} }),
       runDueAutomations: vi.fn(async () => {
         await gate;
         record.nextRunAt = 10000;
@@ -91,7 +91,7 @@ describe('automation scheduler recovery', () => {
         record.nextRunAt = 10000;
       });
     const scheduler = new AutomationScheduler({
-      list: () => [record],
+      list: () => ({ automations: [record], groupCounts: {} }),
       runDueAutomations: run,
     } as unknown as AutomationService);
     scheduler.start();

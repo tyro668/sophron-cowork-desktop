@@ -5,7 +5,7 @@ import {
 } from '../../shared/prep-dsl';
 import { WORKFLOW_PLAN_VERSION, type WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import { WORKFLOW_OPERATOR_TYPE_SET, WORKFLOW_OPERATOR_TYPES } from './store/workflow-model';
-import type { DataTaskStore } from './data-task-store';
+import type { DataPipelineStore } from './data-pipeline-store';
 import type { DataWorkflowOperatorType } from '../../shared/contracts';
 import {
   DataCommandError,
@@ -15,7 +15,7 @@ import {
   type ConfigureInputOperatorCommand,
   type ConfigureOutputOperatorCommand,
   type ExportWorkflowDslCommand,
-  type GetTaskWorkflowCommand,
+  type GetPipelineWorkflowCommand,
   type GetWorkflowCapabilityManifestCommand,
   type TextResult,
   type WorkflowResult,
@@ -40,21 +40,21 @@ import { buildWorkflowCapabilityManifest } from './workflow/workflow-capability-
 
 export class WorkflowAuthoringCommandService {
   constructor(
-    private readonly store: DataTaskStore,
+    private readonly store: DataPipelineStore,
     private readonly resources: DataCommandResources,
     private readonly locks: DataCommandLockCoordinator,
     private readonly compiler: WorkflowDslCompiler,
     private readonly preview: WorkflowPreviewService
   ) {}
 
-  async getTaskWorkflow(input: GetTaskWorkflowCommand): Promise<WorkflowResult> {
-    return { workflow: await this.store.getTaskWorkflow(input.taskId) };
+  async getPipelineWorkflow(input: GetPipelineWorkflowCommand): Promise<WorkflowResult> {
+    return { workflow: await this.store.getPipelineWorkflow(input.pipelineId) };
   }
 
   async getWorkflowCapabilityManifest(input: GetWorkflowCapabilityManifestCommand = {}) {
     const inputs = await Promise.all(
-      (input.inputTableIds ?? []).map(async (id) => {
-        const table = await this.resources.requireInputTable(id);
+      (input.rawTableIds ?? []).map(async (id) => {
+        const table = await this.resources.requireRawTable(id);
         const columns = await this.store.getTableColumnSnapshot(table.tableName);
         return {
           id: table.id,
@@ -64,8 +64,8 @@ export class WorkflowAuthoringCommandService {
       })
     );
     const outputs = await Promise.all(
-      (input.outputTableIds ?? []).map(async (id) => {
-        const table = await this.resources.requireOutputTable(id);
+      (input.resultTableIds ?? []).map(async (id) => {
+        const table = await this.resources.requireResultTable(id);
         const columns = await this.store.getTableColumnSnapshot(table.tableName);
         return {
           id: table.id,
@@ -76,42 +76,42 @@ export class WorkflowAuthoringCommandService {
       })
     );
     return buildWorkflowCapabilityManifest({
-      ...(input.inputTableIds?.length ? { inputs } : {}),
-      ...(input.outputTableIds?.length ? { outputs } : {}),
+      ...(input.rawTableIds?.length ? { inputs } : {}),
+      ...(input.resultTableIds?.length ? { outputs } : {}),
     });
   }
 
   async applyWorkflowDsl(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
-    return this.locks.withKeyedLock(`task:${input.taskId}`, () =>
+    return this.locks.withKeyedLock(`pipeline:${input.pipelineId}`, () =>
       this.applyWorkflowDslUnlocked(input)
     );
   }
 
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<TextResult> {
-    const workflow = await this.store.getTaskWorkflow(input.taskId);
+    const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
     return { text: exportPrepWorkflowDsl(workflow.nodes, workflow.edges) };
   }
 
   async configureInputOperator(input: ConfigureInputOperatorCommand): Promise<WorkflowResult> {
-    return this.locks.withKeyedLock(`task:${input.taskId}`, () =>
+    return this.locks.withKeyedLock(`pipeline:${input.pipelineId}`, () =>
       this.configureInputOperatorUnlocked(input)
     );
   }
 
   async applyOperatorDsl(input: ApplyOperatorDslCommand): Promise<WorkflowResult> {
-    return this.locks.withKeyedLock(`task:${input.taskId}`, () =>
+    return this.locks.withKeyedLock(`pipeline:${input.pipelineId}`, () =>
       this.applyOperatorDslUnlocked(input)
     );
   }
 
   async configureOutputOperator(input: ConfigureOutputOperatorCommand): Promise<WorkflowResult> {
-    return this.locks.withKeyedLock(`task:${input.taskId}`, () =>
+    return this.locks.withKeyedLock(`pipeline:${input.pipelineId}`, () =>
       this.configureOutputOperatorUnlocked(input)
     );
   }
 
   async applyWorkflowPlan(input: ApplyWorkflowPlanCommand): Promise<WorkflowResult> {
-    return this.locks.withKeyedLock(`task:${input.taskId}`, () =>
+    return this.locks.withKeyedLock(`pipeline:${input.pipelineId}`, () =>
       this.applyWorkflowPlanUnlocked(input)
     );
   }
@@ -119,7 +119,7 @@ export class WorkflowAuthoringCommandService {
   private async applyWorkflowPlanUnlocked(
     input: ApplyWorkflowPlanCommand
   ): Promise<WorkflowResult> {
-    const task = await this.resources.requireTask(input.taskId);
+    const pipeline = await this.resources.requirePipeline(input.pipelineId);
     const diagnostics: WorkflowPlanDiagnostic[] = [];
     const shape = normalizeSubmittedPlan(input.plan, diagnostics);
     if (!shape) {
@@ -129,31 +129,33 @@ export class WorkflowAuthoringCommandService {
     }
     const bound = await this.compiler.applyWorkflowResourceBindings(shape, {
       inputs: input.inputResources,
-      outputTableId: input.outputTableId,
+      resultTableId: input.resultTableId,
     });
     for (const node of bound.nodes) {
       if (node.type !== 'input_source') continue;
       const source = stringConfigValue(node.config?.source);
-      if (source === 'dataset' && !stringConfigValue(node.config?.datasetId)) {
+      if (source === 'rawTable' && !stringConfigValue(node.config?.rawTableId)) {
         diagnostics.push({
           severity: 'error',
           code: 'inputBindingMissing',
-          message: `input source "${stringConfigValue(node.config?.alias) || node.id}" has source 'dataset' but no bound table id — bind it via resources.inputs["${stringConfigValue(node.config?.alias) || node.id}"]`,
+          message: `input source "${stringConfigValue(node.config?.alias) || node.id}" has source 'rawTable' but no bound table id — bind it via resources.inputs["${stringConfigValue(node.config?.alias) || node.id}"]`,
           nodeId: node.id,
         });
       }
-      if (source === 'task' && !task.sourcePath) {
+      if (source === 'pipeline' && !pipeline.sourcePath) {
         diagnostics.push({
           severity: 'error',
           code: 'inputSourceMissing',
-          message: `input source "${stringConfigValue(node.config?.alias) || node.id}" reads the task source file but this task has none`,
+          message: `input source "${stringConfigValue(node.config?.alias) || node.id}" reads the pipeline source file but this pipeline has none`,
           nodeId: node.id,
         });
       }
     }
-    // Config diagnostics come from validateWorkflowPlanForTask (the shared
+    // Config diagnostics come from validateWorkflowPlanForPipeline (the shared
     // preflight now includes them) — do not add them here a second time.
-    diagnostics.push(...(await this.store.validateWorkflowPlanForTask(input.taskId, bound)));
+    diagnostics.push(
+      ...(await this.store.validateWorkflowPlanForPipeline(input.pipelineId, bound))
+    );
     const errors = diagnosticsWithSeverity(diagnostics, 'error');
     let dsl: string | undefined;
     if (errors.length === 0) {
@@ -175,29 +177,29 @@ export class WorkflowAuthoringCommandService {
     }
     if (input.dryRun) {
       return {
-        workflow: await this.preview.toWorkflowPreview(input.taskId, bound),
+        workflow: await this.preview.toWorkflowPreview(input.pipelineId, bound),
         diagnostics,
         dryRun: true,
         dsl,
       };
     }
     return {
-      workflow: await this.store.saveTaskWorkflow(input.taskId, bound),
+      workflow: await this.store.savePipelineWorkflow(input.pipelineId, bound),
       diagnostics,
       dsl,
     };
   }
 
   private async applyWorkflowDslUnlocked(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
-    await this.resources.requireTask(input.taskId);
+    await this.resources.requirePipeline(input.pipelineId);
     const compiled = await this.compiler.compileWorkflowDsl(input.dsl, {
-      inputTableId: input.inputTableId,
+      rawTableId: input.rawTableId,
       inputAlias: input.inputAlias,
       inputs: input.inputResources,
-      outputTableId: input.outputTableId,
+      resultTableId: input.resultTableId,
     });
-    const planDiagnostics = await this.store.validateWorkflowPlanForTask(
-      input.taskId,
+    const planDiagnostics = await this.store.validateWorkflowPlanForPipeline(
+      input.pipelineId,
       compiled.workflow
     );
     // compileWorkflowDsl already ran buildWorkflowPlan + graph rules — drop
@@ -229,14 +231,14 @@ export class WorkflowAuthoringCommandService {
     }
     if (input.dryRun) {
       return {
-        workflow: await this.preview.toWorkflowPreview(input.taskId, compiled.workflow),
+        workflow: await this.preview.toWorkflowPreview(input.pipelineId, compiled.workflow),
         diagnostics,
         dryRun: true,
         dsl,
       };
     }
     return {
-      workflow: await this.store.saveTaskWorkflow(input.taskId, compiled.workflow),
+      workflow: await this.store.savePipelineWorkflow(input.pipelineId, compiled.workflow),
       diagnostics,
       dsl,
     };
@@ -245,8 +247,8 @@ export class WorkflowAuthoringCommandService {
   private async configureInputOperatorUnlocked(
     input: ConfigureInputOperatorCommand
   ): Promise<WorkflowResult> {
-    const workflow = await this.store.getTaskWorkflow(input.taskId);
-    const inputTable = await this.resources.requireInputTable(input.inputTableId);
+    const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
+    const rawTable = await this.resources.requireRawTable(input.rawTableId);
     const node = findWorkflowNode(workflow, input.nodeId);
     if (node.type !== 'input_source') {
       throw new DataCommandError(
@@ -260,18 +262,18 @@ export class WorkflowAuthoringCommandService {
     const nextWorkflow = updateWorkflowNode(workflow, input.nodeId, {
       config: {
         ...config,
-        source: 'dataset',
-        datasetId: inputTable.id,
-        inputTableName: inputTable.name,
+        source: 'rawTable',
+        rawTableId: rawTable.id,
+        rawTableName: rawTable.name,
         alias,
-        dsl: `input source dataset "${escapeDslString(inputTable.id)}" as ${alias}`,
+        dsl: `input source rawTable "${escapeDslString(rawTable.id)}" as ${alias}`,
       },
     });
-    return this.saveOrPreview(input.taskId, nextWorkflow, Boolean(input.dryRun));
+    return this.saveOrPreview(input.pipelineId, nextWorkflow, Boolean(input.dryRun));
   }
 
   private async applyOperatorDslUnlocked(input: ApplyOperatorDslCommand): Promise<WorkflowResult> {
-    const workflow = await this.store.getTaskWorkflow(input.taskId);
+    const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
     const node = findWorkflowNode(workflow, input.nodeId);
     if (node.type === 'input_source' || node.type === 'output') {
       throw new DataCommandError(
@@ -299,7 +301,7 @@ export class WorkflowAuthoringCommandService {
         })
       : toWorkflowSaveShape(workflow);
     return this.saveOrPreview(
-      input.taskId,
+      input.pipelineId,
       nextWorkflow,
       Boolean(input.dryRun),
       parsed.diagnostics
@@ -309,7 +311,7 @@ export class WorkflowAuthoringCommandService {
   private async configureOutputOperatorUnlocked(
     input: ConfigureOutputOperatorCommand
   ): Promise<WorkflowResult> {
-    const workflow = await this.store.getTaskWorkflow(input.taskId);
+    const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
     const node = findWorkflowNode(workflow, input.nodeId);
     if (node.type !== 'output') {
       throw new DataCommandError(
@@ -354,15 +356,15 @@ export class WorkflowAuthoringCommandService {
       throw new DataCommandError('VALIDATION_FAILED', 'mergeKeys are only valid with mode merge');
     }
     let nextConfig: Record<string, unknown>;
-    if (input.outputStrategy === 'auto' || (!input.outputTableId && input.outputTableName)) {
+    if (input.outputStrategy === 'auto' || (!input.resultTableId && input.resultTableName)) {
       const outputName = normalizeRequiredName(
-        input.outputTableName ?? '',
+        input.resultTableName ?? '',
         'Output table name is required for auto output'
       );
       nextConfig = {
         ...node.config,
         outputStrategy: 'auto',
-        outputTableName: outputName,
+        resultTableName: outputName,
         destination: 'duckdb_table',
         mode,
         ...(mergeKeys.length > 0 ? { mergeKeys } : {}),
@@ -371,18 +373,18 @@ export class WorkflowAuthoringCommandService {
       if (mergeKeys.length === 0) delete nextConfig.mergeKeys;
       if (!input.schemaPolicy) delete nextConfig.schemaPolicy;
     } else {
-      const outputTableId = normalizeRequiredName(
-        input.outputTableId ?? '',
+      const resultTableId = normalizeRequiredName(
+        input.resultTableId ?? '',
         'Output table id is required'
       );
-      const outputTable = await this.resources.requireOutputTable(outputTableId);
+      const resultTable = await this.resources.requireResultTable(resultTableId);
       nextConfig = {
         ...node.config,
         outputStrategy: 'existing',
-        outputDatasetId: outputTable.id,
-        outputTableId: outputTable.id,
-        outputTableName: outputTable.name,
-        table: outputTable.tableName,
+        outputResultTableId: resultTable.id,
+        resultTableId: resultTable.id,
+        resultTableName: resultTable.name,
+        table: resultTable.tableName,
         destination: 'duckdb_table',
         mode,
         ...(mergeKeys.length > 0 ? { mergeKeys } : {}),
@@ -392,26 +394,26 @@ export class WorkflowAuthoringCommandService {
       if (!input.schemaPolicy) delete nextConfig.schemaPolicy;
     }
     return this.saveOrPreview(
-      input.taskId,
+      input.pipelineId,
       updateWorkflowNode(workflow, input.nodeId, { config: nextConfig }),
       Boolean(input.dryRun)
     );
   }
 
   private async saveOrPreview(
-    taskId: string,
+    pipelineId: string,
     workflow: WorkflowSaveShape,
     dryRun: boolean,
     diagnostics: PrepDiagnostic[] = []
   ): Promise<WorkflowResult> {
     if (dryRun) {
       return {
-        workflow: await this.preview.toWorkflowPreview(taskId, workflow),
+        workflow: await this.preview.toWorkflowPreview(pipelineId, workflow),
         diagnostics,
         dryRun,
       };
     }
-    return { workflow: await this.store.saveTaskWorkflow(taskId, workflow), diagnostics };
+    return { workflow: await this.store.savePipelineWorkflow(pipelineId, workflow), diagnostics };
   }
 }
 

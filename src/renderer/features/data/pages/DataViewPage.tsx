@@ -10,13 +10,13 @@ import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
 import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
-import { TaskEditor, TasksPanel } from '../../../components/data-view/data-tasks';
+import { PipelineEditor, PipelinesPanel } from '../../../components/data-view/data-pipelines';
 import {
-  InputTableEditor,
-  InputTablePreviewDialog,
-  InputTablesPanel,
-} from '../../../components/data-view/input-tables';
-import { OutputTableEditor, OutputTablesPanel } from '../../../components/data-view/output-tables';
+  RawTableEditor,
+  RawTablePreviewDialog,
+  RawTablesPanel,
+} from '../../../components/data-view/raw-tables';
+import { ResultTableEditor, ResultTablesPanel } from '../../../components/data-view/result-tables';
 import {
   underlineTabBarClass,
   underlineTabListClass,
@@ -26,14 +26,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui
 import { dataClient } from '../api/data-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
 import { useDataDashboard } from '../hooks/use-data-dashboard';
-import { useInputTables } from '../hooks/use-input-tables';
-import { useInputTableDrafts } from '../hooks/use-input-table-drafts';
+import { useRawTables } from '../hooks/use-raw-tables';
+import { useRawTableDrafts } from '../hooks/use-raw-table-drafts';
 import { useDataViewEditors } from '../hooks/use-data-view-editors';
 import { useStoredPreview } from '../hooks/use-stored-preview';
 import { useDataActions } from '../hooks/use-data-actions';
 import { useDataNavigation } from '../hooks/use-data-navigation';
-import type { DataDataset } from '../../../types';
-import { DataTaskAiGenerateDialog } from '../../../components/data-view/data-tasks/DataTaskAiGenerateDialog';
+import type { DataRawTable } from '../../../types';
+import { DataPipelineAiGenerateDialog } from '../../../components/data-view/data-pipelines/DataPipelineAiGenerateDialog';
 import type { DataTab } from '../model/types';
 
 export function DataViewPage() {
@@ -41,10 +41,10 @@ export function DataViewPage() {
   const { confirmDelete } = useConfirmDialog();
   const isDataApiAvailable = dataClient.isAvailable();
 
-  const [aiTaskRequest, setAiTaskRequest] = useState<{ input?: DataDataset } | null>(null);
-  const generateTaskFromTable = (input: DataDataset) => setAiTaskRequest({ input });
+  const [aiPipelineRequest, setAiPipelineRequest] = useState<{ input?: DataRawTable } | null>(null);
+  const generatePipelineFromTable = (input: DataRawTable) => setAiPipelineRequest({ input });
   const ui = useDataViewUi();
-  const drafts = useInputTableDrafts();
+  const drafts = useRawTableDrafts();
   const dashboard = useDataDashboard({
     activeTab: ui.activeTab,
     searchQuery: ui.searchQuery,
@@ -52,7 +52,7 @@ export function DataViewPage() {
     setLoadingTab: ui.setLoadingTab,
     setPendingNavigationTab: ui.setPendingNavigationTab,
   });
-  const inputTables = useInputTables({
+  const rawTables = useRawTables({
     searchQuery: ui.searchQuery,
     draftsCount: drafts.drafts.length,
     setError: ui.setError,
@@ -61,9 +61,9 @@ export function DataViewPage() {
     setGroups: dashboard.setGroups,
   });
   const editors = useDataViewEditors({
-    tasks: dashboard.dashboard.tasks,
-    inputTableDatasets: inputTables.inputTableDatasets,
-    outputTables: dashboard.dashboard.outputTables,
+    pipelines: dashboard.dashboard.pipelines,
+    rawTables: rawTables.rawTables,
+    resultTables: dashboard.dashboard.resultTables,
     drafts: drafts.drafts,
     setError: ui.setError,
   });
@@ -71,7 +71,7 @@ export function DataViewPage() {
   const actions = useDataActions({
     ui,
     dashboard,
-    inputTables,
+    rawTables,
     drafts,
     editors,
     t,
@@ -80,7 +80,7 @@ export function DataViewPage() {
   useDataNavigation({
     ui,
     dashboard,
-    inputTables,
+    rawTables,
     editors,
     preview,
     isDataApiAvailable,
@@ -88,24 +88,24 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
-  const taskGroups = useMemo(
-    () => dashboard.dashboard.groups.filter((group) => group.scope === 'task'),
+  const pipelineGroups = useMemo(
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'pipeline'),
     [dashboard.dashboard.groups]
   );
   const inputGroups = useMemo(
-    () => dashboard.dashboard.groups.filter((group) => group.scope === 'input'),
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'raw'),
     [dashboard.dashboard.groups]
   );
   const outputGroups = useMemo(
-    () => dashboard.dashboard.groups.filter((group) => group.scope === 'output'),
+    () => dashboard.dashboard.groups.filter((group) => group.scope === 'result'),
     [dashboard.dashboard.groups]
   );
   const { setPendingNavigationTab, setLoadingTab, setError } = ui;
   const { loadDashboard, invalidateRequests } = dashboard;
-  const { loadInputTables } = inputTables;
+  const { loadRawTables } = rawTables;
   useDataWorkspaceActivation(() => {
     if (!isDataApiAvailable) return;
-    if (activeTab === 'input_tables') void loadInputTables();
+    if (activeTab === 'raw_tables') void loadRawTables();
     else void loadDashboard({ preserveError: true });
   });
 
@@ -117,8 +117,8 @@ export function DataViewPage() {
   }, [error, setError]);
 
   // Auto-load: react to tab/search changes with a two-frame delay so the tab
-  // switch paints before the fetch starts; task search debounces 180ms.
-  // `loadDashboard`/`loadInputTables` identities change on page/filter changes,
+  // switch paints before the fetch starts; pipeline search debounces 180ms.
+  // `loadDashboard`/`loadRawTables` identities change on page/filter changes,
   // so pagination and source filters reload through this effect too.
   useEffect(() => {
     if (!isDataApiAvailable) {
@@ -127,15 +127,15 @@ export function DataViewPage() {
       return;
     }
     invalidateRequests();
-    const delay = activeTab === 'tasks' && searchQuery ? 180 : 0;
+    const delay = activeTab === 'pipelines' && searchQuery ? 180 : 0;
     let timer: number | null = null;
     let firstFrame = 0;
     let secondFrame = 0;
     firstFrame = window.requestAnimationFrame(() => {
       secondFrame = window.requestAnimationFrame(() => {
         timer = window.setTimeout(() => {
-          if (activeTab === 'input_tables') {
-            void loadInputTables();
+          if (activeTab === 'raw_tables') {
+            void loadRawTables();
           } else {
             void loadDashboard({ tab: activeTab });
           }
@@ -156,7 +156,7 @@ export function DataViewPage() {
     searchQuery,
     loadDashboard,
     invalidateRequests,
-    loadInputTables,
+    loadRawTables,
     setPendingNavigationTab,
     setLoadingTab,
   ]);
@@ -164,17 +164,17 @@ export function DataViewPage() {
   const handleSearchChange = useCallback(
     (value: string) => {
       ui.setLoadingTab(activeTab);
-      if (activeTab === 'input_tables') {
-        inputTables.setInputTablesLoading(true);
-        inputTables.setDatasetPage(1);
-      } else if (activeTab === 'output_tables') {
+      if (activeTab === 'raw_tables') {
+        rawTables.setRawTablesLoading(true);
+        rawTables.setRawTablePage(1);
+      } else if (activeTab === 'result_tables') {
         dashboard.setOutputPage(1);
       } else {
-        dashboard.setTaskPage(1);
+        dashboard.setPipelinePage(1);
       }
       ui.setSearchQuery(value);
     },
-    [activeTab, dashboard, inputTables, ui]
+    [activeTab, dashboard, rawTables, ui]
   );
 
   const handleTabChange = useCallback(
@@ -189,61 +189,62 @@ export function DataViewPage() {
     [activeTab, dashboard, ui]
   );
 
-  const isTasksLoading =
-    ui.loadingTab === 'tasks' || (activeTab === 'tasks' && ui.pendingNavigationTab === 'tasks');
-  const isInputTablesLoading =
-    inputTables.inputTablesLoading ||
-    ui.loadingTab === 'input_tables' ||
-    (activeTab === 'input_tables' && ui.pendingNavigationTab === 'input_tables');
-  const isOutputTablesLoading =
-    ui.loadingTab === 'output_tables' ||
-    (activeTab === 'output_tables' && ui.pendingNavigationTab === 'output_tables');
+  const isPipelinesLoading =
+    ui.loadingTab === 'pipelines' ||
+    (activeTab === 'pipelines' && ui.pendingNavigationTab === 'pipelines');
+  const isRawTablesLoading =
+    rawTables.rawTablesLoading ||
+    ui.loadingTab === 'raw_tables' ||
+    (activeTab === 'raw_tables' && ui.pendingNavigationTab === 'raw_tables');
+  const isResultTablesLoading =
+    ui.loadingTab === 'result_tables' ||
+    (activeTab === 'result_tables' && ui.pendingNavigationTab === 'result_tables');
 
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div className="flex h-full min-h-0 w-full flex-col">
-        {editors.editingTask ? (
-          <TaskEditor
-            task={editors.editingTask}
-            outputTables={dashboard.dashboard.outputTables}
+        {editors.editingPipeline ? (
+          <PipelineEditor
+            pipeline={editors.editingPipeline}
+            resultTables={dashboard.dashboard.resultTables}
             actionId={actionId}
             runNodeStats={dashboard.runNodeStats}
             lastRunFailure={dashboard.lastRunFailure}
-            autoEditTitle={editors.taskNameEditRequested}
-            onBack={actions.handleCloseTaskEditor}
-            onRun={actions.handleRunTask}
+            autoEditTitle={editors.pipelineNameEditRequested}
+            onBack={actions.handleClosePipelineEditor}
+            onRun={actions.handleRunPipeline}
             onWorkflowSaved={() => dashboard.loadDashboard({ preserveError: true })}
           />
-        ) : editors.editingInputTableDraft ? (
-          <InputTableEditor
-            draft={editors.editingInputTableDraft}
-            isBusy={actionId === editors.editingInputTableDraft.id}
-            onBack={() => editors.setEditingInputTableDraftId(null)}
-            onRenameDraft={actions.handleRenameInputTableDraft}
-            onChooseDraftSource={actions.handleImportInputTableSource}
+        ) : editors.editingRawTableDraft ? (
+          <RawTableEditor
+            draft={editors.editingRawTableDraft}
+            isBusy={actionId === editors.editingRawTableDraft.id}
+            onBack={() => editors.setEditingRawTableDraftId(null)}
+            onRenameDraft={actions.handleRenameRawTableDraft}
+            onChooseDraftSource={actions.handleImportRawTableSource}
           />
-        ) : editors.editingInputTableDataset ? (
-          <InputTableEditor
-            dataset={editors.editingInputTableDataset}
-            isBusy={actionId === editors.editingInputTableDataset.id}
-            onBack={() => editors.setEditingInputTableDatasetId(null)}
-            onRenameDataset={actions.handleRenameInputTableDataset}
-            onChooseDatasetSource={actions.handleUpdateInputTableSource}
-            onUpdateDatasetConfig={actions.handleUpdateInputTableConfig}
-            onCreateTask={actions.handleCreateTaskFromTable}
-            onAiGenerateTask={generateTaskFromTable}
-            onSyncCloudSource={actions.handleRefreshCloudInputTable}
+        ) : editors.editingRawTable ? (
+          <RawTableEditor
+            rawTable={editors.editingRawTable}
+            isBusy={actionId === editors.editingRawTable.id}
+            onBack={() => editors.setEditingRawTableId(null)}
+            onRenameRawTable={actions.handleRenameRawTable}
+            onChooseRawTableSource={actions.handleUpdateRawTableSource}
+            onUpdateRawTableConfig={actions.handleUpdateRawTableConfig}
+            onCreatePipeline={actions.handleCreatePipelineFromTable}
+            onAiGeneratePipeline={generatePipelineFromTable}
+            onSyncCloudSource={actions.handleRefreshCloudRawTable}
           />
-        ) : editors.editingOutputTable ? (
-          <OutputTableEditor
-            outputTable={editors.editingOutputTable}
-            inputTables={editors.outputEditorInputTables}
-            isInputTablesLoading={editors.outputEditorInputTablesLoading}
-            isBusy={actionId === editors.editingOutputTable.id}
-            tasks={dashboard.dashboard.tasks}
-            onBack={() => editors.setEditingOutputTableId(null)}
-            onSave={actions.handleUpdateOutputTable}
-            onRunTask={actions.handleRunTask}
+        ) : editors.editingResultTable ? (
+          <ResultTableEditor
+            resultTable={editors.editingResultTable}
+            rawTables={editors.outputEditorRawTables}
+            isRawTablesLoading={editors.outputEditorRawTablesLoading}
+            isBusy={actionId === editors.editingResultTable.id}
+            pipelines={dashboard.dashboard.pipelines}
+            onBack={() => editors.setEditingResultTableId(null)}
+            onSave={actions.handleUpdateResultTable}
+            onRunPipeline={actions.handleRunPipeline}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -257,9 +258,9 @@ export function DataViewPage() {
                   <TabsList className={underlineTabListClass}>
                     {(
                       [
-                        ['tasks', 'data.tabs.tasks'],
-                        ['input_tables', 'data.tabs.inputTables'],
-                        ['output_tables', 'data.tabs.outputTables'],
+                        ['pipelines', 'data.tabs.pipelines'],
+                        ['raw_tables', 'data.tabs.rawTables'],
+                        ['result_tables', 'data.tabs.resultTables'],
                         ['cloud_analysis', 'data.tabs.cloudAnalysis'],
                       ] as const
                     ).map(([value, key]) => (
@@ -270,91 +271,95 @@ export function DataViewPage() {
                   </TabsList>
                 </div>
 
-                <TabsContent value="tasks" className="contents">
-                  <TasksPanel
-                    tasks={dashboard.dashboard.tasks}
-                    totalTasks={dashboard.dashboard.totalTasks}
-                    groups={taskGroups}
-                    groupCounts={dashboard.dashboard.taskGroupCounts}
-                    groupPages={dashboard.taskGroupPages}
+                <TabsContent value="pipelines" className="contents">
+                  <PipelinesPanel
+                    pipelines={dashboard.dashboard.pipelines}
+                    totalPipelines={dashboard.dashboard.totalPipelines}
+                    groups={pipelineGroups}
+                    groupCounts={dashboard.dashboard.pipelineGroupCounts}
+                    groupPages={dashboard.pipelineGroupPages}
                     searchQuery={searchQuery}
                     actionId={actionId}
-                    isLoading={isTasksLoading}
+                    isLoading={isPipelinesLoading}
                     isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
-                    onCreate={actions.handleCreateTask}
+                    onCreate={actions.handleCreatePipeline}
                     onSearchChange={handleSearchChange}
-                    onRefresh={() => dashboard.loadDashboard({ preserveError: true, tab: 'tasks' })}
-                    onGroupPageChange={dashboard.setTaskGroupPage}
-                    onRun={actions.handleRunTask}
-                    onEdit={actions.handleEditTask}
-                    onDelete={actions.handleDeleteTask}
-                    onDeleteAll={actions.handleDeleteAllTasks}
-                    onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('task', ids, target)
+                    onRefresh={() =>
+                      dashboard.loadDashboard({ preserveError: true, tab: 'pipelines' })
                     }
-                    onRenameGroup={(group, name) => actions.handleRenameGroup('task', group, name)}
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('task', group)}
+                    onGroupPageChange={dashboard.setPipelineGroupPage}
+                    onRun={actions.handleRunPipeline}
+                    onEdit={actions.handleEditPipeline}
+                    onDelete={actions.handleDeletePipeline}
+                    onDeleteAll={actions.handleDeleteAllPipelines}
+                    onAssignToGroup={(ids, target) =>
+                      actions.handleAssignToGroup('pipeline', ids, target)
+                    }
+                    onRenameGroup={(group, name) =>
+                      actions.handleRenameGroup('pipeline', group, name)
+                    }
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('pipeline', group)}
                   />
                 </TabsContent>
-                <TabsContent value="input_tables" className="min-h-0 flex-1 bg-transparent">
-                  <InputTablesPanel
-                    datasets={inputTables.inputTableDatasets}
+                <TabsContent value="raw_tables" className="min-h-0 flex-1 bg-transparent">
+                  <RawTablesPanel
+                    rawTables={rawTables.rawTables}
                     drafts={drafts.drafts}
                     groups={inputGroups}
-                    groupCounts={inputTables.inputTableGroupCounts}
-                    groupPages={inputTables.datasetGroupPages}
-                    totalDatasets={inputTables.totalInputTableDatasets}
+                    groupCounts={rawTables.rawTableGroupCounts}
+                    groupPages={rawTables.rawTableGroupPages}
+                    totalRawTables={rawTables.totalRawTables}
                     searchQuery={searchQuery}
-                    isLoading={isInputTablesLoading}
+                    isLoading={isRawTablesLoading}
                     onSearchChange={handleSearchChange}
-                    onCreate={actions.handleCreateInputTableDraft}
-                    onRefresh={() => inputTables.loadInputTables({ preserveError: true })}
-                    onPreviewDataset={preview.previewInputTable}
-                    onDelete={actions.handleDeleteInputTable}
-                    onDeleteAll={actions.handleDeleteAllInputTables}
-                    onDeleteDraft={actions.handleDeleteInputTableDraft}
-                    onEditDraft={editors.setEditingInputTableDraftId}
-                    onEditDataset={actions.handleEditInputTableDataset}
-                    onCreateTaskFromTable={actions.handleCreateTaskFromTable}
-                    onAiGenerateTaskFromTable={generateTaskFromTable}
+                    onCreate={actions.handleCreateRawTableDraft}
+                    onRefresh={() => rawTables.loadRawTables({ preserveError: true })}
+                    onPreviewRawTable={preview.previewRawTable}
+                    onDelete={actions.handleDeleteRawTable}
+                    onDeleteAll={actions.handleDeleteAllRawTables}
+                    onDeleteDraft={actions.handleDeleteRawTableDraft}
+                    onEditDraft={editors.setEditingRawTableDraftId}
+                    onEditRawTable={actions.handleEditRawTable}
+                    onCreatePipelineFromTable={actions.handleCreatePipelineFromTable}
+                    onAiGeneratePipelineFromTable={generatePipelineFromTable}
                     onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('input', ids, target)
+                      actions.handleAssignToGroup('raw', ids, target)
                     }
-                    onRenameGroup={(group, name) => actions.handleRenameGroup('input', group, name)}
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('input', group)}
-                    onGroupPageChange={inputTables.setDatasetGroupPage}
+                    onRenameGroup={(group, name) => actions.handleRenameGroup('raw', group, name)}
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('raw', group)}
+                    onGroupPageChange={rawTables.setRawTableGroupPage}
                     isCreateDisabled={!isDataApiAvailable}
                     actionId={actionId}
                   />
                 </TabsContent>
-                <TabsContent value="output_tables" className="min-h-0 flex-1 bg-transparent">
-                  <OutputTablesPanel
-                    outputTables={dashboard.dashboard.outputTables}
-                    totalOutputTables={dashboard.dashboard.totalOutputTables}
+                <TabsContent value="result_tables" className="min-h-0 flex-1 bg-transparent">
+                  <ResultTablesPanel
+                    resultTables={dashboard.dashboard.resultTables}
+                    totalResultTables={dashboard.dashboard.totalResultTables}
                     groups={outputGroups}
                     groupCounts={dashboard.dashboard.outputGroupCounts}
                     groupPages={dashboard.outputGroupPages}
                     searchQuery={searchQuery}
-                    isLoading={isOutputTablesLoading}
+                    isLoading={isResultTablesLoading}
                     actionId={actionId}
                     isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
-                    onCreate={actions.handleCreateOutputTable}
+                    onCreate={actions.handleCreateResultTable}
                     onSearchChange={handleSearchChange}
                     onRefresh={() =>
-                      dashboard.loadDashboard({ preserveError: true, tab: 'output_tables' })
+                      dashboard.loadDashboard({ preserveError: true, tab: 'result_tables' })
                     }
                     onGroupPageChange={dashboard.setOutputGroupPage}
-                    onPreview={preview.previewOutputTable}
-                    onEdit={(outputTable) => editors.setEditingOutputTableId(outputTable.id)}
-                    onDelete={actions.handleDeleteOutputTable}
-                    onDeleteAll={actions.handleDeleteAllOutputTables}
+                    onPreview={preview.previewResultTable}
+                    onEdit={(resultTable) => editors.setEditingResultTableId(resultTable.id)}
+                    onDelete={actions.handleDeleteResultTable}
+                    onDeleteAll={actions.handleDeleteAllResultTables}
                     onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('output', ids, target)
+                      actions.handleAssignToGroup('result', ids, target)
                     }
                     onRenameGroup={(group, name) =>
-                      actions.handleRenameGroup('output', group, name)
+                      actions.handleRenameGroup('result', group, name)
                     }
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('output', group)}
+                    onDeleteGroup={(group) => actions.handleDeleteGroup('result', group)}
                   />
                 </TabsContent>
                 <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
@@ -363,17 +368,17 @@ export function DataViewPage() {
               </Tabs>
             </section>
             {preview.storedPreviewOpen && (
-              <InputTablePreviewDialog
-                tableKind={preview.storedPreviewTarget?.kind ?? 'input'}
+              <RawTablePreviewDialog
+                tableKind={preview.storedPreviewTarget?.kind ?? 'raw'}
                 preview={preview.storedPreviewData}
                 isLoading={preview.storedPreviewLoading}
                 error={preview.storedPreviewError}
                 currentPage={preview.storedPreviewPage}
                 onPageChange={(page) => {
-                  if (preview.storedPreviewTarget?.kind === 'input') {
-                    void preview.previewInputTable(preview.storedPreviewTarget.dataset, page);
-                  } else if (preview.storedPreviewTarget?.kind === 'output') {
-                    void preview.previewOutputTable(preview.storedPreviewTarget.outputTable, page);
+                  if (preview.storedPreviewTarget?.kind === 'raw') {
+                    void preview.previewRawTable(preview.storedPreviewTarget.rawTable, page);
+                  } else if (preview.storedPreviewTarget?.kind === 'result') {
+                    void preview.previewResultTable(preview.storedPreviewTarget.resultTable, page);
                   }
                 }}
                 onClose={preview.close}
@@ -382,16 +387,16 @@ export function DataViewPage() {
           </div>
         )}
       </div>
-      <DataTaskAiGenerateDialog
-        onApplied={actions.handleGeneratedTask}
-        open={aiTaskRequest !== null}
-        boundInputTable={
-          aiTaskRequest?.input
-            ? { id: aiTaskRequest.input.id, name: aiTaskRequest.input.name }
+      <DataPipelineAiGenerateDialog
+        onApplied={actions.handleGeneratedPipeline}
+        open={aiPipelineRequest !== null}
+        boundRawTable={
+          aiPipelineRequest?.input
+            ? { id: aiPipelineRequest.input.id, name: aiPipelineRequest.input.name }
             : null
         }
         onOpenChange={(open) => {
-          if (!open) setAiTaskRequest(null);
+          if (!open) setAiPipelineRequest(null);
         }}
       />
     </div>

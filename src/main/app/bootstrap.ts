@@ -16,10 +16,10 @@ import { setPermissionRules } from '../config/permission-rules-store';
 import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 import { createDataAgentRuntimeExtension } from '../data/data-agent-extension';
 import { DataCommandService } from '../data/data-command-service';
-import { createDataTaskLlmUsageRecorder } from '../data/data-task-llm-usage-recorder';
-import { createDataTaskStore } from '../data/data-task-store';
+import { createDataPipelineLlmUsageRecorder } from '../data/data-pipeline-llm-usage-recorder';
+import { createDataPipelineStore } from '../data/data-pipeline-store';
 import { DataToolService } from '../data/data-tool-service';
-import { createLlmInputTableNormalizerProjectGenerator } from '../data/input-table-normalizer-generator';
+import { createLlmRawTableNormalizerProjectGenerator } from '../data/raw-table-normalizer-generator';
 import { RequirementAnalysisReceiptStore } from '../data/requirement-analysis-receipt-store';
 import { initDatabase } from '../db/database';
 import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extension-manager';
@@ -45,7 +45,7 @@ import {
   getRuntimeAppName,
   notifyConversationCompleted,
   notifyAutomationRunFinished,
-  notifyDataTaskCompleted,
+  notifyDataPipelineCompleted,
 } from './notifications';
 import {
   resolveAgentRuntimeConfigForAuth,
@@ -131,14 +131,14 @@ export async function bootstrap(): Promise<void> {
   // Initialize database
   const db = initDatabase();
   appContext.appDatabase = db;
-  appContext.recordDataTaskLlmUsage = createDataTaskLlmUsageRecorder(db);
-  const initializedDataTaskStore = createDataTaskStore(
+  appContext.recordDataPipelineLlmUsage = createDataPipelineLlmUsageRecorder(db);
+  const initializedDataPipelineStore = createDataPipelineStore(
     join(app.getPath('userData'), 'data', 'workspace.duckdb'),
     {
       metadataDb: db,
     }
   );
-  appContext.dataTaskStore = initializedDataTaskStore;
+  appContext.dataPipelineStore = initializedDataPipelineStore;
   appContext.updateService = new UpdateService({
     getWindow: () => appContext.mainWindow,
     beforeInstall: prepareForUpdateInstall,
@@ -154,17 +154,17 @@ export async function bootstrap(): Promise<void> {
   });
   const requirementAnalysisReceipts = new RequirementAnalysisReceiptStore();
   appContext.dataCommandService = new DataCommandService(
-    initializedDataTaskStore,
-    createLlmInputTableNormalizerProjectGenerator(() =>
+    initializedDataPipelineStore,
+    createLlmRawTableNormalizerProjectGenerator(() =>
       resolveAppConfigForAuth(configStore.getAll())
     ),
     () => configStore.get('personalAnalysis'),
     {
-      onTaskCompleted: notifyDataTaskCompleted,
+      onPipelineCompleted: notifyDataPipelineCompleted,
       onPersonalAnalysisKeyRejected: markPersonalAnalysisKeyDisconnected,
       getPersonalAnalysisConnection: (rejectedToken) =>
         desktopAuthService.getPersonalAnalysisConnection(rejectedToken),
-      recordLlmUsage: (event) => appContext.recordDataTaskLlmUsage?.(event),
+      recordLlmUsage: (event) => appContext.recordDataPipelineLlmUsage?.(event),
       requirementAnalysisReceipts,
     }
   );
@@ -242,7 +242,7 @@ export async function bootstrap(): Promise<void> {
   startNavServer(() => appContext.mainWindow);
 
   // Finish metadata upgrades (including legacy output-action migration) before scheduling.
-  await initializedDataTaskStore.getDashboard({ includeSummary: false });
+  await initializedDataPipelineStore.getDashboard({ includeSummary: false });
   appContext.automationStore = createAutomationStore(db);
   appContext.automationStore.migrateScheduledTasks();
   const recoveredAutomationRuns = appContext.automationStore.recoverInterruptedRuns();
@@ -254,7 +254,7 @@ export async function bootstrap(): Promise<void> {
     log('[Automation] Recovered interrupted runs:', recoveredAutomationRuns);
   }
   const automationActionRegistry = createDefaultAutomationActionRegistry({
-    dataTaskStore: initializedDataTaskStore,
+    dataPipelineStore: initializedDataPipelineStore,
     automationStore: appContext.automationStore,
     dataCommandService: appContext.dataCommandService ?? undefined,
     sessionManager: appContext.sessionManager,
@@ -278,8 +278,8 @@ export async function bootstrap(): Promise<void> {
     runner: automationRunner,
     registry: automationActionRegistry,
   });
-  initializedDataTaskStore.setOutputCommitListener((ids) => {
-    void appContext.automationService?.runForOutputTables(ids).catch((error) => {
+  initializedDataPipelineStore.setOutputCommitListener((ids) => {
+    void appContext.automationService?.runForResultTables(ids).catch((error) => {
       logWarn('[Automation] Output change dispatch failed:', error);
     });
   });
@@ -289,7 +289,7 @@ export async function bootstrap(): Promise<void> {
   appContext.automationScheduler.start();
   const automationToolService = new AutomationToolService({
     automationService: appContext.automationService,
-    dataTaskStore: initializedDataTaskStore,
+    dataPipelineStore: initializedDataPipelineStore,
     projectExists: (projectId) => Boolean(db.projects?.get(projectId)),
     onAutomationsChanged: rescheduleAutomations,
   });

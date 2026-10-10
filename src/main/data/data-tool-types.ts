@@ -1,15 +1,15 @@
-import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
+import type { DataPipelineAuthoringRequest } from '../../shared/data-pipeline-authoring';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { TSchema } from 'typebox';
 import type {
-  DataTaskRequirementConversationEntry,
+  DataPipelineRequirementConversationEntry,
   AgentRuntimeConfig,
 } from '../../shared/contracts';
 
 export type DataToolDefinition = ToolDefinition<TSchema, unknown>;
 
 export interface DataResourceRef {
-  kind: 'InputTable' | 'OutputTable' | 'Task';
+  kind: 'RawTable' | 'ResultTable' | 'Pipeline';
   id: string;
   name?: string;
   /** true when the id only appeared inside a list result — a candidate, not a selection. */
@@ -19,22 +19,22 @@ export interface DataResourceRef {
 export interface DataToolPromptContext {
   sessionId: string;
   workspacePath?: string;
-  authoringRequest?: DataTaskAuthoringRequest;
-  selectedDataTaskId?: string;
-  selectedDataTaskName?: string;
-  selectedInputTableId?: string;
-  selectedInputTableName?: string;
-  selectedOutputTableId?: string;
-  selectedOutputTableName?: string;
+  authoringRequest?: DataPipelineAuthoringRequest;
+  selectedDataPipelineId?: string;
+  selectedDataPipelineName?: string;
+  selectedRawTableId?: string;
+  selectedRawTableName?: string;
+  selectedResultTableId?: string;
+  selectedResultTableName?: string;
   /** Resources resolved/created by earlier tool calls in this session. */
   recentResources?: DataResourceRef[];
   /** Cloud tables attached to the current user message. */
   attachedCloudTables?: Array<{ id: string; name?: string }>;
   capabilities: {
-    canCreateInputTable: boolean;
-    canCreateOutputTable: boolean;
-    canCreateTask: boolean;
-    canRunTask: boolean;
+    canCreateRawTable: boolean;
+    canCreateResultTable: boolean;
+    canCreatePipeline: boolean;
+    canRunPipeline: boolean;
     canImportLocalFiles: boolean;
   };
 }
@@ -42,28 +42,28 @@ export interface DataToolPromptContext {
 export interface DataToolExecutionContext {
   sessionId: string;
   currentUserMessageId?: string;
-  requirementConversation?: DataTaskRequirementConversationEntry[];
-  authoringRequest?: DataTaskAuthoringRequest;
+  requirementConversation?: DataPipelineRequirementConversationEntry[];
+  authoringRequest?: DataPipelineAuthoringRequest;
   runtimeConfig?: AgentRuntimeConfig;
   toolCallId?: string;
   signal?: AbortSignal;
   onActivity?: () => void;
 }
 
-export interface AnalyzeDataTaskRequirementToolInput {
-  inputTableId: string;
+export interface AnalyzeDataPipelineRequirementToolInput {
+  rawTableId: string;
   processRequirement: string;
-  reuseTaskId?: string;
+  reusePipelineId?: string;
   startFromNodeId?: string;
 }
 
-export interface GenerateDataTaskFromAnalysisToolInput {
+export interface GenerateDataPipelineFromAnalysisToolInput {
   analysisId: string;
   confirmed: true;
-  taskName?: string;
+  pipelineName?: string;
   outputMode: 'create' | 'replace';
-  outputTableName?: string;
-  outputTableId?: string;
+  resultTableName?: string;
+  resultTableId?: string;
 }
 
 export interface DataToolResult {

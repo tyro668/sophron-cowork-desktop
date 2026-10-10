@@ -31,14 +31,14 @@ const EMPTY_TYPE_CONVERSION: Readonly<TypeConversionEntry> = {
 
 export default function FormTypeConvert({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('typeConvert');
   const dataTypeLabel = useDataFieldTypeLabel();
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const conversions = useMemo<TypeConversionEntry[]>(() => {

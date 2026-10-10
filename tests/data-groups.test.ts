@@ -7,15 +7,18 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 
-function openStore(): { store: DataTaskStore; root: string } {
+function openStore(): { store: DataPipelineStore; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-groups-'));
   tempRoots.push(root);
-  const store = createDataTaskStore(path.join(root, 'workspace.duckdb'));
+  const store = createDataPipelineStore(path.join(root, 'workspace.duckdb'));
   stores.push(store);
   return { store, root };
 }
@@ -42,116 +45,123 @@ describe('data groups', () => {
   it('creates, lists, renames, and scopes groups independently', async () => {
     const { store } = openStore();
 
-    const taskGroup = await store.createGroup({ scope: 'task', name: 'Alpha' });
-    const inputGroup = await store.createGroup({ scope: 'input', name: 'Alpha' });
+    const pipelineGroup = await store.createGroup({ scope: 'pipeline', name: 'Alpha' });
+    const inputGroup = await store.createGroup({ scope: 'raw', name: 'Alpha' });
 
-    expect(taskGroup.scope).toBe('task');
-    expect(inputGroup.scope).toBe('input');
-    expect(taskGroup.id).not.toBe(inputGroup.id);
+    expect(pipelineGroup.scope).toBe('pipeline');
+    expect(inputGroup.scope).toBe('raw');
+    expect(pipelineGroup.id).not.toBe(inputGroup.id);
 
-    expect((await store.listGroups('task')).map((group) => group.id)).toEqual([taskGroup.id]);
-    expect((await store.listGroups('input')).map((group) => group.id)).toEqual([inputGroup.id]);
-    expect(await store.listGroups('output')).toEqual([]);
+    expect((await store.listGroups('pipeline')).map((group) => group.id)).toEqual([
+      pipelineGroup.id,
+    ]);
+    expect((await store.listGroups('raw')).map((group) => group.id)).toEqual([inputGroup.id]);
+    expect(await store.listGroups('result')).toEqual([]);
 
-    await store.renameGroup({ id: taskGroup.id, name: 'Renamed' });
-    expect((await store.listGroups('task'))[0].name).toBe('Renamed');
+    await store.renameGroup({ id: pipelineGroup.id, name: 'Renamed' });
+    expect((await store.listGroups('pipeline'))[0].name).toBe('Renamed');
 
-    await expect(store.createGroup({ scope: 'task', name: '  Renamed  ' })).rejects.toThrow();
-    await expect(store.createGroup({ scope: 'task', name: '   ' })).rejects.toThrow();
+    await expect(store.createGroup({ scope: 'pipeline', name: '  Renamed  ' })).rejects.toThrow();
+    await expect(store.createGroup({ scope: 'pipeline', name: '   ' })).rejects.toThrow();
   });
 
-  it('assigns tasks to groups and orders grouped rows before ungrouped', async () => {
+  it('assigns pipelines to groups and orders grouped rows before ungrouped', async () => {
     const { store } = openStore();
-    const t1 = await store.createTask({ name: 'task one' });
-    const t2 = await store.createTask({ name: 'task two' });
-    const t3 = await store.createTask({ name: 'task three' });
-    const t4 = await store.createTask({ name: 'task four' });
+    const t1 = await store.createPipeline({ name: 'pipeline one' });
+    const t2 = await store.createPipeline({ name: 'pipeline two' });
+    const t3 = await store.createPipeline({ name: 'pipeline three' });
+    const t4 = await store.createPipeline({ name: 'pipeline four' });
 
-    const g1 = await store.createGroup({ scope: 'task', name: 'first' });
-    const g2 = await store.createGroup({ scope: 'task', name: 'second' });
-    await store.assignGroup({ scope: 'task', ids: [t1.id, t3.id], groupId: g1.id });
-    await store.assignGroup({ scope: 'task', ids: [t2.id], groupId: g2.id });
+    const g1 = await store.createGroup({ scope: 'pipeline', name: 'first' });
+    const g2 = await store.createGroup({ scope: 'pipeline', name: 'second' });
+    await store.assignGroup({ scope: 'pipeline', ids: [t1.id, t3.id], groupId: g1.id });
+    await store.assignGroup({ scope: 'pipeline', ids: [t2.id], groupId: g2.id });
 
-    const dashboard = await store.getDashboard({ taskLimit: 10 });
+    const dashboard = await store.getDashboard({ pipelineLimit: 10 });
     // g1 was created first → its section leads; ungrouped rows trail.
-    expect(dashboard.tasks.map((task) => task.groupId)).toEqual([g1.id, g1.id, g2.id, null]);
-    expect(new Set(dashboard.tasks.slice(0, 2).map((task) => task.id))).toEqual(
+    expect(dashboard.pipelines.map((pipeline) => pipeline.groupId)).toEqual([
+      g1.id,
+      g1.id,
+      g2.id,
+      null,
+    ]);
+    expect(new Set(dashboard.pipelines.slice(0, 2).map((pipeline) => pipeline.id))).toEqual(
       new Set([t1.id, t3.id])
     );
-    expect(dashboard.tasks[3].id).toBe(t4.id);
+    expect(dashboard.pipelines[3].id).toBe(t4.id);
     expect(dashboard.groups.map((group) => group.id)).toEqual(
       expect.arrayContaining([g1.id, g2.id])
     );
   });
 
-  it('assigns input datasets, keeps scope predicates separate, and unassigns', async () => {
+  it('assigns input rawTables, keeps scope predicates separate, and unassigns', async () => {
     const { store, root } = openStore();
-    const ds1 = await store.importDataset({ filePath: writeCsv(root, 'a.csv') });
-    const ds2 = await store.importDataset({ filePath: writeCsv(root, 'b.csv') });
-    const task = await store.createTask({ name: 'loose task' });
+    const ds1 = await store.importRawTable({ filePath: writeCsv(root, 'a.csv') });
+    const ds2 = await store.importRawTable({ filePath: writeCsv(root, 'b.csv') });
+    const pipeline = await store.createPipeline({ name: 'loose pipeline' });
 
-    const group = await store.createGroup({ scope: 'input', name: 'sources' });
-    await store.assignGroup({ scope: 'input', ids: [ds1.id, ds2.id], groupId: group.id });
+    const group = await store.createGroup({ scope: 'raw', name: 'sources' });
+    await store.assignGroup({ scope: 'raw', ids: [ds1.id, ds2.id], groupId: group.id });
 
     let dashboard = await store.getDashboard({
-      includeTasks: true,
-      includeDatasets: true,
-      datasetLimit: 10,
-      taskLimit: 10,
+      includePipelines: true,
+      includeRawTables: true,
+      rawTableLimit: 10,
+      pipelineLimit: 10,
     });
-    expect(dashboard.datasets.every((dataset) => dataset.groupId === group.id)).toBe(true);
+    expect(dashboard.rawTables.every((rawTable) => rawTable.groupId === group.id)).toBe(true);
 
-    // Scope mismatch: a task id assigned under 'input' must not move.
-    await store.assignGroup({ scope: 'input', ids: [task.id], groupId: group.id });
-    dashboard = await store.getDashboard({ includeTasks: true, taskLimit: 10 });
-    expect(dashboard.tasks[0].groupId).toBeNull();
+    // Scope mismatch: a pipeline id assigned under 'input' must not move.
+    await store.assignGroup({ scope: 'raw', ids: [pipeline.id], groupId: group.id });
+    dashboard = await store.getDashboard({ includePipelines: true, pipelineLimit: 10 });
+    expect(dashboard.pipelines[0].groupId).toBeNull();
 
     // Null groupId returns rows to the ungrouped section.
-    await store.assignGroup({ scope: 'input', ids: [ds1.id], groupId: null });
-    dashboard = await store.getDashboard({ includeDatasets: true, datasetLimit: 10 });
-    const byId = new Map(dashboard.datasets.map((dataset) => [dataset.id, dataset.groupId]));
+    await store.assignGroup({ scope: 'raw', ids: [ds1.id], groupId: null });
+    dashboard = await store.getDashboard({ includeRawTables: true, rawTableLimit: 10 });
+    const byId = new Map(dashboard.rawTables.map((rawTable) => [rawTable.id, rawTable.groupId]));
     expect(byId.get(ds1.id)).toBeNull();
     expect(byId.get(ds2.id)).toBe(group.id);
   });
 
   it('assigns output tables and dissolving a group ungroups its members', async () => {
     const { store } = openStore();
-    const out1 = await store.createOutputTable({ name: 'out one' });
-    const out2 = await store.createOutputTable({ name: 'out two' });
+    const out1 = await store.createResultTable({ name: 'out one' });
+    const out2 = await store.createResultTable({ name: 'out two' });
 
-    const group = await store.createGroup({ scope: 'output', name: 'exports' });
-    await store.assignGroup({ scope: 'output', ids: [out1.id, out2.id], groupId: group.id });
+    const group = await store.createGroup({ scope: 'result', name: 'exports' });
+    await store.assignGroup({ scope: 'result', ids: [out1.id, out2.id], groupId: group.id });
 
     let dashboard = await store.getDashboard({
-      includeTasks: false,
-      includeDatasets: false,
-      includeOutputTables: true,
+      includePipelines: false,
+      includeRawTables: false,
+      includeResultTables: true,
       outputLimit: 10,
     });
-    expect(dashboard.outputTables.every((table) => table.groupId === group.id)).toBe(true);
+    expect(dashboard.resultTables.every((table) => table.groupId === group.id)).toBe(true);
 
     await store.deleteGroup(group.id);
     dashboard = await store.getDashboard({
-      includeTasks: false,
-      includeDatasets: false,
-      includeOutputTables: true,
+      includePipelines: false,
+      includeRawTables: false,
+      includeResultTables: true,
       outputLimit: 10,
     });
     expect(dashboard.groups.find((item) => item.id === group.id)).toBeUndefined();
-    expect(dashboard.outputTables.every((table) => table.groupId === null)).toBe(true);
+    expect(dashboard.resultTables.every((table) => table.groupId === null)).toBe(true);
   });
 
   it('rejects assignment to a group of a different scope or a missing group', async () => {
     const { store } = openStore();
-    const task = await store.createTask({ name: 'task' });
-    const inputGroup = await store.createGroup({ scope: 'input', name: 'sources' });
+    const pipeline = await store.createPipeline({ name: 'pipeline' });
+    const inputGroup = await store.createGroup({ scope: 'raw', name: 'sources' });
 
     await expect(
-      store.assignGroup({ scope: 'task', ids: [task.id], groupId: inputGroup.id })
+      store.assignGroup({ scope: 'pipeline', ids: [pipeline.id], groupId: inputGroup.id })
     ).rejects.toThrow();
     await expect(
-      store.assignGroup({ scope: 'task', ids: [task.id], groupId: 'missing' })
+      store.assignGroup({ scope: 'pipeline', ids: [pipeline.id], groupId: 'missing' })
     ).rejects.toThrow();
-    await store.assignGroup({ scope: 'task', ids: [], groupId: inputGroup.id });
+    await store.assignGroup({ scope: 'pipeline', ids: [], groupId: inputGroup.id });
   });
 });

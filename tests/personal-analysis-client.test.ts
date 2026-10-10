@@ -208,7 +208,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            uploadTaskId: 'upl-1',
+            uploadPipelineId: 'upl-1',
             tableId: 'table-created',
             uploadUrl: 'http://upload.local/csv',
           },
@@ -223,7 +223,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            taskId: 'upl-1',
+            pipelineId: 'upl-1',
             tableId: 'table-created',
             status: 'SUBMITTED',
           },
@@ -279,7 +279,7 @@ describe('PersonalAnalysisClient', () => {
     );
   });
 
-  it('waits for import task status instead of table existence when replacing a table', async () => {
+  it('waits for import pipeline status instead of table existence when replacing a table', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const href = String(url);
 
@@ -294,7 +294,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            uploadTaskId: 'upl-1',
+            uploadPipelineId: 'upl-1',
             tableId: 'table-existing',
             uploadUrl: 'http://upload.local/csv',
           },
@@ -310,7 +310,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            taskId: 'upl-1',
+            pipelineId: 'upl-1',
             tableId: 'table-existing',
             status: 'SUBMITTED',
           },
@@ -321,8 +321,8 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            taskId: 'upl-1',
-            uploadTaskId: 'upl-1',
+            pipelineId: 'upl-1',
+            uploadPipelineId: 'upl-1',
             tableId: 'table-existing',
             status: 'DONE',
             table: {
@@ -379,7 +379,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            uploadTaskId: 'upl-1',
+            uploadPipelineId: 'upl-1',
             tableId: 'table-existing',
             uploadUrl: 'http://upload.local/csv',
           },
@@ -394,7 +394,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            taskId: 'upl-1',
+            pipelineId: 'upl-1',
             tableId: 'table-existing',
             status: 'SUBMITTED',
           },
@@ -405,7 +405,7 @@ describe('PersonalAnalysisClient', () => {
         return jsonResponse({
           success: true,
           data: {
-            taskId: 'upl-1',
+            pipelineId: 'upl-1',
             tableId: 'table-existing',
             status: 'DONE',
           },

@@ -14,7 +14,7 @@ import {
   DataTableSearch,
   DataToolbarButton,
 } from './components/data-view/shared';
-import { TasksPanel } from './components/data-view/data-tasks/TasksPanel';
+import { PipelinesPanel } from './components/data-view/data-pipelines/PipelinesPanel';
 import { Plus } from 'lucide-react';
 import type { AppConfig, Message, Session } from './types';
 
@@ -112,7 +112,7 @@ const messages: Message[] = [
       },
       { type: 'tool_result', toolUseId: 'tu5', content: 'ok' },
       // Intentionally no tool_result → renders as a running row
-      { type: 'tool_use', id: 'tu6', name: 'data_run_task', input: { id: 'task-012' } },
+      { type: 'tool_use', id: 'tu6', name: 'data_run_pipeline', input: { id: 'task-012' } },
       {
         type: 'text',
         text: '地区销售额已经汇总完成，**华东区占比最高**。核心 SQL：\n\n```sql\nSELECT region, SUM(amount) AS total\nFROM sales_2024\nGROUP BY region\nORDER BY total DESC;\n```\n\n| 地区 | 销售额 | 占比 |\n| --- | --- | --- |\n| 华东 | ¥4,820,300 | 34.2% |\n| 华南 | ¥3,910,500 | 27.8% |\n| 华北 | ¥2,704,100 | 19.2% |\n\n接下来需要确认同比口径：\n\n- 按自然年对比（2024 vs 2023）\n- 或按月度环比\n\n详见 `analysis/aggregate.py`。',
@@ -195,14 +195,14 @@ useAppStore.setState({
           parentId: 'step-1',
           type: 'tool_call',
           status: 'running',
-          title: 'data_run_task',
-          toolName: 'data_run_task',
+          title: 'data_run_pipeline',
+          toolName: 'data_run_pipeline',
           timestamp: Date.now() - 8000,
         },
       ],
       liveToolOutputs: {
         tu6: {
-          text: '已处理 8,000 / 12,480 行\n正在生成输出表…',
+          text: '已处理 8,000 / 12,480 行\n正在生成结果表…',
           truncated: false,
           updatedAt: Date.now(),
         },
@@ -269,9 +269,9 @@ function PreviewApp() {
           <WelcomeView />
         ) : showEmpty ? (
           <div className="grid h-full grid-cols-2 gap-3 overflow-auto p-3">
-            <TasksPanel
-              tasks={[]}
-              totalTasks={0}
+            <PipelinesPanel
+              pipelines={[]}
+              totalPipelines={0}
               groups={[]}
               groupCounts={{}}
               groupPages={{}}
@@ -291,8 +291,8 @@ function PreviewApp() {
               onRenameGroup={() => {}}
               onDeleteGroup={() => {}}
             />
-            <EmptyPanelPreview label="添加输入表" />
-            <EmptyPanelPreview label="添加输出表" />
+            <EmptyPanelPreview label="添加原始表" />
+            <EmptyPanelPreview label="添加结果表" />
             <EmptyPanelPreview label="新建自动化" />
           </div>
         ) : (

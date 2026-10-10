@@ -1,8 +1,8 @@
-import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
+import type { DataPipelineAuthoringRequest } from '../../shared/data-pipeline-authoring';
 import { randomUUID } from 'crypto';
 import type {
-  AnalyzedTaskRequirement,
-  GenerateTaskFromRequirementResult,
+  AnalyzedPipelineRequirement,
+  GeneratePipelineFromRequirementResult,
 } from './data-command-types';
 
 const DEFAULT_RECEIPT_TTL_MS = 30 * 60 * 1000;
@@ -11,16 +11,16 @@ export interface RequirementAnalysisReceipt {
   id: string;
   sessionId: string;
   sourceUserMessageId?: string;
-  inputTableId: string;
-  inputTableName: string;
+  rawTableId: string;
+  rawTableName: string;
   inputSchemaHash: string;
   processRequirement: string;
-  analysis: AnalyzedTaskRequirement;
+  analysis: AnalyzedPipelineRequirement;
   capabilityProfileVersion: string;
   createdAt: number;
   expiresAt: number;
-  generatedResult?: GenerateTaskFromRequirementResult;
-  authoringRequest: DataTaskAuthoringRequest;
+  generatedResult?: GeneratePipelineFromRequirementResult;
+  authoringRequest: DataPipelineAuthoringRequest;
 }
 
 export interface RequirementAnalysisReceiptStoreOptions {
@@ -47,7 +47,7 @@ export class RequirementAnalysisReceiptStore {
     input: Omit<
       RequirementAnalysisReceipt,
       'id' | 'createdAt' | 'expiresAt' | 'generatedResult' | 'authoringRequest'
-    > & { authoringRequest?: DataTaskAuthoringRequest }
+    > & { authoringRequest?: DataPipelineAuthoringRequest }
   ): RequirementAnalysisReceipt {
     this.deleteExpired();
     const createdAt = this.now();
@@ -59,8 +59,8 @@ export class RequirementAnalysisReceiptStore {
           id: randomUUID(),
           source: {
             location: 'local',
-            tableId: input.inputTableId,
-            tableName: input.inputTableName,
+            tableId: input.rawTableId,
+            tableName: input.rawTableName,
           },
         }
       ),
@@ -84,7 +84,7 @@ export class RequirementAnalysisReceiptStore {
 
   saveGeneratedResult(
     id: string,
-    result: GenerateTaskFromRequirementResult
+    result: GeneratePipelineFromRequirementResult
   ): RequirementAnalysisReceipt | null {
     const receipt = this.get(id);
     if (!receipt) return null;

@@ -11,12 +11,12 @@ const cloudInputSyncShape = z.object({
   tableId: name,
   tableKind: z.enum(['analysis', 'base']),
   tableName: optionalName,
-  inputTableId: optionalName,
-  inputTableName: optionalName,
+  rawTableId: optionalName,
+  rawTableName: optionalName,
 });
 
 const cloudOutputSyncShape = z.object({
-  outputTableId: name,
+  resultTableId: name,
   type: z.literal('drive_file'),
   writeMode: z.enum(['create', 'replace', 'append']).optional(),
   // Preserves legacy remote idempotency keys during migration.
@@ -30,7 +30,7 @@ const cloudOutputSyncShape = z.object({
 
 // Direction-free shapes used by the data command layer; node configs add `direction`.
 export const cloudInputSyncSchema = cloudInputSyncShape.refine(
-  (config) => config.inputTableId || config.inputTableName,
+  (config) => config.rawTableId || config.rawTableName,
   { message: 'Choose an input table or name a new input table' }
 );
 export const cloudOutputSyncSchema = cloudOutputSyncShape
@@ -47,7 +47,7 @@ export const cloudSyncSchema = z
     cloudOutputSyncShape.extend({ direction: z.literal('output') }),
   ])
   .superRefine((config, ctx) => {
-    if (config.direction === 'input' && !config.inputTableId && !config.inputTableName) {
+    if (config.direction === 'input' && !config.rawTableId && !config.rawTableName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Choose an input table or name a new input table',

@@ -9,14 +9,14 @@ const source = fs.readFileSync(
 const inspectorSource = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'src/renderer/components/data-view/data-tasks/workflow/WorkflowInspector.tsx'
+    'src/renderer/components/data-view/data-pipelines/workflow/WorkflowInspector.tsx'
   ),
   'utf8'
 );
 const modelSource = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'src/renderer/components/data-view/data-tasks/workflow/workflow-model.ts'
+    'src/renderer/components/data-view/data-pipelines/workflow/workflow-model.ts'
   ),
   'utf8'
 );

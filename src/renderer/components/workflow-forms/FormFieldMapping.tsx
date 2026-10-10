@@ -19,14 +19,14 @@ import type { FieldMappingEntry } from '../../../shared/operator-schemas';
 
 export default function FormFieldMapping({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('fieldMapping');
   const updateConfig = useUpdateConfig(onNodeChange);
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const mappings = useMemo<FieldMappingEntry[]>(
     () =>

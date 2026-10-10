@@ -15,10 +15,10 @@ function createService() {
       sessionId: 'session-1',
       workspacePath: '/tmp/workspace',
       capabilities: {
-        canCreateInputTable: true,
-        canCreateOutputTable: true,
-        canCreateTask: true,
-        canRunTask: true,
+        canCreateRawTable: true,
+        canCreateResultTable: true,
+        canCreatePipeline: true,
+        canRunPipeline: true,
         canImportLocalFiles: true,
       },
     })),
@@ -53,7 +53,7 @@ describe('data agent extension', () => {
       existingMessages: [],
       isColdStart: true,
     });
-    expect(result?.activateTools).toContain('data_analyze_task_requirement');
+    expect(result?.activateTools).toContain('data_analyze_pipeline_requirement');
     const confirmed = await extension.beforeSessionRun?.({
       session,
       prompt: '好的',
@@ -131,7 +131,7 @@ describe('data agent extension', () => {
       isColdStart: false,
     });
     expect(second?.activateTools).toContain('data_import_cloud_table');
-    expect(second?.activateTools).toContain('data_run_task');
+    expect(second?.activateTools).toContain('data_run_pipeline');
     // Unrelated packs stay off — sticky must not expand to everything.
     expect(second?.activateTools).not.toContain('data_apply_workflow_plan');
     const unrelated = await extension.beforeSessionRun?.({
@@ -150,15 +150,15 @@ describe('data agent extension', () => {
     });
     expect(continuePoem?.activateTools).toEqual([]);
   });
-  it('keeps known-task runs below the schema budget and separates business creation from expert tools', async () => {
+  it('keeps known-pipeline runs below the schema budget and separates business creation from expert tools', async () => {
     const extension = createDataAgentRuntimeExtension(createService());
     const run = await extension.beforeSessionRun?.({
       session,
-      prompt: '运行数据任务 taskId=known',
+      prompt: '运行数据任务 pipelineId=known',
       existingMessages: [],
       isColdStart: true,
     });
-    expect(run?.activateTools).toEqual(['data_run_task']);
+    expect(run?.activateTools).toEqual(['data_run_pipeline']);
     const schemaText = JSON.stringify(
       run?.customTools
         ?.filter((tool) => run.activateTools?.includes(tool.name))
@@ -171,7 +171,7 @@ describe('data agent extension', () => {
       existingMessages: [],
       isColdStart: false,
     });
-    expect(create?.activateTools).toContain('data_analyze_task_requirement');
+    expect(create?.activateTools).toContain('data_analyze_pipeline_requirement');
     expect(create?.activateTools).not.toContain('data_apply_workflow_dsl');
     expect(create?.activateTools).not.toContain('data_apply_workflow_plan');
     const createSchemas = JSON.stringify(

@@ -11,14 +11,14 @@ import { hasPersonalAnalysisConnection } from '../../shared/personal-analysis';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { DataTaskStore } from './data-task-store';
+import type { DataPipelineStore } from './data-pipeline-store';
 import {
   DataCommandError,
-  type CreateInputTableCommand,
-  type UpdateInputTableCommand,
+  type CreateRawTableCommand,
+  type UpdateRawTableCommand,
   type ImportCloudTableCommand,
   type ImportCloudTableResult,
-  type InputTableResult,
+  type RawTableResult,
   type ListCloudDriveFilesCommand,
   type ListCloudDriveFilesResult,
   type ListCloudProjectsCommand,
@@ -31,8 +31,8 @@ import {
   type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
-  type RefreshCloudInputTableCommand,
-  type RefreshCloudInputTableResult,
+  type RefreshCloudRawTableCommand,
+  type RefreshCloudRawTableResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
   type UploadDataTableToCloudCommand,
@@ -48,9 +48,9 @@ import type {
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
 import type {
-  DataInputTableConfig,
-  DataInputTableCloudConfig,
-  DataInputTablePreview,
+  DataRawTableConfig,
+  DataRawTableCloudConfig,
+  DataRawTablePreview,
 } from '../../shared/contracts';
 
 const DEFAULT_PREVIEW_LIMIT = 20;
@@ -61,8 +61,8 @@ export interface CloudAnalysisCommandServiceOptions {
   getPersonalAnalysisConnection?: (
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
-  updateInputTable?: (input: UpdateInputTableCommand) => Promise<InputTableResult>;
-  createInputTable: (input: CreateInputTableCommand) => Promise<InputTableResult>;
+  updateRawTable?: (input: UpdateRawTableCommand) => Promise<RawTableResult>;
+  createRawTable: (input: CreateRawTableCommand) => Promise<RawTableResult>;
   /**
    * Stable directory for downloaded cloud snapshots. Recorded as the input
    * table's `sourcePath` so reimports keep working after OS temp cleanup.
@@ -74,7 +74,7 @@ export interface CloudAnalysisCommandServiceOptions {
 export class CloudAnalysisCommandService {
   private readonly locks = new DataCommandLockCoordinator();
   constructor(
-    private readonly store: DataTaskStore,
+    private readonly store: DataPipelineStore,
     private readonly getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig,
     private readonly options: CloudAnalysisCommandServiceOptions
   ) {}
@@ -138,17 +138,15 @@ export class CloudAnalysisCommandService {
     }
   }
 
-  async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
+  async importCloudRawTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
     const tableId = normalizeRequiredName(input.tableId, 'Cloud tableId is required');
-    const existing = input.inputTableId
-      ? await this.store.getInputTableRecord(input.inputTableId)
-      : null;
-    if (input.inputTableId && !existing)
+    const existing = input.rawTableId ? await this.store.getRawTableRecord(input.rawTableId) : null;
+    if (input.rawTableId && !existing)
       throw new DataCommandError(
         'RESOURCE_NOT_FOUND',
-        `Input table not found: ${input.inputTableId}`
+        `Input table not found: ${input.rawTableId}`
       );
-    if (existing && !this.options.updateInputTable)
+    if (existing && !this.options.updateRawTable)
       throw new Error('Input table sync is unavailable');
     const client = await this.createPersonalAnalysisClient(input);
     try {
@@ -186,8 +184,8 @@ export class CloudAnalysisCommandService {
         }),
       };
       const result = existing
-        ? await this.options.updateInputTable!({ ...command, id: existing.id })
-        : await this.options.createInputTable(command);
+        ? await this.options.updateRawTable!({ ...command, id: existing.id })
+        : await this.options.createRawTable(command);
       return {
         ...result,
         cloudTableId: tableId,
@@ -213,7 +211,7 @@ export class CloudAnalysisCommandService {
       const client = await this.createPersonalAnalysisClient(input);
       const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await this.writeCloudSnapshotFile(tableId, csv);
-      const preview = await this.store.previewInputTable({
+      const preview = await this.store.previewRawTableSource({
         filePath: downloadedFilePath,
         sourceKind: 'csv',
         config: {
@@ -267,12 +265,12 @@ export class CloudAnalysisCommandService {
     }
   }
 
-  async syncInputTableFromCloud(
+  async syncRawTableFromCloud(
     raw: CloudInputSyncConfig,
     syncKey: string
-  ): Promise<{ inputTableId: string; inputTableName: string }> {
+  ): Promise<{ rawTableId: string; rawTableName: string }> {
     const config = cloudInputSyncSchema.parse(raw);
-    return this.locks.withKeyedLock(`input:${config.inputTableId || syncKey}`, async () => {
+    return this.locks.withKeyedLock(`input:${config.rawTableId || syncKey}`, async () => {
       const client = await this.createPersonalAnalysisClient({});
       const source = await client.findTable(config.spaceId, config.projectId, config.tableId);
       if (!source || source.kind !== config.tableKind)
@@ -280,15 +278,15 @@ export class CloudAnalysisCommandService {
           'INVALID_ARGUMENT',
           'Select an analysis table or base table in the configured project'
         );
-      // The creation marker is committed with the dataset, so recovery after a
+      // The creation marker is committed with the rawTable, so recovery after a
       // process exit cannot create a second input or overwrite a same-name table.
-      const existing = config.inputTableId
-        ? await this.store.getInputTableRecord(config.inputTableId)
-        : await this.store.findInputTableByAutomationSyncKey(syncKey);
-      if (config.inputTableId && !existing)
+      const existing = config.rawTableId
+        ? await this.store.getRawTableRecord(config.rawTableId)
+        : await this.store.findRawTableByAutomationSyncKey(syncKey);
+      if (config.rawTableId && !existing)
         throw new DataCommandError(
           'RESOURCE_NOT_FOUND',
-          `Input table not found: ${config.inputTableId}`
+          `Input table not found: ${config.rawTableId}`
         );
       const csv = await client.exportTableCsv(config.tableId);
       const filePath = await this.writeCloudSnapshotFile(config.tableId, csv);
@@ -302,35 +300,32 @@ export class CloudAnalysisCommandService {
         sourceVersion: source.updatedAt,
         automationSyncKey: syncKey,
       });
-      if (existing && !this.options.updateInputTable)
+      if (existing && !this.options.updateRawTable)
         throw new Error('Input table sync is unavailable');
       const result = existing
-        ? await this.options.updateInputTable!({
+        ? await this.options.updateRawTable!({
             id: existing.id,
             sourceKind: 'cloud',
             filePath,
             config: inputConfig,
           })
-        : await this.options.createInputTable({
-            name: config.inputTableName,
+        : await this.options.createRawTable({
+            name: config.rawTableName,
             sourceKind: 'cloud',
             filePath,
             config: inputConfig,
           });
-      return { inputTableId: result.inputTable.id, inputTableName: result.inputTable.name };
+      return { rawTableId: result.rawTable.id, rawTableName: result.rawTable.name };
     });
   }
 
-  async refreshCloudInputTable(
-    input: RefreshCloudInputTableCommand
-  ): Promise<RefreshCloudInputTableResult> {
-    const inputTableId = normalizeRequiredName(
-      input.inputTableId,
-      'Cloud inputTableId is required'
-    );
-    const existing = await this.store.getInputTableRecord(inputTableId);
+  async refreshCloudRawTable(
+    input: RefreshCloudRawTableCommand
+  ): Promise<RefreshCloudRawTableResult> {
+    const rawTableId = normalizeRequiredName(input.rawTableId, 'Cloud rawTableId is required');
+    const existing = await this.store.getRawTableRecord(rawTableId);
     if (!existing) {
-      throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${inputTableId}`);
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${rawTableId}`);
     }
     const mirror =
       existing.inputConfig.sourceKind === 'cloud' || existing.inputConfig.sourceKind === 'csv'
@@ -359,40 +354,40 @@ export class CloudAnalysisCommandService {
       }
       tableKind = source.kind;
     }
-    const result = await this.syncInputTableFromCloud(
+    const result = await this.syncRawTableFromCloud(
       {
         spaceId,
         projectId,
         tableId: mirror.tableId,
         tableKind,
         tableName: mirror.tableName,
-        inputTableId,
+        rawTableId,
       },
-      mirror.automationSyncKey ?? `cloud-import:${inputTableId}`
+      mirror.automationSyncKey ?? `cloud-import:${rawTableId}`
     );
-    const refreshed = await this.store.getInputTableRecord(result.inputTableId);
+    const refreshed = await this.store.getRawTableRecord(result.rawTableId);
     if (!refreshed) {
       throw new DataCommandError(
         'INTERNAL_ERROR',
-        `Input table disappeared during refresh: ${inputTableId}`
+        `Input table disappeared during refresh: ${rawTableId}`
       );
     }
-    return { inputTable: refreshed };
+    return { rawTable: refreshed };
   }
 
-  async syncOutputTableToCloud(
-    outputTableId: string,
+  async syncResultTableToCloud(
+    resultTableId: string,
     raw: CloudOutputSyncConfig,
-    syncKey = `cowork-output-${outputTableId}`,
+    syncKey = `cowork-output-${resultTableId}`,
     beforeWrite?: (version: number) => void
   ): Promise<Partial<CloudOutputSyncConfig>> {
     const action = cloudOutputSyncSchema.parse(raw);
-    if (outputTableId !== action.outputTableId)
+    if (resultTableId !== action.resultTableId)
       throw new Error('Output table binding does not match');
-    const outputTable = await this.store.getOutputTableRecord(outputTableId);
-    if (!outputTable)
-      throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${outputTableId}`);
-    const exported = await this.store.exportDatasetCsv({ tableKind: 'output', id: outputTableId });
+    const resultTable = await this.store.getResultTableRecord(resultTableId);
+    if (!resultTable)
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${resultTableId}`);
+    const exported = await this.store.exportRawTableCsv({ tableKind: 'result', id: resultTableId });
     const client = await this.createPersonalAnalysisClient({});
     let csvContent = exported.csv;
     let version = action.version;
@@ -418,7 +413,7 @@ export class CloudAnalysisCommandService {
       // restart then fails on a version conflict instead of appending twice.
       beforeWrite?.(version);
     }
-    const name = action.fileName || sanitizeFileName(outputTable.name);
+    const name = action.fileName || sanitizeFileName(resultTable.name);
     const result = await client.syncDriveCsv(action.spaceId, action.projectId, {
       fileId: action.fileId,
       outputId: syncKey,
@@ -443,7 +438,7 @@ export class CloudAnalysisCommandService {
     if (input.writeMode === 'CREATE' && input.tableId?.trim()) {
       throw new DataCommandError('INVALID_ARGUMENT', 'tableId must be omitted for CREATE upload');
     }
-    const exported = await this.store.exportDatasetCsv({
+    const exported = await this.store.exportRawTableCsv({
       tableKind: input.tableKind,
       id: input.id,
       maxRows: input.maxRows,
@@ -579,7 +574,7 @@ function driveFilePreviewToDataPreview(result: {
   file: { sheets?: Array<{ name: string; rowCount: number; columnCount: number }> };
   sheetName: string;
   rows: unknown[][];
-}): DataInputTablePreview {
+}): DataRawTablePreview {
   const sheet =
     result.file.sheets?.find((item) => item.name === result.sheetName) ?? result.file.sheets?.[0];
   const headerRow = Array.isArray(result.rows[0]) ? result.rows[0] : [];
@@ -626,9 +621,9 @@ interface CloudTableSourceInput {
 }
 
 function buildCloudTableConfig(
-  existing: DataInputTableConfig | undefined,
+  existing: DataRawTableConfig | undefined,
   mirror: CloudTableSourceInput
-): DataInputTableCloudConfig {
+): DataRawTableCloudConfig {
   const previous =
     existing?.sourceKind === 'cloud' || existing?.sourceKind === 'csv'
       ? existing.cloudMirror
@@ -637,7 +632,7 @@ function buildCloudTableConfig(
     previous?.tableId === mirror.tableId &&
     previous?.spaceId === mirror.spaceId &&
     previous?.projectId === mirror.projectId;
-  const cloudMirror: DataInputTableCloudConfig['cloudMirror'] = {
+  const cloudMirror: DataRawTableCloudConfig['cloudMirror'] = {
     ...(sameSource ? previous : {}),
     tableId: mirror.tableId,
     contentHash: mirror.contentHash,

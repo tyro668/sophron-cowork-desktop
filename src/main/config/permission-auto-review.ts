@@ -44,23 +44,23 @@ const FILE_TOOLS = new Set([
 const COMMAND_TOOLS = new Set(['bash', 'shell', 'execute_command', 'run_command', 'exec_command']);
 const LOCAL_DATA_TOOLS = new Set([
   'data_import_cloud_table',
-  'data_create_input_table',
-  'data_create_input_table_with_processing_strategy',
-  'data_update_input_table',
-  'data_summarize_input_table_source',
-  'data_generate_input_table_normalizer_draft',
-  'data_preview_input_table_normalizer_version',
-  'data_publish_input_table_normalizer_version', // A local version, not a remote publication.
-  'data_create_output_table',
-  'data_update_output_table',
-  'data_generate_task_from_requirement',
+  'data_create_raw_table',
+  'data_create_raw_table_with_processing_strategy',
+  'data_update_raw_table',
+  'data_summarize_raw_table_source',
+  'data_generate_raw_table_normalizer_draft',
+  'data_preview_raw_table_normalizer_version',
+  'data_publish_raw_table_normalizer_version', // A local version, not a remote publication.
+  'data_create_result_table',
+  'data_update_result_table',
+  'data_generate_pipeline_from_requirement',
   'data_update_task',
   'data_apply_workflow_plan',
   'data_apply_workflow_dsl',
   'data_configure_input_operator',
   'data_configure_output_operator',
   'data_apply_operator_dsl',
-  'data_run_task',
+  'data_run_pipeline',
 ]);
 const BROWSER_TOOLS = new Set([
   'navigate_page',
@@ -195,8 +195,8 @@ export function reviewAutoPermission(
     }
   }
   if (toolName === 'data_get_workflow_capability_manifest') {
-    const ids = [input.inputTableIds, input.outputTableIds];
-    return Object.keys(input).every((key) => ['inputTableIds', 'outputTableIds'].includes(key)) &&
+    const ids = [input.rawTableIds, input.resultTableIds];
+    return Object.keys(input).every((key) => ['rawTableIds', 'resultTableIds'].includes(key)) &&
       ids.every(
         (value) =>
           value === undefined ||
@@ -207,7 +207,7 @@ export function reviewAutoPermission(
       ? allow('read_only_manifest')
       : ask('arguments_need_confirmation');
   }
-  if (toolName === 'data_list_input_table_normalizer_versions') {
+  if (toolName === 'data_list_raw_table_normalizer_versions') {
     return Object.keys(input).every((key) => key === 'artifactId') &&
       typeof input.artifactId === 'string' &&
       /^[A-Za-z0-9_-]{1,128}$/.test(input.artifactId)

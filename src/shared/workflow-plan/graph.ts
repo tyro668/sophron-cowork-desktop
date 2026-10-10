@@ -1,12 +1,12 @@
 import { getOperatorDefinition, hasBinaryInputs } from '../operators';
 import type { WorkflowPlan, WorkflowPlanDiagnostic, WorkflowPlanNode } from './model';
 
-export type WorkflowPlanProfile = 'task' | 'generated';
+export type WorkflowPlanProfile = 'pipeline' | 'generated';
 
 export interface WorkflowPlanGraphOptions {
   /**
    * `generated` enforces the conservative single-input, allowlisted-node
-   * profile advertised to the generation model. `task` applies the platform
+   * profile advertised to the generation model. `pipeline` applies the platform
    * rules: multi-source inputs are allowed and orphan/disconnected nodes are
    * reported as warnings rather than save-blocking errors.
    */
@@ -32,7 +32,7 @@ function allowedSourceHandles(type: string): readonly string[] {
 }
 
 /**
- * Structural graph validation shared by the Prep DSL compiler, the task
+ * Structural graph validation shared by the Prep DSL compiler, the pipeline
  * editor save path, and the generated-workflow validator. Codes are stable:
  * the generated profile relies on the NODE_* diagnostics contract.
  */
@@ -83,7 +83,7 @@ export function validateWorkflowPlanGraph(
         generated ? 'NODE_GRAPH_INPUT_COUNT' : 'PLAN_GRAPH_NO_INPUT',
         'Workflow has no input_source node',
         undefined,
-        // Task workflows may draft without an input source; generated ones cannot.
+        // Pipeline workflows may draft without an input source; generated ones cannot.
         generated ? 'error' : 'warning'
       )
     );
@@ -97,7 +97,7 @@ export function validateWorkflowPlanGraph(
     );
   }
   if (!generated && outputNodes.length === 0) {
-    // Task runs fall back to the terminal data node when no sink exists.
+    // Pipeline runs fall back to the terminal data node when no sink exists.
     diagnostics.push(
       diagnostic('PLAN_GRAPH_NO_OUTPUT', 'Workflow has no output node', undefined, 'warning')
     );

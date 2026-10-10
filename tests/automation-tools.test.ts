@@ -111,16 +111,16 @@ function createServiceFixture(options: { now?: () => number } = {}) {
       return updated;
     }),
   };
-  const task = {
-    id: 'task-1',
+  const pipeline = {
+    id: 'pipeline-1',
     name: 'Clean sales',
     status: 'completed',
     nodeCount: 2,
   };
-  const dataTaskStore = {
-    getTaskRecord: vi.fn(async (id: string) => (id === task.id ? task : null)),
-    getTaskWorkflow: vi.fn(async (id: string) => {
-      if (id !== task.id) throw new Error('not found');
+  const dataPipelineStore = {
+    getPipelineRecord: vi.fn(async (id: string) => (id === pipeline.id ? pipeline : null)),
+    getPipelineWorkflow: vi.fn(async (id: string) => {
+      if (id !== pipeline.id) throw new Error('not found');
       return { nodes: [{ id: 'input' }, { id: 'output' }], edges: [] };
     }),
   };
@@ -128,7 +128,7 @@ function createServiceFixture(options: { now?: () => number } = {}) {
   const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const service = new AutomationToolService({
     automationService: automationService as never,
-    dataTaskStore: dataTaskStore as never,
+    dataPipelineStore: dataPipelineStore as never,
     receiptStore: new AutomationDraftReceiptStore({ now: options.now }),
     now: options.now,
     systemTimezone: () => systemTimezone,
@@ -139,7 +139,7 @@ function createServiceFixture(options: { now?: () => number } = {}) {
     automations,
     create,
     update,
-    dataTaskStore,
+    dataPipelineStore,
     onAutomationsChanged,
     systemTimezone,
   };
@@ -179,7 +179,7 @@ describe('automation conversation tools', () => {
       {
         name: 'Daily',
         schedule: { kind: 'daily', times: ['09:00'] },
-        action: { kind: 'data_task', taskId: 'task-1' },
+        action: { kind: 'data_pipeline', pipelineId: 'pipeline-1' },
       },
       { sessionId: session.id }
     );
@@ -237,7 +237,7 @@ describe('automation conversation tools', () => {
     const rawArguments = {
       name: 'Daily sales cleanup',
       schedule: JSON.stringify({ kind: 'daily', times: ['10:00'] }),
-      action: JSON.stringify({ kind: 'data_task', taskId: 'task-1' }),
+      action: JSON.stringify({ kind: 'data_pipeline', pipelineId: 'pipeline-1' }),
     };
 
     expect(Value.Check(AutomationPrepareParametersSchema, rawArguments)).toBe(true);
@@ -255,7 +255,7 @@ describe('automation conversation tools', () => {
       parseAutomationPrepareInput({
         name: 'Invalid time',
         schedule: JSON.stringify({ kind: 'daily', times: ['25:00'] }),
-        action: JSON.stringify({ kind: 'data_task', taskId: 'task-1' }),
+        action: JSON.stringify({ kind: 'data_pipeline', pipelineId: 'pipeline-1' }),
       })
     ).toThrow('Invalid automation_prepare arguments');
 
@@ -263,7 +263,7 @@ describe('automation conversation tools', () => {
       parseAutomationPrepareInput({
         name: 'Malformed JSON',
         schedule: '{not-json}',
-        action: JSON.stringify({ kind: 'data_task', taskId: 'task-1' }),
+        action: JSON.stringify({ kind: 'data_pipeline', pipelineId: 'pipeline-1' }),
       })
     ).toThrow('schedule must be an object or a valid JSON object string');
 
@@ -271,7 +271,7 @@ describe('automation conversation tools', () => {
       parseAutomationPrepareInput({
         name: 'Unexpected field',
         schedule: { kind: 'daily', times: ['10:00'], unexpected: true },
-        action: { kind: 'data_task', taskId: 'task-1' },
+        action: { kind: 'data_pipeline', pipelineId: 'pipeline-1' },
       })
     ).toThrow(/schedule:.*unexpected/i);
 
@@ -292,14 +292,14 @@ describe('automation conversation tools', () => {
     ).toBe(true);
   });
 
-  it('prepares a saved data task and creates it idempotently', async () => {
+  it('prepares a saved data pipeline and creates it idempotently', async () => {
     const { service, create, onAutomationsChanged } = createServiceFixture();
     const runAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
     const prepared = await service.prepare(
       {
         name: 'Hourly sales cleanup',
         schedule: { kind: 'once', runAt },
-        action: { kind: 'data_task', taskId: 'task-1' },
+        action: { kind: 'data_pipeline', pipelineId: 'pipeline-1' },
       },
       { sessionId: 'session-1', currentUserMessageId: 'message-1' }
     );
@@ -319,23 +319,23 @@ describe('automation conversation tools', () => {
     expect((first.details as { status: string }).status).toBe('created');
     expect((second.details as { status: string }).status).toBe('already_created');
     expect(create.mock.calls[0]?.[0].actionGraph.nodes[0]).toMatchObject({
-      type: 'data.task.run',
-      config: { taskId: 'task-1', outputMode: 'persisted' },
+      type: 'data.pipeline.run',
+      config: { pipelineId: 'pipeline-1', outputMode: 'persisted' },
     });
   });
 
-  it('rejects a data task that does not exist', async () => {
+  it('rejects a data pipeline that does not exist', async () => {
     const { service } = createServiceFixture();
     await expect(
       service.prepare(
         {
-          name: 'Missing task',
+          name: 'Missing pipeline',
           schedule: { kind: 'once', runAt: new Date(Date.now() + 60_000).toISOString() },
-          action: { kind: 'data_task', taskId: 'missing' },
+          action: { kind: 'data_pipeline', pipelineId: 'missing' },
         },
         { sessionId: 'session-1' }
       )
-    ).rejects.toThrow('Data task not found');
+    ).rejects.toThrow('Data pipeline not found');
   });
 
   it('rejects a prepared one-time schedule after its run time has passed', async () => {
@@ -358,7 +358,7 @@ describe('automation conversation tools', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('maps a general recurring task to conversation.run with unattended defaults', async () => {
+  it('maps a general recurring pipeline to conversation.run with unattended defaults', async () => {
     const { service, create } = createServiceFixture();
     const prepared = await service.prepare(
       {
@@ -635,23 +635,23 @@ describe('automation conversation tools', () => {
   });
 });
 
-describe('saved data task automation action', () => {
-  it('emits the workflow output table id instead of the task id', async () => {
+describe('saved data pipeline automation action', () => {
+  it('emits the workflow output table id instead of the pipeline id', async () => {
     const emitArtifact = vi.fn();
     const registry = createDefaultAutomationActionRegistry({
-      dataTaskStore: {
-        runTask: vi.fn(async () => ({
-          id: 'task-1',
+      dataPipelineStore: {
+        runPipeline: vi.fn(async () => ({
+          id: 'pipeline-1',
           name: 'Clean sales',
           rowCount: 2,
           columnCount: 3,
         })),
-        getTaskWorkflow: vi.fn(async () => ({
+        getPipelineWorkflow: vi.fn(async () => ({
           nodes: [
             {
               id: 'output',
               type: 'output',
-              config: { outputDatasetId: 'output-table-1' },
+              config: { outputResultTableId: 'result-table-1' },
             },
           ],
           edges: [],
@@ -660,8 +660,8 @@ describe('saved data task automation action', () => {
       sessionManager: {} as never,
     });
 
-    await registry.get('data.task.run')?.execute(
-      { taskId: 'task-1', outputMode: 'persisted' },
+    await registry.get('data.pipeline.run')?.execute(
+      { pipelineId: 'pipeline-1', outputMode: 'persisted' },
       {
         automationId: 'automation-1',
         runId: 'run-1',
@@ -670,12 +670,12 @@ describe('saved data task automation action', () => {
         emitArtifact,
         log: vi.fn(),
       },
-      { id: 'node-1', type: 'data.task.run', enabled: true, config: {} }
+      { id: 'node-1', type: 'data.pipeline.run', enabled: true, config: {} }
     );
 
     expect(emitArtifact).toHaveBeenCalledWith(
       expect.objectContaining({
-        dataRef: { kind: 'output_table', id: 'output-table-1' },
+        dataRef: { kind: 'result_table', id: 'result-table-1' },
       })
     );
   });

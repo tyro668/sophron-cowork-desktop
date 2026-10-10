@@ -141,10 +141,10 @@ function validateNode(
       const columns = resolveInputSchema(node);
       const incrementalBy =
         typeof config.incrementalBy === 'string' ? config.incrementalBy.trim() : '';
-      const usesInputTable =
-        config.source === 'dataset' ||
-        (typeof config.source !== 'string' && typeof config.datasetId === 'string');
-      if (!usesInputTable && incrementalBy && columns) {
+      const usesRawTable =
+        config.source === 'rawTable' ||
+        (typeof config.source !== 'string' && typeof config.rawTableId === 'string');
+      if (!usesRawTable && incrementalBy && columns) {
         checkFields(node, [incrementalBy], { columns, known: true }, diagnostics);
       }
       return columns ? { columns, known: true } : UNKNOWN;

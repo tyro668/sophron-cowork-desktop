@@ -1,4 +1,4 @@
-import { loadDataTaskResources } from '../../features/data/api/data-task-resources';
+import { loadDataPipelineResources } from '../../features/data/api/data-pipeline-resources';
 import {
   startTransition,
   useCallback,
@@ -110,9 +110,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   }, []);
 
   const selectedAutomation = automations.find((automation) => automation.id === selectedId) ?? null;
-  const dataTasks = dataDashboard?.tasks ?? [];
-  const inputTables = dataDashboard?.datasets ?? [];
-  const outputTables = dataDashboard?.outputTables ?? [];
+  const dataPipelines = dataDashboard?.pipelines ?? [];
+  const rawTables = dataDashboard?.rawTables ?? [];
+  const resultTables = dataDashboard?.resultTables ?? [];
 
   const hasRunningAutomation = useMemo(
     () => automations.some((automation) => automation.status === 'running'),
@@ -172,7 +172,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             window.electronAPI.automation.list({ perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE }),
             window.electronAPI.automation.groups.list(),
             window.electronAPI.automation.listActionDefinitions(),
-            loadDataTaskResources(),
+            loadDataPipelineResources(),
           ]);
         if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
         automationsRef.current = automationRows;
@@ -411,12 +411,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           setAutomations((rows) => [...rows.filter((row) => row.id !== id), automation]);
           const next = automationToDraft(automation);
           if (
-            outputNavigation.inputTable &&
+            outputNavigation.rawTable &&
             !next.actionGraph.nodes.some(
               (node) =>
                 node.type === 'cloud.sync' &&
                 node.config.direction === 'input' &&
-                node.config.inputTableId === outputNavigation.inputTable?.id
+                node.config.rawTableId === outputNavigation.rawTable?.id
             )
           ) {
             const node = {
@@ -429,8 +429,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 projectId: '',
                 tableId: '',
                 tableKind: 'analysis',
-                inputTableId: outputNavigation.inputTable.id,
-                inputTableName: outputNavigation.inputTable.name,
+                rawTableId: outputNavigation.rawTable.id,
+                rawTableName: outputNavigation.rawTable.name,
               },
             };
             next.actionGraph = relinkLinearGraph({
@@ -441,8 +441,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           setDraft(next);
         })
         .catch((error) => setBanner({ tone: 'error', text: String(error) }));
-    } else if (outputNavigation.outputTable) {
-      const table = outputNavigation.outputTable;
+    } else if (outputNavigation.resultTable) {
+      const table = outputNavigation.resultTable;
       setSelectedId(null);
       setDraft({
         ...createEmptyDraft(table.name),
@@ -451,7 +451,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           kind: 'manual',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         },
-        outputBindings: [{ outputTableId: table.id, runOnChange: true }],
+        outputBindings: [{ resultTableId: table.id, runOnChange: true }],
         actionGraph: {
           version: 1,
           edges: [],
@@ -462,7 +462,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               enabled: true,
               config: {
                 direction: 'output',
-                outputTableId: table.id,
+                resultTableId: table.id,
                 type: 'drive_file',
                 writeMode: 'create',
                 spaceId: '',
@@ -472,13 +472,13 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           ],
         },
       });
-    } else if (outputNavigation.inputTable || outputNavigation.newInputTableName !== undefined) {
-      const table = outputNavigation.inputTable;
+    } else if (outputNavigation.rawTable || outputNavigation.newRawTableName !== undefined) {
+      const table = outputNavigation.rawTable;
       const cloudSource = outputNavigation.cloudSource;
       const name =
         table?.name ||
-        outputNavigation.newInputTableName ||
-        tr('schedule.cloudInput.title', '云端表同步到输入表');
+        outputNavigation.newRawTableName ||
+        tr('schedule.cloudInput.title', '云端表同步到原始表');
       setSelectedId(null);
       setDraft({
         ...createEmptyDraft(name),
@@ -497,9 +497,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 tableId: cloudSource?.tableId ?? '',
                 tableKind: cloudSource?.tableKind ?? 'analysis',
                 tableName: cloudSource?.tableName,
-                inputTableId: table?.id,
-                inputTableName:
-                  table?.name || outputNavigation.newInputTableName || cloudSource?.tableName || '',
+                rawTableId: table?.id,
+                rawTableName:
+                  table?.name || outputNavigation.newRawTableName || cloudSource?.tableName || '',
               },
             },
           ],
@@ -587,7 +587,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         tone: 'error',
         text:
           getOutputLocation(missingTarget) === 'local'
-            ? tr('schedule.localTargetRequired', '请选择目标输出表')
+            ? tr('schedule.localTargetRequired', '请选择目标结果表')
             : tr('schedule.cloudTargetRequired', '请选择目标云表'),
       });
       return;
@@ -739,16 +739,16 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             workingDirectory={projects.find((project) => project.id === draft.projectId)?.cwd}
             draft={draft}
             actionDefinitions={actionDefinitions}
-            dataTasks={dataTasks}
-            inputTables={inputTables}
-            outputTables={outputTables}
+            dataPipelines={dataPipelines}
+            rawTables={rawTables}
+            resultTables={resultTables}
             appConfig={appConfig}
             onDraftChange={(next) => {
               suppressSelectedAutomationSyncRef.current = true;
               setDraft(next);
             }}
-            onGeneratedTaskSuccess={(workflowDslAvailable) => {
-              void loadDataTaskResources()
+            onGeneratedPipelineSuccess={(workflowDslAvailable) => {
+              void loadDataPipelineResources()
                 .then((resources) => {
                   if (isMountedRef.current) setDataDashboard(resources);
                 })
@@ -761,10 +761,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               showTransientBanner({
                 tone: workflowDslAvailable ? 'success' : 'warning',
                 text: workflowDslAvailable
-                  ? tr('schedule.generatedTaskReady', '数据任务已生成，后续将复用该任务执行。')
+                  ? tr('schedule.generatedPipelineReady', '数据加工已生成，后续将复用该任务执行。')
                   : tr(
-                      'schedule.generatedTaskReadyWithoutDsl',
-                      '数据任务已生成，但任务逻辑预览暂时不可用。'
+                      'schedule.generatedPipelineReadyWithoutDsl',
+                      '数据加工已生成，但任务逻辑预览暂时不可用。'
                     ),
               });
             }}

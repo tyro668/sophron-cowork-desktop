@@ -30,25 +30,25 @@ describe('applyActiveToolsInPlace', () => {
   it('mutates the live tools array so an in-flight loop sees new tools', () => {
     const { session, state } = createFakeSession([
       'capabilities_search',
-      'data_run_task',
-      'data_list_tasks',
+      'data_run_pipeline',
+      'data_list_pipelines',
     ]);
     // The running loop captured this array instance at prompt() start.
     const capturedByLoop = state.tools;
 
     const valid = applyActiveToolsInPlace(session, [
       'capabilities_search',
-      'data_run_task',
-      'data_list_tasks',
+      'data_run_pipeline',
+      'data_list_pipelines',
     ]);
 
-    expect(valid).toEqual(['capabilities_search', 'data_run_task', 'data_list_tasks']);
+    expect(valid).toEqual(['capabilities_search', 'data_run_pipeline', 'data_list_pipelines']);
     // Same array instance mutated in place — a captured reference sees it.
     expect(state.tools).toBe(capturedByLoop);
     expect(capturedByLoop.map((tool) => tool.name)).toEqual([
       'capabilities_search',
-      'data_run_task',
-      'data_list_tasks',
+      'data_run_pipeline',
+      'data_list_pipelines',
     ]);
     expect(session.setActiveToolsByName).not.toHaveBeenCalled();
   });

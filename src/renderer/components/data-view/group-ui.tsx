@@ -1,5 +1,5 @@
 /**
- * Shared grouping UI for the data lists (tasks / input tables / output
+ * Shared grouping UI for the data lists (pipelines / input tables / output
  * tables): section chunking, collapsible group header rows, and the
  * move-to-group / rename dialogs. All pieces are presentational — IPC stays
  * in the page's action layer.

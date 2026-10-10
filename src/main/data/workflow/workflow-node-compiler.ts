@@ -14,11 +14,11 @@ import type {
 } from './workflow-model';
 
 export interface WorkflowNodeCompilerBindings {
-  inputTableId: string;
+  rawTableId: string;
   inputAlias?: string;
-  inputTableName?: string;
-  outputTableName: string;
-  outputTableId?: string;
+  rawTableName?: string;
+  resultTableName: string;
+  resultTableId?: string;
   outputPhysicalTableName?: string;
   outputMode?: 'replace';
 }
@@ -50,8 +50,8 @@ export function compileLoweredWorkflowToPlatformNodes({
   semantics: GeneratedWorkflowIrSemantics;
   bindings: WorkflowNodeCompilerBindings;
 }): CompiledGeneratedWorkflowNodePlan {
-  const inputTableId = requireBinding(bindings.inputTableId, 'inputTableId');
-  const outputTableName = requireBinding(bindings.outputTableName, 'outputTableName');
+  const rawTableId = requireBinding(bindings.rawTableId, 'rawTableId');
+  const resultTableName = requireBinding(bindings.resultTableName, 'resultTableName');
   const inputAlias = sanitizeAlias(bindings.inputAlias) || 'src';
   const outputMode = 'replace';
   const originsByOperatorIndex = new Map(
@@ -68,9 +68,9 @@ export function compileLoweredWorkflowToPlatformNodes({
     label: DEFAULT_OPERATOR_LABELS.input_source,
     ...nodePosition(0),
     config: withoutUndefinedProperties({
-      source: 'dataset',
-      datasetId: inputTableId,
-      inputTableName: bindings.inputTableName,
+      source: 'rawTable',
+      rawTableId: rawTableId,
+      rawTableName: bindings.rawTableName,
       alias: inputAlias,
     }),
   };
@@ -100,25 +100,23 @@ export function compileLoweredWorkflowToPlatformNodes({
     ...nodePosition(operatorNodes.length + 1),
     config: withoutUndefinedProperties({
       destination: 'duckdb_table',
-      table: bindings.outputPhysicalTableName ?? outputTableName,
+      table: bindings.outputPhysicalTableName ?? resultTableName,
       mode: outputMode,
-      outputStrategy: bindings.outputTableId ? 'existing' : undefined,
-      outputDatasetId: bindings.outputTableId,
-      outputTableId: bindings.outputTableId,
-      outputTableName,
+      outputStrategy: bindings.resultTableId ? 'existing' : undefined,
+      outputResultTableId: bindings.resultTableId,
+      resultTableId: bindings.resultTableId,
+      resultTableName,
     }),
   };
 
   const nodes = [sourceNode, ...operatorNodes, outputNode];
-  const edges = nodes.slice(1).map(
-    (node, index): DataWorkflowEdgeInput => ({
-      id: `edge_${nodes[index].id}_${node.id}`,
-      sourceNodeId: nodes[index].id,
-      targetNodeId: node.id,
-      sourceHandle: 'output',
-      targetHandle: 'input',
-    })
-  );
+  const edges = nodes.slice(1).map((node, index): DataWorkflowEdgeInput => ({
+    id: `edge_${nodes[index].id}_${node.id}`,
+    sourceNodeId: nodes[index].id,
+    targetNodeId: node.id,
+    sourceHandle: 'output',
+    targetHandle: 'input',
+  }));
   const operationNodeOrigins = semantics.operationOrigins.flatMap((origin) => {
     const node = operatorNodes[origin.operatorIndex];
     return node ? [{ ...origin, nodeId: node.id, nodeType: node.type }] : [];

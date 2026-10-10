@@ -7,7 +7,7 @@ import type { SortKey } from '../../../shared/operator-schemas';
 
 export default function FormSort({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
@@ -16,7 +16,7 @@ export default function FormSort({
 
   const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
 
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const commitKeys = useCallback(
     (next: SortKey[]) => {

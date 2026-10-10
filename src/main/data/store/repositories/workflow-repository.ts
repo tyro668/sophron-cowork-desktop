@@ -17,54 +17,54 @@ import {
 
 export class WorkflowRepository {
   constructor(private readonly ctx: DataStoreContext) {}
-  async getWorkflowNodes(taskId: string): Promise<DataWorkflowNode[]> {
+  async getWorkflowNodes(pipelineId: string): Promise<DataWorkflowNode[]> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeRow>(
       `
           SELECT *
           FROM data_workflow_nodes
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
           ORDER BY ordinal ASC, created_at ASC
         `,
-      { taskId }
+      { pipelineId }
     );
     return rows.map(mapWorkflowNodeRow);
   }
-  async getWorkflowEdges(taskId: string): Promise<DataWorkflowEdge[]> {
+  async getWorkflowEdges(pipelineId: string): Promise<DataWorkflowEdge[]> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowEdgeRow>(
       `
           SELECT *
           FROM data_workflow_edges
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
           ORDER BY created_at ASC
         `,
-      { taskId }
+      { pipelineId }
     );
     return rows.map(mapWorkflowEdgeRow);
   }
-  async getRuntimeWorkflow(taskId: string): Promise<RuntimeWorkflow> {
-    const nodes = await this.getWorkflowNodes(taskId);
-    const edges = nodes.length > 0 ? await this.getWorkflowEdges(taskId) : [];
+  async getRuntimeWorkflow(pipelineId: string): Promise<RuntimeWorkflow> {
+    const nodes = await this.getWorkflowNodes(pipelineId);
+    const edges = nodes.length > 0 ? await this.getWorkflowEdges(pipelineId) : [];
     return { nodes, edges };
   }
-  async countWorkflowNodes(taskId: string): Promise<number> {
+  async countWorkflowNodes(pipelineId: string): Promise<number> {
     const rows = await this.ctx.metaQueryRows<{ count: number | string }>(
-      'SELECT count(*) AS count FROM data_workflow_nodes WHERE task_id = $taskId',
-      { taskId }
+      'SELECT count(*) AS count FROM data_workflow_nodes WHERE pipeline_id = $pipelineId',
+      { pipelineId }
     );
     return toNumber(rows[0]?.count);
   }
 
-  async deleteTaskGraph(taskId: string): Promise<void> {
-    await this.ctx.metaRunSql('DELETE FROM data_workflow_edges WHERE task_id = $taskId', {
-      taskId,
+  async deletePipelineGraph(pipelineId: string): Promise<void> {
+    await this.ctx.metaRunSql('DELETE FROM data_workflow_edges WHERE pipeline_id = $pipelineId', {
+      pipelineId,
     });
-    await this.ctx.metaRunSql('DELETE FROM data_workflow_nodes WHERE task_id = $taskId', {
-      taskId,
+    await this.ctx.metaRunSql('DELETE FROM data_workflow_nodes WHERE pipeline_id = $pipelineId', {
+      pipelineId,
     });
   }
 
   async insertWorkflowNode(
-    taskId: string,
+    pipelineId: string,
     node: DataWorkflowNodeInput,
     ordinal: number,
     at: number
@@ -72,17 +72,17 @@ export class WorkflowRepository {
     await this.ctx.metaRunSql(
       `
           INSERT INTO data_workflow_nodes (
-            id, task_id, node_key, label, ordinal, operator_type, x, y,
+            id, pipeline_id, node_key, label, ordinal, operator_type, x, y,
             config_json, created_at, updated_at
           )
           VALUES (
-            $id, $taskId, $nodeKey, $label, $ordinal, $operatorType, $x, $y,
+            $id, $pipelineId, $nodeKey, $label, $ordinal, $operatorType, $x, $y,
             $configJson, $createdAt, $updatedAt
           )
         `,
       {
         id: node.id,
-        taskId,
+        pipelineId,
         nodeKey: node.id,
         label: node.label,
         ordinal,
@@ -96,19 +96,23 @@ export class WorkflowRepository {
     );
   }
 
-  async insertWorkflowEdge(taskId: string, edge: DataWorkflowEdgeInput, at: number): Promise<void> {
+  async insertWorkflowEdge(
+    pipelineId: string,
+    edge: DataWorkflowEdgeInput,
+    at: number
+  ): Promise<void> {
     await this.ctx.metaRunSql(
       `
           INSERT INTO data_workflow_edges (
-            id, task_id, source_node_id, target_node_id, source_handle, target_handle, created_at
+            id, pipeline_id, source_node_id, target_node_id, source_handle, target_handle, created_at
           )
           VALUES (
-            $id, $taskId, $sourceNodeId, $targetNodeId, $sourceHandle, $targetHandle, $createdAt
+            $id, $pipelineId, $sourceNodeId, $targetNodeId, $sourceHandle, $targetHandle, $createdAt
           )
         `,
       {
         id: edge.id,
-        taskId,
+        pipelineId,
         sourceNodeId: edge.sourceNodeId,
         targetNodeId: edge.targetNodeId,
         sourceHandle: edge.sourceHandle ?? null,

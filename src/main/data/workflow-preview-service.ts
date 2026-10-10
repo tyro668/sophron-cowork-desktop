@@ -1,8 +1,8 @@
-import type { DataTaskStore } from './data-task-store';
+import type { DataPipelineStore } from './data-pipeline-store';
 import type {
-  DataCleaningTask,
-  DataInputTablePreview,
-  DataTaskWorkflow,
+  DataPipeline,
+  DataRawTablePreview,
+  DataPipelineWorkflow,
   DataWorkflowEdge,
   DataWorkflowNode,
 } from '../../shared/contracts';
@@ -12,54 +12,53 @@ import { logDataCommandFallback, previewLimit, previewOffset } from './data-comm
 
 export class WorkflowPreviewService {
   constructor(
-    private readonly store: DataTaskStore,
+    private readonly store: DataPipelineStore,
     private readonly resources: DataCommandResources
   ) {}
 
-  async toWorkflowPreview(taskId: string, workflow: WorkflowSaveShape): Promise<DataTaskWorkflow> {
-    const task = await this.resources.requireTask(taskId);
+  async toWorkflowPreview(
+    pipelineId: string,
+    workflow: WorkflowSaveShape
+  ): Promise<DataPipelineWorkflow> {
+    const pipeline = await this.resources.requirePipeline(pipelineId);
     return {
-      task,
-      nodes: workflow.nodes.map(
-        (node): DataWorkflowNode => ({
-          id: node.id,
-          taskId,
-          type: node.type,
-          label: node.label,
-          x: node.x,
-          y: node.y,
-          config: node.config ?? {},
-          createdAt: 0,
-          updatedAt: 0,
-        })
-      ),
-      edges: workflow.edges.map(
-        (edge): DataWorkflowEdge => ({
-          id: edge.id,
-          taskId,
-          sourceNodeId: edge.sourceNodeId,
-          targetNodeId: edge.targetNodeId,
-          sourceHandle: edge.sourceHandle ?? 'output',
-          targetHandle: edge.targetHandle ?? 'input',
-          createdAt: 0,
-        })
-      ),
+      pipeline,
+      nodes: workflow.nodes.map((node): DataWorkflowNode => ({
+        id: node.id,
+        pipelineId,
+        type: node.type,
+        label: node.label,
+        x: node.x,
+        y: node.y,
+        config: node.config ?? {},
+        createdAt: 0,
+        updatedAt: 0,
+      })),
+      edges: workflow.edges.map((edge): DataWorkflowEdge => ({
+        id: edge.id,
+        pipelineId,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle ?? 'output',
+        targetHandle: edge.targetHandle ?? 'input',
+        createdAt: 0,
+      })),
     };
   }
 
-  async previewTaskOutput(
-    taskId: string,
-    task: DataCleaningTask,
+  async previewPipelineOutput(
+    pipelineId: string,
+    pipeline: DataPipeline,
     previewRows?: number,
     runtimeWorkflow?: WorkflowSaveShape,
     offset?: number
-  ): Promise<DataInputTablePreview | undefined> {
+  ): Promise<DataRawTablePreview | undefined> {
     const limit = previewLimit(previewRows);
     const runtimeOutputNode = runtimeWorkflow?.nodes.find((node) => node.type === 'output');
     if (runtimeOutputNode) {
       try {
         return await this.store.previewWorkflowNode({
-          taskId,
+          pipelineId,
           nodeId: runtimeOutputNode.id,
           nodeType: runtimeOutputNode.type,
           nodeConfig: runtimeOutputNode.config,
@@ -68,18 +67,18 @@ export class WorkflowPreviewService {
         });
       } catch (error) {
         logDataCommandFallback('Runtime output preview failed; trying saved output', error, {
-          taskId,
+          pipelineId,
           nodeId: runtimeOutputNode.id,
         });
       }
     }
 
     try {
-      const workflow = await this.store.getTaskWorkflow(taskId);
+      const workflow = await this.store.getPipelineWorkflow(pipelineId);
       const outputNode = workflow.nodes.find((node) => node.type === 'output');
       if (outputNode) {
         return await this.store.previewWorkflowNode({
-          taskId,
+          pipelineId,
           nodeId: outputNode.id,
           nodeType: outputNode.type,
           nodeConfig: outputNode.config,
@@ -88,30 +87,26 @@ export class WorkflowPreviewService {
         });
       }
     } catch (error) {
-      logDataCommandFallback('Saved output preview failed; trying source dataset', error, {
-        taskId,
+      logDataCommandFallback('Saved output preview failed; trying source rawTable', error, {
+        pipelineId,
       });
     }
 
-    if (task.sourceDatasetId) {
+    if (pipeline.sourceRawTableId) {
       try {
-        return await this.previewDataset(task.sourceDatasetId, limit, offset);
+        return await this.previewRawTable(pipeline.sourceRawTableId, limit, offset);
       } catch (error) {
-        logDataCommandFallback('Source dataset preview fallback failed', error, {
-          taskId,
-          sourceDatasetId: task.sourceDatasetId,
+        logDataCommandFallback('Source rawTable preview fallback failed', error, {
+          pipelineId,
+          sourceRawTableId: pipeline.sourceRawTableId,
         });
       }
     }
     return undefined;
   }
 
-  async previewDataset(
-    id: string,
-    limit?: number,
-    offset?: number
-  ): Promise<DataInputTablePreview> {
-    return this.store.previewDataset({
+  async previewRawTable(id: string, limit?: number, offset?: number): Promise<DataRawTablePreview> {
+    return this.store.previewRawTable({
       id,
       limit: previewLimit(limit),
       offset: previewOffset(offset),

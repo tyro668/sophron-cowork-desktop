@@ -6,8 +6,8 @@ import i18n from './i18n-test';
 import { useAppStore } from '../../src/renderer/store';
 import { CloudAnalysisPanel } from '../../src/renderer/components/data-view/cloud-analysis';
 
-vi.mock('../../src/renderer/components/data-view/input-tables', () => ({
-  InputTablePreviewDialog: () => null,
+vi.mock('../../src/renderer/components/data-view/raw-tables', () => ({
+  RawTablePreviewDialog: () => null,
 }));
 
 const listCloudSpaces = vi.fn();

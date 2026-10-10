@@ -17,7 +17,7 @@ describe('model result budget and complete references', () => {
     const store = new ModelResultStore();
     const details = {
       task: { id: 'task-id' },
-      outputTableId: 'output-id',
+      resultTableId: 'output-id',
       committed: true,
       mode: 'persisted',
       sentinel: 'UI_ONLY',
@@ -28,7 +28,7 @@ describe('model result budget and complete references', () => {
     let page = JSON.parse(textOf(bounded));
     expect(page.evidence).toMatchObject({
       task: { id: 'task-id' },
-      outputTableId: 'output-id',
+      resultTableId: 'output-id',
       committed: true,
     });
     expect(textOf(bounded)).not.toContain('UI_ONLY');
@@ -62,16 +62,9 @@ describe('model result budget and complete references', () => {
 
   it('keeps commit evidence visible even when the full evidence also exceeds the budget', async () => {
     const identifiers = Object.fromEntries(
-      [
-        'id',
-        'taskId',
-        'outputTableId',
-        'inputTableId',
-        'analysisId',
-        'draftId',
-        'runId',
-        'code',
-      ].map((key) => [key, key + 'x'.repeat(180)])
+      ['id', 'taskId', 'resultTableId', 'rawTableId', 'analysisId', 'draftId', 'runId', 'code'].map(
+        (key) => [key, key + 'x'.repeat(180)]
+      )
     );
     const store = new ModelResultStore();
     const result = store.bound({
@@ -81,8 +74,8 @@ describe('model result budget and complete references', () => {
         committed: true,
         mode: 'persisted',
         task: identifiers,
-        inputTable: identifiers,
-        outputTable: identifiers,
+        rawTable: identifiers,
+        resultTable: identifiers,
       },
     });
     const page = JSON.parse(textOf(result));

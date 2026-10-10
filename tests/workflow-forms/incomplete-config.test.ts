@@ -55,7 +55,7 @@ function makeNode(
 ): DataWorkflowNode {
   return {
     id: 'n',
-    taskId: 't',
+    pipelineId: 't',
     type,
     label: type,
     x: 0,

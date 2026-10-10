@@ -6,7 +6,7 @@ import type {
   ListCloudTablesInput,
   PreviewCloudDriveFileInput,
   PreviewCloudTableInput,
-  RefreshCloudInputTableInput,
+  RefreshCloudRawTableInput,
   SearchCloudTablesInput,
   UploadDataTableToCloudInput,
 } from '../../../shared/contracts';
@@ -62,18 +62,18 @@ export function registerCloudAnalysisIpc({
     }
   });
 
-  handleIpc('data.importCloudTable', async (_event, payload: ImportCloudTableInput) => {
+  handleIpc('data.importCloudRawTable', async (_event, payload: ImportCloudTableInput) => {
     try {
-      return await requireDataCommandService().importCloudTable(payload);
+      return await requireDataCommandService().importCloudRawTable(payload);
     } catch (error) {
       logError('[Data] Error importing cloud table:', error);
       throw error;
     }
   });
 
-  handleIpc('data.refreshCloudInputTable', async (_event, payload: RefreshCloudInputTableInput) => {
+  handleIpc('data.refreshCloudRawTable', async (_event, payload: RefreshCloudRawTableInput) => {
     try {
-      return await requireDataCommandService().refreshCloudInputTable(payload);
+      return await requireDataCommandService().refreshCloudRawTable(payload);
     } catch (error) {
       logError('[Data] Error refreshing cloud input table:', error);
       throw error;

@@ -6,7 +6,7 @@ export class OutputCommitJournal {
   constructor(private readonly ctx: DataStoreContext) {}
   async insertPreparedCommit(row: {
     id: string;
-    taskId: string;
+    pipelineId: string;
     temporaryTable: string;
     targetTable: string;
     backupTable: string;
@@ -16,15 +16,15 @@ export class OutputCommitJournal {
   }): Promise<void> {
     await this.ctx.metaRunSql(
       `INSERT INTO data_output_commits (
-         id, task_id, temporary_table, target_table, backup_table, target_existed,
+         id, pipeline_id, temporary_table, target_table, backup_table, target_existed,
          state, intended_metadata_json, error, created_at, updated_at
        ) VALUES (
-         $id, $taskId, $temporaryTable, $targetTable, $backupTable, $targetExisted,
+         $id, $pipelineId, $temporaryTable, $targetTable, $backupTable, $targetExisted,
          'prepared', $intendedMetadataJson, NULL, $createdAt, $updatedAt
        )`,
       {
         id: row.id,
-        taskId: row.taskId,
+        pipelineId: row.pipelineId,
         temporaryTable: row.temporaryTable,
         targetTable: row.targetTable,
         backupTable: row.backupTable,
@@ -43,17 +43,17 @@ export class OutputCommitJournal {
   /** Latest commit that actually wrote the target table — its metadata JSON
    *  carries the upstream signature the output was generated under. */
   async findLatestCommittedForTarget(
-    taskId: string,
+    pipelineId: string,
     targetTable: string
   ): Promise<{ generatedAt: number; workflowSignature: string | null } | null> {
     const rows = await this.ctx.metaQueryRows<DataOutputCommitRow>(
       `SELECT * FROM data_output_commits
-       WHERE task_id = $taskId
+       WHERE pipeline_id = $pipelineId
          AND target_table = $targetTable
          AND state NOT IN ('prepared', 'failed')
        ORDER BY created_at DESC
        LIMIT 1`,
-      { taskId, targetTable }
+      { pipelineId, targetTable }
     );
     const row = rows[0];
     if (!row) return null;

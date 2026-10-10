@@ -14,13 +14,13 @@ import type { SortKey } from '../../../shared/operator-schemas';
 
 export default function FormDeduplicate({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('deduplicate');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const strategy: 'by_columns' | 'all_columns' =

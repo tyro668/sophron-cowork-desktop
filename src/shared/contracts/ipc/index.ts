@@ -152,7 +152,7 @@ export type ServerEvent =
   | { type: 'native-theme.changed'; payload: { shouldUseDarkColors: boolean } }
   | { type: 'new-session' }
   | { type: 'navigate'; payload: string }
-  | { type: 'scheduled-task.error'; payload: { taskId: string; error: string } }
+  | { type: 'scheduled-task.error'; payload: { pipelineId: string; error: string } }
   | {
       type: 'error';
       payload: {

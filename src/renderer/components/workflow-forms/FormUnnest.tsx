@@ -10,14 +10,14 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 
 export default function FormUnnest({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('unnest');
   const updateConfig = useUpdateConfig(onNodeChange);
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const sourceKind = (node.config.sourceKind as 'list' | 'json') ?? 'list';
   const field = (node.config.column as string) ?? '';

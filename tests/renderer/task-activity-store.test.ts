@@ -3,7 +3,7 @@ import { useAppStore } from '../../src/renderer/store';
 
 const SESSION_ID = 'activity-session';
 
-describe('live task activity state', () => {
+describe('live pipeline activity state', () => {
   beforeEach(() => {
     useAppStore.setState({ sessionStates: {} });
   });

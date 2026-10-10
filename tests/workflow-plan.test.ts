@@ -27,7 +27,7 @@ function edge(id: string, source: string, target: string, targetHandle = 'input'
 function linearPlan(operatorConfig: Record<string, unknown>, operatorType = 'sort') {
   return buildWorkflowPlan({
     nodes: [
-      node('src', 'input_source', { source: 'task' }),
+      node('src', 'input_source', { source: 'pipeline' }),
       node('op', operatorType, operatorConfig),
       node('out', 'output', { table: 'result', mode: 'replace' }),
     ],
@@ -43,7 +43,7 @@ describe('buildWorkflowPlan', () => {
   it('produces a versioned plan with typed configs', () => {
     const { plan, diagnostics } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('op', 'sort', { keys: [{ field: 'id', direction: 'asc' }] }),
       ],
       edges: [edge('e1', 'src', 'op')],
@@ -65,17 +65,17 @@ describe('buildWorkflowPlan', () => {
 });
 
 describe('validateWorkflowPlanGraph', () => {
-  it('accepts multi-source task workflows', () => {
+  it('accepts multi-source pipeline workflows', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd1' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd1' }),
         node('j', 'join', { type: 'inner', conditions: [{ left: 'id', right: 'id' }] }),
         node('out', 'output'),
       ],
       edges: [edge('e1', 'a', 'j', 'left'), edge('e2', 'b', 'j', 'right'), edge('e3', 'j', 'out')],
     });
-    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'task' });
+    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'pipeline' });
     expect(diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   });
 
@@ -93,12 +93,12 @@ describe('validateWorkflowPlanGraph', () => {
         edge('self', 'op', 'op'),
       ],
     });
-    const codes = validateWorkflowPlanGraph(plan, { profile: 'task' }).map((item) => item.code);
+    const codes = validateWorkflowPlanGraph(plan, { profile: 'pipeline' }).map((item) => item.code);
     expect(codes).toContain('NODE_GRAPH_DANGLING_EDGE');
     expect(codes).toContain('NODE_GRAPH_SELF_CYCLE');
   });
 
-  it('reports orphan nodes as warnings, not errors, in the task profile', () => {
+  it('reports orphan nodes as warnings, not errors, in the pipeline profile', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source'),
@@ -107,7 +107,7 @@ describe('validateWorkflowPlanGraph', () => {
       ],
       edges: [edge('e1', 'src', 'out')],
     });
-    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'task' });
+    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'pipeline' });
     const orphan = diagnostics.filter((item) => item.nodeId === 'orphan');
     expect(orphan.length).toBeGreaterThan(0);
     expect(orphan.every((item) => item.severity === 'warning')).toBe(true);
@@ -138,7 +138,7 @@ describe('validateWorkflowPlanGraph', () => {
       nodes: [node('a', 'input_source'), node('j', 'join', {}), node('out', 'output')],
       edges: [edge('e1', 'a', 'j', 'left'), edge('e2', 'j', 'out')],
     });
-    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'task' });
+    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'pipeline' });
     expect(
       diagnostics.some(
         (item) => item.code === 'NODE_GRAPH_BINARY_INPUT_INVALID' && item.severity === 'error'
@@ -193,7 +193,7 @@ describe('validateWorkflowPlanSchemas', () => {
   it('propagates calculated fields to downstream operators', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('calc', 'calculate_field', {
           calculations: [{ field: 'total', expression: '[amount] * 2', action: 'add' }],
         }),
@@ -209,7 +209,7 @@ describe('validateWorkflowPlanSchemas', () => {
   it('validates fields against projected schemas after field_select', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('sel', 'field_select', { mode: 'include', columns: ['id'] }),
         node('op', 'sort', { keys: [{ field: 'amount', direction: 'desc' }] }),
         node('out', 'output'),
@@ -227,7 +227,7 @@ describe('validateWorkflowPlanSchemas', () => {
   it('renames fields through field_mapping', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('map', 'field_mapping', {
           mappings: [{ source: 'amount', targetMode: 'rename', targetValue: 'total' }],
         }),
@@ -274,8 +274,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('validates join condition fields on both sides', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'inner',
           conditions: [{ left: '[a].[id]', right: '[b].[missing]', operator: '=' }],
@@ -298,8 +298,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('warns when join condition types are incompatible', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'inner',
           conditions: [{ left: '[a].[id]', right: '[b].[name]', operator: '=' }],
@@ -319,8 +319,8 @@ describe('validateWorkflowPlanSchemas', () => {
     ];
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'left',
           conditions: [{ left: '[a].[id]', right: '[b].[id]', operator: '=' }],
@@ -348,8 +348,8 @@ describe('validateWorkflowPlanSchemas', () => {
     ];
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'left',
           conditions: [{ left: '[a].[id]', right: '[b].[id]', operator: '=' }],
@@ -390,8 +390,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('checks set_op column alignment by name', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_name' }),
         node('out', 'output'),
       ],
@@ -406,8 +406,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('errors when set_op by_position column counts differ', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'task' }),
-        node('b', 'input_source', { source: 'dataset', datasetId: 'd' }),
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_position' }),
         node('out', 'output'),
       ],
@@ -436,7 +436,7 @@ describe('ETL runtime contract validation', () => {
   it('requires merge keys for mode merge and checks them against upstream schema', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('out', 'output', { table: 't', mode: 'merge', mergeKeys: ['id', 'missing_key'] }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -448,7 +448,7 @@ describe('ETL runtime contract validation', () => {
   it('rejects mode merge without keys', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('out', 'output', { table: 't', mode: 'merge' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -460,7 +460,7 @@ describe('ETL runtime contract validation', () => {
   it('checks incrementalBy against the source schema', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task', incrementalBy: 'updated_at' }),
+        node('src', 'input_source', { source: 'pipeline', incrementalBy: 'updated_at' }),
         node('out', 'output', { table: 't', mode: 'append' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -470,7 +470,7 @@ describe('ETL runtime contract validation', () => {
 
     const ok = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task', incrementalBy: 'created' }),
+        node('src', 'input_source', { source: 'pipeline', incrementalBy: 'created' }),
         node('out', 'output', { table: 't', mode: 'append' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -482,8 +482,8 @@ describe('ETL runtime contract validation', () => {
     const plan = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source', {
-          source: 'dataset',
-          datasetId: 'table-id',
+          source: 'rawTable',
+          rawTableId: 'table-id',
           incrementalBy: 'removed_column',
         }),
         node('out', 'output', { table: 't' }),
@@ -496,7 +496,7 @@ describe('ETL runtime contract validation', () => {
   it('validates expect expression fields and unique columns', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'expression', expression: '[bogus] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -507,7 +507,7 @@ describe('ETL runtime contract validation', () => {
 
     const uniquePlan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'unique', columns: ['id'] }),
         node('out', 'output', { table: 't' }),
       ],
@@ -521,7 +521,7 @@ describe('ETL runtime contract validation', () => {
   it('rejects a reject edge from a non-expect node and a missing reject stream', () => {
     const badSource = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('f', 'filter', { condition: '[amount] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -536,7 +536,7 @@ describe('ETL runtime contract validation', () => {
         },
       ],
     }).plan;
-    const graphDiags = validateWorkflowPlanGraph(badSource, { profile: 'task' });
+    const graphDiags = validateWorkflowPlanGraph(badSource, { profile: 'pipeline' });
     expect(
       graphDiags.some(
         (item) => item.code === 'NODE_GRAPH_SOURCE_HANDLE_INVALID' && item.severity === 'error'
@@ -545,7 +545,7 @@ describe('ETL runtime contract validation', () => {
 
     const missingStream = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'expression', expression: '[amount] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -560,7 +560,7 @@ describe('ETL runtime contract validation', () => {
         },
       ],
     }).plan;
-    const missingDiags = validateWorkflowPlanGraph(missingStream, { profile: 'task' });
+    const missingDiags = validateWorkflowPlanGraph(missingStream, { profile: 'pipeline' });
     expect(missingDiags.some((item) => item.code === 'NODE_GRAPH_REJECT_STREAM_MISSING')).toBe(
       true
     );
@@ -569,7 +569,7 @@ describe('ETL runtime contract validation', () => {
   it('warns when a declared reject stream has no consuming edge', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'task' }),
+        node('src', 'input_source', { source: 'pipeline' }),
         node('ex', 'expect', {
           kind: 'expression',
           expression: '[amount] > 0',
@@ -579,7 +579,7 @@ describe('ETL runtime contract validation', () => {
       ],
       edges: [edge('e1', 'src', 'ex'), edge('e2', 'ex', 'out')],
     }).plan;
-    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'task' });
+    const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'pipeline' });
     expect(
       diagnostics.some(
         (item) => item.code === 'NODE_GRAPH_REJECT_STREAM_UNCONSUMED' && item.severity === 'warning'
@@ -591,7 +591,7 @@ describe('ETL runtime contract validation', () => {
 describe('compilePrepWorkflowToFlow plan output', () => {
   it('returns a typed versioned plan alongside nodes and edges', () => {
     const parsed = parsePrepDsl(
-      'input source task as src\n  | sort by [id] asc\n  | output table "out" mode replace'
+      'input source pipeline as src\n  | sort by [id] asc\n  | output table "out" mode replace'
     );
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     expect(compiled.plan?.version).toBe(WORKFLOW_PLAN_VERSION);
@@ -601,7 +601,7 @@ describe('compilePrepWorkflowToFlow plan output', () => {
 
   it('emits graph diagnostics for malformed compiled workflows', () => {
     const parsed = parsePrepDsl(
-      'input source task as src\n  | sort by [id] asc\n  | output table "out" mode replace'
+      'input source pipeline as src\n  | sort by [id] asc\n  | output table "out" mode replace'
     );
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     const errors = compiled.diagnostics.filter((item) => item.severity === 'error');

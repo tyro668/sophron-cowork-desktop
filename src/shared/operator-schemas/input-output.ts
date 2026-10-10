@@ -8,12 +8,12 @@ import { z } from 'zod';
 export const InputSourceConfigSchema = z
   .looseObject({
     source: z
-      .enum(['dataset', 'task', 'file'])
+      .enum(['rawTable', 'pipeline', 'file'])
       .describe(
-        '"dataset" reads a bound input table, "task" the task source file, "file" a literal filePath'
+        '"rawTable" reads a bound input table, "task" the task source file, "file" a literal filePath'
       )
       .optional(),
-    datasetId: z
+    rawTableId: z
       .string()
       .trim()
       .min(1)
@@ -34,11 +34,12 @@ export const InputSourceConfigSchema = z
       .optional(),
   })
   .superRefine((config, context) => {
-    if (config.source === 'dataset' && !config.datasetId) {
+    if (config.source === 'rawTable' && !config.rawTableId) {
       context.addIssue({
         code: 'custom',
-        path: ['datasetId'],
-        message: 'input source "dataset" requires a bound datasetId (or resources.inputs binding)',
+        path: ['rawTableId'],
+        message:
+          'input source "rawTable" requires a bound rawTableId (or resources.inputs binding)',
       });
     }
     if (config.source === 'file' && !config.filePath?.trim()) {
@@ -63,14 +64,14 @@ export const OutputConfigSchema = z
       .describe('Business keys; required when mode=merge')
       .optional(),
     schemaPolicy: z.enum(['extend', 'strict', 'ignore']).optional(),
-    outputDatasetId: z
+    outputResultTableId: z
       .string()
       .trim()
-      .describe('Real output table id (from data_list_output_tables)')
+      .describe('Real output table id (from data_list_result_tables)')
       .optional(),
-    outputTableId: z.string().trim().optional(),
+    resultTableId: z.string().trim().optional(),
     outputStrategy: z.enum(['existing', 'auto']).optional(),
-    outputTableName: z.string().trim().optional(),
+    resultTableName: z.string().trim().optional(),
   })
   .superRefine((config, context) => {
     if (config.mode === 'merge' && (!config.mergeKeys || config.mergeKeys.length === 0)) {

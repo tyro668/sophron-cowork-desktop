@@ -60,13 +60,13 @@ function createEmptyMetric(): PivotMetric {
 
 export default function FormPivot({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('pivot');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const axes = useMemo(() => normalizePivotAxes(node.config.on), [node.config.on]);
@@ -192,7 +192,7 @@ export default function FormPivot({
               fieldCompletions={fieldCompletions}
               columnTypes={columnTypes}
               disabledFields={new Set([...usedFields].filter((field) => field !== axis.field))}
-              taskId={taskId}
+              pipelineId={pipelineId}
               sourceNode={sourceNode}
               tr={tr}
               canAdd={canAppendRow(axes.length, MAX_ON_COUNT)}
@@ -388,7 +388,7 @@ interface PivotAxisCardProps {
   fieldCompletions: string[];
   columnTypes: Record<string, string>;
   disabledFields: Set<string>;
-  taskId?: string;
+  pipelineId?: string;
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   tr: (key: string, params?: Record<string, unknown>) => string;
   onFieldChange: (field: string) => void;
@@ -407,7 +407,7 @@ function PivotAxisCard({
   fieldCompletions,
   columnTypes,
   disabledFields,
-  taskId,
+  pipelineId,
   sourceNode,
   tr,
   canAdd,
@@ -426,7 +426,7 @@ function PivotAxisCard({
     error,
     reload,
   } = useWorkflowNodeColumnValues({
-    taskId,
+    pipelineId,
     sourceNode,
     column: axis.field,
   });
@@ -437,7 +437,7 @@ function PivotAxisCard({
 
   useEffect(() => {
     if (axis.field) reload();
-  }, [axis.field, reload, sourceNode?.config, sourceNode?.id, sourceNode?.type, taskId]);
+  }, [axis.field, reload, sourceNode?.config, sourceNode?.id, sourceNode?.type, pipelineId]);
 
   function handleToggle() {
     if (!expanded && axis.field && !loaded && !loading) reload();

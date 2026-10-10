@@ -1,32 +1,32 @@
 import type {
   CloudOutputAction,
-  DataCleaningTask,
-  DataDataset,
+  DataPipeline,
+  DataRawTable,
   DataGroup,
-  DataInputTableNormalizerArtifact,
-  DataInputTableNormalizerArtifactVersion,
+  DataRawTableNormalizerArtifact,
+  DataRawTableNormalizerArtifactVersion,
   DataNormalizerArtifactVersionStatus,
   DataNormalizerLanguage,
-  DataOutputTable,
+  DataResultTable,
 } from '../../../shared/contracts';
 import type { ScheduleConfig, ScheduleWeekday } from '../../../shared/contracts/schedule';
 import type { DatabaseInstance } from '../../db/database';
 import { normalizeStatus, toNumber } from '../operators';
 import {
-  normalizeInputTableNormalizerSourceKind,
-  normalizeStoredInputTableSourceKind,
-  parseInputTableConfig,
+  normalizeRawTableNormalizerSourceKind,
+  normalizeStoredRawTableSourceKind,
+  parseRawTableConfig,
 } from './input-source';
 
-export interface DataTaskStoreOptions {
+export interface DataPipelineStoreOptions {
   now?: () => number;
   metadataDb?: DatabaseInstance;
 }
 
-export const OUTPUT_TABLE_CONFIG_KIND = 'output_table';
+export const RESULT_TABLE_CONFIG_KIND = 'result_table';
 
-export interface DataDatasetCsvExport {
-  tableKind: 'input' | 'output';
+export interface DataRawTableCsvExport {
+  tableKind: 'raw' | 'result';
   id: string;
   name: string;
   tableName: string;
@@ -44,15 +44,15 @@ export interface DataGroupRow {
   created_at: number | string;
 }
 
-export interface DataTaskRow {
+export interface DataPipelineRow {
   id: string;
   name: string;
   status: string;
   group_id?: string | null;
   node_count: number | string;
   source_path: string | null;
-  source_dataset_id: string | null;
-  output_table: string | null;
+  source_raw_table_id: string | null;
+  result_table: string | null;
   row_count: number | string | null;
   column_count: number | string | null;
   error: string | null;
@@ -62,7 +62,7 @@ export interface DataTaskRow {
   last_run_at: number | string | null;
 }
 
-export interface DataDatasetRow {
+export interface DataRawTableRow {
   id: string;
   name: string;
   source_path: string;
@@ -70,7 +70,7 @@ export interface DataDatasetRow {
   config_json: string | null;
   file_count: number | string | null;
   related_task_names?: string | null;
-  related_task_ids?: string | null;
+  related_pipeline_ids?: string | null;
   table_name: string;
   row_count: number | string;
   column_count: number | string;
@@ -79,7 +79,7 @@ export interface DataDatasetRow {
   updated_at: number | string;
 }
 
-export interface DataInputTableNormalizerArtifactRow {
+export interface DataRawTableNormalizerArtifactRow {
   id: string;
   name: string;
   description: string | null;
@@ -90,7 +90,7 @@ export interface DataInputTableNormalizerArtifactRow {
   updated_at: number | string;
 }
 
-export interface DataInputTableNormalizerArtifactVersionRow {
+export interface DataRawTableNormalizerArtifactVersionRow {
   id: string;
   artifact_id: string;
   version: number | string;
@@ -123,7 +123,7 @@ export interface DashboardSummaryRow {
 
 export interface DataOutputCommitRow {
   id: string;
-  task_id: string;
+  pipeline_id: string;
   temporary_table: string;
   target_table: string;
   backup_table: string;
@@ -137,7 +137,7 @@ export interface DataOutputCommitRow {
 
 export interface DataTableCommitRow {
   id: string;
-  dataset_id: string;
+  raw_table_id: string;
   operation: string;
   staging_table: string;
   target_table: string;
@@ -162,7 +162,7 @@ export const LEGACY_DEMO_TASK_NAMES = [
 
 export function mapGroupRow(row: DataGroupRow): DataGroup {
   const scope =
-    row.scope === 'task' || row.scope === 'input' || row.scope === 'output' ? row.scope : 'input';
+    row.scope === 'pipeline' || row.scope === 'raw' || row.scope === 'result' ? row.scope : 'raw';
   return {
     id: String(row.id),
     scope,
@@ -171,7 +171,7 @@ export function mapGroupRow(row: DataGroupRow): DataGroup {
   };
 }
 
-export function mapTaskRow(row: DataTaskRow): DataCleaningTask {
+export function mapPipelineRow(row: DataPipelineRow): DataPipeline {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -179,8 +179,8 @@ export function mapTaskRow(row: DataTaskRow): DataCleaningTask {
     groupId: row.group_id ? String(row.group_id) : null,
     nodeCount: toNumber(row.node_count),
     sourcePath: row.source_path ? String(row.source_path) : null,
-    sourceDatasetId: row.source_dataset_id ? String(row.source_dataset_id) : null,
-    outputTable: row.output_table ? String(row.output_table) : null,
+    sourceRawTableId: row.source_raw_table_id ? String(row.source_raw_table_id) : null,
+    resultTable: row.result_table ? String(row.result_table) : null,
     rowCount: row.row_count === null ? null : toNumber(row.row_count),
     columnCount: row.column_count === null ? null : toNumber(row.column_count),
     error: row.error ? String(row.error) : null,
@@ -191,17 +191,17 @@ export function mapTaskRow(row: DataTaskRow): DataCleaningTask {
   };
 }
 
-export function mapDatasetRow(row: DataDatasetRow): DataDataset {
+export function mapRawTableRow(row: DataRawTableRow): DataRawTable {
   const sourcePath = String(row.source_path);
-  const sourceKind = normalizeStoredInputTableSourceKind(row.source_kind, sourcePath);
+  const sourceKind = normalizeStoredRawTableSourceKind(row.source_kind, sourcePath);
   return {
     id: String(row.id),
     name: String(row.name),
     sourcePath,
     sourceKind,
-    inputConfig: parseInputTableConfig(row.config_json, sourceKind, sourcePath),
+    inputConfig: parseRawTableConfig(row.config_json, sourceKind, sourcePath),
     fileCount: row.file_count === null ? 1 : toNumber(row.file_count),
-    relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
+    relatedPipelineNames: parseRelatedPipelineNames(row.related_task_names),
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
@@ -211,14 +211,14 @@ export function mapDatasetRow(row: DataDatasetRow): DataDataset {
   };
 }
 
-export function mapInputTableNormalizerArtifactRow(
-  row: DataInputTableNormalizerArtifactRow
-): DataInputTableNormalizerArtifact {
+export function mapRawTableNormalizerArtifactRow(
+  row: DataRawTableNormalizerArtifactRow
+): DataRawTableNormalizerArtifact {
   return {
     id: String(row.id),
     name: String(row.name),
     description: row.description === null ? null : String(row.description),
-    sourceKind: normalizeInputTableNormalizerSourceKind(row.source_kind),
+    sourceKind: normalizeRawTableNormalizerSourceKind(row.source_kind),
     primaryLanguage: normalizeNormalizerLanguage(row.primary_language),
     activeVersionId: row.active_version_id ? String(row.active_version_id) : null,
     createdAt: toNumber(row.created_at),
@@ -232,33 +232,33 @@ export function isDuckDbTransactionStateError(message: string): boolean {
   );
 }
 
-export function mapInputTableNormalizerArtifactVersionRow(
-  row: DataInputTableNormalizerArtifactVersionRow
-): DataInputTableNormalizerArtifactVersion {
+export function mapRawTableNormalizerArtifactVersionRow(
+  row: DataRawTableNormalizerArtifactVersionRow
+): DataRawTableNormalizerArtifactVersion {
   return {
     id: String(row.id),
     artifactId: String(row.artifact_id),
     version: toNumber(row.version),
     status: normalizeNormalizerVersionStatus(row.status),
-    files: parseJsonField<DataInputTableNormalizerArtifactVersion['files']>(row.files_json, []),
+    files: parseJsonField<DataRawTableNormalizerArtifactVersion['files']>(row.files_json, []),
     fileTreeHash: String(row.file_tree_hash),
     rulePrompt: String(row.rule_prompt),
     sourceSummaryHash: row.source_summary_hash ? String(row.source_summary_hash) : null,
-    entrypoint: parseJsonField<DataInputTableNormalizerArtifactVersion['entrypoint']>(
+    entrypoint: parseJsonField<DataRawTableNormalizerArtifactVersion['entrypoint']>(
       row.entrypoint_json,
       { command: [] }
     ),
     dependencyPrepare: row.dependency_prepare_json
-      ? parseJsonField<NonNullable<DataInputTableNormalizerArtifactVersion['dependencyPrepare']>>(
+      ? parseJsonField<NonNullable<DataRawTableNormalizerArtifactVersion['dependencyPrepare']>>(
           row.dependency_prepare_json,
           { steps: [], lockFiles: [] }
         )
       : undefined,
-    runtime: parseJsonField<DataInputTableNormalizerArtifactVersion['runtime']>(row.runtime_json, {
+    runtime: parseJsonField<DataRawTableNormalizerArtifactVersion['runtime']>(row.runtime_json, {
       language: 'python',
       environment: 'venv',
     }),
-    dependencies: parseJsonField<DataInputTableNormalizerArtifactVersion['dependencies']>(
+    dependencies: parseJsonField<DataRawTableNormalizerArtifactVersion['dependencies']>(
       row.dependencies_json,
       []
     ),
@@ -269,21 +269,21 @@ export function mapInputTableNormalizerArtifactVersionRow(
   };
 }
 
-export function mapOutputTableRow(row: DataDatasetRow): DataOutputTable {
-  const config = parseOutputTableConfig(row.config_json);
+export function mapResultTableRow(row: DataRawTableRow): DataResultTable {
+  const config = parseResultTableConfig(row.config_json);
   return {
     id: String(row.id),
     name: String(row.name),
-    sourceDatasetId: config.kind === OUTPUT_TABLE_CONFIG_KIND ? config.sourceDatasetId : null,
+    sourceRawTableId: config.kind === RESULT_TABLE_CONFIG_KIND ? config.sourceRawTableId : null,
     tableName: String(row.table_name),
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
-    relatedTaskNames: parseRelatedTaskNames(row.related_task_names),
-    relatedTaskIds: parseRelatedTaskIds(row.related_task_ids),
+    relatedPipelineNames: parseRelatedPipelineNames(row.related_task_names),
+    relatedPipelineIds: parseRelatedPipelineIds(row.related_pipeline_ids),
     groupId: row.group_id ? String(row.group_id) : null,
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
-    cloudAction: config.kind === OUTPUT_TABLE_CONFIG_KIND ? config.cloudAction : null,
+    cloudAction: config.kind === RESULT_TABLE_CONFIG_KIND ? config.cloudAction : null,
   };
 }
 
@@ -312,25 +312,25 @@ export function normalizeNormalizerVersionStatus(
   return 'draft';
 }
 
-export function parseOutputTableConfig(value: string | null): {
+export function parseResultTableConfig(value: string | null): {
   kind: string | null;
-  sourceDatasetId: string | null;
+  sourceRawTableId: string | null;
   cloudAction: CloudOutputAction | null;
 } {
-  const empty = { kind: null, sourceDatasetId: null, cloudAction: null };
+  const empty = { kind: null, sourceRawTableId: null, cloudAction: null };
   if (!value) return empty;
   try {
     const parsed = JSON.parse(value) as {
       kind?: unknown;
-      sourceDatasetId?: unknown;
+      sourceRawTableId?: unknown;
       cloudAction?: unknown;
       cloudDriveTarget?: unknown;
     };
     return {
       kind: typeof parsed.kind === 'string' && parsed.kind.trim() ? parsed.kind.trim() : null,
-      sourceDatasetId:
-        typeof parsed.sourceDatasetId === 'string' && parsed.sourceDatasetId.trim()
-          ? parsed.sourceDatasetId.trim()
+      sourceRawTableId:
+        typeof parsed.sourceRawTableId === 'string' && parsed.sourceRawTableId.trim()
+          ? parsed.sourceRawTableId.trim()
           : null,
       cloudAction:
         parseCloudOutputAction(parsed.cloudAction) ??
@@ -458,18 +458,18 @@ function parseLegacyCloudDriveTarget(value: unknown): CloudOutputAction | null {
   return action;
 }
 
-export function parseRelatedTaskNames(value: string | null | undefined): string[] {
+export function parseRelatedPipelineNames(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split('\u001F').filter(Boolean).slice(0, 2);
 }
 
-/** Related task ids — no display cap (drives refresh/run actions). */
-export function parseRelatedTaskIds(value: string | null | undefined): string[] {
+/** Related pipeline ids — no display cap (drives refresh/run actions). */
+export function parseRelatedPipelineIds(value: string | null | undefined): string[] {
   if (!value) return [];
   return value.split('\u001F').filter(Boolean);
 }
 
-export function storedDatasetSourceKindSql(alias?: string): string {
+export function storedRawTableSourceKindSql(alias?: string): string {
   const prefix = alias ? `${alias}.` : '';
   const sourceKind = `${prefix}source_kind`;
   const sourcePath = `lower(${prefix}source_path)`;
@@ -485,27 +485,27 @@ export function storedDatasetSourceKindSql(alias?: string): string {
   `;
 }
 
-export function outputTableConfigPredicateSql(alias?: string): string {
+export function resultTableConfigPredicateSql(alias?: string): string {
   const prefix = alias ? `${alias}.` : '';
   return `
-    ${storedDatasetSourceKindSql(alias)} = 'output'
-    AND coalesce(${prefix}config_json, '') LIKE '%"kind":"${OUTPUT_TABLE_CONFIG_KIND}"%'
+    ${storedRawTableSourceKindSql(alias)} = 'output'
+    AND coalesce(${prefix}config_json, '') LIKE '%"kind":"${RESULT_TABLE_CONFIG_KIND}"%'
   `;
 }
 
-export function outputTableConfigJson(
-  sourceDatasetId?: string | null,
+export function resultTableConfigJson(
+  sourceRawTableId?: string | null,
   cloudAction?: CloudOutputAction | null
 ): string {
   const config: {
     kind: string;
-    sourceDatasetId?: string;
+    sourceRawTableId?: string;
     cloudAction?: CloudOutputAction;
   } = {
-    kind: OUTPUT_TABLE_CONFIG_KIND,
+    kind: RESULT_TABLE_CONFIG_KIND,
   };
-  if (sourceDatasetId) {
-    config.sourceDatasetId = sourceDatasetId;
+  if (sourceRawTableId) {
+    config.sourceRawTableId = sourceRawTableId;
   }
   if (cloudAction) {
     config.cloudAction = cloudAction;
@@ -513,12 +513,12 @@ export function outputTableConfigJson(
   return JSON.stringify(config);
 }
 
-export function isLegacyExplicitOutputTableRow(row: DataDatasetRow): boolean {
+export function isLegacyExplicitResultTableRow(row: DataRawTableRow): boolean {
   const tableName = String(row.table_name);
   const sourcePath = String(row.source_path);
   return (
     tableName.startsWith('output_') &&
-    (sourcePath === `duckdb://outputs/${tableName}` || sourcePath.startsWith('input-table://'))
+    (sourcePath === `duckdb://outputs/${tableName}` || sourcePath.startsWith('raw-table://'))
   );
 }
 

@@ -13,14 +13,14 @@ import type { SortKey } from '../../../shared/operator-schemas';
 
 export default function FormLimit({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('limit');
   const updateConfig = useUpdateConfig(onNodeChange);
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const mode = (node.config.mode as string) ?? 'fixed';
   const limit = typeof node.config.limit === 'number' ? node.config.limit : null;

@@ -117,8 +117,8 @@ export function createDataCustomTools(
   });
   const toolDefinitions: DataToolDefinition[] = [
     {
-      name: 'data_list_input_tables',
-      ...DATA_TOOL_COPY.data_list_input_tables,
+      name: 'data_list_raw_tables',
+      ...DATA_TOOL_COPY.data_list_raw_tables,
       parameters: Type.Object({
         ...ListSchema.properties,
         sourceKind: Type.Optional(
@@ -130,7 +130,7 @@ export function createDataCustomTools(
           ])
         ),
       }),
-      execute: async (_toolCallId, params) => dataToolService.listInputTables(params as never),
+      execute: async (_toolCallId, params) => dataToolService.listRawTables(params as never),
     },
     {
       name: 'data_list_cloud_spaces',
@@ -175,7 +175,7 @@ export function createDataCustomTools(
       ...DATA_TOOL_COPY.data_import_cloud_table,
       parameters: Type.Object({
         ...CloudConnectionProperties,
-        inputTableId: Type.Optional(Type.String({ minLength: 1 })),
+        rawTableId: Type.Optional(Type.String({ minLength: 1 })),
         tableId: Type.String({ minLength: 1 }),
         spaceId: Type.Optional(
           Type.String({
@@ -190,14 +190,14 @@ export function createDataCustomTools(
         name: Type.Optional(Type.String({ minLength: 1 })),
         previewRows: PreviewRowsSchema,
       }),
-      execute: async (_toolCallId, params) => dataToolService.importCloudTable(params as never),
+      execute: async (_toolCallId, params) => dataToolService.importCloudRawTable(params as never),
     },
     {
       name: 'data_upload_table_to_cloud',
       ...DATA_TOOL_COPY.data_upload_table_to_cloud,
       parameters: Type.Object({
         ...CloudConnectionProperties,
-        tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),
+        tableKind: Type.Union([Type.Literal('raw'), Type.Literal('result')]),
         id: Type.String({ minLength: 1 }),
         writeMode: Type.Union([Type.Literal('CREATE'), Type.Literal('REPLACE')]),
         datasourceId: Type.Optional(
@@ -222,8 +222,8 @@ export function createDataCustomTools(
         dataToolService.uploadDataTableToCloud(params as never),
     },
     {
-      name: 'data_create_input_table',
-      ...DATA_TOOL_COPY.data_create_input_table,
+      name: 'data_create_raw_table',
+      ...DATA_TOOL_COPY.data_create_raw_table,
       parameters: Type.Object({
         name: Type.Optional(Type.String({ minLength: 1 })),
         sourceKind: SourceKindSchema,
@@ -237,11 +237,11 @@ export function createDataCustomTools(
         previewRows: PreviewRowsSchema,
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.createInputTable(resolveLocalSourcePathParams(params, context) as never),
+        dataToolService.createRawTable(resolveLocalSourcePathParams(params, context) as never),
     },
     {
-      name: 'data_create_input_table_with_processing_strategy',
-      ...DATA_TOOL_COPY.data_create_input_table_with_processing_strategy,
+      name: 'data_create_raw_table_with_processing_strategy',
+      ...DATA_TOOL_COPY.data_create_raw_table_with_processing_strategy,
       parameters: Type.Object({
         name: Type.Optional(Type.String({ minLength: 1 })),
         sourceKind: SourceKindSchema,
@@ -256,13 +256,13 @@ export function createDataCustomTools(
         processingStrategy: ProcessingStrategySchema,
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.createInputTableWithProcessingStrategy(
+        dataToolService.createRawTableWithProcessingStrategy(
           normalizeProcessingStrategyParams(resolveLocalSourcePathParams(params, context)) as never
         ),
     },
     {
-      name: 'data_update_input_table',
-      ...DATA_TOOL_COPY.data_update_input_table,
+      name: 'data_update_raw_table',
+      ...DATA_TOOL_COPY.data_update_raw_table,
       parameters: Type.Object({
         id: Type.String({ minLength: 1 }),
         name: Type.Optional(Type.String({ minLength: 1 })),
@@ -273,11 +273,11 @@ export function createDataCustomTools(
         previewRows: PreviewRowsSchema,
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.updateInputTable(resolveLocalSourcePathParams(params, context) as never),
+        dataToolService.updateRawTable(resolveLocalSourcePathParams(params, context) as never),
     },
     {
-      name: 'data_summarize_input_table_source',
-      ...DATA_TOOL_COPY.data_summarize_input_table_source,
+      name: 'data_summarize_raw_table_source',
+      ...DATA_TOOL_COPY.data_summarize_raw_table_source,
       parameters: Type.Object({
         sourcePath: Type.String({ minLength: 1 }),
         sourceKind: SourceKindSchema,
@@ -288,13 +288,13 @@ export function createDataCustomTools(
         maxColumnsPerRow: Type.Optional(Type.Integer({ minimum: 1, maximum: 80 })),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.summarizeInputTableSource(
+        dataToolService.summarizeRawTableSource(
           resolveLocalSourcePathParams(params, context) as never
         ),
     },
     {
-      name: 'data_generate_input_table_normalizer_draft',
-      ...DATA_TOOL_COPY.data_generate_input_table_normalizer_draft,
+      name: 'data_generate_raw_table_normalizer_draft',
+      ...DATA_TOOL_COPY.data_generate_raw_table_normalizer_draft,
       parameters: Type.Object({
         artifactId: Type.Optional(Type.String()),
         name: Type.String({ minLength: 1 }),
@@ -306,13 +306,13 @@ export function createDataCustomTools(
         primaryLanguage: Type.Optional(Type.Union([Type.Literal('python'), Type.Literal('node')])),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.generateInputTableNormalizerDraft(
+        dataToolService.generateRawTableNormalizerDraft(
           resolveLocalSourcePathParams(params, context) as never
         ),
     },
     {
-      name: 'data_preview_input_table_normalizer_version',
-      ...DATA_TOOL_COPY.data_preview_input_table_normalizer_version,
+      name: 'data_preview_raw_table_normalizer_version',
+      ...DATA_TOOL_COPY.data_preview_raw_table_normalizer_version,
       parameters: Type.Object({
         versionId: Type.String({ minLength: 1 }),
         sourcePath: Type.String({ minLength: 1 }),
@@ -323,60 +323,60 @@ export function createDataCustomTools(
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.previewInputTableNormalizerVersion(
+        dataToolService.previewRawTableNormalizerVersion(
           resolveLocalSourcePathParams(params, context) as never
         ),
     },
     {
-      name: 'data_publish_input_table_normalizer_version',
-      ...DATA_TOOL_COPY.data_publish_input_table_normalizer_version,
+      name: 'data_publish_raw_table_normalizer_version',
+      ...DATA_TOOL_COPY.data_publish_raw_table_normalizer_version,
       parameters: Type.Object({
         versionId: Type.String({ minLength: 1 }),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.publishInputTableNormalizerVersion(params as never),
+        dataToolService.publishRawTableNormalizerVersion(params as never),
     },
     {
-      name: 'data_list_input_table_normalizer_versions',
-      ...DATA_TOOL_COPY.data_list_input_table_normalizer_versions,
+      name: 'data_list_raw_table_normalizer_versions',
+      ...DATA_TOOL_COPY.data_list_raw_table_normalizer_versions,
       parameters: Type.Object({
         artifactId: Type.String({ minLength: 1 }),
       }),
       execute: async (_toolCallId, params) =>
-        dataToolService.listInputTableNormalizerVersions(params as never),
+        dataToolService.listRawTableNormalizerVersions(params as never),
     },
     {
-      name: 'data_list_output_tables',
-      ...DATA_TOOL_COPY.data_list_output_tables,
+      name: 'data_list_result_tables',
+      ...DATA_TOOL_COPY.data_list_result_tables,
       parameters: ListSchema,
-      execute: async (_toolCallId, params) => dataToolService.listOutputTables(params as never),
+      execute: async (_toolCallId, params) => dataToolService.listResultTables(params as never),
     },
     {
-      name: 'data_create_output_table',
-      ...DATA_TOOL_COPY.data_create_output_table,
+      name: 'data_create_result_table',
+      ...DATA_TOOL_COPY.data_create_result_table,
       parameters: Type.Object({
         name: Type.Optional(Type.String({ minLength: 1 })),
-        sourceInputTableId: Type.Optional(
-          Type.String({ description: TOOL_SCHEMA_COPY.data.sourceInputTableId })
+        sourceRawTableId: Type.Optional(
+          Type.String({ description: TOOL_SCHEMA_COPY.data.sourceRawTableId })
         ),
       }),
-      execute: async (_toolCallId, params) => dataToolService.createOutputTable(params as never),
+      execute: async (_toolCallId, params) => dataToolService.createResultTable(params as never),
     },
     {
-      name: 'data_update_output_table',
-      ...DATA_TOOL_COPY.data_update_output_table,
+      name: 'data_update_result_table',
+      ...DATA_TOOL_COPY.data_update_result_table,
       parameters: Type.Object({
         id: Type.String({ minLength: 1 }),
         name: Type.Optional(Type.String({ minLength: 1 })),
-        sourceInputTableId: Type.Optional(Type.String()),
+        sourceRawTableId: Type.Optional(Type.String()),
       }),
-      execute: async (_toolCallId, params) => dataToolService.updateOutputTable(params as never),
+      execute: async (_toolCallId, params) => dataToolService.updateResultTable(params as never),
     },
     {
       name: 'data_preview_table',
       ...DATA_TOOL_COPY.data_preview_table,
       parameters: Type.Object({
-        tableKind: Type.Union([Type.Literal('input'), Type.Literal('output')]),
+        tableKind: Type.Union([Type.Literal('raw'), Type.Literal('result')]),
         id: Type.String({ minLength: 1 }),
         limit: PreviewRowsSchema,
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
@@ -390,43 +390,43 @@ export function createDataCustomTools(
       execute: async (_toolCallId, params) => dataToolService.previewTable(params as never),
     },
     {
-      name: 'data_list_tasks',
-      ...DATA_TOOL_COPY.data_list_tasks,
+      name: 'data_list_pipelines',
+      ...DATA_TOOL_COPY.data_list_pipelines,
       parameters: ListSchema,
-      execute: async (_toolCallId, params) => dataToolService.listTasks(params as never),
+      execute: async (_toolCallId, params) => dataToolService.listPipelines(params as never),
     },
     {
-      name: 'data_analyze_task_requirement',
-      ...DATA_TOOL_COPY.data_analyze_task_requirement,
+      name: 'data_analyze_pipeline_requirement',
+      ...DATA_TOOL_COPY.data_analyze_pipeline_requirement,
       parameters: Type.Object(
         {
-          inputTableId: Type.String({
+          rawTableId: Type.String({
             minLength: 1,
-            description: TOOL_SCHEMA_COPY.data.requirementInputTableId,
+            description: TOOL_SCHEMA_COPY.data.requirementRawTableId,
           }),
           processRequirement: Type.String({
             minLength: 1,
             maxLength: 10_000,
             description: TOOL_SCHEMA_COPY.data.processRequirement,
           }),
-          reuseTaskId: Type.Optional(
+          reusePipelineId: Type.Optional(
             Type.String({
               minLength: 1,
               description:
-                'Existing task to edit; generation updates this task after confirmation.',
+                'Existing pipeline to edit; generation updates this pipeline after confirmation.',
             })
           ),
           startFromNodeId: Type.Optional(
             Type.String({
               minLength: 1,
-              description: 'Continue after this saved workflow node. Requires reuseTaskId.',
+              description: 'Continue after this saved workflow node. Requires reusePipelineId.',
             })
           ),
         },
         { additionalProperties: false }
       ),
       execute: async (toolCallId, params, signal, onUpdate) =>
-        dataToolService.analyzeTaskRequirement(params as never, {
+        dataToolService.analyzePipelineRequirement(params as never, {
           ...(executionContext
             ? { ...executionContext, toolCallId, signal }
             : dataToolService.resolveExecutionContext(
@@ -438,8 +438,8 @@ export function createDataCustomTools(
         }),
     },
     {
-      name: 'data_generate_task_from_requirement',
-      ...DATA_TOOL_COPY.data_generate_task_from_requirement,
+      name: 'data_generate_pipeline_from_requirement',
+      ...DATA_TOOL_COPY.data_generate_pipeline_from_requirement,
       parameters: Type.Object(
         {
           analysisId: Type.String({
@@ -449,28 +449,28 @@ export function createDataCustomTools(
           confirmed: Type.Literal(true, {
             description: TOOL_SCHEMA_COPY.data.analysisConfirmed,
           }),
-          taskName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+          pipelineName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
           outputMode: Type.Union([Type.Literal('create'), Type.Literal('replace')], {
             description: TOOL_SCHEMA_COPY.data.outputMode,
           }),
-          outputTableName: Type.Optional(
+          resultTableName: Type.Optional(
             Type.String({
               minLength: 1,
               maxLength: 200,
-              description: TOOL_SCHEMA_COPY.data.outputTableName,
+              description: TOOL_SCHEMA_COPY.data.resultTableName,
             })
           ),
-          outputTableId: Type.Optional(
+          resultTableId: Type.Optional(
             Type.String({
               minLength: 1,
-              description: TOOL_SCHEMA_COPY.data.outputTableId,
+              description: TOOL_SCHEMA_COPY.data.resultTableId,
             })
           ),
         },
         { additionalProperties: false }
       ),
       execute: async (toolCallId, params, signal, onUpdate) =>
-        dataToolService.generateTaskFromAnalysis(params as never, {
+        dataToolService.generatePipelineFromAnalysis(params as never, {
           ...(executionContext
             ? { ...executionContext, toolCallId, signal }
             : dataToolService.resolveExecutionContext(
@@ -488,24 +488,24 @@ export function createDataCustomTools(
         id: Type.String({ minLength: 1 }),
         name: Type.Optional(Type.String({ minLength: 1 })),
       }),
-      execute: async (_toolCallId, params) => dataToolService.updateTask(params as never),
+      execute: async (_toolCallId, params) => dataToolService.updatePipeline(params as never),
     },
     {
-      name: 'data_get_task_workflow',
-      ...DATA_TOOL_COPY.data_get_task_workflow,
+      name: 'data_get_pipeline_workflow',
+      ...DATA_TOOL_COPY.data_get_pipeline_workflow,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         view: Type.Optional(
           Type.Union([Type.Literal('summary'), Type.Literal('graph'), Type.Literal('node')], {
             description:
-              'summary (default): task meta + node types. graph: full editable node configs and edges. node: one node config + touching edges (requires nodeId).',
+              'summary (default): pipeline meta + node types. graph: full editable node configs and edges. node: one node config + touching edges (requires nodeId).',
           })
         ),
         nodeId: Type.Optional(
           Type.String({ minLength: 1, description: 'Required when view="node"' })
         ),
       }),
-      execute: async (_toolCallId, params) => dataToolService.getTaskWorkflow(params as never),
+      execute: async (_toolCallId, params) => dataToolService.getPipelineWorkflow(params as never),
     },
     {
       name: 'data_get_workflow_dsl_reference',
@@ -530,12 +530,12 @@ export function createDataCustomTools(
       name: 'data_get_workflow_capability_manifest',
       ...DATA_TOOL_COPY.data_get_workflow_capability_manifest,
       parameters: Type.Object({
-        inputTableIds: Type.Optional(
+        rawTableIds: Type.Optional(
           Type.Array(Type.String({ minLength: 1 }), {
             description: 'Input table ids to include real column snapshots for',
           })
         ),
-        outputTableIds: Type.Optional(
+        resultTableIds: Type.Optional(
           Type.Array(Type.String({ minLength: 1 }), {
             description: 'Output table ids to include real column snapshots for',
           })
@@ -568,7 +568,7 @@ export function createDataCustomTools(
       name: 'data_apply_workflow_plan',
       ...DATA_TOOL_COPY.data_apply_workflow_plan,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         plan: Type.Unsafe<Record<string, unknown>>({
           type: 'object',
           description:
@@ -578,10 +578,10 @@ export function createDataCustomTools(
           Type.Unsafe<Record<string, string>>({
             type: 'object',
             additionalProperties: { type: 'string' },
-            description: 'alias -> inputTableId binding for each input_source node',
+            description: 'alias -> rawTableId binding for each input_source node',
           })
         ),
-        outputTableId: Type.Optional(
+        resultTableId: Type.Optional(
           Type.String({ description: 'Real output table id binding the first output sink' })
         ),
         dryRun: Type.Optional(
@@ -594,9 +594,9 @@ export function createDataCustomTools(
       name: 'data_apply_workflow_dsl',
       ...DATA_TOOL_COPY.data_apply_workflow_dsl,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         dsl: Type.String({ minLength: 1 }),
-        inputTableId: Type.Optional(
+        rawTableId: Type.Optional(
           Type.String({ description: 'Single-source binding: first (or inputAlias) input node' })
         ),
         inputAlias: Type.Optional(Type.String()),
@@ -604,10 +604,10 @@ export function createDataCustomTools(
           Type.Unsafe<Record<string, string>>({
             type: 'object',
             additionalProperties: { type: 'string' },
-            description: 'alias -> inputTableId binding for multi-source workflows',
+            description: 'alias -> rawTableId binding for multi-source workflows',
           })
         ),
-        outputTableId: Type.Optional(
+        resultTableId: Type.Optional(
           Type.String({ description: 'Real output table id binding the first output sink' })
         ),
         dryRun: Type.Optional(Type.Boolean()),
@@ -618,9 +618,9 @@ export function createDataCustomTools(
       name: 'data_configure_input_operator',
       ...DATA_TOOL_COPY.data_configure_input_operator,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         nodeId: Type.String({ minLength: 1 }),
-        inputTableId: Type.String({ minLength: 1 }),
+        rawTableId: Type.String({ minLength: 1 }),
         alias: Type.Optional(Type.String()),
         dryRun: Type.Optional(Type.Boolean()),
       }),
@@ -631,10 +631,10 @@ export function createDataCustomTools(
       name: 'data_configure_output_operator',
       ...DATA_TOOL_COPY.data_configure_output_operator,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         nodeId: Type.String({ minLength: 1 }),
-        outputTableId: Type.Optional(Type.String()),
-        outputTableName: Type.Optional(Type.String()),
+        resultTableId: Type.Optional(Type.String()),
+        resultTableName: Type.Optional(Type.String()),
         outputStrategy: Type.Optional(Type.Union([Type.Literal('existing'), Type.Literal('auto')])),
         mode: Type.Optional(
           Type.Union([
@@ -657,7 +657,7 @@ export function createDataCustomTools(
       name: 'data_apply_operator_dsl',
       ...DATA_TOOL_COPY.data_apply_operator_dsl,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         nodeId: Type.String({ minLength: 1 }),
         operatorType: Type.Optional(Type.String()),
         dsl: Type.String({ minLength: 1 }),
@@ -669,15 +669,15 @@ export function createDataCustomTools(
       name: 'data_export_workflow_dsl',
       ...DATA_TOOL_COPY.data_export_workflow_dsl,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
       }),
       execute: async (_toolCallId, params) => dataToolService.exportWorkflowDsl(params as never),
     },
     {
-      name: 'data_run_task',
-      ...DATA_TOOL_COPY.data_run_task,
+      name: 'data_run_pipeline',
+      ...DATA_TOOL_COPY.data_run_pipeline,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         mode: Type.Optional(Type.Union([Type.Literal('temporary'), Type.Literal('persisted')])),
         workflowDsl: Type.Optional(
           Type.String({ description: 'One-off DSL override for this run (not saved)' })
@@ -689,21 +689,21 @@ export function createDataCustomTools(
           Type.Unsafe<Record<string, string>>({
             type: 'object',
             additionalProperties: { type: 'string' },
-            description: 'alias -> inputTableId binding applied to the workflowDsl override',
+            description: 'alias -> rawTableId binding applied to the workflowDsl override',
           })
         ),
-        inputTableId: Type.Optional(Type.String()),
+        rawTableId: Type.Optional(Type.String()),
         inputAlias: Type.Optional(Type.String()),
-        outputTableId: Type.Optional(Type.String()),
+        resultTableId: Type.Optional(Type.String()),
         previewRows: AgentResultPreviewRowsSchema,
       }),
-      execute: async (_toolCallId, params) => dataToolService.runTask(params as never),
+      execute: async (_toolCallId, params) => dataToolService.runPipeline(params as never),
     },
     {
       name: 'data_get_run_result',
       ...DATA_TOOL_COPY.data_get_run_result,
       parameters: Type.Object({
-        taskId: Type.String({ minLength: 1 }),
+        pipelineId: Type.String({ minLength: 1 }),
         previewRows: AgentResultPreviewRowsSchema,
         offset: Type.Optional(Type.Integer({ minimum: 0 })),
       }),

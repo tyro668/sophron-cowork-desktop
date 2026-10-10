@@ -1,7 +1,7 @@
 import { app, Notification } from 'electron';
 import type { Automation, AutomationRun } from '../../shared/automation/types';
 import { APP_INTERNAL_NAME, APP_NAME_EN } from '../../shared/branding';
-import type { Session, DataCleaningTask } from '../../shared/contracts';
+import type { Session, DataPipeline } from '../../shared/contracts';
 import { logWarn } from '../utils/logger';
 import { appContext } from './context';
 
@@ -60,13 +60,13 @@ export function notifyAutomationRunFinished(automation: Automation, run: Automat
   });
 }
 
-export function notifyDataTaskCompleted(task: DataCleaningTask): void {
+export function notifyDataPipelineCompleted(task: DataPipeline): void {
   const shape =
     task.rowCount === null
       ? ''
       : `，${task.rowCount} 行${task.columnCount === null ? '' : `，${task.columnCount} 列`}`;
   sendSystemNotification({
-    title: '数据任务执行完成',
+    title: '数据加工执行完成',
     body: `${task.name}${shape}`,
   });
 }

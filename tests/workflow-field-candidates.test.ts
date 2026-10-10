@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../src/renderer/types';
-import { getWorkflowFieldSourceCandidates } from '../src/renderer/components/data-view/data-tasks/workflow/workflow-field-candidates';
+import { getWorkflowFieldSourceCandidates } from '../src/renderer/components/data-view/data-pipelines/workflow/workflow-field-candidates';
 
 function node(id: string, type: DataWorkflowNode['type']): DataWorkflowNode {
   return {
     id,
-    taskId: 'task',
+    pipelineId: 'pipeline',
     type,
     label: id,
     x: 0,
@@ -19,7 +19,7 @@ function node(id: string, type: DataWorkflowNode['type']): DataWorkflowNode {
 function edge(sourceNodeId: string, targetNodeId: string): DataWorkflowEdge {
   return {
     id: `${sourceNodeId}-${targetNodeId}`,
-    taskId: 'task',
+    pipelineId: 'pipeline',
     sourceNodeId,
     targetNodeId,
     sourceHandle: null,

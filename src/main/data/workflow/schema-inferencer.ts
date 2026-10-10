@@ -1,11 +1,8 @@
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
-import type {
-  DataAutomationColumnSnapshot,
-  DataInputTablePreview,
-} from '../../../shared/contracts';
+import type { DataAutomationColumnSnapshot, DataRawTablePreview } from '../../../shared/contracts';
 import { DataCommandError } from '../data-command-types';
 import {
-  type GeneratedDataTaskWorkflow,
+  type GeneratedDataPipelineWorkflow,
   areComparableColumnTypes,
   toAutomationColumnSnapshot,
 } from './workflow-ir-lowerer';
@@ -23,7 +20,7 @@ export function hashColumns(columns: Array<{ name: string; type?: string }>): st
   return `columns_${Math.abs(hash).toString(16)}`;
 }
 
-export function validateGeneratedTaskSchema(
+export function validateGeneratedPipelineSchema(
   actualColumns: Array<{ name: string; type?: string }>,
   requiredColumns: Array<{ name: string; type?: string }>,
   policy: 'strict' | 'required_subset'
@@ -65,7 +62,7 @@ export function validateGeneratedTaskSchema(
 }
 
 export function validateGeneratedWorkflowGenerationContract(
-  generated: GeneratedDataTaskWorkflow,
+  generated: GeneratedDataPipelineWorkflow,
   sourceColumns: DataAutomationColumnSnapshot[]
 ): PrepDiagnostic[] {
   const diagnostics: PrepDiagnostic[] = [];
@@ -217,10 +214,10 @@ export function validateGeneratedWorkflowGenerationContract(
 }
 
 export function reconcileGeneratedWorkflowWithOutputPreview(
-  generated: GeneratedDataTaskWorkflow,
-  preview: DataInputTablePreview | undefined,
+  generated: GeneratedDataPipelineWorkflow,
+  preview: DataRawTablePreview | undefined,
   sourceColumns: DataAutomationColumnSnapshot[]
-): GeneratedDataTaskWorkflow {
+): GeneratedDataPipelineWorkflow {
   const actualOutputSchema = outputSchemaFromPreview(preview);
   if (actualOutputSchema.length === 0) return generated;
 
@@ -253,7 +250,7 @@ export function reconcileGeneratedWorkflowWithOutputPreview(
 }
 
 function outputSchemaFromPreview(
-  preview: DataInputTablePreview | undefined
+  preview: DataRawTablePreview | undefined
 ): DataAutomationColumnSnapshot[] {
   if (!preview) return [];
   const columns = preview.columnTypes.length
@@ -263,7 +260,7 @@ function outputSchemaFromPreview(
 }
 
 export function validateGeneratedOutputPreviewSchema(
-  preview: DataInputTablePreview | undefined,
+  preview: DataRawTablePreview | undefined,
   expectedOutputSchema: Array<{ name: string; type?: string }>
 ): PrepDiagnostic[] {
   if (expectedOutputSchema.length === 0) return [];

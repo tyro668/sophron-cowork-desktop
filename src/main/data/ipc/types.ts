@@ -1,13 +1,13 @@
 import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import type { DataCommandService } from '../data-command-service';
-import type { DataTaskStore } from '../data-task-store';
+import type { DataPipelineStore } from '../data-pipeline-store';
 
 export interface DataIpcContext {
-  requireDataTaskStore: () => DataTaskStore;
+  requireDataPipelineStore: () => DataPipelineStore;
   requireDataCommandService: () => DataCommandService;
   resolveModelRuntimeConfig: (
     configSetId: string
   ) => AgentRuntimeConfig | null | Promise<AgentRuntimeConfig | null>;
-  notifyDataTaskCompleted: (task: import('../../../shared/contracts').DataCleaningTask) => void;
+  notifyDataPipelineCompleted: (pipeline: import('../../../shared/contracts').DataPipeline) => void;
   logError: (...args: unknown[]) => void;
 }

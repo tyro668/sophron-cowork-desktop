@@ -1,9 +1,9 @@
-import type { DataDataset } from '../../shared/contracts';
+import type { DataRawTable } from '../../shared/contracts';
 import type {
-  CreateInputTableCommand,
-  GenerateTaskFromRequirementCommand,
-  InputTableResult,
-  UpdateInputTableCommand,
+  CreateRawTableCommand,
+  GeneratePipelineFromRequirementCommand,
+  RawTableResult,
+  UpdateRawTableCommand,
 } from './data-command-types';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { DataCommandLockCoordinator } from './data-command-lock-coordinator';
@@ -20,14 +20,14 @@ import {
 import { log } from '../utils/logger';
 import { normalizeColumnSnapshot } from './workflow';
 
-export interface PreparedGeneratedTaskInput {
-  inputTable: DataDataset;
+export interface PreparedGeneratedPipelineInput {
+  rawTable: DataRawTable;
   columnsSnapshot: Array<{ name: string; type?: string }>;
 }
 
-interface AutomationInputTableCommands {
-  createInputTable: (input: CreateInputTableCommand) => Promise<InputTableResult>;
-  updateInputTable: (input: UpdateInputTableCommand) => Promise<InputTableResult>;
+interface AutomationRawTableCommands {
+  createRawTable: (input: CreateRawTableCommand) => Promise<RawTableResult>;
+  updateRawTable: (input: UpdateRawTableCommand) => Promise<RawTableResult>;
 }
 
 export class AutomationInputResolver {
@@ -35,49 +35,53 @@ export class AutomationInputResolver {
     private readonly resources: DataCommandResources,
     private readonly locks: DataCommandLockCoordinator,
     private readonly preview: WorkflowPreviewService,
-    private readonly inputTables: AutomationInputTableCommands,
+    private readonly rawTables: AutomationRawTableCommands,
     private readonly cloudAnalysis: CloudAnalysisCommandService
   ) {}
 
-  async prepareGeneratedTaskInput(
-    input: Pick<GenerateTaskFromRequirementCommand, 'source'>
-  ): Promise<PreparedGeneratedTaskInput> {
+  async prepareGeneratedPipelineInput(
+    input: Pick<GeneratePipelineFromRequirementCommand, 'source'>
+  ): Promise<PreparedGeneratedPipelineInput> {
     if (input.source.location === 'cloud') {
-      const imported = await this.refreshAutomationCloudMirrorInputTable(input.source);
+      const imported = await this.refreshAutomationCloudMirrorRawTable(input.source);
       return {
-        inputTable: imported.inputTable,
+        rawTable: imported.rawTable,
         columnsSnapshot: normalizeColumnSnapshot(
           imported.preview?.columnTypes,
           input.source.columnsSnapshot
         ),
       };
     }
-    const inputTable = await this.resources.requireInputTable(
+    const rawTable = await this.resources.requireRawTable(
       normalizeRequiredName(input.source.tableId, 'Input table id is required')
     );
     let columnsSnapshot = normalizeColumnSnapshot(undefined, input.source.columnsSnapshot);
     if (columnsSnapshot.length === 0) {
       try {
-        const tablePreview = await this.preview.previewDataset(inputTable.id, 20);
+        const tablePreview = await this.preview.previewRawTable(rawTable.id, 20);
         columnsSnapshot = normalizeColumnSnapshot(tablePreview.columnTypes);
       } catch (error) {
-        logDataCommandFallback('Failed to infer generated-task columns from local preview', error, {
-          inputTableId: inputTable.id,
-        });
+        logDataCommandFallback(
+          'Failed to infer generated-pipeline columns from local preview',
+          error,
+          {
+            rawTableId: rawTable.id,
+          }
+        );
         columnsSnapshot = [];
       }
     }
-    return { inputTable, columnsSnapshot };
+    return { rawTable, columnsSnapshot };
   }
 
-  private async refreshAutomationCloudMirrorInputTable(
-    source: GenerateTaskFromRequirementCommand['source']
-  ): Promise<InputTableResult> {
+  private async refreshAutomationCloudMirrorRawTable(
+    source: GeneratePipelineFromRequirementCommand['source']
+  ): Promise<RawTableResult> {
     const tableId = normalizeRequiredName(source.tableId, 'Cloud table id is required');
     const mirrorName = buildAutomationCloudMirrorInputName(source.tableName, tableId);
     return this.locks.withKeyedLock(`cloud-mirror:${mirrorName}`, async () => {
       const mirrorStartedAt = Date.now();
-      const existing = await this.resources.findInputTableByExactName(mirrorName);
+      const existing = await this.resources.findRawTableByExactName(mirrorName);
       const sourceVersion = normalizeOptionalName(source.updatedAt);
       const existingMirror =
         existing?.inputConfig.sourceKind === 'cloud' || existing?.inputConfig.sourceKind === 'csv'
@@ -89,7 +93,7 @@ export class AutomationInputResolver {
         existingMirror?.tableId === tableId &&
         existingMirror.sourceVersion === sourceVersion
       ) {
-        const result = await this.reuseAutomationCloudMirrorInputTable(existing);
+        const result = await this.reuseAutomationCloudMirrorRawTable(existing);
         log('[DataCommandService] Reused unchanged cloud mirror input table', {
           tableId,
           mirrorName,
@@ -108,7 +112,7 @@ export class AutomationInputResolver {
         existingMirror?.tableId === tableId &&
         existingMirror.contentHash === contentHash
       ) {
-        const result = await this.reuseAutomationCloudMirrorInputTable(existing);
+        const result = await this.reuseAutomationCloudMirrorRawTable(existing);
         log('[DataCommandService] Reused unchanged cloud mirror input table', {
           tableId,
           mirrorName,
@@ -134,7 +138,7 @@ export class AutomationInputResolver {
         },
       };
       if (existing) {
-        const result = await this.updateAutomationCloudMirrorInputTable(
+        const result = await this.updateAutomationCloudMirrorRawTable(
           existing.id,
           mirrorName,
           downloaded.downloadedFilePath,
@@ -150,7 +154,7 @@ export class AutomationInputResolver {
         return result;
       }
       try {
-        const result = await this.inputTables.createInputTable({
+        const result = await this.rawTables.createRawTable({
           name: mirrorName,
           sourceKind: 'cloud',
           filePath: downloaded.downloadedFilePath,
@@ -167,9 +171,9 @@ export class AutomationInputResolver {
         return result;
       } catch (error) {
         if (isDataCommandErrorCode(error, 'RESOURCE_ALREADY_EXISTS')) {
-          const conflict = await this.resources.findInputTableByExactName(mirrorName);
+          const conflict = await this.resources.findRawTableByExactName(mirrorName);
           if (conflict) {
-            return this.updateAutomationCloudMirrorInputTable(
+            return this.updateAutomationCloudMirrorRawTable(
               conflict.id,
               mirrorName,
               downloaded.downloadedFilePath,
@@ -182,13 +186,13 @@ export class AutomationInputResolver {
     });
   }
 
-  private async updateAutomationCloudMirrorInputTable(
+  private async updateAutomationCloudMirrorRawTable(
     id: string,
     name: string,
     filePath: string,
-    config: Extract<DataDataset['inputConfig'], { sourceKind: 'cloud' }>
-  ): Promise<InputTableResult> {
-    return this.inputTables.updateInputTable({
+    config: Extract<DataRawTable['inputConfig'], { sourceKind: 'cloud' }>
+  ): Promise<RawTableResult> {
+    return this.rawTables.updateRawTable({
       id,
       name,
       sourceKind: 'cloud',
@@ -198,9 +202,9 @@ export class AutomationInputResolver {
     });
   }
 
-  private async reuseAutomationCloudMirrorInputTable(
-    inputTable: DataDataset
-  ): Promise<InputTableResult> {
-    return { inputTable, preview: await this.preview.previewDataset(inputTable.id, 50) };
+  private async reuseAutomationCloudMirrorRawTable(
+    rawTable: DataRawTable
+  ): Promise<RawTableResult> {
+    return { rawTable, preview: await this.preview.previewRawTable(rawTable.id, 50) };
   }
 }

@@ -189,6 +189,7 @@ export function normalizeListWindow(
   return { offset: normalizedOffset, limit: normalizedLimit };
 }
 
-export type DataTaskStatus = 'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
+export type DataPipelineStatus =
+  'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
 
 export type { DataFieldType };

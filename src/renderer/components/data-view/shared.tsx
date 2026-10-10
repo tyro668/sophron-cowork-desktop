@@ -14,17 +14,17 @@ import {
   Table2,
   type LucideIcon,
 } from 'lucide-react';
-import type { DataDataset, DataOutputTable, DataTaskStatus } from '../../types';
-import type { InputTableSourceKind } from '../../features/data/model/types';
-import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
+import type { DataRawTable, DataResultTable, DataPipelineStatus } from '../../types';
+import type { RawTableSourceKind } from '../../features/data/model/types';
+import { GlassDropdownMenu, GlassMenuItem, GlassMenuSub } from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
 
 export type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 export const TABLE_PAGE_SIZE = 10;
-export const INPUT_TABLE_PREVIEW_PAGE_SIZE = 100;
-export const OUTPUT_TABLE_INPUT_CHOICES_LIMIT = 200;
+export const RAW_TABLE_PREVIEW_PAGE_SIZE = 100;
+export const RESULT_TABLE_INPUT_CHOICES_LIMIT = 200;
 export const DATA_DELETE_BATCH_SIZE = 200;
 
 export function makeLocalId(prefix: string): string {
@@ -63,7 +63,7 @@ export const flatToolbarRowClass =
   'flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-border-subtle px-3 py-1.5';
 
 /**
- * Editor header strip (task/input-table/output-table editors): sits where the
+ * Editor header strip (pipeline/raw-table/result-table editors): sits where the
  * workspace tab bar would be, so it must match `underlineTabBarClass` height
  * (h-12) to avoid a vertical shift when drilling into an editor.
  */
@@ -133,7 +133,8 @@ export interface DataMoreMenuItem {
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  children?: DataMoreMenuItem[];
 }
 
 export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
@@ -158,22 +159,38 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
         </Button>
       }
     >
-      {items.map((item) => (
-        <GlassMenuItem
-          key={item.key}
-          disabled={item.disabled}
-          danger={item.danger}
-          icon={item.icon}
-          onSelect={item.onClick}
-        >
-          {item.label}
-        </GlassMenuItem>
-      ))}
+      {items.map((item) =>
+        item.children?.length ? (
+          <GlassMenuSub key={item.key} label={item.label} icon={item.icon} disabled={item.disabled}>
+            {item.children.map((child) => (
+              <GlassMenuItem
+                key={child.key}
+                disabled={child.disabled}
+                danger={child.danger}
+                icon={child.icon}
+                onSelect={child.onClick}
+              >
+                {child.label}
+              </GlassMenuItem>
+            ))}
+          </GlassMenuSub>
+        ) : (
+          <GlassMenuItem
+            key={item.key}
+            disabled={item.disabled}
+            danger={item.danger}
+            icon={item.icon}
+            onSelect={item.onClick}
+          >
+            {item.label}
+          </GlassMenuItem>
+        )
+      )}
     </GlassDropdownMenu>
   );
 }
 
-export function StatusBadge({ status }: { status: DataTaskStatus }) {
+export function StatusBadge({ status }: { status: DataPipelineStatus }) {
   const { t } = useTranslation();
   return (
     <span
@@ -187,7 +204,7 @@ export function StatusBadge({ status }: { status: DataTaskStatus }) {
   );
 }
 
-export function InputTableStatusBadge({
+export function RawTableStatusBadge({
   label,
   tone = 'success',
 }: {
@@ -314,7 +331,7 @@ export function PaginationFooter({
   );
 }
 
-export function InputTableFormLabel({
+export function RawTableFormLabel({
   children,
   className = '',
 }: {
@@ -326,7 +343,7 @@ export function InputTableFormLabel({
   );
 }
 
-export function InputTableInfo({
+export function RawTableInfo({
   children,
   className = '',
 }: {
@@ -343,7 +360,7 @@ export function InputTableInfo({
   );
 }
 
-export function InputTableSelect({
+export function RawTableSelect({
   value,
   options,
   disabled,
@@ -363,7 +380,7 @@ export function InputTableSelect({
         onValueChange={onChange}
         options={options}
         searchable
-        searchPlaceholder={t('data.aiTaskInputSearch')}
+        searchPlaceholder={t('data.aiPipelineInputSearch')}
         searchEmptyText={t('common.noResults')}
         triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"
@@ -372,7 +389,7 @@ export function InputTableSelect({
   );
 }
 
-export function InputTableCheckbox({
+export function RawTableCheckbox({
   checked,
   disabled,
   label,
@@ -451,25 +468,25 @@ export function formatDateTime(timestamp: number | null): string {
   }).format(new Date(timestamp));
 }
 
-export function formatRelatedTaskNames(
+export function formatRelatedPipelineNames(
   names: string[],
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  if (names.length === 0) return t('data.inputTables.noRelatedTasks');
+  if (names.length === 0) return t('data.rawTables.noRelatedPipelines');
   return names.join(', ');
 }
 
-export function formatOutputTableRelatedTaskNames(
-  outputTable: DataOutputTable,
+export function formatResultTableRelatedPipelineNames(
+  resultTable: DataResultTable,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
-  if (outputTable.relatedTaskNames.length > 0) {
-    return formatRelatedTaskNames(outputTable.relatedTaskNames, t);
+  if (resultTable.relatedPipelineNames.length > 0) {
+    return formatRelatedPipelineNames(resultTable.relatedPipelineNames, t);
   }
-  if (outputTable.sourceDatasetId) {
-    return t('data.outputTables.relatedInputTable');
+  if (resultTable.sourceRawTableId) {
+    return t('data.resultTables.relatedRawTable');
   }
-  return t('data.inputTables.noRelatedTasks');
+  return t('data.rawTables.noRelatedPipelines');
 }
 
 export function formatDisplayPath(filePath: string): string {
@@ -477,7 +494,7 @@ export function formatDisplayPath(filePath: string): string {
   return normalized.replace(/^\/Users\/[^/]+/, '~');
 }
 
-function statusBadgeClass(status: DataTaskStatus): string {
+function statusBadgeClass(status: DataPipelineStatus): string {
   switch (status) {
     case 'running':
       return 'bg-success/10 text-success';
@@ -495,7 +512,7 @@ function statusBadgeClass(status: DataTaskStatus): string {
   }
 }
 
-export function getInputTableSourceMeta(kind: InputTableSourceKind): {
+export function getRawTableSourceMeta(kind: RawTableSourceKind): {
   Icon: LucideIcon;
   labelKey: string;
   className: string;
@@ -505,14 +522,14 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
     case 'draft':
       return {
         Icon: Table2,
-        labelKey: 'data.inputTables.sources.notConfigured',
+        labelKey: 'data.rawTables.sources.notConfigured',
         className: 'bg-warning/10 text-warning',
         badgeClassName: 'bg-warning/10 text-warning',
       };
     case 'excel':
       return {
         Icon: Table2,
-        labelKey: 'data.inputTables.sources.excel',
+        labelKey: 'data.rawTables.sources.excel',
         className: 'bg-success/10 text-success',
         badgeClassName: 'bg-success/10 text-success',
       };
@@ -521,21 +538,21 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
     case 'csv':
       return {
         Icon: FileText,
-        labelKey: 'data.inputTables.sources.csv',
+        labelKey: 'data.rawTables.sources.csv',
         className: 'bg-accent-muted text-accent',
         badgeClassName: 'bg-accent-muted text-accent',
       };
     case 'folder':
       return {
         Icon: Folder,
-        labelKey: 'data.inputTables.sources.folder',
+        labelKey: 'data.rawTables.sources.folder',
         className: 'bg-warning/10 text-warning',
         badgeClassName: 'bg-warning/10 text-warning',
       };
     default:
       return {
         Icon: FileText,
-        labelKey: 'data.inputTables.sources.file',
+        labelKey: 'data.rawTables.sources.file',
         className: 'bg-surface-active text-text-secondary',
         badgeClassName: 'bg-surface-active text-text-secondary',
       };
@@ -543,23 +560,23 @@ export function getInputTableSourceMeta(kind: InputTableSourceKind): {
 }
 
 export type CloudMirrorInfo = NonNullable<
-  Extract<DataDataset['inputConfig'], { sourceKind: 'cloud' }>['cloudMirror']
+  Extract<DataRawTable['inputConfig'], { sourceKind: 'cloud' }>['cloudMirror']
 >;
 
 /** Includes legacy CSV mirrors while older records are being migrated. */
 export function getCloudMirror(
-  dataset: Pick<DataDataset, 'inputConfig'> | null | undefined
+  rawTable: Pick<DataRawTable, 'inputConfig'> | null | undefined
 ): CloudMirrorInfo | undefined {
-  const config = dataset?.inputConfig;
+  const config = rawTable?.inputConfig;
   return config?.sourceKind === 'cloud' || config?.sourceKind === 'csv'
     ? config.cloudMirror
     : undefined;
 }
 
-export function getCloudMirrorSourceMeta(): ReturnType<typeof getInputTableSourceMeta> {
+export function getCloudMirrorSourceMeta(): ReturnType<typeof getRawTableSourceMeta> {
   return {
     Icon: Cloud,
-    labelKey: 'data.inputTables.sources.cloud',
+    labelKey: 'data.rawTables.sources.cloud',
     className: 'bg-accent-muted text-accent',
     badgeClassName: 'bg-accent-muted text-accent',
   };

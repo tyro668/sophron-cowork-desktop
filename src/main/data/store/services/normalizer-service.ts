@@ -1,28 +1,28 @@
 /** Normalizer artifact lifecycle: drafts, publish, delete, preview, import runs. */
 import type {
-  DataInputTableConfig,
-  DataInputTableNormalizerVersionSaveResult,
-  DataInputTablePreview,
-  DataInputTableSourceKind,
-  DataPreviewInputTableNormalizerVersionInput,
-  DataSaveInputTableNormalizerDraftInput,
+  DataRawTableConfig,
+  DataRawTableNormalizerVersionSaveResult,
+  DataRawTablePreview,
+  DataRawTableSourceKind,
+  DataPreviewRawTableNormalizerVersionInput,
+  DataSaveRawTableNormalizerDraftInput,
 } from '../../../../shared/contracts';
-import { runInputTableNormalizerProject } from '../../input-table-normalizer-runner';
+import { runRawTableNormalizerProject } from '../../raw-table-normalizer-runner';
 import { quoteIdentifier, toNumber } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
 import {
   normalizeImportSourcePath,
-  normalizeInputTableConfig,
-  normalizeInputTableSourceKind,
+  normalizeRawTableConfig,
+  normalizeRawTableSourceKind,
   normalizePreviewLimit,
   normalizePreviewOffset,
   normalizePreviewRow,
-  PreparedInputTableImport,
-  PreparedInputTableNormalizerSourceContext,
-  prepareInputTableNormalizerSources,
+  PreparedRawTableImport,
+  PreparedRawTableNormalizerSourceContext,
+  prepareRawTableNormalizerSources,
   readNormalizerOutputRelationForPath,
-  writeInputTableNormalizerProjectFiles,
+  writeRawTableNormalizerProjectFiles,
 } from '../input-source';
 import { NormalizerRepository } from '../repositories/normalizer-repository';
 import { InputSourceSummaryService } from './input-source-summary-service';
@@ -35,9 +35,9 @@ export class NormalizerService {
     private readonly normalizers: NormalizerRepository,
     private readonly summarizer: InputSourceSummaryService
   ) {}
-  async saveInputTableNormalizerDraft(
-    input: DataSaveInputTableNormalizerDraftInput
-  ): Promise<DataInputTableNormalizerVersionSaveResult> {
+  async saveRawTableNormalizerDraft(
+    input: DataSaveRawTableNormalizerDraftInput
+  ): Promise<DataRawTableNormalizerVersionSaveResult> {
     await this.ctx.ensureMetadataReady();
     const name = input.name.trim();
     const rulePrompt = input.rulePrompt.trim();
@@ -60,7 +60,7 @@ export class NormalizerService {
     const now = this.ctx.now();
     const artifactId = input.artifactId?.trim() || uuidv4();
     const existingArtifact = input.artifactId
-      ? await this.normalizers.getInputTableNormalizerArtifact(artifactId)
+      ? await this.normalizers.getRawTableNormalizerArtifact(artifactId)
       : null;
     if (input.artifactId && !existingArtifact) {
       throw new Error(`Normalizer artifact not found: ${artifactId}`);
@@ -89,9 +89,9 @@ export class NormalizerService {
 
     const versionNumber = await this.normalizers.nextVersionNumber(artifactId);
     const versionId = uuidv4();
-    const projectDir = this.normalizers.getInputTableNormalizerProjectDir(artifactId, versionId);
+    const projectDir = this.normalizers.getRawTableNormalizerProjectDir(artifactId, versionId);
     try {
-      writeInputTableNormalizerProjectFiles(projectDir, files);
+      writeRawTableNormalizerProjectFiles(projectDir, files);
       await this.normalizers.insertVersion({
         id: versionId,
         artifactId,
@@ -116,63 +116,61 @@ export class NormalizerService {
     }
 
     return {
-      artifact: await this.normalizers.requireInputTableNormalizerArtifact(artifactId),
-      version: await this.normalizers.requireInputTableNormalizerArtifactVersion(versionId),
+      artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifactId),
+      version: await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId),
     };
   }
-  async publishInputTableNormalizerArtifactVersion(
+  async publishRawTableNormalizerArtifactVersion(
     versionId: string
-  ): Promise<DataInputTableNormalizerVersionSaveResult> {
+  ): Promise<DataRawTableNormalizerVersionSaveResult> {
     await this.ctx.ensureMetadataReady();
-    const version = await this.normalizers.requireInputTableNormalizerArtifactVersion(versionId);
-    const artifact = await this.normalizers.requireInputTableNormalizerArtifact(version.artifactId);
+    const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId);
+    const artifact = await this.normalizers.requireRawTableNormalizerArtifact(version.artifactId);
     const now = this.ctx.now();
     await this.normalizers.archiveOtherPublishedVersions(artifact.id, versionId, now);
     await this.normalizers.markVersionPublished(versionId, now);
     await this.normalizers.setArtifactActiveVersion(artifact.id, versionId, now);
     return {
-      artifact: await this.normalizers.requireInputTableNormalizerArtifact(artifact.id),
-      version: await this.normalizers.requireInputTableNormalizerArtifactVersion(versionId),
+      artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifact.id),
+      version: await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId),
     };
   }
-  async deleteInputTableNormalizerArtifactVersion(
-    versionId: string
-  ): Promise<{ success: boolean }> {
+  async deleteRawTableNormalizerArtifactVersion(versionId: string): Promise<{ success: boolean }> {
     await this.ctx.ensureMetadataReady();
-    const version = await this.normalizers.requireInputTableNormalizerArtifactVersion(versionId);
+    const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId);
     if (version.status === 'published') {
       throw new Error('Published normalizer versions cannot be deleted');
     }
     const now = this.ctx.now();
     await this.normalizers.deleteVersionRow(versionId);
     await this.normalizers.touchArtifact(version.artifactId, now);
-    fs.rmSync(this.normalizers.getInputTableNormalizerProjectDir(version.artifactId, version.id), {
+    fs.rmSync(this.normalizers.getRawTableNormalizerProjectDir(version.artifactId, version.id), {
       recursive: true,
       force: true,
     });
     return { success: true };
   }
-  async previewInputTableNormalizerVersion(
-    input: DataPreviewInputTableNormalizerVersionInput
-  ): Promise<DataInputTablePreview> {
+  async previewRawTableNormalizerVersion(
+    input: DataPreviewRawTableNormalizerVersionInput
+  ): Promise<DataRawTablePreview> {
     // Runs the normalizer project and materializes a TEMP table on the shared
     // connection — serialize with commits through the exclusive section.
     return this.ctx.runExclusive(
-      () => this.previewInputTableNormalizerVersionUnsafe(input),
-      `previewInputTableNormalizerVersion:${input.versionId}`
+      () => this.previewRawTableNormalizerVersionUnsafe(input),
+      `previewRawTableNormalizerVersion:${input.versionId}`
     );
   }
-  private async previewInputTableNormalizerVersionUnsafe(
-    input: DataPreviewInputTableNormalizerVersionInput
-  ): Promise<DataInputTablePreview> {
+  private async previewRawTableNormalizerVersionUnsafe(
+    input: DataPreviewRawTableNormalizerVersionInput
+  ): Promise<DataRawTablePreview> {
     await this.ctx.ensureReady();
-    const version = await this.normalizers.requireInputTableNormalizerArtifactVersion(
+    const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(
       input.versionId
     );
     const sourcePath = normalizeImportSourcePath(input.sourcePath);
-    const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
-    const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
-    const summary = await this.summarizer.summarizeInputTableSource({
+    const sourceKind = normalizeRawTableSourceKind(input.sourceKind, sourcePath);
+    const config = normalizeRawTableConfig(input.config, sourceKind, sourcePath);
+    const summary = await this.summarizer.summarizeRawTableSource({
       sourcePath,
       sourceKind,
       config,
@@ -182,22 +180,22 @@ export class NormalizerService {
     const tempTable = tableNameFromId('normalizer_preview', uuidv4());
     let workDir: string | null = null;
     let cleanupWorkDir = true;
-    let preparedSources: PreparedInputTableNormalizerSourceContext | null = null;
+    let preparedSources: PreparedRawTableNormalizerSourceContext | null = null;
     try {
-      preparedSources = prepareInputTableNormalizerSources({
+      preparedSources = prepareRawTableNormalizerSources({
         sourcePath,
         sourceKind,
         config,
         summary,
       });
-      const result = await runInputTableNormalizerProject({
+      const result = await runRawTableNormalizerProject({
         version,
         prepareDependencies: input.prepareDependencies === true,
-        projectRoot: this.normalizers.getInputTableNormalizerProjectDir(
+        projectRoot: this.normalizers.getRawTableNormalizerProjectDir(
           version.artifactId,
           version.id
         ),
-        workspaceRoot: this.normalizers.getInputTableNormalizerRunRoot(),
+        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(),
         context: {
           sourcePath,
           sourceKind,
@@ -243,13 +241,13 @@ export class NormalizerService {
       }
     }
   }
-  async previewPublishedInputTableNormalizerVersion(input: {
+  async previewPublishedRawTableNormalizerVersion(input: {
     sourcePath: string;
-    sourceKind: DataInputTableSourceKind;
-    config: DataInputTableConfig;
+    sourceKind: DataRawTableSourceKind;
+    config: DataRawTableConfig;
     limit: number;
     offset: number;
-  }): Promise<DataInputTablePreview> {
+  }): Promise<DataRawTablePreview> {
     const processing = input.config.dataProcessing;
     if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
       throw new Error('Published normalizer version is required for custom input table preview');
@@ -257,7 +255,7 @@ export class NormalizerService {
     if (processing.artifactVersionStatus !== 'published') {
       throw new Error('Custom input table normalizer must be published before standard preview');
     }
-    return this.previewInputTableNormalizerVersion({
+    return this.previewRawTableNormalizerVersion({
       versionId: processing.artifactVersionId,
       sourcePath: input.sourcePath,
       sourceKind: input.sourceKind,
@@ -267,12 +265,12 @@ export class NormalizerService {
       offset: input.offset,
     });
   }
-  async createDatasetTableFromPublishedNormalizer(
+  async createRawTableTableFromPublishedNormalizer(
     tableName: string,
     sourcePath: string,
-    sourceKind: DataInputTableSourceKind,
-    config: DataInputTableConfig
-  ): Promise<PreparedInputTableImport> {
+    sourceKind: DataRawTableSourceKind,
+    config: DataRawTableConfig
+  ): Promise<PreparedRawTableImport> {
     const processing = config.dataProcessing;
     if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
       throw new Error('Published normalizer version is required for custom input table import');
@@ -280,36 +278,36 @@ export class NormalizerService {
     if (processing.artifactVersionStatus !== 'published') {
       throw new Error('Custom input table normalizer must be published before import');
     }
-    const version = await this.normalizers.requireInputTableNormalizerArtifactVersion(
+    const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(
       processing.artifactVersionId
     );
     if (version.status !== 'published') {
       throw new Error('Custom input table normalizer version is not published');
     }
-    const summary = await this.summarizer.summarizeInputTableSource({
+    const summary = await this.summarizer.summarizeRawTableSource({
       sourcePath,
       sourceKind,
       config,
     });
     let workDir: string | null = null;
     let cleanupWorkDir = true;
-    let preparedSources: PreparedInputTableNormalizerSourceContext | null = null;
+    let preparedSources: PreparedRawTableNormalizerSourceContext | null = null;
     const tempTable = tableNameFromId('normalizer_import', uuidv4());
     try {
-      preparedSources = prepareInputTableNormalizerSources({
+      preparedSources = prepareRawTableNormalizerSources({
         sourcePath,
         sourceKind,
         config,
         summary,
       });
-      const result = await runInputTableNormalizerProject({
+      const result = await runRawTableNormalizerProject({
         version,
         prepareDependencies: false,
-        projectRoot: this.normalizers.getInputTableNormalizerProjectDir(
+        projectRoot: this.normalizers.getRawTableNormalizerProjectDir(
           version.artifactId,
           version.id
         ),
-        workspaceRoot: this.normalizers.getInputTableNormalizerRunRoot(),
+        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(),
         context: {
           sourcePath,
           sourceKind,

@@ -1,31 +1,31 @@
-import type { DataTaskAuthoringRequest } from '../../shared/data-task-authoring';
+import type { DataPipelineAuthoringRequest } from '../../shared/data-pipeline-authoring';
 import type {
   AgentRuntimeConfig,
-  DataAnalyzeTaskRequirementResult,
+  DataAnalyzePipelineRequirementResult,
   DataAutomationColumnSnapshot,
-  DataCleaningTask,
-  DataDataset,
-  DataDeleteInputTableNormalizerVersionInput,
-  DataDeleteInputTableNormalizerVersionResult,
-  DataGenerateInputTableNormalizerDraftInput,
-  DataGenerateInputTableNormalizerDraftResult,
-  DataGenerateTaskFromRequirementInput,
-  DataGenerateTaskFromRequirementResult,
-  DataInputTableNormalizerArtifact,
-  DataInputTableNormalizerArtifactVersion,
-  DataInputTableNormalizerDraftProgressEvent,
-  DataInputTableNormalizerVersionSaveResult,
-  DataInputTableConfig,
-  DataListInputTableNormalizerVersionsInput,
-  DataListInputTableNormalizerVersionsResult,
-  DataInputTablePreview,
-  DataPublishInputTableNormalizerVersionInput,
-  DataPreviewInputTableNormalizerVersionInput,
-  DataInputTableSourceSummary,
-  DataInputTableSourceKind,
-  DataSummarizeInputTableSourceInput,
-  DataOutputTable,
-  DataTaskWorkflow,
+  DataPipeline,
+  DataRawTable,
+  DataDeleteRawTableNormalizerVersionInput,
+  DataDeleteRawTableNormalizerVersionResult,
+  DataGenerateRawTableNormalizerDraftInput,
+  DataGenerateRawTableNormalizerDraftResult,
+  DataGeneratePipelineFromRequirementInput,
+  DataGeneratePipelineFromRequirementResult,
+  DataRawTableNormalizerArtifact,
+  DataRawTableNormalizerArtifactVersion,
+  DataRawTableNormalizerDraftProgressEvent,
+  DataRawTableNormalizerVersionSaveResult,
+  DataRawTableConfig,
+  DataListRawTableNormalizerVersionsInput,
+  DataListRawTableNormalizerVersionsResult,
+  DataRawTablePreview,
+  DataPublishRawTableNormalizerVersionInput,
+  DataPreviewRawTableNormalizerVersionInput,
+  DataRawTableSourceSummary,
+  DataRawTableSourceKind,
+  DataSummarizeRawTableSourceInput,
+  DataResultTable,
+  DataPipelineWorkflow,
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../shared/contracts';
@@ -78,27 +78,27 @@ export interface DataCommandListInput {
   offset?: number;
 }
 
-export interface ListInputTablesInput extends DataCommandListInput {
-  sourceKind?: DataInputTableSourceKind | 'all';
+export interface ListRawTablesInput extends DataCommandListInput {
+  sourceKind?: DataRawTableSourceKind | 'all';
 }
 
-export interface ListInputTablesResult {
-  inputTables: DataDataset[];
+export interface ListRawTablesResult {
+  rawTables: DataRawTable[];
   total: number;
   limit: number;
   offset: number;
 }
 
-export interface CreateInputTableCommand {
+export interface CreateRawTableCommand {
   name?: string;
-  sourceKind?: DataInputTableSourceKind;
+  sourceKind?: DataRawTableSourceKind;
   filePath?: string;
   folderPath?: string;
-  config?: DataInputTableConfig;
+  config?: DataRawTableConfig;
   previewRows?: number;
 }
 
-export type CreateInputTableProcessingStrategyCommand =
+export type CreateRawTableProcessingStrategyCommand =
   | {
       strategy: 'auto';
     }
@@ -112,68 +112,67 @@ export type CreateInputTableProcessingStrategyCommand =
       prepareDependencies?: boolean;
     };
 
-export interface CreateInputTableWithProcessingStrategyCommand extends Omit<
-  CreateInputTableCommand,
+export interface CreateRawTableWithProcessingStrategyCommand extends Omit<
+  CreateRawTableCommand,
   'config'
 > {
-  config?: DataInputTableConfig;
-  processingStrategy: CreateInputTableProcessingStrategyCommand;
+  config?: DataRawTableConfig;
+  processingStrategy: CreateRawTableProcessingStrategyCommand;
 }
 
-export interface CreateInputTableWithProcessingStrategyResult extends InputTableResult {
+export interface CreateRawTableWithProcessingStrategyResult extends RawTableResult {
   processingStrategy: 'auto' | 'customize';
   normalizer?: {
-    artifact: DataInputTableNormalizerArtifact;
-    draftVersion: DataInputTableNormalizerArtifactVersion;
-    publishedVersion: DataInputTableNormalizerArtifactVersion;
-    sourceSummary: DataInputTableSourceSummary;
-    preview: DataInputTablePreview;
+    artifact: DataRawTableNormalizerArtifact;
+    draftVersion: DataRawTableNormalizerArtifactVersion;
+    publishedVersion: DataRawTableNormalizerArtifactVersion;
+    sourceSummary: DataRawTableSourceSummary;
+    preview: DataRawTablePreview;
   };
 }
 
-export interface UpdateInputTableCommand {
+export interface UpdateRawTableCommand {
   id: string;
   name?: string;
-  sourceKind?: DataInputTableSourceKind;
+  sourceKind?: DataRawTableSourceKind;
   filePath?: string;
   folderPath?: string;
-  config?: DataInputTableConfig;
+  config?: DataRawTableConfig;
   previewRows?: number;
 }
 
-export interface InputTableResult {
-  inputTable: DataDataset;
-  preview?: DataInputTablePreview;
+export interface RawTableResult {
+  rawTable: DataRawTable;
+  preview?: DataRawTablePreview;
 }
 
-export type SummarizeInputTableSourceCommand = DataSummarizeInputTableSourceInput;
+export type SummarizeRawTableSourceCommand = DataSummarizeRawTableSourceInput;
 
-export interface SummarizeInputTableSourceResult {
-  summary: DataInputTableSourceSummary;
+export interface SummarizeRawTableSourceResult {
+  summary: DataRawTableSourceSummary;
 }
 
-export type GenerateInputTableNormalizerDraftProgressCallback = (
-  event: Omit<DataInputTableNormalizerDraftProgressEvent, 'progressId'>
+export type GenerateRawTableNormalizerDraftProgressCallback = (
+  event: Omit<DataRawTableNormalizerDraftProgressEvent, 'progressId'>
 ) => void;
 
-export type GenerateInputTableNormalizerDraftCommand =
-  DataGenerateInputTableNormalizerDraftInput & {
-    runtimeConfig?: AgentRuntimeConfig;
-    onProgress?: GenerateInputTableNormalizerDraftProgressCallback;
-  };
-
-export type GenerateInputTableNormalizerDraftResult = DataGenerateInputTableNormalizerDraftResult;
-
-export type GenerateTaskFromRequirementCommand = DataGenerateTaskFromRequirementInput & {
+export type GenerateRawTableNormalizerDraftCommand = DataGenerateRawTableNormalizerDraftInput & {
   runtimeConfig?: AgentRuntimeConfig;
-  taskName?: string;
+  onProgress?: GenerateRawTableNormalizerDraftProgressCallback;
+};
+
+export type GenerateRawTableNormalizerDraftResult = DataGenerateRawTableNormalizerDraftResult;
+
+export type GeneratePipelineFromRequirementCommand = DataGeneratePipelineFromRequirementInput & {
+  runtimeConfig?: AgentRuntimeConfig;
+  pipelineName?: string;
   signal?: AbortSignal;
   onActivity?: () => void;
   outputConflictPolicy?: 'reuse' | 'unique' | 'error';
 };
 
-export type AnalyzeTaskRequirementCommand = Pick<
-  GenerateTaskFromRequirementCommand,
+export type AnalyzePipelineRequirementCommand = Pick<
+  GeneratePipelineFromRequirementCommand,
   | 'source'
   | 'processRequirement'
   | 'requirementConversation'
@@ -181,74 +180,74 @@ export type AnalyzeTaskRequirementCommand = Pick<
   | 'runtimeConfig'
   | 'signal'
   | 'onActivity'
-  | 'reuseTaskId'
+  | 'reusePipelineId'
   | 'startFromNodeId'
   | 'workflow'
 > & {
-  authoringRequest?: DataTaskAuthoringRequest;
+  authoringRequest?: DataPipelineAuthoringRequest;
   /** User message that initiated a tool-driven analysis; used to enforce a later confirmation turn. */
   sourceUserMessageId?: string;
 };
-export interface AnalyzedTaskRequirement extends DataAnalyzeTaskRequirementResult {
-  inputTableId: string;
-  inputTableName: string;
+export interface AnalyzedPipelineRequirement extends DataAnalyzePipelineRequirementResult {
+  rawTableId: string;
+  rawTableName: string;
   columnsSnapshot: DataAutomationColumnSnapshot[];
   sourceSummaryHash: string;
   capabilityProfileVersion: string;
 }
-export interface AnalyzeTaskRequirementResult extends AnalyzedTaskRequirement {
+export interface AnalyzePipelineRequirementResult extends AnalyzedPipelineRequirement {
   analysisId: string;
   expiresAt: number;
 }
 
-export type GenerateTaskFromRequirementResult = DataGenerateTaskFromRequirementResult;
+export type GeneratePipelineFromRequirementResult = DataGeneratePipelineFromRequirementResult;
 
-export type PublishInputTableNormalizerVersionCommand = DataPublishInputTableNormalizerVersionInput;
+export type PublishRawTableNormalizerVersionCommand = DataPublishRawTableNormalizerVersionInput;
 
-export type PublishInputTableNormalizerVersionResult = DataInputTableNormalizerVersionSaveResult;
+export type PublishRawTableNormalizerVersionResult = DataRawTableNormalizerVersionSaveResult;
 
-export type DeleteInputTableNormalizerVersionCommand = DataDeleteInputTableNormalizerVersionInput;
+export type DeleteRawTableNormalizerVersionCommand = DataDeleteRawTableNormalizerVersionInput;
 
-export type DeleteInputTableNormalizerVersionResult = DataDeleteInputTableNormalizerVersionResult;
+export type DeleteRawTableNormalizerVersionResult = DataDeleteRawTableNormalizerVersionResult;
 
-export type ListInputTableNormalizerVersionsCommand = DataListInputTableNormalizerVersionsInput;
+export type ListRawTableNormalizerVersionsCommand = DataListRawTableNormalizerVersionsInput;
 
-export type ListInputTableNormalizerVersionsResult = DataListInputTableNormalizerVersionsResult;
+export type ListRawTableNormalizerVersionsResult = DataListRawTableNormalizerVersionsResult;
 
-export interface ListOutputTablesResult {
-  outputTables: DataOutputTable[];
+export interface ListResultTablesResult {
+  resultTables: DataResultTable[];
   total: number;
   limit: number;
   offset: number;
 }
 
-export interface CreateOutputTableCommand {
+export interface CreateResultTableCommand {
   name?: string;
-  sourceInputTableId?: string;
+  sourceRawTableId?: string;
 }
 
-export interface UpdateOutputTableCommand {
+export interface UpdateResultTableCommand {
   id: string;
   name?: string;
-  sourceInputTableId?: string | null;
+  sourceRawTableId?: string | null;
 }
 
-export interface OutputTableResult {
-  outputTable: DataOutputTable;
-  preview?: DataInputTablePreview;
+export interface ResultTableResult {
+  resultTable: DataResultTable;
+  preview?: DataRawTablePreview;
 }
 
 export interface PreviewTableCommand {
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   id: string;
   limit?: number;
   offset?: number;
 }
 
 export interface PreviewTableResult {
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   id: string;
-  preview: DataInputTablePreview;
+  preview: DataRawTablePreview;
 }
 
 export type PersonalAnalysisConnectionCommand = PersonalAnalysisConnectionInput;
@@ -283,7 +282,7 @@ export interface SearchCloudTablesCommand
 export type SearchCloudTablesResult = PersonalAnalysisTableListResult;
 
 export interface ImportCloudTableCommand extends PersonalAnalysisConnectionCommand {
-  inputTableId?: string;
+  rawTableId?: string;
   tableId: string;
   spaceId?: string;
   projectId?: string;
@@ -294,17 +293,17 @@ export interface ImportCloudTableCommand extends PersonalAnalysisConnectionComma
   previewRows?: number;
 }
 
-export interface ImportCloudTableResult extends InputTableResult {
+export interface ImportCloudTableResult extends RawTableResult {
   cloudTableId: string;
   cloudTable?: PersonalAnalysisTable;
   downloadedFilePath: string;
 }
 
-export interface RefreshCloudInputTableCommand extends PersonalAnalysisConnectionCommand {
-  inputTableId: string;
+export interface RefreshCloudRawTableCommand extends PersonalAnalysisConnectionCommand {
+  rawTableId: string;
 }
 
-export interface RefreshCloudInputTableResult extends InputTableResult {}
+export interface RefreshCloudRawTableResult extends RawTableResult {}
 
 export interface PreviewCloudTableCommand extends PersonalAnalysisConnectionCommand {
   tableId: string;
@@ -315,11 +314,11 @@ export interface PreviewCloudTableCommand extends PersonalAnalysisConnectionComm
 export interface PreviewCloudTableResult {
   cloudTableId: string;
   downloadedFilePath: string;
-  preview: DataInputTablePreview;
+  preview: DataRawTablePreview;
 }
 
 export interface UploadDataTableToCloudCommand extends PersonalAnalysisConnectionCommand {
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   id: string;
   writeMode: 'CREATE' | 'REPLACE';
   datasourceId?: string;
@@ -335,7 +334,7 @@ export interface UploadDataTableToCloudCommand extends PersonalAnalysisConnectio
 
 export interface UploadDataTableToCloudResult {
   sourceTable: {
-    tableKind: 'input' | 'output';
+    tableKind: 'raw' | 'result';
     id: string;
     name: string;
     rowCount: number;
@@ -362,42 +361,42 @@ export interface PreviewCloudDriveFileCommand extends PersonalAnalysisConnection
 
 export interface PreviewCloudDriveFileResult {
   file: PersonalAnalysisDriveFile;
-  preview: DataInputTablePreview;
+  preview: DataRawTablePreview;
 }
 
-export type PreviewInputTableNormalizerVersionCommand = DataPreviewInputTableNormalizerVersionInput;
+export type PreviewRawTableNormalizerVersionCommand = DataPreviewRawTableNormalizerVersionInput;
 
-export interface PreviewInputTableNormalizerVersionResult {
-  preview: DataInputTablePreview;
+export interface PreviewRawTableNormalizerVersionResult {
+  preview: DataRawTablePreview;
 }
 
-export interface ListTasksResult {
-  tasks: DataCleaningTask[];
+export interface ListPipelinesResult {
+  pipelines: DataPipeline[];
   total: number;
   limit: number;
   offset: number;
 }
 
-export interface CreateTaskCommand {
+export interface CreatePipelineCommand {
   name: string;
   sourcePath?: string | null;
-  sourceInputTableId?: string;
-  outputTableId?: string;
+  sourceRawTableId?: string;
+  resultTableId?: string;
 }
 
-export interface UpdateTaskCommand {
+export interface UpdatePipelineCommand {
   id: string;
   name?: string;
 }
 
-export interface TaskResult {
-  task: DataCleaningTask;
+export interface PipelineResult {
+  pipeline: DataPipeline;
 }
 
-export interface GetTaskWorkflowCommand {
-  taskId: string;
+export interface GetPipelineWorkflowCommand {
+  pipelineId: string;
   /**
-   * summary (default): task meta + node type/binding lines.
+   * summary (default): pipeline meta + node type/binding lines.
    * graph: full editable node configs and edges.
    * node: single node config plus its touching edges (requires nodeId).
    */
@@ -406,8 +405,8 @@ export interface GetTaskWorkflowCommand {
 }
 
 export interface GetWorkflowCapabilityManifestCommand {
-  inputTableIds?: string[];
-  outputTableIds?: string[];
+  rawTableIds?: string[];
+  resultTableIds?: string[];
   /** Restrict returned operator config schemas to these operator types. */
   operatorTypes?: string[];
   /** Manifest sections to include: plan | operators | runtime | bindings. */
@@ -415,7 +414,7 @@ export interface GetWorkflowCapabilityManifestCommand {
 }
 
 export interface WorkflowResult {
-  workflow: DataTaskWorkflow;
+  workflow: DataPipelineWorkflow;
   diagnostics?: PrepDiagnostic[];
   dryRun?: boolean;
   /** Canonical Prep DSL exported from the applied graph. */
@@ -423,27 +422,27 @@ export interface WorkflowResult {
 }
 
 export interface ApplyWorkflowDslCommand {
-  taskId: string;
+  pipelineId: string;
   dsl: string;
-  inputTableId?: string;
+  rawTableId?: string;
   inputAlias?: string;
-  /** Multi-source binding: `alias -> inputTableId` for each input_source node. */
+  /** Multi-source binding: `alias -> rawTableId` for each input_source node. */
   inputResources?: Record<string, string>;
-  outputTableId?: string;
+  resultTableId?: string;
   dryRun?: boolean;
 }
 
 export interface ApplyWorkflowPlanCommand {
-  taskId: string;
+  pipelineId: string;
   /** Constrained typed plan: `{ version: 'workflow-plan/v1', nodes, edges }`. */
   plan: unknown;
   inputResources?: Record<string, string>;
-  outputTableId?: string;
+  resultTableId?: string;
   dryRun?: boolean;
 }
 
 export interface ExportWorkflowDslCommand {
-  taskId: string;
+  pipelineId: string;
 }
 
 export interface TextResult {
@@ -451,15 +450,15 @@ export interface TextResult {
 }
 
 export interface ConfigureInputOperatorCommand {
-  taskId: string;
+  pipelineId: string;
   nodeId: string;
-  inputTableId: string;
+  rawTableId: string;
   alias?: string;
   dryRun?: boolean;
 }
 
 export interface ApplyOperatorDslCommand {
-  taskId: string;
+  pipelineId: string;
   nodeId: string;
   operatorType?: DataWorkflowOperatorType;
   dsl: string;
@@ -467,10 +466,10 @@ export interface ApplyOperatorDslCommand {
 }
 
 export interface ConfigureOutputOperatorCommand {
-  taskId: string;
+  pipelineId: string;
   nodeId: string;
-  outputTableId?: string;
-  outputTableName?: string;
+  resultTableId?: string;
+  resultTableName?: string;
   outputStrategy?: 'existing' | 'auto';
   mode?: 'replace' | 'append' | 'error_if_exists' | 'merge';
   mergeKeys?: string[];
@@ -478,15 +477,15 @@ export interface ConfigureOutputOperatorCommand {
   dryRun?: boolean;
 }
 
-export interface RunTaskCommand {
-  taskId: string;
+export interface RunPipelineCommand {
+  pipelineId: string;
   mode?: 'temporary' | 'persisted';
   workflowDsl?: string;
   saveWorkflow?: boolean;
-  inputTableId?: string;
+  rawTableId?: string;
   inputAlias?: string;
   inputResources?: Record<string, string>;
-  outputTableId?: string;
+  resultTableId?: string;
   previewRows?: number;
 }
 
@@ -509,34 +508,34 @@ export interface WorkflowNodeRunStat {
   runId?: string;
 }
 
-export interface RunTaskResult {
-  task: DataCleaningTask;
+export interface RunPipelineResult {
+  pipeline: DataPipeline;
   /** User-managed output resource ID, never the physical DuckDB table name. */
-  outputTableId?: string;
-  preview?: DataInputTablePreview;
+  resultTableId?: string;
+  preview?: DataRawTablePreview;
   diagnostics?: PrepDiagnostic[];
   nodeStats?: WorkflowNodeRunStat[];
 }
 
-export interface RunGeneratedTaskCommand {
-  taskId: string;
+export interface RunGeneratedPipelineCommand {
+  pipelineId: string;
   /**
    * Optional one-off workflow override. Automations should omit this so the
-   * task's currently saved workflow remains the source of truth.
+   * pipeline's currently saved workflow remains the source of truth.
    */
   workflowDsl?: string;
-  source: DataGenerateTaskFromRequirementInput['source'];
-  output: DataGenerateTaskFromRequirementInput['output'];
-  requiredColumns?: DataGenerateTaskFromRequirementResult['requiredColumns'];
-  expectedOutputSchema?: DataGenerateTaskFromRequirementResult['expectedOutputSchema'];
+  source: DataGeneratePipelineFromRequirementInput['source'];
+  output: DataGeneratePipelineFromRequirementInput['output'];
+  requiredColumns?: DataGeneratePipelineFromRequirementResult['requiredColumns'];
+  expectedOutputSchema?: DataGeneratePipelineFromRequirementResult['expectedOutputSchema'];
   schemaPolicy?: 'strict' | 'required_subset';
   mode?: 'temporary' | 'persisted';
   previewRows?: number;
 }
 
-export interface RunGeneratedTaskResult extends RunTaskResult {
-  inputTableId: string;
-  outputTableId: string;
+export interface RunGeneratedPipelineResult extends RunPipelineResult {
+  rawTableId: string;
+  resultTableId: string;
   uploaded?: UploadDataTableToCloudResult;
   tokenUsage: 0;
   workflowHash: string;
@@ -550,15 +549,15 @@ export interface RunGeneratedTaskResult extends RunTaskResult {
 }
 
 export interface GetRunResultCommand {
-  taskId: string;
+  pipelineId: string;
   previewRows?: number;
   offset?: number;
 }
 
 export interface RunResult {
-  task: DataCleaningTask;
-  outputTableId?: string;
-  preview?: DataInputTablePreview;
+  pipeline: DataPipeline;
+  resultTableId?: string;
+  preview?: DataRawTablePreview;
 }
 
 export type WorkflowSaveShape = DataWorkflowSaveInput;

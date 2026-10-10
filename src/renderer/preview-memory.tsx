@@ -32,7 +32,7 @@ const CORE_ENTRIES: CoreMemoryEntry[] = [
     evidence: [
       {
         sessionId: 's1',
-        sourceSessionTitle: '数据清洗任务讨论',
+        sourceSessionTitle: '数据加工讨论',
         excerpt: '请用中文回答',
         createdAt: daysAgo(1),
       },
@@ -73,7 +73,7 @@ const PROJECT_ENTRIES: ProjectMemoryEntry[] = [
     workspaceKey: '/work/sales',
     workspaceLabel: 'sales-analytics',
     key: 'target_table',
-    value: '输出表固定为 sales_clean，merge by [order_id]。',
+    value: '结果表固定为 sales_clean，merge by [order_id]。',
     confidence: 0.88,
     confidenceSignals: signals(),
     status: 'active',
@@ -99,7 +99,7 @@ const PROJECT_ENTRIES: ProjectMemoryEntry[] = [
     workspaceKey: '/work/sales',
     workspaceLabel: 'sales-analytics',
     key: 'target_table',
-    value: '输出表固定为 sales_clean，merge by [order_id]。',
+    value: '结果表固定为 sales_clean，merge by [order_id]。',
     confidence: 0.8,
     confidenceSignals: signals(),
     status: 'active',
@@ -184,7 +184,7 @@ useAppStore.setState({
   sessions: [
     {
       id: 's1',
-      title: '数据清洗任务讨论',
+      title: '数据加工讨论',
       cwd: '/work/sales',
       status: 'idle',
       mountedPaths: [],

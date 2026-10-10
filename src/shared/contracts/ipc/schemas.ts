@@ -45,20 +45,20 @@ const channelType = z.enum([
   'slack',
 ]);
 const controllableChannelType = z.enum(['feishu', 'lark', 'wechat', 'dingtalk', 'wecom']);
-const inputTableSourceKind = z.enum(['excel', 'csv', 'folder', 'cloud']);
+const rawTableSourceKind = z.enum(['excel', 'csv', 'folder', 'cloud']);
 const memoryItemStatus = z.enum(['active', 'pending', 'rejected', 'archived']);
 
 const contentBlock = z.looseObject({ type: str }).superRefine((value, ctx) => {
-  if (value.type !== 'data_task_request') return;
-  const parsed = dataTaskAuthoringRequestSchema.safeParse(value.request);
+  if (value.type !== 'data_pipeline_request') return;
+  const parsed = dataPipelineAuthoringRequestSchema.safeParse(value.request);
   if (!parsed.success)
-    ctx.addIssue({ code: 'custom', message: 'Invalid data task authoring request' });
+    ctx.addIssue({ code: 'custom', message: 'Invalid data pipeline authoring request' });
 });
 
 // ---------------------------------------------------------------------------
 // client-event / client-invoke payload (ClientEvent union)
 // ---------------------------------------------------------------------------
-const dataTaskAuthoringRequestSchema = z.lazy(() =>
+const dataPipelineAuthoringRequestSchema = z.lazy(() =>
   z.object({
     id: z.string().min(1),
     source: z.looseObject({ location: z.enum(['local', 'cloud']), tableId: z.string().min(1) }),
@@ -68,7 +68,7 @@ const dataTaskAuthoringRequestSchema = z.lazy(() =>
         writeMode: z.enum(['create', 'replace']),
       })
       .optional(),
-    reuseTaskId: strNullish,
+    reusePipelineId: strNullish,
     startFromNodeId: strNullish,
     workflow: dataWorkflowSaveInput.nullish(),
   })
@@ -281,7 +281,7 @@ const memoryEntryUpdate = z.looseObject({
   status: memoryItemStatus.optional(),
 });
 
-const dataRunTaskInput = z.looseObject({
+const dataRunPipelineInput = z.looseObject({
   sourcePath: strNullish,
   workflow: z.looseObject({ nodes: z.array(obj), edges: z.array(obj) }).nullish(),
   outputMode: z.enum(['persisted', 'temporary']).optional(),
@@ -301,7 +301,7 @@ const dataWorkflowSaveInput = z.looseObject({
 });
 
 const dataPreviewWorkflowNodeInput = z.looseObject({
-  taskId: str,
+  pipelineId: str,
   nodeId: str,
   nodeType: str,
   nodeConfig: objOpt,
@@ -336,9 +336,9 @@ const scheduleConfig = z
 
 const scheduleAutomationConfig = z
   .looseObject({
-    actionKind: z.enum(['conversation', 'data_task']),
-    dataTaskId: strNullish,
-    dataTaskName: strNullish,
+    actionKind: z.enum(['conversation', 'data_pipeline']),
+    dataPipelineId: strNullish,
+    dataPipelineName: strNullish,
     delivery: z.looseObject({
       enabled: bool,
       artifactPolicy: z.enum(['summary', 'links', 'files']),
@@ -374,7 +374,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'shell.showItemInFolder': [str, strOpt],
   'reports.openGeneratedReport': [str, strOpt],
   'dialog.selectFiles': [],
-  'dialog.selectInputTableSource': [inputTableSourceKind.exclude(['cloud']).optional()],
+  'dialog.selectRawTableSource': [rawTableSourceKind.exclude(['cloud']).optional()],
   'artifacts.listRecentFiles': [str, num, numOpt],
   // config
   'config.get': [],
@@ -499,7 +499,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       trigger: obj,
       actionGraph: obj,
       outputBindings: z
-        .array(z.object({ outputTableId: z.string().trim().min(1), runOnChange: bool }))
+        .array(z.object({ resultTableId: z.string().trim().min(1), runOnChange: bool }))
         .optional(),
     }),
   ],
@@ -507,7 +507,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
     str,
     z.looseObject({
       outputBindings: z
-        .array(z.object({ outputTableId: z.string().trim().min(1), runOnChange: bool }))
+        .array(z.object({ resultTableId: z.string().trim().min(1), runOnChange: bool }))
         .optional(),
     }),
   ],
@@ -594,88 +594,90 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       .looseObject({
         query: strOpt,
         includeSummary: boolOpt,
-        includeTasks: boolOpt,
-        includeDatasets: boolOpt,
-        includeOutputTables: boolOpt,
-        taskOffset: numOpt,
-        taskLimit: numOpt,
-        datasetOffset: numOpt,
-        datasetLimit: numOpt,
+        includePipelines: boolOpt,
+        includeRawTables: boolOpt,
+        includeResultTables: boolOpt,
+        pipelineOffset: numOpt,
+        pipelineLimit: numOpt,
+        rawTableOffset: numOpt,
+        rawTableLimit: numOpt,
         outputOffset: numOpt,
         outputLimit: numOpt,
-        datasetSourceKind: strOpt,
-        taskGroupId: strNullish,
-        datasetGroupId: strNullish,
+        rawTableSourceKind: strOpt,
+        pipelineGroupId: strNullish,
+        rawTableGroupId: strNullish,
         outputGroupId: strNullish,
-        taskPerGroupLimit: numOpt,
-        datasetPerGroupLimit: numOpt,
+        pipelinePerGroupLimit: numOpt,
+        rawTablePerGroupLimit: numOpt,
         outputPerGroupLimit: numOpt,
       })
       .optional(),
   ],
-  'data.getTask': [str],
-  'data.createTask': [
+  'data.getPipeline': [str],
+  'data.createPipeline': [
     z.looseObject({
       name: str,
       sourcePath: strNullish,
-      sourceDatasetId: strNullish,
-      outputTableId: strNullish,
+      sourceRawTableId: strNullish,
+      resultTableId: strNullish,
     }),
   ],
-  'data.updateTask': [z.looseObject({ id: str, name: strOpt })],
-  'data.listGroups': [z.enum(['task', 'input', 'output'])],
-  'data.createGroup': [z.looseObject({ scope: z.enum(['task', 'input', 'output']), name: str })],
+  'data.updatePipeline': [z.looseObject({ id: str, name: strOpt })],
+  'data.listGroups': [z.enum(['pipeline', 'raw', 'result'])],
+  'data.createGroup': [z.looseObject({ scope: z.enum(['pipeline', 'raw', 'result']), name: str })],
   'data.renameGroup': [z.looseObject({ id: str, name: str })],
   'data.deleteGroup': [str],
   'data.assignGroup': [
     z.looseObject({
-      scope: z.enum(['task', 'input', 'output']),
+      scope: z.enum(['pipeline', 'raw', 'result']),
       ids: z.array(str),
       groupId: strNullish,
     }),
   ],
-  'data.runTask': [str, dataRunTaskInput.optional()],
-  'data.runTaskWithDiagnostics': [str, dataRunTaskInput.optional()],
-  'data.getTaskNodeStats': [str],
-  'data.listTaskRuns': [str, numOpt],
-  'data.getTaskRunNodeStats': [str, str],
-  'data.getTaskWorkflow': [str],
-  'data.saveTaskWorkflow': [str, dataWorkflowSaveInput],
-  'data.validateTaskWorkflowPlan': [str, dataWorkflowSaveInput],
-  'data.importDataset': [
+  'data.runPipeline': [str, dataRunPipelineInput.optional()],
+  'data.runPipelineWithDiagnostics': [str, dataRunPipelineInput.optional()],
+  'data.getPipelineNodeStats': [str],
+  'data.listPipelineRuns': [str, numOpt],
+  'data.getPipelineRunNodeStats': [str, str],
+  'data.getPipelineWorkflow': [str],
+  'data.savePipelineWorkflow': [str, dataWorkflowSaveInput],
+  'data.validatePipelineWorkflowPlan': [str, dataWorkflowSaveInput],
+  'data.importRawTable': [
     z.looseObject({
       filePath: str,
       name: strOpt,
-      sourceKind: inputTableSourceKind.optional(),
+      sourceKind: rawTableSourceKind.optional(),
       config: objOpt,
     }),
   ],
-  'data.getInputTable': [str],
-  'data.updateDataset': [
+  'data.getRawTable': [str],
+  'data.updateRawTable': [
     z.looseObject({
       id: str,
       filePath: strOpt,
       name: strOpt,
-      sourceKind: inputTableSourceKind.optional(),
+      sourceKind: rawTableSourceKind.optional(),
       config: objOpt,
     }),
   ],
-  'data.getOutputTable': [str],
-  'data.createOutputTable': [z.looseObject({ name: strOpt }).optional()],
-  'data.updateOutputTable': [z.looseObject({ id: str, name: strOpt, sourceDatasetId: strNullish })],
-  'data.previewInputTable': [
+  'data.getResultTable': [str],
+  'data.createResultTable': [z.looseObject({ name: strOpt }).optional()],
+  'data.updateResultTable': [
+    z.looseObject({ id: str, name: strOpt, sourceRawTableId: strNullish }),
+  ],
+  'data.previewRawTableSource': [
     z.looseObject({
       filePath: str,
-      sourceKind: inputTableSourceKind,
+      sourceKind: rawTableSourceKind,
       config: obj,
       limit: numOpt,
       offset: numOpt,
     }),
   ],
-  'data.previewDataset': [z.looseObject({ id: str, limit: numOpt, offset: numOpt })],
+  'data.previewRawTable': [z.looseObject({ id: str, limit: numOpt, offset: numOpt })],
   'data.exportTable': [
     z.looseObject({
-      tableKind: z.enum(['input', 'output']),
+      tableKind: z.enum(['raw', 'result']),
       id: str,
       format: z.enum(['csv', 'xlsx', 'html']),
       locale: str.optional(),
@@ -686,10 +688,10 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'data.getWorkflowNodeColumnTypes': [dataPreviewWorkflowNodeInput],
   'data.getWorkflowNodeColumnValues': [dataPreviewWorkflowNodeInput.extend({ column: str })],
   'data.getWorkflowNodeRowCount': [dataPreviewWorkflowNodeInput],
-  'data.summarizeInputTableSource': [
+  'data.summarizeRawTableSource': [
     z.looseObject({
       sourcePath: str,
-      sourceKind: inputTableSourceKind.optional(),
+      sourceKind: rawTableSourceKind.optional(),
       config: objOpt,
       maxFiles: numOpt,
       maxSheetsPerFile: numOpt,
@@ -697,14 +699,14 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       maxColumnsPerRow: numOpt,
     }),
   ],
-  'data.generateInputTableNormalizerDraft': [
+  'data.generateRawTableNormalizerDraft': [
     z.looseObject({
       name: str,
       sourcePath: str,
       rulePrompt: str,
       artifactId: strNullish,
       description: strNullish,
-      sourceKind: inputTableSourceKind.optional(),
+      sourceKind: rawTableSourceKind.optional(),
       config: objOpt,
       selectedSkillNames: z.array(str).optional(),
       modelConfigSetId: strNullish,
@@ -713,22 +715,22 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       progressId: strOpt,
     }),
   ],
-  'data.previewInputTableNormalizerVersion': [
+  'data.previewRawTableNormalizerVersion': [
     z.looseObject({
       versionId: str,
       sourcePath: str,
-      sourceKind: inputTableSourceKind.optional(),
+      sourceKind: rawTableSourceKind.optional(),
       config: objOpt,
       prepareDependencies: boolOpt,
       limit: numOpt,
       offset: numOpt,
     }),
   ],
-  'data.publishInputTableNormalizerVersion': [z.looseObject({ versionId: str })],
-  'data.deleteInputTableNormalizerVersion': [z.looseObject({ versionId: str })],
-  'data.listInputTableNormalizerVersions': [z.looseObject({ artifactId: str })],
-  'data.deleteTask': [str],
-  'data.deleteDataset': [str],
+  'data.publishRawTableNormalizerVersion': [z.looseObject({ versionId: str })],
+  'data.deleteRawTableNormalizerVersion': [z.looseObject({ versionId: str })],
+  'data.listRawTableNormalizerVersions': [z.looseObject({ artifactId: str })],
+  'data.deletePipeline': [str],
+  'data.deleteRawTable': [str],
   'data.listCloudSpaces': [personalAnalysisConnection.optional()],
   'data.listCloudProjects': [personalAnalysisConnection.extend({ spaceId: str })],
   'data.listCloudTables': [personalAnalysisConnection.extend({ spaceId: str, projectId: str })],
@@ -736,9 +738,9 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'data.previewCloudTable': [
     personalAnalysisConnection.extend({ tableId: str, limit: numOpt, offset: numOpt }),
   ],
-  'data.importCloudTable': [
+  'data.importCloudRawTable': [
     personalAnalysisConnection.extend({
-      inputTableId: strOpt,
+      rawTableId: strOpt,
       tableId: str,
       spaceId: strOpt,
       projectId: strOpt,
@@ -748,14 +750,14 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       previewRows: numOpt,
     }),
   ],
-  'data.refreshCloudInputTable': [
+  'data.refreshCloudRawTable': [
     personalAnalysisConnection.extend({
-      inputTableId: str,
+      rawTableId: str,
     }),
   ],
   'data.uploadDataTableToCloud': [
     personalAnalysisConnection.extend({
-      tableKind: z.enum(['input', 'output']),
+      tableKind: z.enum(['raw', 'result']),
       id: str,
       writeMode: z.enum(['CREATE', 'REPLACE']),
       datasourceId: strOpt,

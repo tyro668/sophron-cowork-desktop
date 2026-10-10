@@ -6,12 +6,12 @@ import { useState } from 'react';
 import type { DataTab } from '../model/types';
 
 export function useDataViewUi() {
-  const [activeTab, setActiveTab] = useState<DataTab>('tasks');
+  const [activeTab, setActiveTab] = useState<DataTab>('pipelines');
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [loadingTab, setLoadingTab] = useState<DataTab | null>('tasks');
-  const [pendingNavigationTab, setPendingNavigationTab] = useState<DataTab | null>('tasks');
+  const [loadingTab, setLoadingTab] = useState<DataTab | null>('pipelines');
+  const [pendingNavigationTab, setPendingNavigationTab] = useState<DataTab | null>('pipelines');
 
   return {
     activeTab,

@@ -20,14 +20,14 @@ const WORKFLOW_CANDIDATE_CACHE_LIMIT = 100;
 
 export interface WorkflowResourceBindings {
   /** Legacy single-source binding: binds the first (or `inputAlias`-matching) input node. */
-  inputTableId?: string;
+  rawTableId?: string;
   inputAlias?: string;
   /**
-   * Multi-source binding: `alias -> inputTableId`. Binds every input_source
+   * Multi-source binding: `alias -> rawTableId`. Binds every input_source
    * node whose `config.alias` matches a key. Unknown aliases are rejected.
    */
   inputs?: Record<string, string>;
-  outputTableId?: string;
+  resultTableId?: string;
 }
 
 export class WorkflowDslCompiler {
@@ -78,13 +78,13 @@ export class WorkflowDslCompiler {
         aliasBindings.set(normalized, tableId.trim());
       }
     }
-    // Legacy inputTableId binds inputAlias (when given) or the first input node.
-    if (bindings.inputTableId) {
+    // Legacy rawTableId binds inputAlias (when given) or the first input node.
+    if (bindings.rawTableId) {
       const alias =
         sanitizeAlias(bindings.inputAlias) ||
         stringConfigValue(nodes.find((node) => node.type === 'input_source')?.config?.alias) ||
         'src';
-      if (!aliasBindings.has(alias)) aliasBindings.set(alias, bindings.inputTableId);
+      if (!aliasBindings.has(alias)) aliasBindings.set(alias, bindings.rawTableId);
     }
 
     if (aliasBindings.size > 0) {
@@ -105,12 +105,9 @@ export class WorkflowDslCompiler {
           `Input resource aliases not found in workflow: ${unknown.join(', ')}. Available: ${[...knownAliases].join(', ') || '(none)'}`
         );
       }
-      const bound = new Map<
-        string,
-        Awaited<ReturnType<DataCommandResources['requireInputTable']>>
-      >();
+      const bound = new Map<string, Awaited<ReturnType<DataCommandResources['requireRawTable']>>>();
       for (const [alias, tableId] of aliasBindings) {
-        bound.set(alias, await this.resources.requireInputTable(tableId));
+        bound.set(alias, await this.resources.requireRawTable(tableId));
       }
       nodes = nodes.map((node) => {
         if (node.type !== 'input_source') return node;
@@ -123,23 +120,23 @@ export class WorkflowDslCompiler {
           ...node,
           config: {
             ...config,
-            source: 'dataset',
-            datasetId: table.id,
-            inputTableName: table.name,
+            source: 'rawTable',
+            rawTableId: table.id,
+            rawTableName: table.name,
             alias,
-            dsl: `input source dataset "${escapeDslString(table.id)}" as ${alias}`,
+            dsl: `input source rawTable "${escapeDslString(table.id)}" as ${alias}`,
           },
         };
       });
     }
 
-    if (bindings.outputTableId) {
-      const outputTable = await this.resources.requireOutputTable(bindings.outputTableId);
+    if (bindings.resultTableId) {
+      const resultTable = await this.resources.requireResultTable(bindings.resultTableId);
       const outputNode = nodes.find((node) => node.type === 'output');
       if (!outputNode) {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'Workflow has no output node to bind outputTableId'
+          'Workflow has no output node to bind resultTableId'
         );
       }
       const mode = stringConfigValue(outputNode.config?.mode) || 'replace';
@@ -160,13 +157,13 @@ export class WorkflowDslCompiler {
               config: {
                 ...(node.config ?? {}),
                 outputStrategy: 'existing',
-                outputDatasetId: outputTable.id,
-                outputTableId: outputTable.id,
-                outputTableName: outputTable.name,
-                table: outputTable.tableName,
+                outputResultTableId: resultTable.id,
+                resultTableId: resultTable.id,
+                resultTableName: resultTable.name,
+                table: resultTable.tableName,
                 destination: 'duckdb_table',
                 mode,
-                dsl: `output table "${escapeDslString(outputTable.name)}" mode ${mode}${mergeClause}${schemaClause}`,
+                dsl: `output table "${escapeDslString(resultTable.name)}" mode ${mode}${mergeClause}${schemaClause}`,
               },
             }
           : node
@@ -177,8 +174,8 @@ export class WorkflowDslCompiler {
       const config = { ...(node.config ?? {}) };
       const source =
         stringConfigValue(config.source) ||
-        (stringConfigValue(config.datasetId) ? 'dataset' : 'task');
-      if (source !== 'dataset' || !('incrementalBy' in config)) return node;
+        (stringConfigValue(config.rawTableId) ? 'rawTable' : 'pipeline');
+      if (source !== 'rawTable' || !('incrementalBy' in config)) return node;
       delete config.incrementalBy;
       return { ...node, config };
     });
@@ -197,7 +194,7 @@ export class WorkflowDslCompiler {
             severity: 'error',
             code: 'invalidDslFormat',
             message:
-              'Workflow DSL must be text prep DSL, not JSON. Example: input source dataset "<inputTableId>" as src | derive [new_field] = expression | output table "Result" mode replace',
+              'Workflow DSL must be text prep DSL, not JSON. Example: input source rawTable "<rawTableId>" as src | derive [new_field] = expression | output table "Result" mode replace',
           },
         ],
       };

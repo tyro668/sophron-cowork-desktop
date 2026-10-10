@@ -104,7 +104,7 @@ export function validatePrepWorkflow(ast: PrepWorkflowAst): PrepDiagnostic[] {
     diagnostics.push({
       ...createPrepDiagnostic(
         'multiOutputPartial',
-        'Multiple output sinks are kept in the graph, but task execution materializes only the first sink; the rest are exported for downstream execution'
+        'Multiple output sinks are kept in the graph, but pipeline execution materializes only the first sink; the rest are exported for downstream execution'
       ),
       severity: 'warning',
     });

@@ -102,7 +102,7 @@ export function WorkflowOperatorConfigPanel({
           <OperatorFormWrapper
             key={`${node.id}-form`}
             node={node}
-            taskId={node.taskId}
+            pipelineId={node.pipelineId}
             fieldCompletions={fieldCompletions}
             fieldTypes={fieldTypes}
             otherNodes={workflowNodes}

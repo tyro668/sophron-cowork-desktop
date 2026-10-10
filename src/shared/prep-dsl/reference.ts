@@ -3,13 +3,7 @@ import type { PrepOperatorType } from './ast';
 export const PREP_DSL_REFERENCE_VERSION = 'prep-dsl/v2';
 
 export type PrepDslReferenceTopic =
-  | 'overview'
-  | 'workflow'
-  | 'operators'
-  | 'derive_window'
-  | 'reshape'
-  | 'examples'
-  | 'all';
+  'overview' | 'workflow' | 'operators' | 'derive_window' | 'reshape' | 'examples' | 'all';
 
 export interface PrepDslWorkflowExample {
   id: string;
@@ -28,7 +22,7 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'split-package-size',
     title: 'Split package size "20x18x22" into three numeric columns',
     dsl: [
-      'input source dataset "<inputTableId>" as src',
+      'input source rawTable "<rawTableId>" as src',
       "  | derive [包装长CM] = CAST(split_part([包装尺寸CM], 'x', 1) AS INTEGER), [包装宽CM] = CAST(split_part([包装尺寸CM], 'x', 2) AS INTEGER), [包装高CM] = CAST(split_part([包装尺寸CM], 'x', 3) AS INTEGER)",
       '  | output table "02_商品主数据_尺寸拆分" mode replace',
     ].join('\n'),
@@ -37,8 +31,8 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'left-join-dimension',
     title: 'Join a main table with a dimension table',
     dsl: [
-      'input source dataset "<ordersInputTableId>" as orders',
-      'input source dataset "<customersInputTableId>" as customers',
+      'input source rawTable "<ordersRawTableId>" as orders',
+      'input source rawTable "<customersRawTableId>" as customers',
       '',
       'from orders',
       '  | join left customers',
@@ -51,7 +45,7 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'branching-steps',
     title: 'Branch one cleaned stream into a result and a sample',
     dsl: [
-      'input source dataset "<ordersInputTableId>" as orders',
+      'input source rawTable "<ordersRawTableId>" as orders',
       '',
       'step base = orders',
       '  | filter [amount] > 0',
@@ -168,28 +162,28 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
 
 const OVERVIEW = [
   `Data workflow DSL version: ${PREP_DSL_REFERENCE_VERSION}.`,
-  'Data workflow DSL is a text pipeline language for reusable data tasks. It is not JSON.',
+  'Data workflow DSL is a text pipeline language for reusable data pipelines. It is not JSON.',
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Brackets hold the raw name with no quotes — use [Year of Transaction Date], not [`Year of Transaction Date`]. Backtick-quoting inside brackets is only for names that contain ] or a backtick. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
-  'For created input/output tables, prefer passing inputResources (alias -> inputTableId) and outputTableId to data_apply_workflow_dsl/data_apply_workflow_plan instead of embedding or guessing node ids.',
+  'For created input/output tables, prefer passing inputResources (alias -> rawTableId) and resultTableId to data_apply_workflow_dsl/data_apply_workflow_plan instead of embedding or guessing node ids.',
 ].join('\n');
 
 const WORKFLOW = [
   'Workflow shape:',
-  'input source dataset "<inputTableId>" as src',
+  'input source rawTable "<rawTableId>" as src',
   '  | select [col1], [col2]',
   '  | filter [amount] > 0',
   '  | filter [field with spaces] = "value"',
   '  | output table "Result table" mode replace',
   '',
   'Input source forms:',
-  '- input source task as src',
-  '- input source dataset "<inputTableId-or-name>" as src',
+  '- input source pipeline as src',
+  '- input source rawTable "<rawTableId-or-name>" as src',
   '- input source file "/authorized/path/file.csv" as src',
   '',
-  'Important: input source task requires the task to have a sourcePath. If the task reads a created input table, use dataset input or bind it via inputResources: { <alias>: "<inputTableId>" } on data_apply_workflow_dsl/data_apply_workflow_plan (multi-source: one key per input alias).',
+  'Important: input source pipeline requires the pipeline to have a sourcePath. If the pipeline reads a created input table, use rawTable input or bind it via inputResources: { <alias>: "<rawTableId>" } on data_apply_workflow_dsl/data_apply_workflow_plan (multi-source: one key per input alias).',
   '',
   'Named dataflows (branching):',
   'step <name> = <ref> starts a named chain; <ref> is a source alias or an earlier step name.',
@@ -207,9 +201,9 @@ const OPERATORS = [
   '- output table "Result table" mode replace',
   '- output table "Result table" mode merge by [order_id]',
   '- output table "Result table" mode append schema strict',
-  'Output modes: replace (default) rewrites the target table; append adds rows matched by column name (missing columns become null); error_if_exists fails when the target already exists; merge by [key], ... upserts rows on business keys (matching keys are replaced, new keys inserted; NULL keys match NULL keys, and duplicate keys inside one batch keep the last row — reruns stay idempotent). Schema drift policy after the mode: schema extend (default; union columns by name, new columns added, missing become null), schema strict (fail when the incoming columns differ from the existing table), schema ignore (drop incoming-only columns, null-fill missing). Only "output table" targets are executable; "output dataset"/"output file" parse but are not supported. Multiple output sinks are all committed, each with its own mode/policy.',
+  'Output modes: replace (default) rewrites the target table; append adds rows matched by column name (missing columns become null); error_if_exists fails when the target already exists; merge by [key], ... upserts rows on business keys (matching keys are replaced, new keys inserted; NULL keys match NULL keys, and duplicate keys inside one batch keep the last row — reruns stay idempotent). Schema drift policy after the mode: schema extend (default; union columns by name, new columns added, missing become null), schema strict (fail when the incoming columns differ from the existing table), schema ignore (drop incoming-only columns, null-fill missing). Only "output table" targets are executable; "output rawTable"/"output file" parse but are not supported. Multiple output sinks are all committed, each with its own mode/policy.',
   'expect assertions: expect <expression> fails the run when any row violates — a NULL/unknown expression result counts as a violation; expect unique [k1], [k2] fails on duplicate key tuples including duplicate NULL keys; expect rows >= 1 checks the row count. Append reject to <stream-name> to route violating rows to a named stream instead of failing (expression/unique only — row-count violations have no rows to route, so reject to is rejected there); the stream can feed its own chain (e.g. its own output sink).',
-  'Bound input tables are read in full on every run. For task/file sources, incremental by [updated_at] reads only rows newer than the last committed watermark and advances it to MAX([updated_at]) after a successful run. Watermarks are stored per input node AND column — switching the incremental column starts a fresh read instead of reusing a stale watermark.',
+  'Bound input tables are read in full on every run. For pipeline/file sources, incremental by [updated_at] reads only rows newer than the last committed watermark and advances it to MAX([updated_at]) after a successful run. Watermarks are stored per input node AND column — switching the incremental column starts a fresh read instead of reusing a stale watermark.',
   '',
   'Expressions are compiled for DuckDB-like execution. Common functions such as CAST(...) and split_part(...) can be used in derive/filter expressions.',
   'Use DECIMAL or DECIMAL(18,2) rather than FLOAT for money, prices, rates, percentages, and other fixed-decimal business values.',
@@ -251,12 +245,12 @@ const EXAMPLES = [
     '',
   ]),
   'Recommended tool call flow:',
-  '- data_get_workflow_capability_manifest({ inputTableIds, outputTableIds }) returns the versioned plan schema, per-operator config schemas, binding contract, and real column snapshots.',
-  '- data_apply_workflow_plan({ taskId, plan, inputResources: { alias: inputTableId }, outputTableId, dryRun: true }) validates a constrained plan and returns the canonical DSL.',
-  '- data_apply_workflow_plan({ taskId, plan, inputResources, outputTableId, dryRun: false }) saves the workflow.',
-  '- data_apply_workflow_dsl({ taskId, dsl, inputResources, outputTableId, dryRun: true|false }) applies DSL text instead of a plan.',
-  '- data_run_task({ taskId, mode: "temporary", previewRows: 20 })',
-  '- data_run_task({ taskId, mode: "persisted", previewRows: 20 }) after confirmation.',
+  '- data_get_workflow_capability_manifest({ rawTableIds, resultTableIds }) returns the versioned plan schema, per-operator config schemas, binding contract, and real column snapshots.',
+  '- data_apply_workflow_plan({ pipelineId, plan, inputResources: { alias: rawTableId }, resultTableId, dryRun: true }) validates a constrained plan and returns the canonical DSL.',
+  '- data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun: false }) saves the workflow.',
+  '- data_apply_workflow_dsl({ pipelineId, dsl, inputResources, resultTableId, dryRun: true|false }) applies DSL text instead of a plan.',
+  '- data_run_pipeline({ pipelineId, mode: "temporary", previewRows: 20 })',
+  '- data_run_pipeline({ pipelineId, mode: "persisted", previewRows: 20 }) after confirmation.',
 ].join('\n');
 
 const VALIDATION = [
@@ -268,9 +262,9 @@ const VALIDATION = [
   '- Schemas propagate along the graph: every field referenced by a filter, expression, sort key, mapping, join condition, pivot axis, or set operation is checked against the columns the upstream operators produce. A field that does not exist blocks saving.',
   '- Join equality conditions and set_operation columns are checked for type compatibility when both sides are known.',
   '- limit without order by, deduplicate without order by, and random sampling without seed report nondeterminism warnings.',
-  '- output table is the only executable destination; dataset/file destinations are rejected at validation, not just at run time. mode must be replace, append, error_if_exists, or merge; merge requires by [key] columns that exist upstream, and by keys without mode merge are rejected. Two output sinks resolving to the same target table are rejected (outputTargetDuplicate).',
+  '- output table is the only executable destination; rawTable/file destinations are rejected at validation, not just at run time. mode must be replace, append, error_if_exists, or merge; merge requires by [key] columns that exist upstream, and by keys without mode merge are rejected. Two output sinks resolving to the same target table are rejected (outputTargetDuplicate).',
   '- expect expressions and unique fields are checked against the upstream schema; a declared reject stream that no edge consumes reports a warning, and a reject edge without a configured reject stream is an error.',
-  '- incremental by [field] applies only to task/file sources and is checked against the source schema.',
+  '- incremental by [field] applies only to pipeline/file sources and is checked against the source schema.',
 ].join('\n');
 
 const SECTION_BY_TOPIC: Record<PrepDslReferenceTopic, string> = {
@@ -340,20 +334,20 @@ export function buildPrepDslReferenceMarkdown(): string {
     '## Constrained Plans',
     '',
     'Models should submit constrained plans, not guessed paths or field names:',
-    '- `data_get_workflow_capability_manifest({ inputTableIds, outputTableIds })` returns the versioned manifest: plan JSON Schema, per-operator config schemas, handle rules, the `alias -> inputTableId` binding contract, runtime semantics, stable diagnostic codes, and real column snapshots for the requested tables.',
+    '- `data_get_workflow_capability_manifest({ rawTableIds, resultTableIds })` returns the versioned manifest: plan JSON Schema, per-operator config schemas, handle rules, the `alias -> rawTableId` binding contract, runtime semantics, stable diagnostic codes, and real column snapshots for the requested tables.',
     '- A plan is `{ version: "workflow-plan/v1", nodes: [{id,type,config}], edges: [{sourceNodeId,targetNodeId,sourceHandle?,targetHandle?}] }`. Configs must satisfy `plan.operatorConfigSchemas[type]`; field references must exist on the upstream schema.',
-    '- `data_apply_workflow_plan({ taskId, plan, inputResources, outputTableId, dryRun })` binds every `input_source` node by `config.alias` through `inputResources` (unknown aliases are rejected), runs the same validation pipeline as DSL and the canvas, exports the canonical DSL, and saves unless `dryRun`.',
+    '- `data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun })` binds every `input_source` node by `config.alias` through `inputResources` (unknown aliases are rejected), runs the same validation pipeline as DSL and the canvas, exports the canonical DSL, and saves unless `dryRun`.',
     '- Diagnostics carry stable `code` values — repair by code, not by message text.',
     '',
     '## Tool Call Flow',
     '',
     '- `data_get_workflow_dsl_reference({ topic })` reads this same embedded reference at runtime.',
-    '- `data_get_workflow_capability_manifest({ inputTableIds, outputTableIds })` returns the plan schema and resource snapshots.',
-    '- `data_apply_workflow_plan({ taskId, plan, inputResources, outputTableId, dryRun })` applies a constrained plan.',
-    '- `data_apply_workflow_dsl({ taskId, dsl, inputTableId, inputAlias, inputResources, outputTableId, dryRun })` applies DSL text.',
+    '- `data_get_workflow_capability_manifest({ rawTableIds, resultTableIds })` returns the plan schema and resource snapshots.',
+    '- `data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun })` applies a constrained plan.',
+    '- `data_apply_workflow_dsl({ pipelineId, dsl, rawTableId, inputAlias, inputResources, resultTableId, dryRun })` applies DSL text.',
     '- `data_configure_input_operator` / `data_configure_output_operator` / `data_apply_operator_dsl` edit single nodes.',
-    '- `data_run_task({ taskId, mode: "temporary", previewRows: 20 })` validates output without replacing the formal table.',
-    '- `data_run_task({ taskId, mode: "persisted", previewRows: 20 })` writes the formal output after confirmation.',
+    '- `data_run_pipeline({ pipelineId, mode: "temporary", previewRows: 20 })` validates output without replacing the formal table.',
+    '- `data_run_pipeline({ pipelineId, mode: "persisted", previewRows: 20 })` writes the formal output after confirmation.',
   ];
   return `${lines.join('\n').trim()}\n`;
 }

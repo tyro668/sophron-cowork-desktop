@@ -114,11 +114,11 @@ export function compilePrepWorkflowToFlow(ast: PrepWorkflowAst): PrepWorkflowCom
 
   for (const output of ast.outputs) {
     const destination = output.config.destination;
-    if (destination === 'dataset' || destination === 'file') {
+    if (destination === 'rawTable' || destination === 'file') {
       diagnostics.push({
         severity: 'error',
         code: 'unsupportedOutputDestination',
-        message: `Output destination "${destination}" is not supported in task workflows; use "output table" instead`,
+        message: `Output destination "${destination}" is not supported in pipeline workflows; use "output table" instead`,
         params: { value: String(destination) },
       });
     }
@@ -126,7 +126,7 @@ export function compilePrepWorkflowToFlow(ast: PrepWorkflowAst): PrepWorkflowCom
 
   const { plan, diagnostics: planDiagnostics } = buildWorkflowPlan({ nodes, edges });
   diagnostics.push(...planDiagnostics);
-  diagnostics.push(...validateWorkflowPlanGraph(plan, { profile: 'task' }));
+  diagnostics.push(...validateWorkflowPlanGraph(plan, { profile: 'pipeline' }));
 
   return { nodes, edges, diagnostics, plan };
 }

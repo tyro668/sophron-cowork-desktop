@@ -1,84 +1,89 @@
-import type { DataTaskStore } from './data-task-store';
-import type { DataCleaningTask, DataDataset, DataOutputTable } from '../../shared/contracts';
+import type { DataPipelineStore } from './data-pipeline-store';
+import type { DataPipeline, DataRawTable, DataResultTable } from '../../shared/contracts';
 import { DataCommandError } from './data-command-types';
 import { MAX_LIST_LIMIT, normalizeRequiredName } from './data-command-utils';
 
 export class DataCommandResources {
-  constructor(private readonly store: DataTaskStore) {}
+  constructor(private readonly store: DataPipelineStore) {}
 
-  async requireTask(id: string): Promise<DataCleaningTask> {
-    const task = await this.store.getTaskRecord(id);
-    if (!task) throw new DataCommandError('RESOURCE_NOT_FOUND', `Data task not found: ${id}`);
-    return task;
+  async requirePipeline(id: string): Promise<DataPipeline> {
+    const pipeline = await this.store.getPipelineRecord(id);
+    if (!pipeline)
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Data pipeline not found: ${id}`);
+    return pipeline;
   }
 
-  async requireInputTable(id: string): Promise<DataDataset> {
-    const inputTable = await this.store.getInputTableRecord(id);
-    if (!inputTable) {
+  async requireRawTable(id: string): Promise<DataRawTable> {
+    const rawTable = await this.store.getRawTableRecord(id);
+    if (!rawTable) {
       throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${id}`);
     }
-    return inputTable;
+    return rawTable;
   }
 
-  async requireOutputTable(id: string): Promise<DataOutputTable> {
-    const outputTable = await this.store.getOutputTableRecord(id);
-    if (!outputTable) {
+  async requireResultTable(id: string): Promise<DataResultTable> {
+    const resultTable = await this.store.getResultTableRecord(id);
+    if (!resultTable) {
       throw new DataCommandError('RESOURCE_NOT_FOUND', `Output table not found: ${id}`);
     }
-    return outputTable;
+    return resultTable;
   }
 
-  async findInputTableByExactName(name: string): Promise<DataDataset | null> {
-    return this.store.findInputTableRecordByName(name);
+  async findRawTableByExactName(name: string): Promise<DataRawTable | null> {
+    return this.store.findRawTableRecordByName(name);
   }
 
-  async findOutputTableByExactName(name: string): Promise<DataOutputTable | null> {
+  async findResultTableByExactName(name: string): Promise<DataResultTable | null> {
     const dashboard = await this.store.getDashboard({
       query: name,
       includeSummary: false,
-      includeTasks: false,
-      includeDatasets: false,
-      includeOutputTables: true,
+      includePipelines: false,
+      includeRawTables: false,
+      includeResultTables: true,
       outputLimit: MAX_LIST_LIMIT,
     });
     return (
-      dashboard.outputTables.find((item) => item.name.toLowerCase() === name.toLowerCase()) ?? null
+      dashboard.resultTables.find((item) => item.name.toLowerCase() === name.toLowerCase()) ?? null
     );
   }
 
-  async createUniqueTaskName(baseName: string): Promise<string> {
-    const base = normalizeRequiredName(baseName, 'Task name is required');
+  async createUniquePipelineName(baseName: string): Promise<string> {
+    const base = normalizeRequiredName(baseName, 'Pipeline name is required');
     for (let index = 0; index < 100; index += 1) {
       const candidate = index === 0 ? base : `${base}_${index + 1}`;
-      if (!(await this.findTaskByExactName(candidate))) return candidate;
+      if (!(await this.findPipelineByExactName(candidate))) return candidate;
     }
     return `${base}_${Date.now()}`;
   }
 
-  async ensureUniqueTaskName(name: string, excludeId?: string): Promise<void> {
-    const existing = await this.findTaskByExactName(name, excludeId);
+  async ensureUniquePipelineName(name: string, excludeId?: string): Promise<void> {
+    const existing = await this.findPipelineByExactName(name, excludeId);
     if (existing) {
-      throw new DataCommandError('RESOURCE_ALREADY_EXISTS', `Data task already exists: ${name}`, {
-        id: existing.id,
-        name: existing.name,
-      });
+      throw new DataCommandError(
+        'RESOURCE_ALREADY_EXISTS',
+        `Data pipeline already exists: ${name}`,
+        {
+          id: existing.id,
+          name: existing.name,
+        }
+      );
     }
   }
 
-  private async findTaskByExactName(
+  private async findPipelineByExactName(
     name: string,
     excludeId?: string
-  ): Promise<DataCleaningTask | null> {
+  ): Promise<DataPipeline | null> {
     const dashboard = await this.store.getDashboard({
       query: name,
       includeSummary: false,
-      includeTasks: true,
-      includeDatasets: false,
-      includeOutputTables: false,
-      taskLimit: MAX_LIST_LIMIT,
+      includePipelines: true,
+      includeRawTables: false,
+      includeResultTables: false,
+      pipelineLimit: MAX_LIST_LIMIT,
     });
     return (
-      dashboard.tasks.find(
+      dashboard.pipelines.find(
         (item) => item.id !== excludeId && item.name.toLowerCase() === name.toLowerCase()
       ) ?? null
     );

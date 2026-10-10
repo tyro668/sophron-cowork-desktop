@@ -48,15 +48,15 @@ function expectRoundTrip(dsl: string) {
 describe('workflow DSL round-trip', () => {
   it('keeps a linear pipeline byte-stable', () => {
     const dsl =
-      'input source task as src\n  | filter [amount] > 0\n  | output table "t" mode replace';
+      'input source pipeline as src\n  | filter [amount] > 0\n  | output table "t" mode replace';
     expect(exportPrepWorkflowDsl(compile(dsl).nodes, compile(dsl).edges)).toBe(dsl);
   });
 
   it('round-trips a branching named-step workflow', () => {
     expectRoundTrip(
       [
-        'input source task as src',
-        'input source dataset "dim" as dim',
+        'input source pipeline as src',
+        'input source rawTable "dim" as dim',
         '',
         'step base = src',
         '  | filter [amount] > 0',
@@ -74,7 +74,7 @@ describe('workflow DSL round-trip', () => {
   it('round-trips a fan-out without joins', () => {
     expectRoundTrip(
       [
-        'input source task as src',
+        'input source pipeline as src',
         'step clean = src',
         '  | filter [amount] > 0',
         'step totals = clean',
@@ -90,8 +90,8 @@ describe('workflow DSL round-trip', () => {
   it('round-trips join on a named step right input', () => {
     expectRoundTrip(
       [
-        'input source task as orders',
-        'input source dataset "cust" as customers',
+        'input source pipeline as orders',
+        'input source rawTable "cust" as customers',
         '',
         'step keep = orders',
         '  | select [id], [cid], [amount]',
@@ -107,7 +107,7 @@ describe('workflow DSL round-trip', () => {
   it('round-trips an expect reject stream feeding a sink', () => {
     expectRoundTrip(
       [
-        'input source task as src',
+        'input source pipeline as src',
         '',
         'step checked = src',
         '  | expect [amount] > 0 reject to bad_rows',
@@ -120,7 +120,7 @@ describe('workflow DSL round-trip', () => {
 
   it('round-trips merge output and incremental input', () => {
     const dsl =
-      'input source task incremental by [updated_at] as src\n' +
+      'input source pipeline incremental by [updated_at] as src\n' +
       '  | expect unique [id]\n' +
       '  | output table "t" mode merge by [id] schema strict';
     expect(exportPrepWorkflowDsl(compile(dsl).nodes, compile(dsl).edges)).toBe(dsl);
@@ -129,7 +129,7 @@ describe('workflow DSL round-trip', () => {
   it('preserves multiple output sinks', () => {
     const compiled = compile(
       [
-        'input source task as src',
+        'input source pipeline as src',
         'step a = src',
         '  | sort by [id]',
         '  | output table "one" mode replace',
@@ -143,7 +143,7 @@ describe('workflow DSL round-trip', () => {
   it('rejects forward step references', () => {
     const compiled = compilePrepWorkflowToFlow(
       parsePrepDsl(
-        'input source task as s\nstep a = later\n  | sort by [x]\nstep later = s\n  | filter [y] > 0\nstep out = a\n  | output table "t" mode replace'
+        'input source pipeline as s\nstep a = later\n  | sort by [x]\nstep later = s\n  | filter [y] > 0\nstep out = a\n  | output table "t" mode replace'
       ).ast!
     );
     expect(compiled.diagnostics.map((d) => d.code)).toContain('stepInputNotFound');
@@ -152,7 +152,7 @@ describe('workflow DSL round-trip', () => {
   it('rejects duplicate step names', () => {
     const compiled = compilePrepWorkflowToFlow(
       parsePrepDsl(
-        'input source task as s\nstep a = s\n  | sort by [x]\nstep a = s\n  | filter [y] > 0'
+        'input source pipeline as s\nstep a = s\n  | sort by [x]\nstep a = s\n  | filter [y] > 0'
       ).ast!
     );
     expect(compiled.diagnostics.map((d) => d.code)).toContain('duplicateStepName');
@@ -161,7 +161,7 @@ describe('workflow DSL round-trip', () => {
   it('rejects operators after an output sink in one step', () => {
     const compiled = compilePrepWorkflowToFlow(
       parsePrepDsl(
-        'input source task as s\nstep a = s\n  | output table "t" mode replace\n  | sort by [x]'
+        'input source pipeline as s\nstep a = s\n  | output table "t" mode replace\n  | sort by [x]'
       ).ast!
     );
     expect(compiled.diagnostics.map((d) => d.code)).toContain('outputNotTerminal');
@@ -169,7 +169,7 @@ describe('workflow DSL round-trip', () => {
 
   it('rejects step names colliding with source aliases', () => {
     const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl('input source task as s\nstep s = s\n  | sort by [x]').ast!
+      parsePrepDsl('input source pipeline as s\nstep s = s\n  | sort by [x]').ast!
     );
     expect(compiled.diagnostics.map((d) => d.code)).toContain('duplicateStepName');
   });
@@ -179,12 +179,12 @@ describe('workflow DSL round-trip', () => {
       {
         id: 'a',
         type: 'input_source' as const,
-        config: { source: 'dataset', datasetId: 'orders' },
+        config: { source: 'rawTable', rawTableId: 'orders' },
       },
       {
         id: 'b',
         type: 'input_source' as const,
-        config: { source: 'dataset', datasetId: 'customers' },
+        config: { source: 'rawTable', rawTableId: 'customers' },
       },
       {
         id: 'j',
@@ -202,8 +202,8 @@ describe('workflow DSL round-trip', () => {
       { sourceNodeId: 'j', targetNodeId: 'o', targetHandle: 'input' },
     ];
     const dsl = exportPrepWorkflowDsl(nodes, edges);
-    expect(dsl).toContain('input source dataset "orders" as src');
-    expect(dsl).toContain('input source dataset "customers" as src_2');
+    expect(dsl).toContain('input source rawTable "orders" as src');
+    expect(dsl).toContain('input source rawTable "customers" as src_2');
     expect(dsl).toContain('join left src_2 on [src].[id] = [src_2].[id]');
     // The exported DSL parses cleanly and re-exports byte-stably: imported
     // sources carry the generated aliases explicitly.
@@ -216,12 +216,12 @@ describe('workflow DSL round-trip', () => {
       {
         id: 'a',
         type: 'input_source' as const,
-        config: { source: 'dataset', datasetId: 'orders', alias: 'shared' },
+        config: { source: 'rawTable', rawTableId: 'orders', alias: 'shared' },
       },
       {
         id: 'b',
         type: 'input_source' as const,
-        config: { source: 'dataset', datasetId: 'customers', alias: 'shared' },
+        config: { source: 'rawTable', rawTableId: 'customers', alias: 'shared' },
       },
       {
         id: 'j',
@@ -239,8 +239,8 @@ describe('workflow DSL round-trip', () => {
       { sourceNodeId: 'j', targetNodeId: 'o', targetHandle: 'input' },
     ];
     const dsl = exportPrepWorkflowDsl(nodes, edges);
-    expect(dsl).toContain('input source dataset "orders" as shared');
-    expect(dsl).toContain('input source dataset "customers" as shared_2');
+    expect(dsl).toContain('input source rawTable "orders" as shared');
+    expect(dsl).toContain('input source rawTable "customers" as shared_2');
     expect(dsl).toContain('join inner shared_2 on [shared].[k] = [shared_2].[k]');
     const reparsed = compile(dsl);
     expect(exportPrepWorkflowDsl(reparsed.nodes, reparsed.edges)).toBe(dsl);
@@ -248,7 +248,11 @@ describe('workflow DSL round-trip', () => {
 });
 
 describe('export rejects inexpressible graphs', () => {
-  const src = { id: 's', type: 'input_source' as const, config: { alias: 's', source: 'task' } };
+  const src = {
+    id: 's',
+    type: 'input_source' as const,
+    config: { alias: 's', source: 'pipeline' },
+  };
   const filt = (id: string) => ({
     id,
     type: 'filter' as const,

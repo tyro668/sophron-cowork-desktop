@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dataClient } from '../features/data/api/data-client';
 
 interface UseColumnValuesInput {
-  taskId?: string;
+  pipelineId?: string;
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> } | null;
   column?: string;
 }
@@ -28,10 +28,10 @@ export interface WorkflowNodeColumnValuesResult {
  * - 失败后关闭再展开可重新查询重试；
  * - 每次展开都反映上游表当前内容，避免返回过期数据。
  *
- * 当 taskId/sourceNode/column 任一为空时返回空状态，这不算错误，仅表示条件不满足。
+ * 当 pipelineId/sourceNode/column 任一为空时返回空状态，这不算错误，仅表示条件不满足。
  */
 export function useWorkflowNodeColumnValues({
-  taskId,
+  pipelineId,
   sourceNode,
   column,
 }: UseColumnValuesInput): WorkflowNodeColumnValuesResult {
@@ -42,12 +42,16 @@ export function useWorkflowNodeColumnValues({
   const [queryToken, setQueryToken] = useState(0);
 
   // 最新查询参数，供 reload 驱动的查询 effect 读取，避免依赖 column 变化自动触发查询。
-  const paramsRef = useRef<{ taskId?: string; sourceNode?: typeof sourceNode; column?: string }>({
-    taskId,
+  const paramsRef = useRef<{
+    pipelineId?: string;
+    sourceNode?: typeof sourceNode;
+    column?: string;
+  }>({
+    pipelineId,
     sourceNode,
     column,
   });
-  paramsRef.current = { taskId, sourceNode, column };
+  paramsRef.current = { pipelineId, sourceNode, column };
 
   // 字段变化时清空旧结果，回到"未查询"空态，避免展示上一字段的候选值。
   useEffect(() => {
@@ -55,17 +59,17 @@ export function useWorkflowNodeColumnValues({
     setLoading(false);
     setLoaded(false);
     setError(false);
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, column]);
+  }, [pipelineId, sourceNode?.id, sourceNode?.type, sourceNode?.config, column]);
 
   // 查询只由 reload()（queryToken）驱动；queryToken === 0 表示尚未发起过查询（懒加载）。
   useEffect(() => {
     if (queryToken === 0) return;
     const {
-      taskId: currentTaskId,
+      pipelineId: currentPipelineId,
       sourceNode: currentSourceNode,
       column: currentColumn,
     } = paramsRef.current;
-    if (!currentTaskId || !currentSourceNode?.id || !currentColumn) return;
+    if (!currentPipelineId || !currentSourceNode?.id || !currentColumn) return;
     if (!dataClient.has('getWorkflowNodeColumnValues')) {
       setValues([]);
       setLoading(false);
@@ -80,7 +84,7 @@ export function useWorkflowNodeColumnValues({
     setError(false);
     dataClient
       .getWorkflowNodeColumnValues({
-        taskId: currentTaskId,
+        pipelineId: currentPipelineId,
         nodeId: currentSourceNode.id,
         nodeType: currentSourceNode.type as never,
         nodeConfig: (currentSourceNode.config ?? {}) as Record<string, unknown>,

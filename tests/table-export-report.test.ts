@@ -1,5 +1,5 @@
 /**
- * HTML report provenance: source task, processing DSL, and computation
+ * HTML report provenance: source pipeline, processing DSL, and computation
  * metadata (run seq, finished-at, duration, row counts, workflow signature)
  * must be present so a shared report stands on its own.
  */
@@ -14,14 +14,14 @@ function makeReport(overrides: Partial<TableReportData> = {}): TableReportData {
     locale: 'en',
     tableName: 'Clean orders',
     physicalTable: 'out_clean_orders',
-    tableKind: 'output',
+    tableKind: 'result',
     rowCount: 1234,
     tableUpdatedAt: 1_700_000_000_000,
     generatedAt: 1_700_000_100_000,
-    sourceDatasetName: 'orders.xlsx',
-    tasks: [
+    sourceRawTableName: 'orders.xlsx',
+    pipelines: [
       {
-        name: 'Clean orders task',
+        name: 'Clean orders pipeline',
         dsl: 'input source orders as src\nfrom src |> filter amount > 0\noutput to "Clean orders"',
       },
     ],
@@ -49,7 +49,7 @@ describe('buildTableReportHtml', () => {
     const html = buildTableReportHtml(makeReport());
     expect(html).toContain('Clean orders');
     expect(html).toContain('orders.xlsx'); // source provenance
-    expect(html).toContain('Clean orders task');
+    expect(html).toContain('Clean orders pipeline');
     expect(html).toContain('filter amount &gt; 0'); // processing/filter DSL, escaped
     expect(html).toContain('#7'); // run number
     expect(html).toContain('3.5 s'); // duration
@@ -80,7 +80,9 @@ describe('buildTableReportHtml', () => {
   });
 
   it('shows a fallback when the workflow is not DSL-expressible', () => {
-    const html = buildTableReportHtml(makeReport({ tasks: [{ name: 'Odd task', dsl: null }] }));
+    const html = buildTableReportHtml(
+      makeReport({ pipelines: [{ name: 'Odd pipeline', dsl: null }] })
+    );
     expect(html).toContain('(Workflow cannot be expressed as DSL)');
   });
 });

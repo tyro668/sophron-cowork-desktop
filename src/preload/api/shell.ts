@@ -1,8 +1,5 @@
 import { ipcRenderer } from 'electron';
-import type {
-  DataInputTableSourceKind,
-  DataInputTableSourceSelection,
-} from '../../shared/contracts';
+import type { DataRawTableSourceKind, DataRawTableSourceSelection } from '../../shared/contracts';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
 
 export function createShellApi(): Pick<
@@ -11,7 +8,7 @@ export function createShellApi(): Pick<
   | 'showItemInFolder'
   | 'openGeneratedReport'
   | 'selectFiles'
-  | 'selectInputTableSource'
+  | 'selectRawTableSource'
   | 'artifacts'
 > {
   return {
@@ -41,10 +38,10 @@ export function createShellApi(): Pick<
     // Select files using native dialog
     selectFiles: (): Promise<string[]> => ipcRenderer.invoke('dialog.selectFiles'),
 
-    selectInputTableSource: (
-      kind?: DataInputTableSourceKind
-    ): Promise<DataInputTableSourceSelection | null> =>
-      ipcRenderer.invoke('dialog.selectInputTableSource', kind),
+    selectRawTableSource: (
+      kind?: DataRawTableSourceKind
+    ): Promise<DataRawTableSourceSelection | null> =>
+      ipcRenderer.invoke('dialog.selectRawTableSource', kind),
 
     artifacts: {
       listRecentFiles: (

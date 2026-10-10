@@ -6,11 +6,14 @@ import * as XLSX from '../src/main/utils/xlsx';
 import { DataCommandService } from '../src/main/data/data-command-service';
 import { DataToolService } from '../src/main/data/data-tool-service';
 import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
-import type { InputTableNormalizerProjectGenerator } from '../src/main/data/input-table-normalizer-generator';
-import { createInputTableNormalizerProjectTemplate } from '../src/shared/input-table-normalizer/templates';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
+import type { RawTableNormalizerProjectGenerator } from '../src/main/data/raw-table-normalizer-generator';
+import { createRawTableNormalizerProjectTemplate } from '../src/shared/raw-table-normalizer/templates';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/agent/pi-ai-one-shot';
-import type { AgentRuntimeConfig, DataCleaningTask } from '../src/renderer/types';
+import type { AgentRuntimeConfig, DataPipeline } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
 import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
 import {
@@ -31,12 +34,12 @@ function asFunctionWorkflow(...operations: WorkflowStepFixture[]): string {
   );
   const body = [
     'function main() {',
-    '  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });',
+    '  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });',
     ...operations.map(
       (_call, index) =>
         `  const value${index + 1} = step${index + 1}(${index === 0 ? 'input' : `value${index}`});`
     ),
-    `  return workflow.output(${operations.length ? `value${operations.length}` : 'input'}, OUTPUT_TABLE_NAME, { mode: "replace" });`,
+    `  return workflow.output(${operations.length ? `value${operations.length}` : 'input'}, RESULT_TABLE_NAME, { mode: "replace" });`,
     '}',
   ];
   return [...helpers, body.join('\n')].join('\n\n');
@@ -80,7 +83,7 @@ const ONE_SHOT_RESULT_DEFAULTS = {
 } satisfies Pick<PiAiOneShotResult, 'provider' | 'model' | 'usage'>;
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 const testRuntimeConfig: AgentRuntimeConfig = {
   provider: 'openai',
   apiKey: 'test-key',
@@ -138,13 +141,13 @@ describe('DataCommandService', () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'analysis-bound.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'analysis-bound input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const analysis = await service.analyzeTaskRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const analysis = await service.analyzePipelineRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '只保留 Market 不等于 EU 的记录',
       usageTraceId: 'ui-analysis-flow',
       runtimeConfig: testRuntimeConfig,
@@ -154,8 +157,8 @@ describe('DataCommandService', () => {
     expect(analysis.capabilityProfileVersion).toBe('platform-node-runtime-compat/v3');
     expect(analysis.items[0]?.capabilities).toEqual(['filter.boolean_predicate']);
     await expect(
-      service.generateTaskFromRequirement({
-        source: { location: 'local', tableId: input.inputTable.id },
+      service.generatePipelineFromRequirement({
+        source: { location: 'local', tableId: input.rawTable.id },
         processRequirement: '改成汇总销售额',
         output: { location: 'local', writeMode: 'create', tableName: 'analysis-bound output' },
         usageTraceId: 'ui-analysis-flow',
@@ -164,8 +167,8 @@ describe('DataCommandService', () => {
       })
     ).rejects.toMatchObject({ code: 'REQUIREMENT_NOT_SUPPORTED' });
     await expect(
-      service.generateTaskFromRequirement({
-        source: { location: 'local', tableId: input.inputTable.id },
+      service.generatePipelineFromRequirement({
+        source: { location: 'local', tableId: input.rawTable.id },
         processRequirement: '只保留 Market 不等于 EU 的记录',
         output: { location: 'local', writeMode: 'create', tableName: 'analysis-bound output' },
         usageTraceId: 'another-ui-flow',
@@ -193,13 +196,13 @@ describe('DataCommandService', () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'unsupported-capability.csv');
     fs.writeFileSync(csvPath, 'payload\n"{""a"":1}"\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'unsupported capability input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const analysis = await service.analyzeTaskRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const analysis = await service.analyzePipelineRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '递归展开 JSON 对象',
       usageTraceId: 'unsupported-capability-flow',
       runtimeConfig: testRuntimeConfig,
@@ -231,13 +234,13 @@ describe('DataCommandService', () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'capability-variant.csv');
     fs.writeFileSync(csvPath, 'id,value\n1,first\n1,last\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'capability variant input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const analysis = await service.analyzeTaskRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const analysis = await service.analyzePipelineRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '按 id 去重并保留第一条',
       usageTraceId: 'capability-variant-flow',
       runtimeConfig: testRuntimeConfig,
@@ -266,8 +269,8 @@ describe('DataCommandService', () => {
         ...ONE_SHOT_RESULT_DEFAULTS,
       });
 
-    await service.generateTaskFromRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '按 id 去重并保留第一条',
       output: { location: 'local', writeMode: 'create', tableName: 'capability variant output' },
       usageTraceId: 'capability-variant-flow',
@@ -306,15 +309,15 @@ describe('DataCommandService', () => {
     const toolService = new DataToolService(service, requirementAnalysisReceipts);
     const csvPath = path.join(tempRoot, 'tool-capability-variant.csv');
     fs.writeFileSync(csvPath, 'id,value\n1,first\n1,last\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'tool capability variant input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const analysis = await toolService.analyzeTaskRequirement(
+    const analysis = await toolService.analyzePipelineRequirement(
       {
-        inputTableId: input.inputTable.id,
+        rawTableId: input.rawTable.id,
         processRequirement: '按 id 去重并保留第一条',
       },
       {
@@ -353,13 +356,13 @@ describe('DataCommandService', () => {
         ...ONE_SHOT_RESULT_DEFAULTS,
       });
 
-    await toolService.generateTaskFromAnalysis(
+    await toolService.generatePipelineFromAnalysis(
       {
         analysisId,
         confirmed: true,
-        taskName: 'tool capability variant task',
+        pipelineName: 'tool capability variant pipeline',
         outputMode: 'create',
-        outputTableName: 'tool capability variant output',
+        resultTableName: 'tool capability variant output',
       },
       {
         sessionId: 'tool-capability-session',
@@ -385,8 +388,8 @@ describe('DataCommandService', () => {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
@@ -414,8 +417,8 @@ function main() {
     };
 
     await repairGeneratedWorkflowFromDiagnostics({
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '过滤掉Market为EU的数据',
       columns: [{ name: 'Market', type: 'string' }],
       runtimeConfig: testRuntimeConfig,
@@ -575,11 +578,11 @@ function main() {
 
   it('rejects CREATE cloud uploads when tableId is provided', async () => {
     const { service, store } = createService();
-    const exportSpy = vi.spyOn(store, 'exportDatasetCsv');
+    const exportSpy = vi.spyOn(store, 'exportRawTableCsv');
 
     await expect(
       service.uploadDataTableToCloud({
-        tableKind: 'input',
+        tableKind: 'raw',
         id: 'input-1',
         writeMode: 'CREATE',
         tableId: 'table-should-not-be-sent',
@@ -600,7 +603,7 @@ function main() {
     });
     const csvPath = path.join(tempRoot, 'sales.csv');
     fs.writeFileSync(csvPath, 'month,revenue\nJan,100\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'sales',
       sourceKind: 'csv',
       filePath: csvPath,
@@ -622,7 +625,7 @@ function main() {
         return jsonResponse({
           success: true,
           data: {
-            uploadTaskId: 'upload-1',
+            uploadPipelineId: 'upload-1',
             tableId: 'table-1',
             uploadUrl: 'http://upload.mock/sales.csv',
           },
@@ -635,7 +638,7 @@ function main() {
       if (href.endsWith('/api/personal/analysis/v1/imports')) {
         return jsonResponse({
           success: true,
-          data: { taskId: 'import-1', tableId: 'table-1', status: 'PENDING' },
+          data: { pipelineId: 'import-1', tableId: 'table-1', status: 'PENDING' },
         });
       }
       throw new Error(`Unexpected request: ${href} ${init?.method || 'GET'}`);
@@ -643,8 +646,8 @@ function main() {
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await service.uploadDataTableToCloud({
-      tableKind: 'input',
-      id: input.inputTable.id,
+      tableKind: 'raw',
+      id: input.rawTable.id,
       writeMode: 'CREATE',
       waitForDone: false,
     });
@@ -665,7 +668,7 @@ function main() {
     });
     const csvPath = path.join(tempRoot, 'sales.csv');
     fs.writeFileSync(csvPath, 'month,revenue\nJan,100\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'sales',
       sourceKind: 'csv',
       filePath: csvPath,
@@ -690,8 +693,8 @@ function main() {
 
     await expect(
       service.uploadDataTableToCloud({
-        tableKind: 'input',
-        id: input.inputTable.id,
+        tableKind: 'raw',
+        id: input.rawTable.id,
         writeMode: 'CREATE',
       })
     ).rejects.toMatchObject({
@@ -700,69 +703,69 @@ function main() {
     });
   });
 
-  it('creates input/output/task resources, saves workflow DSL, and runs the task', async () => {
+  it('creates input/output/pipeline resources, saves workflow DSL, and runs the pipeline', async () => {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n', 'utf8');
 
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'customers',
       sourceKind: 'csv',
       filePath: csvPath,
       previewRows: 2,
     });
-    expect(input.inputTable.name).toBe('customers');
+    expect(input.rawTable.name).toBe('customers');
     expect(input.preview?.totalRows).toBe(2);
 
-    const output = await service.createOutputTable({
+    const output = await service.createResultTable({
       name: 'customers output',
-      sourceInputTableId: input.inputTable.id,
+      sourceRawTableId: input.rawTable.id,
     });
-    expect(output.outputTable.name).toBe('customers output');
-    expect(output.outputTable.rowCount).toBe(2);
+    expect(output.resultTable.name).toBe('customers output');
+    expect(output.resultTable.rowCount).toBe(2);
 
-    const task = await service.createTask({
+    const pipeline = await service.createPipeline({
       name: 'Copy customers',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
-    expect(task.task.sourceDatasetId).toBe(input.inputTable.id);
-    expect(task.task.outputTable).toBe(output.outputTable.tableName);
+    expect(pipeline.pipeline.sourceRawTableId).toBe(input.rawTable.id);
+    expect(pipeline.pipeline.resultTable).toBe(output.resultTable.tableName);
 
-    const listedInputTablesBeforeRun = await service.listInputTables({});
-    const listedOutputTablesBeforeRun = await service.listOutputTables({});
-    expect(listedInputTablesBeforeRun.inputTables[0]?.relatedTaskNames).toContain('Copy customers');
-    expect(listedOutputTablesBeforeRun.outputTables[0]?.relatedTaskNames).toContain(
+    const listedRawTablesBeforeRun = await service.listRawTables({});
+    const listedResultTablesBeforeRun = await service.listResultTables({});
+    expect(listedRawTablesBeforeRun.rawTables[0]?.relatedPipelineNames).toContain('Copy customers');
+    expect(listedResultTablesBeforeRun.resultTables[0]?.relatedPipelineNames).toContain(
       'Copy customers'
     );
 
     const dsl = `
-      input source dataset "${input.inputTable.id}" as customers
+      input source rawTable "${input.rawTable.id}" as customers
 
       from customers
         | output table "customers_copy" mode replace
     `;
     const dryRun = await service.applyWorkflowDsl({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       dsl,
-      outputTableId: output.outputTable.id,
+      resultTableId: output.resultTable.id,
       dryRun: true,
     });
     expect(dryRun.dryRun).toBe(true);
     expect(dryRun.workflow.nodes.map((node) => node.type)).toEqual(['input_source', 'output']);
     expect(
-      dryRun.workflow.nodes.find((node) => node.type === 'output')?.config.outputDatasetId
-    ).toBe(output.outputTable.id);
+      dryRun.workflow.nodes.find((node) => node.type === 'output')?.config.outputResultTableId
+    ).toBe(output.resultTable.id);
 
     const saved = await service.applyWorkflowDsl({
-      taskId: task.task.id,
-      outputTableId: output.outputTable.id,
+      pipelineId: pipeline.pipeline.id,
+      resultTableId: output.resultTable.id,
       dsl,
     });
     const outputNode = saved.workflow.nodes.find((node) => node.type === 'output');
-    expect(outputNode?.config.outputDatasetId).toBe(output.outputTable.id);
+    expect(outputNode?.config.outputResultTableId).toBe(output.resultTable.id);
 
-    const onTaskCompleted = vi.fn();
+    const onPipelineCompleted = vi.fn();
     const notifyingService = new DataCommandService(
       store,
       createFakeNormalizerGenerator(),
@@ -771,40 +774,40 @@ function main() {
         apiKey: '',
         updatedAt: 0,
       }),
-      { onTaskCompleted }
+      { onPipelineCompleted }
     );
 
-    const temporaryRun = await notifyingService.runTask({
-      taskId: task.task.id,
+    const temporaryRun = await notifyingService.runPipeline({
+      pipelineId: pipeline.pipeline.id,
       mode: 'temporary',
       previewRows: 2,
     });
-    expect(temporaryRun.task.status).toBe('completed');
-    expect(temporaryRun.task.outputTable).toMatch(/^temp_task_/);
+    expect(temporaryRun.pipeline.status).toBe('completed');
+    expect(temporaryRun.pipeline.resultTable).toMatch(/^temp_pipeline_/);
     expect(temporaryRun.preview?.totalRows).toBe(2);
 
-    const persistedRun = await notifyingService.runTask({
-      taskId: task.task.id,
+    const persistedRun = await notifyingService.runPipeline({
+      pipelineId: pipeline.pipeline.id,
       mode: 'persisted',
       previewRows: 2,
     });
-    expect(persistedRun.task.status).toBe('completed');
-    expect(persistedRun.outputTableId).toBe(output.outputTable.id);
-    expect((await service.getRunResult({ taskId: task.task.id })).outputTableId).toBe(
-      output.outputTable.id
+    expect(persistedRun.pipeline.status).toBe('completed');
+    expect(persistedRun.resultTableId).toBe(output.resultTable.id);
+    expect((await service.getRunResult({ pipelineId: pipeline.pipeline.id })).resultTableId).toBe(
+      output.resultTable.id
     );
-    expect(temporaryRun.outputTableId).toBeUndefined();
-    expect(persistedRun.task.sourceDatasetId).toBe(input.inputTable.id);
+    expect(temporaryRun.resultTableId).toBeUndefined();
+    expect(persistedRun.pipeline.sourceRawTableId).toBe(input.rawTable.id);
     expect(persistedRun.preview?.totalRows).toBe(2);
-    expect(onTaskCompleted).toHaveBeenCalledTimes(1);
-    expect(onTaskCompleted).toHaveBeenLastCalledWith(persistedRun.task);
+    expect(onPipelineCompleted).toHaveBeenCalledTimes(1);
+    expect(onPipelineCompleted).toHaveBeenLastCalledWith(persistedRun.pipeline);
 
-    const exported = await service.exportWorkflowDsl({ taskId: task.task.id });
-    expect(exported.text).toContain(`input source dataset "${input.inputTable.id}" as customers`);
+    const exported = await service.exportWorkflowDsl({ pipelineId: pipeline.pipeline.id });
+    expect(exported.text).toContain(`input source rawTable "${input.rawTable.id}" as customers`);
 
     const outputPreview = await service.previewTable({
-      tableKind: 'output',
-      id: output.outputTable.id,
+      tableKind: 'result',
+      id: output.resultTable.id,
       limit: 2,
     });
     expect(outputPreview.preview.totalRows).toBe(2);
@@ -813,10 +816,10 @@ function main() {
 
   it('rejects JSON workflow payloads with a clear DSL format diagnostic', async () => {
     const { service } = createService();
-    const task = await service.createTask({ name: 'Bad DSL task' });
+    const pipeline = await service.createPipeline({ name: 'Bad DSL pipeline' });
 
     const result = await service.applyWorkflowDsl({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       dryRun: true,
       dsl: '{"nodes":[],"edges":[]}',
     });
@@ -832,57 +835,57 @@ function main() {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'candidate-cache.csv');
     fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'candidate cache input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const task = await service.createTask({ name: 'candidate cache task' });
-    const lookupSpy = vi.spyOn(store, 'getInputTableRecord');
-    const dsl = `input source dataset "${input.inputTable.id}" as src\n  | output table "cache result" mode replace`;
+    const pipeline = await service.createPipeline({ name: 'candidate cache pipeline' });
+    const lookupSpy = vi.spyOn(store, 'getRawTableRecord');
+    const dsl = `input source rawTable "${input.rawTable.id}" as src\n  | output table "cache result" mode replace`;
 
     await service.applyWorkflowDsl({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       dsl,
-      inputTableId: input.inputTable.id,
+      rawTableId: input.rawTable.id,
       dryRun: true,
     });
     await service.applyWorkflowDsl({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       dsl,
-      inputTableId: input.inputTable.id,
+      rawTableId: input.rawTable.id,
       dryRun: true,
     });
 
     expect(lookupSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('saves a requested workflow only after task execution succeeds', async () => {
+  it('saves a requested workflow only after pipeline execution succeeds', async () => {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'save-after-run.csv');
     fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'save after run input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'save after run output' });
-    const task = await service.createTask({
-      name: 'save after run task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'save after run output' });
+    const pipeline = await service.createPipeline({
+      name: 'save after run pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
     const runSpy = vi
-      .spyOn(store, 'runTaskWithDiagnostics')
+      .spyOn(store, 'runPipelineWithDiagnostics')
       .mockRejectedValueOnce(new Error('execution failed'));
-    const saveSpy = vi.spyOn(store, 'saveTaskWorkflow');
+    const saveSpy = vi.spyOn(store, 'savePipelineWorkflow');
 
     await expect(
-      service.runTask({
-        taskId: task.task.id,
+      service.runPipeline({
+        pipelineId: pipeline.pipeline.id,
         mode: 'persisted',
-        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
-        outputTableId: output.outputTable.id,
+        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+        resultTableId: output.resultTable.id,
         saveWorkflow: true,
       })
     ).rejects.toMatchObject({ code: 'RUN_FAILED' });
@@ -891,23 +894,23 @@ function main() {
     expect(saveSpy).not.toHaveBeenCalled();
   });
 
-  it('serializes concurrent operations for the same task', async () => {
+  it('serializes concurrent operations for the same pipeline', async () => {
     const { service, store } = createService();
-    const task = await service.createTask({ name: 'keyed lock task' });
+    const pipeline = await service.createPipeline({ name: 'keyed lock pipeline' });
     let releaseFirst!: () => void;
     const firstBlocked = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
     let callCount = 0;
-    vi.spyOn(store, 'runTaskWithDiagnostics').mockImplementation(async () => {
+    vi.spyOn(store, 'runPipelineWithDiagnostics').mockImplementation(async () => {
       callCount += 1;
       if (callCount === 1) await firstBlocked;
-      return { task: { ...task.task, status: 'completed' }, diagnostics: [] };
+      return { pipeline: { ...pipeline.pipeline, status: 'completed' }, diagnostics: [] };
     });
 
-    const first = service.runTask({ taskId: task.task.id, mode: 'persisted' });
+    const first = service.runPipeline({ pipelineId: pipeline.pipeline.id, mode: 'persisted' });
     await vi.waitFor(() => expect(callCount).toBe(1));
-    const second = service.runTask({ taskId: task.task.id, mode: 'persisted' });
+    const second = service.runPipeline({ pipelineId: pipeline.pipeline.id, mode: 'persisted' });
     await Promise.resolve();
     expect(callCount).toBe(1);
 
@@ -916,40 +919,40 @@ function main() {
     expect(callCount).toBe(2);
   });
 
-  it('cleans temporary task resources after returning the preview', async () => {
+  it('cleans temporary pipeline resources after returning the preview', async () => {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'temporary.csv');
     fs.writeFileSync(csvPath, 'id\n1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'temporary input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const task = await service.createTask({
-      name: 'temporary cleanup task',
-      sourceInputTableId: input.inputTable.id,
+    const pipeline = await service.createPipeline({
+      name: 'temporary cleanup pipeline',
+      sourceRawTableId: input.rawTable.id,
     });
-    const cleanupSpy = vi.spyOn(store, 'cleanupTemporaryTaskResources');
+    const cleanupSpy = vi.spyOn(store, 'cleanupTemporaryPipelineResources');
 
-    const result = await service.runTask({
-      taskId: task.task.id,
+    const result = await service.runPipeline({
+      pipelineId: pipeline.pipeline.id,
       mode: 'temporary',
-      workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "temporary result" mode replace`,
+      workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "temporary result" mode replace`,
     });
 
     expect(result.preview?.totalRows).toBe(1);
-    expect(cleanupSpy).toHaveBeenCalledWith(task.task.id);
+    expect(cleanupSpy).toHaveBeenCalledWith(pipeline.pipeline.id);
   });
 
   it('reports duplicate names with stable command errors', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
-    await service.createInputTable({ name: 'customers', filePath: csvPath });
+    await service.createRawTable({ name: 'customers', filePath: csvPath });
 
-    await expect(
-      service.createInputTable({ name: 'customers', filePath: csvPath })
-    ).rejects.toThrow('[RESOURCE_ALREADY_EXISTS]');
+    await expect(service.createRawTable({ name: 'customers', filePath: csvPath })).rejects.toThrow(
+      '[RESOURCE_ALREADY_EXISTS]'
+    );
   });
 
   it('generates, previews, publishes, and lists custom normalizer versions', async () => {
@@ -957,7 +960,7 @@ function main() {
     const csvPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
 
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: 'customers normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
@@ -972,7 +975,7 @@ function main() {
       fs.existsSync(
         path.join(
           tempRoot,
-          'input-table-normalizers',
+          'raw-table-normalizers',
           'projects',
           draft.artifact.id,
           draft.version.id,
@@ -982,7 +985,7 @@ function main() {
       )
     ).toBe(true);
 
-    const preview = await service.previewInputTableNormalizerVersion({
+    const preview = await service.previewRawTableNormalizerVersion({
       versionId: draft.version.id,
       sourcePath: csvPath,
       sourceKind: 'csv',
@@ -993,13 +996,13 @@ function main() {
     expect(preview.preview.columns).toEqual(['id', 'name']);
     expect(preview.preview.rows[0]).toEqual({ id: '1', name: 'Alice' });
 
-    const published = await service.publishInputTableNormalizerVersion({
+    const published = await service.publishRawTableNormalizerVersion({
       versionId: draft.version.id,
     });
     expect(published.version.status).toBe('published');
     expect(published.artifact.activeVersionId).toBe(draft.version.id);
 
-    const versions = await service.listInputTableNormalizerVersions({
+    const versions = await service.listRawTableNormalizerVersions({
       artifactId: draft.artifact.id,
     });
     expect(versions.versions).toHaveLength(1);
@@ -1008,7 +1011,7 @@ function main() {
       status: 'published',
     });
 
-    const secondDraft = await service.generateInputTableNormalizerDraft({
+    const secondDraft = await service.generateRawTableNormalizerDraft({
       artifactId: draft.artifact.id,
       name: 'customers normalizer',
       sourcePath: csvPath,
@@ -1019,7 +1022,7 @@ function main() {
     expect(secondDraft.version.status).toBe('draft');
     const secondDraftProjectDir = path.join(
       tempRoot,
-      'input-table-normalizers',
+      'raw-table-normalizers',
       'projects',
       secondDraft.artifact.id,
       secondDraft.version.id
@@ -1027,19 +1030,19 @@ function main() {
     expect(fs.existsSync(secondDraftProjectDir)).toBe(true);
 
     await expect(
-      service.deleteInputTableNormalizerVersion({
+      service.deleteRawTableNormalizerVersion({
         versionId: published.version.id,
       })
     ).rejects.toThrow('Published normalizer versions cannot be deleted');
 
     await expect(
-      service.deleteInputTableNormalizerVersion({
+      service.deleteRawTableNormalizerVersion({
         versionId: secondDraft.version.id,
       })
     ).resolves.toEqual({ success: true });
     expect(fs.existsSync(secondDraftProjectDir)).toBe(false);
 
-    const versionsAfterDelete = await service.listInputTableNormalizerVersions({
+    const versionsAfterDelete = await service.listRawTableNormalizerVersions({
       artifactId: draft.artifact.id,
     });
     expect(versionsAfterDelete.versions).toHaveLength(1);
@@ -1051,7 +1054,7 @@ function main() {
     const csvPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n', 'utf8');
 
-    const result = await service.createInputTableWithProcessingStrategy({
+    const result = await service.createRawTableWithProcessingStrategy({
       name: 'customers normalized',
       sourceKind: 'csv',
       filePath: csvPath,
@@ -1065,7 +1068,7 @@ function main() {
 
     expect(result.processingStrategy).toBe('customize');
     expect(result.normalizer?.publishedVersion.status).toBe('published');
-    expect(result.inputTable.inputConfig.dataProcessing).toMatchObject({
+    expect(result.rawTable.inputConfig.dataProcessing).toMatchObject({
       strategy: 'customize',
       artifactId: result.normalizer?.artifact.id,
       artifactVersionId: result.normalizer?.publishedVersion.id,
@@ -1081,7 +1084,7 @@ function main() {
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
     const progressEvents: Array<{ phase: string; kind: string; text: string }> = [];
 
-    await service.generateInputTableNormalizerDraft({
+    await service.generateRawTableNormalizerDraft({
       name: 'customers normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
@@ -1113,7 +1116,7 @@ function main() {
       ],
     });
 
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: '不规则表处理 normalizer',
       sourcePath: excelPath,
       sourceKind: 'excel',
@@ -1128,7 +1131,7 @@ function main() {
       primaryLanguage: 'node',
     });
 
-    const preview = await service.previewInputTableNormalizerVersion({
+    const preview = await service.previewRawTableNormalizerVersion({
       versionId: draft.version.id,
       sourcePath: excelPath,
       sourceKind: 'excel',
@@ -1174,7 +1177,7 @@ function main() {
       headerMode: 'auto' as const,
       headerRow: 1,
     };
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: '两层表头 normalizer',
       sourcePath: excelPath,
       sourceKind: 'excel',
@@ -1191,7 +1194,7 @@ function main() {
     expect(generatedTransform).toContain('buildColumns');
     expect(generatedTransform).not.toContain('This project is a scaffold');
 
-    const preview = await service.previewInputTableNormalizerVersion({
+    const preview = await service.previewRawTableNormalizerVersion({
       versionId: draft.version.id,
       sourcePath: excelPath,
       sourceKind: 'excel',
@@ -1225,7 +1228,7 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'source.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: '多行表头输出 normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
@@ -1233,7 +1236,7 @@ function main() {
       primaryLanguage: 'node',
     });
 
-    const preview = await service.previewInputTableNormalizerVersion({
+    const preview = await service.previewRawTableNormalizerVersion({
       versionId: draft.version.id,
       sourcePath: csvPath,
       sourceKind: 'csv',
@@ -1267,7 +1270,7 @@ function main() {
       ],
     });
 
-    const result = await service.summarizeInputTableSource({
+    const result = await service.summarizeRawTableSource({
       sourcePath: excelPath,
       sourceKind: 'excel',
       maxSheetsPerFile: 2,
@@ -1299,7 +1302,7 @@ function main() {
     fs.writeFileSync(path.join(folderPath, 'jan.csv'), 'id,amount\n1,10\n', 'utf8');
     fs.writeFileSync(path.join(folderPath, 'feb.csv'), 'id,amount\n2,20\n', 'utf8');
 
-    const summary = await service.summarizeInputTableSource({
+    const summary = await service.summarizeRawTableSource({
       sourcePath: folderPath,
       sourceKind: 'folder',
       maxFiles: 1,
@@ -1311,7 +1314,7 @@ function main() {
     expect(summary.summary.truncated).toBe(true);
     expect(summary.summary.files[0]?.sampleRows?.[0]).toEqual(['id', 'amount']);
 
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: 'monthly normalizer',
       sourcePath: folderPath,
       sourceKind: 'folder',
@@ -1345,7 +1348,7 @@ function main() {
       }
     );
 
-    const draft = await service.generateInputTableNormalizerDraft({
+    const draft = await service.generateRawTableNormalizerDraft({
       name: '合并单元格 normalizer',
       sourcePath: excelPath,
       sourceKind: 'excel',
@@ -1378,17 +1381,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -1407,19 +1410,19 @@ function main() {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'anchored-market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'anchored market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const first = await service.generateTaskFromRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const first = await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '过滤掉 Market 为 EU 的数据',
       output: { location: 'local', writeMode: 'create', tableName: 'anchored result' },
       runtimeConfig: testRuntimeConfig,
     });
-    const saved = await store.getTaskWorkflow(first.taskId);
+    const saved = await store.getPipelineWorkflow(first.pipelineId);
     const filterNode = saved.nodes.find((node) => node.type === 'filter')!;
     const outputNode = saved.nodes.find((node) => node.type === 'output')!;
 
@@ -1440,12 +1443,12 @@ function main() {
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
     });
-    const second = await service.generateTaskFromRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const second = await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '计算各 Market 总销售额并过滤大于 100 的',
       output: { location: 'local', writeMode: 'create', tableName: 'anchored second' },
       runtimeConfig: testRuntimeConfig,
-      reuseTaskId: first.taskId,
+      reusePipelineId: first.pipelineId,
       startFromNodeId: filterNode.id,
       workflow: {
         nodes: saved.nodes.map((node) => ({
@@ -1466,8 +1469,8 @@ function main() {
       },
     });
 
-    const merged = await store.getTaskWorkflow(first.taskId);
-    expect(second.taskId).toBe(first.taskId);
+    const merged = await store.getPipelineWorkflow(first.pipelineId);
+    expect(second.pipelineId).toBe(first.pipelineId);
     // Existing nodes stay; the generated aggregate→filter chain splices in.
     expect(merged.nodes.map((node) => node.type)).toEqual([
       'input_source',
@@ -1486,7 +1489,7 @@ function main() {
     expect(pairs).toContain(`${newFilter.id}->${outputNode.id}`);
     expect(pairs).not.toContain(`${filterNode.id}->${outputNode.id}`);
     // The merged tail feeds the existing output sink — no new output table.
-    expect(second.outputTableId).toBe(first.outputTableId);
+    expect(second.resultTableId).toBe(first.resultTableId);
   });
 
   it('generates and validates a confirmed chain after a lone unsaved input node', async () => {
@@ -1495,25 +1498,25 @@ function main() {
     const { service, store, tempRoot } = createService({ requirementAnalysisReceipts: receipts });
     const csvPath = path.join(tempRoot, 'open-tail.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'open tail input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const { task } = await service.createTask({
-      name: 'open tail task',
-      sourceInputTableId: input.inputTable.id,
+    const { pipeline } = await service.createPipeline({
+      name: 'open tail pipeline',
+      sourceRawTableId: input.rawTable.id,
     });
     const toolService = new DataToolService(service, receipts);
     const authoringRequest = {
       id: 'open-tail-request',
-      source: { location: 'local' as const, tableId: input.inputTable.id },
+      source: { location: 'local' as const, tableId: input.rawTable.id },
       output: {
         location: 'local' as const,
         writeMode: 'create' as const,
         tableName: 'open tail result',
       },
-      reuseTaskId: task.id,
+      reusePipelineId: pipeline.id,
       startFromNodeId: 'input',
       workflow: {
         nodes: [
@@ -1523,7 +1526,7 @@ function main() {
             label: 'Input',
             x: 0,
             y: 0,
-            config: { source: 'dataset', datasetId: input.inputTable.id },
+            config: { source: 'rawTable', rawTableId: input.rawTable.id },
           },
         ],
         edges: [],
@@ -1543,8 +1546,8 @@ function main() {
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
     });
-    const analysis = await toolService.analyzeTaskRequirement(
-      { inputTableId: input.inputTable.id, processRequirement: '过滤掉 Market 为 EU 的数据' },
+    const analysis = await toolService.analyzePipelineRequirement(
+      { rawTableId: input.rawTable.id, processRequirement: '过滤掉 Market 为 EU 的数据' },
       {
         sessionId: 'open-tail-chat',
         currentUserMessageId: 'request',
@@ -1553,7 +1556,7 @@ function main() {
         onActivity,
       }
     );
-    const result = await toolService.generateTaskFromAnalysis(
+    const result = await toolService.generatePipelineFromAnalysis(
       {
         analysisId: (analysis.details as { analysisId: string }).analysisId,
         confirmed: true,
@@ -1567,7 +1570,10 @@ function main() {
       }
     );
     expect(result.details).toMatchObject({
-      dataTaskCompletion: { requestId: authoringRequest.id, result: { taskId: task.id } },
+      dataPipelineCompletion: {
+        requestId: authoringRequest.id,
+        result: { pipelineId: pipeline.id },
+      },
       validation: { temporaryRun: 'passed' },
     });
     expect(vi.mocked(runPiAiOneShot).mock.calls.map((call) => call[3]?.onActivity)).toEqual([
@@ -1579,7 +1585,7 @@ function main() {
       'low',
     ]);
     expect(vi.mocked(runPiAiOneShot).mock.calls[1][3]?.thinkingBudgets).toEqual({ low: 1024 });
-    const saved = await store.getTaskWorkflow(task.id);
+    const saved = await store.getPipelineWorkflow(pipeline.id);
     expect(saved.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
     expect(saved.edges).toHaveLength(2);
     const outputNode = saved.nodes.find((node) => node.type === 'output')!;
@@ -1590,24 +1596,24 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'anchor-missing.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'anchor missing input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const first = await service.generateTaskFromRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const first = await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '过滤',
       output: { location: 'local', writeMode: 'create', tableName: 'anchor missing out' },
       runtimeConfig: testRuntimeConfig,
     });
     await expect(
-      service.generateTaskFromRequirement({
-        source: { location: 'local', tableId: input.inputTable.id },
+      service.generatePipelineFromRequirement({
+        source: { location: 'local', tableId: input.rawTable.id },
         processRequirement: '再过滤',
         output: { location: 'local', writeMode: 'create' },
         runtimeConfig: testRuntimeConfig,
-        reuseTaskId: first.taskId,
+        reusePipelineId: first.pipelineId,
         startFromNodeId: 'no_such_node',
       })
     ).rejects.toThrow(/Cannot find workflow node/);
@@ -1620,17 +1626,17 @@ function main() {
     const { service, store, tempRoot } = createService({ exportWorkflowDsl });
     const csvPath = path.join(tempRoot, 'native-only-market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'native-only market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -1645,21 +1651,21 @@ function main() {
     expect(generated.workflowDslAvailable).toBe(false);
     expect(generated.workflowDsl).toBeUndefined();
     expect(generated.workflowHash).toMatch(/^[a-f0-9]{64}$/);
-    const workflow = await store.getTaskWorkflow(generated.taskId);
+    const workflow = await store.getPipelineWorkflow(generated.pipelineId);
     expect(workflow.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
     expect(workflow.nodes.every((node) => !Object.hasOwn(node.config, 'dsl'))).toBe(true);
 
-    const run = await service.runGeneratedTask({
-      taskId: generated.taskId,
+    const run = await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: generated.outputTableId,
+        targetTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
       expectedOutputSchema: generated.expectedOutputSchema,
@@ -1683,19 +1689,19 @@ function main() {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'fenced-market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'fenced market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
-      source: { location: 'local', tableId: input.inputTable.id },
+    const generated = await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id },
       processRequirement: '过滤掉 Market 为 EU 的数据',
       output: { location: 'local', writeMode: 'create', tableName: 'fenced result' },
       runtimeConfig: testRuntimeConfig,
     });
-    const saved = await store.getTaskWorkflow(generated.taskId);
+    const saved = await store.getPipelineWorkflow(generated.pipelineId);
 
     expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
     expect(saved.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
@@ -1721,17 +1727,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -1765,17 +1771,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales,Quantity\nEU,10,2\nUS,20,3\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤 Market 不是 EU，新增 Revenue = Sales * Quantity 并降序',
       output: {
@@ -1827,17 +1833,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Unit Price\n10\n5\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '按 Unit Price 升序排序',
       output: {
@@ -1874,17 +1880,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'orders.csv');
     fs.writeFileSync(csvPath, 'Customer ID,记录数,Profit\nCUS-001,1,10\nCUS-002,1,-5\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'orders input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '提取 Customer ID 中的数字，删除记录数，只保留 Profit 大于 0 并降序',
       output: {
@@ -1917,17 +1923,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'orders.csv');
     fs.writeFileSync(csvPath, 'Customer ID\nCUS-001\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'orders input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '提取 Customer ID 中的数字',
       output: {
@@ -1960,17 +1966,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profits.csv');
     fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'profits input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '只保留 Profit 小于 Target Profit 的记录',
       output: {
@@ -2009,17 +2015,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profits.csv');
     fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'profits input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement:
         '只保留 Profit 小于 Target Profit 的记录，新增 Profit Shortfall = Target Profit - Profit，并按 Profit Shortfall 降序排序',
@@ -2060,17 +2066,17 @@ function main() {
       'Market,Product Type,Sales,Profit,Marketing\nCentral,Coffee,100,30,10\nEast,Tea,80,20,8\n',
       'utf8'
     );
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'coffee input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement:
         '按 Market 和 Product Type 分组，统计 Sales 总和、Profit 总和、Marketing 总和、记录数，并按 Sales 总和降序排列。',
@@ -2111,17 +2117,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '删除记录数，按照Unit Price升序排列',
       output: {
@@ -2156,17 +2162,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '删除记录数，按照Unit Price升序排列',
       output: {
@@ -2208,17 +2214,17 @@ function main() {
       ].join('\n'),
       'utf8'
     );
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'orders input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '按照sales升序排列\n删除记录数',
       output: {
@@ -2266,17 +2272,17 @@ function main() {
       ].join('\n'),
       'utf8'
     );
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement:
         '把这张 CSV 清洗成标准价格明细表：删除“记录数”，统一字段名，Adj Close 去掉 $ 转数值，NULL 置空，Ticker 转大写，并从 Date 提取年份和月份。',
@@ -2328,17 +2334,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Adj Close\n$8.34\n$16.14\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: 'Adj Close 去掉美元符号转数值，新增 double_close 为两倍并降序排序',
       output: {
@@ -2389,17 +2395,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Adj Close,记录数\n$8.34,1\n$16.14,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '将Adj Close转换成数值，去除开头的$符号，删除记录数这一列',
       output: {
@@ -2427,10 +2433,10 @@ function extractMonth(input) {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const withYear = extractYear(input);
   const withMonth = extractMonth(withYear);
-  return workflow.output(withMonth, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(withMonth, RESULT_TABLE_NAME, { mode: "replace" });
 }`,
         requiredColumns: [],
       }),
@@ -2441,17 +2447,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '从 Date 提取年份和月份',
       output: {
@@ -2477,9 +2483,9 @@ function main() {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const extracted = extractYearMonth(input);
-  return workflow.output(extracted, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(extracted, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({ javascriptSource: multiOperationSource }),
@@ -2490,17 +2496,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'repair-dates.csv');
     fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'repair dates input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '从 Date 提取年份和月份',
       output: {
@@ -2537,17 +2543,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '从 Date 提取年份',
       output: {
@@ -2581,17 +2587,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '从 Date 提取月份',
       output: {
@@ -2623,17 +2629,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'prices.csv');
     fs.writeFileSync(csvPath, 'Ticker\nfire\nsymc\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'prices input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '统一字段名，Ticker 转大写',
       output: {
@@ -2687,17 +2693,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'rank-sales.csv');
     fs.writeFileSync(csvPath, 'Customer ID,Sales\n1,10\n2,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'rank sales input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '找出销售额最高的前10名客户',
       output: {
@@ -2730,8 +2736,8 @@ function main() {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
@@ -2756,17 +2762,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'syntax-repair.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'syntax repair input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -2817,8 +2823,8 @@ function main() {
     const invalidSource = `${invalidHelper}
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const validSource = asFunctionWorkflow([
       'filter',
@@ -2848,17 +2854,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'syntax-patch-fallback.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'syntax patch fallback input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -2887,8 +2893,8 @@ function main() {
     const invalidSource = `${invalidHelper}
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const semanticFailureSource = asFunctionWorkflow([
       'filter',
@@ -2928,17 +2934,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'stage-repair-budget.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'stage repair budget input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -2998,17 +3004,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'semantic-repair-frontier.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'semantic repair frontier input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -3058,17 +3064,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'duplicate-syntax-repair.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'duplicate syntax repair input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -3113,18 +3119,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'duplicate-rewrite-stop.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'duplicate rewrite stop input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '过滤掉Market为EU的数据',
         output: {
@@ -3173,17 +3179,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'truncated-generation.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'truncated generation input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -3227,10 +3233,10 @@ function addOperatingGrade(input) {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const withProfitRate = addProfitRate(input);
   const withOperatingGrade = addOperatingGrade(withProfitRate);
-  return workflow.output(withOperatingGrade, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(withOperatingGrade, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const repairedProfitRate = `function addProfitRate(input) {
   return workflow.step(input, "derive", {
@@ -3259,7 +3265,7 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'profit-rate-classification.csv');
     fs.writeFileSync(csvPath, 'Sales,Profit\n100,25\n100,10\n100,-10\n0,-5\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'profit rate classification input',
       sourceKind: 'csv',
       filePath: csvPath,
@@ -3267,11 +3273,11 @@ function main() {
     const requirement =
       '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。';
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: requirement,
       output: {
@@ -3298,17 +3304,17 @@ function main() {
     expect(generated.workflowDsl).toContain('derive [利润率]');
     expect(generated.workflowDsl).toContain('derive [经营等级]');
 
-    const run = await service.runGeneratedTask({
-      taskId: generated.taskId,
+    const run = await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: generated.outputTableId,
+        targetTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
       expectedOutputSchema: generated.expectedOutputSchema,
@@ -3348,11 +3354,11 @@ function sortByShare(input) {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const summarized = summarizeCountrySales(input);
   const withShare = addOverallSalesAndShare(summarized);
   const sorted = sortByShare(withShare);
-  return workflow.output(sorted, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(sorted, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const repairedFunction = `function addOverallSalesAndShare(input) {
   const withOverallSales = workflow.step(input, "derive_window", {
@@ -3389,17 +3395,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'country-sales-share.csv');
     fs.writeFileSync(csvPath, 'Country,Sales\nChina,10\nChina,30\nFrance,60\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'country sales share input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement:
         '按 Country 汇总 Sales，然后计算各国家销售额占全部国家销售额的比例，结果按占比降序排列。',
@@ -3427,17 +3433,17 @@ function main() {
     });
     expect(generated.workflowDsl).toContain('sum([国家销售额]) OVER ()');
 
-    const run = await service.runGeneratedTask({
-      taskId: generated.taskId,
+    const run = await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: generated.outputTableId,
+        targetTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
       expectedOutputSchema: generated.expectedOutputSchema,
@@ -3470,9 +3476,9 @@ function main() {
 }
 
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const pivoted = pivotMarketSales(input);
-  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(pivoted, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const validSource = pivotSource(
       '[{ field: "Market", values: ["Central", "East", "South", "West"] }]'
@@ -3512,17 +3518,17 @@ function main() {
       ].join('\n'),
       'utf8'
     );
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: `pivot ${_caseName} input`,
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement:
         '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
@@ -3550,17 +3556,17 @@ function main() {
     expect(generated.workflowDsl).toContain('pivot on [Market]');
     expect(generated.workflowDsl).toContain('group by [Product Type]');
 
-    const run = await service.runGeneratedTask({
-      taskId: generated.taskId,
+    const run = await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: generated.outputTableId,
+        targetTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
       expectedOutputSchema: generated.expectedOutputSchema,
@@ -3634,18 +3640,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '过滤 Market 大于 100 的数据',
         output: {
@@ -3682,9 +3688,9 @@ function main() {
   return workflow.step(input, "filter", { condition: expr(row => row["利润"] === "待确认" ? false : ${expression} > 0) });
 }`;
       const main = `function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const filtered = filterPositiveProfit(input);
-  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(filtered, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
       const original = `${helper('cast(row["利润"], "float")')}\n\n${main}`;
       const replacement = helper('cast(replace(row["利润"], ",", ""), "float")');
@@ -3707,13 +3713,13 @@ function main() {
         '区域,利润\n东区,"1,234.50"\n西区,-2.00\n南区,0\n北区,3.25\n中区,待确认\n',
         'utf8'
       );
-      const input = await service.createInputTable({
+      const input = await service.createRawTable({
         name: '利润输入',
         sourceKind: 'csv',
         filePath: csvPath,
       });
-      const generated = await service.generateTaskFromRequirement({
-        source: { location: 'local', tableId: input.inputTable.id },
+      const generated = await service.generatePipelineFromRequirement({
+        source: { location: 'local', tableId: input.rawTable.id },
         processRequirement: '筛选利润大于0的数据',
         output: { location: 'local', writeMode: 'create', tableName: '利润输出' },
         runtimeConfig: testRuntimeConfig,
@@ -3734,7 +3740,7 @@ function main() {
         expect(fallbackPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
         expect(fallbackPrompt.previousFailedAttempt.failedJavascriptSource).toBe(original);
       }
-      const run = await service.runTask({ taskId: generated.taskId });
+      const run = await service.runPipeline({ pipelineId: generated.pipelineId });
       expect(run.preview?.rows.map((row) => row['区域'])).toEqual(['东区', '北区']);
     }
   );
@@ -3756,8 +3762,8 @@ function main() {
     });
     await expect(
       repairGeneratedWorkflowFromDiagnostics({
-        inputTableId: 'input',
-        outputTableName: 'output',
+        rawTableId: 'input',
+        resultTableName: 'output',
         requirement: '过滤掉EU',
         columns: [{ name: 'Market', type: 'string' }],
         runtimeConfig: testRuntimeConfig,
@@ -3799,7 +3805,7 @@ function main() {
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workflowDsl: [
-            'input source dataset "ignored" as src',
+            'input source rawTable "ignored" as src',
             "  | filter [Market] <> 'EU'",
             '  | output table "market processed" mode replace',
           ].join('\n'),
@@ -3811,18 +3817,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '过滤掉Market为EU的数据',
         output: {
@@ -3861,18 +3867,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '过滤掉Market为EU的数据',
         output: {
@@ -3892,7 +3898,7 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
@@ -3910,7 +3916,7 @@ function main() {
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workflowDsl: [
-            `input source dataset "${input.inputTable.id}" as src`,
+            `input source rawTable "${input.rawTable.id}" as src`,
             "  | filter [Market] <> 'EU'",
             '  | output table "market processed" mode replace',
           ].join('\n'),
@@ -3922,11 +3928,11 @@ function main() {
       });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '用高级逻辑过滤掉Market为EU的数据',
         output: {
@@ -3959,17 +3965,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '按照Unit Price升序排列',
       output: {
@@ -4024,18 +4030,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nUS,20\nEU,10\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '按照Market Value升序排列',
         output: {
@@ -4073,17 +4079,17 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'items.csv');
     fs.writeFileSync(csvPath, 'Market Value,Sales\n20,2\n10,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'items input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '按照Market Value升序排列',
       output: {
@@ -4098,23 +4104,23 @@ function main() {
     expect(generated.requiredColumns).toEqual([{ name: 'Market Value', type: 'integer' }]);
   });
 
-  it('fails data task generation when the model call fails', async () => {
+  it('fails data pipeline generation when the model call fails', async () => {
     vi.mocked(runPiAiOneShot).mockRejectedValueOnce(new Error('model unavailable'));
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '过滤掉Market为EU的数据',
         output: {
@@ -4126,10 +4132,10 @@ function main() {
       })
     ).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
 
-    const tasks = await service.listTasks({ query: 'market input_自动处理' });
-    const outputs = await service.listOutputTables({ query: 'market processed' });
-    expect(tasks.tasks).toHaveLength(0);
-    expect(outputs.outputTables).toHaveLength(0);
+    const pipelines = await service.listPipelines({ query: 'market input_自动处理' });
+    const outputs = await service.listResultTables({ query: 'market processed' });
+    expect(pipelines.pipelines).toHaveLength(0);
+    expect(outputs.resultTables).toHaveLength(0);
   });
 
   it('does not delete a reused output table when generation fails', async () => {
@@ -4137,47 +4143,49 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const existingOutput = await service.createOutputTable({ name: 'market processed' });
+    const existingOutput = await service.createResultTable({ name: 'market processed' });
 
     await expect(
-      service.generateTaskFromRequirement({
-        source: { location: 'local', tableId: input.inputTable.id },
+      service.generatePipelineFromRequirement({
+        source: { location: 'local', tableId: input.rawTable.id },
         processRequirement: '复制数据',
         output: {
           location: 'local',
           writeMode: 'create',
-          tableName: existingOutput.outputTable.name,
-          localOutputTableId: existingOutput.outputTable.id,
+          tableName: existingOutput.resultTable.name,
+          localResultTableId: existingOutput.resultTable.id,
         },
         runtimeConfig: testRuntimeConfig,
       })
     ).rejects.toMatchObject({ code: 'GENERATION_FAILED' });
 
-    const outputs = await service.listOutputTables({ query: 'market processed' });
-    expect(outputs.outputTables.map((table) => table.id)).toContain(existingOutput.outputTable.id);
-    expect((await service.listTasks({ query: 'market input_自动处理' })).tasks).toHaveLength(0);
+    const outputs = await service.listResultTables({ query: 'market processed' });
+    expect(outputs.resultTables.map((table) => table.id)).toContain(existingOutput.resultTable.id);
+    expect(
+      (await service.listPipelines({ query: 'market input_自动处理' })).pipelines
+    ).toHaveLength(0);
   });
 
-  it('reuses generated task and output table when regenerating', async () => {
+  it('reuses generated pipeline and output table when regenerating', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
-    const first = await service.generateTaskFromRequirement({
+    const first = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -4187,33 +4195,33 @@ function main() {
       },
       runtimeConfig: testRuntimeConfig,
     });
-    const second = await service.generateTaskFromRequirement({
+    const second = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
         location: 'local',
         writeMode: 'create',
         tableName: 'market processed',
-        localOutputTableId: first.outputTableId,
+        localResultTableId: first.resultTableId,
       },
-      reuseTaskId: first.taskId,
+      reusePipelineId: first.pipelineId,
       currentVersion: first.version,
       runtimeConfig: testRuntimeConfig,
     });
-    const tasks = await service.listTasks({ query: 'market input_自动处理' });
-    const outputs = await service.listOutputTables({ query: 'market processed' });
+    const pipelines = await service.listPipelines({ query: 'market input_自动处理' });
+    const outputs = await service.listResultTables({ query: 'market processed' });
 
-    expect(second.taskId).toBe(first.taskId);
-    expect(second.outputTableId).toBe(first.outputTableId);
+    expect(second.pipelineId).toBe(first.pipelineId);
+    expect(second.resultTableId).toBe(first.resultTableId);
     expect(second.version).toBe(2);
     expect(
-      tasks.tasks.filter((task) => task.name.startsWith('market input_自动处理'))
+      pipelines.pipelines.filter((pipeline) => pipeline.name.startsWith('market input_自动处理'))
     ).toHaveLength(1);
-    expect(outputs.outputTables.filter((table) => table.name === 'market processed')).toHaveLength(
+    expect(outputs.resultTables.filter((table) => table.name === 'market processed')).toHaveLength(
       1
     );
   });
@@ -4222,16 +4230,16 @@ function main() {
     const { service, store, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const first = await service.generateTaskFromRequirement({
+    const first = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -4241,28 +4249,28 @@ function main() {
       },
       runtimeConfig: testRuntimeConfig,
     });
-    await store.deleteDataset(first.outputTableId);
+    await store.deleteRawTable(first.resultTableId);
 
-    const regenerated = await service.generateTaskFromRequirement({
+    const regenerated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
         location: 'local',
         writeMode: 'create',
         tableName: 'market processed',
-        localOutputTableId: first.outputTableId,
+        localResultTableId: first.resultTableId,
       },
-      reuseTaskId: first.taskId,
+      reusePipelineId: first.pipelineId,
       currentVersion: first.version,
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(regenerated.taskId).toBe(first.taskId);
-    expect(regenerated.outputTableId).not.toBe(first.outputTableId);
+    expect(regenerated.pipelineId).toBe(first.pipelineId);
+    expect(regenerated.resultTableId).not.toBe(first.resultTableId);
     expect(regenerated.version).toBe(2);
   });
 
@@ -4270,16 +4278,16 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const first = await service.generateTaskFromRequirement({
+    const first = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -4290,27 +4298,27 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    const regenerated = await service.generateTaskFromRequirement({
+    const regenerated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
         location: 'local',
         writeMode: 'create',
         tableName: 'market processed 2',
-        localOutputTableId: first.outputTableId,
+        localResultTableId: first.resultTableId,
       },
-      reuseTaskId: first.taskId,
+      reusePipelineId: first.pipelineId,
       currentVersion: first.version,
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(regenerated.taskId).toBe(first.taskId);
-    expect(regenerated.outputTableId).not.toBe(first.outputTableId);
-    expect(regenerated.outputTableName).toBe('market processed 2');
+    expect(regenerated.pipelineId).toBe(first.pipelineId);
+    expect(regenerated.resultTableId).not.toBe(first.resultTableId);
+    expect(regenerated.resultTableName).toBe('market processed 2');
     expect(regenerated.workflowDsl).toContain('output table "market processed 2" mode replace');
     expect(regenerated.workflowDsl).not.toContain('output table "market processed 1"');
     expect(regenerated.version).toBe(2);
@@ -4320,18 +4328,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const existingOutput = await service.createOutputTable({ name: 'market processed' });
+    const existingOutput = await service.createResultTable({ name: 'market processed' });
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       processRequirement: '过滤掉Market为EU的数据',
       output: {
@@ -4341,15 +4349,15 @@ function main() {
       },
       runtimeConfig: testRuntimeConfig,
     });
-    const outputs = await service.listOutputTables({ query: 'market processed' });
+    const outputs = await service.listResultTables({ query: 'market processed' });
 
-    expect(generated.outputTableId).toBe(existingOutput.outputTable.id);
-    expect(outputs.outputTables.filter((table) => table.name === 'market processed')).toHaveLength(
+    expect(generated.resultTableId).toBe(existingOutput.resultTable.id);
+    expect(outputs.resultTables.filter((table) => table.name === 'market processed')).toHaveLength(
       1
     );
   });
 
-  it('refreshes a stable local mirror for cloud generated tasks', async () => {
+  it('refreshes a stable local mirror for cloud generated pipelines', async () => {
     const { service } = createService({
       personalAnalysis: {
         apiOrigin: 'http://cloud.mock',
@@ -4364,7 +4372,7 @@ function main() {
       }
       if (href.endsWith('/api/personal/analysis/v1/tables/tbl-12345678/exports')) {
         expect(init?.method).toBe('POST');
-        return jsonResponse({ success: true, data: { taskId: 'export-1', status: 'RUNNING' } });
+        return jsonResponse({ success: true, data: { pipelineId: 'export-1', status: 'RUNNING' } });
       }
       if (href.endsWith('/api/personal/analysis/v1/exports/export-1/download')) {
         return jsonResponse({
@@ -4382,7 +4390,7 @@ function main() {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const generated = await service.generateTaskFromRequirement({
+    const generated = await service.generatePipelineFromRequirement({
       source: {
         location: 'cloud',
         tableId: 'tbl-12345678',
@@ -4397,8 +4405,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    await service.runGeneratedTask({
-      taskId: generated.taskId,
+    await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       workflowDsl: generated.workflowDsl,
       source: {
         location: 'cloud',
@@ -4408,12 +4416,12 @@ function main() {
       output: {
         location: 'local',
         writeMode: 'create',
-        localOutputTableId: generated.outputTableId,
+        localResultTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
     });
-    await service.runGeneratedTask({
-      taskId: generated.taskId,
+    await service.runGeneratedPipeline({
+      pipelineId: generated.pipelineId,
       workflowDsl: generated.workflowDsl,
       source: {
         location: 'cloud',
@@ -4423,14 +4431,14 @@ function main() {
       output: {
         location: 'local',
         writeMode: 'create',
-        localOutputTableId: generated.outputTableId,
+        localResultTableId: generated.resultTableId,
       },
       requiredColumns: generated.requiredColumns,
     });
-    const mirrors = await service.listInputTables({ query: 'Cloud Orders_自动化镜像' });
+    const mirrors = await service.listRawTables({ query: 'Cloud Orders_自动化镜像' });
 
-    expect(mirrors.inputTables).toHaveLength(1);
-    expect(mirrors.inputTables[0]?.name).toBe('Cloud Orders_自动化镜像_tbl-1234');
+    expect(mirrors.rawTables).toHaveLength(1);
+    expect(mirrors.rawTables[0]?.name).toBe('Cloud Orders_自动化镜像_tbl-1234');
   });
 
   it('reuses an existing cloud mirror when generating from the same cloud table again', async () => {
@@ -4448,7 +4456,7 @@ function main() {
       }
       if (href.endsWith('/api/personal/analysis/v1/tables/tbl-a0440000/exports')) {
         expect(init?.method).toBe('POST');
-        return jsonResponse({ success: true, data: { taskId: 'export-1', status: 'RUNNING' } });
+        return jsonResponse({ success: true, data: { pipelineId: 'export-1', status: 'RUNNING' } });
       }
       if (href.endsWith('/api/personal/analysis/v1/exports/export-1/download')) {
         return jsonResponse({
@@ -4466,7 +4474,7 @@ function main() {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const first = await service.generateTaskFromRequirement({
+    const first = await service.generatePipelineFromRequirement({
       source: {
         location: 'cloud',
         tableId: 'tbl-a0440000',
@@ -4481,7 +4489,7 @@ function main() {
       },
       runtimeConfig: testRuntimeConfig,
     });
-    const second = await service.generateTaskFromRequirement({
+    const second = await service.generatePipelineFromRequirement({
       source: {
         location: 'cloud',
         tableId: 'tbl-a0440000',
@@ -4493,17 +4501,17 @@ function main() {
         location: 'local',
         writeMode: 'create',
         tableName: 'cloud orders processed',
-        localOutputTableId: first.outputTableId,
+        localResultTableId: first.resultTableId,
       },
-      reuseTaskId: first.taskId,
+      reusePipelineId: first.pipelineId,
       currentVersion: first.version,
       runtimeConfig: testRuntimeConfig,
     });
-    const mirrors = await service.listInputTables({ query: '10题_自动化镜像_tbl-a044' });
+    const mirrors = await service.listRawTables({ query: '10题_自动化镜像_tbl-a044' });
 
     expect(second.version).toBe(2);
-    expect(mirrors.inputTables).toHaveLength(1);
-    expect(mirrors.inputTables[0]?.name).toBe('10题_自动化镜像_tbl-a044');
+    expect(mirrors.rawTables).toHaveLength(1);
+    expect(mirrors.rawTables[0]?.name).toBe('10题_自动化镜像_tbl-a044');
     expect(
       fetchMock.mock.calls.filter(([url]) =>
         String(url).endsWith('/api/personal/analysis/v1/tables/tbl-a0440000/exports')
@@ -4541,18 +4549,18 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
 
     await expect(
-      service.generateTaskFromRequirement({
+      service.generatePipelineFromRequirement({
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         processRequirement: '复制数据',
         output: {
@@ -4565,79 +4573,79 @@ function main() {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
-  it('stops generated task runs when required columns drift', async () => {
+  it('stops generated pipeline runs when required columns drift', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Region,Sales\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'region input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'region output' });
-    const task = await service.createTask({
-      name: 'region task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'region output' });
+    const pipeline = await service.createPipeline({
+      name: 'region pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
 
     await expect(
-      service.runGeneratedTask({
-        taskId: task.task.id,
-        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
+      service.runGeneratedPipeline({
+        pipelineId: pipeline.pipeline.id,
+        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         output: {
           location: 'local',
           writeMode: 'replace',
-          targetTableId: output.outputTable.id,
+          targetTableId: output.resultTable.id,
         },
         requiredColumns: [{ name: 'Market' }],
       })
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
-  it('runs the latest saved task workflow when an automation omits a workflow override', async () => {
+  it('runs the latest saved pipeline workflow when an automation omits a workflow override', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'latest-workflow.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'latest workflow input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'latest workflow output' });
-    const task = await service.createTask({
-      name: 'latest workflow task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'latest workflow output' });
+    const pipeline = await service.createPipeline({
+      name: 'latest workflow pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
 
     await service.applyWorkflowDsl({
-      taskId: task.task.id,
-      inputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+      pipelineId: pipeline.pipeline.id,
+      rawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
       dsl: [
-        `input source dataset "${input.inputTable.id}" as src`,
+        `input source rawTable "${input.rawTable.id}" as src`,
         '  | select [Market]',
-        `  | output table "${output.outputTable.name}" mode replace`,
+        `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
     });
 
-    const result = await service.runGeneratedTask({
-      taskId: task.task.id,
+    const result = await service.runGeneratedPipeline({
+      pipelineId: pipeline.pipeline.id,
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: output.outputTable.id,
+        targetTableId: output.resultTable.id,
       },
     });
 
@@ -4645,30 +4653,30 @@ function main() {
     expect(result.preview?.rows).toEqual([{ Market: 'EU' }, { Market: 'US' }]);
   });
 
-  it('stops generated task runs when output schema drifts', async () => {
+  it('stops generated pipeline runs when output schema drifts', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'market output' });
-    const task = await service.createTask({
-      name: 'market schema task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'market output' });
+    const pipeline = await service.createPipeline({
+      name: 'market schema pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
 
-    await service.runGeneratedTask({
-      taskId: task.task.id,
-      workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | output table "${output.outputTable.name}" mode replace`,
-      source: { location: 'local', tableId: input.inputTable.id },
+    await service.runGeneratedPipeline({
+      pipelineId: pipeline.pipeline.id,
+      workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+      source: { location: 'local', tableId: input.rawTable.id },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: output.outputTable.id,
+        targetTableId: output.resultTable.id,
       },
       expectedOutputSchema: [
         { name: 'Market', type: 'text' },
@@ -4677,18 +4685,18 @@ function main() {
     });
 
     await expect(
-      service.runGeneratedTask({
-        taskId: task.task.id,
-        workflowDsl: `input source dataset "${input.inputTable.id}" as src\n  | select [Market]\n  | output table "${output.outputTable.name}" mode replace`,
+      service.runGeneratedPipeline({
+        pipelineId: pipeline.pipeline.id,
+        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | select [Market]\n  | output table "${output.resultTable.name}" mode replace`,
         source: {
           location: 'local',
-          tableId: input.inputTable.id,
-          tableName: input.inputTable.name,
+          tableId: input.rawTable.id,
+          tableName: input.rawTable.name,
         },
         output: {
           location: 'local',
           writeMode: 'replace',
-          targetTableId: output.outputTable.id,
+          targetTableId: output.resultTable.id,
         },
         requiredColumns: [{ name: 'Market', type: 'text' }],
         expectedOutputSchema: [{ name: 'Region', type: 'text' }],
@@ -4699,8 +4707,8 @@ function main() {
     });
 
     const preview = await service.previewTable({
-      tableKind: 'output',
-      id: output.outputTable.id,
+      tableKind: 'result',
+      id: output.resultTable.id,
     });
     expect(preview.preview.columns).toEqual(['Market', 'Sales']);
     expect(preview.preview.totalRows).toBe(2);
@@ -4710,34 +4718,34 @@ function main() {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales,记录数\nEU,10,1\nUS,20,1\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'market source schema input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'market source schema output' });
-    const task = await service.createTask({
-      name: 'market source schema task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'market source schema output' });
+    const pipeline = await service.createPipeline({
+      name: 'market source schema pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
 
-    const result = await service.runGeneratedTask({
-      taskId: task.task.id,
+    const result = await service.runGeneratedPipeline({
+      pipelineId: pipeline.pipeline.id,
       workflowDsl: [
-        `input source dataset "${input.inputTable.id}" as src`,
+        `input source rawTable "${input.rawTable.id}" as src`,
         '  | drop [记录数]',
-        `  | output table "${output.outputTable.name}" mode replace`,
+        `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
       source: {
         location: 'local',
-        tableId: input.inputTable.id,
-        tableName: input.inputTable.name,
+        tableId: input.rawTable.id,
+        tableName: input.rawTable.name,
       },
       output: {
         location: 'local',
         writeMode: 'replace',
-        targetTableId: output.outputTable.id,
+        targetTableId: output.resultTable.id,
       },
       requiredColumns: [
         { name: 'Market', type: 'text' },
@@ -4761,29 +4769,29 @@ function main() {
     });
   });
 
-  it('does not publish task completion before cloud delivery succeeds', async () => {
-    const onTaskCompleted = vi.fn();
-    const { service, tempRoot } = createService({ onTaskCompleted });
+  it('does not publish pipeline completion before cloud delivery succeeds', async () => {
+    const onPipelineCompleted = vi.fn();
+    const { service, tempRoot } = createService({ onPipelineCompleted });
     const csvPath = path.join(tempRoot, 'cloud-delivery.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createInputTable({
+    const input = await service.createRawTable({
       name: 'cloud delivery input',
       sourceKind: 'csv',
       filePath: csvPath,
     });
-    const output = await service.createOutputTable({ name: 'cloud delivery output' });
-    const task = await service.createTask({
-      name: 'cloud delivery task',
-      sourceInputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+    const output = await service.createResultTable({ name: 'cloud delivery output' });
+    const pipeline = await service.createPipeline({
+      name: 'cloud delivery pipeline',
+      sourceRawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
     });
     await service.applyWorkflowDsl({
-      taskId: task.task.id,
-      inputTableId: input.inputTable.id,
-      outputTableId: output.outputTable.id,
+      pipelineId: pipeline.pipeline.id,
+      rawTableId: input.rawTable.id,
+      resultTableId: output.resultTable.id,
       dsl: [
-        `input source dataset "${input.inputTable.id}" as src`,
-        `  | output table "${output.outputTable.name}" mode replace`,
+        `input source rawTable "${input.rawTable.id}" as src`,
+        `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
     });
     vi.spyOn(service, 'uploadDataTableToCloud').mockRejectedValue(
@@ -4791,21 +4799,21 @@ function main() {
     );
 
     await expect(
-      service.runGeneratedTask({
-        taskId: task.task.id,
-        source: { location: 'local', tableId: input.inputTable.id },
+      service.runGeneratedPipeline({
+        pipelineId: pipeline.pipeline.id,
+        source: { location: 'local', tableId: input.rawTable.id },
         output: {
           location: 'cloud',
           writeMode: 'create',
           tableName: 'cloud delivery result',
           folderId: 'folder-1',
-          localOutputTableId: output.outputTable.id,
+          localResultTableId: output.resultTable.id,
         },
         mode: 'persisted',
       })
     ).rejects.toThrow('simulated cloud delivery failure');
 
-    expect(onTaskCompleted).not.toHaveBeenCalled();
+    expect(onPipelineCompleted).not.toHaveBeenCalled();
   });
 });
 
@@ -4813,39 +4821,39 @@ describe('constrained workflow plans and resource bindings', () => {
   async function seedTables(service: DataCommandService, tempRoot: string) {
     const ordersPath = path.join(tempRoot, 'orders.csv');
     fs.writeFileSync(ordersPath, 'id,amount,customer_id\n1,10,c1\n2,-5,c2\n', 'utf8');
-    const orders = await service.createInputTable({
+    const orders = await service.createRawTable({
       name: 'orders',
       sourceKind: 'csv',
       filePath: ordersPath,
     });
     const customersPath = path.join(tempRoot, 'customers.csv');
     fs.writeFileSync(customersPath, 'customer_id,name\nc1,Ann\nc2,Bob\n', 'utf8');
-    const customers = await service.createInputTable({
+    const customers = await service.createRawTable({
       name: 'customers',
       sourceKind: 'csv',
       filePath: customersPath,
     });
-    const output = await service.createOutputTable({ name: 'joined_output' });
+    const output = await service.createResultTable({ name: 'joined_output' });
     return {
-      orders: orders.inputTable,
-      customers: customers.inputTable,
-      output: output.outputTable,
+      orders: orders.rawTable,
+      customers: customers.rawTable,
+      output: output.resultTable,
     };
   }
 
   it('applies a constrained plan with alias-bound input resources and exports canonical DSL', async () => {
     const { service, tempRoot } = createService();
     const { orders, customers, output } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'plan task' });
+    const pipeline = await service.createPipeline({ name: 'plan pipeline' });
 
     const plan = {
       version: 'workflow-plan/v1',
       nodes: [
-        { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+        { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
         {
           id: 'customers',
           type: 'input_source',
-          config: { source: 'dataset', alias: 'customers' },
+          config: { source: 'rawTable', alias: 'customers' },
         },
         {
           id: 'joined',
@@ -4870,72 +4878,72 @@ describe('constrained workflow plans and resource bindings', () => {
       ],
     };
     const dry = await service.applyWorkflowPlan({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       plan,
       inputResources: { orders: orders.id, customers: customers.id },
-      outputTableId: output.id,
+      resultTableId: output.id,
       dryRun: true,
     });
     expect(dry.dryRun).toBe(true);
-    expect(dry.dsl).toContain(`input source dataset "${orders.id}" as orders`);
-    expect(dry.dsl).toContain(`input source dataset "${customers.id}" as customers`);
+    expect(dry.dsl).toContain(`input source rawTable "${orders.id}" as orders`);
+    expect(dry.dsl).toContain(`input source rawTable "${customers.id}" as customers`);
     expect(dry.diagnostics?.filter((d) => d.severity === 'error')).toHaveLength(0);
 
     const saved = await service.applyWorkflowPlan({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       plan,
       inputResources: { orders: orders.id, customers: customers.id },
-      outputTableId: output.id,
+      resultTableId: output.id,
     });
     const inputNodes = saved.workflow.nodes.filter((node) => node.type === 'input_source');
-    expect(inputNodes.map((node) => node.config.datasetId).sort()).toEqual(
+    expect(inputNodes.map((node) => node.config.rawTableId).sort()).toEqual(
       [orders.id, customers.id].sort()
     );
-    const run = await service.runTask({ taskId: task.task.id, mode: 'temporary' });
-    expect(run.task.status).toBe('completed');
+    const run = await service.runPipeline({ pipelineId: pipeline.pipeline.id, mode: 'temporary' });
+    expect(run.pipeline.status).toBe('completed');
   });
 
   it('removes incremental settings when binding an input table', async () => {
     const { service, tempRoot } = createService();
     const { orders, output } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'Full input table' });
+    const pipeline = await service.createPipeline({ name: 'Full input table' });
     const result = await service.applyWorkflowPlan({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       plan: {
         version: 'workflow-plan/v1',
         nodes: [
           {
             id: 'orders',
             type: 'input_source',
-            config: { source: 'dataset', alias: 'orders', incrementalBy: 'old_column' },
+            config: { source: 'rawTable', alias: 'orders', incrementalBy: 'old_column' },
           },
           { id: 'sink', type: 'output', config: { mode: 'replace' } },
         ],
         edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
       },
       inputResources: { orders: orders.id },
-      outputTableId: output.id,
+      resultTableId: output.id,
     });
     const inputNode = result.workflow.nodes.find((node) => node.type === 'input_source');
     expect(inputNode?.config).not.toHaveProperty('incrementalBy');
     expect(result.dsl).not.toContain('incremental by');
   });
 
-  it('rejects plan version mismatch, unknown node types, and unbound dataset sources', async () => {
+  it('rejects plan version mismatch, unknown node types, and unbound rawTable sources', async () => {
     const { service, tempRoot } = createService();
     const { orders } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'bad plan task' });
+    const pipeline = await service.createPipeline({ name: 'bad plan pipeline' });
 
     await expect(
       service.applyWorkflowPlan({
-        taskId: task.task.id,
+        pipelineId: pipeline.pipeline.id,
         plan: { version: 'workflow-plan/v0', nodes: [], edges: [] },
       })
     ).rejects.toThrow(/version/i);
 
     await expect(
       service.applyWorkflowPlan({
-        taskId: task.task.id,
+        pipelineId: pipeline.pipeline.id,
         plan: {
           version: 'workflow-plan/v1',
           nodes: [{ id: 'x', type: 'teleport', config: {} }],
@@ -4946,31 +4954,31 @@ describe('constrained workflow plans and resource bindings', () => {
 
     await expect(
       service.applyWorkflowPlan({
-        taskId: task.task.id,
+        pipelineId: pipeline.pipeline.id,
         plan: {
           version: 'workflow-plan/v1',
           nodes: [
-            { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+            { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
             { id: 'sink', type: 'output', config: { table: 't' } },
           ],
           edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
         },
       })
-    ).rejects.toThrow(/bind|dataset/i);
+    ).rejects.toThrow(/bind|rawTable/i);
     void orders;
   });
 
   it('rejects input resource aliases that do not exist in the plan', async () => {
     const { service, tempRoot } = createService();
     const { orders } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'alias task' });
+    const pipeline = await service.createPipeline({ name: 'alias pipeline' });
     await expect(
       service.applyWorkflowPlan({
-        taskId: task.task.id,
+        pipelineId: pipeline.pipeline.id,
         plan: {
           version: 'workflow-plan/v1',
           nodes: [
-            { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+            { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
             { id: 'sink', type: 'output', config: { table: 't' } },
           ],
           edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
@@ -4983,13 +4991,13 @@ describe('constrained workflow plans and resource bindings', () => {
   it('reports planFieldNotFound for field references missing from bound schemas', async () => {
     const { service, tempRoot } = createService();
     const { orders } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'schema task' });
+    const pipeline = await service.createPipeline({ name: 'schema pipeline' });
     const dry = await service.applyWorkflowPlan({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       plan: {
         version: 'workflow-plan/v1',
         nodes: [
-          { id: 'orders', type: 'input_source', config: { source: 'dataset', alias: 'orders' } },
+          { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
           { id: 'f', type: 'filter', config: { condition: '[bogus_col] > 0' } },
           { id: 'sink', type: 'output', config: { table: 't' } },
         ],
@@ -5009,22 +5017,22 @@ describe('constrained workflow plans and resource bindings', () => {
   it('binds multi-source DSL workflows via inputResources', async () => {
     const { service, tempRoot } = createService();
     const { orders, customers } = await seedTables(service, tempRoot);
-    const task = await service.createTask({ name: 'multi dsl task' });
+    const pipeline = await service.createPipeline({ name: 'multi dsl pipeline' });
     const dsl = [
-      'input source dataset "orders-placeholder" as orders',
-      'input source dataset "customers-placeholder" as customers',
+      'input source rawTable "orders-placeholder" as orders',
+      'input source rawTable "customers-placeholder" as customers',
       '',
       'from orders',
       '  | join left customers on [orders].[customer_id] = [customers].[customer_id]',
       '  | output table "joined" mode replace',
     ].join('\n');
     const result = await service.applyWorkflowDsl({
-      taskId: task.task.id,
+      pipelineId: pipeline.pipeline.id,
       dsl,
       inputResources: { orders: orders.id, customers: customers.id },
     });
     const inputNodes = result.workflow.nodes.filter((node) => node.type === 'input_source');
-    expect(inputNodes.map((node) => node.config.datasetId).sort()).toEqual(
+    expect(inputNodes.map((node) => node.config.rawTableId).sort()).toEqual(
       [orders.id, customers.id].sort()
     );
   });
@@ -5033,8 +5041,8 @@ describe('constrained workflow plans and resource bindings', () => {
     const { service, tempRoot } = createService();
     const { orders, output } = await seedTables(service, tempRoot);
     const manifest = await service.getWorkflowCapabilityManifest({
-      inputTableIds: [orders.id],
-      outputTableIds: [output.id],
+      rawTableIds: [orders.id],
+      resultTableIds: [output.id],
     });
     expect(manifest.manifestVersion).toBe('workflow-capability-manifest/v1');
     expect(manifest.planVersion).toBe('workflow-plan/v1');
@@ -5063,14 +5071,14 @@ function createService(
       updatedAt: number;
     };
     getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
-    onTaskCompleted?: (task: DataCleaningTask) => void;
+    onPipelineCompleted?: (pipeline: DataPipeline) => void;
     exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
     requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
   } = {}
-): { service: DataCommandService; store: DataTaskStore; tempRoot: string } {
+): { service: DataCommandService; store: DataPipelineStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-data-command-'));
   tempRoots.push(tempRoot);
-  const store = createDataTaskStore(path.join(tempRoot, 'workspace.duckdb'), {
+  const store = createDataPipelineStore(path.join(tempRoot, 'workspace.duckdb'), {
     now: () => 1_780_000_000_000,
   });
   stores.push(store);
@@ -5088,7 +5096,7 @@ function createService(
         })),
       {
         getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
-        onTaskCompleted: options.onTaskCompleted,
+        onPipelineCompleted: options.onPipelineCompleted,
         exportWorkflowDsl: options.exportWorkflowDsl,
         requirementAnalysisReceipts: options.requirementAnalysisReceipts,
       }
@@ -5105,10 +5113,10 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-function createFakeNormalizerGenerator(): InputTableNormalizerProjectGenerator {
+function createFakeNormalizerGenerator(): RawTableNormalizerProjectGenerator {
   return {
     async generate(input) {
-      const template = createInputTableNormalizerProjectTemplate(
+      const template = createRawTableNormalizerProjectTemplate(
         input.primaryLanguage,
         input.rulePrompt
       );

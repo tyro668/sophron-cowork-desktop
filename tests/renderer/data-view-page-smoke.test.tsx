@@ -35,7 +35,7 @@ describe('DataViewPage', () => {
         <DataViewPage />
       </ConfirmDialogProvider>
     );
-    await vi.waitFor(() => expect(container.textContent).toContain('数据任务'));
-    expect(container.textContent).toContain('输入表');
+    await vi.waitFor(() => expect(container.textContent).toContain('数据加工'));
+    expect(container.textContent).toContain('原始表');
   });
 });

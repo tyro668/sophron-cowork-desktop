@@ -257,9 +257,9 @@ describe('data store layering', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('data-task-store.ts is a composition facade (no extends, no SQL)', () => {
-    const src = fs.readFileSync(path.join(SRC, 'main/data/data-task-store.ts'), 'utf8');
-    expect(src).not.toMatch(/class\s+DataTaskStore\s+extends/);
+  it('data-pipeline-store.ts is a composition facade (no extends, no SQL)', () => {
+    const src = fs.readFileSync(path.join(SRC, 'main/data/data-pipeline-store.ts'), 'utf8');
+    expect(src).not.toMatch(/class\s+DataPipelineStore\s+extends/);
     expect(src).not.toMatch(/\bmetaRunSql|\bmetaQueryRows|\brunSql|\bqueryRows/);
   });
 
@@ -267,7 +267,7 @@ describe('data store layering', () => {
     const offenders: string[] = [];
     for (const file of walk(path.join(DATA_STORE, 'repositories'))) {
       const src = fs.readFileSync(file, 'utf8');
-      if (/COMPILE_STRATEGIES|compileWorkflowNodeSql|runWorkflowIntoTaskOutput/.test(src)) {
+      if (/COMPILE_STRATEGIES|compileWorkflowNodeSql|runWorkflowIntoPipelineOutput/.test(src)) {
         offenders.push(path.relative(SRC, file));
       }
     }

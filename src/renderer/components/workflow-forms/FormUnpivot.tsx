@@ -9,14 +9,14 @@ import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTyp
 
 export default function FormUnpivot({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('unpivot');
   const updateConfig = useUpdateConfig(onNodeChange);
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const mode = (node.config.mode as string) ?? 'include';
   const nameColumn = (node.config.nameColumn as string) ?? '';

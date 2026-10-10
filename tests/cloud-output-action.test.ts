@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudAnalysisCommandService } from '../src/main/data/cloud-analysis-command-service';
-import type { DataTaskStore } from '../src/main/data/data-task-store';
+import type { DataPipelineStore } from '../src/main/data/data-pipeline-store';
 import type { DataCommandService } from '../src/main/data/data-command-service';
 import { registerCloudSyncAction } from '../src/main/automation/cloud-sync-action';
 import {
@@ -27,7 +27,7 @@ vi.mock('../src/main/data/personal-analysis-client', () => ({
 }));
 const config = {
   direction: 'output' as const,
-  outputTableId: 'out',
+  resultTableId: 'out',
   type: 'drive_file' as const,
   spaceId: 's',
   projectId: 'p',
@@ -61,7 +61,7 @@ function fixture() {
   const registry = new AutomationActionRegistry();
   registerCloudSyncAction(
     registry,
-    { syncOutputTableToCloud: sync } as unknown as DataCommandService,
+    { syncResultTableToCloud: sync } as unknown as DataCommandService,
     store
   );
   const action = registry.get('cloud.sync')!;
@@ -113,22 +113,22 @@ describe('automation cloud output action', () => {
     expect(f.update).not.toHaveBeenCalled();
   });
   it('rejects missing output table or cloud destination configuration', () => {
-    expect(() => fixture().action.validate?.({ outputTableId: 'out' })).toThrow();
+    expect(() => fixture().action.validate?.({ resultTableId: 'out' })).toThrow();
   });
   it('syncs drive CSV using the saved optimistic version without table-side configuration', async () => {
     syncDriveCsv.mockResolvedValue({
       file: { fileId: 'file', fileName: 'result.csv', version: 2 },
     });
     const store = {
-      getOutputTableRecord: async () => ({ id: 'out', name: 'result' }),
-      exportDatasetCsv: async () => ({ csv: 'id\n1', name: 'result' }),
-    } as unknown as DataTaskStore;
+      getResultTableRecord: async () => ({ id: 'out', name: 'result' }),
+      exportRawTableCsv: async () => ({ csv: 'id\n1', name: 'result' }),
+    } as unknown as DataPipelineStore;
     const service = new CloudAnalysisCommandService(
       store,
       () => ({ apiOrigin: 'https://example.com', apiKey: 'key', updatedAt: 0 }),
-      { createInputTable: vi.fn() }
+      { createRawTable: vi.fn() }
     );
-    expect(await service.syncOutputTableToCloud('out', config)).toEqual({
+    expect(await service.syncResultTableToCloud('out', config)).toEqual({
       fileId: 'file',
       fileName: 'result.csv',
       version: 2,
@@ -151,7 +151,7 @@ describe('automation cloud output action', () => {
   it('creates a drive file with a stable key, then stores a replace binding', async () => {
     syncDriveCsv.mockResolvedValue({ file: { fileId: 'new', fileName: 'result.csv', version: 1 } });
     const service = outputService();
-    const saved = await service.syncOutputTableToCloud(
+    const saved = await service.syncResultTableToCloud(
       'out',
       { ...config, fileId: undefined, version: undefined, writeMode: 'create' },
       'stable'
@@ -171,7 +171,7 @@ describe('automation cloud output action', () => {
       expect(before).toHaveBeenCalledWith(1);
       return { file: { fileId: 'file', fileName: 'result.csv', version: 2 } };
     });
-    await outputService('id,name\n003,new').syncOutputTableToCloud(
+    await outputService('id,name\n003,new').syncResultTableToCloud(
       'out',
       { ...config, writeMode: 'append' },
       'stable',
@@ -189,24 +189,24 @@ describe('automation cloud output action', () => {
   it('does not write on a changed version, incompatible schema or Excel target', async () => {
     const service = outputService();
     await expect(
-      service.syncOutputTableToCloud('out', { ...config, version: 0, writeMode: 'append' })
+      service.syncResultTableToCloud('out', { ...config, version: 0, writeMode: 'append' })
     ).rejects.toThrow('changed');
     downloadDriveCsv.mockResolvedValue('other\n1');
     await expect(
-      service.syncOutputTableToCloud('out', { ...config, writeMode: 'append' })
+      service.syncResultTableToCloud('out', { ...config, writeMode: 'append' })
     ).rejects.toThrow('columns do not match');
     previewDriveFile.mockResolvedValueOnce({ file: { fileType: 'excel', version: 1 } });
-    await expect(service.syncOutputTableToCloud('out', config)).rejects.toThrow('CSV');
+    await expect(service.syncResultTableToCloud('out', config)).rejects.toThrow('CSV');
     expect(syncDriveCsv).not.toHaveBeenCalled();
   });
 });
 function outputService(csv = 'id\n1') {
   return new CloudAnalysisCommandService(
     {
-      getOutputTableRecord: async () => ({ id: 'out', name: 'result' }),
-      exportDatasetCsv: async () => ({ csv, name: 'result' }),
-    } as unknown as DataTaskStore,
+      getResultTableRecord: async () => ({ id: 'out', name: 'result' }),
+      exportRawTableCsv: async () => ({ csv, name: 'result' }),
+    } as unknown as DataPipelineStore,
     () => ({ apiOrigin: 'https://example.com', apiKey: 'key', updatedAt: 0 }),
-    { createInputTable: vi.fn() }
+    { createRawTable: vi.fn() }
   );
 }

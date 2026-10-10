@@ -68,10 +68,10 @@ function buildReportViewerBlock(): string {
 
   const wireBackToTop = () => {
     const button = document.getElementById('sophron-report-back-to-top');
-    if (!button || button.dataset.sophronReportViewerBound === 'true') {
+    if (!button || button.rawTable.sophronReportViewerBound === 'true') {
       return;
     }
-    button.dataset.sophronReportViewerBound = 'true';
+    button.rawTable.sophronReportViewerBound = 'true';
     button.addEventListener('click', () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });

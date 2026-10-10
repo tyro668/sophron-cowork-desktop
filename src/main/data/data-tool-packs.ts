@@ -8,14 +8,15 @@ import type { AgentToolPack } from '../extensions/agent-runtime-extension';
  */
 export const DATA_TOOL_PACKS = {
   'data.core': {
-    description: 'List/preview data resources, read task workflows, run tasks, read run results',
+    description:
+      'List/preview data resources, read pipeline workflows, run pipelines, read run results',
     tools: [
-      'data_list_input_tables',
-      'data_list_output_tables',
-      'data_list_tasks',
+      'data_list_raw_tables',
+      'data_list_result_tables',
+      'data_list_pipelines',
       'data_preview_table',
-      'data_get_task_workflow',
-      'data_run_task',
+      'data_get_pipeline_workflow',
+      'data_run_pipeline',
       'data_get_run_result',
     ],
   },
@@ -23,21 +24,21 @@ export const DATA_TOOL_PACKS = {
     description:
       'Create/update input and output tables from local files or folders, inspect source files',
     tools: [
-      'data_create_input_table',
-      'data_create_input_table_with_processing_strategy',
-      'data_update_input_table',
-      'data_summarize_input_table_source',
-      'data_create_output_table',
-      'data_update_output_table',
+      'data_create_raw_table',
+      'data_create_raw_table_with_processing_strategy',
+      'data_update_raw_table',
+      'data_summarize_raw_table_source',
+      'data_create_result_table',
+      'data_update_result_table',
     ],
   },
   'data.normalizer': {
-    description: 'Step-by-step input-table normalizer drafts, version preview and publish',
+    description: 'Step-by-step raw-table normalizer drafts, version preview and publish',
     tools: [
-      'data_generate_input_table_normalizer_draft',
-      'data_preview_input_table_normalizer_version',
-      'data_publish_input_table_normalizer_version',
-      'data_list_input_table_normalizer_versions',
+      'data_generate_raw_table_normalizer_draft',
+      'data_preview_raw_table_normalizer_version',
+      'data_publish_raw_table_normalizer_version',
+      'data_list_raw_table_normalizer_versions',
     ],
   },
   'data.cloud': {
@@ -51,22 +52,22 @@ export const DATA_TOOL_PACKS = {
     ],
   },
   'data.run': {
-    description: 'Resolve and run an existing data task',
-    tools: ['data_list_tasks', 'data_run_task'],
+    description: 'Resolve and run an existing data pipeline',
+    tools: ['data_list_pipelines', 'data_run_pipeline'],
   },
   'data.generate': {
-    description: 'Analyze requirements and generate a data task after confirmation',
+    description: 'Analyze requirements and generate a data pipeline after confirmation',
     tools: [
-      'data_list_input_tables',
-      'data_list_output_tables',
-      'data_get_task_workflow',
-      'data_analyze_task_requirement',
-      'data_generate_task_from_requirement',
+      'data_list_raw_tables',
+      'data_list_result_tables',
+      'data_get_pipeline_workflow',
+      'data_analyze_pipeline_requirement',
+      'data_generate_pipeline_from_requirement',
     ],
   },
   'data.authoring': {
     description:
-      'Expert workflow editing: task update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
+      'Expert workflow editing: pipeline update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
     tools: [
       'data_update_task',
       'data_get_workflow_capability_manifest',

@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
-import { InputTablesCommandService } from '../src/main/data/input-tables-command-service';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
+import { RawTablesCommandService } from '../src/main/data/raw-tables-command-service';
 import { CloudAnalysisCommandService } from '../src/main/data/cloud-analysis-command-service';
 import { cloudInputSyncSchema } from '../src/shared/automation/cloud-sync';
 import { registerCloudSyncAction } from '../src/main/automation/cloud-sync-action';
@@ -28,14 +31,14 @@ const config = {
   projectId: 'p',
   tableId: 'remote',
   tableKind: 'analysis' as const,
-  inputTableName: 'Sales',
+  rawTableName: 'Sales',
 };
-let store: DataTaskStore;
+let store: DataPipelineStore;
 let directory: string;
 beforeEach(() => {
   vi.clearAllMocks();
   directory = mkdtempSync(join(tmpdir(), 'cloud-input-sync-'));
-  store = createDataTaskStore(join(directory, 'data.duckdb'));
+  store = createDataPipelineStore(join(directory, 'data.duckdb'));
   findTable.mockResolvedValue({
     tableId: 'remote',
     tableName: 'Remote sales',
@@ -48,19 +51,21 @@ afterEach(async () => {
   await store.close();
   rmSync(directory, { recursive: true, force: true });
 });
-async function cloudMirrorOf(inputTableId: string) {
-  const dataset = await store.getInputTableRecord(inputTableId);
-  return dataset?.inputConfig.sourceKind === 'cloud' ? dataset.inputConfig.cloudMirror : undefined;
+async function cloudMirrorOf(rawTableId: string) {
+  const rawTable = await store.getRawTableRecord(rawTableId);
+  return rawTable?.inputConfig.sourceKind === 'cloud'
+    ? rawTable.inputConfig.cloudMirror
+    : undefined;
 }
 
 function service(cloudImportDir?: string) {
-  const input = new InputTablesCommandService(store, {} as never);
+  const input = new RawTablesCommandService(store, {} as never);
   return new CloudAnalysisCommandService(
     store,
     () => ({ apiOrigin: 'https://example.com', apiKey: 'key', updatedAt: 0 }),
     {
-      createInputTable: (command) => input.createInputTable(command),
-      updateInputTable: (command) => input.updateInputTable(command),
+      createRawTable: (command) => input.createRawTable(command),
+      updateRawTable: (command) => input.updateRawTable(command),
       cloudImportDir,
     }
   );
@@ -74,22 +79,22 @@ describe('cloud input table automation', () => {
         'id,amount\n' + Array.from({ length: 123 }, (_, i) => `${i},20`).join('\n')
       );
       const original = { ...config, tableKind };
-      const created = await service().syncInputTableFromCloud(original, 'key_%"');
-      expect((await store.getInputTableRecord(created.inputTableId))?.rowCount).toBe(123);
-      await store.updateDataset({ id: created.inputTableId, name: 'Renamed sales' });
+      const created = await service().syncRawTableFromCloud(original, 'key_%"');
+      expect((await store.getRawTableRecord(created.rawTableId))?.rowCount).toBe(123);
+      await store.updateRawTable({ id: created.rawTableId, name: 'Renamed sales' });
       await store.close();
-      store = createDataTaskStore(join(directory, 'data.duckdb'));
+      store = createDataPipelineStore(join(directory, 'data.duckdb'));
       exportTableCsv.mockResolvedValue('id,amount\n7,99\n');
       // Simulate a crash before the created ID could be saved on the automation.
-      const recovered = await service().syncInputTableFromCloud(original, 'key_%"');
+      const recovered = await service().syncRawTableFromCloud(original, 'key_%"');
       expect(recovered).toEqual({
-        inputTableId: created.inputTableId,
-        inputTableName: 'Renamed sales',
+        rawTableId: created.rawTableId,
+        rawTableName: 'Renamed sales',
       });
-      expect((await store.getDashboard()).totalDatasets).toBe(1);
-      expect((await store.getInputTableRecord(created.inputTableId))?.rowCount).toBe(1);
+      expect((await store.getDashboard()).totalRawTables).toBe(1);
+      expect((await store.getRawTableRecord(created.rawTableId))?.rowCount).toBe(1);
       expect(findTable).toHaveBeenCalledWith('s', 'p', 'remote');
-      const mirror = await cloudMirrorOf(created.inputTableId);
+      const mirror = await cloudMirrorOf(created.rawTableId);
       expect(mirror).toMatchObject({
         tableId: 'remote',
         spaceId: 's',
@@ -102,7 +107,7 @@ describe('cloud input table automation', () => {
   );
   it('persists full cloud provenance on manual import and keeps a stable snapshot file', async () => {
     const importDir = join(directory, 'cloud-imports');
-    const result = await service(importDir).importCloudTable({
+    const result = await service(importDir).importCloudRawTable({
       tableId: 'remote',
       spaceId: 's',
       projectId: 'p',
@@ -110,12 +115,12 @@ describe('cloud input table automation', () => {
       projectName: 'Beta project',
       name: 'Imported sales',
     });
-    const dataset = result.inputTable;
-    expect(dataset.sourceKind).toBe('cloud');
-    expect(dataset.inputConfig.sourceKind).toBe('cloud');
-    expect(dataset.sourcePath.startsWith(importDir)).toBe(true);
-    expect(existsSync(dataset.sourcePath)).toBe(true);
-    const mirror = await cloudMirrorOf(dataset.id);
+    const rawTable = result.rawTable;
+    expect(rawTable.sourceKind).toBe('cloud');
+    expect(rawTable.inputConfig.sourceKind).toBe('cloud');
+    expect(rawTable.sourcePath.startsWith(importDir)).toBe(true);
+    expect(existsSync(rawTable.sourcePath)).toBe(true);
+    const mirror = await cloudMirrorOf(rawTable.id);
     expect(mirror).toMatchObject({
       tableId: 'remote',
       spaceId: 's',
@@ -130,21 +135,21 @@ describe('cloud input table automation', () => {
     expect(mirror?.contentHash).toEqual(expect.any(String));
     // The snapshot path survives OS temp cleanup semantics — reimports of the
     // stored source keep working (sourcePath stays valid inside the store dir).
-    await store.updateDataset({
-      id: dataset.id,
-      config: dataset.inputConfig,
+    await store.updateRawTable({
+      id: rawTable.id,
+      config: rawTable.inputConfig,
     });
-    expect((await store.getInputTableRecord(dataset.id))?.rowCount).toBe(2);
+    expect((await store.getRawTableRecord(rawTable.id))?.rowCount).toBe(2);
   });
   it('re-downloads the snapshot on manual refresh and preserves table identity', async () => {
     const importDir = join(directory, 'cloud-imports');
-    const created = await service(importDir).importCloudTable({
+    const created = await service(importDir).importCloudRawTable({
       tableId: 'remote',
       spaceId: 's',
       projectId: 'p',
       name: 'Imported sales',
     });
-    const firstMirror = await cloudMirrorOf(created.inputTable.id);
+    const firstMirror = await cloudMirrorOf(created.rawTable.id);
     exportTableCsv.mockResolvedValue('id,amount\n9,99\n');
     findTable.mockResolvedValue({
       tableId: 'remote',
@@ -152,19 +157,19 @@ describe('cloud input table automation', () => {
       kind: 'analysis',
       updatedAt: '2026-09-23',
     });
-    const refreshed = await service(importDir).refreshCloudInputTable({
-      inputTableId: created.inputTable.id,
+    const refreshed = await service(importDir).refreshCloudRawTable({
+      rawTableId: created.rawTable.id,
     });
-    expect(refreshed.inputTable.id).toBe(created.inputTable.id);
-    expect(refreshed.inputTable.rowCount).toBe(1);
-    const mirror = await cloudMirrorOf(created.inputTable.id);
+    expect(refreshed.rawTable.id).toBe(created.rawTable.id);
+    expect(refreshed.rawTable.rowCount).toBe(1);
+    const mirror = await cloudMirrorOf(created.rawTable.id);
     expect(mirror?.sourceVersion).toBe('2026-09-23');
     expect(mirror?.tableName).toBe('Remote sales v2');
     expect((mirror?.syncedAt ?? 0) >= (firstMirror?.syncedAt ?? 0)).toBe(true);
-    expect((await store.getDashboard()).totalDatasets).toBe(1);
+    expect((await store.getDashboard()).totalRawTables).toBe(1);
   });
-  it('rebinds an existing input by cloud identity and keeps its task references', async () => {
-    const created = await service().importCloudTable({
+  it('rebinds an existing input by cloud identity and keeps its pipeline references', async () => {
+    const created = await service().importCloudRawTable({
       tableId: 'remote',
       spaceId: 's',
       projectId: 'p',
@@ -172,80 +177,80 @@ describe('cloud input table automation', () => {
       projectName: 'Beta',
       name: 'Sales',
     });
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Process sales',
-      sourceDatasetId: created.inputTable.id,
+      sourceRawTableId: created.rawTable.id,
     });
     findTable.mockResolvedValue({ tableId: 'next', tableName: 'Next table', kind: 'base' });
     exportTableCsv.mockResolvedValue('id,amount\n3,100\n');
-    const rebound = await service().importCloudTable({
-      inputTableId: created.inputTable.id,
+    const rebound = await service().importCloudRawTable({
+      rawTableId: created.rawTable.id,
       tableId: 'next',
       spaceId: 's2',
       projectId: 'p2',
       spaceName: 'Gamma',
       projectName: 'Delta',
     });
-    expect(rebound.inputTable).toMatchObject({
-      id: created.inputTable.id,
+    expect(rebound.rawTable).toMatchObject({
+      id: created.rawTable.id,
       name: 'Sales',
       sourceKind: 'cloud',
       rowCount: 1,
     });
-    expect((await store.getTask(task.id))?.sourceDatasetId).toBe(created.inputTable.id);
-    expect(await cloudMirrorOf(created.inputTable.id)).toMatchObject({
+    expect((await store.getPipeline(pipeline.id))?.sourceRawTableId).toBe(created.rawTable.id);
+    expect(await cloudMirrorOf(created.rawTable.id)).toMatchObject({
       tableId: 'next',
       spaceId: 's2',
       spaceName: 'Gamma',
       projectName: 'Delta',
     });
-    await service().refreshCloudInputTable({ inputTableId: created.inputTable.id });
-    expect(await cloudMirrorOf(created.inputTable.id)).toMatchObject({
+    await service().refreshCloudRawTable({ rawTableId: created.rawTable.id });
+    expect(await cloudMirrorOf(created.rawTable.id)).toMatchObject({
       spaceName: 'Gamma',
       projectName: 'Delta',
     });
-    expect((await store.getDashboard()).totalDatasets).toBe(1);
+    expect((await store.getDashboard()).totalRawTables).toBe(1);
     await expect(
-      store.updateDataset({
-        id: created.inputTable.id,
+      store.updateRawTable({
+        id: created.rawTable.id,
         config: {
           sourceKind: 'cloud',
           cloudMirror: { tableId: 'unfetched', contentHash: '' },
         },
       })
     ).rejects.toThrow('Use cloud import');
-    expect((await cloudMirrorOf(created.inputTable.id))?.tableId).toBe('next');
+    expect((await cloudMirrorOf(created.rawTable.id))?.tableId).toBe('next');
   });
   it('leaves the old cloud binding intact when a replacement cannot be downloaded', async () => {
-    const created = await service().importCloudTable({
+    const created = await service().importCloudRawTable({
       tableId: 'remote',
       spaceId: 's',
       projectId: 'p',
     });
     exportTableCsv.mockRejectedValueOnce(new Error('Cloud unavailable'));
     await expect(
-      service().importCloudTable({
-        inputTableId: created.inputTable.id,
+      service().importCloudRawTable({
+        rawTableId: created.rawTable.id,
         tableId: 'next',
         spaceId: 's',
         projectId: 'p',
       })
     ).rejects.toThrow('Cloud unavailable');
-    expect((await cloudMirrorOf(created.inputTable.id))?.tableId).toBe('remote');
-    expect((await store.getInputTableRecord(created.inputTable.id))?.rowCount).toBe(2);
+    expect((await cloudMirrorOf(created.rawTable.id))?.tableId).toBe('remote');
+    expect((await store.getRawTableRecord(created.rawTable.id))?.rowCount).toBe(2);
   });
   it('rejects refresh for non-cloud tables and incomplete legacy linkage', async () => {
     writeFileSync(join(directory, 'local.csv'), 'id\n1\n');
     writeFileSync(join(directory, 'legacy.csv'), 'id\n2\n');
-    const plain = await store.importDataset({
+    const plain = await store.importRawTable({
       filePath: join(directory, 'local.csv'),
       sourceKind: 'csv',
       name: 'Local file',
     });
-    await expect(service().refreshCloudInputTable({ inputTableId: plain.id })).rejects.toThrow(
+    await expect(service().refreshCloudRawTable({ rawTableId: plain.id })).rejects.toThrow(
       'not linked to a cloud table'
     );
-    const legacy = await store.importDataset({
+    const legacy = await store.importRawTable({
       filePath: join(directory, 'legacy.csv'),
       sourceKind: 'csv',
       name: 'Legacy mirror',
@@ -258,33 +263,33 @@ describe('cloud input table automation', () => {
         cloudMirror: { tableId: 'remote', contentHash: 'abc' },
       },
     });
-    await expect(service().refreshCloudInputTable({ inputTableId: legacy.id })).rejects.toThrow(
+    await expect(service().refreshCloudRawTable({ rawTableId: legacy.id })).rejects.toThrow(
       'linkage is incomplete'
     );
   });
   it('rejects other project sources, wrong kinds, and deleted targets without creating replacements', async () => {
     findTable.mockResolvedValueOnce(undefined);
-    await expect(service().syncInputTableFromCloud(config, 'key')).rejects.toThrow(
+    await expect(service().syncRawTableFromCloud(config, 'key')).rejects.toThrow(
       'configured project'
     );
     findTable.mockResolvedValueOnce({ tableId: 'remote', kind: 'base' });
-    await expect(service().syncInputTableFromCloud(config, 'key')).rejects.toThrow(
+    await expect(service().syncRawTableFromCloud(config, 'key')).rejects.toThrow(
       'configured project'
     );
     await expect(
-      service().syncInputTableFromCloud({ ...config, inputTableId: 'deleted' }, 'key')
+      service().syncRawTableFromCloud({ ...config, rawTableId: 'deleted' }, 'key')
     ).rejects.toThrow('not found');
     expect(exportTableCsv).not.toHaveBeenCalled();
-    expect((await store.getDashboard()).totalDatasets).toBe(0);
+    expect((await store.getDashboard()).totalRawTables).toBe(0);
   });
   it('does not overwrite an unrelated same-name input during creation', async () => {
-    await service().syncInputTableFromCloud(config, 'one');
-    await expect(service().syncInputTableFromCloud(config, 'two')).rejects.toThrow();
-    expect((await store.getDashboard()).totalDatasets).toBe(1);
+    await service().syncRawTableFromCloud(config, 'one');
+    await expect(service().syncRawTableFromCloud(config, 'two')).rejects.toThrow();
+    expect((await store.getDashboard()).totalRawTables).toBe(1);
   });
   it('requires a real source kind and a local destination', () => {
     expect(cloudInputSyncSchema.safeParse({ ...config, tableKind: 'drive' }).success).toBe(false);
-    expect(cloudInputSyncSchema.safeParse({ ...config, inputTableName: '' }).success).toBe(false);
+    expect(cloudInputSyncSchema.safeParse({ ...config, rawTableName: '' }).success).toBe(false);
   });
   it('saves the created input association and exposes it to later actions', async () => {
     let automation = {
@@ -300,9 +305,9 @@ describe('cloud input table automation', () => {
       return automation;
     });
     const commands = {
-      syncInputTableFromCloud: vi.fn(async () => ({
-        inputTableId: 'local',
-        inputTableName: 'Sales',
+      syncRawTableFromCloud: vi.fn(async () => ({
+        rawTableId: 'local',
+        rawTableName: 'Sales',
       })),
     };
     const registry = new AutomationActionRegistry();
@@ -322,10 +327,10 @@ describe('cloud input table automation', () => {
     const result = await registry
       .get('cloud.sync')!
       .execute(config, context, automation.actionGraph.nodes[0]);
-    expect(automation.actionGraph.nodes[0].config.inputTableId).toBe('local');
-    expect(result).toMatchObject({ inputTableId: 'local' });
+    expect(automation.actionGraph.nodes[0].config.rawTableId).toBe('local');
+    expect(result).toMatchObject({ rawTableId: 'local' });
     expect(context.emitArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({ dataRef: { kind: 'input_table', id: 'local' } })
+      expect.objectContaining({ dataRef: { kind: 'raw_table', id: 'local' } })
     );
   });
 });

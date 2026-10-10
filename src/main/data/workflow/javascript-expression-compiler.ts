@@ -931,8 +931,8 @@ interface WorkflowNativeExpression<T = unknown> { readonly [workflowNativeExpres
 declare function expr<T>(builder: (row: Readonly<WorkflowInputRow>) => T): WorkflowNativeExpression<T>;
 ${getWorkflowExpressionTypeScriptDeclarations()}
 ${getWorkflowIrOperationTypeScriptDeclarations()}
-declare const INPUT_TABLE_ID: string;
-declare const OUTPUT_TABLE_NAME: string;
+declare const RAW_TABLE_ID: string;
+declare const RESULT_TABLE_NAME: string;
 `;
 }
 

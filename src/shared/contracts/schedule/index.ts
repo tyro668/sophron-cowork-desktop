@@ -27,7 +27,7 @@ export interface MonthlyScheduleConfig {
 
 export type ScheduleConfig = DailyScheduleConfig | WeeklyScheduleConfig | MonthlyScheduleConfig;
 
-export type ScheduleAutomationActionKind = 'conversation' | 'data_task';
+export type ScheduleAutomationActionKind = 'conversation' | 'data_pipeline';
 
 export type ScheduleAutomationArtifactPolicy = 'summary' | 'links' | 'files';
 
@@ -49,8 +49,8 @@ export interface ScheduleAutomationDeliveryConfig {
 
 export interface ScheduleAutomationConfig {
   actionKind: ScheduleAutomationActionKind;
-  dataTaskId?: string | null;
-  dataTaskName?: string | null;
+  dataPipelineId?: string | null;
+  dataPipelineName?: string | null;
   delivery: ScheduleAutomationDeliveryConfig;
 }
 

@@ -29,7 +29,7 @@ export function getToolIcon(name: string) {
   if (n.includes('workflow') || n.includes('operator') || n.includes('task')) {
     return <Workflow className="w-3.5 h-3.5" />;
   }
-  if (n.includes('output_table')) return <Table2 className="w-3.5 h-3.5" />;
+  if (n.includes('result_table')) return <Table2 className="w-3.5 h-3.5" />;
   if (n.startsWith('data_')) return <Database className="w-3.5 h-3.5" />;
   if (n.startsWith('automation_')) return <CalendarClock className="w-3.5 h-3.5" />;
   return <Terminal className="w-3.5 h-3.5" />;
@@ -121,27 +121,26 @@ function getAutomationToolLabel(name: string, input: Record<string, unknown>): s
 }
 
 function getDataToolLabel(name: string, input: Record<string, unknown>): string {
-  const id = firstString(input, ['id', 'taskId', 'inputTableId', 'outputTableId']);
-  const nameArg = firstString(input, ['name', 'taskName', 'outputTableName']);
+  const id = firstString(input, ['id', 'taskId', 'rawTableId', 'resultTableId']);
+  const nameArg = firstString(input, ['name', 'taskName', 'resultTableName']);
   if (name === 'data_get_workflow_dsl_reference') return 'Get workflow DSL reference';
-  if (name === 'data_list_input_tables') return 'List input tables';
-  if (name === 'data_create_input_table')
-    return `Create input table${nameArg ? ` ${nameArg}` : ''}`;
-  if (name === 'data_update_input_table') return `Update input table${id ? ` ${id}` : ''}`;
-  if (name === 'data_list_output_tables') return 'List output tables';
-  if (name === 'data_create_output_table')
+  if (name === 'data_list_raw_tables') return 'List input tables';
+  if (name === 'data_create_raw_table') return `Create input table${nameArg ? ` ${nameArg}` : ''}`;
+  if (name === 'data_update_raw_table') return `Update input table${id ? ` ${id}` : ''}`;
+  if (name === 'data_list_result_tables') return 'List output tables';
+  if (name === 'data_create_result_table')
     return `Create output table${nameArg ? ` ${nameArg}` : ''}`;
-  if (name === 'data_update_output_table') return `Update output table${id ? ` ${id}` : ''}`;
+  if (name === 'data_update_result_table') return `Update output table${id ? ` ${id}` : ''}`;
   if (name === 'data_preview_table')
     return `Preview ${String(input.tableKind || 'data')} table${id ? ` ${id}` : ''}`;
-  if (name === 'data_list_tasks') return 'List data tasks';
-  if (name === 'data_analyze_task_requirement') return 'Analyze data task requirement';
-  if (name === 'data_generate_task_from_requirement') {
+  if (name === 'data_list_pipelines') return 'List data tasks';
+  if (name === 'data_analyze_pipeline_requirement') return 'Analyze data task requirement';
+  if (name === 'data_generate_pipeline_from_requirement') {
     return `Generate data task${nameArg ? ` ${nameArg}` : ''}`;
   }
   if (name === 'data_create_task') return `Create data task${nameArg ? ` ${nameArg}` : ''}`;
   if (name === 'data_update_task') return `Update data task${id ? ` ${id}` : ''}`;
-  if (name === 'data_get_task_workflow') return `Get task workflow${id ? ` ${id}` : ''}`;
+  if (name === 'data_get_pipeline_workflow') return `Get task workflow${id ? ` ${id}` : ''}`;
   if (name === 'data_apply_workflow_dsl') {
     return `${input.dryRun ? 'Validate' : 'Apply'} workflow DSL${id ? ` ${id}` : ''}`;
   }
@@ -153,7 +152,7 @@ function getDataToolLabel(name: string, input: Record<string, unknown>): string 
   }
   if (name === 'data_configure_output_operator')
     return `Configure output operator${id ? ` ${id}` : ''}`;
-  if (name === 'data_run_task') return `Run data task${id ? ` ${id}` : ''}`;
+  if (name === 'data_run_pipeline') return `Run data task${id ? ` ${id}` : ''}`;
   if (name === 'data_get_run_result') return `Get run result${id ? ` ${id}` : ''}`;
   return name;
 }

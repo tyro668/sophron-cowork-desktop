@@ -33,7 +33,7 @@ beforeEach(() => {
   });
 });
 
-describe('new task project folder', () => {
+describe('new pipeline project folder', () => {
   it('keeps the compact permission trigger from covering the folder picker', () => {
     render(<PermissionPolicySelector open={false} onOpenChange={vi.fn()} buttonClassName="h-9" />);
 
@@ -42,7 +42,7 @@ describe('new task project folder', () => {
     expect(trigger.className).not.toContain('w-full');
   });
 
-  it('uses the selected folder as the new task project directory', async () => {
+  it('uses the selected folder as the new pipeline project directory', async () => {
     ipcMocks.changeWorkingDir.mockResolvedValue({ success: true, path: '/tmp/demo-project' });
     ipcMocks.startSession.mockResolvedValue(null);
 

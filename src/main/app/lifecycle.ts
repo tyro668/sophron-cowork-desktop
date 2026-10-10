@@ -98,11 +98,11 @@ export async function cleanupSandboxResources(): Promise<void> {
   }
 
   try {
-    appContext.dataTaskStore?.close();
+    appContext.dataPipelineStore?.close();
   } catch (error) {
     logError('[App] Error closing DuckDB data store:', error);
   } finally {
-    appContext.dataTaskStore = null;
+    appContext.dataPipelineStore = null;
   }
 
   try {
@@ -122,11 +122,11 @@ export async function prepareForUpdateInstall(): Promise<void> {
   appContext.isInstallingUpdate = true;
   stopNavServer();
   try {
-    appContext.dataTaskStore?.close();
+    appContext.dataPipelineStore?.close();
   } catch (error) {
     logError('[Update] Error closing DuckDB data store before install:', error);
   } finally {
-    appContext.dataTaskStore = null;
+    appContext.dataPipelineStore = null;
   }
   try {
     closeDatabase();
@@ -192,8 +192,8 @@ export function registerAppLifecycle(): void {
       if (process.env.VITE_DEV_SERVER_URL) {
         stopNavServer();
         try {
-          appContext.dataTaskStore?.close();
-          appContext.dataTaskStore = null;
+          appContext.dataPipelineStore?.close();
+          appContext.dataPipelineStore = null;
         } catch {
           /* best-effort */
         }

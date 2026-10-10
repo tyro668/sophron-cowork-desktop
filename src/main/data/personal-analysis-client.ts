@@ -17,8 +17,8 @@ import type {
 } from '../../shared/personal-analysis-types';
 
 interface PersonalAnalysisImportStatus {
-  taskId: string;
-  uploadTaskId?: string;
+  pipelineId: string;
+  uploadPipelineId?: string;
   tableId: string;
   sheetId?: string;
   status: string;
@@ -248,24 +248,24 @@ export class PersonalAnalysisClient {
   }
 
   async exportTableCsv(tableId: string): Promise<string> {
-    const created = await this.apiJson<{ taskId: string; status: string }>(
+    const created = await this.apiJson<{ pipelineId: string; status: string }>(
       `/tables/${encodeURIComponent(tableId)}/exports`,
       { method: 'POST' }
     );
-    if (!created.taskId) {
-      throw new Error(`Export task was not created for cloud table ${tableId}`);
+    if (!created.pipelineId) {
+      throw new Error(`Export pipeline was not created for cloud table ${tableId}`);
     }
 
     const download = await retry(
-      `cloud export ${created.taskId}`,
+      `cloud export ${created.pipelineId}`,
       async (): Promise<{ downloadUrl: string } | null> => {
         const result = await this.apiJson<{
           status: string;
           downloadUrl?: string;
           errorMsg?: string;
-        }>(`/exports/${encodeURIComponent(created.taskId)}/download`);
+        }>(`/exports/${encodeURIComponent(created.pipelineId)}/download`);
         if (result.status === 'FAILED') {
-          throw new Error(result.errorMsg || `Cloud export ${created.taskId} failed`);
+          throw new Error(result.errorMsg || `Cloud export ${created.pipelineId} failed`);
         }
         return result.status === 'DONE' && result.downloadUrl
           ? { downloadUrl: result.downloadUrl }
@@ -286,7 +286,7 @@ export class PersonalAnalysisClient {
       throw new Error('Cloud Space datasourceId is required for upload');
     }
     const uploadInfo = await this.apiJson<{
-      uploadTaskId: string;
+      uploadPipelineId: string;
       tableId: string;
       sheetId?: string;
       uploadUrl: string;
@@ -303,8 +303,10 @@ export class PersonalAnalysisClient {
       },
     });
 
-    if (!uploadInfo.uploadUrl || !uploadInfo.uploadTaskId || !uploadInfo.tableId) {
-      throw new Error('Cloud upload-url response is missing uploadUrl, uploadTaskId, or tableId');
+    if (!uploadInfo.uploadUrl || !uploadInfo.uploadPipelineId || !uploadInfo.tableId) {
+      throw new Error(
+        'Cloud upload-url response is missing uploadUrl, uploadPipelineId, or tableId'
+      );
     }
 
     const uploadResponse = await fetchWithTimeout(
@@ -323,33 +325,33 @@ export class PersonalAnalysisClient {
     }
 
     const submitted = await this.apiJson<{
-      taskId: string;
+      pipelineId: string;
       tableId: string;
       sheetId?: string;
       status: string;
     }>('/imports', {
       method: 'POST',
       body: {
-        uploadTaskId: uploadInfo.uploadTaskId,
+        uploadPipelineId: uploadInfo.uploadPipelineId,
         tableName: input.tableName,
       },
     });
 
     const result: PersonalAnalysisUploadResult = {
-      uploadTaskId: uploadInfo.uploadTaskId,
-      importTaskId: submitted.taskId,
+      uploadPipelineId: uploadInfo.uploadPipelineId,
+      importPipelineId: submitted.pipelineId,
       tableId: submitted.tableId || uploadInfo.tableId,
       sheetId: submitted.sheetId || uploadInfo.sheetId,
       status: submitted.status,
     };
 
     if (input.waitForDone !== false) {
-      const completed = await retry(`cloud import ${submitted.taskId}`, async () => {
-        const task = await this.getImportStatus(submitted.taskId);
-        if (task.status === 'FAILED') {
-          throw new Error(task.errorMsg || `Cloud import ${submitted.taskId} failed`);
+      const completed = await retry(`cloud import ${submitted.pipelineId}`, async () => {
+        const pipeline = await this.getImportStatus(submitted.pipelineId);
+        if (pipeline.status === 'FAILED') {
+          throw new Error(pipeline.errorMsg || `Cloud import ${submitted.pipelineId} failed`);
         }
-        return task.status === 'DONE' ? task : null;
+        return pipeline.status === 'DONE' ? pipeline : null;
       });
 
       result.tableId = completed.tableId || result.tableId;
@@ -361,8 +363,8 @@ export class PersonalAnalysisClient {
     return result;
   }
 
-  private async getImportStatus(taskId: string): Promise<PersonalAnalysisImportStatus> {
-    return this.apiJson<PersonalAnalysisImportStatus>(`/imports/${encodeURIComponent(taskId)}`);
+  private async getImportStatus(pipelineId: string): Promise<PersonalAnalysisImportStatus> {
+    return this.apiJson<PersonalAnalysisImportStatus>(`/imports/${encodeURIComponent(pipelineId)}`);
   }
 
   private async apiJson<T>(

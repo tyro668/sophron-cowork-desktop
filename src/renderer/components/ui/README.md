@@ -12,7 +12,7 @@ Only primitives the app actually uses live here.
   accent themes from `data-accent-theme` — primitives must not re-implement them.
 - No glass blur, gradients, glow, or heavy shadows (see `UI_STYLE_GUIDE.md`).
   Overlays are solid `bg-surface` + `shadow-elevated`.
-- No `electronAPI`, business models, or data-task APIs — pure props in/out.
+- No `electronAPI`, business models, or data-pipeline APIs — pure props in/out.
 - Interactive primitives keep Radix behavior: keyboard nav, `data-highlighted`,
   focus-visible rings, portal positioning.
 

@@ -82,16 +82,7 @@
     ]
   },
   "domainTerms": {
-    "en": [
-      "automation",
-      "dataview",
-      "dropdown",
-      "duckdb",
-      "ipc",
-      "normalizer",
-      "tsx",
-      "workflow"
-    ],
+    "en": ["automation", "dataview", "dropdown", "duckdb", "ipc", "normalizer", "tsx", "workflow"],
     "zh": [
       "自动化",
       "配置",
@@ -106,7 +97,10 @@
       "下拉框",
       "表格",
       "标题行",
-      "智能识别"
+      "智能识别",
+      "原始表",
+      "结果表",
+      "数据加工"
     ]
   },
   "weights": {
@@ -128,11 +122,32 @@
       "tables": "table"
     },
     "suffixRules": [
-      { "suffix": "ies", "replacement": "y", "minLength": 5 },
-      { "suffix": "ing", "replacement": "", "minLength": 6, "trimDoubleConsonant": true },
-      { "suffix": "ed", "replacement": "", "minLength": 5 },
-      { "suffix": "es", "replacement": "", "minLength": 5 },
-      { "suffix": "s", "replacement": "", "minLength": 4 }
+      {
+        "suffix": "ies",
+        "replacement": "y",
+        "minLength": 5
+      },
+      {
+        "suffix": "ing",
+        "replacement": "",
+        "minLength": 6,
+        "trimDoubleConsonant": true
+      },
+      {
+        "suffix": "ed",
+        "replacement": "",
+        "minLength": 5
+      },
+      {
+        "suffix": "es",
+        "replacement": "",
+        "minLength": 5
+      },
+      {
+        "suffix": "s",
+        "replacement": "",
+        "minLength": 4
+      }
     ]
   }
 }

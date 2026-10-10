@@ -11,7 +11,7 @@ import type { PrepOperatorType } from '../../src/shared/prep-dsl';
 describe('prep DSL parser and workflow compiler', () => {
   it('parses a single-source cleaning pipeline', () => {
     const result = parsePrepDsl(`
-      input source task as raw_orders
+      input source pipeline as raw_orders
         | select [order_id], [region], [revenue]
         | missing value row drop when all_null
         | missing value [region] nullify values ("", "N/A", "-")
@@ -35,8 +35,8 @@ describe('prep DSL parser and workflow compiler', () => {
 
   it('compiles multi-source join pipelines with left and right handles', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -66,8 +66,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('parses ASOF join', () => {
     const result = parsePrepDsl(`
-      input source task as events
-      input source dataset "device_status_snapshot" as status
+      input source pipeline as events
+      input source rawTable "device_status_snapshot" as status
 
       from events
         | join asof status
@@ -91,8 +91,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects legacy dotted field references inside one bracket pair', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers on [orders.customer_id] = [customers.customer_id]
@@ -105,8 +105,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('exports compiled workflows back to DSL', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -117,7 +117,7 @@ keep left *, [customers].[name] as [customer_name]
     const compiled = compilePrepWorkflowToFlow(result.ast!);
     const exported = exportPrepWorkflowDsl(compiled.nodes, compiled.edges);
 
-    expect(exported).toContain('input source task as orders');
+    expect(exported).toContain('input source pipeline as orders');
     expect(exported).toContain('from orders');
     expect(exported).toContain('join left customers');
     expect(exported).toContain('[orders].[customer_id]');
@@ -129,7 +129,7 @@ keep left *, [customers].[name] as [customer_name]
         {
           id: 'source',
           type: 'input_source',
-          config: { source: 'dataset', datasetId: 'dataset-sales-id', alias: 'sales' },
+          config: { source: 'rawTable', rawTableId: 'rawTable-sales-id', alias: 'sales' },
         },
         {
           id: 'output',
@@ -137,7 +137,7 @@ keep left *, [customers].[name] as [customer_name]
           config: {
             destination: 'duckdb_table',
             table: 'data_output_abc123',
-            outputTableName: 'Processed Sales',
+            resultTableName: 'Processed Sales',
             mode: 'replace',
           },
         },
@@ -151,7 +151,7 @@ keep left *, [customers].[name] as [customer_name]
       ]
     );
 
-    expect(exported).toContain('input source dataset "dataset-sales-id" as sales');
+    expect(exported).toContain('input source rawTable "rawTable-sales-id" as sales');
     expect(exported).toContain('output table "Processed Sales" mode replace');
     expect(parsePrepDsl(exported).diagnostics.filter((item) => item.severity === 'error')).toEqual(
       []
@@ -251,8 +251,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join on condition swaps the sides', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -266,8 +266,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join on left side references an undeclared source', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -281,8 +281,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join keep references an undeclared source', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -297,7 +297,7 @@ keep left *, [customers].[name] as [customer_name]
 
   it('accepts a full workflow self-join referencing the same alias on both sides', () => {
     const result = parsePrepDsl(`
-      input source task as orders
+      input source pipeline as orders
 
       from orders
         | join left orders
@@ -311,8 +311,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join condition whose left side references the right input alias', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -326,9 +326,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join condition whose left side references a declared source not yet in the pipeline', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
-      input source dataset "product_dim" as products
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
+      input source rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -342,9 +342,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a chained join whose later left side references a prior right input by its original alias', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
-      input source dataset "product_dim" as products
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
+      input source rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -360,9 +360,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('accepts a chained join whose later left side references the prior output column name', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
-      input source dataset "product_dim" as products
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
+      input source rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -379,9 +379,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join keep that references a declared source on neither side', () => {
     const result = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customer_dim" as customers
-      input source dataset "product_dim" as products
+      input source pipeline as orders
+      input source rawTable "customer_dim" as customers
+      input source rawTable "product_dim" as products
 
       from orders
         | join left customers

@@ -35,21 +35,21 @@ describe('data navigation store', () => {
     store.setMainView('chat');
     useAppStore.setState({ showSettings: true });
 
-    store.navigateToDataElement({ kind: 'task', id: 'task_1' });
+    store.navigateToDataElement({ kind: 'pipeline', id: 'task_1' });
     const first = useAppStore.getState().pendingDataNavigation;
     expect(useAppStore.getState().mainView).toBe('data');
     expect(useAppStore.getState().showSettings).toBe(false);
-    expect(first).toMatchObject({ kind: 'task', id: 'task_1' });
+    expect(first).toMatchObject({ kind: 'pipeline', id: 'task_1' });
 
-    store.navigateToDataElement({ kind: 'output_table', id: 'out_1' });
+    store.navigateToDataElement({ kind: 'result_table', id: 'out_1' });
     const second = useAppStore.getState().pendingDataNavigation;
-    expect(second).toMatchObject({ kind: 'output_table', id: 'out_1' });
+    expect(second).toMatchObject({ kind: 'result_table', id: 'out_1' });
     expect(second!.nonce).toBeGreaterThan(first!.nonce);
   });
 
   it('clears data navigation only when the nonce matches', () => {
     const store = useAppStore.getState();
-    store.navigateToDataElement({ kind: 'task', id: 'task_1' });
+    store.navigateToDataElement({ kind: 'pipeline', id: 'task_1' });
     const { nonce } = useAppStore.getState().pendingDataNavigation!;
 
     // A stale nonce (from an older, already-consumed navigation) must not
@@ -85,11 +85,11 @@ describe('data navigation store', () => {
     const store = useAppStore.getState();
     useAppStore.setState({ activeSessionId: 'session_1' });
 
-    store.navigateToDataTab('output_tables');
+    store.navigateToDataTab('result_tables');
     const state = useAppStore.getState();
     expect(state.mainView).toBe('data');
     expect(state.activeSessionId).toBeNull();
-    expect(state.pendingDataTabNavigation).toMatchObject({ tab: 'output_tables' });
+    expect(state.pendingDataTabNavigation).toMatchObject({ tab: 'result_tables' });
 
     store.clearDataTabNavigation(state.pendingDataTabNavigation!.nonce);
     expect(useAppStore.getState().pendingDataTabNavigation).toBeNull();

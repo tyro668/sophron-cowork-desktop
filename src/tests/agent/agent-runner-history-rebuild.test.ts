@@ -35,7 +35,7 @@ describe('buildColdStartAgentHistory', () => {
             {
               type: 'tool_use',
               id: 'call-1',
-              name: 'data_list_tasks',
+              name: 'data_list_pipelines',
               input: { query: 'daily' },
             },
           ],
@@ -65,7 +65,7 @@ describe('buildColdStartAgentHistory', () => {
         {
           type: 'toolCall',
           id: 'call-1',
-          name: 'data_list_tasks',
+          name: 'data_list_pipelines',
           arguments: { query: 'daily' },
         },
       ],
@@ -74,7 +74,7 @@ describe('buildColdStartAgentHistory', () => {
     expect(history[2]).toMatchObject({
       role: 'toolResult',
       toolCallId: 'call-1',
-      toolName: 'data_list_tasks',
+      toolName: 'data_list_pipelines',
       isError: false,
     });
     expect(JSON.stringify(history)).not.toContain('<tool_use');
@@ -92,7 +92,7 @@ describe('buildColdStartAgentHistory', () => {
             { type: 'thinking', thinking: 'private reasoning' },
             {
               type: 'text',
-              text: '<tool_use name="data_list_tasks"><parameter=query>daily</parameter>',
+              text: '<tool_use name="data_list_pipelines"><parameter=query>daily</parameter>',
             },
           ],
           2
@@ -173,7 +173,7 @@ describe('pseudo tool-call protocol guard', () => {
   it('detects the mixed protocol shape from the reported failure', () => {
     expect(
       containsPseudoToolCallMarkup(
-        'Checking now: <tool_use name="data_list_tasks"><parameter=query>daily</parameter></function>'
+        'Checking now: <tool_use name="data_list_pipelines"><parameter=query>daily</parameter></function>'
       )
     ).toBe(true);
   });
@@ -182,7 +182,7 @@ describe('pseudo tool-call protocol guard', () => {
     const guard = new PseudoToolCallStreamGuard();
     const first = guard.push('Checking now: <too');
     const second = guard.push('l_use na');
-    const third = guard.push('me="data_list_tasks">');
+    const third = guard.push('me="data_list_pipelines">');
 
     expect(first).toEqual({ text: 'Checking now: ', violated: false });
     expect(second).toEqual({ text: '', violated: false });

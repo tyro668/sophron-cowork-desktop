@@ -28,7 +28,7 @@ export function mergeGeneratedChainAfterAnchor(
   base: { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] },
   anchorNodeId: string,
   generated: { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] },
-  /** Maps a local id to its task-scoped runtime id (identity for tests). */
+  /** Maps a local id to its pipeline-scoped runtime id (identity for tests). */
   scopeId: (id: string) => string = (id) => id
 ): GeneratedWorkflowMergeResult {
   const anchor = base.nodes.find((node) => node.id === anchorNodeId);
@@ -47,9 +47,9 @@ export function mergeGeneratedChainAfterAnchor(
   }
   const generatedOutput = generated.nodes.find((node) => node.type === 'output') ?? null;
 
-  // Base node ids are already task-scoped at runtime; dedupe candidates in
+  // Base node ids are already pipeline-scoped at runtime; dedupe candidates in
   // scoped space so a generated `filter_1` does not collide with an existing
-  // `<taskId>__filter_1` once save scopes every id.
+  // `<pipelineId>__filter_1` once save scopes every id.
   const usedNodeIds = new Set(base.nodes.map((node) => scopeId(node.id)));
   const usedEdgeIds = new Set(base.edges.map((edge) => scopeId(edge.id)));
   const nodeIdMap = new Map<string, string>();

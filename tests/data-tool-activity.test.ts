@@ -31,7 +31,7 @@ const model: Model<'openai-completions'> = {
 };
 
 describe('nested data model activity with the real Agent SDK', () => {
-  it.each(['data_analyze_task_requirement', 'data_generate_task_from_requirement'])(
+  it.each(['data_analyze_pipeline_requirement', 'data_generate_pipeline_from_requirement'])(
     '%s keeps active work alive and cancels the inner request when it actually stalls',
     async (toolName) => {
       const controller = new AbortController();
@@ -51,8 +51,8 @@ describe('nested data model activity with the real Agent SDK', () => {
         });
       };
       const tool = createDataCustomTools({
-        analyzeTaskRequirement: execute,
-        generateTaskFromAnalysis: execute,
+        analyzePipelineRequirement: execute,
+        generatePipelineFromAnalysis: execute,
         resolveExecutionContext: (_session: string, toolCallId: string, signal: AbortSignal) => ({
           sessionId: 'chat',
           toolCallId,
@@ -84,7 +84,7 @@ describe('nested data model activity with the real Agent SDK', () => {
                 id: 'call',
                 name: toolName,
                 arguments: toolName.includes('analyze')
-                  ? { inputTableId: 'input', processRequirement: 'filter profit > 0' }
+                  ? { rawTableId: 'input', processRequirement: 'filter profit > 0' }
                   : { analysisId: 'receipt', confirmed: true, outputMode: 'create' },
               },
             ],

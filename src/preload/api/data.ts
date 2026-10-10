@@ -1,37 +1,37 @@
 import { ipcRenderer } from 'electron';
 import type {
-  DataCleaningTask,
+  DataPipeline,
   DataColumnTypeInfo,
-  DataCreateOutputTableInput,
-  DataCreateTaskInput,
+  DataCreateResultTableInput,
+  DataCreatePipelineInput,
   DataDashboard,
   DataDashboardQuery,
-  DataDataset,
-  DataDeleteInputTableNormalizerVersionInput,
-  DataDeleteInputTableNormalizerVersionResult,
-  DataGenerateInputTableNormalizerDraftInput,
-  DataGenerateInputTableNormalizerDraftResult,
-  DataImportDatasetInput,
-  DataInputTableNormalizerDraftProgressEvent,
-  DataInputTableNormalizerVersionSaveResult,
-  DataInputTablePreview,
-  DataInputTableSourceSummary,
-  DataListInputTableNormalizerVersionsInput,
-  DataListInputTableNormalizerVersionsResult,
+  DataRawTable,
+  DataDeleteRawTableNormalizerVersionInput,
+  DataDeleteRawTableNormalizerVersionResult,
+  DataGenerateRawTableNormalizerDraftInput,
+  DataGenerateRawTableNormalizerDraftResult,
+  DataImportRawTableInput,
+  DataRawTableNormalizerDraftProgressEvent,
+  DataRawTableNormalizerVersionSaveResult,
+  DataRawTablePreview,
+  DataRawTableSourceSummary,
+  DataListRawTableNormalizerVersionsInput,
+  DataListRawTableNormalizerVersionsResult,
   DataExportTableInput,
   DataExportTableResult,
-  DataOutputTable,
-  DataPreviewDatasetInput,
-  DataPreviewInputTableInput,
-  DataPreviewInputTableNormalizerVersionInput,
+  DataResultTable,
+  DataPreviewRawTableSourceInput,
+  DataPreviewRawTableInput,
+  DataPreviewRawTableNormalizerVersionInput,
   DataPreviewWorkflowNodeInput,
-  DataPublishInputTableNormalizerVersionInput,
-  DataRunTaskInput,
-  DataSummarizeInputTableSourceInput,
-  DataTaskWorkflow,
-  DataUpdateDatasetInput,
-  DataUpdateOutputTableInput,
-  DataUpdateTaskInput,
+  DataPublishRawTableNormalizerVersionInput,
+  DataRunPipelineInput,
+  DataSummarizeRawTableSourceInput,
+  DataPipelineWorkflow,
+  DataUpdateRawTableInput,
+  DataUpdateResultTableInput,
+  DataUpdatePipelineInput,
   DataGroup,
   DataGroupScope,
   DataCreateGroupInput,
@@ -52,15 +52,15 @@ import type {
   PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
-  RefreshCloudInputTableInput,
-  RefreshCloudInputTableResult,
-  RunTaskResult,
+  RefreshCloudRawTableInput,
+  RefreshCloudRawTableResult,
+  RunPipelineResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
   UploadDataTableToCloudInput,
   UploadDataTableToCloudResult,
   WorkflowNodeRunStat,
-  DataTaskRun,
+  DataPipelineRun,
 } from '../../shared/contracts';
 import type { WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
@@ -98,12 +98,12 @@ export function createDataApi(): ElectronApi['data'] {
   return {
     getDashboard: (payload?: DataDashboardQuery): Promise<DataDashboard> =>
       ipcRenderer.invoke('data.getDashboard', payload),
-    getTask: (id: string): Promise<DataCleaningTask | null> =>
-      ipcRenderer.invoke('data.getTask', id),
-    createTask: (payload: DataCreateTaskInput): Promise<DataCleaningTask> =>
-      ipcRenderer.invoke('data.createTask', payload),
-    updateTask: (payload: DataUpdateTaskInput): Promise<DataCleaningTask> =>
-      ipcRenderer.invoke('data.updateTask', payload),
+    getPipeline: (id: string): Promise<DataPipeline | null> =>
+      ipcRenderer.invoke('data.getPipeline', id),
+    createPipeline: (payload: DataCreatePipelineInput): Promise<DataPipeline> =>
+      ipcRenderer.invoke('data.createPipeline', payload),
+    updatePipeline: (payload: DataUpdatePipelineInput): Promise<DataPipeline> =>
+      ipcRenderer.invoke('data.updatePipeline', payload),
     listGroups: (scope: DataGroupScope): Promise<DataGroup[]> =>
       ipcRenderer.invoke('data.listGroups', scope),
     createGroup: (payload: DataCreateGroupInput): Promise<DataGroup> =>
@@ -114,44 +114,51 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.deleteGroup', id),
     assignGroup: (payload: DataAssignGroupInput): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.assignGroup', payload),
-    runTask: (id: string, payload?: DataRunTaskInput): Promise<DataCleaningTask> =>
-      ipcRenderer.invoke('data.runTask', id, payload),
-    runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput): Promise<RunTaskResult> =>
-      ipcRenderer.invoke('data.runTaskWithDiagnostics', id, payload),
-    getTaskWorkflow: (id: string): Promise<DataTaskWorkflow> =>
-      ipcRenderer.invoke('data.getTaskWorkflow', id),
-    getTaskNodeStats: (id: string): Promise<WorkflowNodeRunStat[]> =>
-      ipcRenderer.invoke('data.getTaskNodeStats', id),
-    listTaskRuns: (id: string, limit?: number): Promise<DataTaskRun[]> =>
-      ipcRenderer.invoke('data.listTaskRuns', id, limit),
-    getTaskRunNodeStats: (id: string, runId: string): Promise<WorkflowNodeRunStat[]> =>
-      ipcRenderer.invoke('data.getTaskRunNodeStats', id, runId),
-    saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput): Promise<DataTaskWorkflow> =>
-      ipcRenderer.invoke('data.saveTaskWorkflow', id, payload),
-    validateTaskWorkflowPlan: (
+    runPipeline: (id: string, payload?: DataRunPipelineInput): Promise<DataPipeline> =>
+      ipcRenderer.invoke('data.runPipeline', id, payload),
+    runPipelineWithDiagnostics: (
+      id: string,
+      payload?: DataRunPipelineInput
+    ): Promise<RunPipelineResult> =>
+      ipcRenderer.invoke('data.runPipelineWithDiagnostics', id, payload),
+    getPipelineWorkflow: (id: string): Promise<DataPipelineWorkflow> =>
+      ipcRenderer.invoke('data.getPipelineWorkflow', id),
+    getPipelineNodeStats: (id: string): Promise<WorkflowNodeRunStat[]> =>
+      ipcRenderer.invoke('data.getPipelineNodeStats', id),
+    listPipelineRuns: (id: string, limit?: number): Promise<DataPipelineRun[]> =>
+      ipcRenderer.invoke('data.listPipelineRuns', id, limit),
+    getPipelineRunNodeStats: (id: string, runId: string): Promise<WorkflowNodeRunStat[]> =>
+      ipcRenderer.invoke('data.getPipelineRunNodeStats', id, runId),
+    savePipelineWorkflow: (
+      id: string,
+      payload: DataWorkflowSaveInput
+    ): Promise<DataPipelineWorkflow> =>
+      ipcRenderer.invoke('data.savePipelineWorkflow', id, payload),
+    validatePipelineWorkflowPlan: (
       id: string,
       payload: DataWorkflowSaveInput
     ): Promise<WorkflowPlanDiagnostic[]> =>
-      ipcRenderer.invoke('data.validateTaskWorkflowPlan', id, payload),
-    importDataset: (payload: DataImportDatasetInput): Promise<DataDataset> =>
-      ipcRenderer.invoke('data.importDataset', payload),
-    getInputTable: (id: string): Promise<DataDataset | null> =>
-      ipcRenderer.invoke('data.getInputTable', id),
-    updateDataset: (payload: DataUpdateDatasetInput): Promise<DataDataset> =>
-      ipcRenderer.invoke('data.updateDataset', payload),
-    getOutputTable: (id: string): Promise<DataOutputTable | null> =>
-      ipcRenderer.invoke('data.getOutputTable', id),
-    createOutputTable: (payload?: DataCreateOutputTableInput): Promise<DataOutputTable> =>
-      ipcRenderer.invoke('data.createOutputTable', payload),
-    updateOutputTable: (payload: DataUpdateOutputTableInput): Promise<DataOutputTable> =>
-      ipcRenderer.invoke('data.updateOutputTable', payload),
-    previewInputTable: (payload: DataPreviewInputTableInput): Promise<DataInputTablePreview> =>
-      ipcRenderer.invoke('data.previewInputTable', payload),
-    previewDataset: (payload: DataPreviewDatasetInput): Promise<DataInputTablePreview> =>
-      ipcRenderer.invoke('data.previewDataset', payload),
+      ipcRenderer.invoke('data.validatePipelineWorkflowPlan', id, payload),
+    importRawTable: (payload: DataImportRawTableInput): Promise<DataRawTable> =>
+      ipcRenderer.invoke('data.importRawTable', payload),
+    getRawTable: (id: string): Promise<DataRawTable | null> =>
+      ipcRenderer.invoke('data.getRawTable', id),
+    updateRawTable: (payload: DataUpdateRawTableInput): Promise<DataRawTable> =>
+      ipcRenderer.invoke('data.updateRawTable', payload),
+    getResultTable: (id: string): Promise<DataResultTable | null> =>
+      ipcRenderer.invoke('data.getResultTable', id),
+    createResultTable: (payload?: DataCreateResultTableInput): Promise<DataResultTable> =>
+      ipcRenderer.invoke('data.createResultTable', payload),
+    updateResultTable: (payload: DataUpdateResultTableInput): Promise<DataResultTable> =>
+      ipcRenderer.invoke('data.updateResultTable', payload),
+    previewRawTableSource: (
+      payload: DataPreviewRawTableSourceInput
+    ): Promise<DataRawTablePreview> => ipcRenderer.invoke('data.previewRawTableSource', payload),
+    previewRawTable: (payload: DataPreviewRawTableInput): Promise<DataRawTablePreview> =>
+      ipcRenderer.invoke('data.previewRawTable', payload),
     exportTable: (payload: DataExportTableInput): Promise<DataExportTableResult> =>
       ipcRenderer.invoke('data.exportTable', payload),
-    previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> =>
+    previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput): Promise<DataRawTablePreview> =>
       ipcRenderer.invoke('data.previewWorkflowNode', payload),
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput): Promise<string[]> =>
       ipcRenderer.invoke('data.getWorkflowNodeColumns', payload),
@@ -162,44 +169,44 @@ export function createDataApi(): ElectronApi['data'] {
     getWorkflowNodeColumnValues: (
       payload: DataPreviewWorkflowNodeInput & { column: string }
     ): Promise<string[]> => ipcRenderer.invoke('data.getWorkflowNodeColumnValues', payload),
-    summarizeInputTableSource: (
-      payload: DataSummarizeInputTableSourceInput
-    ): Promise<DataInputTableSourceSummary> =>
-      ipcRenderer.invoke('data.summarizeInputTableSource', payload),
-    generateInputTableNormalizerDraft: (
-      payload: DataGenerateInputTableNormalizerDraftInput
-    ): Promise<DataGenerateInputTableNormalizerDraftResult> =>
-      ipcRenderer.invoke('data.generateInputTableNormalizerDraft', payload),
-    onInputTableNormalizerDraftProgress: (
-      callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
+    summarizeRawTableSource: (
+      payload: DataSummarizeRawTableSourceInput
+    ): Promise<DataRawTableSourceSummary> =>
+      ipcRenderer.invoke('data.summarizeRawTableSource', payload),
+    generateRawTableNormalizerDraft: (
+      payload: DataGenerateRawTableNormalizerDraftInput
+    ): Promise<DataGenerateRawTableNormalizerDraftResult> =>
+      ipcRenderer.invoke('data.generateRawTableNormalizerDraft', payload),
+    onRawTableNormalizerDraftProgress: (
+      callback: (event: DataRawTableNormalizerDraftProgressEvent) => void
     ) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        data: DataInputTableNormalizerDraftProgressEvent
+        data: DataRawTableNormalizerDraftProgressEvent
       ) => callback(data);
-      ipcRenderer.on('data.inputTableNormalizerDraftProgress', listener);
-      return () => ipcRenderer.removeListener('data.inputTableNormalizerDraftProgress', listener);
+      ipcRenderer.on('data.rawTableNormalizerDraftProgress', listener);
+      return () => ipcRenderer.removeListener('data.rawTableNormalizerDraftProgress', listener);
     },
-    previewInputTableNormalizerVersion: (
-      payload: DataPreviewInputTableNormalizerVersionInput
-    ): Promise<{ preview: DataInputTablePreview }> =>
-      ipcRenderer.invoke('data.previewInputTableNormalizerVersion', payload),
-    publishInputTableNormalizerVersion: (
-      payload: DataPublishInputTableNormalizerVersionInput
-    ): Promise<DataInputTableNormalizerVersionSaveResult> =>
-      ipcRenderer.invoke('data.publishInputTableNormalizerVersion', payload),
-    deleteInputTableNormalizerVersion: (
-      payload: DataDeleteInputTableNormalizerVersionInput
-    ): Promise<DataDeleteInputTableNormalizerVersionResult> =>
-      ipcRenderer.invoke('data.deleteInputTableNormalizerVersion', payload),
-    listInputTableNormalizerVersions: (
-      payload: DataListInputTableNormalizerVersionsInput
-    ): Promise<DataListInputTableNormalizerVersionsResult> =>
-      ipcRenderer.invoke('data.listInputTableNormalizerVersions', payload),
-    deleteTask: (id: string): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke('data.deleteTask', id),
-    deleteDataset: (id: string): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke('data.deleteDataset', id),
+    previewRawTableNormalizerVersion: (
+      payload: DataPreviewRawTableNormalizerVersionInput
+    ): Promise<{ preview: DataRawTablePreview }> =>
+      ipcRenderer.invoke('data.previewRawTableNormalizerVersion', payload),
+    publishRawTableNormalizerVersion: (
+      payload: DataPublishRawTableNormalizerVersionInput
+    ): Promise<DataRawTableNormalizerVersionSaveResult> =>
+      ipcRenderer.invoke('data.publishRawTableNormalizerVersion', payload),
+    deleteRawTableNormalizerVersion: (
+      payload: DataDeleteRawTableNormalizerVersionInput
+    ): Promise<DataDeleteRawTableNormalizerVersionResult> =>
+      ipcRenderer.invoke('data.deleteRawTableNormalizerVersion', payload),
+    listRawTableNormalizerVersions: (
+      payload: DataListRawTableNormalizerVersionsInput
+    ): Promise<DataListRawTableNormalizerVersionsResult> =>
+      ipcRenderer.invoke('data.listRawTableNormalizerVersions', payload),
+    deletePipeline: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deletePipeline', id),
+    deleteRawTable: (id: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deleteRawTable', id),
     listCloudSpaces: (payload?: ListCloudSpacesInput): Promise<ListCloudSpacesResult> =>
       invokeDataCommand('data.listCloudSpaces', payload),
     listCloudProjects: (payload: ListCloudProjectsInput): Promise<ListCloudProjectsResult> =>
@@ -210,12 +217,12 @@ export function createDataApi(): ElectronApi['data'] {
       invokeDataCommand('data.searchCloudTables', payload),
     previewCloudTable: (payload: PreviewCloudTableInput): Promise<PreviewCloudTableResult> =>
       invokeDataCommand('data.previewCloudTable', payload),
-    importCloudTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
-      invokeDataCommand('data.importCloudTable', payload),
-    refreshCloudInputTable: (
-      payload: RefreshCloudInputTableInput
-    ): Promise<RefreshCloudInputTableResult> =>
-      invokeDataCommand('data.refreshCloudInputTable', payload),
+    importCloudRawTable: (payload: ImportCloudTableInput): Promise<ImportCloudTableResult> =>
+      invokeDataCommand('data.importCloudRawTable', payload),
+    refreshCloudRawTable: (
+      payload: RefreshCloudRawTableInput
+    ): Promise<RefreshCloudRawTableResult> =>
+      invokeDataCommand('data.refreshCloudRawTable', payload),
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ): Promise<UploadDataTableToCloudResult> =>

@@ -8,7 +8,7 @@ import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 
 interface OperatorFormWrapperProps {
   node: DataWorkflowNode;
-  taskId?: string;
+  pipelineId?: string;
   fieldCompletions: string[];
   fieldTypes?: DataColumnTypeInfo[];
   otherNodes: DataWorkflowNode[];
@@ -20,7 +20,7 @@ interface OperatorFormWrapperProps {
 
 function LazyOperatorForm({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   fieldTypes,
   otherNodes,
@@ -44,7 +44,6 @@ function LazyOperatorForm({
     );
     formComponentCache.set(node.type, Lazy);
     return Lazy;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.type, loader]);
 
   if (!loader || !LazyComponent) {
@@ -67,7 +66,7 @@ function LazyOperatorForm({
     >
       <LazyComponent
         node={node}
-        taskId={taskId}
+        pipelineId={pipelineId}
         fieldCompletions={fieldCompletions}
         fieldTypes={fieldTypes}
         otherNodes={otherNodes}

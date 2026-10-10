@@ -81,7 +81,7 @@ describe('request-only domain context with the real SDK', () => {
     const extension = createDataAgentRuntimeExtension({
       resolveConversationContext: async () => ({
         sessionId: 'chat',
-        selectedDataTaskId: 'task',
+        selectedDataPipelineId: 'task',
         capabilities: {},
       }),
       updateExecutionContext: vi.fn(),
@@ -89,9 +89,9 @@ describe('request-only domain context with the real SDK', () => {
       hasSupportedAnalysis: () => true,
       resolveExecutionContext: () => ({ sessionId: 'chat', currentUserMessageId: 'confirmed' }),
       rememberResolvedResources: vi.fn(),
-      generateTaskFromAnalysis: generate,
-      getTaskWorkflow: inspect,
-      analyzeTaskRequirement: analyze,
+      generatePipelineFromAnalysis: generate,
+      getPipelineWorkflow: inspect,
+      analyzePipelineRequirement: analyze,
     } as unknown as DataToolService);
     const activated = (await extension.beforeSessionRun!({
       session: { id: 'chat' } as BeforeSessionRunContext['session'],
@@ -108,16 +108,16 @@ describe('request-only domain context with the real SDK', () => {
       }));
     const calls: Array<Pick<ToolCall, 'name' | 'arguments'>> = [
       {
-        name: 'data_generate_task_from_requirement',
+        name: 'data_generate_pipeline_from_requirement',
         arguments: { analysisId: 'receipt', confirmed: true, outputMode: 'create' },
       },
-      { name: 'data_get_task_workflow', arguments: { taskId: 'task' } },
+      { name: 'data_get_pipeline_workflow', arguments: { pipelineId: 'task' } },
       {
-        name: 'data_analyze_task_requirement',
+        name: 'data_analyze_pipeline_requirement',
         arguments: {
-          inputTableId: 'input',
+          rawTableId: 'input',
           processRequirement: 'Filter profit > 0',
-          reuseTaskId: 'task',
+          reusePipelineId: 'task',
         },
       },
     ];
@@ -160,13 +160,13 @@ describe('request-only domain context with the real SDK', () => {
       context.update({
         toolContexts: [
           {
-            tools: ['data_run_task'],
+            tools: ['data_run_pipeline'],
             stablePrompt: 'stable-domain-rule',
             statePrompt: `current-task=${i};`,
           },
         ],
       });
-      context.setActiveTools(['data_run_task']);
+      context.setActiveTools(['data_run_pipeline']);
       await agent.prompt('继续');
       expect(seen[i].system.match(/current-task=/g)).toHaveLength(1);
       expect(seen[i].system).toContain(`current-task=${i};`);

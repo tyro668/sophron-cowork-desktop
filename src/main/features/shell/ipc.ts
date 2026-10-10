@@ -1,7 +1,7 @@
 import { dialog, shell, type OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import { isAbsolute } from 'path';
-import type { DataInputTableSourceKind } from '../../../shared/contracts';
+import type { DataRawTableSourceKind } from '../../../shared/contracts';
 import { openGeneratedReport, revealFileInFolder } from '../../app/file-open';
 import { handleIpc } from '../../ipc-handle';
 import { logWarn } from '../../utils/logger';
@@ -58,7 +58,7 @@ export function registerShellIpc(): void {
     return result.filePaths;
   });
 
-  handleIpc('dialog.selectInputTableSource', async (_event, kind?: DataInputTableSourceKind) => {
+  handleIpc('dialog.selectRawTableSource', async (_event, kind?: DataRawTableSourceKind) => {
     const dialogOptions: OpenDialogOptions =
       kind === 'folder'
         ? {

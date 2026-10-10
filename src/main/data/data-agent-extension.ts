@@ -56,7 +56,7 @@ export function createDataAgentRuntimeExtension(
       const intent = detectDataIntent(context, {
         stickyActive: activations.activePacks(context.session.id).size > 0,
         hasPendingReceipts,
-        hasSelectedTask: !!dataContext.selectedDataTaskId,
+        hasSelectedPipeline: !!dataContext.selectedDataPipelineId,
       });
       if (!intent.active && !dataContext.authoringRequest && !needsClarification) {
         activations.clear(context.session.id);
@@ -101,13 +101,13 @@ export function createDataAgentRuntimeExtension(
         !dataContext.authoringRequest &&
         !hasPendingReceipts &&
         !intent.authoring &&
-        (/taskId\s*[=:]/i.test(context.prompt) ||
-          (dataContext.selectedDataTaskId &&
+        (/pipelineId\s*[=:]/i.test(context.prompt) ||
+          (dataContext.selectedDataPipelineId &&
             /当前|这个|该任务|它|再(?:次|运行|执行)|重跑|再跑|current|this|again/i.test(
               context.prompt
             )))
       ) {
-        activateTools = ['data_run_task'];
+        activateTools = ['data_run_pipeline'];
       }
       return {
         stablePrompt: toolContexts[0].stablePrompt,

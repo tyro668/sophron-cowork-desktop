@@ -7,10 +7,13 @@ import type {
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
 
-export function registerDataGroupsIpc({ requireDataTaskStore, logError }: DataIpcContext): void {
+export function registerDataGroupsIpc({
+  requireDataPipelineStore,
+  logError,
+}: DataIpcContext): void {
   handleIpc('data.listGroups', async (_event, scope: DataGroupScope) => {
     try {
-      return await requireDataTaskStore().listGroups(scope);
+      return await requireDataPipelineStore().listGroups(scope);
     } catch (error) {
       logError('[Data] Error listing groups:', error);
       throw error;
@@ -19,7 +22,7 @@ export function registerDataGroupsIpc({ requireDataTaskStore, logError }: DataIp
 
   handleIpc('data.createGroup', async (_event, payload: DataCreateGroupInput) => {
     try {
-      return await requireDataTaskStore().createGroup(payload);
+      return await requireDataPipelineStore().createGroup(payload);
     } catch (error) {
       logError('[Data] Error creating group:', error);
       throw error;
@@ -28,7 +31,7 @@ export function registerDataGroupsIpc({ requireDataTaskStore, logError }: DataIp
 
   handleIpc('data.renameGroup', async (_event, payload: DataRenameGroupInput) => {
     try {
-      await requireDataTaskStore().renameGroup(payload);
+      await requireDataPipelineStore().renameGroup(payload);
       return { success: true };
     } catch (error) {
       logError('[Data] Error renaming group:', error);
@@ -38,7 +41,7 @@ export function registerDataGroupsIpc({ requireDataTaskStore, logError }: DataIp
 
   handleIpc('data.deleteGroup', async (_event, id: string) => {
     try {
-      await requireDataTaskStore().deleteGroup(id);
+      await requireDataPipelineStore().deleteGroup(id);
       return { success: true };
     } catch (error) {
       logError('[Data] Error deleting group:', error);
@@ -48,7 +51,7 @@ export function registerDataGroupsIpc({ requireDataTaskStore, logError }: DataIp
 
   handleIpc('data.assignGroup', async (_event, payload: DataAssignGroupInput) => {
     try {
-      await requireDataTaskStore().assignGroup(payload);
+      await requireDataPipelineStore().assignGroup(payload);
       return { success: true };
     } catch (error) {
       logError('[Data] Error assigning group:', error);

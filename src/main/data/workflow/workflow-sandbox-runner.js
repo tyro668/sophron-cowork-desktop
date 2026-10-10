@@ -14,8 +14,8 @@ process.stdin.on('end', () => {
       codeGeneration: { strings: false, wasm: false },
     });
     const bootstrapSource = `(${installWorkflowSandbox.toString()})(${serializeForJavaScript({
-      inputTableId: payload.inputTableId,
-      outputTableName: payload.outputTableName,
+      rawTableId: payload.rawTableId,
+      resultTableName: payload.resultTableName,
       sdkVersion: payload.sdkVersion,
       allowedOperationTypes: payload.allowedOperationTypes,
       expressions: payload.expressions,
@@ -226,9 +226,9 @@ function installWorkflowSandbox(payload) {
         error.code = 'WORKFLOW_INPUT_COUNT';
         throw error;
       }
-      if (tableId !== payload.inputTableId) {
+      if (tableId !== payload.rawTableId) {
         const error = new TypeError(
-          'Generated workflow must bind workflow.input() to INPUT_TABLE_ID'
+          'Generated workflow must bind workflow.input() to RAW_TABLE_ID'
         );
         error.code = 'WORKFLOW_INPUT_BINDING';
         throw error;
@@ -244,9 +244,9 @@ function installWorkflowSandbox(payload) {
         throw error;
       }
       requireWorkflow(inputValue);
-      if (tableName !== payload.outputTableName) {
+      if (tableName !== payload.resultTableName) {
         const error = new TypeError(
-          'Generated workflow must bind workflow.output() to OUTPUT_TABLE_NAME'
+          'Generated workflow must bind workflow.output() to RESULT_TABLE_NAME'
         );
         error.code = 'WORKFLOW_OUTPUT_BINDING';
         throw error;
@@ -284,8 +284,8 @@ function installWorkflowSandbox(payload) {
       writable: false,
     });
   };
-  defineGlobal('INPUT_TABLE_ID', payload.inputTableId);
-  defineGlobal('OUTPUT_TABLE_NAME', payload.outputTableName);
+  defineGlobal('RAW_TABLE_ID', payload.rawTableId);
+  defineGlobal('RESULT_TABLE_NAME', payload.resultTableName);
   defineGlobal('workflow', workflow);
   defineGlobal('__workflowExpression', workflowExpression);
   defineGlobal('__finish', (value) => {

@@ -83,17 +83,17 @@ export function scheduleInputToActionGraph(input: {
   automationConfig?: ScheduledTaskCreateInput['automationConfig'];
 }): AutomationActionGraph {
   const automationConfig = input.automationConfig;
-  if (automationConfig?.actionKind === 'data_task' && automationConfig.dataTaskId) {
+  if (automationConfig?.actionKind === 'data_pipeline' && automationConfig.dataPipelineId) {
     const dataNodeId = crypto.randomUUID();
     return {
       version: 1,
       nodes: [
         {
           id: dataNodeId,
-          type: 'data.task.run',
-          label: automationConfig.dataTaskName ?? 'Data task',
+          type: 'data.pipeline.run',
+          label: automationConfig.dataPipelineName ?? 'Data pipeline',
           enabled: true,
-          config: { taskId: automationConfig.dataTaskId, outputMode: 'persisted' },
+          config: { pipelineId: automationConfig.dataPipelineId, outputMode: 'persisted' },
         },
       ],
       edges: [],
@@ -152,7 +152,9 @@ export function automationToScheduledTask(automation: Automation): ScheduledTask
   const conversationNode = automation.actionGraph.nodes.find(
     (node) => node.type === 'conversation.run'
   );
-  const dataTaskNode = automation.actionGraph.nodes.find((node) => node.type === 'data.task.run');
+  const dataPipelineNode = automation.actionGraph.nodes.find(
+    (node) => node.type === 'data.pipeline.run'
+  );
   const prompt =
     typeof conversationNode?.config.prompt === 'string' ? conversationNode.config.prompt : '';
   const actionProjectId =
@@ -185,12 +187,14 @@ export function automationToScheduledTask(automation: Automation): ScheduledTask
     title: automation.name,
     prompt,
     cwd,
-    automationConfig: dataTaskNode
+    automationConfig: dataPipelineNode
       ? {
-          actionKind: 'data_task',
-          dataTaskId:
-            typeof dataTaskNode.config.taskId === 'string' ? dataTaskNode.config.taskId : null,
-          dataTaskName: dataTaskNode.label ?? null,
+          actionKind: 'data_pipeline',
+          dataPipelineId:
+            typeof dataPipelineNode.config.pipelineId === 'string'
+              ? dataPipelineNode.config.pipelineId
+              : null,
+          dataPipelineName: dataPipelineNode.label ?? null,
           delivery: {
             enabled: automation.delivery?.enabled ?? false,
             artifactPolicy:

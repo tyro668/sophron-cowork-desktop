@@ -400,7 +400,7 @@ function BranchGroupRenderer({
 
 export default function FormFilter({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
@@ -444,7 +444,6 @@ export default function FormFilter({
       lastSyncedConfigRef.current = incoming;
       setRoot(reparsed.tree);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.config.condition]);
 
   useEffect(() => {
@@ -454,7 +453,7 @@ export default function FormFilter({
 
   // ── Column metadata ────────────────────────────────────────────────
 
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const columnTypesRef = useRef(columnTypes);
   useEffect(() => {
     columnTypesRef.current = columnTypes;
@@ -465,13 +464,13 @@ export default function FormFilter({
 
   const fetchColumnValues = useCallback(
     (colName: string) => {
-      if (!taskId || !sourceNode?.id || !colName) return;
+      if (!pipelineId || !sourceNode?.id || !colName) return;
       if (columnValues[colName] || loadingValues[colName]) return;
       if (!dataClient.has('getWorkflowNodeColumnValues')) return;
       setLoadingValues((prev) => ({ ...prev, [colName]: true }));
       dataClient
         .getWorkflowNodeColumnValues({
-          taskId,
+          pipelineId,
           nodeId: sourceNode.id,
           nodeType: sourceNode.type as never,
           nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
@@ -486,7 +485,7 @@ export default function FormFilter({
           setLoadingValues((prev) => ({ ...prev, [colName]: false }));
         });
     },
-    [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, columnValues, loadingValues]
+    [pipelineId, sourceNode?.id, sourceNode?.type, sourceNode?.config, columnValues, loadingValues]
   );
 
   const retryColumnValues = useCallback(

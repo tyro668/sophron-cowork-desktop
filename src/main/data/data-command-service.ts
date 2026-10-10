@@ -4,39 +4,39 @@ import type {
 } from '../../shared/automation/cloud-sync';
 import { dirname, join } from 'path';
 import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
-import type { DataCleaningTask } from '../../shared/contracts';
+import type { DataPipeline } from '../../shared/contracts';
 import type {
   PersonalAnalysisConnectionInput,
   StoredPersonalAnalysisConfig,
 } from '../../shared/personal-analysis-types';
-import type { DataTaskStore } from './data-task-store';
-import type { DataTaskLlmUsageRecorder } from './data-task-llm-usage-recorder';
-import type { InputTableNormalizerProjectGenerator } from './input-table-normalizer-generator';
+import type { DataPipelineStore } from './data-pipeline-store';
+import type { DataPipelineLlmUsageRecorder } from './data-pipeline-llm-usage-recorder';
+import type { RawTableNormalizerProjectGenerator } from './raw-table-normalizer-generator';
 import {
-  type AnalyzeTaskRequirementCommand,
-  type AnalyzeTaskRequirementResult,
+  type AnalyzePipelineRequirementCommand,
+  type AnalyzePipelineRequirementResult,
   type ApplyOperatorDslCommand,
   type ApplyWorkflowDslCommand,
   type ApplyWorkflowPlanCommand,
   type ConfigureInputOperatorCommand,
   type ConfigureOutputOperatorCommand,
-  type CreateInputTableCommand,
-  type CreateInputTableWithProcessingStrategyCommand,
-  type CreateInputTableWithProcessingStrategyResult,
-  type CreateOutputTableCommand,
-  type CreateTaskCommand,
-  type DeleteInputTableNormalizerVersionCommand,
-  type DeleteInputTableNormalizerVersionResult,
+  type CreateRawTableCommand,
+  type CreateRawTableWithProcessingStrategyCommand,
+  type CreateRawTableWithProcessingStrategyResult,
+  type CreateResultTableCommand,
+  type CreatePipelineCommand,
+  type DeleteRawTableNormalizerVersionCommand,
+  type DeleteRawTableNormalizerVersionResult,
   type ExportWorkflowDslCommand,
-  type GenerateInputTableNormalizerDraftCommand,
-  type GenerateInputTableNormalizerDraftResult,
-  type GenerateTaskFromRequirementCommand,
-  type GenerateTaskFromRequirementResult,
+  type GenerateRawTableNormalizerDraftCommand,
+  type GenerateRawTableNormalizerDraftResult,
+  type GeneratePipelineFromRequirementCommand,
+  type GeneratePipelineFromRequirementResult,
   type GetRunResultCommand,
-  type GetTaskWorkflowCommand,
+  type GetPipelineWorkflowCommand,
   type ImportCloudTableCommand,
   type ImportCloudTableResult,
-  type InputTableResult,
+  type RawTableResult,
   type ListCloudDriveFilesCommand,
   type ListCloudDriveFilesResult,
   type ListCloudProjectsCommand,
@@ -45,69 +45,69 @@ import {
   type ListCloudSpacesResult,
   type ListCloudTablesCommand,
   type ListCloudTablesResult,
-  type ListInputTableNormalizerVersionsCommand,
-  type ListInputTableNormalizerVersionsResult,
-  type ListInputTablesInput,
-  type ListInputTablesResult,
-  type ListOutputTablesResult,
-  type ListTasksResult,
-  type OutputTableResult,
+  type ListRawTableNormalizerVersionsCommand,
+  type ListRawTableNormalizerVersionsResult,
+  type ListRawTablesInput,
+  type ListRawTablesResult,
+  type ListResultTablesResult,
+  type ListPipelinesResult,
+  type ResultTableResult,
   type PreviewCloudDriveFileCommand,
   type PreviewCloudDriveFileResult,
   type PreviewCloudTableCommand,
   type PreviewCloudTableResult,
-  type PreviewInputTableNormalizerVersionCommand,
-  type PreviewInputTableNormalizerVersionResult,
+  type PreviewRawTableNormalizerVersionCommand,
+  type PreviewRawTableNormalizerVersionResult,
   type PreviewTableCommand,
   type PreviewTableResult,
-  type RefreshCloudInputTableCommand,
-  type RefreshCloudInputTableResult,
-  type PublishInputTableNormalizerVersionCommand,
-  type PublishInputTableNormalizerVersionResult,
-  type RunGeneratedTaskCommand,
-  type RunGeneratedTaskResult,
+  type RefreshCloudRawTableCommand,
+  type RefreshCloudRawTableResult,
+  type PublishRawTableNormalizerVersionCommand,
+  type PublishRawTableNormalizerVersionResult,
+  type RunGeneratedPipelineCommand,
+  type RunGeneratedPipelineResult,
   type RunResult,
-  type RunTaskCommand,
-  type RunTaskResult,
+  type RunPipelineCommand,
+  type RunPipelineResult,
   type SearchCloudTablesCommand,
   type SearchCloudTablesResult,
-  type SummarizeInputTableSourceCommand,
-  type SummarizeInputTableSourceResult,
-  type TaskResult,
+  type SummarizeRawTableSourceCommand,
+  type SummarizeRawTableSourceResult,
+  type PipelineResult,
   type TextResult,
-  type UpdateInputTableCommand,
-  type UpdateOutputTableCommand,
-  type UpdateTaskCommand,
+  type UpdateRawTableCommand,
+  type UpdateResultTableCommand,
+  type UpdatePipelineCommand,
   type UploadDataTableToCloudCommand,
   type UploadDataTableToCloudResult,
   type WorkflowResult,
 } from './data-command-types';
 import { configStore } from '../config/config-store';
-import { InputTablesCommandService } from './input-tables-command-service';
-import { OutputTablesCommandService } from './output-tables-command-service';
+import { RawTablesCommandService } from './raw-tables-command-service';
+import { ResultTablesCommandService } from './result-tables-command-service';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { DataCommandLockCoordinator } from './data-command-lock-coordinator';
 import { DataCommandResources } from './data-command-resources';
 import { WorkflowPreviewService } from './workflow-preview-service';
 import { WorkflowDslCompiler } from './workflow-dsl-compiler';
-import { TaskCommandService } from './task-command-service';
+import { PipelineCommandService } from './pipeline-command-service';
 import { WorkflowAuthoringCommandService } from './workflow-authoring-command-service';
 import { AutomationInputResolver } from './automation-input-resolver';
 import { GeneratedOutputResolver } from './generated-output-resolver';
-import { GeneratedTaskCommandService } from './generated-task-command-service';
-import { TaskExecutionCommandService } from './task-execution-command-service';
+import { GeneratedPipelineCommandService } from './generated-pipeline-command-service';
+import { PipelineExecutionCommandService } from './pipeline-execution-command-service';
 import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-store';
 
 export interface DataCommandServiceOptions {
-  onTaskCompleted?: (task: DataCleaningTask) => void;
+  onPipelineCompleted?: (pipeline: DataPipeline) => void;
   onPersonalAnalysisKeyRejected?: (connection: StoredPersonalAnalysisConfig) => void;
   getPersonalAnalysisConnection?: (
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
-  recordLlmUsage?: DataTaskLlmUsageRecorder;
+  recordLlmUsage?: DataPipelineLlmUsageRecorder;
   /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
   exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
-  /** Shared only with the AI data-task tool chain; avoids process-global receipt state. */
+  /** Shared only with the AI data-pipeline tool chain; avoids process-global receipt state. */
   requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
 }
 
@@ -116,30 +116,30 @@ export interface DataCommandServiceOptions {
  * this class intentionally preserves the existing constructor and public method contract.
  */
 export class DataCommandService {
-  private readonly inputTables: InputTablesCommandService;
-  private readonly outputTables: OutputTablesCommandService;
+  private readonly rawTables: RawTablesCommandService;
+  private readonly resultTables: ResultTablesCommandService;
   private readonly cloudAnalysis: CloudAnalysisCommandService;
-  private readonly tasks: TaskCommandService;
+  private readonly pipelines: PipelineCommandService;
   private readonly workflowAuthoring: WorkflowAuthoringCommandService;
-  private readonly generatedTasks: GeneratedTaskCommandService;
-  private readonly taskExecution: TaskExecutionCommandService;
+  private readonly generatedPipelines: GeneratedPipelineCommandService;
+  private readonly pipelineExecution: PipelineExecutionCommandService;
   private readonly resources: DataCommandResources;
   private readonly preview: WorkflowPreviewService;
 
   constructor(
-    store: DataTaskStore,
-    normalizerProjectGenerator: InputTableNormalizerProjectGenerator,
+    store: DataPipelineStore,
+    normalizerProjectGenerator: RawTableNormalizerProjectGenerator,
     getPersonalAnalysisConfig: () => StoredPersonalAnalysisConfig = () =>
       configStore.get('personalAnalysis'),
     options: DataCommandServiceOptions = {}
   ) {
-    this.inputTables = new InputTablesCommandService(store, normalizerProjectGenerator);
-    this.outputTables = new OutputTablesCommandService(store);
+    this.rawTables = new RawTablesCommandService(store, normalizerProjectGenerator);
+    this.resultTables = new ResultTablesCommandService(store);
     this.cloudAnalysis = new CloudAnalysisCommandService(store, getPersonalAnalysisConfig, {
       getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
       onPersonalAnalysisKeyRejected: options.onPersonalAnalysisKeyRejected,
-      createInputTable: (input) => this.createInputTable(input),
-      updateInputTable: (input) => this.updateInputTable(input),
+      createRawTable: (input) => this.createRawTable(input),
+      updateRawTable: (input) => this.updateRawTable(input),
       // Keep downloaded cloud snapshots next to the store so sourcePath stays
       // valid across restarts and OS temp cleanup (see cloudMirror provenance).
       cloudImportDir:
@@ -149,7 +149,7 @@ export class DataCommandService {
     this.resources = new DataCommandResources(store);
     this.preview = new WorkflowPreviewService(store, this.resources);
     const compiler = new WorkflowDslCompiler(this.resources);
-    this.tasks = new TaskCommandService(store, this.resources);
+    this.pipelines = new PipelineCommandService(store, this.resources);
     const requirementAnalysisReceipts =
       options.requirementAnalysisReceipts ?? new RequirementAnalysisReceiptStore();
     const inputResolver = new AutomationInputResolver(
@@ -157,13 +157,13 @@ export class DataCommandService {
       locks,
       this.preview,
       {
-        createInputTable: (input) => this.createInputTable(input),
-        updateInputTable: (input) => this.updateInputTable(input),
+        createRawTable: (input) => this.createRawTable(input),
+        updateRawTable: (input) => this.updateRawTable(input),
       },
       this.cloudAnalysis
     );
     const outputResolver = new GeneratedOutputResolver(store, this.resources, {
-      createOutputTable: (input) => this.createOutputTable(input),
+      createResultTable: (input) => this.createResultTable(input),
     });
     this.workflowAuthoring = new WorkflowAuthoringCommandService(
       store,
@@ -172,13 +172,13 @@ export class DataCommandService {
       compiler,
       this.preview
     );
-    this.generatedTasks = new GeneratedTaskCommandService(
+    this.generatedPipelines = new GeneratedPipelineCommandService(
       store,
       this.resources,
       locks,
       inputResolver,
       outputResolver,
-      this.tasks,
+      this.pipelines,
       this.preview,
       requirementAnalysisReceipts,
       {
@@ -186,7 +186,7 @@ export class DataCommandService {
         exportWorkflowDsl: options.exportWorkflowDsl,
       }
     );
-    this.taskExecution = new TaskExecutionCommandService(
+    this.pipelineExecution = new PipelineExecutionCommandService(
       store,
       this.resources,
       locks,
@@ -196,97 +196,97 @@ export class DataCommandService {
       outputResolver,
       this.cloudAnalysis,
       {
-        onTaskCompleted: options.onTaskCompleted,
+        onPipelineCompleted: options.onPipelineCompleted,
         uploadDataTableToCloud: (input) => this.uploadDataTableToCloud(input),
       }
     );
   }
 
-  async listInputTables(input: ListInputTablesInput = {}): Promise<ListInputTablesResult> {
-    return this.inputTables.listInputTables(input);
+  async listRawTables(input: ListRawTablesInput = {}): Promise<ListRawTablesResult> {
+    return this.rawTables.listRawTables(input);
   }
 
-  async createInputTable(input: CreateInputTableCommand): Promise<InputTableResult> {
-    return this.inputTables.createInputTable(input);
+  async createRawTable(input: CreateRawTableCommand): Promise<RawTableResult> {
+    return this.rawTables.createRawTable(input);
   }
 
-  async createInputTableWithProcessingStrategy(
-    input: CreateInputTableWithProcessingStrategyCommand
-  ): Promise<CreateInputTableWithProcessingStrategyResult> {
-    return this.inputTables.createInputTableWithProcessingStrategy(input);
+  async createRawTableWithProcessingStrategy(
+    input: CreateRawTableWithProcessingStrategyCommand
+  ): Promise<CreateRawTableWithProcessingStrategyResult> {
+    return this.rawTables.createRawTableWithProcessingStrategy(input);
   }
 
-  async updateInputTable(input: UpdateInputTableCommand): Promise<InputTableResult> {
-    return this.inputTables.updateInputTable(input);
+  async updateRawTable(input: UpdateRawTableCommand): Promise<RawTableResult> {
+    return this.rawTables.updateRawTable(input);
   }
 
-  async summarizeInputTableSource(
-    input: SummarizeInputTableSourceCommand
-  ): Promise<SummarizeInputTableSourceResult> {
-    return this.inputTables.summarizeInputTableSource(input);
+  async summarizeRawTableSource(
+    input: SummarizeRawTableSourceCommand
+  ): Promise<SummarizeRawTableSourceResult> {
+    return this.rawTables.summarizeRawTableSource(input);
   }
 
-  async generateInputTableNormalizerDraft(
-    input: GenerateInputTableNormalizerDraftCommand
-  ): Promise<GenerateInputTableNormalizerDraftResult> {
-    return this.inputTables.generateInputTableNormalizerDraft(input);
+  async generateRawTableNormalizerDraft(
+    input: GenerateRawTableNormalizerDraftCommand
+  ): Promise<GenerateRawTableNormalizerDraftResult> {
+    return this.rawTables.generateRawTableNormalizerDraft(input);
   }
 
-  async previewInputTableNormalizerVersion(
-    input: PreviewInputTableNormalizerVersionCommand
-  ): Promise<PreviewInputTableNormalizerVersionResult> {
-    return this.inputTables.previewInputTableNormalizerVersion(input);
+  async previewRawTableNormalizerVersion(
+    input: PreviewRawTableNormalizerVersionCommand
+  ): Promise<PreviewRawTableNormalizerVersionResult> {
+    return this.rawTables.previewRawTableNormalizerVersion(input);
   }
 
-  async publishInputTableNormalizerVersion(
-    input: PublishInputTableNormalizerVersionCommand
-  ): Promise<PublishInputTableNormalizerVersionResult> {
-    return this.inputTables.publishInputTableNormalizerVersion(input);
+  async publishRawTableNormalizerVersion(
+    input: PublishRawTableNormalizerVersionCommand
+  ): Promise<PublishRawTableNormalizerVersionResult> {
+    return this.rawTables.publishRawTableNormalizerVersion(input);
   }
 
-  async deleteInputTableNormalizerVersion(
-    input: DeleteInputTableNormalizerVersionCommand
-  ): Promise<DeleteInputTableNormalizerVersionResult> {
-    return this.inputTables.deleteInputTableNormalizerVersion(input);
+  async deleteRawTableNormalizerVersion(
+    input: DeleteRawTableNormalizerVersionCommand
+  ): Promise<DeleteRawTableNormalizerVersionResult> {
+    return this.rawTables.deleteRawTableNormalizerVersion(input);
   }
 
-  async listInputTableNormalizerVersions(
-    input: ListInputTableNormalizerVersionsCommand
-  ): Promise<ListInputTableNormalizerVersionsResult> {
-    return this.inputTables.listInputTableNormalizerVersions(input);
+  async listRawTableNormalizerVersions(
+    input: ListRawTableNormalizerVersionsCommand
+  ): Promise<ListRawTableNormalizerVersionsResult> {
+    return this.rawTables.listRawTableNormalizerVersions(input);
   }
 
-  async generateTaskFromRequirement(
-    input: GenerateTaskFromRequirementCommand
-  ): Promise<GenerateTaskFromRequirementResult> {
-    return this.generatedTasks.generateTaskFromRequirement(input);
+  async generatePipelineFromRequirement(
+    input: GeneratePipelineFromRequirementCommand
+  ): Promise<GeneratePipelineFromRequirementResult> {
+    return this.generatedPipelines.generatePipelineFromRequirement(input);
   }
 
-  async analyzeTaskRequirement(
-    input: AnalyzeTaskRequirementCommand
-  ): Promise<AnalyzeTaskRequirementResult> {
-    return this.generatedTasks.analyzeTaskRequirement(input);
+  async analyzePipelineRequirement(
+    input: AnalyzePipelineRequirementCommand
+  ): Promise<AnalyzePipelineRequirementResult> {
+    return this.generatedPipelines.analyzePipelineRequirement(input);
   }
 
-  async listOutputTables(input: ListInputTablesInput = {}): Promise<ListOutputTablesResult> {
-    return this.outputTables.listOutputTables(input);
+  async listResultTables(input: ListRawTablesInput = {}): Promise<ListResultTablesResult> {
+    return this.resultTables.listResultTables(input);
   }
 
-  async createOutputTable(input: CreateOutputTableCommand = {}): Promise<OutputTableResult> {
-    return this.outputTables.createOutputTable(input);
+  async createResultTable(input: CreateResultTableCommand = {}): Promise<ResultTableResult> {
+    return this.resultTables.createResultTable(input);
   }
 
-  async updateOutputTable(input: UpdateOutputTableCommand): Promise<OutputTableResult> {
-    return this.outputTables.updateOutputTable(input);
+  async updateResultTable(input: UpdateResultTableCommand): Promise<ResultTableResult> {
+    return this.resultTables.updateResultTable(input);
   }
 
   async previewTable(input: PreviewTableCommand): Promise<PreviewTableResult> {
-    if (input.tableKind === 'input') await this.resources.requireInputTable(input.id);
-    else await this.resources.requireOutputTable(input.id);
+    if (input.tableKind === 'raw') await this.resources.requireRawTable(input.id);
+    else await this.resources.requireResultTable(input.id);
     return {
       tableKind: input.tableKind,
       id: input.id,
-      preview: await this.preview.previewDataset(input.id, input.limit, input.offset),
+      preview: await this.preview.previewRawTable(input.id, input.limit, input.offset),
     };
   }
 
@@ -306,14 +306,14 @@ export class DataCommandService {
     return this.cloudAnalysis.searchCloudTables(input);
   }
 
-  async importCloudTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
-    return this.cloudAnalysis.importCloudTable(input);
+  async importCloudRawTable(input: ImportCloudTableCommand): Promise<ImportCloudTableResult> {
+    return this.cloudAnalysis.importCloudRawTable(input);
   }
 
-  async refreshCloudInputTable(
-    input: RefreshCloudInputTableCommand
-  ): Promise<RefreshCloudInputTableResult> {
-    return this.cloudAnalysis.refreshCloudInputTable(input);
+  async refreshCloudRawTable(
+    input: RefreshCloudRawTableCommand
+  ): Promise<RefreshCloudRawTableResult> {
+    return this.cloudAnalysis.refreshCloudRawTable(input);
   }
 
   async previewCloudTable(input: PreviewCloudTableCommand): Promise<PreviewCloudTableResult> {
@@ -336,33 +336,33 @@ export class DataCommandService {
     return this.cloudAnalysis.previewCloudDriveFile(input);
   }
 
-  syncInputTableFromCloud(config: CloudInputSyncConfig, syncKey: string) {
-    return this.cloudAnalysis.syncInputTableFromCloud(config, syncKey);
+  syncRawTableFromCloud(config: CloudInputSyncConfig, syncKey: string) {
+    return this.cloudAnalysis.syncRawTableFromCloud(config, syncKey);
   }
 
-  syncOutputTableToCloud(
-    outputTableId: string,
+  syncResultTableToCloud(
+    resultTableId: string,
     config: CloudOutputSyncConfig,
     syncKey?: string,
     beforeWrite?: (version: number) => void
   ) {
-    return this.cloudAnalysis.syncOutputTableToCloud(outputTableId, config, syncKey, beforeWrite);
+    return this.cloudAnalysis.syncResultTableToCloud(resultTableId, config, syncKey, beforeWrite);
   }
 
-  async listTasks(input: ListInputTablesInput = {}): Promise<ListTasksResult> {
-    return this.tasks.listTasks(input);
+  async listPipelines(input: ListRawTablesInput = {}): Promise<ListPipelinesResult> {
+    return this.pipelines.listPipelines(input);
   }
 
-  async createTask(input: CreateTaskCommand): Promise<TaskResult> {
-    return this.tasks.createTask(input);
+  async createPipeline(input: CreatePipelineCommand): Promise<PipelineResult> {
+    return this.pipelines.createPipeline(input);
   }
 
-  async updateTask(input: UpdateTaskCommand): Promise<TaskResult> {
-    return this.tasks.updateTask(input);
+  async updatePipeline(input: UpdatePipelineCommand): Promise<PipelineResult> {
+    return this.pipelines.updatePipeline(input);
   }
 
-  async getTaskWorkflow(input: GetTaskWorkflowCommand): Promise<WorkflowResult> {
-    return this.workflowAuthoring.getTaskWorkflow(input);
+  async getPipelineWorkflow(input: GetPipelineWorkflowCommand): Promise<WorkflowResult> {
+    return this.workflowAuthoring.getPipelineWorkflow(input);
   }
 
   async applyWorkflowDsl(input: ApplyWorkflowDslCommand): Promise<WorkflowResult> {
@@ -374,7 +374,7 @@ export class DataCommandService {
   }
 
   async getWorkflowCapabilityManifest(
-    input: { inputTableIds?: string[]; outputTableIds?: string[] } = {}
+    input: { rawTableIds?: string[]; resultTableIds?: string[] } = {}
   ) {
     return this.workflowAuthoring.getWorkflowCapabilityManifest(input);
   }
@@ -395,15 +395,17 @@ export class DataCommandService {
     return this.workflowAuthoring.configureOutputOperator(input);
   }
 
-  async runTask(input: RunTaskCommand): Promise<RunTaskResult> {
-    return this.taskExecution.runTask(input);
+  async runPipeline(input: RunPipelineCommand): Promise<RunPipelineResult> {
+    return this.pipelineExecution.runPipeline(input);
   }
 
-  async runGeneratedTask(input: RunGeneratedTaskCommand): Promise<RunGeneratedTaskResult> {
-    return this.taskExecution.runGeneratedTask(input);
+  async runGeneratedPipeline(
+    input: RunGeneratedPipelineCommand
+  ): Promise<RunGeneratedPipelineResult> {
+    return this.pipelineExecution.runGeneratedPipeline(input);
   }
 
   async getRunResult(input: GetRunResultCommand): Promise<RunResult> {
-    return this.taskExecution.getRunResult(input);
+    return this.pipelineExecution.getRunResult(input);
   }
 }

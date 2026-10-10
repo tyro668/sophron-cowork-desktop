@@ -3,24 +3,24 @@ import { dataClient } from '../features/data/api/data-client';
 import { useWorkflowDataContext } from './workflow-data-context';
 
 interface UseColumnTypesInput {
-  taskId?: string;
+  pipelineId?: string;
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> } | null;
 }
 
 export function useWorkflowNodeColumnTypes({
-  taskId,
+  pipelineId,
   sourceNode,
 }: UseColumnTypesInput): Record<string, string> {
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   const { version, workflow } = useWorkflowDataContext();
 
   useEffect(() => {
-    if (!taskId || !sourceNode?.id) return;
+    if (!pipelineId || !sourceNode?.id) return;
     if (!dataClient.has('getWorkflowNodeColumnTypes')) return;
     let cancelled = false;
     dataClient
       .getWorkflowNodeColumnTypes({
-        taskId,
+        pipelineId,
         nodeId: sourceNode.id,
         nodeType: sourceNode.type as never,
         nodeConfig: (sourceNode.config ?? {}) as Record<string, unknown>,
@@ -34,7 +34,7 @@ export function useWorkflowNodeColumnTypes({
       })
       .catch((error: unknown) => {
         console.warn('[useWorkflowNodeColumnTypes] Failed to load source column types', {
-          taskId,
+          pipelineId,
           sourceNodeId: sourceNode.id,
           error,
         });
@@ -43,7 +43,7 @@ export function useWorkflowNodeColumnTypes({
     return () => {
       cancelled = true;
     };
-  }, [taskId, sourceNode?.id, sourceNode?.type, sourceNode?.config, version, workflow]);
+  }, [pipelineId, sourceNode?.id, sourceNode?.type, sourceNode?.config, version, workflow]);
 
   return columnTypes;
 }

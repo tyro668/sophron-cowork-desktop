@@ -54,7 +54,7 @@ export function exportPrepWorkflowDsl(
     return line;
   });
   if (sources.length === 0) {
-    sourceLines.push('input source task as src');
+    sourceLines.push('input source pipeline as src');
   }
 
   const { chains, streamNames, rightInputs } = decomposeIntoChains(nodes, edges, sourceAliases);
@@ -526,7 +526,7 @@ function allocateSourceAliases(sources: PrepFlowNodeLike[]): Map<string, string>
 function formatInputSource(node: PrepFlowNodeLike, alias: string): string | null {
   const config = node.config ?? {};
   const hasStructured = Boolean(
-    stringValue(config.datasetId) ||
+    stringValue(config.rawTableId) ||
     stringValue(config.filePath) ||
     stringValue(config.alias) ||
     stringValue(config.source) ||
@@ -535,26 +535,26 @@ function formatInputSource(node: PrepFlowNodeLike, alias: string): string | null
   if (!hasStructured && isString(config.dsl)) return config.dsl;
   const source = isString(config.source)
     ? config.source
-    : isString(config.datasetId)
-      ? 'dataset'
+    : isString(config.rawTableId)
+      ? 'rawTable'
       : isString(config.filePath)
         ? 'file'
-        : 'task';
+        : 'pipeline';
   const incremental =
-    source !== 'dataset' && isString(config.incrementalBy)
+    source !== 'rawTable' && isString(config.incrementalBy)
       ? ` incremental by ${formatFieldRef(config.incrementalBy)}`
       : '';
-  if (source === 'dataset') {
-    const datasetId = stringValue(config.datasetId) ?? stringValue(config.name);
-    return datasetId
-      ? `input source dataset ${quoteString(datasetId)}${incremental} as ${alias}`
+  if (source === 'rawTable') {
+    const rawTableId = stringValue(config.rawTableId) ?? stringValue(config.name);
+    return rawTableId
+      ? `input source rawTable ${quoteString(rawTableId)}${incremental} as ${alias}`
       : null;
   }
   if (source === 'file') {
     const filePath = stringValue(config.filePath);
     return filePath ? `input source file ${quoteString(filePath)}${incremental} as ${alias}` : null;
   }
-  return `input source task${incremental} as ${alias}`;
+  return `input source pipeline${incremental} as ${alias}`;
 }
 
 export function exportPrepOperatorDsl(node: PrepFlowNodeLike): string {

@@ -37,7 +37,7 @@ const OPERATOR_KEYS = [
 
 export default function FormJoin({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   otherNodes,
   sourceNode,
@@ -88,17 +88,17 @@ export default function FormJoin({
   const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);
   const [rightColumnsError, setRightColumnsError] = useState(false);
   // Optional column type info for ASOF time field filtering
-  const leftColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
-  const rightColumnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode: rightSourceNode });
+  const leftColumnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
+  const rightColumnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode: rightSourceNode });
 
   useEffect(() => {
     setRightRawColumns([]);
     setRightColumnsError(false);
-    if (!rightSourceNode || typeof taskId !== 'string') return;
+    if (!rightSourceNode || typeof pipelineId !== 'string') return;
     if (!dataClient.isAvailable()) return;
     void dataClient
       .getWorkflowNodeColumns({
-        taskId,
+        pipelineId,
         nodeId: rightSourceNode.id,
         nodeType: rightSourceNode.type as never,
         nodeConfig: rightSourceNode.config,
@@ -111,7 +111,7 @@ export default function FormJoin({
         setRightRawColumns([]);
         setRightColumnsError(true);
       });
-  }, [rightSourceNode, taskId]);
+  }, [rightSourceNode, pipelineId]);
 
   const joinTypes = useMemo<Array<{ value: JoinVennType; label: string; tip: string }>>(
     () => [

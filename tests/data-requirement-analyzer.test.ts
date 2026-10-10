@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { analyzeDataTaskRequirement } from '../src/main/data/workflow/requirement-analyzer';
+import { analyzeDataPipelineRequirement } from '../src/main/data/workflow/requirement-analyzer';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/agent/pi-ai-one-shot';
 import type { AgentRuntimeConfig } from '../src/shared/contracts';
 
@@ -55,7 +55,7 @@ describe('requirement analysis output budget', () => {
       options?.onActivity?.();
       return response();
     });
-    await analyzeDataTaskRequirement({ ...input, onActivity });
+    await analyzeDataPipelineRequirement({ ...input, onActivity });
     expect(onActivity).toHaveBeenCalledOnce();
     expect(runtimeConfig.enableThinking).toBe(true);
   });
@@ -64,7 +64,7 @@ describe('requirement analysis output budget', () => {
     const second = response();
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     const usage = vi.fn();
-    expect(await analyzeDataTaskRequirement({ ...input, onModelUsage: usage })).toMatchObject({
+    expect(await analyzeDataPipelineRequirement({ ...input, onModelUsage: usage })).toMatchObject({
       status: 'supported',
     });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
@@ -75,12 +75,12 @@ describe('requirement analysis output budget', () => {
   });
   it('stops after one truncation retry with an explicit limit error', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValue(response('', 'length'));
-    await expect(analyzeDataTaskRequirement(input)).rejects.toThrow('output token limit');
+    await expect(analyzeDataPipelineRequirement(input)).rejects.toThrow('output token limit');
     expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
   });
   it('does not spend another call retrying malformed non-truncated output', async () => {
     vi.mocked(runPiAiOneShot).mockResolvedValue(response('not JSON'));
-    await expect(analyzeDataTaskRequirement(input)).rejects.toThrow('valid JSON');
+    await expect(analyzeDataPipelineRequirement(input)).rejects.toThrow('valid JSON');
     expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
   });
   it('honors cancellation before retrying', async () => {
@@ -90,7 +90,7 @@ describe('requirement analysis output budget', () => {
       return response('', 'length');
     });
     await expect(
-      analyzeDataTaskRequirement({ ...input, signal: controller.signal })
+      analyzeDataPipelineRequirement({ ...input, signal: controller.signal })
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
   });

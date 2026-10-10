@@ -39,11 +39,12 @@ export type {
 } from '../../personal-analysis-types';
 
 // Data workspace types
-export type DataTaskStatus = 'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
+export type DataPipelineStatus =
+  'running' | 'completed' | 'stopped' | 'draft' | 'pending' | 'failed';
 
-export type DataTaskStatusCounts = Record<DataTaskStatus, number>;
+export type DataPipelineStatusCounts = Record<DataPipelineStatus, number>;
 
-export type DataGroupScope = 'task' | 'input' | 'output';
+export type DataGroupScope = 'pipeline' | 'raw' | 'result';
 
 export interface DataGroup {
   id: string;
@@ -52,15 +53,15 @@ export interface DataGroup {
   createdAt: number;
 }
 
-export interface DataCleaningTask {
+export interface DataPipeline {
   id: string;
   name: string;
-  status: DataTaskStatus;
+  status: DataPipelineStatus;
   groupId: string | null;
   nodeCount: number;
   sourcePath: string | null;
-  sourceDatasetId: string | null;
-  outputTable: string | null;
+  sourceRawTableId: string | null;
+  resultTable: string | null;
   rowCount: number | null;
   columnCount: number | null;
   error: string | null;
@@ -70,11 +71,11 @@ export interface DataCleaningTask {
   lastRunAt: number | null;
 }
 
-export type DataInputTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud';
+export type DataRawTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud';
 
-export type DataInputTableProcessingStrategy = 'auto' | 'customize';
+export type DataRawTableProcessingStrategy = 'auto' | 'customize';
 
-export interface DataInputTableAutoProcessingConfig {
+export interface DataRawTableAutoProcessingConfig {
   strategy: 'auto';
 }
 
@@ -117,18 +118,18 @@ export interface DataNormalizerDependencySpec {
   source?: string;
 }
 
-export interface DataInputTableNormalizerArtifact {
+export interface DataRawTableNormalizerArtifact {
   id: string;
   name: string;
   description?: string | null;
-  sourceKind: DataInputTableSourceKind;
+  sourceKind: DataRawTableSourceKind;
   primaryLanguage: DataNormalizerLanguage;
   activeVersionId?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
-export interface DataInputTableNormalizerArtifactVersion {
+export interface DataRawTableNormalizerArtifactVersion {
   id: string;
   artifactId: string;
   version: number;
@@ -147,11 +148,11 @@ export interface DataInputTableNormalizerArtifactVersion {
   publishedAt?: number | null;
 }
 
-export interface DataSaveInputTableNormalizerDraftInput {
+export interface DataSaveRawTableNormalizerDraftInput {
   artifactId?: string | null;
   name: string;
   description?: string | null;
-  sourceKind: DataInputTableSourceKind;
+  sourceKind: DataRawTableSourceKind;
   primaryLanguage: DataNormalizerLanguage;
   rulePrompt: string;
   files: DataNormalizerProjectFile[];
@@ -164,38 +165,38 @@ export interface DataSaveInputTableNormalizerDraftInput {
   dependencyLockHash?: string | null;
 }
 
-export interface DataInputTableNormalizerVersionSaveResult {
-  artifact: DataInputTableNormalizerArtifact;
-  version: DataInputTableNormalizerArtifactVersion;
+export interface DataRawTableNormalizerVersionSaveResult {
+  artifact: DataRawTableNormalizerArtifact;
+  version: DataRawTableNormalizerArtifactVersion;
 }
 
-export interface DataPublishInputTableNormalizerVersionInput {
+export interface DataPublishRawTableNormalizerVersionInput {
   versionId: string;
 }
 
-export interface DataDeleteInputTableNormalizerVersionInput {
+export interface DataDeleteRawTableNormalizerVersionInput {
   versionId: string;
 }
 
-export interface DataDeleteInputTableNormalizerVersionResult {
+export interface DataDeleteRawTableNormalizerVersionResult {
   success: boolean;
 }
 
-export interface DataListInputTableNormalizerVersionsInput {
+export interface DataListRawTableNormalizerVersionsInput {
   artifactId: string;
 }
 
-export interface DataListInputTableNormalizerVersionsResult {
-  versions: DataInputTableNormalizerArtifactVersion[];
+export interface DataListRawTableNormalizerVersionsResult {
+  versions: DataRawTableNormalizerArtifactVersion[];
 }
 
-export interface DataGenerateInputTableNormalizerDraftInput {
+export interface DataGenerateRawTableNormalizerDraftInput {
   artifactId?: string | null;
   name: string;
   description?: string | null;
   sourcePath: string;
-  sourceKind?: DataInputTableSourceKind;
-  config?: DataInputTableConfig;
+  sourceKind?: DataRawTableSourceKind;
+  config?: DataRawTableConfig;
   rulePrompt: string;
   selectedSkillNames?: string[];
   modelConfigSetId?: string | null;
@@ -204,55 +205,55 @@ export interface DataGenerateInputTableNormalizerDraftInput {
   progressId?: string;
 }
 
-export interface DataGenerateInputTableNormalizerDraftResult {
-  artifact: DataInputTableNormalizerArtifact;
-  version: DataInputTableNormalizerArtifactVersion;
-  summary: DataInputTableSourceSummary;
+export interface DataGenerateRawTableNormalizerDraftResult {
+  artifact: DataRawTableNormalizerArtifact;
+  version: DataRawTableNormalizerArtifactVersion;
+  summary: DataRawTableSourceSummary;
 }
 
-export type DataInputTableNormalizerDraftProgressPhase =
+export type DataRawTableNormalizerDraftProgressPhase =
   'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
 
-export interface DataInputTableNormalizerDraftProgressEvent {
+export interface DataRawTableNormalizerDraftProgressEvent {
   progressId: string;
-  phase: DataInputTableNormalizerDraftProgressPhase;
+  phase: DataRawTableNormalizerDraftProgressPhase;
   kind: 'message' | 'delta';
   text: string;
 }
 
-export interface DataPreviewInputTableNormalizerVersionInput {
+export interface DataPreviewRawTableNormalizerVersionInput {
   versionId: string;
   sourcePath: string;
-  sourceKind?: DataInputTableSourceKind;
-  config?: DataInputTableConfig;
+  sourceKind?: DataRawTableSourceKind;
+  config?: DataRawTableConfig;
   prepareDependencies?: boolean;
   limit?: number;
   offset?: number;
 }
 
-export interface DataSummarizeInputTableSourceInput {
+export interface DataSummarizeRawTableSourceInput {
   sourcePath: string;
-  sourceKind?: DataInputTableSourceKind;
-  config?: DataInputTableConfig;
+  sourceKind?: DataRawTableSourceKind;
+  config?: DataRawTableConfig;
   maxFiles?: number;
   maxSheetsPerFile?: number;
   maxRowsPerSheet?: number;
   maxColumnsPerRow?: number;
 }
 
-export interface DataInputTableSourceSummary {
+export interface DataRawTableSourceSummary {
   sourcePath: string;
-  sourceKind: DataInputTableSourceKind;
+  sourceKind: DataRawTableSourceKind;
   generatedAt: number;
   hash: string;
   fileCount: number;
   sampledFileCount: number;
   truncated: boolean;
   notes: string[];
-  files: DataInputTableSourceFileSummary[];
+  files: DataRawTableSourceFileSummary[];
 }
 
-export interface DataInputTableSourceFileSummary {
+export interface DataRawTableSourceFileSummary {
   path: string;
   name: string;
   relativePath: string;
@@ -260,24 +261,24 @@ export interface DataInputTableSourceFileSummary {
   kind: 'excel' | 'csv' | 'other';
   sizeBytes: number;
   modifiedAt: number;
-  sheets?: DataInputTableExcelSheetSummary[];
+  sheets?: DataRawTableExcelSheetSummary[];
   sampleRows?: string[][];
   delimiter?: string;
   warning?: string;
 }
 
-export interface DataInputTableExcelSheetSummary {
+export interface DataRawTableExcelSheetSummary {
   name: string;
   range: string | null;
   mergeCount: number;
-  mergedCells?: DataInputTableExcelMergedCellSummary[];
+  mergedCells?: DataRawTableExcelMergedCellSummary[];
   rowCountEstimate: number;
   columnCountEstimate: number;
-  headerCandidates: DataInputTableHeaderCandidate[];
+  headerCandidates: DataRawTableHeaderCandidate[];
   sampleRows: string[][];
 }
 
-export interface DataInputTableExcelMergedCellSummary {
+export interface DataRawTableExcelMergedCellSummary {
   range: string;
   startRow: number;
   endRow: number;
@@ -286,13 +287,13 @@ export interface DataInputTableExcelMergedCellSummary {
   value: string;
 }
 
-export interface DataInputTableHeaderCandidate {
+export interface DataRawTableHeaderCandidate {
   rowNumber: number;
   nonEmptyCellCount: number;
   values: string[];
 }
 
-export interface DataInputTableCustomizeProcessingConfig {
+export interface DataRawTableCustomizeProcessingConfig {
   strategy: 'customize';
   rulePrompt: string;
   selectedSkillNames?: string[];
@@ -310,34 +311,34 @@ export interface DataInputTableCustomizeProcessingConfig {
   sourceSummaryHash?: string;
 }
 
-export type DataInputTableProcessingConfig =
-  DataInputTableAutoProcessingConfig | DataInputTableCustomizeProcessingConfig;
+export type DataRawTableProcessingConfig =
+  DataRawTableAutoProcessingConfig | DataRawTableCustomizeProcessingConfig;
 
-export interface DataInputTableProcessingFields {
-  dataProcessing: DataInputTableProcessingConfig;
+export interface DataRawTableProcessingFields {
+  dataProcessing: DataRawTableProcessingConfig;
 }
 
-export interface DataInputTableExcelConfig {
+export interface DataRawTableExcelConfig {
   sourceKind: 'excel';
   sheetName: string | null;
   sheetNames: string[];
   headerMode: 'auto' | 'manual';
   headerRow: number;
-  dataProcessing?: DataInputTableProcessingConfig;
+  dataProcessing?: DataRawTableProcessingConfig;
 }
 
-export interface DataInputTableCsvConfig {
+export interface DataRawTableCsvConfig {
   sourceKind: 'csv';
   header: 'auto';
   dataRegion: 'auto';
   encoding: 'auto';
   delimiter: 'auto';
-  dataProcessing?: DataInputTableProcessingConfig;
-  /** Legacy CSV imports; new cloud imports use DataInputTableCloudConfig. */
-  cloudMirror?: DataInputTableCloudSource;
+  dataProcessing?: DataRawTableProcessingConfig;
+  /** Legacy CSV imports; new cloud imports use DataRawTableCloudConfig. */
+  cloudMirror?: DataRawTableCloudSource;
 }
 
-export interface DataInputTableCloudSource {
+export interface DataRawTableCloudSource {
   automationSyncKey?: string;
   tableId: string;
   spaceId?: string;
@@ -353,38 +354,38 @@ export interface DataInputTableCloudSource {
   contentHash: string;
 }
 
-export interface DataInputTableCloudConfig {
+export interface DataRawTableCloudConfig {
   sourceKind: 'cloud';
-  cloudMirror: DataInputTableCloudSource;
-  dataProcessing?: DataInputTableProcessingConfig;
+  cloudMirror: DataRawTableCloudSource;
+  dataProcessing?: DataRawTableProcessingConfig;
 }
 
-export interface DataInputTableFolderConfig {
+export interface DataRawTableFolderConfig {
   sourceKind: 'folder';
   mergeMode: 'append_same_schema';
   schemaStrategy: 'align_by_name';
   fileRange: 'excel_csv' | 'excel' | 'csv';
   skipEmptyFiles: boolean;
   keepSourceFileName: boolean;
-  dataProcessing?: DataInputTableProcessingConfig;
+  dataProcessing?: DataRawTableProcessingConfig;
 }
 
-export type DataInputTableConfig =
-  | DataInputTableExcelConfig
-  | DataInputTableCsvConfig
-  | DataInputTableFolderConfig
-  | DataInputTableCloudConfig;
+export type DataRawTableConfig =
+  | DataRawTableExcelConfig
+  | DataRawTableCsvConfig
+  | DataRawTableFolderConfig
+  | DataRawTableCloudConfig;
 
-export interface DataDataset {
+export interface DataRawTable {
   id: string;
   name: string;
   groupId: string | null;
   /** Runtime source; for cloud tables this is a private cache path, never a UI source binding. */
   sourcePath: string;
-  sourceKind: DataInputTableSourceKind;
-  inputConfig: DataInputTableConfig;
+  sourceKind: DataRawTableSourceKind;
+  inputConfig: DataRawTableConfig;
   fileCount: number;
-  relatedTaskNames: string[];
+  relatedPipelineNames: string[];
   tableName: string;
   rowCount: number;
   columnCount: number;
@@ -392,16 +393,16 @@ export interface DataDataset {
   updatedAt: number;
 }
 
-export interface DataOutputTable {
+export interface DataResultTable {
   id: string;
   name: string;
   groupId: string | null;
-  sourceDatasetId: string | null;
+  sourceRawTableId: string | null;
   tableName: string;
   rowCount: number;
   columnCount: number;
-  relatedTaskNames: string[];
-  relatedTaskIds: string[];
+  relatedPipelineNames: string[];
+  relatedPipelineIds: string[];
   createdAt: number;
   updatedAt: number;
   /** Legacy metadata, retained only for pre-automation migration compatibility. */
@@ -412,7 +413,7 @@ export interface DataOutputTable {
 export type DataTableExportFormat = 'csv' | 'xlsx' | 'html';
 
 export interface DataExportTableInput {
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   id: string;
   format: DataTableExportFormat;
   /** Report language ('zh' | 'en'); other formats ignore it. */
@@ -427,59 +428,59 @@ export interface DataExportTableResult {
 }
 
 export interface DataDashboardSummary {
-  taskCount: number;
+  pipelineCount: number;
   workflowNodeCount: number;
   runningCount: number;
   todayScheduleCount: number;
-  statusCounts: DataTaskStatusCounts;
+  statusCounts: DataPipelineStatusCounts;
 }
 
 export interface DataDashboard {
   summary: DataDashboardSummary;
-  tasks: DataCleaningTask[];
-  datasets: DataDataset[];
-  outputTables: DataOutputTable[];
+  pipelines: DataPipeline[];
+  rawTables: DataRawTable[];
+  resultTables: DataResultTable[];
   groups: DataGroup[];
-  totalTasks: number;
-  totalDatasets: number;
-  totalOutputTables: number;
+  totalPipelines: number;
+  totalRawTables: number;
+  totalResultTables: number;
   /** Total row count per group key (`g:<id>` or `ungrouped`). Used for per-group "load all". */
-  taskGroupCounts: Record<string, number>;
-  datasetGroupCounts: Record<string, number>;
+  pipelineGroupCounts: Record<string, number>;
+  rawTableGroupCounts: Record<string, number>;
   outputGroupCounts: Record<string, number>;
 }
 
 export interface DataDashboardQuery {
   query?: string;
   includeSummary?: boolean;
-  includeTasks?: boolean;
-  includeDatasets?: boolean;
-  includeOutputTables?: boolean;
-  taskOffset?: number;
-  taskLimit?: number;
-  datasetOffset?: number;
-  datasetLimit?: number;
+  includePipelines?: boolean;
+  includeRawTables?: boolean;
+  includeResultTables?: boolean;
+  pipelineOffset?: number;
+  pipelineLimit?: number;
+  rawTableOffset?: number;
+  rawTableLimit?: number;
   outputOffset?: number;
   outputLimit?: number;
-  datasetSourceKind?: DataInputTableSourceKind | 'all';
+  rawTableSourceKind?: DataRawTableSourceKind | 'all';
   /** When set, only fetch rows for this group (null = ungrouped). Used for "load all". */
-  taskGroupId?: string | null;
-  datasetGroupId?: string | null;
+  pipelineGroupId?: string | null;
+  rawTableGroupId?: string | null;
   outputGroupId?: string | null;
   /** Max rows to fetch per group for the initial grouped load. */
-  taskPerGroupLimit?: number;
-  datasetPerGroupLimit?: number;
+  pipelinePerGroupLimit?: number;
+  rawTablePerGroupLimit?: number;
   outputPerGroupLimit?: number;
 }
 
-export interface DataCreateTaskInput {
+export interface DataCreatePipelineInput {
   name: string;
   sourcePath?: string | null;
-  sourceDatasetId?: string | null;
-  outputTableId?: string | null;
+  sourceRawTableId?: string | null;
+  resultTableId?: string | null;
 }
 
-export interface DataUpdateTaskInput {
+export interface DataUpdatePipelineInput {
   id: string;
   name?: string;
 }
@@ -501,7 +502,7 @@ export interface DataAssignGroupInput {
   groupId: string | null;
 }
 
-export interface DataRunTaskInput {
+export interface DataRunPipelineInput {
   sourcePath?: string | null;
   workflow?: DataWorkflowSaveInput | null;
   outputMode?: 'persisted' | 'temporary';
@@ -521,17 +522,17 @@ export interface WorkflowNodeRunStat {
   runId?: string;
 }
 
-export type DataTaskRunTrigger = 'run' | 'trial';
-export type DataTaskRunStatus = 'running' | 'completed' | 'failed';
+export type DataPipelineRunTrigger = 'run' | 'trial';
+export type DataPipelineRunStatus = 'running' | 'completed' | 'failed';
 
-/** One recorded task execution (trial and persisted runs share the table). */
-export interface DataTaskRun {
+/** One recorded pipeline execution (trial and persisted runs share the table). */
+export interface DataPipelineRun {
   id: string;
-  taskId: string;
-  /** Per-task monotonically increasing run number, starting at 1. */
+  pipelineId: string;
+  /** Per-pipeline monotonically increasing run number, starting at 1. */
   seq: number;
-  trigger: DataTaskRunTrigger;
-  status: DataTaskRunStatus;
+  trigger: DataPipelineRunTrigger;
+  status: DataPipelineRunStatus;
   /** Execution signature of the workflow version that ran. */
   workflowSignature: string | null;
   /** Rows read across input_source nodes; null when no stats were collected. */
@@ -545,8 +546,8 @@ export interface DataTaskRun {
   finishedAt: number | null;
 }
 
-export interface RunTaskResult {
-  task: DataCleaningTask;
+export interface RunPipelineResult {
+  pipeline: DataPipeline;
   diagnostics?: unknown[];
   nodeStats?: WorkflowNodeRunStat[];
   /**
@@ -596,15 +597,15 @@ export interface DataAutomationOutputBinding {
   projectId?: string;
   datasourceId?: string;
   folderId?: string;
-  localOutputTableId?: string;
+  localResultTableId?: string;
 }
 
-export interface DataTaskRequirementConversationEntry {
+export interface DataPipelineRequirementConversationEntry {
   role: 'user' | 'assistant';
   text: string;
 }
 
-export interface DataGenerateTaskFromRequirementInput {
+export interface DataGeneratePipelineFromRequirementInput {
   source: DataAutomationSourceBinding;
   processRequirement: string;
   output: DataAutomationOutputBinding;
@@ -613,14 +614,14 @@ export interface DataGenerateTaskFromRequirementInput {
    * they produced), in order. Gives the analyzer context so a short follow-up
    * message can be mapped back to the question it answers. Analysis only.
    */
-  requirementConversation?: DataTaskRequirementConversationEntry[];
+  requirementConversation?: DataPipelineRequirementConversationEntry[];
   /** Correlates requirement analysis, generation, and repair calls from one UI flow. */
   usageTraceId?: string;
   /** Short-lived backend receipt binding a confirmed analysis to this generation request. */
   analysisId?: string | null;
   modelConfigSetId?: string | null;
   model?: string | null;
-  reuseTaskId?: string | null;
+  reusePipelineId?: string | null;
   currentVersion?: number | null;
   /** Selected canvas node the generated steps continue from; the result merges into the workflow instead of replacing it. */
   startFromNodeId?: string | null;
@@ -628,31 +629,31 @@ export interface DataGenerateTaskFromRequirementInput {
   workflow?: DataWorkflowSaveInput | null;
 }
 
-export type DataTaskRequirementItemStatus = 'supported' | 'ambiguous' | 'unsupported';
+export type DataPipelineRequirementItemStatus = 'supported' | 'ambiguous' | 'unsupported';
 
-export interface DataTaskRequirementAnalysisItem {
+export interface DataPipelineRequirementAnalysisItem {
   requirement: string;
-  status: DataTaskRequirementItemStatus;
+  status: DataPipelineRequirementItemStatus;
   reason?: string;
   suggestedRequirement?: string;
   operations: string[];
   capabilities?: string[];
 }
 
-export interface DataAnalyzeTaskRequirementResult {
+export interface DataAnalyzePipelineRequirementResult {
   status: 'supported' | 'needs_confirmation' | 'unsupported';
-  items: DataTaskRequirementAnalysisItem[];
+  items: DataPipelineRequirementAnalysisItem[];
   analysisId?: string;
   capabilityProfileVersion?: string;
   sourceSummaryHash?: string;
   expiresAt?: number;
 }
 
-export interface DataGenerateTaskFromRequirementResult {
-  taskId: string;
-  taskName: string;
-  outputTableId: string;
-  outputTableName: string;
+export interface DataGeneratePipelineFromRequirementResult {
+  pipelineId: string;
+  pipelineName: string;
+  resultTableId: string;
+  resultTableName: string;
   /** Optional compatibility representation for display/export; native nodes are the source of truth. */
   workflowDsl?: string;
   workflowDslAvailable: boolean;
@@ -666,47 +667,47 @@ export interface DataGenerateTaskFromRequirementResult {
   generatedAt: number;
 }
 
-export interface DataImportDatasetInput {
+export interface DataImportRawTableInput {
   filePath: string;
   name?: string;
-  sourceKind?: DataInputTableSourceKind;
-  config?: DataInputTableConfig;
+  sourceKind?: DataRawTableSourceKind;
+  config?: DataRawTableConfig;
 }
 
-export interface DataUpdateDatasetInput {
+export interface DataUpdateRawTableInput {
   id: string;
   filePath?: string;
   name?: string;
-  sourceKind?: DataInputTableSourceKind;
-  config?: DataInputTableConfig;
+  sourceKind?: DataRawTableSourceKind;
+  config?: DataRawTableConfig;
 }
 
-export interface DataCreateOutputTableInput {
+export interface DataCreateResultTableInput {
   name?: string;
 }
 
-export interface DataUpdateOutputTableInput {
+export interface DataUpdateResultTableInput {
   id: string;
   name?: string;
-  sourceDatasetId?: string | null;
+  sourceRawTableId?: string | null;
 }
 
-export interface DataPreviewInputTableInput {
+export interface DataPreviewRawTableSourceInput {
   filePath: string;
-  sourceKind: DataInputTableSourceKind;
-  config: DataInputTableConfig;
+  sourceKind: DataRawTableSourceKind;
+  config: DataRawTableConfig;
   limit?: number;
   offset?: number;
 }
 
-export interface DataPreviewDatasetInput {
+export interface DataPreviewRawTableInput {
   id: string;
   limit?: number;
   offset?: number;
 }
 
 export interface DataPreviewWorkflowNodeInput {
-  taskId: string;
+  pipelineId: string;
   nodeId: string;
   nodeType: DataWorkflowOperatorType;
   nodeConfig?: Record<string, unknown>;
@@ -723,7 +724,7 @@ export interface DataPreviewWorkflowNodeColumnInput extends DataPreviewWorkflowN
   column: string;
 }
 
-export interface DataInputTablePreview {
+export interface DataRawTablePreview {
   columns: string[];
   columnTypes: DataColumnTypeInfo[];
   rows: Array<Record<string, string | number | boolean | null>>;
@@ -737,16 +738,16 @@ export interface DataInputTablePreview {
   workflowSignature?: string | null;
 }
 
-export interface DataInputTableSourceSelection {
+export interface DataRawTableSourceSelection {
   path: string;
-  kind: DataInputTableSourceKind;
+  kind: DataRawTableSourceKind;
 }
 
 export type { DataWorkflowOperatorType } from '../../data-workflow-types';
 
 export interface DataWorkflowNode {
   id: string;
-  taskId: string;
+  pipelineId: string;
   type: DataWorkflowOperatorType;
   label: string;
   x: number;
@@ -758,7 +759,7 @@ export interface DataWorkflowNode {
 
 export interface DataWorkflowEdge {
   id: string;
-  taskId: string;
+  pipelineId: string;
   sourceNodeId: string;
   targetNodeId: string;
   sourceHandle: string | null;
@@ -766,8 +767,8 @@ export interface DataWorkflowEdge {
   createdAt: number;
 }
 
-export interface DataTaskWorkflow {
-  task: DataCleaningTask;
+export interface DataPipelineWorkflow {
+  pipeline: DataPipeline;
   nodes: DataWorkflowNode[];
   edges: DataWorkflowEdge[];
 }
@@ -832,12 +833,12 @@ export interface PreviewCloudTableInput extends PersonalAnalysisConnectionInput 
 export interface PreviewCloudTableResult {
   cloudTableId: string;
   downloadedFilePath: string;
-  preview: DataInputTablePreview;
+  preview: DataRawTablePreview;
 }
 
 export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
   /** Rebind this input table instead of creating another one. */
-  inputTableId?: string;
+  rawTableId?: string;
   tableId: string;
   spaceId?: string;
   projectId?: string;
@@ -849,23 +850,23 @@ export interface ImportCloudTableInput extends PersonalAnalysisConnectionInput {
 }
 
 export interface ImportCloudTableResult {
-  inputTable: DataDataset;
-  preview?: DataInputTablePreview;
+  rawTable: DataRawTable;
+  preview?: DataRawTablePreview;
   cloudTableId: string;
   cloudTable?: PersonalAnalysisTable;
   downloadedFilePath: string;
 }
 
-export interface RefreshCloudInputTableInput extends PersonalAnalysisConnectionInput {
-  inputTableId: string;
+export interface RefreshCloudRawTableInput extends PersonalAnalysisConnectionInput {
+  rawTableId: string;
 }
 
-export interface RefreshCloudInputTableResult {
-  inputTable: DataDataset;
+export interface RefreshCloudRawTableResult {
+  rawTable: DataRawTable;
 }
 
 export interface UploadDataTableToCloudInput extends PersonalAnalysisConnectionInput {
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   id: string;
   writeMode: 'CREATE' | 'REPLACE';
   datasourceId?: string;
@@ -881,7 +882,7 @@ export interface UploadDataTableToCloudInput extends PersonalAnalysisConnectionI
 
 export interface UploadDataTableToCloudResult {
   sourceTable: {
-    tableKind: 'input' | 'output';
+    tableKind: 'raw' | 'result';
     id: string;
     name: string;
     rowCount: number;
@@ -889,8 +890,8 @@ export interface UploadDataTableToCloudResult {
   };
   csvBytes: number;
   upload: {
-    uploadTaskId: string;
-    importTaskId: string;
+    uploadPipelineId: string;
+    importPipelineId: string;
     tableId: string;
     sheetId?: string;
     status: string;
@@ -915,5 +916,5 @@ export interface PreviewCloudDriveFileInput extends PersonalAnalysisConnectionIn
 
 export interface PreviewCloudDriveFileResult {
   file: PersonalAnalysisDriveFile;
-  preview: DataInputTablePreview;
+  preview: DataRawTablePreview;
 }

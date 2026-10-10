@@ -1,8 +1,8 @@
 /**
- * Editor state for the data workspace: which task / input-table draft /
- * dataset / output table is being edited, the focused items injected by
+ * Editor state for the data workspace: which pipeline / raw-table draft /
+ * rawTable / output table is being edited, the focused items injected by
  * deep-link navigation, the cloud-upload dialog target, and the output
- * editor's input-table choices. No dashboard data ownership — lists are
+ * editor's raw-table choices. No dashboard data ownership — lists are
  * injected and the hooks only resolve "which one is being edited".
  */
 import {
@@ -13,127 +13,127 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { DataCleaningTask, DataDataset, DataOutputTable } from '../../../types';
-import { OUTPUT_TABLE_INPUT_CHOICES_LIMIT } from '../../../components/data-view/shared';
+import type { DataPipeline, DataRawTable, DataResultTable } from '../../../types';
+import { RESULT_TABLE_INPUT_CHOICES_LIMIT } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
-import type { InputTableDraft } from '../model/types';
+import type { RawTableDraft } from '../model/types';
 
 export function useDataViewEditors(deps: {
-  tasks: DataCleaningTask[];
-  inputTableDatasets: DataDataset[];
-  outputTables: DataOutputTable[];
-  drafts: InputTableDraft[];
+  pipelines: DataPipeline[];
+  rawTables: DataRawTable[];
+  resultTables: DataResultTable[];
+  drafts: RawTableDraft[];
   setError: Dispatch<SetStateAction<string | null>>;
 }) {
-  const { tasks, inputTableDatasets, outputTables, drafts, setError } = deps;
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [focusedTask, setFocusedTask] = useState<DataCleaningTask | null>(null);
-  // Set by task-creation flows so the editor opens with the title already in
-  // edit mode (focus + select). Read once on TaskEditor mount.
-  const [taskNameEditRequested, setTaskNameEditRequested] = useState(false);
-  const [editingInputTableDraftId, setEditingInputTableDraftId] = useState<string | null>(null);
-  const [editingInputTableDatasetId, setEditingInputTableDatasetId] = useState<string | null>(null);
-  const [focusedInputTable, setFocusedInputTable] = useState<DataDataset | null>(null);
-  const [editingOutputTableId, setEditingOutputTableId] = useState<string | null>(null);
-  const [focusedOutputTable, setFocusedOutputTable] = useState<DataOutputTable | null>(null);
-  const [outputEditorInputTables, setOutputEditorInputTables] = useState<DataDataset[]>([]);
-  const [outputEditorInputTablesLoading, setOutputEditorInputTablesLoading] = useState(false);
+  const { pipelines, rawTables, resultTables, drafts, setError } = deps;
+  const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
+  const [focusedPipeline, setFocusedPipeline] = useState<DataPipeline | null>(null);
+  // Set by pipeline-creation flows so the editor opens with the title already in
+  // edit mode (focus + select). Read once on PipelineEditor mount.
+  const [pipelineNameEditRequested, setPipelineNameEditRequested] = useState(false);
+  const [editingRawTableDraftId, setEditingRawTableDraftId] = useState<string | null>(null);
+  const [editingRawTableId, setEditingRawTableId] = useState<string | null>(null);
+  const [focusedRawTable, setFocusedRawTable] = useState<DataRawTable | null>(null);
+  const [editingResultTableId, setEditingResultTableId] = useState<string | null>(null);
+  const [focusedResultTable, setFocusedResultTable] = useState<DataResultTable | null>(null);
+  const [outputEditorRawTables, setOutputEditorRawTables] = useState<DataRawTable[]>([]);
+  const [outputEditorRawTablesLoading, setOutputEditorRawTablesLoading] = useState(false);
 
-  const editingTask = useMemo(
+  const editingPipeline = useMemo(
     () =>
-      tasks.find((task) => task.id === editingTaskId) ??
-      (focusedTask?.id === editingTaskId ? focusedTask : null),
-    [tasks, editingTaskId, focusedTask]
+      pipelines.find((pipeline) => pipeline.id === editingPipelineId) ??
+      (focusedPipeline?.id === editingPipelineId ? focusedPipeline : null),
+    [pipelines, editingPipelineId, focusedPipeline]
   );
-  const editingInputTableDraft = useMemo(
-    () => drafts.find((draft) => draft.id === editingInputTableDraftId) ?? null,
-    [editingInputTableDraftId, drafts]
+  const editingRawTableDraft = useMemo(
+    () => drafts.find((draft) => draft.id === editingRawTableDraftId) ?? null,
+    [editingRawTableDraftId, drafts]
   );
-  const editingInputTableDataset = useMemo(
+  const editingRawTable = useMemo(
     () =>
-      inputTableDatasets.find((dataset) => dataset.id === editingInputTableDatasetId) ??
-      (focusedInputTable?.id === editingInputTableDatasetId ? focusedInputTable : null),
-    [editingInputTableDatasetId, focusedInputTable, inputTableDatasets]
+      rawTables.find((rawTable) => rawTable.id === editingRawTableId) ??
+      (focusedRawTable?.id === editingRawTableId ? focusedRawTable : null),
+    [editingRawTableId, focusedRawTable, rawTables]
   );
-  const editingOutputTable = useMemo(
+  const editingResultTable = useMemo(
     () =>
-      outputTables.find((outputTable) => outputTable.id === editingOutputTableId) ??
-      (focusedOutputTable?.id === editingOutputTableId ? focusedOutputTable : null),
-    [outputTables, editingOutputTableId, focusedOutputTable]
+      resultTables.find((resultTable) => resultTable.id === editingResultTableId) ??
+      (focusedResultTable?.id === editingResultTableId ? focusedResultTable : null),
+    [resultTables, editingResultTableId, focusedResultTable]
   );
 
   /** Clears every editor/dialog target — used when deep-linking elsewhere. */
   const resetWorkspace = useCallback(() => {
-    setEditingTaskId(null);
-    setTaskNameEditRequested(false);
-    setEditingInputTableDraftId(null);
-    setEditingInputTableDatasetId(null);
-    setEditingOutputTableId(null);
+    setEditingPipelineId(null);
+    setPipelineNameEditRequested(false);
+    setEditingRawTableDraftId(null);
+    setEditingRawTableId(null);
+    setEditingResultTableId(null);
   }, []);
 
-  // Load the input-table choices the output editor binds from, once per
+  // Load the raw-table choices the output editor binds from, once per
   // edited output table.
   useEffect(() => {
-    if (!editingOutputTableId || !dataClient.has('getDashboard')) {
-      setOutputEditorInputTables([]);
-      setOutputEditorInputTablesLoading(false);
+    if (!editingResultTableId || !dataClient.has('getDashboard')) {
+      setOutputEditorRawTables([]);
+      setOutputEditorRawTablesLoading(false);
       return undefined;
     }
 
     let cancelled = false;
-    setOutputEditorInputTablesLoading(true);
+    setOutputEditorRawTablesLoading(true);
     void dataClient
       .getDashboard({
         includeSummary: false,
-        includeTasks: false,
-        includeDatasets: true,
-        includeOutputTables: false,
-        datasetOffset: 0,
-        datasetLimit: OUTPUT_TABLE_INPUT_CHOICES_LIMIT,
-        datasetSourceKind: 'all',
+        includePipelines: false,
+        includeRawTables: true,
+        includeResultTables: false,
+        rawTableOffset: 0,
+        rawTableLimit: RESULT_TABLE_INPUT_CHOICES_LIMIT,
+        rawTableSourceKind: 'all',
       })
       .then((nextDashboard) => {
         if (!cancelled) {
-          setOutputEditorInputTables(nextDashboard.datasets);
+          setOutputEditorRawTables(nextDashboard.rawTables);
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
-          setOutputEditorInputTables([]);
+          setOutputEditorRawTables([]);
         }
       })
       .finally(() => {
         if (!cancelled) {
-          setOutputEditorInputTablesLoading(false);
+          setOutputEditorRawTablesLoading(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [editingOutputTableId, setError]);
+  }, [editingResultTableId, setError]);
 
   return {
-    editingTask,
-    editingInputTableDraft,
-    editingInputTableDataset,
-    editingOutputTable,
-    editingTaskId,
-    editingInputTableDraftId,
-    editingInputTableDatasetId,
-    editingOutputTableId,
-    outputEditorInputTables,
-    outputEditorInputTablesLoading,
-    taskNameEditRequested,
-    setTaskNameEditRequested,
-    setEditingTaskId,
-    setFocusedTask,
-    setEditingInputTableDraftId,
-    setEditingInputTableDatasetId,
-    setFocusedInputTable,
-    setEditingOutputTableId,
-    setFocusedOutputTable,
+    editingPipeline,
+    editingRawTableDraft,
+    editingRawTable,
+    editingResultTable,
+    editingPipelineId,
+    editingRawTableDraftId,
+    editingRawTableId,
+    editingResultTableId,
+    outputEditorRawTables,
+    outputEditorRawTablesLoading,
+    pipelineNameEditRequested,
+    setPipelineNameEditRequested,
+    setEditingPipelineId,
+    setFocusedPipeline,
+    setEditingRawTableDraftId,
+    setEditingRawTableId,
+    setFocusedRawTable,
+    setEditingResultTableId,
+    setFocusedResultTable,
     resetWorkspace,
   };
 }

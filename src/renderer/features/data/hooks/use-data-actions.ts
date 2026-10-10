@@ -6,120 +6,125 @@
 import { useCallback } from 'react';
 import type { TFunction } from 'i18next';
 import type {
-  DataCleaningTask,
-  DataDataset,
+  DataPipeline,
+  DataRawTable,
   DataGroupScope,
-  DataGenerateTaskFromRequirementResult,
-  DataInputTableConfig,
-  DataInputTableSourceKind,
-  DataOutputTable,
-  DataRunTaskInput,
+  DataGeneratePipelineFromRequirementResult,
+  DataRawTableConfig,
+  DataRawTableSourceKind,
+  DataResultTable,
+  DataRunPipelineInput,
 } from '../../../types';
 import type { ConfirmDialogOptions } from '../../../components/ConfirmDialog';
 import type { AssignGroupTarget, DataListGroup } from '../../../components/data-view/group-ui';
 import { DATA_DELETE_BATCH_SIZE, matchesSearchText } from '../../../components/data-view/shared';
-import { getOperatorCatalog } from '../../../components/data-view/data-tasks/workflow/operator-catalog';
-import { buildWorkflowStarterGraph } from '../../../components/data-view/data-tasks/workflow/workflow-starter';
+import { getOperatorCatalog } from '../../../components/data-view/data-pipelines/workflow/operator-catalog';
+import { buildWorkflowStarterGraph } from '../../../components/data-view/data-pipelines/workflow/workflow-starter';
 import { dataClient } from '../api/data-client';
-import { uniqueTaskName } from '../model/task-names';
-import type { InputTableDraft } from '../model/types';
+import { uniquePipelineName } from '../model/pipeline-names';
+import type { RawTableDraft } from '../model/types';
 import type { DataViewUi } from './use-data-view-ui';
 import type { DataDashboardState } from './use-data-dashboard';
-import type { InputTablesState } from './use-input-tables';
-import type { InputTableDraftsState } from './use-input-table-drafts';
+import type { RawTablesState } from './use-raw-tables';
+import type { RawTableDraftsState } from './use-raw-table-drafts';
 import type { DataViewEditors } from './use-data-view-editors';
 
 export interface DataActionsDeps {
   ui: DataViewUi;
   dashboard: DataDashboardState;
-  inputTables: InputTablesState;
-  drafts: InputTableDraftsState;
+  rawTables: RawTablesState;
+  drafts: RawTableDraftsState;
   editors: DataViewEditors;
   t: TFunction;
   confirmDelete: (options: ConfirmDialogOptions) => Promise<boolean>;
 }
 
-/** Every stored task name — the unique-name check must scan all pages, not
+/** Every stored pipeline name — the unique-name check must scan all pages, not
  *  just the currently loaded page. */
-async function collectTaskNames(): Promise<Set<string>> {
+async function collectPipelineNames(): Promise<Set<string>> {
   const names = new Set<string>();
   let offset = 0;
   for (;;) {
     const page = await dataClient.getDashboard({
       includeSummary: false,
-      includeTasks: true,
-      includeDatasets: false,
-      includeOutputTables: false,
-      taskOffset: offset,
-      taskLimit: DATA_DELETE_BATCH_SIZE,
-      datasetLimit: 0,
+      includePipelines: true,
+      includeRawTables: false,
+      includeResultTables: false,
+      pipelineOffset: offset,
+      pipelineLimit: DATA_DELETE_BATCH_SIZE,
+      rawTableLimit: 0,
       outputLimit: 0,
     });
-    for (const task of page.tasks) names.add(task.name);
-    if (page.tasks.length < DATA_DELETE_BATCH_SIZE) break;
-    offset += page.tasks.length;
+    for (const pipeline of page.pipelines) names.add(pipeline.name);
+    if (page.pipelines.length < DATA_DELETE_BATCH_SIZE) break;
+    offset += page.pipelines.length;
   }
   return names;
 }
 
 export function useDataActions(deps: DataActionsDeps) {
-  const { ui, dashboard, inputTables, drafts, editors, t, confirmDelete } = deps;
+  const { ui, dashboard, rawTables, drafts, editors, t, confirmDelete } = deps;
   const { loadDashboard } = dashboard;
-  const { loadInputTables } = inputTables;
+  const { loadRawTables } = rawTables;
 
   /**
-   * Creates a task with a guaranteed-unique name and opens the editor in
-   * rename mode. With `sourceDataset`, the task is persisted with a bound
-   * `input_source` node — the "create task from this table" flow lands on a
+   * Creates a pipeline with a guaranteed-unique name and opens the editor in
+   * rename mode. With `sourceRawTable`, the pipeline is persisted with a bound
+   * `input_source` node — the "create pipeline from this table" flow lands on a
    * canvas that is already wired to the selected input table.
    */
-  const createTaskAndEdit = useCallback(
-    async (sourceDataset?: DataDataset) => {
+  const createPipelineAndEdit = useCallback(
+    async (sourceRawTable?: DataRawTable) => {
       if (!dataClient.isAvailable()) return;
       ui.setActionId('create');
       ui.setError(null);
       try {
-        ui.setActiveTab('tasks');
+        ui.setActiveTab('pipelines');
         ui.setSearchQuery('');
-        dashboard.setTaskPage(1);
-        const existingNames = await collectTaskNames();
-        const name = sourceDataset
-          ? uniqueTaskName(t('data.taskNameFromTable', { name: sourceDataset.name }), existingNames)
-          : uniqueTaskName(t('data.defaultTaskName'), existingNames, { alwaysNumber: true });
-        const task = await dataClient.createTask({
+        dashboard.setPipelinePage(1);
+        const existingNames = await collectPipelineNames();
+        const name = sourceRawTable
+          ? uniquePipelineName(
+              t('data.pipelineNameFromTable', { name: sourceRawTable.name }),
+              existingNames
+            )
+          : uniquePipelineName(t('data.defaultPipelineName'), existingNames, {
+              alwaysNumber: true,
+            });
+        const pipeline = await dataClient.createPipeline({
           name,
-          sourceDatasetId: sourceDataset?.id ?? null,
+          sourceRawTableId: sourceRawTable?.id ?? null,
         });
-        let focused = task;
-        if (sourceDataset) {
+        let focused = pipeline;
+        if (sourceRawTable) {
           try {
             // Seed the same input → SQL → output starter graph the empty
-            // canvas offers — bound to the table this task was created from.
+            // canvas offers — bound to the table this pipeline was created from.
             const starter = buildWorkflowStarterGraph({
-              taskId: task.id,
-              sourceDatasetId: sourceDataset.id,
-              sourceName: sourceDataset.name,
+              pipelineId: pipeline.id,
+              sourceRawTableId: sourceRawTable.id,
+              sourceName: sourceRawTable.name,
               labels: {
                 input_source: t(getOperatorCatalog('input_source').labelKey),
                 sql_query: t(getOperatorCatalog('sql_query').labelKey),
                 output: t(getOperatorCatalog('output').labelKey),
               },
             });
-            const seeded = await dataClient.saveTaskWorkflow(task.id, {
+            const seeded = await dataClient.savePipelineWorkflow(pipeline.id, {
               nodes: starter.nodes,
               edges: starter.edges,
             });
-            focused = seeded.task;
+            focused = seeded.pipeline;
           } catch (err) {
-            // Task exists and the editor still opens — binding can be redone
+            // Pipeline exists and the editor still opens — binding can be redone
             // in the input node's config if the seed save failed.
             ui.setError(err instanceof Error ? err.message : String(err));
           }
         }
-        editors.setFocusedTask(focused);
-        editors.setEditingTaskId(focused.id);
-        editors.setTaskNameEditRequested(true);
-        await loadDashboard({ query: '', taskPage: 1 });
+        editors.setFocusedPipeline(focused);
+        editors.setEditingPipelineId(focused.id);
+        editors.setPipelineNameEditRequested(true);
+        await loadDashboard({ query: '', pipelinePage: 1 });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
         await loadDashboard({ preserveError: true, query: '' });
@@ -130,20 +135,20 @@ export function useDataActions(deps: DataActionsDeps) {
     [dashboard, editors, loadDashboard, t, ui]
   );
 
-  const handleCreateTask = useCallback(() => createTaskAndEdit(), [createTaskAndEdit]);
+  const handleCreatePipeline = useCallback(() => createPipelineAndEdit(), [createPipelineAndEdit]);
 
-  const handleCreateTaskFromTable = useCallback(
-    (dataset: DataDataset) => createTaskAndEdit(dataset),
-    [createTaskAndEdit]
+  const handleCreatePipelineFromTable = useCallback(
+    (rawTable: DataRawTable) => createPipelineAndEdit(rawTable),
+    [createPipelineAndEdit]
   );
 
-  const handleRunTask = useCallback(
-    async (task: DataCleaningTask, payload?: DataRunTaskInput) => {
+  const handleRunPipeline = useCallback(
+    async (pipeline: DataPipeline, payload?: DataRunPipelineInput) => {
       if (!dataClient.isAvailable()) return;
-      ui.setActionId(task.id);
+      ui.setActionId(pipeline.id);
       ui.setError(null);
       try {
-        const result = await dataClient.runTaskWithDiagnostics(task.id, payload);
+        const result = await dataClient.runPipelineWithDiagnostics(pipeline.id, payload);
         if (result.failure) {
           // Temporary runs return failures as a structured result (stats and
           // violating samples travel with the run — nothing was persisted).
@@ -154,14 +159,14 @@ export function useDataActions(deps: DataActionsDeps) {
           });
           dashboard.setRunNodeStats(result.nodeStats ?? []);
           const isExpectFailure = /Expect failed at node [^:]+:/.test(result.failure.message);
-          if (editors.editingTaskId !== task.id || !isExpectFailure) {
+          if (editors.editingPipelineId !== pipeline.id || !isExpectFailure) {
             ui.setError(result.failure.message);
           }
           await loadDashboard({ preserveError: true });
           return;
         }
-        editors.setFocusedTask((current) =>
-          current?.id === result.task.id ? result.task : current
+        editors.setFocusedPipeline((current) =>
+          current?.id === result.pipeline.id ? result.pipeline : current
         );
         dashboard.setRunNodeStats(result.nodeStats ?? []);
         dashboard.setLastRunFailure(null);
@@ -179,7 +184,7 @@ export function useDataActions(deps: DataActionsDeps) {
         // never persist stats — fetching would return the previous run's.
         if (payload?.outputMode !== 'temporary') {
           try {
-            dashboard.setRunNodeStats(await dataClient.getTaskNodeStats(task.id));
+            dashboard.setRunNodeStats(await dataClient.getPipelineNodeStats(pipeline.id));
           } catch {
             // Node stats are best-effort — the failure message still stands.
           }
@@ -187,7 +192,7 @@ export function useDataActions(deps: DataActionsDeps) {
         // Inside the editor the structured card replaces the page-level banner
         // for assertion failures; other failures still surface as a banner.
         const isExpectFailure = /Expect failed at node [^:]+:/.test(message);
-        if (editors.editingTaskId !== task.id || !isExpectFailure) {
+        if (editors.editingPipelineId !== pipeline.id || !isExpectFailure) {
           ui.setError(message);
         }
         await loadDashboard({ preserveError: true });
@@ -198,18 +203,18 @@ export function useDataActions(deps: DataActionsDeps) {
     [dashboard, editors, loadDashboard, ui]
   );
 
-  const handleRefreshCloudInputTable = useCallback(
-    async (dataset: DataDataset) => {
-      if (!dataClient.has('refreshCloudInputTable')) return;
-      ui.setActionId(`cloud-sync:${dataset.id}`);
+  const handleRefreshCloudRawTable = useCallback(
+    async (rawTable: DataRawTable) => {
+      if (!dataClient.has('refreshCloudRawTable')) return;
+      ui.setActionId(`cloud-sync:${rawTable.id}`);
       ui.setError(null);
       try {
-        const result = await dataClient.refreshCloudInputTable({ inputTableId: dataset.id });
+        const result = await dataClient.refreshCloudRawTable({ rawTableId: rawTable.id });
         await Promise.all([
-          loadInputTables({ preserveError: true }),
+          loadRawTables({ preserveError: true }),
           loadDashboard({ preserveError: true }),
         ]);
-        return result.inputTable;
+        return result.rawTable;
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
         await loadDashboard({ preserveError: true });
@@ -217,34 +222,34 @@ export function useDataActions(deps: DataActionsDeps) {
         ui.setActionId(null);
       }
     },
-    [loadDashboard, loadInputTables, ui]
+    [loadDashboard, loadRawTables, ui]
   );
 
-  const handleEditTask = useCallback(
-    (task: DataCleaningTask) => {
-      editors.setTaskNameEditRequested(false);
-      editors.setFocusedTask(task);
-      editors.setEditingTaskId(task.id);
+  const handleEditPipeline = useCallback(
+    (pipeline: DataPipeline) => {
+      editors.setPipelineNameEditRequested(false);
+      editors.setFocusedPipeline(pipeline);
+      editors.setEditingPipelineId(pipeline.id);
     },
     [editors]
   );
 
-  const handleGeneratedTask = useCallback(
-    async (result: DataGenerateTaskFromRequirementResult) => {
-      ui.setActiveTab('tasks');
+  const handleGeneratedPipeline = useCallback(
+    async (result: DataGeneratePipelineFromRequirementResult) => {
+      ui.setActiveTab('pipelines');
       ui.setSearchQuery('');
-      dashboard.setTaskPage(1);
-      editors.setEditingInputTableDatasetId(null);
-      editors.setTaskNameEditRequested(false);
+      dashboard.setPipelinePage(1);
+      editors.setEditingRawTableId(null);
+      editors.setPipelineNameEditRequested(false);
       try {
-        const task = await dataClient.getTask(result.taskId);
-        if (task) {
-          editors.setFocusedTask(task);
-          editors.setEditingTaskId(task.id);
+        const pipeline = await dataClient.getPipeline(result.pipelineId);
+        if (pipeline) {
+          editors.setFocusedPipeline(pipeline);
+          editors.setEditingPipelineId(pipeline.id);
         }
-        await loadDashboard({ query: '', taskPage: 1 });
+        await loadDashboard({ query: '', pipelinePage: 1 });
       } catch (err) {
-        // Generation already persisted the task. Do not leave a retry button that
+        // Generation already persisted the pipeline. Do not leave a retry button that
         // would create it again just because refreshing the workspace failed.
         ui.setError(err instanceof Error ? err.message : String(err));
       }
@@ -252,42 +257,42 @@ export function useDataActions(deps: DataActionsDeps) {
     [ui, editors, dashboard, loadDashboard]
   );
 
-  const handleCloseTaskEditor = useCallback(() => {
-    editors.setTaskNameEditRequested(false);
-    editors.setEditingTaskId(null);
-    editors.setFocusedTask(null);
+  const handleClosePipelineEditor = useCallback(() => {
+    editors.setPipelineNameEditRequested(false);
+    editors.setEditingPipelineId(null);
+    editors.setFocusedPipeline(null);
   }, [editors]);
 
-  const handleCreateInputTableDraft = useCallback(() => {
+  const handleCreateRawTableDraft = useCallback(() => {
     const draft = drafts.createDraft(
-      `${t('data.inputTables.defaultName')} ${inputTables.totalInputTableDatasets + drafts.drafts.length + 1}`
+      `${t('data.rawTables.defaultName')} ${rawTables.totalRawTables + drafts.drafts.length + 1}`
     );
-    ui.setActiveTab('input_tables');
+    ui.setActiveTab('raw_tables');
     ui.setSearchQuery('');
-    editors.setEditingInputTableDatasetId(null);
-    editors.setEditingInputTableDraftId(draft.id);
-  }, [drafts, editors, inputTables.totalInputTableDatasets, t, ui]);
+    editors.setEditingRawTableId(null);
+    editors.setEditingRawTableDraftId(draft.id);
+  }, [drafts, editors, rawTables.totalRawTables, t, ui]);
 
-  const handleRenameInputTableDraft = useCallback(
+  const handleRenameRawTableDraft = useCallback(
     (id: string, name: string) => {
       drafts.renameDraft(id, name);
     },
     [drafts]
   );
 
-  const handleDeleteInputTableDraft = useCallback(
+  const handleDeleteRawTableDraft = useCallback(
     (id: string) => {
       drafts.removeDraft(id);
-      editors.setEditingInputTableDraftId((current) => (current === id ? null : current));
+      editors.setEditingRawTableDraftId((current) => (current === id ? null : current));
     },
     [drafts, editors]
   );
 
-  const handleImportInputTableSource = useCallback(
+  const handleImportRawTableSource = useCallback(
     async (
-      draft: InputTableDraft,
-      sourceKind: DataInputTableSourceKind,
-      config: DataInputTableConfig,
+      draft: RawTableDraft,
+      sourceKind: DataRawTableSourceKind,
+      config: DataRawTableConfig,
       name?: string
     ) => {
       if (!dataClient.isAvailable()) return;
@@ -295,159 +300,155 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setError(null);
       try {
         const sourcePath =
-          sourceKind === 'cloud'
-            ? undefined
-            : await dataClient.pickInputTableSourcePath(sourceKind);
+          sourceKind === 'cloud' ? undefined : await dataClient.pickRawTableSourcePath(sourceKind);
         if (sourceKind !== 'cloud' && !sourcePath) return;
-        ui.setActiveTab('input_tables');
+        ui.setActiveTab('raw_tables');
         const imported =
           config.sourceKind === 'cloud'
             ? (
-                await dataClient.importCloudTable({
+                await dataClient.importCloudRawTable({
                   ...config.cloudMirror,
                   name: name?.trim() || draft.name,
                 })
-              ).inputTable
-            : await dataClient.importDataset({
+              ).rawTable
+            : await dataClient.importRawTable({
                 filePath: sourcePath!,
                 name: name?.trim() || draft.name,
                 sourceKind,
                 config,
               });
         drafts.removeDraft(draft.id);
-        inputTables.upsertDataset(imported, true);
-        editors.setEditingInputTableDraftId(null);
-        editors.setEditingInputTableDatasetId(imported.id);
-        inputTables.setDatasetPage(1);
-        await loadInputTables({ preserveError: true, page: 1 });
+        rawTables.upsertRawTable(imported, true);
+        editors.setEditingRawTableDraftId(null);
+        editors.setEditingRawTableId(imported.id);
+        rawTables.setRawTablePage(1);
+        await loadRawTables({ preserveError: true, page: 1 });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadInputTables({ preserveError: true });
+        await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [drafts, editors, inputTables, loadInputTables, ui]
+    [drafts, editors, rawTables, loadRawTables, ui]
   );
 
-  const handleEditInputTableDataset = useCallback(
+  const handleEditRawTable = useCallback(
     (id: string) => {
-      ui.setActiveTab('input_tables');
-      editors.setEditingInputTableDraftId(null);
-      editors.setEditingInputTableDatasetId(id);
+      ui.setActiveTab('raw_tables');
+      editors.setEditingRawTableDraftId(null);
+      editors.setEditingRawTableId(id);
     },
     [editors, ui]
   );
 
-  const handleRenameInputTableDataset = useCallback(
-    async (dataset: DataDataset, name: string) => {
+  const handleRenameRawTable = useCallback(
+    async (rawTable: DataRawTable, name: string) => {
       const trimmedName = name.trim();
-      if (!trimmedName || trimmedName === dataset.name || !dataClient.has('updateDataset')) {
+      if (!trimmedName || trimmedName === rawTable.name || !dataClient.has('updateRawTable')) {
         return;
       }
-      ui.setActionId(dataset.id);
+      ui.setActionId(rawTable.id);
       ui.setError(null);
       try {
-        const updated = await dataClient.updateDataset({
-          id: dataset.id,
+        const updated = await dataClient.updateRawTable({
+          id: rawTable.id,
           name: trimmedName,
         });
-        inputTables.updateDatasetRow(updated);
-        await loadInputTables({ preserveError: true });
+        rawTables.updateRawTableRow(updated);
+        await loadRawTables({ preserveError: true });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadInputTables({ preserveError: true });
+        await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [inputTables, loadInputTables, ui]
+    [rawTables, loadRawTables, ui]
   );
 
-  const handleUpdateInputTableSource = useCallback(
+  const handleUpdateRawTableSource = useCallback(
     async (
-      dataset: DataDataset,
-      sourceKind: DataInputTableSourceKind,
-      config: DataInputTableConfig,
+      rawTable: DataRawTable,
+      sourceKind: DataRawTableSourceKind,
+      config: DataRawTableConfig,
       name?: string
     ) => {
-      if (!dataClient.has('updateDataset')) return;
-      ui.setActionId(dataset.id);
+      if (!dataClient.has('updateRawTable')) return;
+      ui.setActionId(rawTable.id);
       ui.setError(null);
       try {
         const sourcePath =
-          sourceKind === 'cloud'
-            ? undefined
-            : await dataClient.pickInputTableSourcePath(sourceKind);
+          sourceKind === 'cloud' ? undefined : await dataClient.pickRawTableSourcePath(sourceKind);
         if (sourceKind !== 'cloud' && !sourcePath) return;
         const updated =
           config.sourceKind === 'cloud'
             ? (
-                await dataClient.importCloudTable({
+                await dataClient.importCloudRawTable({
                   ...config.cloudMirror,
-                  inputTableId: dataset.id,
-                  name: name?.trim() || dataset.name,
+                  rawTableId: rawTable.id,
+                  name: name?.trim() || rawTable.name,
                 })
-              ).inputTable
-            : await dataClient.updateDataset({
-                id: dataset.id,
+              ).rawTable
+            : await dataClient.updateRawTable({
+                id: rawTable.id,
                 filePath: sourcePath!,
-                name: name?.trim() || dataset.name,
+                name: name?.trim() || rawTable.name,
                 sourceKind,
                 config,
               });
-        inputTables.updateDatasetRow(updated);
-        await loadInputTables({ preserveError: true });
+        rawTables.updateRawTableRow(updated);
+        await loadRawTables({ preserveError: true });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadInputTables({ preserveError: true });
+        await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [inputTables, loadInputTables, ui]
+    [rawTables, loadRawTables, ui]
   );
 
-  const handleUpdateInputTableConfig = useCallback(
-    async (dataset: DataDataset, config: DataInputTableConfig, name?: string) => {
-      if (!dataClient.has('updateDataset')) return;
-      ui.setActionId(dataset.id);
+  const handleUpdateRawTableConfig = useCallback(
+    async (rawTable: DataRawTable, config: DataRawTableConfig, name?: string) => {
+      if (!dataClient.has('updateRawTable')) return;
+      ui.setActionId(rawTable.id);
       ui.setError(null);
       try {
-        const updated = await dataClient.updateDataset({
-          id: dataset.id,
-          name: name?.trim() || dataset.name,
+        const updated = await dataClient.updateRawTable({
+          id: rawTable.id,
+          name: name?.trim() || rawTable.name,
           sourceKind: config.sourceKind,
           config,
         });
-        inputTables.updateDatasetRow(updated);
-        await loadInputTables({ preserveError: true });
+        rawTables.updateRawTableRow(updated);
+        await loadRawTables({ preserveError: true });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadInputTables({ preserveError: true });
+        await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [inputTables, loadInputTables, ui]
+    [rawTables, loadRawTables, ui]
   );
 
-  const handleDeleteTask = useCallback(
-    async (task: DataCleaningTask) => {
+  const handleDeletePipeline = useCallback(
+    async (pipeline: DataPipeline) => {
       if (!dataClient.isAvailable()) return;
       const confirmed = await confirmDelete({
-        message: t('data.deleteTaskConfirm', { name: task.name }),
+        message: t('data.deletePipelineConfirm', { name: pipeline.name }),
       });
       if (!confirmed) return;
-      ui.setActionId(task.id);
+      ui.setActionId(pipeline.id);
       ui.setError(null);
       try {
-        const result = await dataClient.deleteTask(task.id);
+        const result = await dataClient.deletePipeline(pipeline.id);
         if (!result.success) {
-          throw new Error(t('data.deleteTaskNotFound'));
+          throw new Error(t('data.deletePipelineNotFound'));
         }
-        if (editors.editingTaskId === task.id) {
-          editors.setEditingTaskId(null);
+        if (editors.editingPipelineId === pipeline.id) {
+          editors.setEditingPipelineId(null);
         }
         await loadDashboard();
       } catch (err) {
@@ -460,168 +461,169 @@ export function useDataActions(deps: DataActionsDeps) {
     [confirmDelete, editors, loadDashboard, t, ui]
   );
 
-  const handleDeleteAllTasks = useCallback(async () => {
+  const handleDeleteAllPipelines = useCallback(async () => {
     if (!dataClient.isAvailable()) return;
-    const count = dashboard.dashboard.totalTasks;
+    const count = dashboard.dashboard.totalPipelines;
     if (count <= 0) return;
     const confirmed = await confirmDelete({
-      message: t('data.deleteAllTasksConfirm', { count }),
+      message: t('data.deleteAllPipelinesConfirm', { count }),
     });
     if (!confirmed) return;
-    ui.setActionId('delete-all-tasks');
+    ui.setActionId('delete-all-pipelines');
     ui.setError(null);
     try {
-      let hasMoreTasks = true;
-      while (hasMoreTasks) {
+      let hasMorePipelines = true;
+      while (hasMorePipelines) {
         const page = await dataClient.getDashboard({
           query: ui.searchQuery,
           includeSummary: false,
-          includeTasks: true,
-          includeDatasets: false,
-          includeOutputTables: false,
-          taskOffset: 0,
-          taskLimit: DATA_DELETE_BATCH_SIZE,
-          datasetLimit: 0,
+          includePipelines: true,
+          includeRawTables: false,
+          includeResultTables: false,
+          pipelineOffset: 0,
+          pipelineLimit: DATA_DELETE_BATCH_SIZE,
+          rawTableLimit: 0,
           outputLimit: 0,
         });
-        hasMoreTasks = page.tasks.length > 0;
-        if (!hasMoreTasks) break;
-        for (const task of page.tasks) {
-          await dataClient.deleteTask(task.id);
+        hasMorePipelines = page.pipelines.length > 0;
+        if (!hasMorePipelines) break;
+        for (const pipeline of page.pipelines) {
+          await dataClient.deletePipeline(pipeline.id);
         }
       }
-      editors.setEditingTaskId(null);
-      dashboard.setTaskPage(1);
-      await loadDashboard({ preserveError: true, tab: 'tasks', taskPage: 1 });
+      editors.setEditingPipelineId(null);
+      dashboard.setPipelinePage(1);
+      await loadDashboard({ preserveError: true, tab: 'pipelines', pipelinePage: 1 });
     } catch (err) {
       ui.setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true, tab: 'tasks' });
+      await loadDashboard({ preserveError: true, tab: 'pipelines' });
     } finally {
       ui.setActionId(null);
     }
   }, [confirmDelete, dashboard, editors, loadDashboard, t, ui]);
 
-  const handleDeleteInputTable = useCallback(
-    async (dataset: DataDataset) => {
-      if (!dataClient.has('deleteDataset')) return;
+  const handleDeleteRawTable = useCallback(
+    async (rawTable: DataRawTable) => {
+      if (!dataClient.has('deleteRawTable')) return;
       const confirmed = await confirmDelete({
-        message: t('data.inputTables.deleteConfirm', { name: dataset.name }),
+        message: t('data.rawTables.deleteConfirm', { name: rawTable.name }),
       });
       if (!confirmed) return;
-      ui.setActionId(dataset.id);
+      ui.setActionId(rawTable.id);
       ui.setError(null);
       try {
-        const result = await dataClient.deleteDataset(dataset.id);
+        const result = await dataClient.deleteRawTable(rawTable.id);
         if (!result.success) {
-          throw new Error(t('data.inputTables.deleteNotFound'));
+          throw new Error(t('data.rawTables.deleteNotFound'));
         }
-        inputTables.removeDataset(dataset.id);
-        await loadInputTables({ preserveError: true });
+        rawTables.removeRawTable(rawTable.id);
+        await loadRawTables({ preserveError: true });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadInputTables({ preserveError: true });
+        await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [confirmDelete, inputTables, loadInputTables, t, ui]
+    [confirmDelete, rawTables, loadRawTables, t, ui]
   );
 
-  const handleDeleteAllInputTables = useCallback(async () => {
-    if (!dataClient.has('deleteDataset')) return;
+  const handleDeleteAllRawTables = useCallback(async () => {
+    if (!dataClient.has('deleteRawTable')) return;
     const draftIds = drafts.drafts
       .filter((draft) => matchesSearchText(draft.name, ui.searchQuery))
       .map((draft) => draft.id);
-    const count = inputTables.totalInputTableDatasets + draftIds.length;
+    const count = rawTables.totalRawTables + draftIds.length;
     if (count <= 0) return;
     const confirmed = await confirmDelete({
-      message: t('data.inputTables.deleteAllConfirm', { count }),
+      message: t('data.rawTables.deleteAllConfirm', { count }),
     });
     if (!confirmed) return;
-    ui.setActionId('delete-all-input-tables');
+    ui.setActionId('delete-all-raw-tables');
     ui.setError(null);
     try {
       if (draftIds.length > 0) {
         drafts.removeDrafts(draftIds);
-        editors.setEditingInputTableDraftId((current) =>
+        editors.setEditingRawTableDraftId((current) =>
           current && draftIds.includes(current) ? null : current
         );
       }
-      let hasMoreInputTables = true;
-      while (hasMoreInputTables) {
+      let hasMoreRawTables = true;
+      while (hasMoreRawTables) {
         const page = await dataClient.getDashboard({
           query: ui.searchQuery,
           includeSummary: false,
-          includeTasks: false,
-          includeDatasets: true,
-          includeOutputTables: false,
-          taskLimit: 0,
-          datasetOffset: 0,
-          datasetLimit: DATA_DELETE_BATCH_SIZE,
-          datasetSourceKind: 'all',
+          includePipelines: false,
+          includeRawTables: true,
+          includeResultTables: false,
+          pipelineLimit: 0,
+          rawTableOffset: 0,
+          rawTableLimit: DATA_DELETE_BATCH_SIZE,
+          rawTableSourceKind: 'all',
           outputLimit: 0,
         });
-        hasMoreInputTables = page.datasets.length > 0;
-        if (!hasMoreInputTables) break;
-        for (const dataset of page.datasets) {
-          await dataClient.deleteDataset(dataset.id);
+        hasMoreRawTables = page.rawTables.length > 0;
+        if (!hasMoreRawTables) break;
+        for (const rawTable of page.rawTables) {
+          await dataClient.deleteRawTable(rawTable.id);
         }
       }
-      editors.setEditingInputTableDatasetId(null);
-      inputTables.setDatasetPage(1);
-      await loadInputTables({ preserveError: true, page: 1 });
+      editors.setEditingRawTableId(null);
+      rawTables.setRawTablePage(1);
+      await loadRawTables({ preserveError: true, page: 1 });
     } catch (err) {
       ui.setError(err instanceof Error ? err.message : String(err));
-      await loadInputTables({ preserveError: true });
+      await loadRawTables({ preserveError: true });
     } finally {
       ui.setActionId(null);
     }
-  }, [confirmDelete, drafts, editors, inputTables, loadInputTables, t, ui]);
+  }, [confirmDelete, drafts, editors, rawTables, loadRawTables, t, ui]);
 
-  const handleCreateOutputTable = useCallback(async () => {
-    if (!dataClient.has('createOutputTable')) return;
+  const handleCreateResultTable = useCallback(async () => {
+    if (!dataClient.has('createResultTable')) return;
     ui.setActionId('create-output');
     ui.setError(null);
     try {
-      ui.setActiveTab('output_tables');
+      ui.setActiveTab('result_tables');
       ui.setSearchQuery('');
       dashboard.setOutputPage(1);
-      const outputTable = await dataClient.createOutputTable({
-        name: `${t('data.outputTables.defaultName')} ${dashboard.dashboard.totalOutputTables + 1}`,
+      const resultTable = await dataClient.createResultTable({
+        name: `${t('data.resultTables.defaultName')} ${dashboard.dashboard.totalResultTables + 1}`,
       });
-      editors.setEditingOutputTableId(outputTable.id);
-      await loadDashboard({ preserveError: true, tab: 'output_tables', outputPage: 1 });
+      editors.setEditingResultTableId(resultTable.id);
+      await loadDashboard({ preserveError: true, tab: 'result_tables', outputPage: 1 });
     } catch (err) {
       ui.setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      await loadDashboard({ preserveError: true, tab: 'result_tables' });
     } finally {
       ui.setActionId(null);
     }
   }, [dashboard, editors, loadDashboard, t, ui]);
 
-  const handleUpdateOutputTable = useCallback(
-    async (outputTable: DataOutputTable, name: string, sourceDatasetId: string | null) => {
+  const handleUpdateResultTable = useCallback(
+    async (resultTable: DataResultTable, name: string, sourceRawTableId: string | null) => {
       const trimmedName = name.trim();
-      const nextSourceDatasetId = sourceDatasetId || null;
+      const nextSourceRawTableId = sourceRawTableId || null;
       if (
         !trimmedName ||
-        (trimmedName === outputTable.name && nextSourceDatasetId === outputTable.sourceDatasetId) ||
-        !dataClient.has('updateOutputTable')
+        (trimmedName === resultTable.name &&
+          nextSourceRawTableId === resultTable.sourceRawTableId) ||
+        !dataClient.has('updateResultTable')
       ) {
         return;
       }
-      ui.setActionId(outputTable.id);
+      ui.setActionId(resultTable.id);
       ui.setError(null);
       try {
-        await dataClient.updateOutputTable({
-          id: outputTable.id,
+        await dataClient.updateResultTable({
+          id: resultTable.id,
           name: trimmedName,
-          sourceDatasetId: nextSourceDatasetId,
+          sourceRawTableId: nextSourceRawTableId,
         });
-        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+        await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+        await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } finally {
         ui.setActionId(null);
       }
@@ -629,27 +631,27 @@ export function useDataActions(deps: DataActionsDeps) {
     [loadDashboard, ui]
   );
 
-  const handleDeleteOutputTable = useCallback(
-    async (outputTable: DataOutputTable) => {
-      if (!dataClient.has('deleteDataset')) return;
+  const handleDeleteResultTable = useCallback(
+    async (resultTable: DataResultTable) => {
+      if (!dataClient.has('deleteRawTable')) return;
       const confirmed = await confirmDelete({
-        message: t('data.outputTables.deleteConfirm', { name: outputTable.name }),
+        message: t('data.resultTables.deleteConfirm', { name: resultTable.name }),
       });
       if (!confirmed) return;
-      ui.setActionId(outputTable.id);
+      ui.setActionId(resultTable.id);
       ui.setError(null);
       try {
-        const result = await dataClient.deleteDataset(outputTable.id);
+        const result = await dataClient.deleteRawTable(resultTable.id);
         if (!result.success) {
-          throw new Error(t('data.outputTables.deleteNotFound'));
+          throw new Error(t('data.resultTables.deleteNotFound'));
         }
-        if (editors.editingOutputTableId === outputTable.id) {
-          editors.setEditingOutputTableId(null);
+        if (editors.editingResultTableId === resultTable.id) {
+          editors.setEditingResultTableId(null);
         }
-        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+        await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
-        await loadDashboard({ preserveError: true, tab: 'output_tables' });
+        await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } finally {
         ui.setActionId(null);
       }
@@ -657,46 +659,46 @@ export function useDataActions(deps: DataActionsDeps) {
     [confirmDelete, editors, loadDashboard, t, ui]
   );
 
-  const handleDeleteAllOutputTables = useCallback(async () => {
-    if (!dataClient.has('deleteDataset')) return;
-    const count = dashboard.dashboard.totalOutputTables;
+  const handleDeleteAllResultTables = useCallback(async () => {
+    if (!dataClient.has('deleteRawTable')) return;
+    const count = dashboard.dashboard.totalResultTables;
     if (count <= 0) return;
     const confirmed = await confirmDelete({
-      message: t('data.outputTables.deleteAllConfirm', { count }),
+      message: t('data.resultTables.deleteAllConfirm', { count }),
     });
     if (!confirmed) return;
-    ui.setActionId('delete-all-output-tables');
+    ui.setActionId('delete-all-result-tables');
     ui.setError(null);
     try {
-      let hasMoreOutputTables = true;
-      while (hasMoreOutputTables) {
+      let hasMoreResultTables = true;
+      while (hasMoreResultTables) {
         const page = await dataClient.getDashboard({
           query: ui.searchQuery,
           includeSummary: false,
-          includeTasks: false,
-          includeDatasets: false,
-          includeOutputTables: true,
-          taskLimit: 0,
-          datasetLimit: 0,
+          includePipelines: false,
+          includeRawTables: false,
+          includeResultTables: true,
+          pipelineLimit: 0,
+          rawTableLimit: 0,
           outputOffset: 0,
           outputLimit: DATA_DELETE_BATCH_SIZE,
         });
-        hasMoreOutputTables = page.outputTables.length > 0;
-        if (!hasMoreOutputTables) break;
-        for (const outputTable of page.outputTables) {
-          await dataClient.deleteDataset(outputTable.id);
+        hasMoreResultTables = page.resultTables.length > 0;
+        if (!hasMoreResultTables) break;
+        for (const resultTable of page.resultTables) {
+          await dataClient.deleteRawTable(resultTable.id);
         }
       }
-      editors.setEditingOutputTableId(null);
+      editors.setEditingResultTableId(null);
       dashboard.setOutputPage(1);
       await loadDashboard({
         preserveError: true,
-        tab: 'output_tables',
+        tab: 'result_tables',
         outputPage: 1,
       });
     } catch (err) {
       ui.setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true, tab: 'output_tables' });
+      await loadDashboard({ preserveError: true, tab: 'result_tables' });
     } finally {
       ui.setActionId(null);
     }
@@ -704,16 +706,16 @@ export function useDataActions(deps: DataActionsDeps) {
 
   const reloadScope = useCallback(
     async (scope: DataGroupScope) => {
-      if (scope === 'input') {
-        await loadInputTables({ preserveError: true });
+      if (scope === 'raw') {
+        await loadRawTables({ preserveError: true });
       } else {
         await loadDashboard({
           preserveError: true,
-          tab: scope === 'task' ? 'tasks' : 'output_tables',
+          tab: scope === 'pipeline' ? 'pipelines' : 'result_tables',
         });
       }
     },
-    [loadDashboard, loadInputTables]
+    [loadDashboard, loadRawTables]
   );
 
   const handleAssignToGroup = useCallback(
@@ -781,29 +783,29 @@ export function useDataActions(deps: DataActionsDeps) {
   );
 
   return {
-    handleCreateTask,
-    handleCreateTaskFromTable,
-    handleRefreshCloudInputTable,
-    handleRunTask,
-    handleEditTask,
-    handleGeneratedTask,
-    handleCloseTaskEditor,
-    handleCreateInputTableDraft,
-    handleRenameInputTableDraft,
-    handleDeleteInputTableDraft,
-    handleImportInputTableSource,
-    handleEditInputTableDataset,
-    handleRenameInputTableDataset,
-    handleUpdateInputTableSource,
-    handleUpdateInputTableConfig,
-    handleDeleteTask,
-    handleDeleteAllTasks,
-    handleDeleteInputTable,
-    handleDeleteAllInputTables,
-    handleCreateOutputTable,
-    handleUpdateOutputTable,
-    handleDeleteOutputTable,
-    handleDeleteAllOutputTables,
+    handleCreatePipeline,
+    handleCreatePipelineFromTable,
+    handleRefreshCloudRawTable,
+    handleRunPipeline,
+    handleEditPipeline,
+    handleGeneratedPipeline,
+    handleClosePipelineEditor,
+    handleCreateRawTableDraft,
+    handleRenameRawTableDraft,
+    handleDeleteRawTableDraft,
+    handleImportRawTableSource,
+    handleEditRawTable,
+    handleRenameRawTable,
+    handleUpdateRawTableSource,
+    handleUpdateRawTableConfig,
+    handleDeletePipeline,
+    handleDeleteAllPipelines,
+    handleDeleteRawTable,
+    handleDeleteAllRawTables,
+    handleCreateResultTable,
+    handleUpdateResultTable,
+    handleDeleteResultTable,
+    handleDeleteAllResultTables,
     handleAssignToGroup,
     handleRenameGroup,
     handleDeleteGroup,

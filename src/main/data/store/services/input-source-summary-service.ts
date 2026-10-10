@@ -1,27 +1,27 @@
 /** Summarizes importable input files (no database access). */
 import type {
-  DataInputTableSourceSummary,
-  DataSummarizeInputTableSourceInput,
+  DataRawTableSourceSummary,
+  DataSummarizeRawTableSourceInput,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
 import {
   normalizeImportSourcePath,
-  normalizeInputTableConfig,
-  normalizeInputTableSourceKind,
+  normalizeRawTableConfig,
+  normalizeRawTableSourceKind,
   clampSummaryLimit,
   createStableJsonHash,
   getImportSourceFiles,
-  summarizeInputTableFile,
+  summarizeRawTableFile,
 } from '../input-source';
 
 export class InputSourceSummaryService {
   constructor(private readonly ctx: DataStoreContext) {}
-  async summarizeInputTableSource(
-    input: DataSummarizeInputTableSourceInput
-  ): Promise<DataInputTableSourceSummary> {
+  async summarizeRawTableSource(
+    input: DataSummarizeRawTableSourceInput
+  ): Promise<DataRawTableSourceSummary> {
     const sourcePath = normalizeImportSourcePath(input.sourcePath);
-    const sourceKind = normalizeInputTableSourceKind(input.sourceKind, sourcePath);
-    const config = normalizeInputTableConfig(input.config, sourceKind, sourcePath);
+    const sourceKind = normalizeRawTableSourceKind(input.sourceKind, sourcePath);
+    const config = normalizeRawTableConfig(input.config, sourceKind, sourcePath);
     const maxFiles = clampSummaryLimit(input.maxFiles, 1, 20, 8);
     const maxSheetsPerFile = clampSummaryLimit(input.maxSheetsPerFile, 1, 12, 6);
     const maxRowsPerSheet = clampSummaryLimit(input.maxRowsPerSheet, 1, 20, 8);
@@ -29,7 +29,7 @@ export class InputSourceSummaryService {
     const allFiles = getImportSourceFiles(sourcePath, sourceKind, config);
     const sampledFiles = allFiles.slice(0, maxFiles);
     const files = sampledFiles.map((filePath) =>
-      summarizeInputTableFile(filePath, sourcePath, {
+      summarizeRawTableFile(filePath, sourcePath, {
         maxSheetsPerFile,
         maxRowsPerSheet,
         maxColumnsPerRow,

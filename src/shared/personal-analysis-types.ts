@@ -91,8 +91,8 @@ export interface PersonalAnalysisUploadInput extends PersonalAnalysisConnectionI
 }
 
 export interface PersonalAnalysisUploadResult {
-  uploadTaskId: string;
-  importTaskId: string;
+  uploadPipelineId: string;
+  importPipelineId: string;
   tableId: string;
   sheetId?: string;
   status: string;

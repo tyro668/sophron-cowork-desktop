@@ -1,4 +1,4 @@
-export type DataResourceKind = 'task' | 'input_table' | 'output_table';
+export type DataResourceKind = 'pipeline' | 'raw_table' | 'result_table';
 
 export interface DataResourceTarget {
   kind: DataResourceKind;
@@ -6,20 +6,20 @@ export interface DataResourceTarget {
 }
 
 const PATH_BY_KIND: Record<DataResourceKind, string> = {
-  task: 'tasks',
-  input_table: 'input-tables',
-  output_table: 'output-tables',
+  pipeline: 'pipelines',
+  raw_table: 'raw-tables',
+  result_table: 'result-tables',
 };
 
 const KIND_BY_PATH: Record<string, DataResourceKind> = {
-  task: 'task',
-  tasks: 'task',
-  'input-table': 'input_table',
-  'input-tables': 'input_table',
-  input_tables: 'input_table',
-  'output-table': 'output_table',
-  'output-tables': 'output_table',
-  output_tables: 'output_table',
+  task: 'pipeline',
+  pipelines: 'pipeline',
+  'raw-table': 'raw_table',
+  'raw-tables': 'raw_table',
+  raw_tables: 'raw_table',
+  'result-table': 'result_table',
+  'result-tables': 'result_table',
+  result_tables: 'result_table',
 };
 
 export function createDataResourceHref(kind: DataResourceKind, id: string): string {

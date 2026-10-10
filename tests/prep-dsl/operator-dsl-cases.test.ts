@@ -24,8 +24,8 @@ const currentOperatorCases: Array<{
   {
     name: 'input source',
     type: 'input_source',
-    dsl: 'input source dataset "orders_input" as orders',
-    expectedConfig: { source: 'dataset', datasetId: 'orders_input', alias: 'orders' },
+    dsl: 'input source rawTable "orders_input" as orders',
+    expectedConfig: { source: 'rawTable', rawTableId: 'orders_input', alias: 'orders' },
   },
   {
     name: 'select fields',
@@ -298,9 +298,9 @@ const currentOperatorCases: Array<{
   {
     name: 'input source incremental',
     type: 'input_source',
-    dsl: 'input source task incremental by [updated_at] as orders',
+    dsl: 'input source pipeline incremental by [updated_at] as orders',
     expectedConfig: {
-      source: 'task',
+      source: 'pipeline',
       incrementalBy: 'updated_at',
       alias: 'orders',
     },
@@ -1156,8 +1156,8 @@ describe('operator DSL executable cases', () => {
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
     const parsed = parsePrepDsl(`
-      input source task as orders
-      input source dataset "customers" as customers
+      input source pipeline as orders
+      input source rawTable "customers" as customers
 
       from orders
         | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
@@ -1291,14 +1291,14 @@ describe('operator DSL executable cases', () => {
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'limit', targetHandle: 'input' }]
       )
-    ).toBe('input source task as src\n  | limit 20');
+    ).toBe('input source pipeline as src\n  | limit 20');
   });
 
   it('rejects workflow export when an incomplete operator cannot be formatted', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { dsl: 'input source task' } },
+          { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline' } },
           { id: 'sort-empty', type: 'sort', config: { keys: [] } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'sort-empty', targetHandle: 'input' }]
@@ -1317,7 +1317,7 @@ describe('operator DSL executable cases', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { dsl: 'input source task' } },
+          { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline' } },
           { id: 'filter-empty', type: 'filter', config: { condition: '' } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'filter-empty', targetHandle: 'input' }]
@@ -1656,7 +1656,7 @@ describe('operator DSL executable cases', () => {
           config: { keys: [{ field: 'amount', direction: 'desc' }] },
         },
         { id: 'output', type: 'output', config: { table: 'result', mode: 'replace' } },
-        { id: 'source', type: 'input_source', config: { dsl: 'input source task as source' } },
+        { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline as source' } },
         {
           id: 'select',
           type: 'field_select',
@@ -1672,7 +1672,7 @@ describe('operator DSL executable cases', () => {
 
     expect(exported).toBe(
       [
-        'input source task as source',
+        'input source pipeline as source',
         '  | select [amount]',
         '  | sort by [amount] desc',
         '  | output table "result" mode replace',
@@ -1694,7 +1694,7 @@ describe('operator DSL executable cases', () => {
 
   it('rejects incremental reads for input tables and omits legacy settings on export', () => {
     const parsed = parsePrepOperatorDsl(
-      'input source dataset "orders_input" incremental by [updated_at] as orders',
+      'input source rawTable "orders_input" incremental by [updated_at] as orders',
       'input_source'
     );
     expect(
@@ -1708,8 +1708,8 @@ describe('operator DSL executable cases', () => {
           id: 'source',
           type: 'input_source',
           config: {
-            source: 'dataset',
-            datasetId: 'orders_input',
+            source: 'rawTable',
+            rawTableId: 'orders_input',
             alias: 'orders',
             incrementalBy: 'updated_at',
           },
@@ -1718,18 +1718,18 @@ describe('operator DSL executable cases', () => {
       ],
       [{ sourceNodeId: 'source', targetNodeId: 'out', targetHandle: 'input' }]
     );
-    expect(exported).toContain('input source dataset "orders_input" as orders');
+    expect(exported).toContain('input source rawTable "orders_input" as orders');
     expect(exported).not.toContain('incremental by');
   });
 
-  it('exports graphical dataset and file output configurations', () => {
+  it('exports graphical rawTable and file output configurations', () => {
     expect(
       exportPrepOperatorDsl({
-        id: 'dataset_output',
+        id: 'rawTable_output',
         type: 'output',
-        config: { destination: 'dataset', dataset: 'clean_orders', mode: 'replace' },
+        config: { destination: 'rawTable', rawTable: 'clean_orders', mode: 'replace' },
       })
-    ).toBe('output dataset "clean_orders" mode replace');
+    ).toBe('output rawTable "clean_orders" mode replace');
     expect(
       exportPrepOperatorDsl({
         id: 'file_output',

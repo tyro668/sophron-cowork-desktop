@@ -9,7 +9,7 @@
 import type { Message } from '../../shared/contracts';
 
 const DATA_PROMPT_PATTERN =
-  /数据|数据集|数据表|输入表|输出表|字段|列名|清洗|筛选|过滤|聚合|透视|去重|缺失值|工作流|数据处理|导入|合并表|连接表|table\b|tables\b|dataset|workflow|data ?task|excel|csv|etl\b|pivot|aggregate|dedup|join\b/i;
+  /数据|数据集|数据表|输入表|输出表|原始表|结果表|数据加工|字段|列名|清洗|筛选|过滤|聚合|透视|去重|缺失值|工作流|数据处理|导入|合并表|连接表|table\b|tables\b|rawTable|workflow|data ?(task|pipeline)|excel|csv|etl\b|pivot|aggregate|dedup|join\b/i;
 const DATA_FILE_PATTERN = /文件|文件夹|excel|csv|导入|上传|file\b|folder\b|import\b|upload/i;
 const DATA_CLOUD_PATTERN = /云|云空间|云端|cloud|space\b|project\b/i;
 const DATA_AUTHORING_PATTERN =
@@ -75,7 +75,7 @@ function hasCloudTableAttachment(existingMessages: Message[]): boolean {
 
 export function detectDataIntent(
   context: { prompt: string; existingMessages: Message[] },
-  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedTask?: boolean }
+  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedPipeline?: boolean }
 ): DataIntentSignals {
   const text = context.prompt;
   const continuation = isOperationContinuation(text);
@@ -88,7 +88,7 @@ export function detectDataIntent(
     cloudAttachment ||
     (run &&
       (/taskId\s*[=:]|任务|task\b/i.test(text) ||
-        (options.hasSelectedTask &&
+        (options.hasSelectedPipeline &&
           /当前|这个|该任务|它|再(?:次|运行|执行)|重跑|再跑|current|this|again/i.test(text)))) ||
     (continuation && (historyHit || options.stickyActive || options.hasPendingReceipts));
   return {
@@ -105,7 +105,7 @@ export function detectDataIntent(
 
 export function detectAutomationIntent(
   context: { prompt: string; existingMessages: Message[] },
-  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedTask?: boolean }
+  options: { stickyActive: boolean; hasPendingReceipts: boolean; hasSelectedPipeline?: boolean }
 ): AutomationIntentSignals {
   const text = context.prompt;
   const continuation = isOperationContinuation(text);

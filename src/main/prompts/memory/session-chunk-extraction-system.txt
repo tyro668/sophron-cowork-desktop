@@ -8,7 +8,7 @@ What to preserve:
 - implementation choices and important steps
 - constraints, caveats, failure modes, tradeoffs
 - concrete outcomes, deliverables, unresolved follow-ups
-- reusable Q&A or durable task knowledge
+- reusable Q&A or durable pipeline knowledge
 
 What to ignore:
 - filler, politeness, repeated confirmations, hedging

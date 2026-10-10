@@ -7,13 +7,15 @@ import { DataWorkflowNodeCacheRow, WorkflowCacheScope } from '../workflow-model'
 export class CacheRepository {
   constructor(private readonly ctx: DataStoreContext) {}
   getWorkflowNodeCacheTableName(
-    taskId: string,
+    pipelineId: string,
     node: DataWorkflowNode,
     cacheScope: WorkflowCacheScope,
     cacheRunId: string
   ): string {
     const baseId =
-      cacheScope === 'permanent' ? `${taskId}_${node.id}` : `${taskId}_${node.id}_${cacheRunId}`;
+      cacheScope === 'permanent'
+        ? `${pipelineId}_${node.id}`
+        : `${pipelineId}_${node.id}_${cacheRunId}`;
     return tableNameFromId(`workflow_cache_${cacheScope}_${node.type}`, baseId);
   }
   async registerWorkflowNodeCache(
@@ -24,30 +26,30 @@ export class CacheRepository {
     workflowSignature: string | null = null
   ): Promise<void> {
     const timestamp = this.ctx.now();
-    const id = tableNameFromId('cache', `${node.taskId}_${node.id}_${tableName}`);
+    const id = tableNameFromId('cache', `${node.pipelineId}_${node.id}_${tableName}`);
     await this.ctx.metaRunSql(
       `
           DELETE FROM data_workflow_node_caches
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
             AND node_id = $nodeId
             AND table_name = $tableName
         `,
-      { taskId: node.taskId, nodeId: node.id, tableName }
+      { pipelineId: node.pipelineId, nodeId: node.id, tableName }
     );
     await this.ctx.metaRunSql(
       `
           INSERT INTO data_workflow_node_caches (
-            id, task_id, node_id, node_type, table_name, cache_scope,
+            id, pipeline_id, node_id, node_type, table_name, cache_scope,
             workflow_signature, expires_at, created_at, updated_at
           )
           VALUES (
-            $id, $taskId, $nodeId, $nodeType, $tableName, $cacheScope,
+            $id, $pipelineId, $nodeId, $nodeType, $tableName, $cacheScope,
             $workflowSignature, $expiresAt, $createdAt, $updatedAt
           )
         `,
       {
         id,
-        taskId: node.taskId,
+        pipelineId: node.pipelineId,
         nodeId: node.id,
         nodeType: node.type,
         tableName,
@@ -62,20 +64,20 @@ export class CacheRepository {
   /** Newest live cache row for the node — metadata rides along so callers can
    *  tell WHEN and under WHICH upstream config the table was materialized. */
   async findWorkflowNodeCache(
-    taskId: string,
+    pipelineId: string,
     nodeId: string
   ): Promise<{ tableName: string; generatedAt: number; workflowSignature: string | null } | null> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(
       `
           SELECT *
           FROM data_workflow_node_caches
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
             AND node_id = $nodeId
             AND (expires_at IS NULL OR expires_at > $now)
           ORDER BY updated_at DESC, created_at DESC
           LIMIT 8
         `,
-      { taskId, nodeId, now: this.ctx.now() }
+      { pipelineId, nodeId, now: this.ctx.now() }
     );
     for (const row of rows) {
       const tableName = String(row.table_name);
@@ -93,8 +95,8 @@ export class CacheRepository {
     }
     return null;
   }
-  async findWorkflowNodeCacheTable(taskId: string, nodeId: string): Promise<string | null> {
-    return (await this.findWorkflowNodeCache(taskId, nodeId))?.tableName ?? null;
+  async findWorkflowNodeCacheTable(pipelineId: string, nodeId: string): Promise<string | null> {
+    return (await this.findWorkflowNodeCache(pipelineId, nodeId))?.tableName ?? null;
   }
   async cleanupExpiredWorkflowNodeCaches(): Promise<void> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(
@@ -113,13 +115,13 @@ export class CacheRepository {
       });
     }
   }
-  async deleteWorkflowNodeCachesForTask(
-    taskId: string,
+  async deleteWorkflowNodeCachesForPipeline(
+    pipelineId: string,
     preservedTables: ReadonlySet<string> = new Set()
   ): Promise<void> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(
-      'SELECT * FROM data_workflow_node_caches WHERE task_id = $taskId',
-      { taskId }
+      'SELECT * FROM data_workflow_node_caches WHERE pipeline_id = $pipelineId',
+      { pipelineId }
     );
     for (const row of rows) {
       const tableName = String(row.table_name);
@@ -127,30 +129,33 @@ export class CacheRepository {
         await this.ctx.dropTableIfExists(tableName).catch(() => undefined);
       }
     }
-    await this.ctx.metaRunSql('DELETE FROM data_workflow_node_caches WHERE task_id = $taskId', {
-      taskId,
-    });
+    await this.ctx.metaRunSql(
+      'DELETE FROM data_workflow_node_caches WHERE pipeline_id = $pipelineId',
+      {
+        pipelineId,
+      }
+    );
   }
-  async listTemporaryCacheTableNames(taskId: string): Promise<string[]> {
+  async listTemporaryCacheTableNames(pipelineId: string): Promise<string[]> {
     const rows = await this.ctx.metaQueryRows<DataWorkflowNodeCacheRow>(
       `
           SELECT *
           FROM data_workflow_node_caches
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
             AND cache_scope = 'temporary'
         `,
-      { taskId }
+      { pipelineId }
     );
     return [...new Set(rows.map((row) => String(row.table_name)))];
   }
-  async deleteTemporaryCacheRows(taskId: string): Promise<void> {
+  async deleteTemporaryCacheRows(pipelineId: string): Promise<void> {
     await this.ctx.metaRunSql(
       `
           DELETE FROM data_workflow_node_caches
-          WHERE task_id = $taskId
+          WHERE pipeline_id = $pipelineId
             AND cache_scope = 'temporary'
         `,
-      { taskId }
+      { pipelineId }
     );
   }
 }

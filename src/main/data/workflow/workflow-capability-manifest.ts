@@ -24,7 +24,7 @@ export interface ManifestInputBindingSnapshot {
 }
 
 export interface ManifestOutputBindingSnapshot {
-  /** Real output table id — bind via `resources.outputTableId` or `outputDatasetId` config. */
+  /** Real output table id — bind via `resources.resultTableId` or `outputResultTableId` config. */
   id: string;
   name: string;
   physicalTable: string;
@@ -127,9 +127,9 @@ export function buildWorkflowCapabilityManifest(
     },
     resources: {
       inputResources:
-        'Record<alias, inputTableId> — binds each input_source node by its config.alias to a real input table id (from data_list_input_tables or the snapshots below). inputTableId/inputAlias legacy params bind a single source.',
-      outputTableId:
-        'Binds the first output node to a real output table id (from data_list_output_tables). Extra sinks bind via config.outputDatasetId.',
+        'Record<alias, rawTableId> — binds each input_source node by its config.alias to a real input table id (from data_list_raw_tables or the snapshots below). rawTableId/inputAlias legacy params bind a single source.',
+      resultTableId:
+        'Binds the first output node to a real output table id (from data_list_result_tables). Extra sinks bind via config.outputResultTableId.',
     },
     runtime: {
       sqlQuery:
@@ -148,19 +148,19 @@ export function buildWorkflowCapabilityManifest(
       expect:
         'kind expression|unique|row_count; violations fail the run unless config.rejectStream routes rejected rows to a named stream consumable via a `reject` edge',
       incremental:
-        'Bound input tables are always read in full. For task/file sources, input_source.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
+        'Bound input tables are always read in full. For pipeline/file sources, input_source.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
       outOfScope:
-        'Scheduling, credentials, and retry policy stay in task configuration, not in plans or DSL',
+        'Scheduling, credentials, and retry policy stay in pipeline configuration, not in plans or DSL',
     },
     diagnostics:
       'Validation returns diagnostics with stable `code` values (e.g. planFieldNotFound, invalidConfig, outputMergeKeysMissing, NODE_GRAPH_*) — repair by code, not by message text.',
     repairLoop: [
-      '1. data_get_workflow_capability_manifest({ inputTableIds, outputTableIds }) — fetch schemas + snapshots',
-      '2. data_apply_workflow_plan({ taskId, plan, inputResources, outputTableId, dryRun: true }) — returns diagnostics + canonical dsl',
+      '1. data_get_workflow_capability_manifest({ rawTableIds, resultTableIds }) — fetch schemas + snapshots',
+      '2. data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun: true }) — returns diagnostics + canonical dsl',
       '3. Fix the plan by diagnostic.code and retry until errors are empty',
       '4. data_apply_workflow_plan({ ..., dryRun: false }) — saves the workflow graph',
-      '5. data_run_task({ taskId, mode: "temporary" }) — trial run returns nodeStats + diagnostics',
-      '6. data_run_task({ taskId, mode: "persisted" }) — commit',
+      '5. data_run_pipeline({ pipelineId, mode: "temporary" }) — trial run returns nodeStats + diagnostics',
+      '6. data_run_pipeline({ pipelineId, mode: "persisted" }) — commit',
     ],
     ...(options.inputs || options.outputs
       ? {
@@ -187,7 +187,7 @@ export type WorkflowCapabilityManifestSection =
 /**
  * Slice the full manifest into the model-visible payload. The complete manifest
  * stays in `details` for UI/debugging; model `content` receives only the
- * requested sections so the operator schema catalog is fetched per task.
+ * requested sections so the operator schema catalog is fetched per pipeline.
  *
  * Default slice: plan envelope + ports/handles + binding rules + runtime
  * semantics + bound resource snapshots + the operator type index. Per-operator

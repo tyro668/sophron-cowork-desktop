@@ -24,13 +24,13 @@ import type { AutomationActionRegistry } from './automation-action-registry';
 const outputBindingsSchema = z
   .array(
     z.object({
-      outputTableId: z.string().trim().min(1),
+      resultTableId: z.string().trim().min(1),
       runOnChange: z.boolean(),
     })
   )
   .refine(
     (bindings) =>
-      new Set(bindings.map((binding) => binding.outputTableId)).size === bindings.length,
+      new Set(bindings.map((binding) => binding.resultTableId)).size === bindings.length,
     'An output table can only be linked once'
   );
 
@@ -182,13 +182,13 @@ export class AutomationService {
     return this.runner.run(automation, reason);
   }
 
-  async runForOutputTables(outputTableIds: string[]): Promise<void> {
-    const committed = new Set(outputTableIds);
+  async runForResultTables(resultTableIds: string[]): Promise<void> {
+    const committed = new Set(resultTableIds);
     const ancestors = automationRunScope.getStore() ?? [];
     for (const automation of this.store.list({ status: 'all' }).automations) {
       if (
         !automation.outputBindings?.some(
-          (binding) => binding.runOnChange && committed.has(binding.outputTableId)
+          (binding) => binding.runOnChange && committed.has(binding.resultTableId)
         )
       )
         continue;

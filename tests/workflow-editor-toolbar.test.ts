@@ -5,21 +5,21 @@ import { describe, expect, it } from 'vitest';
 const editorSource = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'src/renderer/components/data-view/data-tasks/workflow/TaskEditor.tsx'
+    'src/renderer/components/data-view/data-pipelines/workflow/PipelineEditor.tsx'
   ),
   'utf8'
 );
 const canvasSource = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'src/renderer/components/data-view/data-tasks/workflow/WorkflowCanvas.tsx'
+    'src/renderer/components/data-view/data-pipelines/workflow/WorkflowCanvas.tsx'
   ),
   'utf8'
 );
 const inspectorSource = fs.readFileSync(
   path.resolve(
     process.cwd(),
-    'src/renderer/components/data-view/data-tasks/workflow/WorkflowInspector.tsx'
+    'src/renderer/components/data-view/data-pipelines/workflow/WorkflowInspector.tsx'
   ),
   'utf8'
 );

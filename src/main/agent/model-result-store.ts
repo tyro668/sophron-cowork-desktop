@@ -11,8 +11,8 @@ const EVIDENCE_KEYS = new Set([
   'code',
   'status',
   'taskId',
-  'inputTableId',
-  'outputTableId',
+  'rawTableId',
+  'resultTableId',
   'analysisId',
   'draftId',
   'runId',
@@ -36,7 +36,7 @@ function evidenceOf(value: unknown, depth = 0): Record<string, unknown> {
         (typeof entry === 'string' && entry.length <= 200))
     ) {
       evidence[key] = entry;
-    } else if (['task', 'inputTable', 'outputTable', 'error'].includes(key)) {
+    } else if (['task', 'rawTable', 'resultTable', 'error'].includes(key)) {
       const nested = evidenceOf(entry, depth + 1);
       if (Object.keys(nested).length) evidence[key] = nested;
     } else if (key === 'diagnostics' && Array.isArray(entry)) {

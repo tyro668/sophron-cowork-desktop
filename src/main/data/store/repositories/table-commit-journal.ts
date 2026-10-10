@@ -6,7 +6,7 @@ export class TableCommitJournal {
   constructor(private readonly ctx: DataStoreContext) {}
   async insertPreparedCommit(row: {
     id: string;
-    datasetId: string;
+    rawTableId: string;
     operation: string;
     stagingTable: string;
     targetTable: string;
@@ -16,15 +16,15 @@ export class TableCommitJournal {
   }): Promise<void> {
     await this.ctx.metaRunSql(
       `INSERT INTO data_table_commits (
-         id, dataset_id, operation, staging_table, target_table, backup_table,
+         id, raw_table_id, operation, staging_table, target_table, backup_table,
          target_existed, state, error, created_at, updated_at
        ) VALUES (
-         $id, $datasetId, $operation, $stagingTable, $targetTable, $backupTable,
+         $id, $rawTableId, $operation, $stagingTable, $targetTable, $backupTable,
          $targetExisted, 'prepared', NULL, $createdAt, $updatedAt
        )`,
       {
         id: row.id,
-        datasetId: row.datasetId,
+        rawTableId: row.rawTableId,
         operation: row.operation,
         stagingTable: row.stagingTable,
         targetTable: row.targetTable,

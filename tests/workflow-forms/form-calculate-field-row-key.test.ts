@@ -42,7 +42,7 @@ function renderForm(calculations: CalculationRow[]): CapturedRowListProps {
     node: { config: { calculations } },
     fieldCompletions: ['amount', 'tax'],
     sourceNode: undefined,
-    taskId: 'task-1',
+    pipelineId: 'pipeline-1',
     onNodeChange: () => undefined,
   } as unknown as FormProps;
 

@@ -289,7 +289,7 @@ export interface GeneratedWorkflowIrSemantics {
   lineage: DataAutomationLineageEntry[];
 }
 
-export interface GeneratedDataTaskWorkflow extends GeneratedWorkflowIrSemantics {
+export interface GeneratedDataPipelineWorkflow extends GeneratedWorkflowIrSemantics {
   /** Original generated JavaScript retained for function-level diagnostics and repair. */
   javascriptSource?: string;
   /** AI-side compatibility profile certified against the platform node/SQL runtime. */

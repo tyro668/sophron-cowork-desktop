@@ -11,7 +11,7 @@ import DataEditor, {
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import type { DataInputTablePreview } from '../types';
+import type { DataRawTablePreview } from '../types';
 import {
   isNumericDataFieldType,
   normalizeDataFieldType,
@@ -29,7 +29,7 @@ interface GlassDataGridPreviewLabels {
 }
 
 export interface GlassDataGridPreviewProps {
-  preview: DataInputTablePreview | null;
+  preview: DataRawTablePreview | null;
   isLoading?: boolean;
   error?: string | null;
   currentPage?: number;
@@ -135,14 +135,14 @@ export function GlassDataGridPreview({
         }}
       >
         <span className="min-w-0 truncate">
-          {preview ? labels.total(totalRows) : labels.pageSize(INPUT_TABLE_FALLBACK_PAGE_SIZE)}
+          {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
         </span>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           <span
             className="mr-2 hidden sm:inline"
             style={{ color: 'var(--data-grid-text-secondary)' }}
           >
-            {labels.pageSize(preview?.limit ?? INPUT_TABLE_FALLBACK_PAGE_SIZE)}
+            {labels.pageSize(preview?.limit ?? RAW_TABLE_FALLBACK_PAGE_SIZE)}
           </span>
           <button
             type="button"
@@ -474,7 +474,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-const INPUT_TABLE_FALLBACK_PAGE_SIZE = 20;
+const RAW_TABLE_FALLBACK_PAGE_SIZE = 20;
 const EMPTY_COLUMNS: string[] = [];
 const EMPTY_ROWS: Array<Record<string, string | number | boolean | null>> = [];
 const PREVIEW_GRID_HEADER_SURFACE = '#F0F7F2';

@@ -31,9 +31,9 @@ export function registerCloudSyncAction(
         tableId: { type: 'string' },
         tableKind: { type: 'string', enum: ['analysis', 'base'] },
         tableName: { type: 'string' },
-        inputTableId: { type: 'string' },
-        inputTableName: { type: 'string' },
-        outputTableId: { type: 'string', title: 'Output table' },
+        rawTableId: { type: 'string' },
+        rawTableName: { type: 'string' },
+        resultTableId: { type: 'string', title: 'Output table' },
         type: { type: 'string', enum: ['drive_file'] },
         writeMode: { type: 'string', enum: ['create', 'replace', 'append'] },
         fileId: { type: 'string' },
@@ -50,7 +50,7 @@ export function registerCloudSyncAction(
       const config = cloudSyncSchema.parse(raw);
       const state = cloudActionState(store, context.automationId, node, cloudSyncSchema, config);
       if (config.direction === 'input') {
-        const result = await commands.syncInputTableFromCloud(
+        const result = await commands.syncRawTableFromCloud(
           config,
           config.syncKey ?? `automation-${context.automationId}-${node.id}`
         );
@@ -58,8 +58,8 @@ export function registerCloudSyncAction(
         context.emitArtifact({
           sourceNodeId: node.id,
           kind: 'data_input',
-          title: result.inputTableName,
-          dataRef: { kind: 'input_table', id: result.inputTableId },
+          title: result.rawTableName,
+          dataRef: { kind: 'raw_table', id: result.rawTableId },
         });
         return { ...config, ...result };
       }
@@ -72,8 +72,8 @@ export function registerCloudSyncAction(
         }
         pending.delete(key);
       }
-      const updates = await commands.syncOutputTableToCloud(
-        config.outputTableId,
+      const updates = await commands.syncResultTableToCloud(
+        config.resultTableId,
         config,
         config.syncKey ?? `automation-${context.automationId}-${node.id}`,
         (version) => {
@@ -87,8 +87,8 @@ export function registerCloudSyncAction(
       context.emitArtifact({
         sourceNodeId: node.id,
         kind: 'data_output',
-        title: String(updates.fileName ?? config.outputTableId),
-        dataRef: { kind: 'output_table', id: config.outputTableId },
+        title: String(updates.fileName ?? config.resultTableId),
+        dataRef: { kind: 'result_table', id: config.resultTableId },
       });
       return { ...state.config, ...updates };
     },

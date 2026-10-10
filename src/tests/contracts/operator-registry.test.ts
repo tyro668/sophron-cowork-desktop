@@ -22,7 +22,7 @@ import { COMPILE_STRATEGIES } from '../../main/data/operators/strategy';
 import {
   OPERATOR_UI,
   OPERATOR_CATALOG_GROUPS,
-} from '../../renderer/components/data-view/data-tasks/workflow/operator-catalog';
+} from '../../renderer/components/data-view/data-pipelines/workflow/operator-catalog';
 import {
   buildWorkflowCapabilityManifest,
   sliceWorkflowCapabilityManifest,

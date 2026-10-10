@@ -14,7 +14,7 @@ export const WORKFLOW_TEMP_CACHE_TTL_MS = 86_400_000;
 
 export interface DataWorkflowNodeRow {
   id: string;
-  task_id: string;
+  pipeline_id: string;
   node_key: string;
   label: string;
   ordinal: number | string;
@@ -28,7 +28,7 @@ export interface DataWorkflowNodeRow {
 
 export interface DataWorkflowEdgeRow {
   id: string;
-  task_id: string;
+  pipeline_id: string;
   source_node_id: string;
   target_node_id: string;
   source_handle: string | null;
@@ -38,7 +38,7 @@ export interface DataWorkflowEdgeRow {
 
 export interface DataWorkflowNodeCacheRow {
   id: string;
-  task_id: string;
+  pipeline_id: string;
   node_id: string;
   node_type: string;
   table_name: string;
@@ -98,7 +98,7 @@ export const LEGACY_DEFAULT_WORKFLOW_NODES: ReadonlyArray<{
     label: DEFAULT_OPERATOR_LABELS.input_source,
     x: 48,
     y: 128,
-    config: { output: 'raw_dataset' },
+    config: { output: 'raw_rawTable' },
   },
   {
     key: 'filter',
@@ -163,7 +163,7 @@ export function mapWorkflowNodeRow(row: DataWorkflowNodeRow): DataWorkflowNode {
   const type = normalizeOperatorType(row.operator_type ?? row.node_key);
   return {
     id: String(row.id),
-    taskId: String(row.task_id),
+    pipelineId: String(row.pipeline_id),
     type,
     label: row.label ? String(row.label) : DEFAULT_OPERATOR_LABELS[type],
     x: toFiniteNumber(row.x, 48),
@@ -177,7 +177,7 @@ export function mapWorkflowNodeRow(row: DataWorkflowNodeRow): DataWorkflowNode {
 export function mapWorkflowEdgeRow(row: DataWorkflowEdgeRow): DataWorkflowEdge {
   return {
     id: String(row.id),
-    taskId: String(row.task_id),
+    pipelineId: String(row.pipeline_id),
     sourceNodeId: String(row.source_node_id),
     targetNodeId: String(row.target_node_id),
     sourceHandle: row.source_handle ? String(row.source_handle) : null,
@@ -252,13 +252,13 @@ export function normalizeWorkflowEdgeInputs(
 }
 
 export function normalizeScopedWorkflowInputs(
-  taskId: string,
+  pipelineId: string,
   input: DataWorkflowSaveInput
 ): { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] } {
   const nodes = normalizeWorkflowNodeInputs(input.nodes);
   const nodeIds = new Set(nodes.map((node) => node.id));
   const idByOriginalNodeId = new Map(
-    nodes.map((node) => [node.id, scopedWorkflowEntityId(taskId, node.id)])
+    nodes.map((node) => [node.id, scopedWorkflowEntityId(pipelineId, node.id)])
   );
   const scopedNodes = nodes.map((node) => ({
     ...node,
@@ -272,7 +272,7 @@ export function normalizeScopedWorkflowInputs(
     return [
       {
         ...edge,
-        id: scopedWorkflowEntityId(taskId, edge.id),
+        id: scopedWorkflowEntityId(pipelineId, edge.id),
         sourceNodeId,
         targetNodeId,
       },
@@ -281,19 +281,19 @@ export function normalizeScopedWorkflowInputs(
   return { nodes: scopedNodes, edges: scopedEdges };
 }
 
-export function scopedWorkflowEntityId(taskId: string, id: string): string {
-  const prefix = `${taskId.replace(/[^A-Za-z0-9]+/g, '_') || 'task'}__`;
+export function scopedWorkflowEntityId(pipelineId: string, id: string): string {
+  const prefix = `${pipelineId.replace(/[^A-Za-z0-9]+/g, '_') || 'pipeline'}__`;
   return id.startsWith(prefix) ? id : `${prefix}${id}`;
 }
 
 export function normalizeRuntimeWorkflowInput(
-  taskId: string,
+  pipelineId: string,
   input: DataWorkflowSaveInput,
   timestamp: number
 ): RuntimeWorkflow {
   const nodes = normalizeWorkflowNodeInputs(input.nodes).map<DataWorkflowNode>((node) => ({
     id: node.id,
-    taskId,
+    pipelineId,
     type: node.type,
     label: node.label,
     x: node.x,
@@ -305,7 +305,7 @@ export function normalizeRuntimeWorkflowInput(
   const nodeIds = new Set(nodes.map((node) => node.id));
   const edges = normalizeWorkflowEdgeInputs(input.edges, nodeIds).map<DataWorkflowEdge>((edge) => ({
     id: edge.id,
-    taskId,
+    pipelineId,
     sourceNodeId: edge.sourceNodeId,
     targetNodeId: edge.targetNodeId,
     sourceHandle: edge.sourceHandle ?? 'output',
@@ -351,17 +351,17 @@ export function workflowExecutionSignature(input: DataWorkflowSaveInput): string
   });
 }
 
-export function workflowRequiresTaskSource(nodes: DataWorkflowNode[]): boolean {
+export function workflowRequiresPipelineSource(nodes: DataWorkflowNode[]): boolean {
   if (nodes.length === 0) return true;
   return nodes.some((node) => {
     if (node.type !== 'input_source') return false;
     const source =
       typeof node.config.source === 'string'
         ? node.config.source
-        : stringConfigValue(node.config.datasetId)
-          ? 'dataset'
-          : 'task';
-    return source === 'task' || (source === 'file' && !stringConfigValue(node.config.filePath));
+        : stringConfigValue(node.config.rawTableId)
+          ? 'rawTable'
+          : 'pipeline';
+    return source === 'pipeline' || (source === 'file' && !stringConfigValue(node.config.filePath));
   });
 }
 
@@ -397,14 +397,14 @@ export function normalizeOperatorType(value: string | null | undefined): DataWor
     case 'asof_join':
       return 'join';
     case 'write_duckdb_table':
-    case 'publish_dataset':
+    case 'publish_rawTable':
       return 'output';
     default:
       throw new Error(`Unsupported workflow operator type: ${value ?? '(empty)'}`);
   }
 }
 
-export function getOutputTableName(
+export function getResultTableName(
   node: { config?: Record<string, unknown> } | undefined,
   fallback: string
 ): string {

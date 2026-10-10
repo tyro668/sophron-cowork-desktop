@@ -94,10 +94,10 @@ export const AutomationScheduleInputSchema = Type.Union([
 export const AutomationActionInputSchema = Type.Union([
   Type.Object(
     {
-      kind: Type.Literal('data_task'),
-      taskId: Type.String({
+      kind: Type.Literal('data_pipeline'),
+      pipelineId: Type.String({
         minLength: 1,
-        description: TOOL_SCHEMA_COPY.automation.dataTaskId,
+        description: TOOL_SCHEMA_COPY.automation.dataPipelineId,
       }),
     },
     { additionalProperties: false }
@@ -247,7 +247,7 @@ export interface AutomationToolResult {
 
 export interface PreparedAutomationSummary {
   name: string;
-  actionKind: 'data_task' | 'conversation';
+  actionKind: 'data_pipeline' | 'conversation';
   actionText: string;
   scheduleText: string;
   timezone: string;
@@ -281,7 +281,7 @@ export interface PreparedAutomationScheduleUpdateDraft {
 }
 
 export type PreparedAutomationDependency =
-  | { kind: 'data_task'; taskId: string; taskName: string }
+  | { kind: 'data_pipeline'; pipelineId: string; pipelineName: string }
   | { kind: 'conversation'; projectId: string | null };
 
 export interface AutomationToolListItem {
@@ -289,8 +289,8 @@ export interface AutomationToolListItem {
   name: string;
   enabled: boolean;
   status: Automation['status'];
-  actionKind: 'data_task' | 'conversation' | 'other';
-  dataTaskId?: string;
+  actionKind: 'data_pipeline' | 'conversation' | 'other';
+  dataPipelineId?: string;
   scheduleSummary: string;
   timezone: string;
   nextRunAt: number | null;

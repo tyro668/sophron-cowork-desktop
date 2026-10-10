@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { layoutWorkflowNodes } from '../../src/renderer/components/data-view/data-tasks/workflow/workflow-layout';
-import type {
-  DataCleaningTask,
-  DataWorkflowEdge,
-  DataWorkflowNode,
-} from '../../src/shared/contracts';
+import { layoutWorkflowNodes } from '../../src/renderer/components/data-view/data-pipelines/workflow/workflow-layout';
+import type { DataPipeline, DataWorkflowEdge, DataWorkflowNode } from '../../src/shared/contracts';
 
-const task = { id: 'task-1' } as DataCleaningTask;
+const pipeline = { id: 'pipeline-1' } as DataPipeline;
 
 function node(id: string, type: DataWorkflowNode['type'] = 'filter'): DataWorkflowNode {
   return {
     id,
-    taskId: task.id,
+    pipelineId: pipeline.id,
     type,
     label: id,
     x: 999,
@@ -30,7 +26,7 @@ function edge(
 ): DataWorkflowEdge {
   return {
     id: `e_${sourceNodeId}_${targetNodeId}_${sourceHandle}`,
-    taskId: task.id,
+    pipelineId: pipeline.id,
     sourceNodeId,
     targetNodeId,
     sourceHandle,

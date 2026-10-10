@@ -3,11 +3,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 
 afterEach(() => {
   while (stores.length > 0) stores.pop()?.close();
@@ -17,19 +20,19 @@ afterEach(() => {
   }
 });
 
-function makeStore(): { store: DataTaskStore; dbPath: string; tempRoot: string } {
+function makeStore(): { store: DataPipelineStore; dbPath: string; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-etl-'));
   tempRoots.push(tempRoot);
   const dbPath = path.join(tempRoot, 'workspace.duckdb');
-  const store = createDataTaskStore(dbPath, { now: () => 1_780_000_000_000 });
+  const store = createDataPipelineStore(dbPath, { now: () => 1_780_000_000_000 });
   stores.push(store);
   return { store, dbPath, tempRoot };
 }
 
 /** Close the store so its DuckDB writes are checkpointed, then reopen it. */
-function reopenStore(dbPath: string): DataTaskStore {
+function reopenStore(dbPath: string): DataPipelineStore {
   stores.pop()?.close();
-  const store = createDataTaskStore(dbPath, { now: () => 1_780_000_000_000 });
+  const store = createDataPipelineStore(dbPath, { now: () => 1_780_000_000_000 });
   stores.push(store);
   return store;
 }
@@ -52,12 +55,12 @@ async function readRows(dbPath: string, sql: string): Promise<Record<string, unk
   }
 }
 
-async function saveCompiledDsl(store: DataTaskStore, taskId: string, dsl: string) {
+async function saveCompiledDsl(store: DataPipelineStore, pipelineId: string, dsl: string) {
   const parsed = parsePrepDsl(dsl);
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
   const compiled = compilePrepWorkflowToFlow(parsed.ast!);
   expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
-  await store.saveTaskWorkflow(taskId, { nodes: compiled.nodes, edges: compiled.edges });
+  await store.savePipelineWorkflow(pipelineId, { nodes: compiled.nodes, edges: compiled.edges });
 }
 
 describe('ETL runtime contract', () => {
@@ -65,20 +68,20 @@ describe('ETL runtime contract', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'orders.csv', 'order_id,amount\n1,10\n2,20\n3,30\n');
-    const task = await store.createTask({ name: 'Merge orders', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Merge orders', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "orders_out" mode merge by [order_id]`
     );
-    const first = await store.runTask(task.id);
+    const first = await store.runPipeline(pipeline.id);
     expect(first.status).toBe('completed');
     expect(first.rowCount).toBe(3);
 
     // mutate source: update order 2, add order 4
     fs.writeFileSync(csvPath, 'order_id,amount\n1,10\n2,99\n4,40\n', 'utf8');
-    const second = await store.runTask(task.id);
+    const second = await store.runPipeline(pipeline.id);
     expect(second.status).toBe('completed');
     expect(second.rowCount).toBe(4);
 
@@ -95,7 +98,7 @@ describe('ETL runtime contract', () => {
     ]);
 
     // merge is idempotent: replaying the same batch changes nothing
-    const third = await store.runTask(task.id);
+    const third = await store.runPipeline(pipeline.id);
     expect(third.status).toBe('completed');
     expect(third.rowCount).toBe(4);
     store = reopenStore(dbPath);
@@ -110,24 +113,24 @@ describe('ETL runtime contract', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 's.csv', 'a,b\n1,x\n2,y\n');
-    const task = await store.createTask({ name: 'Schema drift', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Schema drift', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "s_out" mode append`
     );
-    await store.runTask(task.id);
+    await store.runPipeline(pipeline.id);
 
     // strict: incoming has extra column -> fail before any write
     fs.writeFileSync(csvPath, 'a,b,c\n1,x,n1\n2,y,n2\n', 'utf8');
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "s_out" mode append schema strict`
     );
-    await expect(store.runTask(task.id)).rejects.toThrow(/schema drift|strict/i);
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/schema drift|strict/i);
     store = reopenStore(dbPath);
     const afterStrict = await readRows(dbPath, 'SELECT * FROM s_out ORDER BY a');
     expect(afterStrict).toHaveLength(2);
@@ -136,11 +139,11 @@ describe('ETL runtime contract', () => {
     // ignore: extra column dropped, rows still appended
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "s_out" mode append schema ignore`
     );
-    const ignored = await store.runTask(task.id);
+    const ignored = await store.runPipeline(pipeline.id);
     expect(ignored.rowCount).toBe(4);
     store = reopenStore(dbPath);
     const afterIgnore = await readRows(dbPath, 'SELECT * FROM s_out ORDER BY a');
@@ -155,11 +158,11 @@ describe('ETL runtime contract', () => {
     fs.writeFileSync(csvPath, 'a,b,c\n5,p,q\n', 'utf8');
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "s_out" mode append`
     );
-    const extended = await store.runTask(task.id);
+    const extended = await store.runPipeline(pipeline.id);
     expect(extended.rowCount).toBe(5);
     store = reopenStore(dbPath);
     const afterExtend = await readRows(dbPath, 'SELECT * FROM s_out ORDER BY a');
@@ -170,52 +173,54 @@ describe('ETL runtime contract', () => {
   it('expect fails the run on violations without reject stream', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'e.csv', 'id,amount\n1,10\n2,-5\n3,30\n');
-    const task = await store.createTask({ name: 'Expect rows', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Expect rows', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect [amount] > 0
         | output table "e_out" mode replace`
     );
-    await expect(store.runTask(task.id)).rejects.toThrow(/expect|violat/i);
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat/i);
     // nothing committed
-    const taskAfter = await store.getTask(task.id);
-    expect(taskAfter?.status).toBe('failed');
+    const pipelineAfter = await store.getPipeline(pipeline.id);
+    expect(pipelineAfter?.status).toBe('failed');
   });
 
   it('temporary expect failure returns structured stats and violation samples', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'et.csv', 'id,amount\n1,10\n2,-5\n3,-9\n4,40\n');
-    const task = await store.createTask({ name: 'Temporary expect', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Temporary expect', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect [amount] > 0
         | output table "et_out" mode replace`
     );
     // Temporary runs never persist stats — the failed run comes back as a
     // structured result carrying the stats/samples collected so far.
-    const result = await store.runTaskWithDiagnostics(task.id, { outputMode: 'temporary' });
+    const result = await store.runPipelineWithDiagnostics(pipeline.id, { outputMode: 'temporary' });
     expect(result.failure?.message).toMatch(/expect/i);
     const expectStat = result.nodeStats?.find((stat) => stat.nodeType === 'expect');
     expect(expectStat?.rejectedRows).toBe(2);
     expect(expectStat?.sample?.length).toBeGreaterThan(0);
-    // runTask keeps the throwing contract for non-diagnostics callers.
-    await expect(store.runTask(task.id, { outputMode: 'temporary' })).rejects.toThrow(/expect/i);
+    // runPipeline keeps the throwing contract for non-diagnostics callers.
+    await expect(store.runPipeline(pipeline.id, { outputMode: 'temporary' })).rejects.toThrow(
+      /expect/i
+    );
   });
 
   it('expect ... reject to <stream> routes violating rows to a reject chain', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'r.csv', 'id,amount\n1,10\n2,-5\n3,-9\n4,40\n');
-    const task = await store.createTask({ name: 'Reject stream', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Reject stream', sourcePath: csvPath });
     // the reject stream feeds the only output sink; main stream stays dangling
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
 
       step checked = src
         | expect [amount] > 0 reject to bad_rows
@@ -223,8 +228,8 @@ describe('ETL runtime contract', () => {
       step rejects = bad_rows
         | output table "rejects_out" mode replace`
     );
-    const result = await store.runTaskWithDiagnostics(task.id);
-    expect(result.task.status).toBe('completed');
+    const result = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(result.pipeline.status).toBe('completed');
     store = reopenStore(dbPath);
     const rejected = await readRows(dbPath, 'SELECT * FROM rejects_out ORDER BY id');
     expect(rejected).toEqual([
@@ -243,47 +248,47 @@ describe('ETL runtime contract', () => {
   it('expect unique fails on duplicate keys and reports sample rows', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'u.csv', 'k,v\n1,a\n1,b\n2,c\n');
-    const task = await store.createTask({ name: 'Unique keys', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Unique keys', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect unique [k]
         | output table "u_out" mode replace`
     );
-    await expect(store.runTask(task.id)).rejects.toThrow(/expect|violat|duplicate/i);
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat|duplicate/i);
   });
 
   it('incremental by [col] reads only new rows and advances the watermark', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'w.csv', 'id,v\n1,a\n2,b\n');
-    const task = await store.createTask({ name: 'Incremental', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Incremental', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task incremental by [id] as src
+      pipeline.id,
+      `input source pipeline incremental by [id] as src
         | output table "w_out" mode append`
     );
-    const first = await store.runTask(task.id);
+    const first = await store.runPipeline(pipeline.id);
     expect(first.rowCount).toBe(2);
 
     // close + reopen so a fresh DuckDB instance sees checkpointed writes
     store = store = reopenStore(dbPath);
     const wm1 = await readRows(
       dbPath,
-      `SELECT watermark_value FROM data_task_watermarks WHERE task_id = '${task.id}'`
+      `SELECT watermark_value FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
     );
     expect(wm1).toEqual([{ watermark_value: '2' }]);
 
     // new rows appended to the source file
     fs.writeFileSync(csvPath, 'id,v\n1,a\n2,b\n3,c\n4,d\n', 'utf8');
-    const second = await store.runTaskWithDiagnostics(task.id);
-    expect(second.task.rowCount).toBe(4);
+    const second = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(second.pipeline.rowCount).toBe(4);
     store = store = reopenStore(dbPath);
     const wm2 = await readRows(
       dbPath,
-      `SELECT watermark_value FROM data_task_watermarks WHERE task_id = '${task.id}'`
+      `SELECT watermark_value FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
     );
     expect(wm2).toEqual([{ watermark_value: '4' }]);
 
@@ -292,7 +297,7 @@ describe('ETL runtime contract', () => {
     expect(inputStat?.outputRows).toBe(2);
 
     // a third run with no new rows reads zero and still completes
-    const third = await store.runTask(task.id);
+    const third = await store.runPipeline(pipeline.id);
     expect(third.status).toBe('completed');
     expect(third.rowCount).toBe(4);
   });
@@ -302,16 +307,16 @@ describe('ETL runtime contract', () => {
     let store = initialStore;
     const firstCsv = writeCsv(tempRoot, 'bound-first.csv', 'id,value\n1,old\n2,keep\n');
     const nextCsv = writeCsv(tempRoot, 'bound-next.csv', 'id,value\n2,changed\n3,new\n');
-    const inputTable = await store.importDataset({ filePath: firstCsv });
-    const task = await store.createTask({ name: 'Bound input table' });
+    const rawTable = await store.importRawTable({ filePath: firstCsv });
+    const pipeline = await store.createPipeline({ name: 'Bound input table' });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source dataset "${inputTable.id}" as src
+      pipeline.id,
+      `input source rawTable "${rawTable.id}" as src
         | output table "bound_full_out" mode replace`
     );
-    const workflow = await store.getTaskWorkflow(task.id);
-    await store.saveTaskWorkflow(task.id, {
+    const workflow = await store.getPipelineWorkflow(pipeline.id);
+    await store.savePipelineWorkflow(pipeline.id, {
       nodes: workflow.nodes.map((node) =>
         node.type === 'input_source'
           ? { ...node, config: { ...node.config, incrementalBy: 'id' } }
@@ -320,9 +325,9 @@ describe('ETL runtime contract', () => {
       edges: workflow.edges,
     });
 
-    await store.runTask(task.id);
-    await store.updateDataset({ id: inputTable.id, filePath: nextCsv });
-    const second = await store.runTaskWithDiagnostics(task.id);
+    await store.runPipeline(pipeline.id);
+    await store.updateRawTable({ id: rawTable.id, filePath: nextCsv });
+    const second = await store.runPipelineWithDiagnostics(pipeline.id);
     expect(second.nodeStats?.find((stat) => stat.nodeType === 'input_source')?.outputRows).toBe(2);
 
     store = reopenStore(dbPath);
@@ -330,7 +335,7 @@ describe('ETL runtime contract', () => {
     expect(rows.map((row) => `${row.id}:${row.value}`)).toEqual(['2:changed', '3:new']);
     const watermarks = await readRows(
       dbPath,
-      `SELECT watermark_value FROM data_task_watermarks WHERE task_id = '${task.id}'`
+      `SELECT watermark_value FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
     );
     expect(watermarks).toEqual([]);
   });
@@ -339,29 +344,32 @@ describe('ETL runtime contract', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'wf.csv', 'id,amount\n1,10\n2,-5\n3,30\n');
-    const task = await store.createTask({ name: 'Watermark rollback', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({
+      name: 'Watermark rollback',
+      sourcePath: csvPath,
+    });
     // first commit succeeds and advances the watermark to 3
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task incremental by [id] as src
+      pipeline.id,
+      `input source pipeline incremental by [id] as src
         | output table "wf_out" mode append`
     );
-    await store.runTask(task.id);
+    await store.runPipeline(pipeline.id);
     // now the workflow gains a failing assertion; new rows appear but the run fails
     fs.writeFileSync(csvPath, 'id,amount\n1,10\n2,-5\n3,30\n4,-1\n', 'utf8');
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task incremental by [id] as src
+      pipeline.id,
+      `input source pipeline incremental by [id] as src
         | expect [amount] > 0
         | output table "wf_out" mode append`
     );
-    await expect(store.runTask(task.id)).rejects.toThrow(/expect|violat/i);
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat/i);
     store = reopenStore(dbPath);
     const wm = await readRows(
       dbPath,
-      `SELECT watermark_value FROM data_task_watermarks WHERE task_id = '${task.id}'`
+      `SELECT watermark_value FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
     );
     expect(wm).toEqual([{ watermark_value: '3' }]);
     // and the failed batch was not appended
@@ -373,39 +381,39 @@ describe('ETL runtime contract', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 's2.csv', 'id,amount\n1,10\n2,-5\n3,30\n');
-    const task = await store.createTask({ name: 'Stats persistence', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Stats persistence', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect [amount] > 0 reject to bad_rows
         | output table "s2_out" mode replace`
     );
-    await store.runTask(task.id);
-    const persisted = await store.getTaskNodeStats(task.id);
+    await store.runPipeline(pipeline.id);
+    const persisted = await store.getPipelineNodeStats(pipeline.id);
     const expectStat = persisted.find((stat) => stat.nodeType === 'expect');
     expect(expectStat?.rejectedRows).toBe(1);
     expect(expectStat?.sample?.[0]).toMatchObject({ id: '2' });
     // reopening the store still returns the latest run's stats
     store = reopenStore(dbPath);
-    const reloaded = await store.getTaskNodeStats(task.id);
+    const reloaded = await store.getPipelineNodeStats(pipeline.id);
     expect(reloaded.find((stat) => stat.nodeType === 'expect')?.rejectedRows).toBe(1);
   });
 
   it('per-node stats report input/output/dropped rows on a filtering chain', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'n.csv', 'id,amount\n1,5\n2,50\n3,10\n4,60\n');
-    const task = await store.createTask({ name: 'Node stats', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'Node stats', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | filter [amount] > 20
         | deduplicate by [id]
         | output table "n_out" mode replace`
     );
-    const result = await store.runTaskWithDiagnostics(task.id);
-    expect(result.task.status).toBe('completed');
+    const result = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(result.pipeline.status).toBe('completed');
     const stats = result.nodeStats ?? [];
     const filterStat = stats.find((stat) => stat.nodeType === 'filter');
     expect(filterStat).toBeTruthy();
@@ -426,18 +434,18 @@ describe('ETL runtime contract — review fixes', () => {
     let store = initialStore;
     // row 2 has NULL amount: must land in rejects, not vanish from both streams
     const csvPath = writeCsv(tempRoot, 'nulls.csv', 'id,amount\n1,10\n2,\n3,-5\n4,20\n');
-    const task = await store.createTask({ name: 'NULL expect', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'NULL expect', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect [amount] > 0 reject to bad
         | output table "nulls_out" mode replace
       step bad_out = bad
         | output table "nulls_bad" mode replace`
     );
-    const run = await store.runTaskWithDiagnostics(task.id);
-    expect(run.task.status).toBe('completed');
+    const run = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(run.pipeline.status).toBe('completed');
     store = reopenStore(dbPath);
     const good = await readRows(dbPath, 'SELECT id FROM nulls_out ORDER BY id');
     expect(good.map((r) => r.id)).toEqual(['1', '4']);
@@ -450,17 +458,17 @@ describe('ETL runtime contract — review fixes', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'uniq.csv', 'k,v\n,a\n,b\n1,x\n1,y\n');
-    const task = await store.createTask({ name: 'unique NULL', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'unique NULL', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect unique [k] reject to dup
         | output table "uniq_out" mode replace
       step dup_out = dup
         | output table "uniq_dup" mode replace`
     );
-    await store.runTask(task.id);
+    await store.runPipeline(pipeline.id);
     store = reopenStore(dbPath);
     const kept = await readRows(dbPath, 'SELECT count(*) AS n FROM uniq_out');
     // zero rows remain: every row violates (two NULL keys + two '1' keys)
@@ -474,18 +482,18 @@ describe('ETL runtime contract — review fixes', () => {
     let store = initialStore;
     // duplicate key 2 in the same batch: last row (200) must win
     const csvPath = writeCsv(tempRoot, 'mk.csv', 'k,v\n1,a\n,dup_null\n2,100\n2,200\n');
-    const task = await store.createTask({ name: 'merge NULL keys', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'merge NULL keys', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | output table "mk_out" mode merge by [k]`
     );
-    const first = await store.runTask(task.id);
+    const first = await store.runPipeline(pipeline.id);
     expect(first.status).toBe('completed');
     expect(first.rowCount).toBe(3);
     // rerun identical batch: NULL key must not duplicate
-    const second = await store.runTask(task.id);
+    const second = await store.runPipeline(pipeline.id);
     expect(second.rowCount).toBe(3);
     store = reopenStore(dbPath);
     const rows = await readRows(dbPath, 'SELECT k, v FROM mk_out ORDER BY k NULLS LAST, v');
@@ -498,22 +506,22 @@ describe('ETL runtime contract — review fixes', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'wm.csv', 'id,updated\n1,100\n2,200\n');
-    const task = await store.createTask({ name: 'wm column', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'wm column', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task incremental by [updated] as src
+      pipeline.id,
+      `input source pipeline incremental by [updated] as src
         | output table "wm_out" mode replace`
     );
-    await store.runTask(task.id);
+    await store.runPipeline(pipeline.id);
     // switch the watermark column: must not reuse the `updated` watermark for `id`
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task incremental by [id] as src
+      pipeline.id,
+      `input source pipeline incremental by [id] as src
         | output table "wm_out" mode replace`
     );
-    const run = await store.runTask(task.id);
+    const run = await store.runPipeline(pipeline.id);
     expect(run.status).toBe('completed');
     store = reopenStore(dbPath);
     const rows = await readRows(dbPath, 'SELECT count(*) AS n FROM wm_out');
@@ -524,18 +532,18 @@ describe('ETL runtime contract — review fixes', () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
     const csvPath = writeCsv(tempRoot, 'multi.csv', 'id,amount\n1,10\n2,99\n');
-    const task = await store.createTask({ name: 'multi sink', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'multi sink', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
       step full = src
         | output table "multi_all" mode replace
       step big = src
         | filter [amount] > 50
         | output table "multi_big" mode replace`
     );
-    const run = await store.runTask(task.id);
+    const run = await store.runPipeline(pipeline.id);
     expect(run.status).toBe('completed');
     store = reopenStore(dbPath);
     const all = await readRows(dbPath, 'SELECT count(*) AS n FROM multi_all');
@@ -547,15 +555,15 @@ describe('ETL runtime contract — review fixes', () => {
   it('save rejects malformed operator configs via shared config diagnostics', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'cfg.csv', 'id,amount\n1,10\n');
-    const task = await store.createTask({ name: 'bad config', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'bad config', sourcePath: csvPath });
     const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl(`input source task as src\n  | sort by [id]`).ast!
+      parsePrepDsl(`input source pipeline as src\n  | sort by [id]`).ast!
     );
     // corrupt the compiled sort config: direction must be asc|desc
     const sortNode = compiled.nodes.find((node) => node.type === 'sort')!;
     sortNode.config = { keys: [{ field: 'id', direction: 'sideways' }] };
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/direction|invalid|enum/i);
   });
 });
@@ -564,13 +572,13 @@ describe('ETL runtime contract — commit safety fixes', () => {
   it('rejects two output sinks that resolve to the same target', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'dup_sink.csv', 'id,v\n1,a\n2,b\n');
-    const task = await store.createTask({ name: 'dup sinks', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'dup sinks', sourcePath: csvPath });
     // both sinks write the same table name -> must be rejected at save time
     await expect(
       saveCompiledDsl(
         store,
-        task.id,
-        `input source task as src
+        pipeline.id,
+        `input source pipeline as src
         step a = src
           | output table "same_table" mode replace
         step b = src
@@ -582,31 +590,31 @@ describe('ETL runtime contract — commit safety fixes', () => {
   it('rejects an invalid output mode at save time', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'mode.csv', 'id\n1\n');
-    const task = await store.createTask({ name: 'bad mode', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'bad mode', sourcePath: csvPath });
     const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl('input source task as src\n  | output table "m_out" mode replace').ast!
+      parsePrepDsl('input source pipeline as src\n  | output table "m_out" mode replace').ast!
     );
     const outputNode = compiled.nodes.find((node) => node.type === 'output')!;
     outputNode.config = { ...outputNode.config, mode: 'upsert_everything' };
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/mode/i);
   });
 
   it('failed expect runs persist rejectedRows and the violating sample', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'fail_expect.csv', 'id,amount\n1,10\n2,-5\n3,-9\n');
-    const task = await store.createTask({ name: 'failing expect', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'failing expect', sourcePath: csvPath });
     await saveCompiledDsl(
       store,
-      task.id,
-      `input source task as src
+      pipeline.id,
+      `input source pipeline as src
         | expect [amount] > 0
         | output table "fe_out" mode replace`
     );
-    const run = await store.runTaskWithDiagnostics(task.id).catch((error: Error) => error);
+    const run = await store.runPipelineWithDiagnostics(pipeline.id).catch((error: Error) => error);
     expect(run).toBeInstanceOf(Error);
-    const stats = await store.getTaskNodeStats(task.id);
+    const stats = await store.getPipelineNodeStats(pipeline.id);
     const expectStat = stats.find((stat) => stat.nodeType === 'expect');
     expect(expectStat?.rejectedRows).toBe(2);
     expect(expectStat?.sample?.length).toBe(2);
@@ -618,10 +626,10 @@ describe('ETL runtime contract — validation consistency', () => {
   it('rejects expect rows ... reject to (row counts have no rows to route)', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'rows_reject.csv', 'id\n1\n');
-    const task = await store.createTask({ name: 'rows reject', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'rows reject', sourcePath: csvPath });
     const compiled = compilePrepWorkflowToFlow(
       parsePrepDsl(
-        'input source task as src\n  | expect rows >= 1 reject to bad\n  | output table "x" mode replace'
+        'input source pipeline as src\n  | expect rows >= 1 reject to bad\n  | output table "x" mode replace'
       ).ast!
     );
     const expectNode = compiled.nodes.find((node) => node.type === 'expect')!;
@@ -633,41 +641,41 @@ describe('ETL runtime contract — validation consistency', () => {
       rejectStream: 'bad',
     };
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/reject/i);
   });
 
-  it('rejects output dataset/file destinations and mergeKeys without merge at save', async () => {
+  it('rejects output rawTable/file destinations and mergeKeys without merge at save', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'dest.csv', 'id\n1\n');
-    const task = await store.createTask({ name: 'bad dest', sourcePath: csvPath });
+    const pipeline = await store.createPipeline({ name: 'bad dest', sourcePath: csvPath });
     const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl('input source task as src\n  | output table "d_out" mode replace').ast!
+      parsePrepDsl('input source pipeline as src\n  | output table "d_out" mode replace').ast!
     );
     const outputNode = compiled.nodes.find((node) => node.type === 'output')!;
-    outputNode.config = { ...outputNode.config, destination: 'dataset' };
+    outputNode.config = { ...outputNode.config, destination: 'rawTable' };
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/destination/i);
     outputNode.config = { table: 'd_out', mergeKeys: ['id'] };
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/merge/i);
   });
 
-  it('catches duplicate targets across mixed binding styles (fallback vs datasetId)', async () => {
+  it('catches duplicate targets across mixed binding styles (fallback vs rawTableId)', async () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'mix.csv', 'id\n1\n');
-    const outputTable = await store.createOutputTable({ name: 'bound_out' });
-    // task bound to the output table: the unnamed first sink falls back to it
-    const task = await store.createTask({
+    const resultTable = await store.createResultTable({ name: 'bound_out' });
+    // pipeline bound to the output table: the unnamed first sink falls back to it
+    const pipeline = await store.createPipeline({
       name: 'mixed sinks',
       sourcePath: csvPath,
-      outputTableId: outputTable.id,
+      resultTableId: resultTable.id,
     });
     const compiled = compilePrepWorkflowToFlow(
       parsePrepDsl(
-        `input source task as src
+        `input source pipeline as src
         step a = src
           | output table "task_out" mode replace
         step b = src
@@ -675,17 +683,17 @@ describe('ETL runtime contract — validation consistency', () => {
       ).ast!
     );
     const outA = compiled.nodes.find((n) => n.type === 'output' && n.config?.table === 'task_out')!;
-    // strip the name so sink A resolves to the task's bound output table...
+    // strip the name so sink A resolves to the pipeline's bound output table...
     outA.config = { ...outA.config };
     delete outA.config.table;
-    // ...and point sink B at the same physical table via outputDatasetId
+    // ...and point sink B at the same physical table via outputResultTableId
     const outB = compiled.nodes.find(
       (n) => n.type === 'output' && n.config?.table === 'other_out'
     )!;
-    outB.config = { ...outB.config, outputDatasetId: outputTable.id };
+    outB.config = { ...outB.config, outputResultTableId: resultTable.id };
     delete outB.config.table;
     await expect(
-      store.saveTaskWorkflow(task.id, { nodes: compiled.nodes, edges: compiled.edges })
+      store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/same target|duplicate/i);
   });
 });

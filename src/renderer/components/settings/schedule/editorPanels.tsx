@@ -260,7 +260,7 @@ export function TriggerConditionPanel({
           <GlassSelect
             value={triggerMethod}
             options={[
-              { value: 'manual', label: tr('schedule.triggerManual', '手动或输出表更新时触发') },
+              { value: 'manual', label: tr('schedule.triggerManual', '手动或结果表更新时触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
               { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}

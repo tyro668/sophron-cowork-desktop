@@ -2,20 +2,20 @@
 import type {
   DataDashboard,
   DataDashboardQuery,
-  DataTaskStatusCounts,
+  DataPipelineStatusCounts,
 } from '../../../../shared/contracts';
 import { toNumber, normalizeListWindow } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
 import {
-  DataDatasetRow,
+  DataRawTableRow,
   DataGroupRow,
-  storedDatasetSourceKindSql,
-  mapDatasetRow,
+  storedRawTableSourceKindSql,
+  mapRawTableRow,
   mapGroupRow,
-  mapOutputTableRow,
-  outputTableConfigPredicateSql,
-  DataTaskRow,
-  mapTaskRow,
+  mapResultTableRow,
+  resultTableConfigPredicateSql,
+  DataPipelineRow,
+  mapPipelineRow,
   DashboardSummaryRow,
   startOfToday,
 } from '../data-store-records';
@@ -26,13 +26,15 @@ export class DashboardService {
     const normalizedQuery = (query.query ?? '').trim().toLowerCase();
     const like = `%${normalizedQuery.replace(/[%_\\]/g, '\\$&')}%`;
     const includeSummary = query.includeSummary !== false;
-    const includeTasks = query.includeTasks !== false;
-    const includeDatasets = query.includeDatasets !== false;
-    const includeOutputTables = query.includeOutputTables === true;
-    const datasetSourceKind =
-      query.datasetSourceKind && query.datasetSourceKind !== 'all' ? query.datasetSourceKind : '';
-    const taskWindow = normalizeListWindow(query.taskOffset, query.taskLimit);
-    const datasetWindow = normalizeListWindow(query.datasetOffset, query.datasetLimit);
+    const includePipelines = query.includePipelines !== false;
+    const includeRawTables = query.includeRawTables !== false;
+    const includeResultTables = query.includeResultTables === true;
+    const rawTableSourceKind =
+      query.rawTableSourceKind && query.rawTableSourceKind !== 'all'
+        ? query.rawTableSourceKind
+        : '';
+    const pipelineWindow = normalizeListWindow(query.pipelineOffset, query.pipelineLimit);
+    const rawTableWindow = normalizeListWindow(query.rawTableOffset, query.rawTableLimit);
     const outputWindow = normalizeListWindow(query.outputOffset, query.outputLimit);
     const todayStart = startOfToday(this.ctx.now());
     const todayEnd = todayStart + 86_400_000;
@@ -49,7 +51,7 @@ export class DashboardService {
                 coalesce(sum(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_count,
                 coalesce(sum(CASE WHEN status = 'stopped' THEN 1 ELSE 0 END), 0) AS stopped_count,
                 coalesce(sum(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count
-              FROM data_cleaning_tasks
+              FROM data_pipelines
             `,
           { todayStart, todayEnd }
         )
@@ -65,11 +67,11 @@ export class DashboardService {
       stopped_count: 0,
       failed_count: 0,
     };
-    const taskCountRows = includeTasks
+    const pipelineCountRows = includePipelines
       ? await this.ctx.metaQueryRows<{ count: number | string }>(
           `
               SELECT count(*) AS count
-              FROM data_cleaning_tasks
+              FROM data_pipelines
               WHERE $query = ''
                 OR lower(name) LIKE $like ESCAPE '\\'
                 OR lower(coalesce(source_path, '')) LIKE $like ESCAPE '\\'
@@ -77,208 +79,214 @@ export class DashboardService {
           { query: normalizedQuery, like }
         )
       : [{ count: includeSummary ? summary.task_count : 0 }];
-    const taskGroupIdSet = query.taskGroupId !== undefined ? 1 : 0;
-    const taskGroupId = query.taskGroupId ?? null;
-    const taskPerGroupLimit = query.taskPerGroupLimit ?? 0;
-    const useGroupedTaskQuery = taskGroupIdSet === 1 || taskPerGroupLimit > 0;
-    const taskRows = includeTasks
-      ? useGroupedTaskQuery
-        ? await this.ctx.metaQueryRows<DataTaskRow>(
+    const pipelineGroupIdSet = query.pipelineGroupId !== undefined ? 1 : 0;
+    const pipelineGroupId = query.pipelineGroupId ?? null;
+    const pipelinePerGroupLimit = query.pipelinePerGroupLimit ?? 0;
+    const useGroupedPipelineQuery = pipelineGroupIdSet === 1 || pipelinePerGroupLimit > 0;
+    const pipelineRows = includePipelines
+      ? useGroupedPipelineQuery
+        ? await this.ctx.metaQueryRows<DataPipelineRow>(
             `
               WITH matched AS (
                 SELECT
                   t.id, t.name, t.status, t.group_id, t.node_count, t.source_path,
-                  t.source_dataset_id, t.output_table, t.row_count, t.column_count, t.error,
+                  t.source_raw_table_id, t.result_table, t.row_count, t.column_count, t.error,
                   t.scheduled_for, t.created_at, t.updated_at, t.last_run_at,
                   g.sort_index, g.name AS group_name,
                   ROW_NUMBER() OVER (PARTITION BY t.group_id ORDER BY t.updated_at DESC, t.created_at DESC) AS group_rn
-                FROM data_cleaning_tasks t
-                LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'task'
+                FROM data_pipelines t
+                LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'pipeline'
                 WHERE ($query = ''
                   OR lower(t.name) LIKE $like ESCAPE '\\'
                   OR lower(coalesce(t.source_path, '')) LIKE $like ESCAPE '\\')
-                  AND ($taskGroupIdSet = 0 OR t.group_id IS NOT DISTINCT FROM $taskGroupId)
+                  AND ($pipelineGroupIdSet = 0 OR t.group_id IS NOT DISTINCT FROM $pipelineGroupId)
                 ORDER BY t.group_id IS NULL, g.sort_index, g.name,
                   t.updated_at DESC, t.created_at DESC
               )
               SELECT
                 id, name, status, group_id, node_count, source_path,
-                source_dataset_id, output_table, row_count, column_count, error,
+                source_raw_table_id, result_table, row_count, column_count, error,
                 scheduled_for, created_at, updated_at, last_run_at
               FROM matched
-              WHERE $taskGroupIdSet = 1 OR ($taskPerGroupLimit > 0 AND group_rn <= $taskPerGroupLimit)
-              LIMIT ${taskGroupIdSet ? taskWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${taskGroupIdSet ? taskWindow.offset : 0}
+              WHERE $pipelineGroupIdSet = 1 OR ($pipelinePerGroupLimit > 0 AND group_rn <= $pipelinePerGroupLimit)
+              LIMIT ${pipelineGroupIdSet ? pipelineWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${pipelineGroupIdSet ? pipelineWindow.offset : 0}
             `,
-            { query: normalizedQuery, like, taskGroupIdSet, taskGroupId, taskPerGroupLimit }
+            {
+              query: normalizedQuery,
+              like,
+              pipelineGroupIdSet,
+              pipelineGroupId,
+              pipelinePerGroupLimit,
+            }
           )
-        : await this.ctx.metaQueryRows<DataTaskRow>(
+        : await this.ctx.metaQueryRows<DataPipelineRow>(
             `
               SELECT
                 t.id, t.name, t.status, t.group_id, t.node_count, t.source_path,
-                t.source_dataset_id, t.output_table, t.row_count, t.column_count, t.error,
+                t.source_raw_table_id, t.result_table, t.row_count, t.column_count, t.error,
                 t.scheduled_for, t.created_at, t.updated_at, t.last_run_at
-              FROM data_cleaning_tasks t
-              LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'task'
+              FROM data_pipelines t
+              LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'pipeline'
               WHERE $query = ''
                 OR lower(t.name) LIKE $like ESCAPE '\\'
                 OR lower(coalesce(t.source_path, '')) LIKE $like ESCAPE '\\'
               ORDER BY t.group_id IS NULL, g.sort_index, g.name,
                 t.updated_at DESC, t.created_at DESC
-              LIMIT ${taskWindow.limit} OFFSET ${taskWindow.offset}
+              LIMIT ${pipelineWindow.limit} OFFSET ${pipelineWindow.offset}
             `,
             { query: normalizedQuery, like }
           )
       : [];
-    const taskGroupCounts: Record<string, number> = {};
-    if (includeTasks && useGroupedTaskQuery) {
-      const taskCountRowsByGroup = await this.ctx.metaQueryRows<{
+    const pipelineGroupCounts: Record<string, number> = {};
+    if (includePipelines && useGroupedPipelineQuery) {
+      const pipelineCountRowsByGroup = await this.ctx.metaQueryRows<{
         group_id: string | null;
         count: number | string;
       }>(
         `
           SELECT t.group_id, count(*) AS count
-          FROM data_cleaning_tasks t
-          LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'task'
+          FROM data_pipelines t
+          LEFT JOIN data_groups g ON g.id = t.group_id AND g.scope = 'pipeline'
           WHERE ($query = ''
             OR lower(t.name) LIKE $like ESCAPE '\\'
             OR lower(coalesce(t.source_path, '')) LIKE $like ESCAPE '\\')
-            AND ($taskGroupIdSet = 0 OR t.group_id IS NOT DISTINCT FROM $taskGroupId)
+            AND ($pipelineGroupIdSet = 0 OR t.group_id IS NOT DISTINCT FROM $pipelineGroupId)
           GROUP BY t.group_id
         `,
-        { query: normalizedQuery, like, taskGroupIdSet, taskGroupId }
+        { query: normalizedQuery, like, pipelineGroupIdSet, pipelineGroupId }
       );
-      for (const row of taskCountRowsByGroup) {
+      for (const row of pipelineCountRowsByGroup) {
         const key = row.group_id ? `g:${row.group_id}` : 'ungrouped';
-        taskGroupCounts[key] = toNumber(row.count);
+        pipelineGroupCounts[key] = toNumber(row.count);
       }
     }
-    const datasetCountRows = includeDatasets
+    const rawTableCountRows = includeRawTables
       ? await this.ctx.metaQueryRows<{ count: number | string }>(
           `
               SELECT count(*) AS count
-              FROM data_datasets
+              FROM data_raw_tables
               WHERE ($query = ''
                 OR lower(name) LIKE $like ESCAPE '\\'
                 OR lower(source_path) LIKE $like ESCAPE '\\')
-                AND ${storedDatasetSourceKindSql()} <> 'output'
+                AND ${storedRawTableSourceKindSql()} <> 'output'
                 AND (
                   $sourceKind = ''
-                  OR ${storedDatasetSourceKindSql()} = $sourceKind
+                  OR ${storedRawTableSourceKindSql()} = $sourceKind
                 )
             `,
-          { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+          { query: normalizedQuery, like, sourceKind: rawTableSourceKind }
         )
       : [{ count: 0 }];
-    const datasetGroupIdSet = query.datasetGroupId !== undefined ? 1 : 0;
-    const datasetGroupId = query.datasetGroupId ?? null;
-    const datasetPerGroupLimit = query.datasetPerGroupLimit ?? 0;
-    const useGroupedDatasetQuery = datasetGroupIdSet === 1 || datasetPerGroupLimit > 0;
-    const datasetRows = includeDatasets
-      ? useGroupedDatasetQuery
-        ? await this.ctx.metaQueryRows<DataDatasetRow>(
+    const rawTableGroupIdSet = query.rawTableGroupId !== undefined ? 1 : 0;
+    const rawTableGroupId = query.rawTableGroupId ?? null;
+    const rawTablePerGroupLimit = query.rawTablePerGroupLimit ?? 0;
+    const useGroupedRawTableQuery = rawTableGroupIdSet === 1 || rawTablePerGroupLimit > 0;
+    const rawTableRows = includeRawTables
+      ? useGroupedRawTableQuery
+        ? await this.ctx.metaQueryRows<DataRawTableRow>(
             `
               WITH matched AS (
                 SELECT d.*, g.sort_index, g.name AS group_name,
                   ROW_NUMBER() OVER (PARTITION BY d.group_id ORDER BY d.updated_at DESC, d.created_at DESC) AS group_rn
-                FROM data_datasets d
+                FROM data_raw_tables d
                 LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
                 WHERE ($query = ''
                   OR lower(d.name) LIKE $like ESCAPE '\\'
                   OR lower(d.source_path) LIKE $like ESCAPE '\\')
-                  AND ${storedDatasetSourceKindSql('d')} <> 'output'
+                  AND ${storedRawTableSourceKindSql('d')} <> 'output'
                   AND (
                     $sourceKind = ''
-                    OR ${storedDatasetSourceKindSql('d')} = $sourceKind
+                    OR ${storedRawTableSourceKindSql('d')} = $sourceKind
                   )
-                  AND ($datasetGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $datasetGroupId)
+                  AND ($rawTableGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $rawTableGroupId)
                 ORDER BY d.group_id IS NULL, g.sort_index, g.name,
                   d.updated_at DESC, d.created_at DESC
               )
               SELECT
                 matched.*,
-                ${this.ctx.inputTableRelatedTaskNamesSql('matched')} AS related_task_names
+                ${this.ctx.rawTableRelatedPipelineNamesSql('matched')} AS related_task_names
               FROM matched
-              WHERE $datasetGroupIdSet = 1 OR ($datasetPerGroupLimit > 0 AND group_rn <= $datasetPerGroupLimit)
-              LIMIT ${datasetGroupIdSet ? datasetWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${datasetGroupIdSet ? datasetWindow.offset : 0}
+              WHERE $rawTableGroupIdSet = 1 OR ($rawTablePerGroupLimit > 0 AND group_rn <= $rawTablePerGroupLimit)
+              LIMIT ${rawTableGroupIdSet ? rawTableWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${rawTableGroupIdSet ? rawTableWindow.offset : 0}
             `,
             {
               query: normalizedQuery,
               like,
-              sourceKind: datasetSourceKind,
-              datasetGroupIdSet,
-              datasetGroupId,
-              datasetPerGroupLimit,
+              sourceKind: rawTableSourceKind,
+              rawTableGroupIdSet,
+              rawTableGroupId,
+              rawTablePerGroupLimit,
             }
           )
-        : await this.ctx.metaQueryRows<DataDatasetRow>(
+        : await this.ctx.metaQueryRows<DataRawTableRow>(
             `
               WITH page AS (
                 SELECT d.*
-                FROM data_datasets d
+                FROM data_raw_tables d
                 LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
                 WHERE ($query = ''
                   OR lower(d.name) LIKE $like ESCAPE '\\'
                   OR lower(d.source_path) LIKE $like ESCAPE '\\')
-                  AND ${storedDatasetSourceKindSql('d')} <> 'output'
+                  AND ${storedRawTableSourceKindSql('d')} <> 'output'
                   AND (
                     $sourceKind = ''
-                    OR ${storedDatasetSourceKindSql('d')} = $sourceKind
+                    OR ${storedRawTableSourceKindSql('d')} = $sourceKind
                   )
                 ORDER BY d.group_id IS NULL, g.sort_index, g.name,
                   d.updated_at DESC, d.created_at DESC
-                LIMIT ${datasetWindow.limit} OFFSET ${datasetWindow.offset}
+                LIMIT ${rawTableWindow.limit} OFFSET ${rawTableWindow.offset}
               )
               SELECT
                 page.*,
-                ${this.ctx.inputTableRelatedTaskNamesSql('page')} AS related_task_names
+                ${this.ctx.rawTableRelatedPipelineNamesSql('page')} AS related_task_names
               FROM page
             `,
-            { query: normalizedQuery, like, sourceKind: datasetSourceKind }
+            { query: normalizedQuery, like, sourceKind: rawTableSourceKind }
           )
       : [];
-    const datasetGroupCounts: Record<string, number> = {};
-    if (includeDatasets && useGroupedDatasetQuery) {
-      const datasetCountRowsByGroup = await this.ctx.metaQueryRows<{
+    const rawTableGroupCounts: Record<string, number> = {};
+    if (includeRawTables && useGroupedRawTableQuery) {
+      const rawTableCountRowsByGroup = await this.ctx.metaQueryRows<{
         group_id: string | null;
         count: number | string;
       }>(
         `
           SELECT d.group_id, count(*) AS count
-          FROM data_datasets d
+          FROM data_raw_tables d
           LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
           WHERE ($query = ''
             OR lower(d.name) LIKE $like ESCAPE '\\'
             OR lower(d.source_path) LIKE $like ESCAPE '\\')
-            AND ${storedDatasetSourceKindSql('d')} <> 'output'
+            AND ${storedRawTableSourceKindSql('d')} <> 'output'
             AND (
               $sourceKind = ''
-              OR ${storedDatasetSourceKindSql('d')} = $sourceKind
+              OR ${storedRawTableSourceKindSql('d')} = $sourceKind
             )
-            AND ($datasetGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $datasetGroupId)
+            AND ($rawTableGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $rawTableGroupId)
           GROUP BY d.group_id
         `,
         {
           query: normalizedQuery,
           like,
-          sourceKind: datasetSourceKind,
-          datasetGroupIdSet,
-          datasetGroupId,
+          sourceKind: rawTableSourceKind,
+          rawTableGroupIdSet,
+          rawTableGroupId,
         }
       );
-      for (const row of datasetCountRowsByGroup) {
+      for (const row of rawTableCountRowsByGroup) {
         const key = row.group_id ? `g:${row.group_id}` : 'ungrouped';
-        datasetGroupCounts[key] = toNumber(row.count);
+        rawTableGroupCounts[key] = toNumber(row.count);
       }
     }
-    const outputCountRows = includeOutputTables
+    const outputCountRows = includeResultTables
       ? await this.ctx.metaQueryRows<{ count: number | string }>(
           `
               SELECT count(*) AS count
-              FROM data_datasets
+              FROM data_raw_tables
               WHERE ($query = ''
                 OR lower(name) LIKE $like ESCAPE '\\'
                 OR lower(table_name) LIKE $like ESCAPE '\\')
-                AND ${outputTableConfigPredicateSql()}
+                AND ${resultTableConfigPredicateSql()}
             `,
           { query: normalizedQuery, like }
         )
@@ -287,45 +295,45 @@ export class DashboardService {
     const outputGroupId = query.outputGroupId ?? null;
     const outputPerGroupLimit = query.outputPerGroupLimit ?? 0;
     const useGroupedOutputQuery = outputGroupIdSet === 1 || outputPerGroupLimit > 0;
-    const outputRows = includeOutputTables
+    const outputRows = includeResultTables
       ? useGroupedOutputQuery
-        ? await this.ctx.metaQueryRows<DataDatasetRow>(
+        ? await this.ctx.metaQueryRows<DataRawTableRow>(
             `
               WITH matched AS (
                 SELECT d.*, g.sort_index, g.name AS group_name,
                   ROW_NUMBER() OVER (PARTITION BY d.group_id ORDER BY d.updated_at DESC, d.created_at DESC) AS group_rn
-                FROM data_datasets d
+                FROM data_raw_tables d
                 LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
                 WHERE ($query = ''
                   OR lower(d.name) LIKE $like ESCAPE '\\'
                   OR lower(d.table_name) LIKE $like ESCAPE '\\')
-                  AND ${outputTableConfigPredicateSql('d')}
+                  AND ${resultTableConfigPredicateSql('d')}
                   AND ($outputGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $outputGroupId)
                 ORDER BY d.group_id IS NULL, g.sort_index, g.name,
                   d.updated_at DESC, d.created_at DESC
               )
               SELECT
                 matched.*,
-                ${this.ctx.outputTableRelatedTaskNamesSql('matched')} AS related_task_names,
-                ${this.ctx.outputTableRelatedTaskIdsSql('matched')} AS related_task_ids
+                ${this.ctx.resultTableRelatedPipelineNamesSql('matched')} AS related_task_names,
+                ${this.ctx.resultTableRelatedPipelineIdsSql('matched')} AS related_pipeline_ids
               FROM matched
               WHERE $outputGroupIdSet = 1 OR ($outputPerGroupLimit > 0 AND group_rn <= $outputPerGroupLimit)
               LIMIT ${outputGroupIdSet ? outputWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${outputGroupIdSet ? outputWindow.offset : 0}
             `,
             { query: normalizedQuery, like, outputGroupIdSet, outputGroupId, outputPerGroupLimit }
           )
-        : await this.ctx.metaQueryRows<DataDatasetRow>(
+        : await this.ctx.metaQueryRows<DataRawTableRow>(
             `
               SELECT
                 d.*,
-                ${this.ctx.outputTableRelatedTaskNamesSql('d')} AS related_task_names,
-                ${this.ctx.outputTableRelatedTaskIdsSql('d')} AS related_task_ids
-              FROM data_datasets d
+                ${this.ctx.resultTableRelatedPipelineNamesSql('d')} AS related_task_names,
+                ${this.ctx.resultTableRelatedPipelineIdsSql('d')} AS related_pipeline_ids
+              FROM data_raw_tables d
               LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
               WHERE ($query = ''
                 OR lower(d.name) LIKE $like ESCAPE '\\'
                 OR lower(d.table_name) LIKE $like ESCAPE '\\')
-                AND ${outputTableConfigPredicateSql('d')}
+                AND ${resultTableConfigPredicateSql('d')}
               ORDER BY d.group_id IS NULL, g.sort_index, g.name,
                 d.updated_at DESC, d.created_at DESC
               LIMIT ${outputWindow.limit} OFFSET ${outputWindow.offset}
@@ -334,19 +342,19 @@ export class DashboardService {
           )
       : [];
     const outputGroupCounts: Record<string, number> = {};
-    if (includeOutputTables && useGroupedOutputQuery) {
+    if (includeResultTables && useGroupedOutputQuery) {
       const outputCountRowsByGroup = await this.ctx.metaQueryRows<{
         group_id: string | null;
         count: number | string;
       }>(
         `
           SELECT d.group_id, count(*) AS count
-          FROM data_datasets d
+          FROM data_raw_tables d
           LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'output'
           WHERE ($query = ''
             OR lower(d.name) LIKE $like ESCAPE '\\'
             OR lower(d.table_name) LIKE $like ESCAPE '\\')
-            AND ${outputTableConfigPredicateSql('d')}
+            AND ${resultTableConfigPredicateSql('d')}
             AND ($outputGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $outputGroupId)
           GROUP BY d.group_id
         `,
@@ -360,7 +368,7 @@ export class DashboardService {
     const groupRows = await this.ctx.metaQueryRows<DataGroupRow>(
       'SELECT * FROM data_groups ORDER BY scope, sort_index, created_at, name'
     );
-    const statusCounts: DataTaskStatusCounts = {
+    const statusCounts: DataPipelineStatusCounts = {
       running: toNumber(summary.running_count),
       completed: toNumber(summary.completed_count),
       stopped: toNumber(summary.stopped_count),
@@ -371,21 +379,21 @@ export class DashboardService {
 
     return {
       summary: {
-        taskCount: toNumber(summary.task_count),
+        pipelineCount: toNumber(summary.task_count),
         workflowNodeCount: toNumber(summary.workflow_node_count),
         runningCount: statusCounts.running,
         todayScheduleCount: toNumber(summary.today_schedule_count),
         statusCounts,
       },
-      tasks: taskRows.map(mapTaskRow),
-      datasets: datasetRows.map(mapDatasetRow),
-      outputTables: outputRows.map(mapOutputTableRow),
+      pipelines: pipelineRows.map(mapPipelineRow),
+      rawTables: rawTableRows.map(mapRawTableRow),
+      resultTables: outputRows.map(mapResultTableRow),
       groups: groupRows.map(mapGroupRow),
-      totalTasks: toNumber(taskCountRows[0]?.count),
-      totalDatasets: toNumber(datasetCountRows[0]?.count),
-      totalOutputTables: toNumber(outputCountRows[0]?.count),
-      taskGroupCounts,
-      datasetGroupCounts,
+      totalPipelines: toNumber(pipelineCountRows[0]?.count),
+      totalRawTables: toNumber(rawTableCountRows[0]?.count),
+      totalResultTables: toNumber(outputCountRows[0]?.count),
+      pipelineGroupCounts,
+      rawTableGroupCounts,
       outputGroupCounts,
     };
   }

@@ -84,11 +84,11 @@ describe('workflow node compiler', () => {
       requirement: '仅保留产品、销售额和利润，按销售额降序取前 25 行。',
       columns: COLUMNS,
       bindings: {
-        inputTableId: 'dataset-sales-id',
+        rawTableId: 'rawTable-sales-id',
         inputAlias: 'sales',
-        inputTableName: 'Sales Preview',
-        outputTableName: 'Processed Sales',
-        outputTableId: 'output-table-id',
+        rawTableName: 'Sales Preview',
+        resultTableName: 'Processed Sales',
+        resultTableId: 'result-table-id',
         outputPhysicalTableName: 'data_output_abc123',
         outputMode: 'replace',
       },
@@ -140,9 +140,9 @@ describe('workflow node compiler', () => {
       },
     ]);
     expect(plan.nodes[0].config).toEqual({
-      source: 'dataset',
-      datasetId: 'dataset-sales-id',
-      inputTableName: 'Sales Preview',
+      source: 'rawTable',
+      rawTableId: 'rawTable-sales-id',
+      rawTableName: 'Sales Preview',
       alias: 'sales',
     });
     expect(plan.nodes[1].config).toMatchObject({
@@ -165,9 +165,9 @@ describe('workflow node compiler', () => {
       table: 'data_output_abc123',
       mode: 'replace',
       outputStrategy: 'existing',
-      outputDatasetId: 'output-table-id',
-      outputTableId: 'output-table-id',
-      outputTableName: 'Processed Sales',
+      outputResultTableId: 'result-table-id',
+      resultTableId: 'result-table-id',
+      resultTableName: 'Processed Sales',
     });
     expectEveryNodeConfigToMatchPlatformSchema(plan.nodes);
   });
@@ -213,8 +213,8 @@ describe('workflow node compiler', () => {
       requirement: '只保留产品名称包含 Chair 的记录。',
       columns: COLUMNS,
       bindings: {
-        inputTableId: 'dataset-sales-id',
-        outputTableName: 'Chair Products',
+        rawTableId: 'rawTable-sales-id',
+        resultTableName: 'Chair Products',
         outputPhysicalTableName: 'data_output_chairs',
       },
     });

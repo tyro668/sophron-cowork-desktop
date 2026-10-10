@@ -74,7 +74,7 @@ type TabMode = 'row' | 'column';
 
 export default function FormMissingValue({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
@@ -99,7 +99,7 @@ export default function FormMissingValue({
     strategy === 'drop_empty_rows' ? 'all_null' : ((node.config.condition as string) ?? 'any_null');
 
   const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const handleRulesChange = useCallback(
     (items: MissingValueRule[]) => {
       const itemsWithId = ensureStableRowIds(items);

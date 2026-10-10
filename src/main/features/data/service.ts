@@ -2,40 +2,40 @@ import { markPersonalAnalysisKeyDisconnected } from './cloud-connection-state';
 import { app } from 'electron';
 import { join } from 'path';
 import { appContext, desktopAuthService } from '../../app/context';
-import { notifyDataTaskCompleted } from '../../app/notifications';
+import { notifyDataPipelineCompleted } from '../../app/notifications';
 import { resolveAppConfigForAuth } from '../../app/runtime-config';
 import { configStore } from '../../config/config-store';
 import { DataCommandService } from '../../data/data-command-service';
-import { createDataTaskStore, type DataTaskStore } from '../../data/data-task-store';
-import { createLlmInputTableNormalizerProjectGenerator } from '../../data/input-table-normalizer-generator';
+import { createDataPipelineStore, type DataPipelineStore } from '../../data/data-pipeline-store';
+import { createLlmRawTableNormalizerProjectGenerator } from '../../data/raw-table-normalizer-generator';
 import { initDatabase } from '../../db/database';
 
-export function requireDataTaskStore(): DataTaskStore {
-  if (!appContext.dataTaskStore) {
-    appContext.dataTaskStore = createDataTaskStore(
+export function requireDataPipelineStore(): DataPipelineStore {
+  if (!appContext.dataPipelineStore) {
+    appContext.dataPipelineStore = createDataPipelineStore(
       join(app.getPath('userData'), 'data', 'workspace.duckdb'),
       {
         metadataDb: initDatabase(),
       }
     );
   }
-  return appContext.dataTaskStore;
+  return appContext.dataPipelineStore;
 }
 
 export function requireDataCommandService(): DataCommandService {
   if (!appContext.dataCommandService) {
     appContext.dataCommandService = new DataCommandService(
-      requireDataTaskStore(),
-      createLlmInputTableNormalizerProjectGenerator(() =>
+      requireDataPipelineStore(),
+      createLlmRawTableNormalizerProjectGenerator(() =>
         resolveAppConfigForAuth(configStore.getAll())
       ),
       () => configStore.get('personalAnalysis'),
       {
-        onTaskCompleted: notifyDataTaskCompleted,
+        onPipelineCompleted: notifyDataPipelineCompleted,
         onPersonalAnalysisKeyRejected: markPersonalAnalysisKeyDisconnected,
         getPersonalAnalysisConnection: (rejectedToken) =>
           desktopAuthService.getPersonalAnalysisConnection(rejectedToken),
-        recordLlmUsage: (event) => appContext.recordDataTaskLlmUsage?.(event),
+        recordLlmUsage: (event) => appContext.recordDataPipelineLlmUsage?.(event),
       }
     );
   }

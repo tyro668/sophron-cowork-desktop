@@ -1,8 +1,8 @@
 import type {
   AgentRuntimeConfig,
-  DataAnalyzeTaskRequirementResult,
-  DataTaskRequirementAnalysisItem,
-  DataTaskRequirementConversationEntry,
+  DataAnalyzePipelineRequirementResult,
+  DataPipelineRequirementAnalysisItem,
+  DataPipelineRequirementConversationEntry,
 } from '../../../shared/contracts';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../../agent/pi-ai-one-shot';
 import {
@@ -15,7 +15,7 @@ import { extractJsonObject, isRecord } from './utils';
 
 const VALID_STATUSES = new Set(['supported', 'ambiguous', 'unsupported']);
 
-export async function analyzeDataTaskRequirement({
+export async function analyzeDataPipelineRequirement({
   requirement,
   requirementConversation,
   columns,
@@ -25,17 +25,17 @@ export async function analyzeDataTaskRequirement({
   signal,
 }: {
   requirement: string;
-  requirementConversation?: DataTaskRequirementConversationEntry[];
+  requirementConversation?: DataPipelineRequirementConversationEntry[];
   columns: Array<{ name: string; type?: string }>;
   runtimeConfig?: AgentRuntimeConfig;
   onModelUsage?: (result: PiAiOneShotResult) => void;
   onActivity?: () => void;
   signal?: AbortSignal;
-}): Promise<DataAnalyzeTaskRequirementResult> {
+}): Promise<DataAnalyzePipelineRequirementResult> {
   if (!runtimeConfig?.model?.trim()) {
     throw new DataCommandError(
       'INVALID_ARGUMENT',
-      'Model configuration is required to analyze a data task'
+      'Model configuration is required to analyze a data pipeline'
     );
   }
   const prompt = buildRequirementAnalysisUserPrompt({
@@ -97,7 +97,7 @@ export async function analyzeDataTaskRequirement({
   };
 }
 
-function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem {
+function normalizeAnalysisItem(value: unknown): DataPipelineRequirementAnalysisItem {
   if (
     !isRecord(value) ||
     typeof value.requirement !== 'string' ||
@@ -129,7 +129,7 @@ function normalizeAnalysisItem(value: unknown): DataTaskRequirementAnalysisItem 
         .filter((operation): operation is string => Boolean(operation))
     ),
   ];
-  const declaredStatus = value.status as DataTaskRequirementAnalysisItem['status'];
+  const declaredStatus = value.status as DataPipelineRequirementAnalysisItem['status'];
   const status =
     declaredStatus === 'supported' &&
     (unknownCapabilities.length > 0 || validCapabilities.length === 0)

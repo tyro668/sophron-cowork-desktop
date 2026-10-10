@@ -6,10 +6,10 @@ const baseContext: DataToolPromptContext = {
   sessionId: 'session-1',
   workspacePath: '/tmp/workspace',
   capabilities: {
-    canCreateInputTable: true,
-    canCreateOutputTable: true,
-    canCreateTask: true,
-    canRunTask: true,
+    canCreateRawTable: true,
+    canCreateResultTable: true,
+    canCreatePipeline: true,
+    canRunPipeline: true,
     canImportLocalFiles: true,
   },
 };
@@ -19,16 +19,16 @@ describe('data tool prompt', () => {
     const prompt = buildDataToolStablePrompt();
 
     expect(prompt).toContain('fixed reusable data-processing workflow');
-    expect(prompt).toContain('Do not automatically create a data task for one-off exploration');
+    expect(prompt).toContain('Do not automatically create a data pipeline for one-off exploration');
     expect(prompt).toContain('runtime structured tool-call channel');
     expect(prompt).not.toContain('<tool_use>');
-    expect(prompt).toContain('data_analyze_task_requirement');
-    expect(prompt).toContain('data_generate_task_from_requirement');
+    expect(prompt).toContain('data_analyze_pipeline_requirement');
+    expect(prompt).toContain('data_generate_pipeline_from_requirement');
     expect(prompt).toContain('mandatory two-turn flow');
     expect(prompt).toContain(
-      'Never call data_generate_task_from_requirement in the same user turn'
+      'Never call data_generate_pipeline_from_requirement in the same user turn'
     );
-    expect(prompt).toContain('outputMode="create" with outputTableName');
+    expect(prompt).toContain('outputMode="create" with resultTableName');
     expect(prompt).toContain('Never pass a nested output object or JSON string');
     expect(prompt).toContain('Do not call data_preview_table first just to discover columns');
     expect(prompt).toContain('includeRows=true only when the user explicitly asks');
@@ -48,19 +48,19 @@ describe('data tool prompt', () => {
   it('state prompt carries only the current resource context', () => {
     const prompt = buildDataToolStatePrompt({
       ...baseContext,
-      selectedDataTaskId: 'task_1',
-      selectedDataTaskName: 'Sales cleanup',
-      selectedInputTableId: 'dataset_1',
-      selectedInputTableName: 'Sales raw',
-      selectedOutputTableId: 'output_1',
-      selectedOutputTableName: 'Sales output',
-      recentResources: [{ kind: 'Task', id: 'task_9', name: 'Dedup' }],
+      selectedDataPipelineId: 'task_1',
+      selectedDataPipelineName: 'Sales cleanup',
+      selectedRawTableId: 'rawTable_1',
+      selectedRawTableName: 'Sales raw',
+      selectedResultTableId: 'output_1',
+      selectedResultTableName: 'Sales output',
+      recentResources: [{ kind: 'Pipeline', id: 'task_9', name: 'Dedup' }],
     });
 
-    expect(prompt).toContain('currentDataTask: task_1 ("Sales cleanup")');
-    expect(prompt).toContain('currentInputTable: dataset_1 ("Sales raw")');
-    expect(prompt).toContain('currentOutputTable: output_1 ("Sales output")');
-    expect(prompt).toContain('recentTask: task_9 ("Dedup")');
+    expect(prompt).toContain('currentDataPipeline: task_1 ("Sales cleanup")');
+    expect(prompt).toContain('currentRawTable: rawTable_1 ("Sales raw")');
+    expect(prompt).toContain('currentResultTable: output_1 ("Sales output")');
+    expect(prompt).toContain('recentPipeline: task_9 ("Dedup")');
     expect(prompt).toContain('workspacePath: /tmp/workspace');
     expect(prompt).not.toContain('mandatory two-turn flow');
   });

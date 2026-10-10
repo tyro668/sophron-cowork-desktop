@@ -1,4 +1,4 @@
-import { useDataTaskAuthoringCompletion } from '../../../features/data/hooks/use-data-task-authoring';
+import { useDataPipelineAuthoringCompletion } from '../../../features/data/hooks/use-data-pipeline-authoring';
 import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,7 +16,7 @@ import type {
   AutomationActionDefinitionSummary,
   AutomationActionNode,
   AppConfig,
-  DataCleaningTask,
+  DataPipeline,
   DataDashboard,
 } from '../../../types';
 import { exportPrepWorkflowDsl } from '../../../../shared/prep-dsl';
@@ -43,7 +43,7 @@ import {
   MiniIcon,
   SelectLine,
 } from './editor-controls';
-import { DataTaskAiGenerateDialog } from '../../data-view/data-tasks/DataTaskAiGenerateDialog';
+import { DataPipelineAiGenerateDialog } from '../../data-view/data-pipelines/DataPipelineAiGenerateDialog';
 import { dataClient } from '../../../features/data/api/data-client';
 import { flatToolbarRowClass } from '../../data-view/shared';
 import { ArrowLeftRight, CalendarClock, CloudUpload, CloudDownload } from 'lucide-react';
@@ -51,23 +51,23 @@ import { ArrowLeftRight, CalendarClock, CloudUpload, CloudDownload } from 'lucid
 export function ActionChainSection({
   draft,
   actionDefinitions,
-  dataTasks,
-  inputTables,
-  outputTables,
+  dataPipelines,
+  rawTables,
+  resultTables,
   appConfig,
   onDraftChange,
-  onGeneratedTaskSuccess,
+  onGeneratedPipelineSuccess,
   workingDirectory,
   tr,
 }: {
   draft: AutomationDraft;
   actionDefinitions: AutomationActionDefinitionSummary[];
-  dataTasks: DataCleaningTask[];
-  inputTables: DataDashboard['datasets'];
-  outputTables: DataDashboard['outputTables'];
+  dataPipelines: DataPipeline[];
+  rawTables: DataDashboard['rawTables'];
+  resultTables: DataDashboard['resultTables'];
   appConfig: AppConfig | null;
   onDraftChange: (draft: AutomationDraft) => void;
-  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -130,11 +130,11 @@ export function ActionChainSection({
               key={node.id}
               node={node}
               index={index}
-              dataTasks={dataTasks}
-              inputTables={inputTables}
-              outputTables={outputTables}
+              dataPipelines={dataPipelines}
+              rawTables={rawTables}
+              resultTables={resultTables}
               appConfig={appConfig}
-              onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+              onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
               workingDirectory={workingDirectory}
               onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
               onChange={(next) =>
@@ -152,11 +152,11 @@ export function ActionChainSection({
 export function ActionStepCard({
   node,
   index,
-  dataTasks,
-  inputTables,
-  outputTables,
+  dataPipelines,
+  rawTables,
+  resultTables,
   appConfig,
-  onGeneratedTaskSuccess,
+  onGeneratedPipelineSuccess,
   workingDirectory,
   onRemove,
   onChange,
@@ -164,11 +164,11 @@ export function ActionStepCard({
 }: {
   node: AutomationActionNode;
   index: number;
-  dataTasks: DataCleaningTask[];
-  inputTables: DataDashboard['datasets'];
-  outputTables: DataDashboard['outputTables'];
+  dataPipelines: DataPipeline[];
+  rawTables: DataDashboard['rawTables'];
+  resultTables: DataDashboard['resultTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
@@ -196,11 +196,11 @@ export function ActionStepCard({
       </div>
       <ActionConfigEditor
         node={node}
-        dataTasks={dataTasks}
-        inputTables={inputTables}
-        outputTables={outputTables}
+        dataPipelines={dataPipelines}
+        rawTables={rawTables}
+        resultTables={resultTables}
         appConfig={appConfig}
-        onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+        onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
         workingDirectory={workingDirectory}
         onChange={onChange}
         tr={tr}
@@ -211,17 +211,17 @@ export function ActionStepCard({
 
 export function DataProcessActionEditor({
   node,
-  dataTasks,
-  inputTables,
-  onGeneratedTaskSuccess,
+  dataPipelines,
+  rawTables,
+  onGeneratedPipelineSuccess,
   workingDirectory,
   onChange,
   tr,
 }: {
   node: AutomationActionNode;
-  dataTasks: DataCleaningTask[];
-  inputTables: DataDashboard['datasets'];
-  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  dataPipelines: DataPipeline[];
+  rawTables: DataDashboard['rawTables'];
+  onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -229,7 +229,7 @@ export function DataProcessActionEditor({
   const [generateOpen, setGenerateOpen] = useState(false);
   const generationSessionId = String(node.config.generationSessionId ?? '');
   const generationRequestId = String(node.config.generationRequestId ?? '');
-  useDataTaskAuthoringCompletion(
+  useDataPipelineAuthoringCompletion(
     generationSessionId && generationRequestId
       ? { sessionId: generationSessionId, requestId: generationRequestId }
       : null,
@@ -244,7 +244,7 @@ export function DataProcessActionEditor({
               output: {
                 ...legacy.output,
                 location: 'local',
-                tableName: completion.result.outputTableName,
+                tableName: completion.result.resultTableName,
               },
             },
             completion.result
@@ -253,36 +253,40 @@ export function DataProcessActionEditor({
       } else
         onChange({
           ...node,
-          type: 'data.task.run',
+          type: 'data.pipeline.run',
           label: '',
           config: {
-            taskId: completion.result.taskId,
-            taskName: completion.result.taskName,
+            pipelineId: completion.result.pipelineId,
+            pipelineName: completion.result.pipelineName,
             outputMode: node.config.outputMode ?? 'persisted',
           },
         });
-      onGeneratedTaskSuccess(completion.result.workflowDslAvailable);
+      onGeneratedPipelineSuccess(completion.result.workflowDslAvailable);
     }
   );
-  // Legacy drafts can supply a selected cloud/local source to the shared task
-  // authoring dialog. New actions simply reference an existing data task.
+  // Legacy drafts can supply a selected cloud/local source to the shared pipeline
+  // authoring dialog. New actions simply reference an existing data pipeline.
   const legacyDraft = parseCloudAutomationConfig(node.config.cloudAutomation);
-  const selectedTaskId = String(node.config.taskId ?? '');
-  const selectedTask = dataTasks.find((task) => task.id === selectedTaskId);
-  const selectedInput = inputTables.find((table) => table.id === selectedTask?.sourceDatasetId);
-  const taskOptions =
-    selectedTaskId && !selectedTask
-      ? [{ id: selectedTaskId, name: String(node.config.taskName || selectedTaskId) }, ...dataTasks]
-      : dataTasks;
-  const selectTask = (taskId: string, taskName?: string) =>
+  const selectedPipelineId = String(node.config.pipelineId ?? '');
+  const selectedPipeline = dataPipelines.find((pipeline) => pipeline.id === selectedPipelineId);
+  const selectedInput = rawTables.find((table) => table.id === selectedPipeline?.sourceRawTableId);
+  const pipelineOptions =
+    selectedPipelineId && !selectedPipeline
+      ? [
+          { id: selectedPipelineId, name: String(node.config.pipelineName || selectedPipelineId) },
+          ...dataPipelines,
+        ]
+      : dataPipelines;
+  const selectPipeline = (pipelineId: string, pipelineName?: string) =>
     onChange({
       ...node,
-      type: 'data.task.run',
+      type: 'data.pipeline.run',
       label: '',
-      // Replacing the selected task also removes stale generated source/schema bindings.
+      // Replacing the selected pipeline also removes stale generated source/schema bindings.
       config: {
-        taskId,
-        taskName: taskName || dataTasks.find((task) => task.id === taskId)?.name,
+        pipelineId,
+        pipelineName:
+          pipelineName || dataPipelines.find((pipeline) => pipeline.id === pipelineId)?.name,
         outputMode: 'persisted',
       },
     });
@@ -301,15 +305,15 @@ export function DataProcessActionEditor({
     : null;
   return (
     <div className="space-y-3">
-      <FieldStack label={tr('schedule.dataTaskLabel', '数据任务')}>
+      <FieldStack label={tr('schedule.dataPipelineLabel', '数据加工')}>
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <LocalTableSelect
-              value={selectedTaskId}
-              tables={taskOptions}
-              placeholder={tr('schedule.dataTaskPlaceholder', '选择数据任务')}
-              searchPlaceholder={tr('schedule.dataTaskSearchPlaceholder', '搜索数据任务')}
-              onChange={(value) => selectTask(value)}
+              value={selectedPipelineId}
+              tables={pipelineOptions}
+              placeholder={tr('schedule.dataPipelinePlaceholder', '选择数据加工')}
+              searchPlaceholder={tr('schedule.dataPipelineSearchPlaceholder', '搜索数据加工')}
+              onChange={(value) => selectPipeline(value)}
             />
           </div>
           <Button
@@ -319,11 +323,11 @@ export function DataProcessActionEditor({
             onClick={() => setGenerateOpen(true)}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {tr('data.aiTaskGenerate', 'AI 生成数据任务')}
+            {tr('data.aiPipelineGenerate', 'AI 生成数据加工')}
           </Button>
         </div>
       </FieldStack>
-      {selectedTaskId && (
+      {selectedPipelineId && (
         <FieldStack label={tr('schedule.executionMode', '执行方式')}>
           <GlassSelect
             value={String(node.config.outputMode ?? 'persisted')}
@@ -345,7 +349,7 @@ export function DataProcessActionEditor({
             <p role="alert" className="text-xs text-warning">
               {tr(
                 'schedule.cloudSync.useOutputAction',
-                '数据处理结果请保存到本地输出表，再添加写入网盘文件动作。'
+                '数据处理结果请保存到本地结果表，再添加写入网盘文件动作。'
               )}
             </p>
             <Button
@@ -360,21 +364,21 @@ export function DataProcessActionEditor({
                       ...output,
                       location: 'local',
                       writeMode: 'replace',
-                      targetTableId: output.localOutputTableId,
+                      targetTableId: output.localResultTableId,
                     },
                   },
                 });
               }}
             >
-              {tr('schedule.cloudSync.useLocalOutput', '改为本地输出表')}
+              {tr('schedule.cloudSync.useLocalOutput', '改为本地结果表')}
             </Button>
           </div>
         )}
-      {selectedTaskId && <GeneratedTaskReviewCard node={node} tr={tr} />}
-      <DataTaskAiGenerateDialog
+      {selectedPipelineId && <GeneratedPipelineReviewCard node={node} tr={tr} />}
+      <DataPipelineAiGenerateDialog
         open={generateOpen}
         workingDirectory={workingDirectory}
-        boundInputTable={selectedInput ? { id: selectedInput.id, name: selectedInput.name } : null}
+        boundRawTable={selectedInput ? { id: selectedInput.id, name: selectedInput.name } : null}
         initialSource={legacySource}
         initialRequirement={legacyDraft?.processRequirement}
         initialOutput={legacyDraft ? { ...legacyDraft.output, location: 'local' } : undefined}
@@ -394,14 +398,14 @@ export function DataProcessActionEditor({
   );
 }
 
-export function GeneratedTaskReviewCard({
+export function GeneratedPipelineReviewCard({
   node,
   tr,
 }: {
   node: AutomationActionNode;
   tr: (key: string, fallback: string) => string;
 }) {
-  const taskId = String(node.config.taskId ?? '').trim();
+  const pipelineId = String(node.config.pipelineId ?? '').trim();
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [workflowDsl, setWorkflowDsl] = useState('');
   const workflowRequestSeq = useRef(0);
@@ -417,12 +421,12 @@ export function GeneratedTaskReviewCard({
         .filter(Boolean)
     : [];
   const loadCurrentWorkflowDsl = useCallback(async () => {
-    if (!taskId || !dataClient.has('getTaskWorkflow')) return;
+    if (!pipelineId || !dataClient.has('getPipelineWorkflow')) return;
     const requestId = ++workflowRequestSeq.current;
     setIsLoadingWorkflowDsl(true);
     setWorkflowDslLoadFailed(false);
     try {
-      const workflow = await dataClient.getTaskWorkflow(taskId);
+      const workflow = await dataClient.getPipelineWorkflow(pipelineId);
       if (requestId !== workflowRequestSeq.current) return;
       setWorkflowDsl(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
     } catch {
@@ -432,7 +436,7 @@ export function GeneratedTaskReviewCard({
     } finally {
       if (requestId === workflowRequestSeq.current) setIsLoadingWorkflowDsl(false);
     }
-  }, [taskId]);
+  }, [pipelineId]);
 
   useEffect(() => {
     setWorkflowOpen(false);
@@ -447,9 +451,9 @@ export function GeneratedTaskReviewCard({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-medium text-text-muted">
-          {tr('schedule.dataTaskLogic', '任务逻辑')}
+          {tr('schedule.dataPipelineLogic', '任务逻辑')}
         </span>
-        {taskId && (
+        {pipelineId && (
           <button
             type="button"
             className="flex items-center gap-1 text-[12px] font-medium text-accent"
@@ -475,7 +479,7 @@ export function GeneratedTaskReviewCard({
         </div>
       )}
       {workflowOpen &&
-        taskId &&
+        pipelineId &&
         (isLoadingWorkflowDsl ? (
           <div
             className="flex items-center gap-2 text-[12px] text-text-muted"
@@ -494,7 +498,7 @@ export function GeneratedTaskReviewCard({
           </div>
         ) : (
           <pre className="max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
-            {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据任务没有可展示的处理逻辑')}
+            {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据加工没有可展示的处理逻辑')}
           </pre>
         ))}
     </div>
@@ -503,21 +507,21 @@ export function GeneratedTaskReviewCard({
 
 export function ActionConfigEditor({
   node,
-  dataTasks,
-  inputTables,
-  outputTables,
+  dataPipelines,
+  rawTables,
+  resultTables,
   appConfig,
-  onGeneratedTaskSuccess,
+  onGeneratedPipelineSuccess,
   workingDirectory,
   onChange,
   tr,
 }: {
   node: AutomationActionNode;
-  dataTasks: DataCleaningTask[];
-  inputTables: DataDashboard['datasets'];
-  outputTables: DataDashboard['outputTables'];
+  dataPipelines: DataPipeline[];
+  rawTables: DataDashboard['rawTables'];
+  resultTables: DataDashboard['resultTables'];
   appConfig: AppConfig | null;
-  onGeneratedTaskSuccess: (workflowDslAvailable: boolean) => void;
+  onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
   tr: (key: string, fallback: string) => string;
@@ -548,9 +552,9 @@ export function ActionConfigEditor({
       {isDataProcessNode(node) && (
         <DataProcessActionEditor
           node={node}
-          dataTasks={dataTasks}
-          inputTables={inputTables}
-          onGeneratedTaskSuccess={onGeneratedTaskSuccess}
+          dataPipelines={dataPipelines}
+          rawTables={rawTables}
+          onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
           workingDirectory={workingDirectory}
           onChange={onChange}
           tr={tr}
@@ -559,28 +563,28 @@ export function ActionConfigEditor({
       {node.type === 'cloud.sync' && (
         <CloudSyncEditor
           node={node}
-          inputTables={inputTables}
-          outputTables={outputTables}
+          rawTables={rawTables}
+          resultTables={resultTables}
           onChange={onChange}
         />
       )}
-      {node.type === 'data.input.preview' && (
+      {node.type === 'data.raw.preview' && (
         <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
           <SelectLine
-            value={String(node.config.inputTableId ?? '')}
-            options={inputTables.map((table) => ({ value: table.id, label: table.name }))}
-            placeholder={tr('schedule.inputTablePlaceholder', '选择输入表')}
-            onChange={(value) => setConfig({ ...node.config, inputTableId: value, limit: 20 })}
+            value={String(node.config.rawTableId ?? '')}
+            options={rawTables.map((table) => ({ value: table.id, label: table.name }))}
+            placeholder={tr('schedule.rawTablePlaceholder', '选择原始表')}
+            onChange={(value) => setConfig({ ...node.config, rawTableId: value, limit: 20 })}
           />
         </ConfigRow>
       )}
-      {node.type === 'data.output.preview' && (
-        <ConfigRow label={tr('schedule.outputDataLabel', '输出表')}>
+      {node.type === 'data.result.preview' && (
+        <ConfigRow label={tr('schedule.outputDataLabel', '结果表')}>
           <SelectLine
-            value={String(node.config.outputTableId ?? '')}
-            options={outputTables.map((table) => ({ value: table.id, label: table.name }))}
-            placeholder={tr('schedule.outputTablePlaceholder', '选择输出表')}
-            onChange={(value) => setConfig({ ...node.config, outputTableId: value, limit: 20 })}
+            value={String(node.config.resultTableId ?? '')}
+            options={resultTables.map((table) => ({ value: table.id, label: table.name }))}
+            placeholder={tr('schedule.resultTablePlaceholder', '选择结果表')}
+            onChange={(value) => setConfig({ ...node.config, resultTableId: value, limit: 20 })}
           />
         </ConfigRow>
       )}
@@ -618,13 +622,13 @@ export function getActionTitle(
   tr: (key: string, fallback: string) => string
 ): string {
   if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle', '云空间同步');
-  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.task.run') {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.pipeline.run') {
     return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
   }
-  if (type === 'data.task.run') {
+  if (type === 'data.pipeline.run') {
     return tr('schedule.dataProcessActionTitle', '数据处理');
   }
   if (isDataActionType(type)) {
@@ -637,10 +641,10 @@ export function getActionMenuDescription(
   type: string,
   tr: (key: string, fallback: string) => string
 ): string | undefined {
-  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.task.run') {
+  if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.pipeline.run') {
     return tr(
       'schedule.dataProcessActionDescription',
-      '执行已有数据任务，或调用数据任务的 AI 生成功能创建任务'
+      '执行已有数据加工，或调用数据加工的 AI 生成功能创建任务'
     );
   }
   if (type === 'cloud.sync') {
@@ -668,11 +672,11 @@ export function getActionIcon(type: string, node?: AutomationActionNode): Lucide
   return CalendarClock;
 }
 
-// A node belongs to the unified "数据处理" action when it either runs a saved data task
-// (复用数据任务) or is a cloud-table conversation carrying a cloudAutomation config (AI 描述).
+// A node belongs to the unified "数据处理" action when it either runs a saved data pipeline
+// (复用数据加工) or is a cloud-table conversation carrying a cloudAutomation config (AI 描述).
 export function isDataProcessNode(node: AutomationActionNode): boolean {
   if (node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE) return true;
-  if (node.type === 'data.task.run') return true;
+  if (node.type === 'data.pipeline.run') return true;
   return (
     node.type === 'conversation.run' &&
     Boolean(parseCloudAutomationConfig(node.config.cloudAutomation))
@@ -688,14 +692,14 @@ export function getNodeLabel(
   }
   if (node.type === 'cloud.sync' && (!node.label || node.label === node.type)) {
     if (node.config.direction === 'input')
-      return tr('schedule.cloudInput.title', '云端表同步到输入表');
+      return tr('schedule.cloudInput.title', '云端表同步到原始表');
     if (node.config.direction === 'output')
-      return tr('schedule.cloudSync.title', '输出表写入网盘文件');
+      return tr('schedule.cloudSync.title', '结果表写入网盘文件');
   }
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;
   if (node.type === 'conversation.run' && node.label === 'Conversation') return fallback;
-  if (node.type === 'data.task.run' && node.label === 'Data task') return fallback;
+  if (node.type === 'data.pipeline.run' && node.label === 'Data pipeline') return fallback;
   return node.label;
 }
 

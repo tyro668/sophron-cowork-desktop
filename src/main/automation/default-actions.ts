@@ -1,6 +1,6 @@
 import { registerCloudSyncAction } from './cloud-sync-action';
 import type { AutomationStore } from './automation-store';
-import type { DataTaskStore } from '../data/data-task-store';
+import type { DataPipelineStore } from '../data/data-pipeline-store';
 import type { DataCommandService } from '../data/data-command-service';
 import type { SessionManager } from '../session/session-manager';
 import type { AgentRuntimeConfig } from '../../shared/contracts';
@@ -12,7 +12,7 @@ import {
 import { AutomationActionRegistry, objectSchema } from './automation-action-registry';
 
 interface DefaultAutomationActionOptions {
-  dataTaskStore: DataTaskStore;
+  dataPipelineStore: DataPipelineStore;
   automationStore?: AutomationStore;
   dataCommandService?: DataCommandService;
   sessionManager: SessionManager;
@@ -138,16 +138,16 @@ export function createDefaultAutomationActionRegistry(
   });
 
   registry.register({
-    type: 'data.task.run',
-    title: 'Run data task',
-    description: 'Run a saved data task and emit the produced output table.',
+    type: 'data.pipeline.run',
+    title: 'Run data pipeline',
+    description: 'Run a saved data pipeline and emit the produced output table.',
     category: 'data',
     icon: 'database',
     version: 1,
-    defaultConfig: { taskId: '', outputMode: 'persisted' },
+    defaultConfig: { pipelineId: '', outputMode: 'persisted' },
     configSchema: objectSchema(
       {
-        taskId: { type: 'string', title: 'Data task' },
+        pipelineId: { type: 'string', title: 'Data pipeline' },
         outputMode: {
           type: 'string',
           title: 'Output mode',
@@ -155,49 +155,50 @@ export function createDefaultAutomationActionRegistry(
           default: 'persisted',
         },
       },
-      ['taskId']
+      ['pipelineId']
     ),
     validate: (config) => {
-      if (!String(config.taskId ?? '').trim()) {
-        throw new Error('data.task.run requires taskId');
+      if (!String(config.pipelineId ?? '').trim()) {
+        throw new Error('data.pipeline.run requires pipelineId');
       }
     },
     execute: async (config, context, node) => {
-      const taskId = String(config.taskId);
-      const task = await options.dataTaskStore.runTask(taskId, {
+      const pipelineId = String(config.pipelineId);
+      const pipeline = await options.dataPipelineStore.runPipeline(pipelineId, {
         outputMode: config.outputMode === 'temporary' ? 'temporary' : 'persisted',
       });
-      const workflow = await options.dataTaskStore.getTaskWorkflow(taskId);
+      const workflow = await options.dataPipelineStore.getPipelineWorkflow(pipelineId);
       const outputNode = workflow.nodes.find((workflowNode) => workflowNode.type === 'output');
-      const outputTableId =
-        typeof outputNode?.config.outputDatasetId === 'string'
-          ? outputNode.config.outputDatasetId
-          : typeof outputNode?.config.outputTableId === 'string'
-            ? outputNode.config.outputTableId
+      const resultTableId =
+        typeof outputNode?.config.outputResultTableId === 'string'
+          ? outputNode.config.outputResultTableId
+          : typeof outputNode?.config.resultTableId === 'string'
+            ? outputNode.config.resultTableId
             : null;
       context.emitArtifact({
         sourceNodeId: node.id,
         kind: 'data_output',
-        title: task.name,
+        title: pipeline.name,
         summary:
-          task.rowCount === null
+          pipeline.rowCount === null
             ? undefined
-            : `${task.rowCount} rows, ${task.columnCount ?? 0} columns`,
-        dataRef: outputTableId ? { kind: 'output_table', id: outputTableId } : undefined,
+            : `${pipeline.rowCount} rows, ${pipeline.columnCount ?? 0} columns`,
+        dataRef: resultTableId ? { kind: 'result_table', id: resultTableId } : undefined,
       });
-      return task;
+      return pipeline;
     },
   });
 
   registry.register({
     type: 'cloud.table.process',
     title: 'Process cloud/local table',
-    description: 'Run a generated data task with runtime input/output bindings without LLM tokens.',
+    description:
+      'Run a generated data pipeline with runtime input/output bindings without LLM tokens.',
     category: 'data',
     icon: 'database',
     version: 1,
     defaultConfig: {
-      taskId: '',
+      pipelineId: '',
       source: null,
       output: null,
       requiredColumns: [],
@@ -209,7 +210,7 @@ export function createDefaultAutomationActionRegistry(
     },
     configSchema: objectSchema(
       {
-        taskId: { type: 'string', title: 'Data task' },
+        pipelineId: { type: 'string', title: 'Data pipeline' },
         source: { type: 'object', title: 'Runtime source' },
         output: { type: 'object', title: 'Runtime output' },
         requiredColumns: { type: 'array', title: 'Required columns', items: { type: 'object' } },
@@ -233,14 +234,14 @@ export function createDefaultAutomationActionRegistry(
           default: 'persisted',
         },
       },
-      ['taskId', 'source', 'output']
+      ['pipelineId', 'source', 'output']
     ),
     validate: (config) => {
       if (!options.dataCommandService) {
         throw new Error('cloud.table.process requires DataCommandService');
       }
-      if (!String(config.taskId ?? '').trim()) {
-        throw new Error('cloud.table.process requires taskId');
+      if (!String(config.pipelineId ?? '').trim()) {
+        throw new Error('cloud.table.process requires pipelineId');
       }
       if (!config.source || typeof config.source !== 'object') {
         throw new Error('cloud.table.process requires source');
@@ -260,11 +261,11 @@ export function createDefaultAutomationActionRegistry(
       }
       context.log({
         level: 'info',
-        message: 'Running generated data task without model tokens',
+        message: 'Running generated data pipeline without model tokens',
         details: { tokenUsage: 0 },
       });
-      const result = await options.dataCommandService.runGeneratedTask({
-        taskId: String(config.taskId),
+      const result = await options.dataCommandService.runGeneratedPipeline({
+        pipelineId: String(config.pipelineId),
         source: config.source as never,
         output: config.output as never,
         requiredColumns: Array.isArray(config.requiredColumns)
@@ -279,34 +280,34 @@ export function createDefaultAutomationActionRegistry(
       context.emitArtifact({
         sourceNodeId: node.id,
         kind: 'data_output',
-        title: result.task.name,
+        title: result.pipeline.name,
         summary:
-          result.task.rowCount === null
-            ? 'Generated data task completed with 0 model tokens'
-            : `${result.task.rowCount} rows, ${result.task.columnCount ?? 0} columns, 0 model tokens`,
-        dataRef: { kind: 'output_table', id: result.outputTableId },
+          result.pipeline.rowCount === null
+            ? 'Generated data pipeline completed with 0 model tokens'
+            : `${result.pipeline.rowCount} rows, ${result.pipeline.columnCount ?? 0} columns, 0 model tokens`,
+        dataRef: { kind: 'result_table', id: result.resultTableId },
       });
       return result;
     },
   });
 
   registry.register({
-    type: 'data.input.preview',
+    type: 'data.raw.preview',
     title: 'Preview input table',
     category: 'data',
     icon: 'table',
     version: 1,
-    defaultConfig: { inputTableId: '', limit: 20 },
+    defaultConfig: { rawTableId: '', limit: 20 },
     configSchema: objectSchema(
       {
-        inputTableId: { type: 'string', title: 'Input table' },
+        rawTableId: { type: 'string', title: 'Input table' },
         limit: { type: 'integer', title: 'Rows', default: 20 },
       },
-      ['inputTableId']
+      ['rawTableId']
     ),
     execute: async (config, context, node) => {
-      const preview = await options.dataTaskStore.previewDataset({
-        id: String(config.inputTableId),
+      const preview = await options.dataPipelineStore.previewRawTable({
+        id: String(config.rawTableId),
         limit: Number(config.limit) || 20,
       });
       context.emitArtifact({
@@ -315,29 +316,29 @@ export function createDefaultAutomationActionRegistry(
         title: 'Input preview',
         summary: `${preview.rows.length} preview rows`,
         content: JSON.stringify(preview.rows),
-        dataRef: { kind: 'input_table', id: String(config.inputTableId) },
+        dataRef: { kind: 'raw_table', id: String(config.rawTableId) },
       });
       return preview;
     },
   });
 
   registry.register({
-    type: 'data.output.preview',
+    type: 'data.result.preview',
     title: 'Preview output table',
     category: 'data',
     icon: 'table',
     version: 1,
-    defaultConfig: { outputTableId: '', limit: 20 },
+    defaultConfig: { resultTableId: '', limit: 20 },
     configSchema: objectSchema(
       {
-        outputTableId: { type: 'string', title: 'Output table' },
+        resultTableId: { type: 'string', title: 'Output table' },
         limit: { type: 'integer', title: 'Rows', default: 20 },
       },
-      ['outputTableId']
+      ['resultTableId']
     ),
     execute: async (config, context, node) => {
-      const preview = await options.dataTaskStore.previewDataset({
-        id: String(config.outputTableId),
+      const preview = await options.dataPipelineStore.previewRawTable({
+        id: String(config.resultTableId),
         limit: Number(config.limit) || 20,
       });
       context.emitArtifact({
@@ -346,7 +347,7 @@ export function createDefaultAutomationActionRegistry(
         title: 'Output preview',
         summary: `${preview.rows.length} preview rows`,
         content: JSON.stringify(preview.rows),
-        dataRef: { kind: 'output_table', id: String(config.outputTableId) },
+        dataRef: { kind: 'result_table', id: String(config.resultTableId) },
       });
       return preview;
     },

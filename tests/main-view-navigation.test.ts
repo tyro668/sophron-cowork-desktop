@@ -15,7 +15,7 @@ const dataDashboardHookPath = path.resolve(
 );
 const tasksPanelPath = path.resolve(
   process.cwd(),
-  'src/renderer/components/data-view/data-tasks/TasksPanel.tsx'
+  'src/renderer/components/data-view/data-pipelines/PipelinesPanel.tsx'
 );
 const skillsViewPath = path.resolve(process.cwd(), 'src/renderer/components/SkillsView.tsx');
 const zhPath = path.resolve(process.cwd(), 'src/shared/i18n/locales/zh.json');
@@ -38,8 +38,8 @@ describe('main workspace navigation', () => {
     const tasksPanel = fs.readFileSync(tasksPanelPath, 'utf8');
 
     expect(dashboardHook).toContain('dataClient.getDashboard');
-    expect(tasksPanel).toContain("t('data.newCleaningTask')");
-    expect(source).toContain("'data.tabs.tasks'");
+    expect(tasksPanel).toContain("t('data.newPipeline')");
+    expect(source).toContain("'data.tabs.pipelines'");
     expect(source).not.toContain('WelcomeView');
   });
 
@@ -82,7 +82,7 @@ describe('main workspace navigation', () => {
     expect(zh.mainNav.data).toBe('数据');
     expect(zh.mainNav.skills).toBe('技能');
     expect(zh.mainNav.automation).toBe('自动化');
-    expect(zh.data.newCleaningTask).toBe('新建任务');
-    expect(zh.data.tabs.tasks).toBe('数据任务');
+    expect(zh.data.newPipeline).toBe('新建数据加工');
+    expect(zh.data.tabs.pipelines).toBe('数据加工');
   });
 });

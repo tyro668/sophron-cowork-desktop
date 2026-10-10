@@ -1,19 +1,19 @@
 import { useTranslation } from 'react-i18next';
 import { CloudDownload, Database, FileUp } from 'lucide-react';
-import type { AutomationActionNode, DataDataset, DataOutputTable } from '../../../types';
+import type { AutomationActionNode, DataRawTable, DataResultTable } from '../../../types';
 import { Input } from '../../ui/input';
 import { ConfigSection, FieldStack, SelectLine } from './editor-controls';
 import { CloudResourceSelector, withSavedOption } from './cloud-resource-selector';
 
 export function CloudSyncEditor({
   node,
-  inputTables,
-  outputTables,
+  rawTables,
+  resultTables,
   onChange,
 }: {
   node: AutomationActionNode;
-  inputTables: DataDataset[];
-  outputTables: DataOutputTable[];
+  rawTables: DataRawTable[];
+  resultTables: DataResultTable[];
   onChange: (node: AutomationActionNode) => void;
 }) {
   const { t } = useTranslation();
@@ -32,7 +32,7 @@ export function CloudSyncEditor({
         ? {
             direction: 'input',
             tableKind: 'analysis',
-            outputTableId: undefined,
+            resultTableId: undefined,
             type: undefined,
             writeMode: undefined,
             fileId: undefined,
@@ -46,8 +46,8 @@ export function CloudSyncEditor({
             tableId: undefined,
             tableName: undefined,
             tableKind: undefined,
-            inputTableId: undefined,
-            inputTableName: undefined,
+            rawTableId: undefined,
+            rawTableName: undefined,
           }
     );
   };
@@ -91,31 +91,31 @@ export function CloudSyncEditor({
           >
             <FieldStack label={t('schedule.cloudInput.target')}>
               <SelectLine
-                value={String(config.inputTableId ?? '')}
+                value={String(config.rawTableId ?? '')}
                 options={[
                   { value: '__create__', label: t('schedule.cloudInput.create') },
                   ...withSavedOption(
-                    inputTables.map((table) => ({ value: table.id, label: table.name })),
-                    String(config.inputTableId ?? ''),
-                    String(config.inputTableName ?? '')
+                    rawTables.map((table) => ({ value: table.id, label: table.name })),
+                    String(config.rawTableId ?? ''),
+                    String(config.rawTableName ?? '')
                   ),
                 ]}
-                placeholder={t('schedule.inputTablePlaceholder')}
+                placeholder={t('schedule.rawTablePlaceholder')}
                 onChange={(value) => {
-                  const table = inputTables.find((table) => table.id === value);
+                  const table = rawTables.find((table) => table.id === value);
                   update({
-                    inputTableId: value === '__create__' ? undefined : value,
-                    inputTableName: table?.name,
+                    rawTableId: value === '__create__' ? undefined : value,
+                    rawTableName: table?.name,
                     ...(value === '__create__' ? { syncKey: crypto.randomUUID() } : {}),
                   });
                 }}
               />
             </FieldStack>
-            {!config.inputTableId && (
+            {!config.rawTableId && (
               <FieldStack label={t('schedule.cloudInput.name')}>
                 <Input
-                  value={String(config.inputTableName ?? '')}
-                  onChange={(event) => update({ inputTableName: event.target.value })}
+                  value={String(config.rawTableName ?? '')}
+                  onChange={(event) => update({ rawTableName: event.target.value })}
                 />
               </FieldStack>
             )}
@@ -136,13 +136,13 @@ export function CloudSyncEditor({
             >
               <FieldStack label={t('schedule.outputDataLabel')}>
                 <SelectLine
-                  value={String(config.outputTableId ?? '')}
+                  value={String(config.resultTableId ?? '')}
                   options={withSavedOption(
-                    outputTables.map((table) => ({ value: table.id, label: table.name })),
-                    String(config.outputTableId ?? '')
+                    resultTables.map((table) => ({ value: table.id, label: table.name })),
+                    String(config.resultTableId ?? '')
                   )}
-                  placeholder={t('schedule.outputTablePlaceholder')}
-                  onChange={(outputTableId) => update({ outputTableId })}
+                  placeholder={t('schedule.resultTablePlaceholder')}
+                  onChange={(resultTableId) => update({ resultTableId })}
                 />
               </FieldStack>
               <FieldStack label={t('schedule.cloudSync.writeMode')}>
@@ -188,7 +188,7 @@ export function CloudSyncEditor({
                     value={String(config.fileName ?? '')}
                     onChange={(event) => update({ fileName: event.target.value || undefined })}
                     placeholder={
-                      outputTables.find((table) => table.id === config.outputTableId)?.name
+                      resultTables.find((table) => table.id === config.resultTableId)?.name
                     }
                   />
                 </FieldStack>

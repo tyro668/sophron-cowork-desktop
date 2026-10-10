@@ -557,7 +557,7 @@ function formatAutomationNextRun(
 ): string {
   if (automation.trigger.kind === 'manual') {
     if (automation.outputBindings?.some((binding) => binding.runOnChange))
-      return tr('schedule.outputChangeTrigger', '输出表更新后执行');
+      return tr('schedule.outputChangeTrigger', '结果表更新后执行');
     return tr('schedule.noAutoTrigger', '无自动触发');
   }
   return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-';

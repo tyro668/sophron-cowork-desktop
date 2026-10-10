@@ -3,13 +3,13 @@
  * state, editor state, and UI state are built from. Pure types only; no
  * component or IPC logic lives here.
  */
-import type { DataDashboard, DataDataset, DataOutputTable } from '../../../types';
+import type { DataDashboard, DataRawTable, DataResultTable } from '../../../types';
 
-export type DataTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
-export type InputTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud' | 'file' | 'draft';
+export type DataTab = 'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis';
+export type RawTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud' | 'file' | 'draft';
 
 /** Locally-drafted input table not yet imported into the store. */
-export interface InputTableDraft {
+export interface RawTableDraft {
   id: string;
   name: string;
   createdAt: number;
@@ -18,11 +18,11 @@ export interface InputTableDraft {
 
 /** Which stored table the preview dialog is showing. */
 export type StoredPreviewTarget =
-  { kind: 'input'; dataset: DataDataset } | { kind: 'output'; outputTable: DataOutputTable };
+  { kind: 'raw'; rawTable: DataRawTable } | { kind: 'result'; resultTable: DataResultTable };
 
 export const EMPTY_DASHBOARD: DataDashboard = {
   summary: {
-    taskCount: 0,
+    pipelineCount: 0,
     workflowNodeCount: 0,
     runningCount: 0,
     todayScheduleCount: 0,
@@ -35,14 +35,14 @@ export const EMPTY_DASHBOARD: DataDashboard = {
       failed: 0,
     },
   },
-  tasks: [],
-  datasets: [],
-  outputTables: [],
+  pipelines: [],
+  rawTables: [],
+  resultTables: [],
   groups: [],
-  totalTasks: 0,
-  totalDatasets: 0,
-  totalOutputTables: 0,
-  taskGroupCounts: {},
-  datasetGroupCounts: {},
+  totalPipelines: 0,
+  totalRawTables: 0,
+  totalResultTables: 0,
+  pipelineGroupCounts: {},
+  rawTableGroupCounts: {},
   outputGroupCounts: {},
 };

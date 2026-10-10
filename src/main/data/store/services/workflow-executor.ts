@@ -2,8 +2,8 @@
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
-  DataCleaningTask,
-  DataRunTaskInput,
+  DataPipeline,
+  DataRunPipelineInput,
 } from '../../../../shared/contracts';
 import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
 import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
@@ -19,8 +19,8 @@ import { DataStoreContext } from '../data-store-context';
 import { isDuckDbTransactionStateError, tableNameFromId } from '../data-store-records';
 import { normalizeSourcePath, readRelationForPath } from '../input-source';
 import { CacheRepository } from '../repositories/cache-repository';
-import { DatasetRepository } from '../repositories/dataset-repository';
-import { TaskRepository } from '../repositories/task-repository';
+import { RawTableRepository } from '../repositories/raw-table-repository';
+import { PipelineRepository } from '../repositories/pipeline-repository';
 import { WatermarkRepository } from '../repositories/watermark-repository';
 import { WorkflowRepository } from '../repositories/workflow-repository';
 import {
@@ -32,7 +32,7 @@ import {
   normalizeRuntimeWorkflowInput,
   runtimeWorkflowToSaveInput,
   toPersistentCreateTableSql,
-  workflowRequiresTaskSource,
+  workflowRequiresPipelineSource,
 } from '../workflow-model';
 import { WorkflowBindingResolver } from './workflow-binding-resolver';
 import { WorkflowCompiler } from './workflow-compiler';
@@ -42,8 +42,8 @@ import { v4 as uuidv4 } from 'uuid';
 export class WorkflowExecutor {
   constructor(
     private readonly ctx: DataStoreContext,
-    private readonly tasks: TaskRepository,
-    private readonly datasets: DatasetRepository,
+    private readonly pipelines: PipelineRepository,
+    private readonly rawTables: RawTableRepository,
     private readonly caches: CacheRepository,
     private readonly watermarks: WatermarkRepository,
     private readonly workflows: WorkflowRepository,
@@ -166,7 +166,7 @@ export class WorkflowExecutor {
    * `incremental by [col]` to read rows newer than the stored watermark.
    */
   private async materializeInputSourceWithContract(
-    task: DataCleaningTask,
+    pipeline: DataPipeline,
     node: DataWorkflowNode,
     sourcePath: string | null,
     outputRelation: string,
@@ -175,16 +175,20 @@ export class WorkflowExecutor {
     const incrementalBy =
       typeof node.config.incrementalBy === 'string' ? node.config.incrementalBy.trim() : '';
     const relation = await this.compiler.materializeInputSource(node, sourcePath, outputRelation);
-    const usesInputTable =
-      node.config.source === 'dataset' ||
-      (typeof node.config.source !== 'string' && Boolean(node.config.datasetId));
+    const usesRawTable =
+      node.config.source === 'rawTable' ||
+      (typeof node.config.source !== 'string' && Boolean(node.config.rawTableId));
     // Older saved workflows may still contain incrementalBy on a bound table.
-    if (usesInputTable) return relation;
+    if (usesRawTable) return relation;
     if (!incrementalBy) return relation;
 
     const column = quoteIdentifier(incrementalBy);
     const table = quoteIdentifier(relation);
-    const previous = await this.watermarks.getTaskWatermark(task.id, node.id, incrementalBy);
+    const previous = await this.watermarks.getPipelineWatermark(
+      pipeline.id,
+      node.id,
+      incrementalBy
+    );
     if (previous !== null) {
       const filtered = `${relation}_incr`;
       await this.ctx.dropTableIfExists(filtered);
@@ -211,11 +215,11 @@ export class WorkflowExecutor {
     }
     return relation;
   }
-  async runTaskToTemporaryOutputUnsafe(
+  async runPipelineToTemporaryOutputUnsafe(
     id: string,
-    input: DataRunTaskInput
+    input: DataRunPipelineInput
   ): Promise<{
-    task: DataCleaningTask;
+    pipeline: DataPipeline;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
     watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
@@ -224,20 +228,22 @@ export class WorkflowExecutor {
     const diagnostics: PrepDiagnostic[] = [];
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
-    const task = await this.tasks.requireTask(id);
-    const sourcePath = input.sourcePath ? normalizeSourcePath(input.sourcePath) : task.sourcePath;
+    const pipeline = await this.pipelines.requirePipeline(id);
+    const sourcePath = input.sourcePath
+      ? normalizeSourcePath(input.sourcePath)
+      : pipeline.sourcePath;
     const startedAt = this.ctx.now();
     const runtimeWorkflow = input.workflow
-      ? normalizeRuntimeWorkflowInput(task.id, input.workflow, startedAt)
-      : await this.workflows.getRuntimeWorkflow(task.id);
-    if (!sourcePath && workflowRequiresTaskSource(runtimeWorkflow.nodes)) {
-      throw new Error('Data source file is required before running a cleaning task');
+      ? normalizeRuntimeWorkflowInput(pipeline.id, input.workflow, startedAt)
+      : await this.workflows.getRuntimeWorkflow(pipeline.id);
+    if (!sourcePath && workflowRequiresPipelineSource(runtimeWorkflow.nodes)) {
+      throw new Error('Data source file is required before running a cleaning pipeline');
     }
 
     const planDiagnostics =
       runtimeWorkflow.nodes.length > 0
-        ? await this.validator.validateWorkflowPlanForTask(
-            task.id,
+        ? await this.validator.validateWorkflowPlanForPipeline(
+            pipeline.id,
             runtimeWorkflowToSaveInput(runtimeWorkflow)
           )
         : [];
@@ -250,20 +256,20 @@ export class WorkflowExecutor {
     diagnostics.push(...planDiagnostics);
 
     try {
-      const result = await this.cleanSourceIntoTaskOutput(
-        task,
+      const result = await this.cleanSourceIntoPipelineOutput(
+        pipeline,
         sourcePath,
         runtimeWorkflow,
         'temporary',
         diagnostics
       );
       return {
-        task: {
-          ...task,
+        pipeline: {
+          ...pipeline,
           status: 'completed',
           sourcePath,
-          sourceDatasetId: result.sourceDatasetId,
-          outputTable: result.outputTable,
+          sourceRawTableId: result.sourceRawTableId,
+          resultTable: result.resultTable,
           rowCount: result.rowCount,
           columnCount: result.columnCount,
           error: null,
@@ -281,24 +287,24 @@ export class WorkflowExecutor {
       throw error;
     }
   }
-  async cleanSourceIntoTaskOutput(
-    task: DataCleaningTask,
+  async cleanSourceIntoPipelineOutput(
+    pipeline: DataPipeline,
     sourcePath: string | null,
     workflow: RuntimeWorkflow,
     outputMode: WorkflowOutputMode,
     diagnostics: PrepDiagnostic[] = []
   ): Promise<{
-    outputTable: string;
+    resultTable: string;
     rowCount: number;
     columnCount: number;
-    sourceDatasetId: string | null;
+    sourceRawTableId: string | null;
     nodeStats?: WorkflowNodeRunStat[];
     watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     if (workflow.nodes.length > 0) {
-      return this.runWorkflowIntoTaskOutput(
-        task,
+      return this.runWorkflowIntoPipelineOutput(
+        pipeline,
         sourcePath,
         workflow.nodes,
         workflow.edges,
@@ -308,69 +314,69 @@ export class WorkflowExecutor {
     }
 
     if (!sourcePath) {
-      throw new Error('Data source file is required before running a cleaning task');
+      throw new Error('Data source file is required before running a cleaning pipeline');
     }
 
-    const outputTable =
+    const resultTable =
       outputMode === 'temporary'
-        ? tableNameFromId('temp_task', `${task.id}_${uuidv4()}`)
-        : task.outputTable || tableNameFromId('clean_task', task.id);
-    const rawTable = tableNameFromId('raw_task', uuidv4());
+        ? tableNameFromId('temp_pipeline', `${pipeline.id}_${uuidv4()}`)
+        : pipeline.resultTable || tableNameFromId('clean_pipeline', pipeline.id);
+    const stagingTable = tableNameFromId('raw_pipeline', uuidv4());
     const relation = readRelationForPath(sourcePath, 'sourcePath');
-    await this.ctx.dropTableIfExists(rawTable);
-    await this.ctx.dropTableIfExists(outputTable);
+    await this.ctx.dropTableIfExists(stagingTable);
+    await this.ctx.dropTableIfExists(resultTable);
     try {
       await this.ctx.runSql(
-        `CREATE TEMP TABLE ${quoteIdentifier(rawTable)} AS SELECT * FROM ${relation}`,
+        `CREATE TEMP TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${relation}`,
         { sourcePath }
       );
-      const columns = await this.ctx.getTableColumns(rawTable);
+      const columns = await this.ctx.getTableColumns(stagingTable);
       const nonEmptyFilter =
         columns.length > 0
           ? columns.map((column) => `${quoteIdentifier(column)} IS NOT NULL`).join(' OR ')
           : 'true';
       await this.ctx.runSql(
         `
-            CREATE TABLE ${quoteIdentifier(outputTable)} AS
+            CREATE TABLE ${quoteIdentifier(resultTable)} AS
             SELECT DISTINCT *
-            FROM ${quoteIdentifier(rawTable)}
+            FROM ${quoteIdentifier(stagingTable)}
             WHERE ${nonEmptyFilter}
           `
       );
-      const rowCount = await this.ctx.countRows(outputTable);
-      const columnCount = (await this.ctx.getTableColumns(outputTable)).length;
+      const rowCount = await this.ctx.countRows(resultTable);
+      const columnCount = (await this.ctx.getTableColumns(resultTable)).length;
       if (outputMode === 'temporary') {
-        return { outputTable, rowCount, columnCount, sourceDatasetId: null };
+        return { resultTable, rowCount, columnCount, sourceRawTableId: null };
       }
-      const dataset = await this.datasets.upsertDatasetForTaskOutput(
-        task.name,
+      const rawTable = await this.rawTables.upsertRawTableForPipelineOutput(
+        pipeline.name,
         sourcePath,
-        outputTable,
+        resultTable,
         rowCount,
         columnCount
       );
       return {
-        outputTable,
+        resultTable,
         rowCount,
         columnCount,
-        sourceDatasetId: dataset?.id ?? task.sourceDatasetId,
+        sourceRawTableId: rawTable?.id ?? pipeline.sourceRawTableId,
       };
     } finally {
-      await this.ctx.dropTableIfExists(rawTable);
+      await this.ctx.dropTableIfExists(stagingTable);
     }
   }
-  async runWorkflowIntoTaskOutput(
-    task: DataCleaningTask,
+  async runWorkflowIntoPipelineOutput(
+    pipeline: DataPipeline,
     sourcePath: string | null,
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
     outputMode: WorkflowOutputMode,
     diagnostics: PrepDiagnostic[] = []
   ): Promise<{
-    outputTable: string;
+    resultTable: string;
     rowCount: number;
     columnCount: number;
-    sourceDatasetId: string | null;
+    sourceRawTableId: string | null;
     nodeStats: WorkflowNodeRunStat[];
     watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
     stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
@@ -379,8 +385,8 @@ export class WorkflowExecutor {
     const outputNode = nodes.find((node) => node.type === 'output');
     const nodeStats: WorkflowNodeRunStat[] = [];
     try {
-      return await this.runWorkflowIntoTaskOutputInner(
-        task,
+      return await this.runWorkflowIntoPipelineOutputInner(
+        pipeline,
         sourcePath,
         nodes,
         edges,
@@ -397,8 +403,8 @@ export class WorkflowExecutor {
       throw error;
     }
   }
-  async runWorkflowIntoTaskOutputInner(
-    task: DataCleaningTask,
+  async runWorkflowIntoPipelineOutputInner(
+    pipeline: DataPipeline,
     sourcePath: string | null,
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
@@ -408,22 +414,22 @@ export class WorkflowExecutor {
     outputNode: DataWorkflowNode | null,
     nodeStats: WorkflowNodeRunStat[]
   ): Promise<{
-    outputTable: string;
+    resultTable: string;
     rowCount: number;
     columnCount: number;
-    sourceDatasetId: string | null;
+    sourceRawTableId: string | null;
     nodeStats: WorkflowNodeRunStat[];
     watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
     stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
   }> {
-    const outputTarget: { tableName: string; outputDatasetId?: string } =
+    const outputTarget: { tableName: string; outputResultTableId?: string } =
       outputMode === 'temporary'
-        ? { tableName: tableNameFromId('temp_task', `${task.id}_${uuidv4()}`) }
+        ? { tableName: tableNameFromId('temp_pipeline', `${pipeline.id}_${uuidv4()}`) }
         : await this.binding.resolveWorkflowOutputTarget(
             outputNode ?? undefined,
-            task.outputTable || tableNameFromId('clean_task', task.id)
+            pipeline.resultTable || tableNameFromId('clean_pipeline', pipeline.id)
           );
-    const outputTable = outputTarget.tableName;
+    const resultTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
     const visitingNodeIds = new Set<string>();
     const watermarkUpdates: Array<{ nodeId: string; column: string; value: string }> = [];
@@ -445,7 +451,7 @@ export class WorkflowExecutor {
     };
     const upstreamSignatureFor = (nodeId: string) =>
       getWorkflowUpstreamSignature(signatureInput, nodeId);
-    await this.ctx.dropTableIfExists(outputTable);
+    await this.ctx.dropTableIfExists(resultTable);
 
     const relationKeyOf = (nodeId: string, sourceHandle?: string | null) =>
       sourceHandle === 'reject' ? `${nodeId}#reject` : nodeId;
@@ -517,14 +523,14 @@ export class WorkflowExecutor {
       visitingNodeIds.add(nodeId);
       try {
         const outputRelation = this.caches.getWorkflowNodeCacheTableName(
-          task.id,
+          pipeline.id,
           node,
           cacheScope,
           cacheRunId
         );
         if (node.type === 'input_source') {
           const relation = await this.materializeInputSourceWithContract(
-            task,
+            pipeline,
             node,
             sourcePath,
             outputRelation,
@@ -668,7 +674,7 @@ export class WorkflowExecutor {
     };
 
     // Materialize every output sink into its own staging table; the first
-    // sink uses `outputTable` so task metadata/preview stay compatible.
+    // sink uses `resultTable` so pipeline metadata/preview stay compatible.
     const outputNodes = nodes.filter(
       (node) => node.type === 'output' && node.config.disabled !== true
     );
@@ -684,7 +690,7 @@ export class WorkflowExecutor {
           throw new Error(`Output node ${sinkNode.id} has no incoming edge`);
         }
         const sinkRelation = await materializeEdgeSource(sinkEdge);
-        const stagingTable = index === 0 ? outputTable : `${outputTable}__sink${index}`;
+        const stagingTable = index === 0 ? resultTable : `${resultTable}__sink${index}`;
         await this.ctx.dropTableIfExists(stagingTable);
         await this.ctx.runSql(
           `CREATE TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${quoteIdentifier(sinkRelation)}`
@@ -704,8 +710,8 @@ export class WorkflowExecutor {
         });
         stagedSinks.push({ nodeId: sinkNode.id, stagingTable });
       }
-      rowCount = await this.ctx.countRows(outputTable);
-      columnCount = (await this.ctx.getTableColumns(outputTable)).length;
+      rowCount = await this.ctx.countRows(resultTable);
+      columnCount = (await this.ctx.getTableColumns(resultTable)).length;
     } else {
       const finalInputId = findWorkflowTerminalNodeId(nodes, edges);
       if (!finalInputId) {
@@ -713,17 +719,17 @@ export class WorkflowExecutor {
       }
       const finalRelation = await materializeNode(finalInputId);
       await this.ctx.runSql(
-        `CREATE TABLE ${quoteIdentifier(outputTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
+        `CREATE TABLE ${quoteIdentifier(resultTable)} AS SELECT * FROM ${quoteIdentifier(finalRelation)}`
       );
-      rowCount = await this.ctx.countRows(outputTable);
-      columnCount = (await this.ctx.getTableColumns(outputTable)).length;
+      rowCount = await this.ctx.countRows(resultTable);
+      columnCount = (await this.ctx.getTableColumns(resultTable)).length;
     }
     if (outputMode === 'temporary') {
       return {
-        outputTable,
+        resultTable,
         rowCount,
         columnCount,
-        sourceDatasetId: null,
+        sourceRawTableId: null,
         nodeStats,
         watermarkUpdates,
         stagedSinks,
@@ -734,22 +740,22 @@ export class WorkflowExecutor {
         'Direct persisted writes support a single output sink; run temporary + commit instead'
       );
     }
-    const sourceDatasetId =
-      (await this.binding.findWorkflowSourceDatasetId(nodes)) ?? task.sourceDatasetId;
-    const dataset = await this.datasets.upsertDatasetForTaskOutput(
-      task.name,
+    const sourceRawTableId =
+      (await this.binding.findWorkflowSourceRawTableId(nodes)) ?? pipeline.sourceRawTableId;
+    const rawTable = await this.rawTables.upsertRawTableForPipelineOutput(
+      pipeline.name,
       sourcePath,
-      outputTable,
+      resultTable,
       rowCount,
       columnCount,
-      outputTarget.outputDatasetId
+      outputTarget.outputResultTableId
     );
-    void dataset;
+    void rawTable;
     return {
-      outputTable,
+      resultTable,
       rowCount,
       columnCount,
-      sourceDatasetId,
+      sourceRawTableId,
       nodeStats,
       watermarkUpdates,
       stagedSinks,

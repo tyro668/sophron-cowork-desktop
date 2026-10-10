@@ -1,4 +1,4 @@
-import type { DataTaskAuthoringCompletion } from '../../shared/data-task-authoring';
+import type { DataPipelineAuthoringCompletion } from '../../shared/data-pipeline-authoring';
 /**
  * AgentRunEventBridge — bridges sophron agent SDK session events into the
  * application's ServerEvent protocol during a single AgentRunner.run()
@@ -740,13 +740,13 @@ export class AgentRunEventBridge {
                 type: 'tool_result',
                 toolUseId: toolCallId,
                 content: outputText,
-                ...(!isError && event.toolName === 'data_generate_task_from_requirement'
+                ...(!isError && event.toolName === 'data_generate_pipeline_from_requirement'
                   ? {
-                      dataTaskCompletion: (
+                      dataPipelineCompletion: (
                         event.result as {
-                          details?: { dataTaskCompletion?: DataTaskAuthoringCompletion };
+                          details?: { dataPipelineCompletion?: DataPipelineAuthoringCompletion };
                         }
-                      )?.details?.dataTaskCompletion,
+                      )?.details?.dataPipelineCompletion,
                     }
                   : {}),
                 isError,

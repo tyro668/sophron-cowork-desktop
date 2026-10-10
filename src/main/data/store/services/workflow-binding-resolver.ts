@@ -1,10 +1,10 @@
-/** Binds workflow source/output configs to dataset + table records. */
+/** Binds workflow source/output configs to rawTable + table records. */
 import type { DataWorkflowNode, DataWorkflowNodeInput } from '../../../../shared/contracts';
-import { DatasetRepository } from '../repositories/dataset-repository';
-import { stringConfigValue, getOutputTableName } from '../workflow-model';
+import { RawTableRepository } from '../repositories/raw-table-repository';
+import { stringConfigValue, getResultTableName } from '../workflow-model';
 
 export class WorkflowBindingResolver {
-  constructor(private readonly datasets: DatasetRepository) {}
+  constructor(private readonly rawTables: RawTableRepository) {}
   async prepareWorkflowOutputNodesForSave(
     nodes: DataWorkflowNodeInput[],
     updatedAt: number
@@ -17,19 +17,19 @@ export class WorkflowBindingResolver {
       }
 
       const config = { ...(node.config ?? {}) };
-      const selectedOutputDatasetId =
-        stringConfigValue(config.outputDatasetId) || stringConfigValue(config.outputTableId);
+      const selectedOutputRawTableId =
+        stringConfigValue(config.outputResultTableId) || stringConfigValue(config.resultTableId);
       const configuredStrategy = stringConfigValue(config.outputStrategy);
       const outputStrategy =
         configuredStrategy === 'auto' || configuredStrategy === 'existing'
           ? configuredStrategy
-          : selectedOutputDatasetId
+          : selectedOutputRawTableId
             ? 'existing'
             : '';
 
       if (outputStrategy === 'auto') {
         const outputName =
-          stringConfigValue(config.outputTableName) || stringConfigValue(config.table);
+          stringConfigValue(config.resultTableName) || stringConfigValue(config.table);
         if (!outputName) {
           preparedNodes.push({
             ...node,
@@ -43,21 +43,21 @@ export class WorkflowBindingResolver {
           continue;
         }
 
-        const outputTable = selectedOutputDatasetId
-          ? await this.datasets.updateAutoOutputTableMetadata(
-              selectedOutputDatasetId,
+        const resultTable = selectedOutputRawTableId
+          ? await this.rawTables.updateAutoResultTableMetadata(
+              selectedOutputRawTableId,
               outputName,
               updatedAt
             )
-          : await this.datasets.createOutputTableMetadata(outputName, updatedAt);
+          : await this.rawTables.createResultTableMetadata(outputName, updatedAt);
         preparedNodes.push({
           ...node,
           config: {
             ...config,
             outputStrategy: 'auto',
-            outputTableName: outputTable.name,
-            outputDatasetId: outputTable.id,
-            table: outputTable.tableName,
+            resultTableName: resultTable.name,
+            outputResultTableId: resultTable.id,
+            table: resultTable.tableName,
             destination: 'duckdb_table',
             mode: stringConfigValue(config.mode) || 'replace',
           },
@@ -65,16 +65,16 @@ export class WorkflowBindingResolver {
         continue;
       }
 
-      if (selectedOutputDatasetId) {
-        const outputTable = await this.datasets.requireOutputTable(selectedOutputDatasetId);
+      if (selectedOutputRawTableId) {
+        const resultTable = await this.rawTables.requireResultTable(selectedOutputRawTableId);
         preparedNodes.push({
           ...node,
           config: {
             ...config,
             outputStrategy: 'existing',
-            outputTableName: outputTable.name,
-            outputDatasetId: outputTable.id,
-            table: outputTable.tableName,
+            resultTableName: resultTable.name,
+            outputResultTableId: resultTable.id,
+            table: resultTable.tableName,
             destination: 'duckdb_table',
             mode: stringConfigValue(config.mode) || 'replace',
           },
@@ -86,7 +86,7 @@ export class WorkflowBindingResolver {
     }
     return preparedNodes;
   }
-  async findWorkflowSourceDatasetId(nodes: DataWorkflowNode[]): Promise<string | null> {
+  async findWorkflowSourceRawTableId(nodes: DataWorkflowNode[]): Promise<string | null> {
     for (const node of nodes) {
       if (node.type !== 'input_source' || node.config.disabled === true) {
         continue;
@@ -94,25 +94,25 @@ export class WorkflowBindingResolver {
       const source =
         typeof node.config.source === 'string'
           ? node.config.source
-          : stringConfigValue(node.config.datasetId) ||
-              stringConfigValue(node.config.inputTableId) ||
-              stringConfigValue(node.config.sourceDatasetId)
-            ? 'dataset'
-            : 'task';
-      if (source !== 'dataset') {
+          : stringConfigValue(node.config.rawTableId) ||
+              stringConfigValue(node.config.rawTableId) ||
+              stringConfigValue(node.config.sourceRawTableId)
+            ? 'rawTable'
+            : 'pipeline';
+      if (source !== 'rawTable') {
         continue;
       }
 
-      const datasetRef =
-        stringConfigValue(node.config.datasetId) ||
-        stringConfigValue(node.config.inputTableId) ||
-        stringConfigValue(node.config.sourceDatasetId);
-      if (!datasetRef) {
+      const rawTableRef =
+        stringConfigValue(node.config.rawTableId) ||
+        stringConfigValue(node.config.rawTableId) ||
+        stringConfigValue(node.config.sourceRawTableId);
+      if (!rawTableRef) {
         continue;
       }
-      const dataset = await this.datasets.findDatasetByReference(datasetRef);
-      if (dataset) {
-        return dataset.id;
+      const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
+      if (rawTable) {
+        return rawTable.id;
       }
     }
     return null;
@@ -122,15 +122,15 @@ export class WorkflowBindingResolver {
     fallback: string
   ): Promise<{
     tableName: string;
-    outputDatasetId?: string;
+    outputResultTableId?: string;
     mode: 'replace' | 'append' | 'error_if_exists' | 'merge';
     mergeKeys: string[];
     schemaPolicy: 'extend' | 'strict' | 'ignore';
   }> {
     const destination = stringConfigValue(node?.config?.destination);
-    if (destination === 'dataset' || destination === 'file') {
+    if (destination === 'rawTable' || destination === 'file') {
       throw new Error(
-        `Output destination "${destination}" is not supported in task workflows; use "output table" instead`
+        `Output destination "${destination}" is not supported in pipeline workflows; use "output table" instead`
       );
     }
     const rawMode = stringConfigValue(node?.config?.mode) || 'replace';
@@ -162,21 +162,21 @@ export class WorkflowBindingResolver {
       );
     }
     const mode = rawMode;
-    const outputDatasetId =
-      stringConfigValue(node?.config?.outputDatasetId) ||
-      stringConfigValue(node?.config?.outputTableId);
-    if (outputDatasetId) {
-      const outputTable = await this.datasets.requireOutputTable(outputDatasetId);
+    const outputResultTableId =
+      stringConfigValue(node?.config?.outputResultTableId) ||
+      stringConfigValue(node?.config?.resultTableId);
+    if (outputResultTableId) {
+      const resultTable = await this.rawTables.requireResultTable(outputResultTableId);
       return {
-        tableName: outputTable.tableName,
-        outputDatasetId: outputTable.id,
+        tableName: resultTable.tableName,
+        outputResultTableId: resultTable.id,
         mode,
         mergeKeys,
         schemaPolicy: rawSchema,
       };
     }
     return {
-      tableName: getOutputTableName(node, fallback),
+      tableName: getResultTableName(node, fallback),
       mode,
       mergeKeys,
       schemaPolicy: rawSchema,

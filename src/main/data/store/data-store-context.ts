@@ -14,7 +14,7 @@ import {
 } from '../../../shared/data-field-types';
 import { log } from '../../utils/logger';
 import { compileTypedProjection, quoteIdentifier, toNumber } from '../operators';
-import { DataTaskStoreOptions, isDuckDbTransactionStateError } from './data-store-records';
+import { DataPipelineStoreOptions, isDuckDbTransactionStateError } from './data-store-records';
 import { inferDataFieldTypeFromValues } from './input-source';
 import { migrateMetadataSchema } from './migrations';
 import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api';
@@ -39,7 +39,7 @@ export class DataStoreContext {
   private readonly postReadyHooks: Array<() => Promise<void>> = [];
   private postReadyPromise: Promise<void> | null = null;
 
-  constructor(dbPath: string, options: DataTaskStoreOptions = {}) {
+  constructor(dbPath: string, options: DataPipelineStoreOptions = {}) {
     this.dbPath = dbPath;
     this.now = options.now ?? (() => Date.now());
     if (options.metadataDb) {
@@ -72,7 +72,7 @@ export class DataStoreContext {
     } finally {
       const durationMs = Date.now() - startedAt;
       if (waitMs > 0 || durationMs >= 1_000) {
-        log('[DataTaskStore] DuckDB exclusive section finished', {
+        log('[DataPipelineStore] DuckDB exclusive section finished', {
           label,
           waitMs,
           durationMs,
@@ -271,7 +271,7 @@ export class DataStoreContext {
   }
   async metaRunSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
     if (this.metadataReadOnly) {
-      throw new Error(this.metadataReadOnlyReason ?? 'Data task metadata store is read-only');
+      throw new Error(this.metadataReadOnlyReason ?? 'Data pipeline metadata store is read-only');
     }
     if (!this.metadataDb) {
       await this.runSql(sql, values);
@@ -292,55 +292,55 @@ export class DataStoreContext {
     }
     return this.metadataDb.prepare(sql).all(values ?? {}) as T[];
   }
-  relatedTaskNamesSeparatorSql(): string {
+  relatedPipelineNamesSeparatorSql(): string {
     return this.metadataDb ? 'char(31)' : 'chr(31)';
   }
-  inputTableRelatedTaskNamesSql(inputAlias: string): string {
+  rawTableRelatedPipelineNamesSql(inputAlias: string): string {
     return `
         (
-          SELECT group_concat(t.name, ${this.relatedTaskNamesSeparatorSql()})
-          FROM data_cleaning_tasks t
-          WHERE t.source_dataset_id = ${inputAlias}.id
+          SELECT group_concat(t.name, ${this.relatedPipelineNamesSeparatorSql()})
+          FROM data_pipelines t
+          WHERE t.source_raw_table_id = ${inputAlias}.id
             OR t.source_path = ${inputAlias}.source_path
             OR EXISTS (
               SELECT 1
               FROM data_workflow_nodes n
-              WHERE n.task_id = t.id
+              WHERE n.pipeline_id = t.id
                 AND coalesce(n.operator_type, n.node_key) IN ('input_source', 'read_source')
                 AND (
-                  coalesce(n.config_json, '') LIKE '%"datasetId":"' || ${inputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"datasetId": "' || ${inputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"inputTableId":"' || ${inputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"inputTableId": "' || ${inputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"sourceDatasetId":"' || ${inputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"sourceDatasetId": "' || ${inputAlias}.id || '"%'
+                  coalesce(n.config_json, '') LIKE '%"rawTableId":"' || ${inputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"rawTableId": "' || ${inputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"rawTableId":"' || ${inputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"rawTableId": "' || ${inputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"sourceRawTableId":"' || ${inputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"sourceRawTableId": "' || ${inputAlias}.id || '"%'
                 )
             )
         )
       `;
   }
-  outputTableRelatedTaskIdsSql(outputAlias: string): string {
-    return this.outputTableRelatedTaskSql(outputAlias, 'id');
+  resultTableRelatedPipelineIdsSql(outputAlias: string): string {
+    return this.resultTableRelatedPipelineSql(outputAlias, 'id');
   }
-  outputTableRelatedTaskNamesSql(outputAlias: string): string {
-    return this.outputTableRelatedTaskSql(outputAlias, 'name');
+  resultTableRelatedPipelineNamesSql(outputAlias: string): string {
+    return this.resultTableRelatedPipelineSql(outputAlias, 'name');
   }
-  private outputTableRelatedTaskSql(outputAlias: string, column: 'id' | 'name'): string {
+  private resultTableRelatedPipelineSql(outputAlias: string, column: 'id' | 'name'): string {
     return `
         (
-          SELECT group_concat(t.${column}, ${this.relatedTaskNamesSeparatorSql()})
-          FROM data_cleaning_tasks t
-          WHERE t.output_table = ${outputAlias}.table_name
+          SELECT group_concat(t.${column}, ${this.relatedPipelineNamesSeparatorSql()})
+          FROM data_pipelines t
+          WHERE t.result_table = ${outputAlias}.table_name
             OR EXISTS (
               SELECT 1
               FROM data_workflow_nodes n
-              WHERE n.task_id = t.id
-                AND coalesce(n.operator_type, n.node_key) IN ('output', 'write_duckdb_table', 'publish_dataset')
+              WHERE n.pipeline_id = t.id
+                AND coalesce(n.operator_type, n.node_key) IN ('output', 'write_duckdb_table', 'publish_rawTable')
                 AND (
-                  coalesce(n.config_json, '') LIKE '%"outputDatasetId":"' || ${outputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"outputDatasetId": "' || ${outputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"outputTableId":"' || ${outputAlias}.id || '"%'
-                  OR coalesce(n.config_json, '') LIKE '%"outputTableId": "' || ${outputAlias}.id || '"%'
+                  coalesce(n.config_json, '') LIKE '%"outputResultTableId":"' || ${outputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"outputResultTableId": "' || ${outputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"resultTableId":"' || ${outputAlias}.id || '"%'
+                  OR coalesce(n.config_json, '') LIKE '%"resultTableId": "' || ${outputAlias}.id || '"%'
                 )
             )
         )
@@ -351,7 +351,7 @@ export class DataStoreContext {
     // read-only — physical writes without matching metadata bookkeeping
     // would only produce orphan tables.
     if (this.metadataReadOnly) {
-      throw new Error(this.metadataReadOnlyReason ?? 'Data task store is read-only');
+      throw new Error(this.metadataReadOnlyReason ?? 'Data pipeline store is read-only');
     }
     const connection = this.requireConnection();
     await connection.run(sql, values);

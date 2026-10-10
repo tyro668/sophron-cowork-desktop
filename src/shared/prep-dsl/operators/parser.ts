@@ -159,7 +159,7 @@ export function parsePrepDsl(input: string): PrepParseResult {
     diagnostics.push(
       createPrepDiagnostic(
         'multiSourceMissingFrom',
-        'Multi-source tasks must use from <alias> or step <name> = <ref> to choose a chain input'
+        'Multi-source pipelines must use from <alias> or step <name> = <ref> to choose a chain input'
       )
     );
   }
@@ -352,30 +352,30 @@ function parseInputSource(
   }
   advance();
 
-  // Source type: task | file <string> | dataset <string>
+  // Source type: pipeline | file <string> | rawTable <string>
   const srcType = peek();
   if (!srcType || srcType.tokenType.name !== 'Identifier') {
-    error('Expected "task", "file", or "dataset"');
+    error('Expected "pipeline", "file", or "rawTable"');
     return null;
   }
   advance();
 
   const config: Record<string, unknown> = { dsl: text };
 
-  if (srcType.image === 'task') {
-    config.source = 'task';
+  if (srcType.image === 'pipeline') {
+    config.source = 'pipeline';
   } else if (srcType.image === 'file') {
     config.source = 'file';
     const pathToken = expectString('Expected file path string after "file"');
     if (!pathToken) return null;
     config.filePath = unquote(pathToken.image);
-  } else if (srcType.image === 'dataset') {
-    config.source = 'dataset';
-    const idToken = expectString('Expected dataset ID string after "dataset"');
+  } else if (srcType.image === 'rawTable') {
+    config.source = 'rawTable';
+    const idToken = expectString('Expected rawTable ID string after "rawTable"');
     if (!idToken) return null;
-    config.datasetId = unquote(idToken.image);
+    config.rawTableId = unquote(idToken.image);
   } else {
-    error(`Unknown source type "${srcType.image}". Expected "task", "file", or "dataset"`);
+    error(`Unknown source type "${srcType.image}". Expected "pipeline", "file", or "rawTable"`);
     return null;
   }
 
@@ -438,9 +438,9 @@ function parseInputSource(
         break;
       }
       case 'incremental': {
-        if (config.source === 'dataset') {
+        if (config.source === 'rawTable') {
           error(
-            'Input tables are always read in full; incremental by is only for task/file sources'
+            'Input tables are always read in full; incremental by is only for pipeline/file sources'
           );
           return null;
         }

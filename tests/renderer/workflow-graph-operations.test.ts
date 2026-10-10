@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { removeWorkflowNode } from '../../src/renderer/components/data-view/data-tasks/workflow/workflow-graph-operations';
+import { removeWorkflowNode } from '../../src/renderer/components/data-view/data-pipelines/workflow/workflow-graph-operations';
 import type {
-  DataCleaningTask,
-  DataTaskWorkflow,
+  DataPipeline,
+  DataPipelineWorkflow,
   DataWorkflowEdge,
   DataWorkflowNode,
 } from '../../src/shared/contracts';
 
-const task = { id: 'task-1' } as DataCleaningTask;
+const pipeline = { id: 'pipeline-1' } as DataPipeline;
 
 function node(id: string, type: DataWorkflowNode['type'] = 'filter'): DataWorkflowNode {
   return {
     id,
-    taskId: task.id,
+    pipelineId: pipeline.id,
     type,
     label: id,
     x: 0,
@@ -31,7 +31,7 @@ function edge(
 ): DataWorkflowEdge {
   return {
     id: `edge_${sourceNodeId}_${targetNodeId}_${sourceHandle}_${targetHandle}`,
-    taskId: task.id,
+    pipelineId: pipeline.id,
     sourceNodeId,
     targetNodeId,
     sourceHandle,
@@ -40,11 +40,11 @@ function edge(
   };
 }
 
-function workflow(nodes: DataWorkflowNode[], edges: DataWorkflowEdge[]): DataTaskWorkflow {
-  return { task, nodes, edges };
+function workflow(nodes: DataWorkflowNode[], edges: DataWorkflowEdge[]): DataPipelineWorkflow {
+  return { pipeline, nodes, edges };
 }
 
-function edgeExists(wf: DataTaskWorkflow, source: string, target: string): boolean {
+function edgeExists(wf: DataPipelineWorkflow, source: string, target: string): boolean {
   return wf.edges.some((e) => e.sourceNodeId === source && e.targetNodeId === target);
 }
 

@@ -1,14 +1,14 @@
-/** input-table normalizer artifact/version row access + project paths. */
+/** raw-table normalizer artifact/version row access + project paths. */
 import type {
-  DataInputTableNormalizerArtifact,
-  DataInputTableNormalizerArtifactVersion,
+  DataRawTableNormalizerArtifact,
+  DataRawTableNormalizerArtifactVersion,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
 import {
-  DataInputTableNormalizerArtifactRow,
-  DataInputTableNormalizerArtifactVersionRow,
-  mapInputTableNormalizerArtifactRow,
-  mapInputTableNormalizerArtifactVersionRow,
+  DataRawTableNormalizerArtifactRow,
+  DataRawTableNormalizerArtifactVersionRow,
+  mapRawTableNormalizerArtifactRow,
+  mapRawTableNormalizerArtifactVersionRow,
 } from '../data-store-records';
 import { sanitizeNormalizerPathSegment } from '../input-source';
 import { toNumber } from '../../operators';
@@ -16,63 +16,61 @@ import { dirname, join } from 'path';
 
 export class NormalizerRepository {
   constructor(private readonly ctx: DataStoreContext) {}
-  getInputTableNormalizerStorageRoot(): string {
-    return join(dirname(this.ctx.dbPath), 'input-table-normalizers');
+  getRawTableNormalizerStorageRoot(): string {
+    return join(dirname(this.ctx.dbPath), 'raw-table-normalizers');
   }
-  getInputTableNormalizerProjectDir(artifactId: string, versionId: string): string {
+  getRawTableNormalizerProjectDir(artifactId: string, versionId: string): string {
     return join(
-      this.getInputTableNormalizerStorageRoot(),
+      this.getRawTableNormalizerStorageRoot(),
       'projects',
       sanitizeNormalizerPathSegment(artifactId),
       sanitizeNormalizerPathSegment(versionId)
     );
   }
-  getInputTableNormalizerRunRoot(): string {
-    return join(this.getInputTableNormalizerStorageRoot(), 'runs');
+  getRawTableNormalizerRunRoot(): string {
+    return join(this.getRawTableNormalizerStorageRoot(), 'runs');
   }
-  async getInputTableNormalizerArtifact(
-    id: string
-  ): Promise<DataInputTableNormalizerArtifact | null> {
-    const rows = await this.ctx.metaQueryRows<DataInputTableNormalizerArtifactRow>(
-      'SELECT * FROM data_input_table_normalizer_artifacts WHERE id = $id LIMIT 1',
+  async getRawTableNormalizerArtifact(id: string): Promise<DataRawTableNormalizerArtifact | null> {
+    const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactRow>(
+      'SELECT * FROM data_raw_table_normalizer_artifacts WHERE id = $id LIMIT 1',
       { id }
     );
-    return rows[0] ? mapInputTableNormalizerArtifactRow(rows[0]) : null;
+    return rows[0] ? mapRawTableNormalizerArtifactRow(rows[0]) : null;
   }
-  async requireInputTableNormalizerArtifact(id: string): Promise<DataInputTableNormalizerArtifact> {
-    const artifact = await this.getInputTableNormalizerArtifact(id);
+  async requireRawTableNormalizerArtifact(id: string): Promise<DataRawTableNormalizerArtifact> {
+    const artifact = await this.getRawTableNormalizerArtifact(id);
     if (!artifact) {
       throw new Error(`Normalizer artifact not found: ${id}`);
     }
     return artifact;
   }
-  async listInputTableNormalizerArtifactVersions(
+  async listRawTableNormalizerArtifactVersions(
     artifactId: string
-  ): Promise<DataInputTableNormalizerArtifactVersion[]> {
-    const rows = await this.ctx.metaQueryRows<DataInputTableNormalizerArtifactVersionRow>(
+  ): Promise<DataRawTableNormalizerArtifactVersion[]> {
+    const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactVersionRow>(
       `
           SELECT *
-          FROM data_input_table_normalizer_artifact_versions
+          FROM data_raw_table_normalizer_artifact_versions
           WHERE artifact_id = $artifactId
           ORDER BY version DESC, created_at DESC
         `,
       { artifactId }
     );
-    return rows.map(mapInputTableNormalizerArtifactVersionRow);
+    return rows.map(mapRawTableNormalizerArtifactVersionRow);
   }
-  async getInputTableNormalizerArtifactVersion(
+  async getRawTableNormalizerArtifactVersion(
     id: string
-  ): Promise<DataInputTableNormalizerArtifactVersion | null> {
-    const rows = await this.ctx.metaQueryRows<DataInputTableNormalizerArtifactVersionRow>(
-      'SELECT * FROM data_input_table_normalizer_artifact_versions WHERE id = $id LIMIT 1',
+  ): Promise<DataRawTableNormalizerArtifactVersion | null> {
+    const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactVersionRow>(
+      'SELECT * FROM data_raw_table_normalizer_artifact_versions WHERE id = $id LIMIT 1',
       { id }
     );
-    return rows[0] ? mapInputTableNormalizerArtifactVersionRow(rows[0]) : null;
+    return rows[0] ? mapRawTableNormalizerArtifactVersionRow(rows[0]) : null;
   }
-  async requireInputTableNormalizerArtifactVersion(
+  async requireRawTableNormalizerArtifactVersion(
     id: string
-  ): Promise<DataInputTableNormalizerArtifactVersion> {
-    const version = await this.getInputTableNormalizerArtifactVersion(id);
+  ): Promise<DataRawTableNormalizerArtifactVersion> {
+    const version = await this.getRawTableNormalizerArtifactVersion(id);
     if (!version) {
       throw new Error(`Normalizer artifact version not found: ${id}`);
     }
@@ -89,7 +87,7 @@ export class NormalizerRepository {
   }): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          INSERT INTO data_input_table_normalizer_artifacts (
+          INSERT INTO data_raw_table_normalizer_artifacts (
             id, name, description, source_kind, primary_language, active_version_id,
             created_at, updated_at
           )
@@ -119,7 +117,7 @@ export class NormalizerRepository {
   }): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          UPDATE data_input_table_normalizer_artifacts
+          UPDATE data_raw_table_normalizer_artifacts
           SET name = $name,
               description = $description,
               source_kind = $sourceKind,
@@ -140,7 +138,7 @@ export class NormalizerRepository {
   async touchArtifact(artifactId: string, updatedAt: number): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          UPDATE data_input_table_normalizer_artifacts
+          UPDATE data_raw_table_normalizer_artifacts
           SET updated_at = $updatedAt
           WHERE id = $artifactId
         `,
@@ -154,7 +152,7 @@ export class NormalizerRepository {
   ): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          UPDATE data_input_table_normalizer_artifacts
+          UPDATE data_raw_table_normalizer_artifacts
           SET active_version_id = $versionId,
               updated_at = $updatedAt
           WHERE id = $artifactId
@@ -166,7 +164,7 @@ export class NormalizerRepository {
     const rows = await this.ctx.metaQueryRows<{ version: number | string }>(
       `
           SELECT coalesce(max(version), 0) + 1 AS version
-          FROM data_input_table_normalizer_artifact_versions
+          FROM data_raw_table_normalizer_artifact_versions
           WHERE artifact_id = $artifactId
         `,
       { artifactId }
@@ -191,7 +189,7 @@ export class NormalizerRepository {
   }): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          INSERT INTO data_input_table_normalizer_artifact_versions (
+          INSERT INTO data_raw_table_normalizer_artifact_versions (
             id, artifact_id, version, status, files_json, file_tree_hash, rule_prompt,
             source_summary_hash, entrypoint_json, dependency_prepare_json, runtime_json,
             dependencies_json, dependency_lock_hash, created_at, updated_at, published_at
@@ -227,7 +225,7 @@ export class NormalizerRepository {
   ): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          UPDATE data_input_table_normalizer_artifact_versions
+          UPDATE data_raw_table_normalizer_artifact_versions
           SET status = 'archived',
               updated_at = $updatedAt
           WHERE artifact_id = $artifactId
@@ -240,7 +238,7 @@ export class NormalizerRepository {
   async markVersionPublished(versionId: string, at: number): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          UPDATE data_input_table_normalizer_artifact_versions
+          UPDATE data_raw_table_normalizer_artifact_versions
           SET status = 'published',
               published_at = coalesce(published_at, $publishedAt),
               updated_at = $updatedAt
@@ -252,7 +250,7 @@ export class NormalizerRepository {
   async deleteVersionRow(versionId: string): Promise<void> {
     await this.ctx.metaRunSql(
       `
-          DELETE FROM data_input_table_normalizer_artifact_versions
+          DELETE FROM data_raw_table_normalizer_artifact_versions
           WHERE id = $versionId
         `,
       { versionId }

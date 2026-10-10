@@ -1,14 +1,14 @@
 import { registerCloudAnalysisIpc } from './cloud-analysis-ipc';
 import { registerDataGroupsIpc } from './data-groups-ipc';
-import { registerDataTasksIpc } from './data-tasks-ipc';
-import { registerInputTablesIpc } from './input-tables-ipc';
-import { registerOutputTablesIpc } from './output-tables-ipc';
+import { registerDataPipelinesIpc } from './data-pipelines-ipc';
+import { registerRawTablesIpc } from './raw-tables-ipc';
+import { registerResultTablesIpc } from './result-tables-ipc';
 import type { DataIpcContext } from './types';
 
 export function registerDataIpcHandlers(context: DataIpcContext): void {
-  registerDataTasksIpc(context);
+  registerDataPipelinesIpc(context);
   registerDataGroupsIpc(context);
-  registerInputTablesIpc(context);
-  registerOutputTablesIpc(context);
+  registerRawTablesIpc(context);
+  registerResultTablesIpc(context);
   registerCloudAnalysisIpc(context);
 }

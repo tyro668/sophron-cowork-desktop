@@ -5,7 +5,7 @@ Optimize for:
 - more future-useful experience chunks
 - less over-fragmentation
 - less over-expansion during navigation
-- better final answer support across mixed task types
+- better final answer support across mixed pipeline types
 
 Return JSON only:
 {

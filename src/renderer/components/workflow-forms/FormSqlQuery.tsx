@@ -115,7 +115,7 @@ export default function FormSqlQuery({
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="flex w-48 flex-shrink-0 flex-col overflow-hidden border-r border-border-muted">
-          <div className={categoryClass}>{tr('inputTable')}</div>
+          <div className={categoryClass}>{tr('rawTable')}</div>
           <button
             type="button"
             onClick={() => insertKeyword('input')}

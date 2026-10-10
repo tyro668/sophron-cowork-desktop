@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDefaultAutomationActionRegistry } from '../src/main/automation/default-actions';
 
-describe('generated data task automation action', () => {
-  it('rejects direct analysis-table writes before invoking the task runtime', async () => {
-    const runGeneratedTask = vi.fn();
+describe('generated data pipeline automation action', () => {
+  it('rejects direct analysis-table writes before invoking the pipeline runtime', async () => {
+    const runGeneratedPipeline = vi.fn();
     const registry = createDefaultAutomationActionRegistry({
-      dataTaskStore: {} as never,
-      dataCommandService: { runGeneratedTask } as never,
+      dataPipelineStore: {} as never,
+      dataCommandService: { runGeneratedPipeline } as never,
       sessionManager: {} as never,
     });
     const action = registry.get('cloud.table.process')!;
     const config = {
-      taskId: 'task',
+      pipelineId: 'pipeline',
       source: { location: 'local', tableId: 'input' },
       output: { location: 'cloud', targetTableId: 'remote' },
     };
@@ -19,16 +19,16 @@ describe('generated data task automation action', () => {
     await expect(action.execute(config, {} as never, {} as never)).rejects.toThrow(
       'schedule.cloudSync.useOutputAction'
     );
-    expect(runGeneratedTask).not.toHaveBeenCalled();
+    expect(runGeneratedPipeline).not.toHaveBeenCalled();
   });
   it('passes the certified input and output schemas to the runtime execution', async () => {
-    const runGeneratedTask = vi.fn(async () => ({
-      task: { name: 'generated task', rowCount: 1, columnCount: 1 },
-      outputTableId: 'output-1',
+    const runGeneratedPipeline = vi.fn(async () => ({
+      pipeline: { name: 'generated pipeline', rowCount: 1, columnCount: 1 },
+      resultTableId: 'output-1',
     }));
     const registry = createDefaultAutomationActionRegistry({
-      dataTaskStore: {} as never,
-      dataCommandService: { runGeneratedTask } as never,
+      dataPipelineStore: {} as never,
+      dataCommandService: { runGeneratedPipeline } as never,
       sessionManager: {} as never,
     });
     const action = registry.get('cloud.table.process');
@@ -37,7 +37,7 @@ describe('generated data task automation action', () => {
 
     await action?.execute(
       {
-        taskId: 'task-1',
+        pipelineId: 'pipeline-1',
         source: { location: 'local', tableId: 'input-1' },
         output: { location: 'local', writeMode: 'replace', targetTableId: 'output-1' },
         requiredColumns,
@@ -61,9 +61,9 @@ describe('generated data task automation action', () => {
       }
     );
 
-    expect(runGeneratedTask).toHaveBeenCalledWith(
+    expect(runGeneratedPipeline).toHaveBeenCalledWith(
       expect.objectContaining({
-        taskId: 'task-1',
+        pipelineId: 'pipeline-1',
         requiredColumns,
         expectedOutputSchema,
         schemaPolicy: 'strict',

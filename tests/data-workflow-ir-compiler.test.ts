@@ -38,16 +38,16 @@ const SOURCE = `function removeCount(input) {
   return workflow.step(input, "drop", { columns: ["记录数"] });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const cleaned = removeCount(input);
-  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
 
 function buildIr(source = SOURCE) {
   return executeWorkflowJavaScriptInSandbox({
     compiled: compileWorkflowJavaScript(source),
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
   });
 }
 
@@ -69,8 +69,8 @@ function exportGeneratedWorkflowDsl(
   const plan = compileLoweredWorkflowToPlatformNodes({
     semantics: generated,
     bindings: {
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
     },
   });
   return exportPrepWorkflowDsl(plan.nodes, plan.edges);
@@ -158,9 +158,9 @@ describe('JavaScript Workflow SDK pipeline', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const cleaned = nullifyMarkers(input);
-  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const ir = buildIr(source);
     expect(ir.operations[0]).toMatchObject({
@@ -186,8 +186,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(summarize(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(summarize(input), RESULT_TABLE_NAME);
 }`;
     const ir = buildIr(source);
     expect(ir.operations[0]).toMatchObject({
@@ -204,8 +204,8 @@ function main() {
   return workflow.step(input, "select", { columns: [42] });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(selectFields(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(selectFields(input), RESULT_TABLE_NAME);
 }`;
     expect(() => compileWorkflowJavaScript(invalidSelect, { columns: [] })).toThrow(
       /No overload matches this call|not assignable to type 'string'/
@@ -219,8 +219,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(convertValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(convertValue(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(invalidScale, { columns: [{ name: 'Value', type: 'text' }] })
@@ -232,8 +232,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(removeDuplicates(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(removeDuplicates(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(invalidKeepPolicy, {
@@ -250,8 +250,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(nullifyMarkers(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(nullifyMarkers(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(nonTextNullMarker, {
@@ -269,8 +269,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addTotal(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addTotal(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(invalidWindowStar, {
@@ -286,8 +286,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(takeTopRows(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(takeTopRows(input), RESULT_TABLE_NAME);
 }`;
 
     try {
@@ -319,8 +319,8 @@ function main() {
   return workflow.step(input, "derive", { column: "Result", expression: expr(row => ${expression}) });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`,
         { columns: [{ name: 'Value', type: 'integer' }] }
       );
@@ -341,8 +341,8 @@ function main() {
   return workflow.step(input, "derive", { column: "Result", expression: expr(row => row["Label"] + 1) });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`,
         { columns: [{ name: 'Label', type: 'text' }] }
       )
@@ -363,9 +363,9 @@ function addShare(input, totalAgg) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
+  const input = workflow.input(RAW_TABLE_ID);
   const totalAgg = summarize(input);
-  return workflow.output(addShare(input, totalAgg), OUTPUT_TABLE_NAME);
+  return workflow.output(addShare(input, totalAgg), RESULT_TABLE_NAME);
 }`;
 
     try {
@@ -392,9 +392,9 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const cleaned = nullifyMarkers(input);
-  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     expect(() => buildIr(source)).toThrow(
       'config.strategy must be one of drop_empty_rows, drop_rows_by_nulls, by_column; received "nullify_values"'
@@ -409,8 +409,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(summarize(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(summarize(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(listAggregate, {
@@ -430,8 +430,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(expandObject(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(expandObject(input), RESULT_TABLE_NAME);
 }`;
     expect(() =>
       compileWorkflowJavaScript(jsonObjectUnnest, {
@@ -489,8 +489,8 @@ function main() {}`;
   return workflow.step(input, "drop", { columns: ["记录数"] }));
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(removeCount(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(removeCount(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const patched = applyWorkflowFunctionPatch(
       invalidSource,
@@ -571,21 +571,21 @@ function main() {
       requirement: '删除记录数',
       columns: [{ name: '记录数', type: 'integer' }],
       bindings: {
-        inputTableId: 'runtime-input',
-        outputTableName: 'runtime-output',
+        rawTableId: 'runtime-input',
+        resultTableName: 'runtime-output',
         outputPhysicalTableName: 'runtime_output_physical',
       },
     });
     expect(plan.nodes.map((node) => node.type)).toEqual(['input_source', 'field_select', 'output']);
-    expect(plan.nodes[0]?.config).toMatchObject({ datasetId: 'runtime-input' });
+    expect(plan.nodes[0]?.config).toMatchObject({ rawTableId: 'runtime-input' });
     expect(plan.nodes.at(-1)?.config).toMatchObject({ table: 'runtime_output_physical' });
   });
 
   it('keeps generated artifacts DSL-free until native nodes export compatibility Prep DSL', () => {
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: SOURCE,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '删除记录数',
       columns: [{ name: '记录数', type: 'integer' }],
     });
@@ -600,7 +600,7 @@ function main() {
     ]);
     expect(result.platformOperators[0]?.config).not.toHaveProperty('dsl');
     const compatibilityDsl = exportGeneratedWorkflowDsl(result);
-    expect(compatibilityDsl).toContain('input source dataset "input-1" as src');
+    expect(compatibilityDsl).toContain('input source rawTable "input-1" as src');
     expect(compatibilityDsl).toContain('drop [记录数]');
     expect(compatibilityDsl).toContain('output table "output-1" mode replace');
     expect(result.operationOrigins?.[0]).toMatchObject({
@@ -616,8 +616,8 @@ function main() {
     ];
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: SOURCE,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '删除记录数',
       columns,
     });
@@ -641,8 +641,8 @@ function main() {
     const columns = [{ name: '记录数', type: 'integer' }];
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: SOURCE,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '删除记录数',
       columns,
     });
@@ -668,14 +668,14 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const derived = addProfitMargin(input);
-  return workflow.output(derived, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(derived, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '新增 Profit Margin，Sales 为 0 或空时结果置空',
       columns: [
         { name: 'Profit', type: 'decimal' },
@@ -700,13 +700,13 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(roundValue(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(roundValue(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '保留两位小数',
       columns: [{ name: 'Value', type: 'decimal' }],
     });
@@ -724,13 +724,13 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(stringifyValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(stringifyValue(input), RESULT_TABLE_NAME);
 }`;
     const result = compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '将数值转成大写文本',
       columns: [{ name: 'Value', type: 'integer' }],
     });
@@ -748,14 +748,14 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(roundValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(roundValue(input), RESULT_TABLE_NAME);
 }`;
     const compile = (javascriptSource: string) =>
       compileGeneratedJavaScriptWorkflow({
         javascriptSource,
-        inputTableId: 'input-1',
-        outputTableName: 'output-1',
+        rawTableId: 'input-1',
+        resultTableName: 'output-1',
         requirement: '转换为小数',
         columns: [{ name: 'Value', type: 'decimal' }],
       });
@@ -787,8 +787,8 @@ function main() {
   return input;
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(inspect(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(inspect(input), RESULT_TABLE_NAME);
 }`;
     const replacement = 'function inspect(input) { return input; }';
     const patched = applyWorkflowFunctionPatch(source, 'inspect', replacement);
@@ -797,14 +797,14 @@ function main() {
   });
 
   it('terminates non-terminating generated JavaScript in the sandbox', () => {
-    const source = `function spin(input) { while (true) {} }\nfunction main() { const input = workflow.input(INPUT_TABLE_ID); return workflow.output(spin(input), OUTPUT_TABLE_NAME); }`;
+    const source = `function spin(input) { while (true) {} }\nfunction main() { const input = workflow.input(RAW_TABLE_ID); return workflow.output(spin(input), RESULT_TABLE_NAME); }`;
     expect(() => buildIr(source)).toThrow(/timeout|timed out|Script execution/i);
   });
 
   it('does not expose Node globals or dynamic code generation', () => {
-    const processSource = `function inspect(input) { process.cwd(); return input; }\nfunction main() { const input = workflow.input(INPUT_TABLE_ID); return workflow.output(inspect(input), OUTPUT_TABLE_NAME); }`;
+    const processSource = `function inspect(input) { process.cwd(); return input; }\nfunction main() { const input = workflow.input(RAW_TABLE_ID); return workflow.output(inspect(input), RESULT_TABLE_NAME); }`;
     expect(() => buildIr(processSource)).toThrow(/process is not defined/);
-    const dynamicSource = `function inspect(input) { Function("return 1")(); return input; }\nfunction main() { const input = workflow.input(INPUT_TABLE_ID); return workflow.output(inspect(input), OUTPUT_TABLE_NAME); }`;
+    const dynamicSource = `function inspect(input) { Function("return 1")(); return input; }\nfunction main() { const input = workflow.input(RAW_TABLE_ID); return workflow.output(inspect(input), RESULT_TABLE_NAME); }`;
     expect(() => buildIr(dynamicSource)).toThrow(/Code generation from strings disallowed/);
   });
 });
@@ -816,13 +816,13 @@ it('compiles chained and/or conditions from generated expressions', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(keepUsableSales(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(keepUsableSales(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '保留 Sales 非空且非零或者 Profit 大于零的数据',
     columns: [
       { name: 'Sales', type: 'decimal' },
@@ -849,15 +849,15 @@ function sortShippingDays(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const derived = addShippingDays(input);
   const sorted = sortShippingDays(derived);
-  return workflow.output(sorted, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(sorted, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '新增 Shipping Days，计算运输天数并降序排列',
     columns: [
       { name: 'Order Date', type: 'date' },
@@ -883,14 +883,14 @@ it('compiles a conditional text flag with a native conditional expression', () =
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const derived = addHighDiscountFlag(input);
-  return workflow.output(derived, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(derived, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: 'Discount 大于等于 0.08 标记为高折扣，否则标记为普通折扣',
     columns: [{ name: 'Discount', type: 'decimal' }],
   });
@@ -912,15 +912,15 @@ it('rejects a native conditional when the condition is not boolean', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addInvalidFlag(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addInvalidFlag(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
 
   expect(() =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '创建标记',
       columns: [{ name: 'Discount', type: 'decimal' }],
     })
@@ -935,13 +935,13 @@ it('statically lowers native JavaScript row expressions to stable workflow IR', 
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addHighDiscountFlag(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addHighDiscountFlag(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const nativeResult = compileGeneratedJavaScriptWorkflow({
     javascriptSource: nativeSource,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '创建高折扣标记',
     columns: [{ name: 'Discount', type: 'decimal' }],
   });
@@ -964,8 +964,8 @@ it('accepts native expressions and rejects the legacy expression SDK', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addMargin(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addMargin(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const legacySource = `function addMargin(input) {
   return workflow.step(input, "derive", {
@@ -978,8 +978,8 @@ function main() {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addMargin(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addMargin(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const columns = [
     { name: 'Sales', type: 'decimal' },
@@ -1000,15 +1000,15 @@ it('reports native expression type errors at the original helper location', () =
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addInvalidFlag(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addInvalidFlag(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
 
   try {
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '创建标记',
       columns: [{ name: 'Discount', type: 'decimal' }],
     });
@@ -1035,15 +1035,15 @@ it('rejects unknown input columns in native JavaScript expressions', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addValue(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
 
   expect(() =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '创建字段',
       columns: [{ name: 'Discount', type: 'decimal' }],
     })
@@ -1063,14 +1063,14 @@ function sortShippingDays(input) {
   return workflow.step(input, "sort", { column: expr(row => row["Shipping Days"]), direction: "desc" });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const derived = addShippingDays(input);
-  return workflow.output(sortShippingDays(derived), OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(sortShippingDays(derived), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '计算运输天数并降序',
     columns: [
       { name: 'Order Date', type: 'date' },
@@ -1092,8 +1092,8 @@ it('keeps authoring JavaScript separate from executable source and expression si
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addValue(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const compiled = compileWorkflowJavaScript(source, {
     columns: [{ name: 'Sales', type: 'decimal' }],
@@ -1126,8 +1126,8 @@ it('rejects direct access to compiler-owned expression and finish identifiers', 
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`;
   expect(() => compileWorkflowJavaScript(forged)).toThrow(/reserved for the workflow compiler/);
 });
@@ -1143,8 +1143,8 @@ it('provides actionable repair guidance for statement-bodied expr callbacks', ()
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addProfitRate(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addProfitRate(input), RESULT_TABLE_NAME);
 }`;
 
   try {
@@ -1180,8 +1180,8 @@ it('rejects async callbacks and local bindings that shadow the native expression
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`;
   expect(() =>
     compileWorkflowJavaScript(asyncSource, {
@@ -1191,8 +1191,8 @@ function main() {
 
   const shadowedSource = `function inspect(expr) { return expr(() => 1); }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(inspect(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(inspect(input), RESULT_TABLE_NAME);
 }`;
   expect(() => compileWorkflowJavaScript(shadowedSource)).toThrow(/must not be redeclared/);
 
@@ -1204,8 +1204,8 @@ function addValue(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`;
   expect(() => compileWorkflowJavaScript(shadowedDomainFunction)).toThrow(
     /identifier round must not be redeclared/
@@ -1220,8 +1220,8 @@ it('does not trust marker-shaped objects as workflow expressions', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addValue(input), RESULT_TABLE_NAME);
 }`;
   expect(() => buildIr(source)).toThrow(/kind/);
 });
@@ -1232,8 +1232,8 @@ it('keeps sandbox SDK functions in the VM realm', () => {
   return input;
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(inspect(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(inspect(input), RESULT_TABLE_NAME);
 }`;
   expect(() => buildIr(source)).toThrow(/Code generation from strings disallowed/);
 });
@@ -1246,7 +1246,7 @@ it('does not let generated code forge the sandbox result by poisoning JSON', () 
   return input;
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
+  const input = workflow.input(RAW_TABLE_ID);
   return poison(input);
 }`;
 
@@ -1264,26 +1264,26 @@ it.each([
   {
     contract: 'a duplicate input call',
     source: `function main() {
-  const first = workflow.input(INPUT_TABLE_ID);
-  const second = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(second, OUTPUT_TABLE_NAME);
+  const first = workflow.input(RAW_TABLE_ID);
+  const second = workflow.input(RAW_TABLE_ID);
+  return workflow.output(second, RESULT_TABLE_NAME);
 }`,
     expected: /workflow\.input\(\) exactly once/,
   },
   {
     contract: 'a duplicate output call',
     source: `function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  workflow.output(input, OUTPUT_TABLE_NAME);
-  return workflow.output(input, OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  workflow.output(input, RESULT_TABLE_NAME);
+  return workflow.output(input, RESULT_TABLE_NAME);
 }`,
     expected: /workflow\.output\(\) exactly once/,
   },
   {
     contract: 'a main result other than the output return object',
     source: `function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  const output = workflow.output(input, OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  const output = workflow.output(input, RESULT_TABLE_NAME);
   return input;
 }`,
     expected: /main\(\) must return the object returned by workflow\.output\(\)/,
@@ -1292,17 +1292,17 @@ it.each([
     contract: 'an invented input binding',
     source: `function main() {
   const input = workflow.input("invented-input");
-  return workflow.output(input, OUTPUT_TABLE_NAME);
+  return workflow.output(input, RESULT_TABLE_NAME);
 }`,
-    expected: /bind workflow\.input\(\) to INPUT_TABLE_ID/,
+    expected: /bind workflow\.input\(\) to RAW_TABLE_ID/,
   },
   {
     contract: 'an invented output binding',
     source: `function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
+  const input = workflow.input(RAW_TABLE_ID);
   return workflow.output(input, "invented-output");
 }`,
-    expected: /bind workflow\.output\(\) to OUTPUT_TABLE_NAME/,
+    expected: /bind workflow\.output\(\) to RESULT_TABLE_NAME/,
   },
 ])('rejects $contract', ({ source, expected }) => {
   expect(() => buildIr(source)).toThrow(expected);
@@ -1313,8 +1313,8 @@ it('prevents operation payloads from overriding IR-owned fields', () => {
   return workflow.step(input, "drop", { columns: ["Value"], type: "derive" });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(removeValue(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(removeValue(input), RESULT_TABLE_NAME);
 }`;
   expect(() => buildIr(source)).toThrow(/reserved field: type/);
 });
@@ -1333,15 +1333,15 @@ function addAdjusted(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const gross = addGross(input);
   const adjusted = addAdjusted(gross);
-  return workflow.output(adjusted, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(adjusted, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '连续派生字段',
     columns: [{ name: 'Sales', type: 'decimal' }],
   });
@@ -1360,14 +1360,14 @@ it('allows one helper to compose multiple sequential named workflow operations',
   return cleaned;
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
+  const input = workflow.input(RAW_TABLE_ID);
   const prepared = prepareSales(input);
-  return workflow.output(prepared, OUTPUT_TABLE_NAME);
+  return workflow.output(prepared, RESULT_TABLE_NAME);
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '按销售额降序并删除 Row ID',
     columns: [
       { name: 'Sales', type: 'decimal' },
@@ -1398,15 +1398,15 @@ function addYear(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addYear(addLabel(input)), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addYear(addLabel(input)), RESULT_TABLE_NAME);
 }`;
 
   expect(() =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '先生成文本标签，再错误地提取年份',
       columns: [{ name: 'Category', type: 'text' }],
     })
@@ -1421,15 +1421,15 @@ it('requires an integer argument for round digits', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(addRounded(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(addRounded(input), RESULT_TABLE_NAME);
 }`;
 
   expect(() =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '按非法位数取整',
       columns: [{ name: 'Sales', type: 'decimal' }],
     })
@@ -1447,15 +1447,15 @@ function addDoubleRevenue(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const renamed = renameSales(input);
   const derived = addDoubleRevenue(renamed);
-  return workflow.output(derived, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(derived, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '重命名后派生字段',
     columns: [{ name: 'Sales', type: 'decimal' }],
   });
@@ -1472,8 +1472,8 @@ it('patches a helper even when its original native expression cannot be lowered'
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addFlag(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addFlag(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const replacement = `function addFlag(input) {
   return workflow.step(input, "derive", {
@@ -1484,8 +1484,8 @@ function main() {
   const patched = applyWorkflowFunctionPatch(failed, 'addFlag', replacement);
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: patched,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '折扣标记',
     columns: [{ name: 'Discount', type: 'decimal' }],
   });
@@ -1505,8 +1505,8 @@ it('accepts native contains and rejects the legacy contains chain', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(keepChairs(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(keepChairs(input), RESULT_TABLE_NAME);
 }`;
   const legacy = native.replace(
     'expr(row => contains(row["Product Name"], "Chair"))',
@@ -1530,13 +1530,13 @@ it('materializes a root boolean function used directly as a filter predicate', (
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(keepMatchingCodes(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(keepMatchingCodes(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '只保留编码格式正确的记录',
     columns: [{ name: 'Code', type: 'text' }],
   });
@@ -1562,16 +1562,16 @@ function keepRecent(input) {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
   const derived = addAmount(input);
   const filtered = keepRecent(derived);
-  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(filtered, RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const compile = (javascriptSource: string) =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '转换金额并过滤日期',
       columns: [
         { name: 'Raw', type: 'text' },
@@ -1606,13 +1606,13 @@ it('computes dateDiff for timestamp-typed columns', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(addElapsedHours(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(addElapsedHours(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`;
   const result = compileGeneratedJavaScriptWorkflow({
     javascriptSource: source,
-    inputTableId: 'input-1',
-    outputTableName: 'output-1',
+    rawTableId: 'input-1',
+    resultTableName: 'output-1',
     requirement: '计算相差小时数',
     columns: [
       { name: 'Started At', type: 'timestamp' },
@@ -1632,8 +1632,8 @@ it('rejects a generated percent limit whose offset would be discarded by the pla
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(takePercent(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(takePercent(input), RESULT_TABLE_NAME);
 }`;
 
   expect(() => compileWorkflowJavaScript(source, { columns: [] })).toThrow(
@@ -1661,8 +1661,8 @@ it('rejects an IR operation type that was not approved by requirement analysis',
   expect(() =>
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: SOURCE,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '删除记录数',
       columns: [{ name: '记录数', type: 'integer' }],
       requirementContract: {
@@ -1679,15 +1679,15 @@ it('rejects a generated operation variant that differs from the analyzed capabil
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID);
-  return workflow.output(deduplicate(input), OUTPUT_TABLE_NAME);
+  const input = workflow.input(RAW_TABLE_ID);
+  return workflow.output(deduplicate(input), RESULT_TABLE_NAME);
 }`;
 
   try {
     compileGeneratedJavaScriptWorkflow({
       javascriptSource: source,
-      inputTableId: 'input-1',
-      outputTableName: 'output-1',
+      rawTableId: 'input-1',
+      resultTableName: 'output-1',
       requirement: '按 id 去重并保留第一条',
       columns: [{ name: 'id', type: 'integer' }],
       requirementContract: {

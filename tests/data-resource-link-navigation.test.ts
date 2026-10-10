@@ -25,26 +25,26 @@ const dataNavigationPath = path.resolve(
   process.cwd(),
   'src/renderer/features/data/hooks/use-data-navigation.ts'
 );
-const inputTablePreviewDialogPath = path.resolve(
+const rawTablePreviewDialogPath = path.resolve(
   process.cwd(),
-  'src/renderer/components/data-view/input-table-preview-dialog.tsx'
+  'src/renderer/components/data-view/raw-table-preview-dialog.tsx'
 );
 const markdownPath = path.resolve(process.cwd(), 'src/renderer/components/MessageMarkdown.tsx');
 
 describe('data resource chat links', () => {
   it('round-trips app data resource hrefs', () => {
-    const href = createDataResourceHref('output_table', 'dataset output/1');
-    expect(href).toBe('#/data/output-tables/dataset%20output%2F1');
+    const href = createDataResourceHref('result_table', 'rawTable output/1');
+    expect(href).toBe('#/data/result-tables/rawTable%20output%2F1');
     expect(parseDataResourceHref(href)).toEqual({
-      kind: 'output_table',
-      id: 'dataset output/1',
+      kind: 'result_table',
+      id: 'rawTable output/1',
     });
-    expect(parseDataResourceHref('sophron://data/tasks/task_1')).toEqual({
-      kind: 'task',
+    expect(parseDataResourceHref('sophron://data/pipelines/task_1')).toEqual({
+      kind: 'pipeline',
       id: 'task_1',
     });
-    expect(normalizeDataResourceMarkdownLinks('[task](sophron://data/tasks/task_1)')).toBe(
-      '[task](#/data/tasks/task_1)'
+    expect(normalizeDataResourceMarkdownLinks('[pipeline](sophron://data/pipelines/task_1)')).toBe(
+      '[pipeline](#/data/pipelines/task_1)'
     );
   });
 
@@ -61,7 +61,7 @@ describe('data resource chat links', () => {
   it('keeps hash data links available after markdown sanitization', () => {
     const html = renderToStaticMarkup(
       React.createElement(MessageMarkdown, {
-        normalizedText: '[customers](#/data/input-tables/dataset_1)',
+        normalizedText: '[customers](#/data/raw-tables/rawTable_1)',
         components: {
           a({ href, children }: { href?: string; children?: React.ReactNode }) {
             return React.createElement('span', { 'data-href': href }, children);
@@ -70,7 +70,7 @@ describe('data resource chat links', () => {
       })
     );
 
-    expect(html).toContain('data-href="#/data/input-tables/dataset_1"');
+    expect(html).toContain('data-href="#/data/raw-tables/rawTable_1"');
   });
 
   it('lets DataView resolve and open each resource type by id', () => {
@@ -79,33 +79,33 @@ describe('data resource chat links', () => {
     // light wiring check that the page still mounts the navigation hook.
     const source = fs.readFileSync(dataNavigationPath, 'utf8');
     expect(source).toContain('pendingDataNavigation');
-    expect(source).toContain("target.kind === 'task'");
-    expect(source).toContain("target.kind === 'input_table'");
+    expect(source).toContain("target.kind === 'pipeline'");
+    expect(source).toContain("target.kind === 'raw_table'");
   });
 
-  it('keeps output table preview mapped to output-table copy', () => {
+  it('keeps output table preview mapped to result-table copy', () => {
     const dataView = fs.readFileSync(dataViewPagePath, 'utf8');
-    const previewDialog = fs.readFileSync(inputTablePreviewDialogPath, 'utf8');
-    expect(dataView).toContain("tableKind={preview.storedPreviewTarget?.kind ?? 'input'}");
-    expect(previewDialog).toContain("t('data.outputTables.previewTitle')");
-    expect(previewDialog).toContain("t('data.outputTables.previewEmpty')");
+    const previewDialog = fs.readFileSync(rawTablePreviewDialogPath, 'utf8');
+    expect(dataView).toContain("tableKind={preview.storedPreviewTarget?.kind ?? 'raw'}");
+    expect(previewDialog).toContain("t('data.resultTables.previewTitle')");
+    expect(previewDialog).toContain("t('data.resultTables.previewEmpty')");
   });
 
   it('exposes direct resource lookup IPC methods with input schemas', async () => {
     const invoke = vi.spyOn(ipcRenderer, 'invoke').mockResolvedValue(null);
     const api = createDataApi();
 
-    await api.getTask('task_1');
-    await api.getInputTable('ds_1');
-    await api.getOutputTable('out_1');
+    await api.getPipeline('task_1');
+    await api.getRawTable('ds_1');
+    await api.getResultTable('out_1');
 
-    expect(invoke).toHaveBeenCalledWith('data.getTask', 'task_1');
-    expect(invoke).toHaveBeenCalledWith('data.getInputTable', 'ds_1');
-    expect(invoke).toHaveBeenCalledWith('data.getOutputTable', 'out_1');
+    expect(invoke).toHaveBeenCalledWith('data.getPipeline', 'task_1');
+    expect(invoke).toHaveBeenCalledWith('data.getRawTable', 'ds_1');
+    expect(invoke).toHaveBeenCalledWith('data.getResultTable', 'out_1');
 
     // Every lookup channel must carry a positional input schema so main-side
     // handlers validate IPC arguments.
-    for (const channel of ['data.getTask', 'data.getInputTable', 'data.getOutputTable']) {
+    for (const channel of ['data.getPipeline', 'data.getRawTable', 'data.getResultTable']) {
       expect(IPC_INPUT_SCHEMAS[channel]).toBeDefined();
     }
   });

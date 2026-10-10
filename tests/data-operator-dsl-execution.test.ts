@@ -3,7 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 import {
   compilePrepWorkflowToFlow,
   exportPrepWorkflowDsl,
@@ -13,7 +16,7 @@ import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/wo
 import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 
 afterEach(() => {
   while (stores.length > 0) {
@@ -43,14 +46,14 @@ describe('operator DSL execution cases', () => {
       ].join('\n') + '\n',
       'utf8'
     );
-    const input = await store.importDataset({
+    const input = await store.importRawTable({
       name: 'AI date range orders',
       sourceKind: 'csv',
       filePath: ordersPath,
     });
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'AI compatible date range filter',
-      sourceDatasetId: input.id,
+      sourceRawTableId: input.id,
     });
     const generated = compileGeneratedJavaScriptWorkflow({
       javascriptSource: `function keepDateRange(input) {
@@ -63,11 +66,11 @@ describe('operator DSL execution cases', () => {
   });
 }
 function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });
-  return workflow.output(keepDateRange(input), OUTPUT_TABLE_NAME, { mode: "replace" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
+  return workflow.output(keepDateRange(input), RESULT_TABLE_NAME, { mode: "replace" });
 }`,
-      inputTableId: input.id,
-      outputTableName: 'ai_date_range_output',
+      rawTableId: input.id,
+      resultTableName: 'ai_date_range_output',
       requirement:
         '筛选 Order Date 在 2010-01-01 至 2010-03-31 之间且 Product Name 包含 Chair 的记录',
       columns: [
@@ -79,8 +82,8 @@ function main() {
     const nodePlan = compileLoweredWorkflowToPlatformNodes({
       semantics: generated,
       bindings: {
-        inputTableId: input.id,
-        outputTableName: 'ai_date_range_output',
+        rawTableId: input.id,
+        resultTableName: 'ai_date_range_output',
       },
     });
     const compatibilityDsl = exportPrepWorkflowDsl(nodePlan.nodes, nodePlan.edges);
@@ -88,9 +91,9 @@ function main() {
     expect(compatibilityDsl).toContain('derive [__sophron_ai_filter_predicate] =');
     expect(compatibilityDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
     expect(compatibilityDsl).toContain('drop [__sophron_ai_filter_predicate]');
-    await saveWorkflowDsl(store, task.id, compatibilityDsl);
+    await saveWorkflowDsl(store, pipeline.id, compatibilityDsl);
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
     const rows = await queryRows(
       dbPath,
@@ -108,27 +111,27 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Executable quoted-field sort',
       sourcePath: pricesPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as prices
+        input source pipeline as prices
           | drop [记录数]
           | sort by [\`Unit Price\`] asc
           | output table "operator_quoted_sort_output" mode replace
       `
     );
 
-    const workflow = await store.getTaskWorkflow(task.id);
+    const workflow = await store.getPipelineWorkflow(pipeline.id);
     expect(workflow.nodes.find((node) => node.type === 'sort')?.config.keys).toEqual([
       { field: 'Unit Price', direction: 'asc' },
     ]);
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
     const rows = await queryRows(
       dbPath,
@@ -153,15 +156,15 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Executable cleaning operators',
       sourcePath: ordersPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as orders
+        input source pipeline as orders
           | select [order_id], [dt], [region], [rev], [profit], [status], [updated_at]
           | map [dt] to [order_date], [rev] to [revenue]
           | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
@@ -175,9 +178,9 @@ function main() {
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    expect(completed.outputTable).toBe('operator_cleaning_output');
+    expect(completed.resultTable).toBe('operator_cleaning_output');
     expect(completed.rowCount).toBe(2);
 
     const rows = await queryRows(
@@ -201,22 +204,22 @@ function main() {
     const pricesPath = path.join(tempRoot, 'typed-missing-markers.csv');
     fs.writeFileSync(pricesPath, ['adj_close', '8.34', '16.14'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Typed missing marker comparison',
       sourcePath: pricesPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as prices
+        input source pipeline as prices
           | cast [adj_close] as decimal on_error null
           | missing value [adj_close] nullify values ("NULL", "N/A")
           | output table "typed_missing_marker_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
     expect(completed.rowCount).toBe(2);
 
@@ -243,15 +246,15 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Executable window derive',
       sourcePath: ordersPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as orders
+        input source pipeline as orders
           | cast [revenue] as float on_error null
           | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
           | filter [rn] <= 2
@@ -260,9 +263,9 @@ function main() {
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    expect(completed.outputTable).toBe('operator_window_derive_output');
+    expect(completed.resultTable).toBe('operator_window_derive_output');
     expect(completed.rowCount).toBe(4);
 
     const rows = await queryRows(
@@ -293,23 +296,23 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Executable same-field derive',
       sourcePath: pricesPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as prices
+        input source pipeline as prices
           | derive [\`Adj Close\`] = CAST(REPLACE([\`Adj Close\`], '$', '') AS DECIMAL(18,2))
           | output table "operator_same_field_derive_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    expect(completed.outputTable).toBe('operator_same_field_derive_output');
+    expect(completed.resultTable).toBe('operator_same_field_derive_output');
 
     const rows = await queryRows(
       dbPath,
@@ -336,24 +339,24 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'Executable profit filter sort',
       sourcePath: profitPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as profit
+        input source pipeline as profit
           | filter [Profit] >= 0
           | sort by [Profit] asc
           | output table "operator_profit_filter_sort_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    expect(completed.outputTable).toBe('operator_profit_filter_sort_output');
+    expect(completed.resultTable).toBe('operator_profit_filter_sort_output');
 
     const rows = await queryRows(
       dbPath,
@@ -362,9 +365,9 @@ function main() {
     expect(rows.map((row) => Number(row.Profit))).toEqual([0, 3.12, 29.64, 106.14]);
   });
 
-  it('preserves decimal values when filtering and sorting a dataset input source', async () => {
+  it('preserves decimal values when filtering and sorting a rawTable input source', async () => {
     const { dbPath, store, tempRoot } = createStore();
-    const profitPath = path.join(tempRoot, 'profit-dataset.csv');
+    const profitPath = path.join(tempRoot, 'profit-rawTable.csv');
     fs.writeFileSync(
       profitPath,
       [
@@ -377,34 +380,34 @@ function main() {
       ].join('\n') + '\n',
       'utf8'
     );
-    const input = await store.importDataset({
-      name: 'profit dataset',
+    const input = await store.importRawTable({
+      name: 'profit rawTable',
       sourceKind: 'csv',
       filePath: profitPath,
     });
 
-    const task = await store.createTask({
-      name: 'Executable profit dataset filter sort',
-      sourceDatasetId: input.id,
+    const pipeline = await store.createPipeline({
+      name: 'Executable profit rawTable filter sort',
+      sourceRawTableId: input.id,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source dataset "${input.id}" as src
+        input source rawTable "${input.id}" as src
           | filter [Profit] >= 0
           | sort by [Profit] asc
-          | output table "operator_profit_dataset_filter_sort_output" mode replace
+          | output table "operator_profit_rawTable_filter_sort_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    expect(completed.outputTable).toBe('operator_profit_dataset_filter_sort_output');
+    expect(completed.resultTable).toBe('operator_profit_rawTable_filter_sort_output');
 
     const rows = await queryRows(
       dbPath,
-      'SELECT "Row ID", Profit, Sales FROM operator_profit_dataset_filter_sort_output ORDER BY Profit ASC'
+      'SELECT "Row ID", Profit, Sales FROM operator_profit_rawTable_filter_sort_output ORDER BY Profit ASC'
     );
     expect(rows.map((row) => Number(row.Profit))).toEqual([0, 3.12, 29.64, 106.14]);
   });
@@ -418,25 +421,25 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'try_strptime partial error',
       sourcePath: datesPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as dates
+        input source pipeline as dates
           | cast [val] as date format "%Y-%m-%d" on_error null
           | output table "operator_try_strptime_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    const outputTable = completed.outputTable!;
+    const resultTable = completed.resultTable!;
 
-    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${resultTable} ORDER BY id`);
     expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
     expect(String(rows[0].val)).toBe('2024-03-15');
     expect(rows[1].val).toBeNull();
@@ -457,27 +460,27 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'try_strptime tz offsets',
       sourcePath: tsPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as timestamps
+        input source pipeline as timestamps
           | cast [val] as datetime on_error null
           | output table "operator_try_strptime_tz_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    const outputTable = completed.outputTable!;
+    const resultTable = completed.resultTable!;
 
     const rows = await queryRows(
       dbPath,
-      `SELECT id, val AT TIME ZONE 'UTC' AS val FROM ${outputTable} ORDER BY id`
+      `SELECT id, val AT TIME ZONE 'UTC' AS val FROM ${resultTable} ORDER BY id`
     );
     expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
     expect(String(rows[0].val)).toContain('02:00:00');
@@ -490,25 +493,25 @@ function main() {
     const decPath = path.join(tempRoot, 'decimal0.csv');
     fs.writeFileSync(decPath, ['id,val', '1,12.34', '2,56.78', '3,9.99'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'decimal scale 0',
       sourcePath: decPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as dec0
+        input source pipeline as dec0
           | cast [val] as decimal scale 0 on_error null
           | output table "operator_decimal_scale_0_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    const outputTable = completed.outputTable!;
+    const resultTable = completed.resultTable!;
 
-    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${resultTable} ORDER BY id`);
     expect(rows.map((r) => Number(r.val))).toEqual([12, 57, 10]);
   });
 
@@ -521,27 +524,27 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'decimal scale 18',
       sourcePath: decPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as dec18
+        input source pipeline as dec18
           | cast [val] as decimal scale 18 on_error null
           | output table "operator_decimal_scale_18_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    const outputTable = completed.outputTable!;
+    const resultTable = completed.resultTable!;
 
     const rows = await queryRows(
       dbPath,
-      `SELECT id, val::VARCHAR AS val_str FROM ${outputTable} ORDER BY id`
+      `SELECT id, val::VARCHAR AS val_str FROM ${resultTable} ORDER BY id`
     );
     expect(rows[0].val_str).toBe('3.141592653589793238');
     expect(rows[1].val_str).toBe('2.718281828459045235');
@@ -552,12 +555,12 @@ function main() {
     const decPath = path.join(tempRoot, 'decimal19.csv');
     fs.writeFileSync(decPath, ['id,val', '1,1.23'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'decimal scale 19',
       sourcePath: decPath,
     });
     const dsl = `
-      input source task as dec19
+      input source pipeline as dec19
         | cast [val] as decimal scale 19 on_error null
         | output table "operator_decimal_scale_19_output" mode replace
     `;
@@ -565,7 +568,7 @@ function main() {
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     // save-time plan validation rejects the out-of-range scale before any run
     await expect(
-      store.saveTaskWorkflow(task.id, {
+      store.savePipelineWorkflow(pipeline.id, {
         nodes: compiled.nodes,
         edges: compiled.edges,
       })
@@ -577,25 +580,25 @@ function main() {
     const keepPath = path.join(tempRoot, 'keep.csv');
     fs.writeFileSync(keepPath, ['id,val', '1,123', '2,abc', '3,456'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'on_error keep',
       sourcePath: keepPath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as keep
+        input source pipeline as keep
           | cast [val] as integer on_error keep
           | output table "operator_keep_output" mode replace
       `
     );
 
-    const completed = await store.runTask(task.id);
+    const completed = await store.runPipeline(pipeline.id);
     expect(completed.status).toBe('completed');
-    const outputTable = completed.outputTable!;
+    const resultTable = completed.resultTable!;
 
-    const rows = await queryRows(dbPath, `SELECT id, val FROM ${outputTable} ORDER BY id`);
+    const rows = await queryRows(dbPath, `SELECT id, val FROM ${resultTable} ORDER BY id`);
     expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
     expect(String(rows[0].val)).toBe('123');
     expect(String(rows[1].val)).toBe('abc');
@@ -611,12 +614,12 @@ function main() {
       'utf8'
     );
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'unnest json no config leak',
       sourcePath: jsonPath,
     });
     const parsed = parsePrepDsl(`
-      input source task as json_src
+      input source pipeline as json_src
         | explode json [payload] path "$"
         | output table "operator_unnest_json_output" mode replace
     `);
@@ -627,7 +630,7 @@ function main() {
     const unnestNode = workflow.nodes.find((node) => node.type === 'unnest');
     expect(unnestNode).toBeDefined();
 
-    const completed = await store.runTask(task.id, {
+    const completed = await store.runPipeline(pipeline.id, {
       workflow: { nodes: workflow.nodes, edges: workflow.edges },
     });
     expect(completed.status).toBe('completed');
@@ -640,16 +643,16 @@ function main() {
     const jsonPath = path.join(tempRoot, 'unnest-json-missing.csv');
     fs.writeFileSync(jsonPath, ['id,payload', '1,{"name":"alpha"}'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'unnest json missing column',
       sourcePath: jsonPath,
     });
     await expect(
       saveWorkflowDsl(
         store,
-        task.id,
+        pipeline.id,
         `
-          input source task as json_src
+          input source pipeline as json_src
             | explode json [ghost_column] path "$"
             | output table "operator_unnest_json_missing_output" mode replace
         `
@@ -662,21 +665,21 @@ function main() {
     const sourcePath = path.join(tempRoot, 'append-source.csv');
     fs.writeFileSync(sourcePath, ['id,name', '1,a', '2,b'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'append output mode',
       sourcePath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as src
+        input source pipeline as src
           | output table "operator_append_output" mode append
       `
     );
 
-    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
-    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
+    await expect(store.runPipeline(pipeline.id)).resolves.toMatchObject({ status: 'completed' });
+    await expect(store.runPipeline(pipeline.id)).resolves.toMatchObject({ status: 'completed' });
 
     const rows = await queryRows(dbPath, 'SELECT id FROM operator_append_output ORDER BY id');
     expect(rows.map((row) => String(row.id))).toEqual(['1', '1', '2', '2']);
@@ -687,26 +690,26 @@ function main() {
     const sourcePath = path.join(tempRoot, 'exists-source.csv');
     fs.writeFileSync(sourcePath, ['id', '1'].join('\n') + '\n', 'utf8');
 
-    const task = await store.createTask({
+    const pipeline = await store.createPipeline({
       name: 'error_if_exists output mode',
       sourcePath,
     });
     await saveWorkflowDsl(
       store,
-      task.id,
+      pipeline.id,
       `
-        input source task as src
+        input source pipeline as src
           | output table "operator_exists_output" mode error_if_exists
       `
     );
 
-    await expect(store.runTask(task.id)).resolves.toMatchObject({ status: 'completed' });
-    await expect(store.runTask(task.id)).rejects.toThrow(/already exists|error_if_exists/i);
+    await expect(store.runPipeline(pipeline.id)).resolves.toMatchObject({ status: 'completed' });
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/already exists|error_if_exists/i);
   });
 
-  it('flags output dataset/file destinations as unsupported at compile time', () => {
+  it('flags output rawTable/file destinations as unsupported at compile time', () => {
     const parsed = parsePrepDsl(
-      'input source task as src\n  | output dataset "results" mode replace'
+      'input source pipeline as src\n  | output rawTable "results" mode replace'
     );
     expect(parsed.ast).not.toBeNull();
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
@@ -714,25 +717,29 @@ function main() {
   });
 });
 
-function createStore(): { dbPath: string; store: DataTaskStore; tempRoot: string } {
+function createStore(): { dbPath: string; store: DataPipelineStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-operator-dsl-'));
   tempRoots.push(tempRoot);
   const dbPath = path.join(tempRoot, 'workspace.duckdb');
-  const store = createDataTaskStore(dbPath, {
+  const store = createDataPipelineStore(dbPath, {
     now: () => 1_780_000_000_000,
   });
   stores.push(store);
   return { dbPath, store, tempRoot };
 }
 
-async function saveWorkflowDsl(store: DataTaskStore, taskId: string, dsl: string): Promise<void> {
+async function saveWorkflowDsl(
+  store: DataPipelineStore,
+  pipelineId: string,
+  dsl: string
+): Promise<void> {
   const parsed = parsePrepDsl(dsl);
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   expect(parsed.ast).not.toBeNull();
 
   const compiled = compilePrepWorkflowToFlow(parsed.ast!);
   expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-  await store.saveTaskWorkflow(taskId, {
+  await store.savePipelineWorkflow(pipelineId, {
     nodes: compiled.nodes,
     edges: compiled.edges,
   });

@@ -44,7 +44,7 @@ describe('data intent routing', () => {
     const messages = [
       {
         role: 'assistant',
-        content: [{ type: 'tool_use', name: 'data_run_task', input: {} }],
+        content: [{ type: 'tool_use', name: 'data_run_pipeline', input: {} }],
       },
     ] as unknown as Message[];
     expect(detectDataIntent(ctx('然后呢', messages), noSticky).active).toBe(true);

@@ -20,12 +20,12 @@ import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
 import {
   LEGACY_DEMO_TASK_NAMES,
-  OUTPUT_TABLE_CONFIG_KIND,
-  isLegacyExplicitOutputTableRow,
-  outputTableConfigJson,
-  parseOutputTableConfig,
-  storedDatasetSourceKindSql,
-  type DataDatasetRow,
+  RESULT_TABLE_CONFIG_KIND,
+  isLegacyExplicitResultTableRow,
+  resultTableConfigJson,
+  parseResultTableConfig,
+  storedRawTableSourceKindSql,
+  type DataRawTableRow,
 } from './data-store-records';
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
@@ -40,14 +40,14 @@ export const METADATA_MIGRATION_LEDGER = 'data_schema_migrations';
 
 async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_cleaning_tasks (
+    CREATE TABLE IF NOT EXISTS data_pipelines (
       id VARCHAR PRIMARY KEY,
       name VARCHAR NOT NULL,
       status VARCHAR NOT NULL,
       node_count INTEGER NOT NULL,
       source_path VARCHAR,
-      source_dataset_id VARCHAR,
-      output_table VARCHAR,
+      source_raw_table_id VARCHAR,
+      result_table VARCHAR,
       row_count UBIGINT,
       column_count INTEGER,
       error VARCHAR,
@@ -58,7 +58,7 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
     )
   `);
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_datasets (
+    CREATE TABLE IF NOT EXISTS data_raw_tables (
       id VARCHAR PRIMARY KEY,
       name VARCHAR NOT NULL,
       source_path VARCHAR NOT NULL,
@@ -69,11 +69,11 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
       updated_at BIGINT NOT NULL
     )
   `);
-  await ctx.ensureMetadataColumn('data_datasets', 'source_kind', 'VARCHAR');
-  await ctx.ensureMetadataColumn('data_datasets', 'config_json', 'VARCHAR');
-  await ctx.ensureMetadataColumn('data_datasets', 'file_count', 'INTEGER');
+  await ctx.ensureMetadataColumn('data_raw_tables', 'source_kind', 'VARCHAR');
+  await ctx.ensureMetadataColumn('data_raw_tables', 'config_json', 'VARCHAR');
+  await ctx.ensureMetadataColumn('data_raw_tables', 'file_count', 'INTEGER');
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifacts (
+    CREATE TABLE IF NOT EXISTS data_raw_table_normalizer_artifacts (
       id VARCHAR PRIMARY KEY,
       name VARCHAR NOT NULL,
       description VARCHAR,
@@ -85,7 +85,7 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
     )
   `);
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_input_table_normalizer_artifact_versions (
+    CREATE TABLE IF NOT EXISTS data_raw_table_normalizer_artifact_versions (
       id VARCHAR PRIMARY KEY,
       artifact_id VARCHAR NOT NULL,
       version INTEGER NOT NULL,
@@ -107,7 +107,7 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS data_workflow_nodes (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       node_key VARCHAR NOT NULL,
       label VARCHAR NOT NULL,
       ordinal INTEGER NOT NULL,
@@ -122,7 +122,7 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS data_workflow_edges (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       source_node_id VARCHAR NOT NULL,
       target_node_id VARCHAR NOT NULL,
       source_handle VARCHAR,
@@ -131,18 +131,18 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
     )
   `);
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_task_watermarks (
-      task_id VARCHAR NOT NULL,
+    CREATE TABLE IF NOT EXISTS data_pipeline_watermarks (
+      pipeline_id VARCHAR NOT NULL,
       node_id VARCHAR NOT NULL,
       column_name VARCHAR NOT NULL,
       watermark_value VARCHAR,
       updated_at BIGINT NOT NULL,
-      PRIMARY KEY (task_id, node_id)
+      PRIMARY KEY (pipeline_id, node_id)
     )
   `);
   await ctx.metaRunSql(`
-    CREATE TABLE IF NOT EXISTS data_task_node_run_stats (
-      task_id VARCHAR NOT NULL,
+    CREATE TABLE IF NOT EXISTS data_pipeline_node_run_stats (
+      pipeline_id VARCHAR NOT NULL,
       run_id VARCHAR NOT NULL,
       node_id VARCHAR NOT NULL,
       node_type VARCHAR NOT NULL,
@@ -152,13 +152,13 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
       rejected_rows BIGINT NOT NULL,
       sample_json VARCHAR,
       created_at BIGINT NOT NULL,
-      PRIMARY KEY (task_id, run_id, node_id)
+      PRIMARY KEY (pipeline_id, run_id, node_id)
     )
   `);
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS data_workflow_node_caches (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       node_id VARCHAR NOT NULL,
       node_type VARCHAR NOT NULL,
       table_name VARCHAR NOT NULL,
@@ -171,7 +171,7 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS data_output_commits (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       temporary_table VARCHAR NOT NULL,
       target_table VARCHAR NOT NULL,
       backup_table VARCHAR NOT NULL,
@@ -185,18 +185,18 @@ async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   `);
 
   const indexStatements = [
-    'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_updated_at ON data_cleaning_tasks(updated_at, created_at)',
-    'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_dataset_id ON data_cleaning_tasks(source_dataset_id)',
-    'CREATE INDEX IF NOT EXISTS idx_data_cleaning_tasks_source_path ON data_cleaning_tasks(source_path)',
-    'CREATE INDEX IF NOT EXISTS idx_data_datasets_updated_at ON data_datasets(updated_at, created_at)',
-    'CREATE INDEX IF NOT EXISTS idx_data_datasets_source_kind ON data_datasets(source_kind)',
-    'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_updated_at ON data_input_table_normalizer_artifacts(updated_at, created_at)',
-    'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_artifacts_source_kind ON data_input_table_normalizer_artifacts(source_kind)',
-    'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_artifact ON data_input_table_normalizer_artifact_versions(artifact_id, version)',
-    'CREATE INDEX IF NOT EXISTS idx_input_table_normalizer_versions_status ON data_input_table_normalizer_artifact_versions(status, updated_at)',
-    'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_task_id ON data_workflow_nodes(task_id)',
-    'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_task_id ON data_workflow_edges(task_id)',
-    'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_task_node ON data_workflow_node_caches(task_id, node_id, updated_at)',
+    'CREATE INDEX IF NOT EXISTS idx_data_pipelines_updated_at ON data_pipelines(updated_at, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_data_pipelines_source_raw_table_id ON data_pipelines(source_raw_table_id)',
+    'CREATE INDEX IF NOT EXISTS idx_data_pipelines_source_path ON data_pipelines(source_path)',
+    'CREATE INDEX IF NOT EXISTS idx_data_raw_tables_updated_at ON data_raw_tables(updated_at, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_data_raw_tables_source_kind ON data_raw_tables(source_kind)',
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_artifacts_updated_at ON data_raw_table_normalizer_artifacts(updated_at, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_artifacts_source_kind ON data_raw_table_normalizer_artifacts(source_kind)',
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_versions_artifact ON data_raw_table_normalizer_artifact_versions(artifact_id, version)',
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_versions_status ON data_raw_table_normalizer_artifact_versions(status, updated_at)',
+    'CREATE INDEX IF NOT EXISTS idx_data_workflow_nodes_pipeline_id ON data_workflow_nodes(pipeline_id)',
+    'CREATE INDEX IF NOT EXISTS idx_data_workflow_edges_pipeline_id ON data_workflow_edges(pipeline_id)',
+    'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_pipeline_node ON data_workflow_node_caches(pipeline_id, node_id, updated_at)',
     'CREATE INDEX IF NOT EXISTS idx_data_workflow_node_caches_expires_at ON data_workflow_node_caches(expires_at)',
     'CREATE INDEX IF NOT EXISTS idx_data_output_commits_state ON data_output_commits(state, updated_at)',
   ];
@@ -219,14 +219,14 @@ async function dropLegacyDemoRows(ctx: DataStoreContext): Promise<void> {
   const values = Object.fromEntries(
     LEGACY_DEMO_TASK_NAMES.map((name, index) => [`name${index}`, name])
   );
-  const demoTaskRows = await ctx.metaQueryRows<{ id: string }>(
+  const demoPipelineRows = await ctx.metaQueryRows<{ id: string }>(
     `
       SELECT id
-      FROM data_cleaning_tasks
+      FROM data_pipelines
       WHERE name IN (${placeholders})
         AND source_path IS NULL
-        AND source_dataset_id IS NULL
-        AND output_table IS NULL
+        AND source_raw_table_id IS NULL
+        AND result_table IS NULL
         AND row_count IS NULL
         AND column_count IS NULL
         AND error IS NULL
@@ -234,30 +234,30 @@ async function dropLegacyDemoRows(ctx: DataStoreContext): Promise<void> {
     `,
     values
   );
-  if (demoTaskRows.length > 0) {
+  if (demoPipelineRows.length > 0) {
     await ctx.metaRunSql(
       `
         DELETE FROM data_workflow_edges
-        WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
+        WHERE pipeline_id IN (${demoPipelineRows.map((_, index) => `$id${index}`).join(', ')})
       `,
-      Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
+      Object.fromEntries(demoPipelineRows.map((row, index) => [`id${index}`, row.id]))
     );
     await ctx.metaRunSql(
       `
         DELETE FROM data_workflow_nodes
-        WHERE task_id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
+        WHERE pipeline_id IN (${demoPipelineRows.map((_, index) => `$id${index}`).join(', ')})
       `,
-      Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
+      Object.fromEntries(demoPipelineRows.map((row, index) => [`id${index}`, row.id]))
     );
     await ctx.metaRunSql(
       `
-        DELETE FROM data_cleaning_tasks
-        WHERE id IN (${demoTaskRows.map((_, index) => `$id${index}`).join(', ')})
+        DELETE FROM data_pipelines
+        WHERE id IN (${demoPipelineRows.map((_, index) => `$id${index}`).join(', ')})
       `,
-      Object.fromEntries(demoTaskRows.map((row, index) => [`id${index}`, row.id]))
+      Object.fromEntries(demoPipelineRows.map((row, index) => [`id${index}`, row.id]))
     );
   }
-  await ctx.metaRunSql("DELETE FROM data_datasets WHERE source_path LIKE 'local://samples/%'");
+  await ctx.metaRunSql("DELETE FROM data_raw_tables WHERE source_path LIKE 'local://samples/%'");
 }
 
 async function dropLegacyDefaultWorkflowGraphs(ctx: DataStoreContext): Promise<void> {
@@ -265,39 +265,41 @@ async function dropLegacyDefaultWorkflowGraphs(ctx: DataStoreContext): Promise<v
     `
       SELECT *
       FROM data_workflow_nodes
-      ORDER BY task_id ASC, ordinal ASC, created_at ASC
+      ORDER BY pipeline_id ASC, ordinal ASC, created_at ASC
     `
   );
-  const rowsByTask = new Map<string, DataWorkflowNodeRow[]>();
+  const rowsByPipeline = new Map<string, DataWorkflowNodeRow[]>();
   for (const row of workflowRows) {
-    const taskId = String(row.task_id);
-    rowsByTask.set(taskId, [...(rowsByTask.get(taskId) ?? []), row]);
+    const pipelineId = String(row.pipeline_id);
+    rowsByPipeline.set(pipelineId, [...(rowsByPipeline.get(pipelineId) ?? []), row]);
   }
-  const taskIds = Array.from(rowsByTask.entries()).flatMap(([taskId, rows]) =>
-    isLegacyDefaultWorkflow(rows) ? [taskId] : []
+  const pipelineIds = Array.from(rowsByPipeline.entries()).flatMap(([pipelineId, rows]) =>
+    isLegacyDefaultWorkflow(rows) ? [pipelineId] : []
   );
-  if (taskIds.length === 0) {
+  if (pipelineIds.length === 0) {
     return;
   }
-  const placeholders = taskIds.map((_, index) => `$id${index}`).join(', ');
-  const values = Object.fromEntries(taskIds.map((taskId, index) => [`id${index}`, taskId]));
+  const placeholders = pipelineIds.map((_, index) => `$id${index}`).join(', ');
+  const values = Object.fromEntries(
+    pipelineIds.map((pipelineId, index) => [`id${index}`, pipelineId])
+  );
   await ctx.metaRunSql(
     `
       DELETE FROM data_workflow_edges
-      WHERE task_id IN (${placeholders})
+      WHERE pipeline_id IN (${placeholders})
     `,
     values
   );
   await ctx.metaRunSql(
     `
       DELETE FROM data_workflow_nodes
-      WHERE task_id IN (${placeholders})
+      WHERE pipeline_id IN (${placeholders})
     `,
     values
   );
   await ctx.metaRunSql(
     `
-      UPDATE data_cleaning_tasks
+      UPDATE data_pipelines
       SET node_count = 0
       WHERE id IN (${placeholders})
     `,
@@ -306,51 +308,51 @@ async function dropLegacyDefaultWorkflowGraphs(ctx: DataStoreContext): Promise<v
 }
 
 /**
- * Converts pre-`config_json` output-table dataset rows into the current
- * output-table config shape and deletes rows that cannot be converted.
- * Previously ran on every boot and on every output-table read; now runs
+ * Converts pre-`config_json` result-table rawTable rows into the current
+ * result-table config shape and deletes rows that cannot be converted.
+ * Previously ran on every boot and on every result-table read; now runs
  * exactly once per database, recorded in the migration ledger.
  */
-async function normalizeOutputTableMetadata(ctx: DataStoreContext): Promise<void> {
-  const rows = await ctx.metaQueryRows<DataDatasetRow>(
+async function normalizeResultTableMetadata(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<DataRawTableRow>(
     `
       SELECT d.*
-      FROM data_datasets d
-      WHERE ${storedDatasetSourceKindSql('d')} = 'output'
+      FROM data_raw_tables d
+      WHERE ${storedRawTableSourceKindSql('d')} = 'output'
         OR d.table_name IN (
-          SELECT output_table
-          FROM data_cleaning_tasks
-          WHERE output_table IS NOT NULL
+          SELECT result_table
+          FROM data_pipelines
+          WHERE result_table IS NOT NULL
         )
     `
   );
   for (const row of rows) {
     const id = String(row.id);
-    const config = parseOutputTableConfig(row.config_json);
-    if (config.kind === OUTPUT_TABLE_CONFIG_KIND) {
+    const config = parseResultTableConfig(row.config_json);
+    if (config.kind === RESULT_TABLE_CONFIG_KIND) {
       continue;
     }
-    if (isLegacyExplicitOutputTableRow(row)) {
+    if (isLegacyExplicitResultTableRow(row)) {
       await ctx.metaRunSql(
         `
-          UPDATE data_datasets
+          UPDATE data_raw_tables
           SET config_json = $configJson,
               file_count = coalesce(file_count, 0)
           WHERE id = $id
         `,
         {
           id,
-          configJson: outputTableConfigJson(config.sourceDatasetId),
+          configJson: resultTableConfigJson(config.sourceRawTableId),
         }
       );
       continue;
     }
-    await ctx.metaRunSql('DELETE FROM data_datasets WHERE id = $id', { id });
+    await ctx.metaRunSql('DELETE FROM data_raw_tables WHERE id = $id', { id });
   }
 }
 
 /**
- * Journal for input-table reimports and output-table rebinds. Each commit
+ * Journal for raw-table reimports and result-table rebinds. Each commit
  * stages the new physical table under a staging name, keeps the old target
  * under a backup name until metadata commits, and leaves a recoverable row
  * when a crash interrupts the swap.
@@ -359,7 +361,7 @@ async function createTableCommitJournal(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
     CREATE TABLE IF NOT EXISTS data_table_commits (
       id VARCHAR PRIMARY KEY,
-      dataset_id VARCHAR NOT NULL,
+      raw_table_id VARCHAR NOT NULL,
       operation VARCHAR NOT NULL,
       staging_table VARCHAR NOT NULL,
       target_table VARCHAR NOT NULL,
@@ -394,8 +396,8 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
   },
   {
     version: 4,
-    name: 'normalize_output_table_metadata',
-    up: (ctx) => normalizeOutputTableMetadata(ctx),
+    name: 'normalize_result_table_metadata',
+    up: (ctx) => normalizeResultTableMetadata(ctx),
   },
   {
     version: 5,
@@ -409,11 +411,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       // PRAGMA table_info works on both metadata engines (SQLite + DuckDB);
       // the column may already exist when a current DB lost its ledger.
       const columns = await ctx.metaQueryRows<{ name: string }>(
-        'PRAGMA table_info(data_task_node_run_stats)'
+        'PRAGMA table_info(data_pipeline_node_run_stats)'
       );
       if (!columns.some((column) => column.name === 'input_rows_by_handle_json')) {
         await ctx.metaRunSql(
-          'ALTER TABLE data_task_node_run_stats ADD COLUMN input_rows_by_handle_json VARCHAR'
+          'ALTER TABLE data_pipeline_node_run_stats ADD COLUMN input_rows_by_handle_json VARCHAR'
         );
       }
     },
@@ -447,11 +449,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
         id: string;
         name: string;
         config_json: string | null;
-      }>('SELECT id, name, config_json FROM data_datasets WHERE config_json IS NOT NULL');
+      }>('SELECT id, name, config_json FROM data_raw_tables WHERE config_json IS NOT NULL');
       for (const row of rows) {
-        const config = parseOutputTableConfig(row.config_json);
+        const config = parseResultTableConfig(row.config_json);
         const action = config.cloudAction;
-        if (!action || config.kind !== OUTPUT_TABLE_CONFIG_KIND) continue;
+        if (!action || config.kind !== RESULT_TABLE_CONFIG_KIND) continue;
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         const trigger: AutomationTrigger =
           action.trigger === 'schedule' && action.schedule
@@ -489,7 +491,7 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
                   id: 'cloud-sync',
                   type: 'cloud.output.sync',
                   enabled: true,
-                  config: { ...target, outputTableId: row.id },
+                  config: { ...target, resultTableId: row.id },
                 },
               ],
             }),
@@ -504,15 +506,15 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
             lastError: lastError ?? null,
             now,
             bindings: JSON.stringify([
-              { outputTableId: row.id, runOnChange: action.trigger === 'on_change' },
+              { resultTableId: row.id, runOnChange: action.trigger === 'on_change' },
             ]),
           }
         );
         await ctx.metaRunSql(
-          "UPDATE data_datasets SET config_json = $config, source_kind = 'output' WHERE id = $id",
+          "UPDATE data_raw_tables SET config_json = $config, source_kind = 'output' WHERE id = $id",
           {
             id: row.id,
-            config: outputTableConfigJson(config.sourceDatasetId),
+            config: resultTableConfigJson(config.sourceRawTableId),
           }
         );
       }
@@ -638,21 +640,21 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
       await ctx.metaRunSql(
         'CREATE INDEX IF NOT EXISTS idx_data_groups_scope ON data_groups(scope)'
       );
-      await ctx.ensureMetadataColumn('data_cleaning_tasks', 'group_id', 'VARCHAR');
-      await ctx.ensureMetadataColumn('data_datasets', 'group_id', 'VARCHAR');
+      await ctx.ensureMetadataColumn('data_pipelines', 'group_id', 'VARCHAR');
+      await ctx.ensureMetadataColumn('data_raw_tables', 'group_id', 'VARCHAR');
     },
   },
   {
     version: 13,
-    name: 'data_task_runs',
+    name: 'data_pipeline_runs',
     up: async (ctx) => {
       // Per-run records so the logs tab can answer "what happened in this
       // run" for both trial and persisted executions. Node stats stay keyed
       // by run_id and are retained alongside their run row.
       await ctx.metaRunSql(`
-        CREATE TABLE IF NOT EXISTS data_task_runs (
+        CREATE TABLE IF NOT EXISTS data_pipeline_runs (
           id VARCHAR PRIMARY KEY,
-          task_id VARCHAR NOT NULL,
+          pipeline_id VARCHAR NOT NULL,
           seq INTEGER NOT NULL,
           trigger VARCHAR NOT NULL,
           status VARCHAR NOT NULL,
@@ -667,16 +669,16 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
         )
       `);
       await ctx.metaRunSql(
-        'CREATE INDEX IF NOT EXISTS idx_data_task_runs_task ON data_task_runs(task_id, seq DESC)'
+        'CREATE INDEX IF NOT EXISTS idx_data_pipeline_runs_pipeline ON data_pipeline_runs(pipeline_id, seq DESC)'
       );
     },
   },
   {
     version: 14,
-    name: 'cloud_input_table_source',
+    name: 'cloud_raw_table_source',
     up: async (ctx) => {
       const rows = await ctx.metaQueryRows<{ id: string; config_json: string }>(
-        `SELECT id, config_json FROM data_datasets WHERE source_kind = 'csv' OR source_kind IS NULL`
+        `SELECT id, config_json FROM data_raw_tables WHERE source_kind = 'csv' OR source_kind IS NULL`
       );
       for (const row of rows) {
         let config;
@@ -695,7 +697,7 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
         for (const key of ['header', 'dataRegion', 'encoding', 'delimiter'])
           delete cloudConfig[key];
         await ctx.metaRunSql(
-          `UPDATE data_datasets SET source_kind = 'cloud', config_json = $config WHERE id = $id`,
+          `UPDATE data_raw_tables SET source_kind = 'cloud', config_json = $config WHERE id = $id`,
           { id: row.id, config: JSON.stringify(cloudConfig) }
         );
       }
@@ -735,9 +737,9 @@ export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void
     if (maxApplied > METADATA_SCHEMA_VERSION) {
       ctx.metadataReadOnly = true;
       ctx.metadataReadOnlyReason =
-        `Data task metadata schema v${maxApplied} is newer than this build ` +
+        `Data pipeline metadata schema v${maxApplied} is newer than this build ` +
         `(supports v${METADATA_SCHEMA_VERSION}); writes are disabled`;
-      logWarn(`[DataTaskStore] ${ctx.metadataReadOnlyReason}`);
+      logWarn(`[DataPipelineStore] ${ctx.metadataReadOnlyReason}`);
       return;
     }
   }
@@ -774,7 +776,7 @@ export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void
       );
     }
     applied.add(migration.version);
-    log('[DataTaskStore] Applied metadata migration', {
+    log('[DataPipelineStore] Applied metadata migration', {
       version: migration.version,
       name: migration.name,
     });

@@ -15,7 +15,7 @@ function validWorkflow(): DataWorkflowSaveInput {
         label: '输入',
         x: 0,
         y: 0,
-        config: { source: 'dataset', datasetId: 'table-1', alias: 'src' },
+        config: { source: 'rawTable', rawTableId: 'table-1', alias: 'src' },
       },
       {
         id: 'derive',

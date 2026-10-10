@@ -105,7 +105,7 @@ export const PREP_DSL_KEYWORDS = [
   'max_depth',
   'output',
   'table',
-  'dataset',
+  'rawTable',
   'file',
   'format',
   'name',

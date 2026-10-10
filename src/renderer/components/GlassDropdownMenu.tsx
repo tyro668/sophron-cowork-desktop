@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { ReactNode } from 'react';
-import { Check } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { cn, menuContentClass, menuItemClass } from './ui';
 
 // Shared trigger-button styling for dropdown/picker triggers
@@ -96,5 +96,48 @@ export function GlassMenuItem({
       </span>
       {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
     </DropdownMenu.Item>
+  );
+}
+
+interface GlassMenuSubProps {
+  label: ReactNode;
+  icon?: ReactNode;
+  disabled?: boolean;
+  children: ReactNode;
+  contentClassName?: string;
+}
+
+export function GlassMenuSub({
+  label,
+  icon,
+  disabled = false,
+  children,
+  contentClassName,
+}: GlassMenuSubProps) {
+  return (
+    <DropdownMenu.Sub>
+      <DropdownMenu.SubTrigger
+        disabled={disabled}
+        className={cn(
+          menuItemClass(),
+          'min-h-8 w-full items-center gap-2 px-3 py-2 text-left font-medium'
+        )}
+      >
+        {icon}
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate">{label}</span>
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+      </DropdownMenu.SubTrigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.SubContent
+          sideOffset={4}
+          collisionPadding={12}
+          className={cn(menuContentClass, contentClassName)}
+        >
+          {children}
+        </DropdownMenu.SubContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Sub>
   );
 }

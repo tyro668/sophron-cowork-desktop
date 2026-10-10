@@ -810,8 +810,8 @@ function mapScheduledTaskToAutomation(db: DatabaseInstance, row: ScheduledTaskRo
   const trigger = scheduledRowToTrigger(row);
   const automationConfig = parseJson(row.automation_config, null) as {
     actionKind?: string;
-    dataTaskId?: string | null;
-    dataTaskName?: string | null;
+    dataPipelineId?: string | null;
+    dataPipelineName?: string | null;
     delivery?: unknown;
   } | null;
   const actionGraph = legacyAutomationConfigToActionGraph(row, automationConfig);
@@ -881,21 +881,21 @@ function legacyAutomationConfigToActionGraph(
   row: ScheduledTaskRow,
   automationConfig: {
     actionKind?: string;
-    dataTaskId?: string | null;
-    dataTaskName?: string | null;
+    dataPipelineId?: string | null;
+    dataPipelineName?: string | null;
   } | null
 ): AutomationActionGraph {
-  if (automationConfig?.actionKind === 'data_task' && automationConfig.dataTaskId) {
+  if (automationConfig?.actionKind === 'data_pipeline' && automationConfig.dataPipelineId) {
     const dataNodeId = randomUUID();
     return {
       version: 1,
       nodes: [
         {
           id: dataNodeId,
-          type: 'data.task.run',
-          label: automationConfig.dataTaskName ?? 'Data task',
+          type: 'data.pipeline.run',
+          label: automationConfig.dataPipelineName ?? 'Data pipeline',
           enabled: true,
-          config: { taskId: automationConfig.dataTaskId, outputMode: 'persisted' },
+          config: { pipelineId: automationConfig.dataPipelineId, outputMode: 'persisted' },
         },
       ],
       edges: [],

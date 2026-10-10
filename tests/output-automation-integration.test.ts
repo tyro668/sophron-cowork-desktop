@@ -9,7 +9,10 @@ import { AutomationService } from '../src/main/automation/automation-service';
 import { AutomationRunner } from '../src/main/automation/automation-runner';
 import { AutomationActionRegistry } from '../src/main/automation/automation-action-registry';
 import { automationRunScope } from '../src/main/automation/automation-run-scope';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -41,7 +44,7 @@ function fixture(maxConcurrentRuns = 4) {
     service.create({
       name: id,
       trigger: { kind: 'manual', timezone: 'UTC' },
-      outputBindings: [{ outputTableId: id, runOnChange }],
+      outputBindings: [{ resultTableId: id, runOnChange }],
       actionGraph: {
         version: 1,
         edges: [],
@@ -55,7 +58,7 @@ describe('output table automation integration', () => {
     const f = fixture();
     const directory = mkdtempSync(join(tmpdir(), 'generated-output-migration-'));
     const path = join(directory, 'data.duckdb');
-    let data = createDataTaskStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
+    let data = createDataPipelineStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
     cleanups.push(async () => {
       await data.close();
       rmSync(directory, { recursive: true, force: true });
@@ -73,11 +76,11 @@ describe('output table automation integration', () => {
             type: 'cloud.table.process',
             enabled: true,
             config: {
-              taskId: 'task',
+              pipelineId: 'pipeline',
               output: {
                 location: 'cloud',
                 targetTableId: 'analysis-table',
-                localOutputTableId: 'local-output',
+                localResultTableId: 'local-output',
               },
             },
           },
@@ -86,7 +89,7 @@ describe('output table automation integration', () => {
     });
     f.raw.prepare('DELETE FROM data_schema_migrations WHERE version = 10').run();
     await data.close();
-    data = createDataTaskStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
+    data = createDataPipelineStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
     await data.getDashboard();
     const migrated = f.store.get(legacy.id)!;
     expect(migrated.status).toBe('paused');
@@ -100,8 +103,8 @@ describe('output table automation integration', () => {
     const active = f.create('a');
     f.service.update(active.id, {
       outputBindings: [
-        { outputTableId: 'a', runOnChange: true },
-        { outputTableId: 'b', runOnChange: true },
+        { resultTableId: 'a', runOnChange: true },
+        { resultTableId: 'b', runOnChange: true },
       ],
     });
     const disabled = f.create('a');
@@ -109,7 +112,7 @@ describe('output table automation integration', () => {
     const paused = f.create('a');
     f.service.pause(paused.id);
     f.create('a', false);
-    await f.service.runForOutputTables(['a', 'b', 'a']);
+    await f.service.runForResultTables(['a', 'b', 'a']);
     await vi.waitFor(() => expect(f.store.listRuns(active.id)[0]?.status).toBe('succeeded'));
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(f.store.listRuns(active.id)[0].triggerReason).toBe('output_change');
@@ -129,8 +132,8 @@ describe('output table automation integration', () => {
     );
     const running = f.service.runNow(blocker.id);
     await vi.waitFor(() => expect(f.execute).toHaveBeenCalledTimes(1));
-    await f.service.runForOutputTables(['queued']);
-    await f.service.runForOutputTables(['queued']);
+    await f.service.runForResultTables(['queued']);
+    await f.service.runForResultTables(['queued']);
     expect(f.store.listRuns(queued.id)).toHaveLength(1);
     release();
     await running;
@@ -151,8 +154,8 @@ describe('output table automation integration', () => {
     );
     const running = f.service.runNow(a.id);
     await vi.waitFor(() => expect(f.execute).toHaveBeenCalledTimes(1));
-    await f.service.runForOutputTables(['out']);
-    await f.service.runForOutputTables(['out']);
+    await f.service.runForResultTables(['out']);
+    await f.service.runForResultTables(['out']);
     expect(f.store.listRuns(a.id)).toHaveLength(2);
     f.service.update(a.id, {
       actionGraph: {
@@ -179,7 +182,7 @@ describe('output table automation integration', () => {
     );
     const running = f.service.runNow(a.id);
     await vi.waitFor(() => expect(f.execute).toHaveBeenCalledTimes(1));
-    await f.service.runForOutputTables(['out']);
+    await f.service.runForResultTables(['out']);
     f.service.pause(a.id);
     release();
     await running;
@@ -201,7 +204,7 @@ describe('output table automation integration', () => {
   it('does not recursively trigger an ancestor after its original run has finished', async () => {
     const f = fixture();
     const a = f.create('out');
-    await automationRunScope.run([a.id, 'downstream'], () => f.service.runForOutputTables(['out']));
+    await automationRunScope.run([a.id, 'downstream'], () => f.service.runForResultTables(['out']));
     expect(f.execute).not.toHaveBeenCalled();
   });
   it('migrates old table and drive actions transactionally, preserving schedules and identities', async () => {
@@ -209,17 +212,17 @@ describe('output table automation integration', () => {
     const folder = mkdtempSync(join(tmpdir(), 'output-auto-'));
     cleanups.push(() => rmSync(folder, { recursive: true, force: true }));
     const path = join(folder, 'data.duckdb');
-    let data: DataTaskStore = createDataTaskStore(path, {
+    let data: DataPipelineStore = createDataPipelineStore(path, {
       metadataDb: { raw: f.raw } as DatabaseInstance,
     });
     cleanups.push(() => data.close());
     await data.getDashboard();
-    const onChange = await data.createOutputTable({ name: 'Drive output' });
-    const scheduled = await data.createOutputTable({ name: 'Cloud output' });
+    const onChange = await data.createResultTable({ name: 'Drive output' });
+    const scheduled = await data.createResultTable({ name: 'Cloud output' });
     const schedule = { kind: 'weekly', weekdays: [1, 5], times: ['09:00'] };
-    f.raw.prepare('UPDATE data_datasets SET config_json = ? WHERE id = ?').run(
+    f.raw.prepare('UPDATE data_raw_tables SET config_json = ? WHERE id = ?').run(
       JSON.stringify({
-        kind: 'output_table',
+        kind: 'result_table',
         cloudAction: {
           type: 'drive_file',
           trigger: 'on_change',
@@ -231,9 +234,9 @@ describe('output table automation integration', () => {
       }),
       onChange.id
     );
-    f.raw.prepare('UPDATE data_datasets SET config_json = ? WHERE id = ?').run(
+    f.raw.prepare('UPDATE data_raw_tables SET config_json = ? WHERE id = ?').run(
       JSON.stringify({
-        kind: 'output_table',
+        kind: 'result_table',
         cloudAction: {
           type: 'cloud_table',
           trigger: 'schedule',
@@ -245,35 +248,35 @@ describe('output table automation integration', () => {
       }),
       scheduled.id
     );
-    f.raw.prepare('UPDATE data_datasets SET source_kind = NULL WHERE id = ?').run(onChange.id);
+    f.raw.prepare('UPDATE data_raw_tables SET source_kind = NULL WHERE id = ?').run(onChange.id);
     f.raw.prepare('DELETE FROM data_schema_migrations WHERE version >= 8').run();
     await data.close();
-    data = createDataTaskStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
+    data = createDataPipelineStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
     f.raw.exec(`CREATE TRIGGER fail_legacy_action BEFORE INSERT ON automations
       WHEN NEW.id = 'output-cloud-${scheduled.id}' BEGIN SELECT RAISE(ABORT, 'forced migration failure'); END`);
     await expect(data.getDashboard()).rejects.toThrow('forced migration failure');
-    expect(f.store.list()).toHaveLength(0);
+    expect(f.store.list().automations).toHaveLength(0);
     expect(
       f.raw.prepare('SELECT 1 FROM data_schema_migrations WHERE version = 8').get()
     ).toBeUndefined();
     expect(
       (
-        f.raw.prepare('SELECT config_json FROM data_datasets WHERE id = ?').get(onChange.id) as {
+        f.raw.prepare('SELECT config_json FROM data_raw_tables WHERE id = ?').get(onChange.id) as {
           config_json: string;
         }
       ).config_json
     ).toContain('cloudAction');
     data.close();
     f.raw.exec('DROP TRIGGER fail_legacy_action');
-    data = createDataTaskStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
+    data = createDataPipelineStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
     await data.getDashboard();
     const drive = f.store.get(`output-cloud-${onChange.id}`)!;
     const cloud = f.store.get(`output-cloud-${scheduled.id}`)!;
     expect(drive.trigger.kind).toBe('manual');
-    expect(drive.outputBindings).toEqual([{ outputTableId: onChange.id, runOnChange: true }]);
+    expect(drive.outputBindings).toEqual([{ resultTableId: onChange.id, runOnChange: true }]);
     expect(drive.actionGraph.nodes[0].config).toMatchObject({ fileId: 'file', version: 7 });
     expect(cloud.trigger).toMatchObject(schedule);
-    expect(cloud.outputBindings).toEqual([{ outputTableId: scheduled.id, runOnChange: false }]);
+    expect(cloud.outputBindings).toEqual([{ resultTableId: scheduled.id, runOnChange: false }]);
     expect(cloud.actionGraph.nodes[0].config.tableId).toBe('remote');
     expect(cloud.nextRunAt).toBeNull();
     expect(cloud.status).toBe('paused');
@@ -281,10 +284,10 @@ describe('output table automation integration', () => {
     expect(() => f.service.resume(cloud.id)).toThrow();
     expect(() => f.service.setEnabled(cloud.id, true)).toThrow();
     expect(f.store.get(cloud.id)?.status).toBe('paused');
-    expect((await data.getOutputTableRecord(onChange.id))?.cloudAction).toBeNull();
+    expect((await data.getResultTableRecord(onChange.id))?.cloudAction).toBeNull();
     await data.close();
-    data = createDataTaskStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
+    data = createDataPipelineStore(path, { metadataDb: { raw: f.raw } as DatabaseInstance });
     await data.getDashboard();
-    expect(f.store.list()).toHaveLength(2);
+    expect(f.store.list().automations).toHaveLength(2);
   });
 });

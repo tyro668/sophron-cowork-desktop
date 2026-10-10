@@ -22,7 +22,7 @@ export function registerScheduleIpc(): void {
     try {
       return requireAutomationService().list().automations.map(automationToScheduledTask);
     } catch (error) {
-      logError('[Schedule] Error listing tasks:', error);
+      logError('[Schedule] Error listing pipelines:', error);
       return [];
     }
   });

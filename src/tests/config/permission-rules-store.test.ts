@@ -96,25 +96,27 @@ describe('permission-rules-store', () => {
       setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
 
       expect(decidePermission(SESSION_A, 'read', { path: '/tmp/in.txt' })).toBe('allow');
-      expect(decidePermission(SESSION_A, 'data_list_tasks', {})).toBe('allow');
+      expect(decidePermission(SESSION_A, 'data_list_pipelines', {})).toBe('allow');
       expect(decidePermission(SESSION_A, 'write', { path: '/tmp/out.txt' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'edit', { path: '/tmp/out.txt' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'bash', { command: 'npm test' })).toBe('allow');
       expect(decidePermission(SESSION_A, 'automation_create', {})).toBe('ask');
       expect(decidePermission(SESSION_A, 'automation_update_schedule', {})).toBe('ask');
-      expect(decidePermission(SESSION_A, 'data_generate_task_from_requirement', {})).toBe('allow');
+      expect(decidePermission(SESSION_A, 'data_generate_pipeline_from_requirement', {})).toBe(
+        'allow'
+      );
       expect(decidePermission(SESSION_A, 'unknown_tool', {})).toBe('ask');
     });
 
     it('keeps structured read-only argument validation in auto-review', () => {
-      const manifestArgs = { inputTableIds: ['table-1'] };
+      const manifestArgs = { rawTableIds: ['table-1'] };
       const versionArgs = { artifactId: 'artifact-1' };
       setPermissionRules(getPermissionRulesForPolicy('default'), 'default');
       expect(
         decidePermission(SESSION_A, 'data_get_workflow_capability_manifest', manifestArgs)
       ).toBe('ask');
       expect(
-        decidePermission(SESSION_A, 'data_list_input_table_normalizer_versions', versionArgs)
+        decidePermission(SESSION_A, 'data_list_raw_table_normalizer_versions', versionArgs)
       ).toBe('ask');
 
       setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
@@ -126,7 +128,7 @@ describe('permission-rules-store', () => {
         reason: 'read_only_manifest',
       });
       expect(
-        evaluatePermission(SESSION_A, 'data_list_input_table_normalizer_versions', versionArgs)
+        evaluatePermission(SESSION_A, 'data_list_raw_table_normalizer_versions', versionArgs)
       ).toEqual({
         decision: 'allow',
         source: 'auto_review',
@@ -138,25 +140,25 @@ describe('permission-rules-store', () => {
       setPermissionRules(getPermissionRulesForPolicy('auto_review'), 'auto_review');
       const manifest = 'data_get_workflow_capability_manifest';
       expect(
-        evaluatePermission(SESSION_A, manifest, { inputTableIds: Array(9).fill('a') })
+        evaluatePermission(SESSION_A, manifest, { rawTableIds: Array(9).fill('a') })
       ).toMatchObject({
         decision: 'ask',
         reason: 'arguments_need_confirmation',
       });
       expect(
-        evaluatePermission(SESSION_A, manifest, { outputTableIds: ['  bad  '] })
+        evaluatePermission(SESSION_A, manifest, { resultTableIds: ['  bad  '] })
       ).toMatchObject({
         decision: 'ask',
         reason: 'arguments_need_confirmation',
       });
       expect(
-        evaluatePermission(SESSION_A, manifest, { inputTableIds: [], command: 'rm -rf /' })
+        evaluatePermission(SESSION_A, manifest, { rawTableIds: [], command: 'rm -rf /' })
       ).toMatchObject({
         decision: 'ask',
         reason: 'arguments_need_confirmation',
       });
       expect(
-        decidePermission(SESSION_A, 'data_list_input_table_normalizer_versions', {
+        decidePermission(SESSION_A, 'data_list_raw_table_normalizer_versions', {
           artifactId: 'artifact-1',
           prepareDependencies: true,
         })

@@ -54,11 +54,11 @@ export default function FormAggregate({
   node,
   fieldCompletions,
   sourceNode,
-  taskId,
+  pipelineId,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('aggregate');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);

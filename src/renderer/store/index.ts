@@ -21,7 +21,7 @@ import { applySessionUpdate } from '../utils/session-update';
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
 export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
-export type DataWorkspaceTab = 'tasks' | 'input_tables' | 'output_tables' | 'cloud_analysis';
+export type DataWorkspaceTab = 'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis';
 
 export interface PendingDataNavigation extends DataResourceTarget {
   nonce: number;
@@ -154,16 +154,16 @@ interface AppState {
   pendingCloudAutomationTemplateNavigation: PendingCloudAutomationTemplateNavigation | null;
   pendingTableAutomationNavigation: {
     automationId?: string;
-    outputTable?: { id: string; name: string };
-    inputTable?: { id: string; name: string };
-    newInputTableName?: string;
+    resultTable?: { id: string; name: string };
+    rawTable?: { id: string; name: string };
+    newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
   } | null;
   navigateToTableAutomation: (target: {
     automationId?: string;
-    outputTable?: { id: string; name: string };
-    inputTable?: { id: string; name: string };
-    newInputTableName?: string;
+    resultTable?: { id: string; name: string };
+    rawTable?: { id: string; name: string };
+    newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
   }) => void;
   clearTableAutomationNavigation: () => void;

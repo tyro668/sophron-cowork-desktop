@@ -143,7 +143,7 @@ export interface AutomationArtifact {
   filePath?: string;
   href?: string;
   dataRef?: {
-    kind: 'input_table' | 'output_table' | 'session';
+    kind: 'raw_table' | 'result_table' | 'session';
     id: string;
   };
   createdAt: number;
@@ -172,7 +172,7 @@ export interface AutomationDeliveryChannel {
 }
 
 export interface AutomationOutputBinding {
-  outputTableId: string;
+  resultTableId: string;
   runOnChange: boolean;
 }
 

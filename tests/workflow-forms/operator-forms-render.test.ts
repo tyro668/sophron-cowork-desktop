@@ -52,7 +52,7 @@ import FormCalculateField from '../../src/renderer/components/workflow-forms/For
 
 const baseProps = {
   node: { config: {} },
-  taskId: 'task-1',
+  pipelineId: 'pipeline-1',
   fieldCompletions: ['amount', 'created_at', 'name'],
   otherNodes: [],
   sourceNode: { id: 'src', type: 'input_source', config: { tableName: 'orders' } },

@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import type { PrepDiagnostic } from '../../shared/prep-dsl';
 import type {
-  DataTaskWorkflow,
+  DataPipelineWorkflow,
   DataWorkflowEdge,
   DataWorkflowEdgeInput,
   DataWorkflowNode,
@@ -70,13 +70,13 @@ export function buildAutomationCloudMirrorInputName(
   return `${baseName}_自动化镜像_${tableId.slice(0, 8)}`;
 }
 
-export function nextGeneratedTaskVersion(currentVersion: number | null | undefined): number {
+export function nextGeneratedPipelineVersion(currentVersion: number | null | undefined): number {
   return Number.isFinite(currentVersion) && Number(currentVersion) > 0
     ? Math.floor(Number(currentVersion)) + 1
     : 1;
 }
 
-export function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): DataWorkflowNode {
+export function findWorkflowNode(workflow: DataPipelineWorkflow, nodeId: string): DataWorkflowNode {
   const node = workflow.nodes.find((item) => item.id === nodeId);
   if (!node) {
     const available = workflow.nodes.map((item) => `${item.id} (${item.type})`).join(', ');
@@ -91,7 +91,7 @@ export function findWorkflowNode(workflow: DataTaskWorkflow, nodeId: string): Da
 }
 
 export function updateWorkflowNode(
-  workflow: DataTaskWorkflow,
+  workflow: DataPipelineWorkflow,
   nodeId: string,
   updates: Partial<Pick<DataWorkflowNodeInput, 'label' | 'config'>>
 ): DataWorkflowSaveInput {
@@ -108,7 +108,7 @@ export function updateWorkflowNode(
   };
 }
 
-export function toWorkflowSaveShape(workflow: DataTaskWorkflow): DataWorkflowSaveInput {
+export function toWorkflowSaveShape(workflow: DataPipelineWorkflow): DataWorkflowSaveInput {
   return {
     nodes: workflow.nodes.map((node) => ({
       id: node.id,

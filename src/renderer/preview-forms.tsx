@@ -23,8 +23,8 @@ import FormPivot from './components/workflow-forms/FormPivot';
 import {
   WorkflowEdge,
   WorkflowOperatorNode,
-} from './components/data-view/data-tasks/workflow/WorkflowUi';
-import type { WorkflowFlowNode } from './components/data-view/data-tasks/workflow/workflow-model';
+} from './components/data-view/data-pipelines/workflow/WorkflowUi';
+import type { WorkflowFlowNode } from './components/data-view/data-pipelines/workflow/workflow-model';
 
 const COLUMNS = [
   'id',
@@ -64,7 +64,7 @@ const COLUMN_TYPES = [
 function makeNode(type: string, config: Record<string, unknown>): DataWorkflowNode {
   return {
     id: `${type}-node`,
-    taskId: 'preview-task',
+    pipelineId: 'preview-task',
     type: type as DataWorkflowNode['type'],
     label: type,
     x: 0,
@@ -115,7 +115,7 @@ function PreviewApp() {
     };
 
   const base = {
-    taskId: 'preview-task',
+    pipelineId: 'preview-task',
     fieldCompletions: COLUMNS,
     otherNodes,
     sourceNode,
@@ -401,7 +401,7 @@ function PreviewApp() {
           >
             <C
               node={node}
-              taskId={base.taskId}
+              pipelineId={base.pipelineId}
               fieldCompletions={base.fieldCompletions}
               otherNodes={base.otherNodes}
               sourceNode={base.sourceNode}

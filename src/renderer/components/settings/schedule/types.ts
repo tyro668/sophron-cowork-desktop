@@ -16,14 +16,14 @@ export const DEFAULT_TIME = '09:00';
 export const AUTOMATION_TABLE_PAGE_SIZE = 10;
 export const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
 // Data processing stays unified; cloud sync is reusable as a separate action.
-export const ACTION_MENU_TYPES = ['conversation.run', 'data.task.run', 'cloud.sync'];
+export const ACTION_MENU_TYPES = ['conversation.run', 'data.pipeline.run', 'cloud.sync'];
 export const CLOUD_TABLE_PROCESS_ACTION_TYPE = 'cloud.table.process';
-export const DATA_ACTION_TYPES = ['data.task.run'];
-export const DATA_PREVIEW_ACTION_TYPES = ['data.input.preview', 'data.output.preview'];
+export const DATA_ACTION_TYPES = ['data.pipeline.run'];
+export const DATA_PREVIEW_ACTION_TYPES = ['data.raw.preview', 'data.result.preview'];
 
 export type CloudAutomationWriteMode = 'create' | 'replace';
 // Where an AI-described data-processing action reads from / writes to. For 'local',
-// `tableId`/`tableName` carry the local dataset (source) or output-table (target) id+name,
+// `tableId`/`tableName` carry the local rawTable (source) or result-table (target) id+name,
 // and cloud-only fields stay empty. Defaults to 'cloud' so existing saved configs are unchanged.
 export type DataProcessLocation = 'cloud' | 'local';
 

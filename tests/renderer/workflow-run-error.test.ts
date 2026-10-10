@@ -7,12 +7,12 @@ import { describe, expect, it } from 'vitest';
 import {
   closestFieldName,
   parseWorkflowRunError,
-} from '../../src/renderer/components/data-view/data-tasks/workflow/run-error';
+} from '../../src/renderer/components/data-view/data-pipelines/workflow/run-error';
 
 describe('parseWorkflowRunError', () => {
   it('unwraps the node wrapper and extracts a missing field + candidates', () => {
     const raw =
-      "Error: Error invoking remote method 'data.runTaskWithDiagnostics': " +
+      "Error: Error invoking remote method 'data.runPipelineWithDiagnostics': " +
       'Error: Workflow node sql_1 (sql_query) failed: ' +
       'Binder Error: Referenced column "missing_col" not found in FROM clause!\n' +
       'Candidate columns: "id", "name", "amount"\n' +

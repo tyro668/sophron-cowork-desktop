@@ -114,9 +114,9 @@ export function createGeneratedCloudTableProcessNode(
   baseNode: AutomationActionNode,
   config: CloudTableAutomationConfig,
   result: {
-    taskId: string;
-    taskName: string;
-    outputTableId: string;
+    pipelineId: string;
+    pipelineName: string;
+    resultTableId: string;
     requiredColumns: Array<{ name: string; type?: string }>;
     expectedOutputSchema?: Array<{ name: string; type?: string }>;
     lineage?: Array<{
@@ -137,8 +137,8 @@ export function createGeneratedCloudTableProcessNode(
     type: CLOUD_TABLE_PROCESS_ACTION_TYPE,
     label: '',
     config: {
-      taskId: result.taskId,
-      taskName: result.taskName,
+      pipelineId: result.pipelineId,
+      pipelineName: result.pipelineName,
       source: {
         location: getSourceLocation(config),
         tableId: config.source.tableId,
@@ -163,7 +163,7 @@ export function createGeneratedCloudTableProcessNode(
         projectId: config.output.projectId || config.source.projectId,
         datasourceId: config.output.datasourceId || config.source.datasourceId,
         folderId: config.output.folderId || config.source.folderId,
-        localOutputTableId: result.outputTableId,
+        localResultTableId: result.resultTableId,
       },
       requiredColumns: result.requiredColumns,
       expectedOutputSchema: result.expectedOutputSchema ?? [],
@@ -249,7 +249,7 @@ export function parseCloudAutomationConfig(value: unknown): CloudTableAutomation
       writeMode,
       // Only cloud "replace" falls back to the source table id (overwrite the same cloud
       // table). For local, never default the target to the input — that would overwrite the
-      // source dataset; require an explicit target instead.
+      // source rawTable; require an explicit target instead.
       targetTableId:
         typeof output.targetTableId === 'string' && output.targetTableId.trim()
           ? output.targetTableId
@@ -296,18 +296,18 @@ export function validateEnabledActionNodes(
     )
       return tr(
         'schedule.cloudSync.useOutputAction',
-        '数据处理结果请保存到本地输出表，再添加写入网盘文件动作。'
+        '数据处理结果请保存到本地结果表，再添加写入网盘文件动作。'
       );
     if (node.type === 'cloud.sync' && !cloudSyncSchema.safeParse(node.config).success) {
       if (node.config.direction === 'input')
-        return tr('schedule.cloudInput.invalid', '请选择分析空间、项目、来源表和目标输入表');
+        return tr('schedule.cloudInput.invalid', '请选择分析空间、项目、来源表和目标原始表');
       if (node.config.direction === 'output')
-        return tr('schedule.cloudSync.invalid', '请选择输出表、云空间、项目和同步目标');
+        return tr('schedule.cloudSync.invalid', '请选择结果表、云空间、项目和同步目标');
       return tr('schedule.cloudSync.selectDirection', '选择同步方向');
     }
     const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
     if (cloudAutomation) {
-      return tr('schedule.generatedTaskRequired', '请先生成并确认数据任务');
+      return tr('schedule.generatedPipelineRequired', '请先生成并确认数据加工');
     }
     if (
       node.type === 'conversation.run' &&
@@ -316,11 +316,14 @@ export function validateEnabledActionNodes(
     ) {
       return tr('schedule.promptRequired', '请输入要执行的 Prompt');
     }
-    if (node.type === 'data.task.run' && !String(node.config.taskId ?? '').trim()) {
-      return tr('schedule.dataTaskRequired', '请选择要执行的数据任务');
+    if (node.type === 'data.pipeline.run' && !String(node.config.pipelineId ?? '').trim()) {
+      return tr('schedule.dataPipelineRequired', '请选择要执行的数据加工');
     }
-    if (node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE && !String(node.config.taskId ?? '').trim()) {
-      return tr('schedule.generatedTaskRequired', '请先生成并确认数据任务');
+    if (
+      node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
+      !String(node.config.pipelineId ?? '').trim()
+    ) {
+      return tr('schedule.generatedPipelineRequired', '请先生成并确认数据加工');
     }
   }
   return null;
@@ -349,7 +352,7 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
     ? [
         '输入数据表（本地）：',
         `- 表名：${source.tableName || '（待选择）'}`,
-        `- 输入表 ID：${source.tableId || '（待选择）'}`,
+        `- 原始表 ID：${source.tableId || '（待选择）'}`,
         typeof source.rowCount === 'number' ? `- 行数：${source.rowCount}` : '',
         `- 字段：${columns}`,
       ]
@@ -364,26 +367,26 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
 
   const outputInstruction = isLocalOutput
     ? config.output.writeMode === 'replace'
-      ? `将处理后的结果覆盖写入本地输出表 ${config.output.targetTableId || '（待填写）'}。`
-      : `将处理后的结果保存为新的本地输出表，建议表名为 ${config.output.tableName || '处理结果表'}。`
+      ? `将处理后的结果覆盖写入本地结果表 ${config.output.targetTableId || '（待填写）'}。`
+      : `将处理后的结果保存为新的本地结果表，建议表名为 ${config.output.tableName || '处理结果表'}。`
     : config.output.writeMode === 'replace'
-      ? `将处理后的输出表覆盖上传到云表 ${config.output.targetTableId || '（待填写）'}。`
-      : `将处理后的输出表上传为新的云表，建议表名为 ${config.output.tableName || '处理结果表'}。`;
+      ? `将处理后的结果表覆盖上传到云表 ${config.output.targetTableId || '（待填写）'}。`
+      : `将处理后的结果表上传为新的云表，建议表名为 ${config.output.tableName || '处理结果表'}。`;
   const requirement =
     config.processRequirement.trim() ||
     (isLocalSource
-      ? '请根据输入表字段与业务含义生成合理的数据清洗流程。'
+      ? '请根据原始表字段与业务含义生成合理的数据清洗流程。'
       : '请根据云表字段与业务含义生成合理的数据清洗流程。');
 
   const sourceStep = isLocalSource
-    ? '- 直接读取上述本地输入表。'
-    : '- 先将上述云表导入为本地输入表。';
+    ? '- 直接读取上述本地原始表。'
+    : '- 先将上述云表导入为本地原始表。';
   const executionLines = [
     '执行要求：',
     isLocalSource && isLocalOutput
-      ? '- 完成本地数据处理并产出输出表，除非遇到会破坏数据的覆盖风险。'
+      ? '- 完成本地数据处理并产出结果表，除非遇到会破坏数据的覆盖风险。'
       : '- 自动完成数据导入、本地数据处理、结果输出，除非遇到会破坏数据的覆盖风险。',
-    '- 每个关键步骤完成后说明输入表、数据任务、输出表或云表的名称与 ID。',
+    '- 每个关键步骤完成后说明原始表、数据加工、结果表或云表的名称与 ID。',
     '- 如果字段结构不匹配、权限不足或目标表不可覆盖，请停止并说明具体原因。',
   ];
 
@@ -394,7 +397,7 @@ export function buildCloudAutomationPrompt(config: CloudTableAutomationConfig): 
     '',
     '处理方式：',
     sourceStep,
-    '- 根据处理要求创建或更新一个数据任务，在数据任务中完成筛选、字段选择、去重、缺失值处理、汇总统计等步骤。',
+    '- 根据处理要求创建或更新一个数据加工，在数据加工中完成筛选、字段选择、去重、缺失值处理、汇总统计等步骤。',
     `- 处理要求：${requirement}`,
     '',
     '输出方式：',
@@ -558,12 +561,12 @@ export function defaultConfigForAction(type: string): Record<string, unknown> {
       permissionPolicy: 'full_access',
     };
   }
-  if (type === 'data.task.run') return { taskId: '', outputMode: 'persisted' };
-  if (type === 'data.input.preview') return { inputTableId: '', limit: 20 };
-  if (type === 'data.output.preview') return { outputTableId: '', limit: 20 };
+  if (type === 'data.pipeline.run') return { pipelineId: '', outputMode: 'persisted' };
+  if (type === 'data.raw.preview') return { rawTableId: '', limit: 20 };
+  if (type === 'data.result.preview') return { resultTableId: '', limit: 20 };
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) {
     return {
-      taskId: '',
+      pipelineId: '',
       source: null,
       output: null,
       requiredColumns: [],

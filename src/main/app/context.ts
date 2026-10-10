@@ -10,9 +10,9 @@ import type { BrowserWindow, Tray } from 'electron';
 import { resolveDesktopAuthOrigin } from '../config/desktop-auth-config';
 import { DesktopAuthService } from '../auth/desktop-auth-service';
 import type { DatabaseInstance } from '../db/database';
-import type { DataTaskStore } from '../data/data-task-store';
+import type { DataPipelineStore } from '../data/data-pipeline-store';
 import type { DataCommandService } from '../data/data-command-service';
-import type { DataTaskLlmUsageRecorder } from '../data/data-task-llm-usage-recorder';
+import type { DataPipelineLlmUsageRecorder } from '../data/data-pipeline-llm-usage-recorder';
 import type { SessionManager } from '../session/session-manager';
 import type { SkillsManager } from '../skills/skills-manager';
 import type { PluginRuntimeService } from '../skills/plugin-runtime-service';
@@ -33,9 +33,9 @@ export interface AppContext {
   automationStore: AutomationStore | null;
   automationService: AutomationService | null;
   automationScheduler: AutomationScheduler | null;
-  dataTaskStore: DataTaskStore | null;
+  dataPipelineStore: DataPipelineStore | null;
   dataCommandService: DataCommandService | null;
-  recordDataTaskLlmUsage: DataTaskLlmUsageRecorder | undefined;
+  recordDataPipelineLlmUsage: DataPipelineLlmUsageRecorder | undefined;
   updateService: UpdateService | null;
   /** Set while a downloaded update is being installed — skips quit cleanup. */
   isInstallingUpdate: boolean;
@@ -58,9 +58,9 @@ export const appContext: AppContext = {
   automationStore: null,
   automationService: null,
   automationScheduler: null,
-  dataTaskStore: null,
+  dataPipelineStore: null,
   dataCommandService: null,
-  recordDataTaskLlmUsage: undefined,
+  recordDataPipelineLlmUsage: undefined,
   updateService: null,
   isInstallingUpdate: false,
   startupUpdateCheckScheduled: false,

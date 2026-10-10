@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n-test';
-import { WorkflowAiGenerateDialog } from '../../src/renderer/components/data-view/data-tasks/workflow/WorkflowAiGenerateDialog';
+import { WorkflowAiGenerateDialog } from '../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowAiGenerateDialog';
 const startSession = vi.hoisted(() => vi.fn());
 const getSessionMessages = vi.hoisted(() => vi.fn());
 vi.mock('../../src/renderer/hooks/useIPC', () => ({
@@ -21,8 +21,8 @@ describe('workflow conversation authoring', () => {
     render(
       <WorkflowAiGenerateDialog
         open
-        taskId="task"
-        boundInputTable={{ id: 'input', name: 'Sales' }}
+        pipelineId="pipeline"
+        boundRawTable={{ id: 'input', name: 'Sales' }}
         anchorNode={{ id: 'filter', label: '筛选', type: 'filter' }}
         draftWorkflow={workflow}
         hasExistingNodes
@@ -36,9 +36,9 @@ describe('workflow conversation authoring', () => {
     fireEvent.keyDown(composer, { key: 'Enter' });
     await waitFor(() => expect(startSession).toHaveBeenCalledOnce());
     expect(startSession.mock.calls[0][1][1]).toMatchObject({
-      type: 'data_task_request',
+      type: 'data_pipeline_request',
       request: {
-        reuseTaskId: 'task',
+        reusePipelineId: 'pipeline',
         startFromNodeId: 'filter',
         workflow,
         source: { tableId: 'input' },
@@ -49,8 +49,8 @@ describe('workflow conversation authoring', () => {
     render(
       <WorkflowAiGenerateDialog
         open
-        taskId="task"
-        boundInputTable={{ id: 'input', name: 'Sales' }}
+        pipelineId="pipeline"
+        boundRawTable={{ id: 'input', name: 'Sales' }}
         hasExistingNodes
         onOpenChange={vi.fn()}
       />

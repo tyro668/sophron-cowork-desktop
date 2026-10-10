@@ -36,4 +36,4 @@ export {
   toNumber,
   toFiniteNumber,
 } from './utils';
-export type { DataTaskStatus, DataFieldType } from './utils';
+export type { DataPipelineStatus, DataFieldType } from './utils';

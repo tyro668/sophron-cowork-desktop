@@ -31,24 +31,21 @@ describe('memory search tokenizer', () => {
   });
 
   it('splits code-like identifiers while preserving useful compact terms', () => {
-    const tokens = simpleTokenize('DataView.tsx createInputTable dropdown');
+    const tokens = simpleTokenize('DataView.tsx createRawTable dropdown');
 
     expect(tokens).toContain('dataview');
     expect(tokens).toContain('data');
     expect(tokens).toContain('view');
     expect(tokens).toContain('tsx');
-    expect(tokens).toContain('createinputtable');
+    expect(tokens).toContain('createrawtable');
     expect(tokens).toContain('create');
-    expect(tokens).toContain('input');
+    expect(tokens).toContain('raw');
     expect(tokens).toContain('table');
     expect(tokens).toContain('dropdown');
   });
 
   it('scores mixed Chinese and English memory text', () => {
-    const score = lexicalScore(
-      '自动化 dropdown 卡顿',
-      '修复自动化页面中 dropdown 弹出菜单卡顿'
-    );
+    const score = lexicalScore('自动化 dropdown 卡顿', '修复自动化页面中 dropdown 弹出菜单卡顿');
 
     expect(score).toBeGreaterThan(0);
   });

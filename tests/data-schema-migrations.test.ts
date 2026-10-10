@@ -10,7 +10,10 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 import type { DatabaseInstance } from '../src/main/db/database';
 import { LEGACY_DEMO_TASK_NAMES } from '../src/main/data/store/data-store-records';
 import { LEGACY_DEFAULT_WORKFLOW_NODES } from '../src/main/data/store/workflow-model';
@@ -21,7 +24,7 @@ import {
 } from '../src/main/data/store/migrations';
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 const rawDbs: Database.Database[] = [];
 
 function makeTempRoot(): string {
@@ -30,8 +33,8 @@ function makeTempRoot(): string {
   return root;
 }
 
-function openStore(dbPath: string, metadataDb?: Database.Database): DataTaskStore {
-  const store = createDataTaskStore(
+function openStore(dbPath: string, metadataDb?: Database.Database): DataPipelineStore {
+  const store = createDataPipelineStore(
     dbPath,
     metadataDb ? { metadataDb: { raw: metadataDb } as unknown as DatabaseInstance } : undefined
   );
@@ -60,14 +63,14 @@ function ledgerRows(db: Database.Database): Array<{ version: number; name: strin
 /** Builds the pre-ledger schema: baseline tables minus newer columns/tables. */
 function seedLegacyFixture(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE data_cleaning_tasks (
+    CREATE TABLE data_pipelines (
       id VARCHAR PRIMARY KEY,
       name VARCHAR NOT NULL,
       status VARCHAR NOT NULL,
       node_count INTEGER NOT NULL,
       source_path VARCHAR,
-      source_dataset_id VARCHAR,
-      output_table VARCHAR,
+      source_raw_table_id VARCHAR,
+      result_table VARCHAR,
       row_count UBIGINT,
       column_count INTEGER,
       error VARCHAR,
@@ -76,7 +79,7 @@ function seedLegacyFixture(db: Database.Database): void {
       updated_at BIGINT NOT NULL,
       last_run_at BIGINT
     );
-    CREATE TABLE data_datasets (
+    CREATE TABLE data_raw_tables (
       id VARCHAR PRIMARY KEY,
       name VARCHAR NOT NULL,
       source_path VARCHAR NOT NULL,
@@ -90,7 +93,7 @@ function seedLegacyFixture(db: Database.Database): void {
     );
     CREATE TABLE data_workflow_nodes (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       node_key VARCHAR NOT NULL,
       operator_type VARCHAR,
       label VARCHAR NOT NULL,
@@ -103,7 +106,7 @@ function seedLegacyFixture(db: Database.Database): void {
     );
     CREATE TABLE data_workflow_edges (
       id VARCHAR PRIMARY KEY,
-      task_id VARCHAR NOT NULL,
+      pipeline_id VARCHAR NOT NULL,
       source_node_id VARCHAR NOT NULL,
       target_node_id VARCHAR NOT NULL,
       source_handle VARCHAR,
@@ -112,32 +115,32 @@ function seedLegacyFixture(db: Database.Database): void {
     );
   `);
 
-  const insertTask = db.prepare(`
-    INSERT INTO data_cleaning_tasks (
-      id, name, status, node_count, source_path, source_dataset_id, output_table,
+  const insertPipeline = db.prepare(`
+    INSERT INTO data_pipelines (
+      id, name, status, node_count, source_path, source_raw_table_id, result_table,
       row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const insertDataset = db.prepare(`
-    INSERT INTO data_datasets (
+  const insertRawTable = db.prepare(`
+    INSERT INTO data_raw_tables (
       id, name, source_path, source_kind, config_json, table_name,
       row_count, column_count, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertNode = db.prepare(`
     INSERT INTO data_workflow_nodes (
-      id, task_id, node_key, operator_type, label, x, y, config_json,
+      id, pipeline_id, node_key, operator_type, label, x, y, config_json,
       ordinal, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertEdge = db.prepare(`
     INSERT INTO data_workflow_edges (
-      id, task_id, source_node_id, target_node_id, source_handle, target_handle, created_at
+      id, pipeline_id, source_node_id, target_node_id, source_handle, target_handle, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
-  // Deletable legacy demo task: all data columns NULL.
-  insertTask.run(
+  // Deletable legacy demo pipeline: all data columns NULL.
+  insertPipeline.run(
     'demo-1',
     LEGACY_DEMO_TASK_NAMES[0],
     'draft',
@@ -154,7 +157,7 @@ function seedLegacyFixture(db: Database.Database): void {
     null
   );
   // Same demo name but with real run data — must survive the cleanup predicate.
-  insertTask.run(
+  insertPipeline.run(
     'demo-2',
     LEGACY_DEMO_TASK_NAMES[0],
     'completed',
@@ -170,9 +173,9 @@ function seedLegacyFixture(db: Database.Database): void {
     200,
     200
   );
-  // Real task carrying the legacy default workflow graph.
-  insertTask.run(
-    'task-legacy',
+  // Real pipeline carrying the legacy default workflow graph.
+  insertPipeline.run(
+    'pipeline-legacy',
     '我的任务',
     'completed',
     7,
@@ -187,9 +190,9 @@ function seedLegacyFixture(db: Database.Database): void {
     200,
     200
   );
-  // Task with a custom workflow that must be preserved.
-  insertTask.run(
-    'task-custom',
+  // Pipeline with a custom workflow that must be preserved.
+  insertPipeline.run(
+    'pipeline-custom',
     '自定义任务',
     'completed',
     2,
@@ -205,7 +208,7 @@ function seedLegacyFixture(db: Database.Database): void {
     200
   );
 
-  insertDataset.run(
+  insertRawTable.run(
     'ds-sample',
     '示例数据',
     'local://samples/users.csv',
@@ -217,7 +220,7 @@ function seedLegacyFixture(db: Database.Database): void {
     100,
     100
   );
-  insertDataset.run(
+  insertRawTable.run(
     'ds-real',
     '真实数据',
     '/data/real.csv',
@@ -230,7 +233,7 @@ function seedLegacyFixture(db: Database.Database): void {
     100
   );
   // Legacy explicit output row: converted by v4 (config_json backfilled).
-  insertDataset.run(
+  insertRawTable.run(
     'ds-legacy-out',
     '旧输出',
     'duckdb://outputs/output_abc',
@@ -242,8 +245,8 @@ function seedLegacyFixture(db: Database.Database): void {
     100,
     100
   );
-  // Orphan output-ish row matched only via task output_table — not convertible, deleted by v4.
-  insertDataset.run(
+  // Orphan output-ish row matched only via pipeline result_table — not convertible, deleted by v4.
+  insertRawTable.run(
     'ds-orphan',
     '孤儿行',
     '/tmp/orphan.csv',
@@ -256,12 +259,12 @@ function seedLegacyFixture(db: Database.Database): void {
     100
   );
   // Already-modern output row: v4 must leave its config untouched.
-  insertDataset.run(
+  insertRawTable.run(
     'ds-modern-out',
     '现代输出',
     'duckdb://outputs/output_mod',
     'output',
-    '{"kind":"output_table","sourceDatasetId":"ds-real"}',
+    '{"kind":"result_table","sourceRawTableId":"ds-real"}',
     'output_mod',
     7,
     2,
@@ -272,7 +275,7 @@ function seedLegacyFixture(db: Database.Database): void {
   LEGACY_DEFAULT_WORKFLOW_NODES.forEach((node, index) => {
     insertNode.run(
       `legacy-${node.key}`,
-      'task-legacy',
+      'pipeline-legacy',
       node.key,
       node.type,
       node.label,
@@ -284,11 +287,11 @@ function seedLegacyFixture(db: Database.Database): void {
       100
     );
   });
-  insertEdge.run('legacy-e1', 'task-legacy', 'legacy-source', 'legacy-filter', null, null, 100);
+  insertEdge.run('legacy-e1', 'pipeline-legacy', 'legacy-source', 'legacy-filter', null, null, 100);
 
   insertNode.run(
     'custom-1',
-    'task-custom',
+    'pipeline-custom',
     'src',
     'input_source',
     '输入',
@@ -299,8 +302,20 @@ function seedLegacyFixture(db: Database.Database): void {
     100,
     100
   );
-  insertNode.run('custom-2', 'task-custom', 'out', 'output', '输出', 190, 128, '{}', 2, 100, 100);
-  insertEdge.run('custom-e1', 'task-custom', 'custom-1', 'custom-2', null, null, 100);
+  insertNode.run(
+    'custom-2',
+    'pipeline-custom',
+    'out',
+    'output',
+    '输出',
+    190,
+    128,
+    '{}',
+    2,
+    100,
+    100
+  );
+  insertEdge.run('custom-e1', 'pipeline-custom', 'custom-1', 'custom-2', null, null, 100);
 }
 
 afterEach(() => {
@@ -371,7 +386,7 @@ describe('metadata migrations', () => {
     };
     raw
       .prepare(
-        `INSERT INTO data_datasets (id, name, source_path, source_kind, config_json, table_name, row_count, column_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO data_raw_tables (id, name, source_path, source_kind, config_json, table_name, row_count, column_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         'cloud-input',
@@ -386,7 +401,7 @@ describe('metadata migrations', () => {
         20
       );
     const store = openStore(path.join(root, 'workspace.duckdb'), raw);
-    const migrated = await store.getInputTableRecord('cloud-input');
+    const migrated = await store.getRawTableRecord('cloud-input');
     expect(migrated).toMatchObject({
       id: 'cloud-input',
       sourceKind: 'cloud',
@@ -400,14 +415,14 @@ describe('metadata migrations', () => {
       },
     });
     expect(migrated?.inputConfig).not.toHaveProperty('delimiter');
-    expect((await store.findInputTableByAutomationSyncKey('sync'))?.id).toBe('cloud-input');
+    expect((await store.findRawTableByAutomationSyncKey('sync'))?.id).toBe('cloud-input');
     const firstStamp = raw
       .prepare('SELECT applied_at FROM data_schema_migrations WHERE version = 14')
       .get();
     await store.close();
     stores.pop();
     const reopened = openStore(path.join(root, 'workspace.duckdb'), raw);
-    expect((await reopened.getInputTableRecord('cloud-input'))?.inputConfig).toEqual(
+    expect((await reopened.getRawTableRecord('cloud-input'))?.inputConfig).toEqual(
       migrated?.inputConfig
     );
     expect(
@@ -434,7 +449,7 @@ describe('metadata migrations', () => {
       'baseline_schema',
       'drop_legacy_demo_rows',
       'drop_legacy_default_workflow_graphs',
-      'normalize_output_table_metadata',
+      'normalize_result_table_metadata',
       'table_commit_journal',
       'node_run_stats_input_rows_by_handle',
       'workflow_node_cache_signature',
@@ -443,67 +458,73 @@ describe('metadata migrations', () => {
       'restrict_generated_automation_outputs',
       'merge_cloud_sync_action_types',
       'data_list_groups',
-      'data_task_runs',
-      'cloud_input_table_source',
+      'data_pipeline_runs',
+      'cloud_raw_table_source',
     ]);
 
     // v12: group table + member columns exist.
     expect(tableNames(raw)).toContain('data_groups');
-    expect(columnNames(raw, 'data_cleaning_tasks')).toContain('group_id');
-    expect(columnNames(raw, 'data_datasets')).toContain('group_id');
+    expect(columnNames(raw, 'data_pipelines')).toContain('group_id');
+    expect(columnNames(raw, 'data_raw_tables')).toContain('group_id');
 
     // v13: per-run history table.
-    expect(tableNames(raw)).toContain('data_task_runs');
+    expect(tableNames(raw)).toContain('data_pipeline_runs');
 
     // Baseline adds the missing column and the newer tables.
-    expect(columnNames(raw, 'data_datasets')).toContain('file_count');
+    expect(columnNames(raw, 'data_raw_tables')).toContain('file_count');
     for (const table of [
-      'data_task_watermarks',
-      'data_task_node_run_stats',
+      'data_pipeline_watermarks',
+      'data_pipeline_node_run_stats',
       'data_workflow_node_caches',
       'data_output_commits',
       'data_table_commits',
-      'data_input_table_normalizer_artifacts',
-      'data_input_table_normalizer_artifact_versions',
+      'data_raw_table_normalizer_artifacts',
+      'data_raw_table_normalizer_artifact_versions',
       METADATA_MIGRATION_LEDGER,
     ]) {
       expect(tableNames(raw)).toContain(table);
     }
 
-    // v2: deletable demo task removed; demo-with-data and real tasks kept.
-    const taskIds = new Set(
-      (raw.prepare('SELECT id FROM data_cleaning_tasks').all() as Array<{ id: string }>).map(
+    // v2: deletable demo pipeline removed; demo-with-data and real pipelines kept.
+    const pipelineIds = new Set(
+      (raw.prepare('SELECT id FROM data_pipelines').all() as Array<{ id: string }>).map(
         (row) => row.id
       )
     );
-    expect(taskIds).toEqual(new Set(['demo-2', 'task-legacy', 'task-custom']));
+    expect(pipelineIds).toEqual(new Set(['demo-2', 'pipeline-legacy', 'pipeline-custom']));
 
-    // v2: sample datasets removed, real dataset kept.
+    // v2: sample rawTables removed, real rawTable kept.
     // v4: legacy output row converted, orphan row deleted, modern row untouched.
-    const datasets = raw
-      .prepare('SELECT id, config_json, file_count FROM data_datasets')
+    const rawTables = raw
+      .prepare('SELECT id, config_json, file_count FROM data_raw_tables')
       .all() as Array<{ id: string; config_json: string | null; file_count: number | null }>;
-    const byId = new Map(datasets.map((row) => [row.id, row]));
+    const byId = new Map(rawTables.map((row) => [row.id, row]));
     expect(byId.has('ds-sample')).toBe(false);
     expect(byId.has('ds-orphan')).toBe(false);
     expect(byId.has('ds-real')).toBe(true);
-    expect(byId.get('ds-legacy-out')?.config_json).toContain('"kind":"output_table"');
+    expect(byId.get('ds-legacy-out')?.config_json).toContain('"kind":"result_table"');
     expect(byId.get('ds-legacy-out')?.file_count).toBe(0);
     expect(byId.get('ds-modern-out')?.config_json).toBe(
-      '{"kind":"output_table","sourceDatasetId":"ds-real"}'
+      '{"kind":"result_table","sourceRawTableId":"ds-real"}'
     );
 
     // v3: legacy default graph deleted and node_count reset; custom graph intact.
-    const remainingNodes = raw.prepare('SELECT task_id FROM data_workflow_nodes').all() as Array<{
-      task_id: string;
+    const remainingNodes = raw
+      .prepare('SELECT pipeline_id FROM data_workflow_nodes')
+      .all() as Array<{
+      pipeline_id: string;
     }>;
-    expect(new Set(remainingNodes.map((row) => row.task_id))).toEqual(new Set(['task-custom']));
-    const legacyTask = raw
-      .prepare("SELECT node_count FROM data_cleaning_tasks WHERE id = 'task-legacy'")
+    expect(new Set(remainingNodes.map((row) => row.pipeline_id))).toEqual(
+      new Set(['pipeline-custom'])
+    );
+    const legacyPipeline = raw
+      .prepare("SELECT node_count FROM data_pipelines WHERE id = 'pipeline-legacy'")
       .get() as { node_count: number };
-    expect(legacyTask.node_count).toBe(0);
+    expect(legacyPipeline.node_count).toBe(0);
     const edgeCount = raw
-      .prepare("SELECT count(*) AS c FROM data_workflow_edges WHERE task_id = 'task-legacy'")
+      .prepare(
+        "SELECT count(*) AS c FROM data_workflow_edges WHERE pipeline_id = 'pipeline-legacy'"
+      )
       .get() as { c: number };
     expect(edgeCount.c).toBe(0);
   });
@@ -520,12 +541,12 @@ describe('metadata migrations', () => {
     first.close();
     stores.pop();
 
-    // Insert a fresh deletable-shape demo task AFTER the first open. If legacy
+    // Insert a fresh deletable-shape demo pipeline AFTER the first open. If legacy
     // cleanup still ran on every boot, this row would be deleted on reopen.
     raw
       .prepare(
-        `INSERT INTO data_cleaning_tasks (
-        id, name, status, node_count, source_path, source_dataset_id, output_table,
+        `INSERT INTO data_pipelines (
+        id, name, status, node_count, source_path, source_raw_table_id, result_table,
         row_count, column_count, error, scheduled_for, created_at, updated_at, last_run_at
       ) VALUES ('demo-new', ?, 'draft', 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 300, 300, NULL)`
       )
@@ -535,9 +556,8 @@ describe('metadata migrations', () => {
     await second.getDashboard({});
 
     expect(ledgerRows(raw).length).toBe(METADATA_MIGRATIONS.length);
-    const preserved = raw
-      .prepare("SELECT id FROM data_cleaning_tasks WHERE id = 'demo-new'")
-      .get() as { id: string } | undefined;
+    const preserved = raw.prepare("SELECT id FROM data_pipelines WHERE id = 'demo-new'").get() as
+      { id: string } | undefined;
     expect(preserved?.id).toBe('demo-new');
   });
 
@@ -590,7 +610,7 @@ describe('metadata migrations', () => {
     };
     expect(internals.ctx.metadataReadOnly).toBe(true);
     await expect(
-      internals.ctx.metaRunSql('INSERT INTO data_cleaning_tasks (id) VALUES (1)')
+      internals.ctx.metaRunSql('INSERT INTO data_pipelines (id) VALUES (1)')
     ).rejects.toThrow(/newer than this build/);
   });
 });

@@ -3,9 +3,9 @@ import { resolveSqlQuerySchemas } from '../../workflow/sql-query-schemas';
 import type {
   DataColumnTypeInfo,
   DataFieldType,
-  DataInputTablePreview,
+  DataRawTablePreview,
   DataWorkflowNode,
-  DataCleaningTask,
+  DataPipeline,
   DataPreviewWorkflowNodeInput,
   DataWorkflowSaveInput,
 } from '../../../../shared/contracts';
@@ -27,9 +27,9 @@ import {
   readRelationForPath,
 } from '../input-source';
 import { CacheRepository } from '../repositories/cache-repository';
-import { DatasetRepository } from '../repositories/dataset-repository';
+import { RawTableRepository } from '../repositories/raw-table-repository';
 import { OutputCommitJournal } from '../repositories/output-commit-journal';
-import { TaskRepository } from '../repositories/task-repository';
+import { PipelineRepository } from '../repositories/pipeline-repository';
 import { WorkflowRepository } from '../repositories/workflow-repository';
 import { stringConfigValue } from '../workflow-model';
 import { WorkflowCompiler } from './workflow-compiler';
@@ -37,26 +37,26 @@ import { WorkflowCompiler } from './workflow-compiler';
 export class WorkflowNodePreviewService {
   constructor(
     private readonly ctx: DataStoreContext,
-    private readonly tasks: TaskRepository,
-    private readonly datasets: DatasetRepository,
+    private readonly pipelines: PipelineRepository,
+    private readonly rawTables: RawTableRepository,
     private readonly caches: CacheRepository,
     private readonly compiler: WorkflowCompiler,
     private readonly workflows: WorkflowRepository,
     private readonly outputCommits: OutputCommitJournal
   ) {}
-  async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataInputTablePreview> {
+  async previewWorkflowNode(input: DataPreviewWorkflowNodeInput): Promise<DataRawTablePreview> {
     // Node previews may materialize cache/preview tables — physical writes
     // serialize with commits through the exclusive section.
     return this.ctx.runExclusive(
       () => this.previewWorkflowNodeUnsafe(input),
-      `previewWorkflowNode:${input.taskId}:${input.nodeId}`
+      `previewWorkflowNode:${input.pipelineId}:${input.nodeId}`
     );
   }
   private async previewWorkflowNodeUnsafe(
     input: DataPreviewWorkflowNodeInput
-  ): Promise<DataInputTablePreview> {
+  ): Promise<DataRawTablePreview> {
     await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.requireTask(input.taskId);
+    const pipeline = await this.pipelines.requirePipeline(input.pipelineId);
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const limit = normalizePreviewLimit(input.limit);
@@ -64,7 +64,7 @@ export class WorkflowNodePreviewService {
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
-      taskId: task.id,
+      pipelineId: pipeline.id,
       type: input.nodeType,
       label: '',
       x: 0,
@@ -73,13 +73,13 @@ export class WorkflowNodePreviewService {
       createdAt: 0,
       updatedAt: 0,
     };
-    const previewSource = await this.resolveWorkflowNodePreviewTable(task, node);
+    const previewSource = await this.resolveWorkflowNodePreviewTable(pipeline, node);
     const tableName = previewSource?.tableName ?? null;
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // No materialized table yet — surface the plan-inferred schema so the
       // data tab still shows the expected columns instead of a blank grid.
-      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
+      const inferred = await this.inferWorkflowNodeSchema(pipeline, node, input.workflow);
       return {
         columns: (inferred ?? []).map((column) => column.name),
         columnTypes: toColumnTypeInfos(inferred),
@@ -113,20 +113,20 @@ export class WorkflowNodePreviewService {
   async getWorkflowNodeColumns(input: DataPreviewWorkflowNodeInput): Promise<string[]> {
     return this.ctx.runExclusive(
       () => this.getWorkflowNodeColumnsUnsafe(input),
-      `getWorkflowNodeColumns:${input.taskId}:${input.nodeId}`
+      `getWorkflowNodeColumns:${input.pipelineId}:${input.nodeId}`
     );
   }
   private async getWorkflowNodeColumnsUnsafe(
     input: DataPreviewWorkflowNodeInput
   ): Promise<string[]> {
     await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.requireTask(input.taskId);
+    const pipeline = await this.pipelines.requirePipeline(input.pipelineId);
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
-      taskId: task.id,
+      pipelineId: pipeline.id,
       type: input.nodeType,
       label: '',
       x: 0,
@@ -136,7 +136,10 @@ export class WorkflowNodePreviewService {
       updatedAt: 0,
     };
 
-    const inputSourceColumns = await this.compiler.resolveInputSourceColumns(node, task.sourcePath);
+    const inputSourceColumns = await this.compiler.resolveInputSourceColumns(
+      node,
+      pipeline.sourcePath
+    );
     if (inputSourceColumns) {
       return inputSourceColumns;
     }
@@ -144,17 +147,18 @@ export class WorkflowNodePreviewService {
     // The live draft's plan-inferred schema wins over a materialized cache
     // table — the cache may still carry the previous run's column names.
     if (input.workflow?.nodes?.length) {
-      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
+      const inferred = await this.inferWorkflowNodeSchema(pipeline, node, input.workflow);
       if (inferred) {
         return inferred.map((column) => column.name);
       }
     }
 
-    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
+    const tableName =
+      (await this.resolveWorkflowNodePreviewTable(pipeline, node))?.tableName ?? null;
 
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       return (
-        (await this.inferWorkflowNodeSchema(task, node, input.workflow))?.map(
+        (await this.inferWorkflowNodeSchema(pipeline, node, input.workflow))?.map(
           (column) => column.name
         ) ?? []
       );
@@ -167,20 +171,20 @@ export class WorkflowNodePreviewService {
   ): Promise<DataColumnTypeInfo[]> {
     return this.ctx.runExclusive(
       () => this.getWorkflowNodeColumnTypesUnsafe(input),
-      `getWorkflowNodeColumnTypes:${input.taskId}:${input.nodeId}`
+      `getWorkflowNodeColumnTypes:${input.pipelineId}:${input.nodeId}`
     );
   }
   private async getWorkflowNodeColumnTypesUnsafe(
     input: DataPreviewWorkflowNodeInput
   ): Promise<DataColumnTypeInfo[]> {
     await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.requireTask(input.taskId);
+    const pipeline = await this.pipelines.requirePipeline(input.pipelineId);
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
-      taskId: task.id,
+      pipelineId: pipeline.id,
       type: input.nodeType,
       label: '',
       x: 0,
@@ -192,10 +196,11 @@ export class WorkflowNodePreviewService {
 
     // Same precedence as column names: draft-inferred schema first, cache
     // table only fills types the plan cannot determine.
-    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
+    const tableName =
+      (await this.resolveWorkflowNodePreviewTable(pipeline, node))?.tableName ?? null;
     const tableExists = tableName ? await this.ctx.physicalTableExists(tableName) : false;
     if (input.workflow?.nodes?.length) {
-      const inferred = await this.inferWorkflowNodeSchema(task, node, input.workflow);
+      const inferred = await this.inferWorkflowNodeSchema(pipeline, node, input.workflow);
       if (inferred) {
         const cacheTypes =
           tableName && tableExists ? await this.ctx.getTableColumnTypes(tableName) : [];
@@ -203,7 +208,7 @@ export class WorkflowNodePreviewService {
       }
     }
     if (!tableName || !tableExists) {
-      return toColumnTypeInfos(await this.inferWorkflowNodeSchema(task, node, input.workflow));
+      return toColumnTypeInfos(await this.inferWorkflowNodeSchema(pipeline, node, input.workflow));
     }
 
     return this.ctx.getTableColumnTypes(tableName);
@@ -218,7 +223,7 @@ export class WorkflowNodePreviewService {
    * unsaved topology edits are reflected as well.
    */
   private async inferWorkflowNodeSchema(
-    task: DataCleaningTask,
+    pipeline: DataPipeline,
     node: DataWorkflowNode,
     draftWorkflow?: DataWorkflowSaveInput | null
   ): Promise<PlanColumn[] | null> {
@@ -227,7 +232,7 @@ export class WorkflowNodePreviewService {
       ? {
           nodes: draft.nodes.map((item) => ({
             id: item.id,
-            taskId: task.id,
+            pipelineId: pipeline.id,
             type: item.type,
             label: item.label ?? '',
             x: item.x ?? 0,
@@ -238,7 +243,7 @@ export class WorkflowNodePreviewService {
           })),
           edges: draft.edges.map((item) => ({
             id: item.id,
-            taskId: task.id,
+            pipelineId: pipeline.id,
             sourceNodeId: item.sourceNodeId,
             targetNodeId: item.targetNodeId,
             sourceHandle: item.sourceHandle ?? null,
@@ -246,7 +251,7 @@ export class WorkflowNodePreviewService {
             createdAt: 0,
           })),
         }
-      : await this.workflows.getRuntimeWorkflow(task.id);
+      : await this.workflows.getRuntimeWorkflow(pipeline.id);
     if (runtime.nodes.length === 0) return null;
     const overlaid = runtime.nodes.map((item) =>
       item.id === node.id ? { ...item, type: node.type, config: node.config } : item
@@ -255,9 +260,12 @@ export class WorkflowNodePreviewService {
     const inputSchemas = new Map<string, PlanColumn[]>();
     for (const planNode of plan.nodes) {
       if (planNode.type !== 'input_source') continue;
-      const taskNode = overlaid.find((item) => item.id === planNode.id);
-      if (!taskNode) continue;
-      const columns = await this.compiler.resolveInputSourceColumnTypes(taskNode, task.sourcePath);
+      const pipelineNode = overlaid.find((item) => item.id === planNode.id);
+      if (!pipelineNode) continue;
+      const columns = await this.compiler.resolveInputSourceColumnTypes(
+        pipelineNode,
+        pipeline.sourcePath
+      );
       if (columns) inputSchemas.set(planNode.id, columns);
     }
     const sqlSchemas = await resolveSqlQuerySchemas(this.ctx.connection!, plan, inputSchemas);
@@ -273,20 +281,20 @@ export class WorkflowNodePreviewService {
   ): Promise<string[]> {
     return this.ctx.runExclusive(
       () => this.getWorkflowNodeColumnValuesUnsafe(input),
-      `getWorkflowNodeColumnValues:${input.taskId}:${input.nodeId}`
+      `getWorkflowNodeColumnValues:${input.pipelineId}:${input.nodeId}`
     );
   }
   private async getWorkflowNodeColumnValuesUnsafe(
     input: DataPreviewWorkflowNodeInput & { column: string }
   ): Promise<string[]> {
     await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.requireTask(input.taskId);
+    const pipeline = await this.pipelines.requirePipeline(input.pipelineId);
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
-      taskId: task.id,
+      pipelineId: pipeline.id,
       type: input.nodeType,
       label: '',
       x: 0,
@@ -296,7 +304,7 @@ export class WorkflowNodePreviewService {
       updatedAt: 0,
     };
 
-    let tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
+    let tableName = (await this.resolveWorkflowNodePreviewTable(pipeline, node))?.tableName ?? null;
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // 缓存表不存在，尝试从源文件加载数据创建临时表
       if (node.type !== 'input_source' || node.config.disabled === true) {
@@ -305,16 +313,16 @@ export class WorkflowNodePreviewService {
       const source =
         typeof node.config.source === 'string'
           ? node.config.source
-          : stringConfigValue(node.config.datasetId)
-            ? 'dataset'
-            : 'task';
-      if (source === 'dataset') {
+          : stringConfigValue(node.config.rawTableId)
+            ? 'rawTable'
+            : 'pipeline';
+      if (source === 'rawTable') {
         return [];
       }
       const filePath =
         source === 'file' && typeof node.config.filePath === 'string'
           ? normalizeSourcePath(node.config.filePath)
-          : task.sourcePath;
+          : pipeline.sourcePath;
       if (!filePath) {
         return [];
       }
@@ -342,20 +350,20 @@ export class WorkflowNodePreviewService {
   async getWorkflowNodeRowCount(input: DataPreviewWorkflowNodeInput): Promise<number> {
     return this.ctx.runExclusive(
       () => this.getWorkflowNodeRowCountUnsafe(input),
-      `getWorkflowNodeRowCount:${input.taskId}:${input.nodeId}`
+      `getWorkflowNodeRowCount:${input.pipelineId}:${input.nodeId}`
     );
   }
   private async getWorkflowNodeRowCountUnsafe(
     input: DataPreviewWorkflowNodeInput
   ): Promise<number> {
     await this.ctx.ensureMetadataReady();
-    const task = await this.tasks.requireTask(input.taskId);
+    const pipeline = await this.pipelines.requirePipeline(input.pipelineId);
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const nodeConfig = input.nodeConfig ?? {};
     const node: DataWorkflowNode = {
       id: input.nodeId,
-      taskId: task.id,
+      pipelineId: pipeline.id,
       type: input.nodeType,
       label: '',
       x: 0,
@@ -364,7 +372,8 @@ export class WorkflowNodePreviewService {
       createdAt: 0,
       updatedAt: 0,
     };
-    const tableName = (await this.resolveWorkflowNodePreviewTable(task, node))?.tableName ?? null;
+    const tableName =
+      (await this.resolveWorkflowNodePreviewTable(pipeline, node))?.tableName ?? null;
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       return 0;
     }
@@ -379,7 +388,7 @@ export class WorkflowNodePreviewService {
    *  generation timestamp and the upstream signature they were built under —
    *  the renderer needs both for the stale-preview badge and "updated at". */
   async resolveWorkflowNodePreviewTable(
-    task: DataCleaningTask,
+    pipeline: DataPipeline,
     node: DataWorkflowNode
   ): Promise<{
     tableName: string;
@@ -393,24 +402,24 @@ export class WorkflowNodePreviewService {
       const source =
         typeof node.config.source === 'string'
           ? node.config.source
-          : stringConfigValue(node.config.datasetId)
-            ? 'dataset'
-            : 'task';
-      if (source === 'dataset') {
-        const datasetRef =
-          stringConfigValue(node.config.datasetId) ||
-          stringConfigValue(node.config.inputTableId) ||
-          stringConfigValue(node.config.sourceDatasetId) ||
+          : stringConfigValue(node.config.rawTableId)
+            ? 'rawTable'
+            : 'pipeline';
+      if (source === 'rawTable') {
+        const rawTableRef =
+          stringConfigValue(node.config.rawTableId) ||
+          stringConfigValue(node.config.rawTableId) ||
+          stringConfigValue(node.config.sourceRawTableId) ||
           stringConfigValue(node.config.name) ||
           stringConfigValue(node.config.alias);
-        if (!datasetRef) {
+        if (!rawTableRef) {
           return null;
         }
-        const dataset = await this.datasets.findDatasetByReference(datasetRef);
-        return dataset?.tableName ? { tableName: dataset.tableName } : null;
+        const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
+        return rawTable?.tableName ? { tableName: rawTable.tableName } : null;
       }
     }
-    const cache = await this.caches.findWorkflowNodeCache(task.id, node.id);
+    const cache = await this.caches.findWorkflowNodeCache(pipeline.id, node.id);
     if (cache) {
       return {
         tableName: cache.tableName,
@@ -422,25 +431,25 @@ export class WorkflowNodePreviewService {
       return { tableName: tableNameFromId('workflow_source', node.id) };
     }
     if (node.type === 'output') {
-      const outputDatasetId =
-        stringConfigValue(node.config.outputDatasetId) ||
-        stringConfigValue(node.config.outputTableId);
-      const outputTableName = outputDatasetId
-        ? (await this.datasets.getOutputTable(outputDatasetId))?.tableName
+      const outputResultTableId =
+        stringConfigValue(node.config.outputResultTableId) ||
+        stringConfigValue(node.config.resultTableId);
+      const resultTableName = outputResultTableId
+        ? (await this.rawTables.getResultTable(outputResultTableId))?.tableName
         : stringConfigValue(node.config.table) ||
-          task.outputTable ||
-          tableNameFromId('clean_task', task.id);
-      if (!outputTableName) {
+          pipeline.resultTable ||
+          tableNameFromId('clean_pipeline', pipeline.id);
+      if (!resultTableName) {
         return null;
       }
       // The sink's cache row dies with its staging table post-commit; the
       // commit journal keeps the generating signature + timestamp instead.
       const provenance = await this.outputCommits.findLatestCommittedForTarget(
-        task.id,
-        outputTableName
+        pipeline.id,
+        resultTableName
       );
       return {
-        tableName: outputTableName,
+        tableName: resultTableName,
         generatedAt: provenance?.generatedAt,
         workflowSignature: provenance?.workflowSignature ?? null,
       };

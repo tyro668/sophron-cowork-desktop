@@ -95,7 +95,7 @@ export class MemoryManager {
     // First get all messages for the session
     const messages = this.getMessageHistory(sessionId);
 
-    // Simple text search (FTS5 would be more efficient for large datasets)
+    // Simple text search (FTS5 would be more efficient for large rawTables)
     const queryLower = query.toLowerCase();
 
     return messages.filter((message) => {

@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkflowOperatorPalette } from '../../src/renderer/components/data-view/data-tasks/workflow/WorkflowOperatorPalette';
-import { WORKFLOW_OPERATOR_MIME } from '../../src/renderer/components/data-view/data-tasks/workflow/workflow-model';
+import { WorkflowOperatorPalette } from '../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowOperatorPalette';
+import { WORKFLOW_OPERATOR_MIME } from '../../src/renderer/components/data-view/data-pipelines/workflow/workflow-model';
 import i18n from './i18n-test';
 
 afterEach(cleanup);

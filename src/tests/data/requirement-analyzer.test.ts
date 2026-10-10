@@ -7,11 +7,11 @@ vi.mock('../../main/agent/pi-ai-one-shot', () => ({
 }));
 
 import type { AgentRuntimeConfig } from '../../shared/contracts';
-import { analyzeDataTaskRequirement } from '../../main/data/workflow/requirement-analyzer';
+import { analyzeDataPipelineRequirement } from '../../main/data/workflow/requirement-analyzer';
 
 const runtimeConfig = { model: 'test-model' } as AgentRuntimeConfig;
 
-describe('analyzeDataTaskRequirement', () => {
+describe('analyzeDataPipelineRequirement', () => {
   beforeEach(() => {
     runPiAiOneShotMock.mockReset();
   });
@@ -30,7 +30,7 @@ describe('analyzeDataTaskRequirement', () => {
     });
 
     await expect(
-      analyzeDataTaskRequirement({
+      analyzeDataPipelineRequirement({
         requirement: '删除记录数字段',
         columns: [{ name: '记录数' }],
         runtimeConfig,
@@ -60,7 +60,7 @@ describe('analyzeDataTaskRequirement', () => {
     });
 
     await expect(
-      analyzeDataTaskRequirement({
+      analyzeDataPipelineRequirement({
         requirement: '删除记录数字段，把地址转换为经纬度',
         columns: [{ name: '记录数' }, { name: '地址' }],
         runtimeConfig,
@@ -75,7 +75,7 @@ describe('analyzeDataTaskRequirement', () => {
     runPiAiOneShotMock.mockResolvedValue({ text: '{"items":[]}' });
 
     await expect(
-      analyzeDataTaskRequirement({
+      analyzeDataPipelineRequirement({
         requirement: '预测销售额',
         columns: [{ name: '销售额' }],
         runtimeConfig,

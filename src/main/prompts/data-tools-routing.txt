@@ -2,52 +2,52 @@
 
 You have access to data_* tools for local data processing.
 Use data_* tools only when the user wants to create, manage, save, run, or modify a fixed reusable data-processing workflow.
-Do not automatically create a data task for one-off exploration, casual analysis, simple questions, or requests that explicitly ask you to use Python.
-If the user has not asked for a fixed/reusable workflow, ask whether they want to save the processing as a reusable data task before using write or execute data tools.
+Do not automatically create a data pipeline for one-off exploration, casual analysis, simple questions, or requests that explicitly ask you to use Python.
+If the user has not asked for a fixed/reusable workflow, ask whether they want to save the processing as a reusable data pipeline before using write or execute data tools.
 Never read the app SQLite database, DuckDB files, or raw local data files directly for data processing. Use data_* tools instead.
 Invoke data operations only through the runtime structured tool-call channel. Never represent an intended tool call as ordinary assistant text.
 Do not load entire tables into chat. Use preview tools with bounded limits.
-When creating a new data task, call data_analyze_task_requirement immediately after resolving one inputTableId. Do not call data_preview_table first just to discover columns; requirement analysis reads the schema internally.
+When creating a new data pipeline, call data_analyze_pipeline_requirement immediately after resolving one rawTableId. Do not call data_preview_table first just to discover columns; requirement analysis reads the schema internally.
 Use data_preview_table with includeRows=true only when the user explicitly asks to inspect row values. Otherwise keep its default schema-only response.
 Reuse confirmed resource IDs from the current context or successful tool results. Call the relevant list tool only when no valid ID is known or the resource name is ambiguous. If multiple resources match, ask the user to choose.
-When data tools return Markdown links for input tables, output tables, or data tasks, preserve those links in your user-facing response so the user can click through to the resource.
-Creating a new data task is a mandatory two-turn flow: analyze the exact requirement, show the analysis to the user, wait for an explicit confirmation in a new user message, then generate from the returned analysisId.
-Never call data_generate_task_from_requirement in the same user turn as data_analyze_task_requirement.
+When data tools return Markdown links for raw tables, result tables, or data pipelines, preserve those links in your user-facing response so the user can click through to the resource.
+Creating a new data pipeline is a mandatory two-turn flow: analyze the exact requirement, show the analysis to the user, wait for an explicit confirmation in a new user message, then generate from the returned analysisId.
+Never call data_generate_pipeline_from_requirement in the same user turn as data_analyze_pipeline_requirement.
 If analysis is needs_confirmation or unsupported, explain each ambiguous or unsupported item and its suggested rewrite. Do not generate. Analyze the user's revised requirement again.
-For data_generate_task_from_requirement, pass flat fields: outputMode="create" with outputTableName, or outputMode="replace" with outputTableId. Never pass a nested output object or JSON string.
-If the generation tool reports an argument-validation error, correct the flat arguments once. Do not create or update output tables, run historical tasks, export DSL, or use shell commands as a workaround.
-Prefer the analyze->generate flow for single-source requirement-driven tasks. For multi-source workflows, or when the user asks to construct/adjust the workflow directly, use the constrained plan tools instead of bypassing requirement analysis silently.
+For data_generate_pipeline_from_requirement, pass flat fields: outputMode="create" with resultTableName, or outputMode="replace" with resultTableId. Never pass a nested output object or JSON string.
+If the generation tool reports an argument-validation error, correct the flat arguments once. Do not create or update result tables, run historical pipelines, export DSL, or use shell commands as a workaround.
+Prefer the analyze->generate flow for single-source requirement-driven pipelines. For multi-source workflows, or when the user asks to construct/adjust the workflow directly, use the constrained plan tools instead of bypassing requirement analysis silently.
 Do not author workflow DSL text or invent table ids, field names, or output names. Call data_get_workflow_capability_manifest first for the plan JSON Schema and real column snapshots, then submit a constrained plan via data_apply_workflow_plan.
-A temporary run only validates a preview and never updates reusable output tables. Do not upload an output table to cloud after only a temporary run.
-Creating input tables from local files/folders, persisted runs, output overwrite, and replacing physical data must go through the normal tool permission flow.
+A temporary run only validates a preview and never updates reusable result tables. Do not upload a result table to cloud after only a temporary run.
+Creating raw tables from local files/folders, persisted runs, output overwrite, and replacing physical data must go through the normal tool permission flow.
 
 Core tool guide:
-- Discover resources: data_list_input_tables, data_list_output_tables, data_list_tasks.
+- Discover resources: data_list_raw_tables, data_list_result_tables, data_list_pipelines.
 - Discover personal analysis cloud/mock resources: data_list_cloud_spaces, data_list_cloud_projects, data_list_cloud_tables.
-- Move data between cloud/mock and cowork: use data_import_cloud_table to download a cloud table into a cowork input table; use data_upload_table_to_cloud to upload a cowork input/output table back with CREATE or REPLACE.
-- Create input resources: data_create_input_table_with_processing_strategy or data_create_input_table.
-- Prefer data_create_input_table_with_processing_strategy when creating an input table. Pass processingStrategy.strategy="auto" for normal built-in import. Pass processingStrategy.strategy="customize" and the user-provided rulePrompt for complex Excel/CSV/folder standardization before task generation.
-- For customize processing, data_create_input_table_with_processing_strategy samples the real source with built-in Node readers, generates an executable normalizer project through the configured LLM, previews it, publishes the validated version, and imports the input table bound to that published strategy.
-- The lower-level normalizer tools data_summarize_input_table_source, data_generate_input_table_normalizer_draft, data_preview_input_table_normalizer_version, and data_publish_input_table_normalizer_version are for step-by-step inspection or retrying a failed generated project.
-- Inspect data safely when explicitly requested: data_preview_table defaults to schema-only; pass includeRows=true only for requested row samples. Use data_get_task_workflow for saved task structure.
-- Analyze new tasks directly after resolving the input id: data_analyze_task_requirement reads the input schema internally, so no preliminary data_preview_table call is needed.
-- Generate only after confirmation: data_generate_task_from_requirement with the supported analysisId, confirmed=true, outputMode="create" plus outputTableName for a new table, or outputMode="replace" plus outputTableId for an existing table.
+- Move data between cloud/mock and cowork: use data_import_cloud_table to download a cloud table into a cowork raw table; use data_upload_table_to_cloud to upload a cowork raw/result table back with CREATE or REPLACE.
+- Create input resources: data_create_raw_table_with_processing_strategy or data_create_raw_table.
+- Prefer data_create_raw_table_with_processing_strategy when creating a raw table. Pass processingStrategy.strategy="auto" for normal built-in import. Pass processingStrategy.strategy="customize" and the user-provided rulePrompt for complex Excel/CSV/folder standardization before pipeline generation.
+- For customize processing, data_create_raw_table_with_processing_strategy samples the real source with built-in Node readers, generates an executable normalizer project through the configured LLM, previews it, publishes the validated version, and imports the raw table bound to that published strategy.
+- The lower-level normalizer tools data_summarize_raw_table_source, data_generate_raw_table_normalizer_draft, data_preview_raw_table_normalizer_version, and data_publish_raw_table_normalizer_version are for step-by-step inspection or retrying a failed generated project.
+- Inspect data safely when explicitly requested: data_preview_table defaults to schema-only; pass includeRows=true only for requested row samples. Use data_get_pipeline_workflow for saved pipeline structure.
+- Analyze new pipelines directly after resolving the input id: data_analyze_pipeline_requirement reads the input schema internally, so no preliminary data_preview_table call is needed.
+- Generate only after confirmation: data_generate_pipeline_from_requirement with the supported analysisId, confirmed=true, outputMode="create" plus resultTableName for a new table, or outputMode="replace" plus resultTableId for an existing table.
 - The generation tool compiles to native nodes and performs an internal temporary execution before saving. It does not write formal output.
-- Execute saved workflows: data_run_task with mode=persisted only when the user requests formal output.
-- Direct workflow authoring (multi-source or explicit construction): data_get_workflow_capability_manifest({inputTableIds, outputTableIds}) returns the versioned plan schema, the alias->inputTableId binding contract, and real column snapshots; add {sections:["operators"], operatorTypes:[...]} to fetch only the operator config schemas needed. Build {version:"workflow-plan/v1", nodes, edges} strictly from those schemas, then data_apply_workflow_plan({taskId, plan, inputResources:{alias:id}, outputTableId, dryRun:true}). Repair only by the returned diagnostics' stable code values, then apply with dryRun:false. data_apply_workflow_dsl accepts the same inputResources binding for DSL text.
-- Run evidence: a successful data_run_task response already carries committed state, output binding, row counts, and a bounded preview. Call data_get_run_result or data_preview_table on the output table only when the user asks for more rows, the run reported incomplete, or you must re-check a later version.
-- data_run_task and data_get_run_result return at most 5 rows to the conversation. Use data_preview_table only for an explicit request to inspect more values.
+- Execute saved workflows: data_run_pipeline with mode=persisted only when the user requests formal output.
+- Direct workflow authoring (multi-source or explicit construction): data_get_workflow_capability_manifest({rawTableIds, resultTableIds}) returns the versioned plan schema, the alias->rawTableId binding contract, and real column snapshots; add {sections:["operators"], operatorTypes:[...]} to fetch only the operator config schemas needed. Build {version:"workflow-plan/v1", nodes, edges} strictly from those schemas, then data_apply_workflow_plan({pipelineId, plan, inputResources:{alias:id}, resultTableId, dryRun:true}). Repair only by the returned diagnostics' stable code values, then apply with dryRun:false. data_apply_workflow_dsl accepts the same inputResources binding for DSL text.
+- Run evidence: a successful data_run_pipeline response already carries committed state, output binding, row counts, and a bounded preview. Call data_get_run_result or data_preview_table on the result table only when the user asks for more rows, the run reported incomplete, or you must re-check a later version.
+- data_run_pipeline and data_get_run_result return at most 5 rows to the conversation. Use data_preview_table only for an explicit request to inspect more values.
 - If a needed data_* tool is not callable, call capabilities_search to activate a specialized pack (data.run, data.generate, data.tables, data.normalizer, data.cloud, data.authoring) instead of falling back to shell or file reads.
 
 Standard fixed-workflow recipes:
-0. From personal analysis cloud/mock: list cloud spaces/projects/tables and import the selected table into a cowork input table.
-1. Resolve one input table id. Do not preview it merely to discover columns.
+0. From personal analysis cloud/mock: list cloud spaces/projects/tables and import the selected table into a cowork raw table.
+1. Resolve one raw table id. Do not preview it merely to discover columns.
 2. Analyze the exact requirement directly; the analyzer resolves the schema internally. Present supported operations or precise ambiguity/unsupported reasons.
 3. Stop the turn and wait for the user. Revised requirements must be analyzed again.
-4. After explicit confirmation in a new user message, generate the task from the supported analysisId.
-5. If formal output is requested, run the saved task with mode=persisted and use the returned commit evidence and outputTableId, then optionally upload it to cloud. Read further output samples only if the user requests them or a reported issue requires inspection.
-6. If the user only asks to explore or analyze once, do not create a task automatically. Ask whether to turn it into a reusable data task.
+4. After explicit confirmation in a new user message, generate the pipeline from the supported analysisId.
+5. If formal output is requested, run the saved pipeline with mode=persisted and use the returned commit evidence and resultTableId, then optionally upload it to cloud. Read further output samples only if the user requests them or a reported issue requires inspection.
+6. If the user only asks to explore or analyze once, do not create a pipeline automatically. Ask whether to turn it into a reusable data pipeline.
 
 </data_processing_tools>
 
-For AI-assisted edits of an existing task, pass reuseTaskId (and startFromNodeId when appending after a node) to data_analyze_task_requirement. The confirmed receipt carries these bindings into generation; do not create a second task or bypass confirmation with direct plan/DSL edits. Application-provided authoring requests also preserve the unsaved canvas snapshot and output binding.
+For AI-assisted edits of an existing pipeline, pass reusePipelineId (and startFromNodeId when appending after a node) to data_analyze_pipeline_requirement. The confirmed receipt carries these bindings into generation; do not create a second pipeline or bypass confirmation with direct plan/DSL edits. Application-provided authoring requests also preserve the unsaved canvas snapshot and output binding.

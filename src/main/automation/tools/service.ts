@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { DataTaskStore } from '../../data/data-task-store';
+import type { DataPipelineStore } from '../../data/data-pipeline-store';
 import { createDataResourceHref } from '../../../shared/data-resource-link';
 import type { Automation, AutomationActionNode } from '../../../shared/automation/types';
 import type { AutomationService } from '../automation-service';
@@ -31,7 +31,7 @@ import { TOOL_RESULT_GUIDANCE } from '../../prompts/tool-copy';
 
 interface AutomationToolServiceOptions {
   automationService: AutomationService;
-  dataTaskStore: DataTaskStore;
+  dataPipelineStore: DataPipelineStore;
   receiptStore?: AutomationDraftReceiptStore;
   now?: () => number;
   systemTimezone?: () => string;
@@ -41,7 +41,7 @@ interface AutomationToolServiceOptions {
 
 export class AutomationToolService {
   private readonly automationService: AutomationService;
-  private readonly dataTaskStore: DataTaskStore;
+  private readonly dataPipelineStore: DataPipelineStore;
   private readonly receiptStore: AutomationDraftReceiptStore;
   private readonly now: () => number;
   private readonly systemTimezone: () => string;
@@ -50,7 +50,7 @@ export class AutomationToolService {
 
   constructor(options: AutomationToolServiceOptions) {
     this.automationService = options.automationService;
-    this.dataTaskStore = options.dataTaskStore;
+    this.dataPipelineStore = options.dataPipelineStore;
     this.receiptStore = options.receiptStore ?? new AutomationDraftReceiptStore();
     this.now = options.now ?? (() => Date.now());
     this.systemTimezone =
@@ -327,21 +327,21 @@ export class AutomationToolService {
     actionText: string;
     dependency: PreparedAutomationDependency;
   }> {
-    if (input.kind === 'data_task') {
-      const taskId = input.taskId.trim();
-      if (!taskId) throw new Error('Data task id is required.');
-      const task = await this.requireRunnableDataTask(taskId);
+    if (input.kind === 'data_pipeline') {
+      const pipelineId = input.pipelineId.trim();
+      if (!pipelineId) throw new Error('Data pipeline id is required.');
+      const pipeline = await this.requireRunnableDataPipeline(pipelineId);
       return {
         node: {
           id: randomUUID(),
-          type: 'data.task.run',
-          label: task.name,
+          type: 'data.pipeline.run',
+          label: pipeline.name,
           enabled: true,
-          config: { taskId: task.id, outputMode: 'persisted' },
+          config: { pipelineId: pipeline.id, outputMode: 'persisted' },
         },
         projectId: null,
-        actionText: `正式执行数据任务 ${task.name} (${task.id})`,
-        dependency: { kind: 'data_task', taskId: task.id, taskName: task.name },
+        actionText: `正式执行数据加工 ${pipeline.name} (${pipeline.id})`,
+        dependency: { kind: 'data_pipeline', pipelineId: pipeline.id, pipelineName: pipeline.name },
       };
     }
 
@@ -385,19 +385,19 @@ export class AutomationToolService {
     };
   }
 
-  private async requireRunnableDataTask(taskId: string) {
-    const task = await this.dataTaskStore.getTaskRecord(taskId);
-    if (!task) throw new Error(`Data task not found: ${taskId}`);
-    const workflow = await this.dataTaskStore.getTaskWorkflow(taskId);
-    if (task.nodeCount <= 0 || workflow.nodes.length === 0) {
-      throw new Error(`Data task has no runnable workflow: ${task.name} (${task.id})`);
+  private async requireRunnableDataPipeline(pipelineId: string) {
+    const pipeline = await this.dataPipelineStore.getPipelineRecord(pipelineId);
+    if (!pipeline) throw new Error(`Data pipeline not found: ${pipelineId}`);
+    const workflow = await this.dataPipelineStore.getPipelineWorkflow(pipelineId);
+    if (pipeline.nodeCount <= 0 || workflow.nodes.length === 0) {
+      throw new Error(`Data pipeline has no runnable workflow: ${pipeline.name} (${pipeline.id})`);
     }
-    return task;
+    return pipeline;
   }
 
   private async revalidateDependency(dependency: PreparedAutomationDependency): Promise<void> {
-    if (dependency.kind === 'data_task') {
-      await this.requireRunnableDataTask(dependency.taskId);
+    if (dependency.kind === 'data_pipeline') {
+      await this.requireRunnableDataPipeline(dependency.pipelineId);
       return;
     }
     if (dependency.projectId && this.projectExists && !this.projectExists(dependency.projectId)) {
@@ -414,16 +414,18 @@ export class AutomationToolService {
       automation.nextRunAt === null
         ? null
         : formatTimestamp(automation.nextRunAt, automation.trigger.timezone);
-    const dataTaskLink =
-      receipt.dependency.kind === 'data_task'
-        ? `[${receipt.dependency.taskName}](${createDataResourceHref('task', receipt.dependency.taskId)})`
+    const dataPipelineLink =
+      receipt.dependency.kind === 'data_pipeline'
+        ? `[${receipt.dependency.pipelineName}](${createDataResourceHref('pipeline', receipt.dependency.pipelineId)})`
         : null;
     return toolResult(
       [
         status === 'created'
           ? `Created automation: ${automation.name} (${automation.id})`
           : `Automation was already created: ${automation.name} (${automation.id})`,
-        dataTaskLink ? `Data task: ${dataTaskLink}` : `Action: ${receipt.summary.actionText}`,
+        dataPipelineLink
+          ? `Data pipeline: ${dataPipelineLink}`
+          : `Action: ${receipt.summary.actionText}`,
         `Schedule: ${receipt.summary.scheduleText}`,
         `Next run: ${nextRunAtText ?? 'none'}`,
         'The automation is available on the Automation page.',
@@ -542,14 +544,14 @@ export class AutomationToolService {
   private toListItem(automation: Automation): AutomationToolListItem {
     const enabledNode = automation.actionGraph.nodes.find((node) => node.enabled !== false);
     const actionKind =
-      enabledNode?.type === 'data.task.run'
-        ? 'data_task'
+      enabledNode?.type === 'data.pipeline.run'
+        ? 'data_pipeline'
         : enabledNode?.type === 'conversation.run'
           ? 'conversation'
           : 'other';
-    const taskId =
-      actionKind === 'data_task' && typeof enabledNode?.config.taskId === 'string'
-        ? enabledNode.config.taskId
+    const pipelineId =
+      actionKind === 'data_pipeline' && typeof enabledNode?.config.pipelineId === 'string'
+        ? enabledNode.config.pipelineId
         : undefined;
     return {
       id: automation.id,
@@ -557,7 +559,7 @@ export class AutomationToolService {
       enabled: automation.enabled,
       status: automation.status,
       actionKind,
-      dataTaskId: taskId,
+      dataPipelineId: pipelineId,
       scheduleSummary: formatAutomationTrigger(automation.trigger),
       timezone: automation.trigger.timezone,
       nextRunAt: automation.nextRunAt,

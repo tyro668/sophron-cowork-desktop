@@ -5,7 +5,7 @@ import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 // All operator forms share this interface
 export interface OperatorFormProps {
   node: DataWorkflowNode;
-  taskId?: string;
+  pipelineId?: string;
   fieldCompletions: string[];
   fieldTypes?: DataColumnTypeInfo[];
   otherNodes: DataWorkflowNode[];

@@ -16,7 +16,7 @@ import {
 } from './javascript-runtime';
 import {
   lowerGeneratedWorkflowIrSemantics,
-  type GeneratedDataTaskWorkflow,
+  type GeneratedDataPipelineWorkflow,
 } from './workflow-ir-lowerer';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 import {
@@ -83,19 +83,19 @@ export function createGeneratedWorkflowRepairBudget(): WorkflowRepairBudget {
 
 export function compileGeneratedJavaScriptWorkflow({
   javascriptSource,
-  inputTableId,
-  outputTableName,
+  rawTableId,
+  resultTableName,
   requirement,
   columns,
   requirementContract,
 }: {
   javascriptSource: string;
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
-}): GeneratedDataTaskWorkflow {
+}): GeneratedDataPipelineWorkflow {
   let compiled: ReturnType<typeof compileWorkflowJavaScript>;
   try {
     compiled = compileWorkflowJavaScript(javascriptSource, { columns });
@@ -109,11 +109,11 @@ export function compileGeneratedJavaScriptWorkflow({
   let ir: ReturnType<typeof executeWorkflowJavaScriptInSandbox>;
   let verificationIr: ReturnType<typeof executeWorkflowJavaScriptInSandbox>;
   try {
-    ir = executeWorkflowJavaScriptInSandbox({ compiled, inputTableId, outputTableName });
+    ir = executeWorkflowJavaScriptInSandbox({ compiled, rawTableId, resultTableName });
     verificationIr = executeWorkflowJavaScriptInSandbox({
       compiled,
-      inputTableId,
-      outputTableName,
+      rawTableId,
+      resultTableName,
     });
   } catch (error) {
     throw contextualizeWorkflowError(error, {
@@ -210,9 +210,9 @@ export function normalizeColumnSnapshot(
     .filter((column) => Boolean(column.name));
 }
 
-export async function generateDataTaskWorkflowFromRequirement({
-  inputTableId,
-  outputTableName,
+export async function generateDataPipelineWorkflowFromRequirement({
+  rawTableId,
+  resultTableName,
   requirement,
   columns,
   requirementContract,
@@ -222,8 +222,8 @@ export async function generateDataTaskWorkflowFromRequirement({
   onActivity,
   signal,
 }: {
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
@@ -232,14 +232,14 @@ export async function generateDataTaskWorkflowFromRequirement({
   onModelUsage?: WorkflowModelUsageObserver;
   onActivity?: () => void;
   signal?: AbortSignal;
-}): Promise<GeneratedDataTaskWorkflow> {
+}): Promise<GeneratedDataPipelineWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
   try {
     const response = await runPiAiOneShot(
       buildWorkflowGenerationUserPrompt({
-        inputTableId,
-        outputTableName,
+        rawTableId,
+        resultTableName,
         requirement,
         columns,
         requirementContract,
@@ -262,8 +262,8 @@ export async function generateDataTaskWorkflowFromRequirement({
     onModelUsage?.({ phase: 'initial_generation', result: response });
     if (response.stopReason === 'length') {
       return await repairGeneratedWorkflowFromDiagnostics({
-        inputTableId,
-        outputTableName,
+        rawTableId,
+        resultTableName,
         requirement,
         columns,
         requirementContract,
@@ -280,8 +280,8 @@ export async function generateDataTaskWorkflowFromRequirement({
     try {
       return compileGeneratedJavascriptResponse({
         text: response.text,
-        inputTableId,
-        outputTableName,
+        rawTableId,
+        resultTableName,
         requirement,
         columns,
         requirementContract,
@@ -297,8 +297,8 @@ export async function generateDataTaskWorkflowFromRequirement({
       });
       if (!diagnostics.every(isWorkflowDiagnosticRepairable)) throw generationError;
       return await repairGeneratedWorkflowFromDiagnostics({
-        inputTableId,
-        outputTableName,
+        rawTableId,
+        resultTableName,
         requirement,
         columns,
         requirementContract,
@@ -323,8 +323,8 @@ export async function generateDataTaskWorkflowFromRequirement({
 }
 
 export async function repairGeneratedWorkflowFromDiagnostics({
-  inputTableId,
-  outputTableName,
+  rawTableId,
+  resultTableName,
   requirement,
   columns,
   requirementContract,
@@ -336,8 +336,8 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   onActivity,
   signal,
 }: {
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
@@ -348,7 +348,7 @@ export async function repairGeneratedWorkflowFromDiagnostics({
   onModelUsage?: WorkflowModelUsageObserver;
   onActivity?: () => void;
   signal?: AbortSignal;
-}): Promise<GeneratedDataTaskWorkflow> {
+}): Promise<GeneratedDataPipelineWorkflow> {
   const config = requireGenerationRuntimeConfig(runtimeConfig);
   const sharedRepairBudget = repairBudget ?? createGeneratedWorkflowRepairBudget();
   try {
@@ -401,8 +401,8 @@ export async function repairGeneratedWorkflowFromDiagnostics({
       }
       const response = await runPiAiOneShot(
         buildWorkflowGenerationUserPrompt({
-          inputTableId,
-          outputTableName,
+          rawTableId,
+          resultTableName,
           requirement,
           columns,
           requirementContract,
@@ -453,8 +453,8 @@ export async function repairGeneratedWorkflowFromDiagnostics({
           text: response.text,
           failedJavascriptSource: currentJavascriptSource,
           repairFunctionName,
-          inputTableId,
-          outputTableName,
+          rawTableId,
+          resultTableName,
           requirement,
           columns,
           requirementContract,
@@ -575,7 +575,7 @@ function requireGenerationRuntimeConfig(runtimeConfig?: AgentRuntimeConfig): Age
   if (!runtimeConfig || !normalizeOptionalName(runtimeConfig.model)) {
     throw new DataCommandError(
       'INVALID_ARGUMENT',
-      'Model configuration is required to generate a data task. Please select an available model and try again.'
+      'Model configuration is required to generate a data pipeline. Please select an available model and try again.'
     );
   }
   return runtimeConfig;
@@ -614,8 +614,8 @@ function compileRepairResponse({
   text,
   failedJavascriptSource,
   repairFunctionName,
-  inputTableId,
-  outputTableName,
+  rawTableId,
+  resultTableName,
   requirement,
   columns,
   requirementContract,
@@ -623,12 +623,12 @@ function compileRepairResponse({
   text: string;
   failedJavascriptSource: string;
   repairFunctionName?: string;
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
-}): GeneratedDataTaskWorkflow {
+}): GeneratedDataPipelineWorkflow {
   let parsed: unknown;
   try {
     parsed = parseRepairResponse(text, failedJavascriptSource, repairFunctionName);
@@ -661,8 +661,8 @@ function compileRepairResponse({
     );
     return compileGeneratedJavaScriptWorkflow({
       javascriptSource: patchedSource,
-      inputTableId,
-      outputTableName,
+      rawTableId,
+      resultTableName,
       requirement,
       columns,
       requirementContract,
@@ -676,8 +676,8 @@ function compileRepairResponse({
   }
   return compileGeneratedJavascriptResponse({
     text,
-    inputTableId,
-    outputTableName,
+    rawTableId,
+    resultTableName,
     requirement,
     columns,
     requirementContract,
@@ -821,24 +821,24 @@ function workflowRepairStoppedError(
 
 function compileGeneratedJavascriptResponse({
   text,
-  inputTableId,
-  outputTableName,
+  rawTableId,
+  resultTableName,
   requirement,
   columns,
   requirementContract,
 }: {
   text: string;
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
-}): GeneratedDataTaskWorkflow {
+}): GeneratedDataPipelineWorkflow {
   const javascriptSource = extractGeneratedJavascriptSource(text);
   return compileGeneratedJavaScriptWorkflow({
     javascriptSource,
-    inputTableId,
-    outputTableName,
+    rawTableId,
+    resultTableName,
     requirement,
     columns,
     requirementContract,

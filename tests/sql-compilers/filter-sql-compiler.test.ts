@@ -560,9 +560,9 @@ describe('filter SQL compiler', () => {
   });
 
   describe('integration: strategy pattern references', () => {
-    it('compiles filter via strategy.ts -> filter.ts, not inline in data-task-store', () => {
+    it('compiles filter via strategy.ts -> filter.ts, not inline in data-pipeline-store', () => {
       const storeSource = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/main/data/data-task-store.ts'),
+        path.resolve(process.cwd(), 'src/main/data/data-pipeline-store.ts'),
         'utf8'
       );
 

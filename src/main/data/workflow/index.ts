@@ -2,7 +2,7 @@ export {
   GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
   GENERATED_WORKFLOW_REPAIR_POLICY,
   createGeneratedWorkflowRepairBudget,
-  generateDataTaskWorkflowFromRequirement,
+  generateDataPipelineWorkflowFromRequirement,
   normalizeColumnSnapshot,
   repairGeneratedWorkflowFromDiagnostics,
 } from './workflow-generator';
@@ -11,15 +11,15 @@ export type {
   WorkflowModelUsageObserver,
   WorkflowRepairOutcome,
 } from './workflow-generator';
-export { analyzeDataTaskRequirement } from './requirement-analyzer';
+export { analyzeDataPipelineRequirement } from './requirement-analyzer';
 export {
   hashColumns,
   reconcileGeneratedWorkflowWithOutputPreview,
   validateGeneratedOutputPreviewSchema,
-  validateGeneratedTaskSchema,
+  validateGeneratedPipelineSchema,
   validateGeneratedWorkflowGenerationContract,
 } from './schema-inferencer';
-export type { GeneratedDataTaskWorkflow } from './workflow-model';
+export type { GeneratedDataPipelineWorkflow } from './workflow-model';
 export {
   createWorkflowRepairBudget,
   isWorkflowDiagnosticRepairable,

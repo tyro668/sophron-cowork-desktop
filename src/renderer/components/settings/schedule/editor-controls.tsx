@@ -105,7 +105,7 @@ export function SelectLine({
   );
 }
 
-// A searchable dropdown for long local lists (data tasks, input/output tables);
+// A searchable dropdown for long local lists (data pipelines, input/output tables);
 // the filter input lives at the top of the dropdown itself.
 export function LocalTableSelect({
   value,

@@ -1,10 +1,10 @@
-/** data_task_node_run_stats row access (stats keyed by run, pruned with run retention). */
+/** data_pipeline_node_run_stats row access (stats keyed by run, pruned with run retention). */
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import { DataStoreContext } from '../data-store-context';
 
 const STATS_SELECT = `SELECT node_id, node_type, input_rows, input_rows_by_handle_json,
        output_rows, dropped_rows, rejected_rows, sample_json, run_id
-  FROM data_task_node_run_stats`;
+  FROM data_pipeline_node_run_stats`;
 
 interface StatRow {
   node_id: string;
@@ -40,20 +40,20 @@ export class RunStatsRepository {
   constructor(private readonly ctx: DataStoreContext) {}
   /**
    * Inserts stats under their run id. Pruning is the caller's job
-   * (data_task_runs retention sweeps the stats of removed runs).
+   * (data_pipeline_runs retention sweeps the stats of removed runs).
    */
-  async persistTaskNodeStats(
-    taskId: string,
+  async persistPipelineNodeStats(
+    pipelineId: string,
     runId: string,
     stats: WorkflowNodeRunStat[]
   ): Promise<void> {
     for (const stat of stats) {
       await this.ctx.metaRunSql(
-        `INSERT OR REPLACE INTO data_task_node_run_stats
-           (task_id, run_id, node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
-         VALUES ($taskId, $runId, $nodeId, $nodeType, $inputRows, $inputRowsByHandleJson, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
+        `INSERT OR REPLACE INTO data_pipeline_node_run_stats
+           (pipeline_id, run_id, node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
+         VALUES ($pipelineId, $runId, $nodeId, $nodeType, $inputRows, $inputRowsByHandleJson, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
         {
-          taskId,
+          pipelineId,
           runId,
           nodeId: stat.nodeId,
           nodeType: stat.nodeType,
@@ -71,45 +71,45 @@ export class RunStatsRepository {
     }
   }
   /** Stats of one specific run. */
-  async getTaskRunStats(taskId: string, runId: string): Promise<WorkflowNodeRunStat[]> {
+  async getPipelineRunStats(pipelineId: string, runId: string): Promise<WorkflowNodeRunStat[]> {
     await this.ctx.ensureMetadataReady();
     const rows = await this.ctx.metaQueryRows<StatRow>(
-      `${STATS_SELECT} WHERE task_id = $taskId AND run_id = $runId ORDER BY node_id`,
-      { taskId, runId }
+      `${STATS_SELECT} WHERE pipeline_id = $pipelineId AND run_id = $runId ORDER BY node_id`,
+      { pipelineId, runId }
     );
     return rows.map(mapStatRow);
   }
   /**
-   * Stats of the newest persisted batch — legacy fallback for tasks whose
-   * stats predate the run table (their run ids have no data_task_runs row).
+   * Stats of the newest persisted batch — legacy fallback for pipelines whose
+   * stats predate the run table (their run ids have no data_pipeline_runs row).
    */
-  async getLatestTaskNodeStats(taskId: string): Promise<WorkflowNodeRunStat[]> {
+  async getLatestPipelineNodeStats(pipelineId: string): Promise<WorkflowNodeRunStat[]> {
     await this.ctx.ensureMetadataReady();
     const rows = await this.ctx.metaQueryRows<StatRow>(
-      `${STATS_SELECT} WHERE task_id = $taskId AND run_id = (
-         SELECT run_id FROM data_task_node_run_stats
-         WHERE task_id = $taskId ORDER BY created_at DESC LIMIT 1
+      `${STATS_SELECT} WHERE pipeline_id = $pipelineId AND run_id = (
+         SELECT run_id FROM data_pipeline_node_run_stats
+         WHERE pipeline_id = $pipelineId ORDER BY created_at DESC LIMIT 1
        ) ORDER BY node_id`,
-      { taskId }
+      { pipelineId }
     );
     return rows.map(mapStatRow);
   }
-  async deleteStatsForRuns(taskId: string, runIds: string[]): Promise<void> {
+  async deleteStatsForRuns(pipelineId: string, runIds: string[]): Promise<void> {
     if (runIds.length === 0) return;
     const placeholders = runIds.map((_, i) => `$id${i}`).join(', ');
     const params = Object.fromEntries(runIds.map((id, i) => [`id${i}`, id]));
     await this.ctx.metaRunSql(
-      `DELETE FROM data_task_node_run_stats WHERE task_id = $taskId AND run_id IN (${placeholders})`,
-      { taskId, ...params }
+      `DELETE FROM data_pipeline_node_run_stats WHERE pipeline_id = $pipelineId AND run_id IN (${placeholders})`,
+      { pipelineId, ...params }
     );
   }
   /** Removes stats whose run no longer exists (orphans + legacy batches). */
-  async deleteOrphanStats(taskId: string): Promise<void> {
+  async deleteOrphanStats(pipelineId: string): Promise<void> {
     await this.ctx.metaRunSql(
-      `DELETE FROM data_task_node_run_stats WHERE task_id = $taskId AND run_id NOT IN (
-         SELECT id FROM data_task_runs WHERE task_id = $taskId
+      `DELETE FROM data_pipeline_node_run_stats WHERE pipeline_id = $pipelineId AND run_id NOT IN (
+         SELECT id FROM data_pipeline_runs WHERE pipeline_id = $pipelineId
        )`,
-      { taskId }
+      { pipelineId }
     );
   }
 }

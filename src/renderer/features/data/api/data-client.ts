@@ -34,33 +34,37 @@ export const dataClient = {
     return typeof window.electronAPI?.data?.[method] === 'function';
   },
 
-  // ---- dashboard / tasks ----
+  // ---- dashboard / pipelines ----
   getDashboard: (...args: Parameters<DataApi['getDashboard']>) => dataApi().getDashboard(...args),
-  getTask: (...args: Parameters<DataApi['getTask']>) => dataApi().getTask(...args),
-  createTask: (...args: Parameters<DataApi['createTask']>) => dataApi().createTask(...args),
-  updateTask: (...args: Parameters<DataApi['updateTask']>) => dataApi().updateTask(...args),
+  getPipeline: (...args: Parameters<DataApi['getPipeline']>) => dataApi().getPipeline(...args),
+  createPipeline: (...args: Parameters<DataApi['createPipeline']>) =>
+    dataApi().createPipeline(...args),
+  updatePipeline: (...args: Parameters<DataApi['updatePipeline']>) =>
+    dataApi().updatePipeline(...args),
   listGroups: (...args: Parameters<DataApi['listGroups']>) => dataApi().listGroups(...args),
   createGroup: (...args: Parameters<DataApi['createGroup']>) => dataApi().createGroup(...args),
   renameGroup: (...args: Parameters<DataApi['renameGroup']>) => dataApi().renameGroup(...args),
   deleteGroup: (...args: Parameters<DataApi['deleteGroup']>) => dataApi().deleteGroup(...args),
   assignGroup: (...args: Parameters<DataApi['assignGroup']>) => dataApi().assignGroup(...args),
-  deleteTask: (...args: Parameters<DataApi['deleteTask']>) => dataApi().deleteTask(...args),
-  runTask: (...args: Parameters<DataApi['runTask']>) => dataApi().runTask(...args),
-  runTaskWithDiagnostics: (...args: Parameters<DataApi['runTaskWithDiagnostics']>) =>
-    dataApi().runTaskWithDiagnostics(...args),
+  deletePipeline: (...args: Parameters<DataApi['deletePipeline']>) =>
+    dataApi().deletePipeline(...args),
+  runPipeline: (...args: Parameters<DataApi['runPipeline']>) => dataApi().runPipeline(...args),
+  runPipelineWithDiagnostics: (...args: Parameters<DataApi['runPipelineWithDiagnostics']>) =>
+    dataApi().runPipelineWithDiagnostics(...args),
 
   // ---- workflow ----
-  getTaskWorkflow: (...args: Parameters<DataApi['getTaskWorkflow']>) =>
-    dataApi().getTaskWorkflow(...args),
-  getTaskNodeStats: (...args: Parameters<DataApi['getTaskNodeStats']>) =>
-    dataApi().getTaskNodeStats(...args),
-  listTaskRuns: (...args: Parameters<DataApi['listTaskRuns']>) => dataApi().listTaskRuns(...args),
-  getTaskRunNodeStats: (...args: Parameters<DataApi['getTaskRunNodeStats']>) =>
-    dataApi().getTaskRunNodeStats(...args),
-  saveTaskWorkflow: (...args: Parameters<DataApi['saveTaskWorkflow']>) =>
-    dataApi().saveTaskWorkflow(...args),
-  validateTaskWorkflowPlan: (...args: Parameters<DataApi['validateTaskWorkflowPlan']>) =>
-    dataApi().validateTaskWorkflowPlan(...args),
+  getPipelineWorkflow: (...args: Parameters<DataApi['getPipelineWorkflow']>) =>
+    dataApi().getPipelineWorkflow(...args),
+  getPipelineNodeStats: (...args: Parameters<DataApi['getPipelineNodeStats']>) =>
+    dataApi().getPipelineNodeStats(...args),
+  listPipelineRuns: (...args: Parameters<DataApi['listPipelineRuns']>) =>
+    dataApi().listPipelineRuns(...args),
+  getPipelineRunNodeStats: (...args: Parameters<DataApi['getPipelineRunNodeStats']>) =>
+    dataApi().getPipelineRunNodeStats(...args),
+  savePipelineWorkflow: (...args: Parameters<DataApi['savePipelineWorkflow']>) =>
+    dataApi().savePipelineWorkflow(...args),
+  validatePipelineWorkflowPlan: (...args: Parameters<DataApi['validatePipelineWorkflowPlan']>) =>
+    dataApi().validatePipelineWorkflowPlan(...args),
   previewWorkflowNode: (...args: Parameters<DataApi['previewWorkflowNode']>) =>
     dataApi().previewWorkflowNode(...args),
   getWorkflowNodeColumns: (...args: Parameters<DataApi['getWorkflowNodeColumns']>) =>
@@ -71,49 +75,48 @@ export const dataClient = {
     dataApi().getWorkflowNodeColumnValues(...args),
 
   // ---- input tables ----
-  importDataset: (...args: Parameters<DataApi['importDataset']>) =>
-    dataApi().importDataset(...args),
-  getInputTable: (...args: Parameters<DataApi['getInputTable']>) =>
-    dataApi().getInputTable(...args),
-  updateDataset: (...args: Parameters<DataApi['updateDataset']>) =>
-    dataApi().updateDataset(...args),
-  deleteDataset: (...args: Parameters<DataApi['deleteDataset']>) =>
-    dataApi().deleteDataset(...args),
-  previewDataset: (...args: Parameters<DataApi['previewDataset']>) =>
-    dataApi().previewDataset(...args),
+  importRawTable: (...args: Parameters<DataApi['importRawTable']>) =>
+    dataApi().importRawTable(...args),
+  getRawTable: (...args: Parameters<DataApi['getRawTable']>) => dataApi().getRawTable(...args),
+  updateRawTable: (...args: Parameters<DataApi['updateRawTable']>) =>
+    dataApi().updateRawTable(...args),
+  deleteRawTable: (...args: Parameters<DataApi['deleteRawTable']>) =>
+    dataApi().deleteRawTable(...args),
+  previewRawTable: (...args: Parameters<DataApi['previewRawTable']>) =>
+    dataApi().previewRawTable(...args),
   exportTable: (...args: Parameters<DataApi['exportTable']>) => dataApi().exportTable(...args),
-  previewInputTable: (...args: Parameters<DataApi['previewInputTable']>) =>
-    dataApi().previewInputTable(...args),
-  summarizeInputTableSource: (...args: Parameters<DataApi['summarizeInputTableSource']>) =>
-    dataApi().summarizeInputTableSource(...args),
+  previewRawTableSource: (...args: Parameters<DataApi['previewRawTableSource']>) =>
+    dataApi().previewRawTableSource(...args),
+  summarizeRawTableSource: (...args: Parameters<DataApi['summarizeRawTableSource']>) =>
+    dataApi().summarizeRawTableSource(...args),
 
   // ---- output tables ----
-  getOutputTable: (...args: Parameters<DataApi['getOutputTable']>) =>
-    dataApi().getOutputTable(...args),
-  createOutputTable: (...args: Parameters<DataApi['createOutputTable']>) =>
-    dataApi().createOutputTable(...args),
-  updateOutputTable: (...args: Parameters<DataApi['updateOutputTable']>) =>
-    dataApi().updateOutputTable(...args),
+  getResultTable: (...args: Parameters<DataApi['getResultTable']>) =>
+    dataApi().getResultTable(...args),
+  createResultTable: (...args: Parameters<DataApi['createResultTable']>) =>
+    dataApi().createResultTable(...args),
+  updateResultTable: (...args: Parameters<DataApi['updateResultTable']>) =>
+    dataApi().updateResultTable(...args),
 
   // ---- normalizer ----
-  generateInputTableNormalizerDraft: (
-    ...args: Parameters<DataApi['generateInputTableNormalizerDraft']>
-  ) => dataApi().generateInputTableNormalizerDraft(...args),
-  listInputTableNormalizerVersions: (
-    ...args: Parameters<DataApi['listInputTableNormalizerVersions']>
-  ) => dataApi().listInputTableNormalizerVersions(...args),
-  previewInputTableNormalizerVersion: (
-    ...args: Parameters<DataApi['previewInputTableNormalizerVersion']>
-  ) => dataApi().previewInputTableNormalizerVersion(...args),
-  publishInputTableNormalizerVersion: (
-    ...args: Parameters<DataApi['publishInputTableNormalizerVersion']>
-  ) => dataApi().publishInputTableNormalizerVersion(...args),
-  deleteInputTableNormalizerVersion: (
-    ...args: Parameters<DataApi['deleteInputTableNormalizerVersion']>
-  ) => dataApi().deleteInputTableNormalizerVersion(...args),
-  onInputTableNormalizerDraftProgress: (
-    ...args: Parameters<DataApi['onInputTableNormalizerDraftProgress']>
-  ) => dataApi().onInputTableNormalizerDraftProgress(...args),
+  generateRawTableNormalizerDraft: (
+    ...args: Parameters<DataApi['generateRawTableNormalizerDraft']>
+  ) => dataApi().generateRawTableNormalizerDraft(...args),
+  listRawTableNormalizerVersions: (
+    ...args: Parameters<DataApi['listRawTableNormalizerVersions']>
+  ) => dataApi().listRawTableNormalizerVersions(...args),
+  previewRawTableNormalizerVersion: (
+    ...args: Parameters<DataApi['previewRawTableNormalizerVersion']>
+  ) => dataApi().previewRawTableNormalizerVersion(...args),
+  publishRawTableNormalizerVersion: (
+    ...args: Parameters<DataApi['publishRawTableNormalizerVersion']>
+  ) => dataApi().publishRawTableNormalizerVersion(...args),
+  deleteRawTableNormalizerVersion: (
+    ...args: Parameters<DataApi['deleteRawTableNormalizerVersion']>
+  ) => dataApi().deleteRawTableNormalizerVersion(...args),
+  onRawTableNormalizerDraftProgress: (
+    ...args: Parameters<DataApi['onRawTableNormalizerDraftProgress']>
+  ) => dataApi().onRawTableNormalizerDraftProgress(...args),
 
   // ---- cloud ----
   listCloudSpaces: (...args: Parameters<DataApi['listCloudSpaces']>) =>
@@ -126,10 +129,10 @@ export const dataClient = {
     dataApi().searchCloudTables(...args),
   previewCloudTable: (...args: Parameters<DataApi['previewCloudTable']>) =>
     dataApi().previewCloudTable(...args),
-  importCloudTable: (...args: Parameters<DataApi['importCloudTable']>) =>
-    dataApi().importCloudTable(...args),
-  refreshCloudInputTable: (...args: Parameters<DataApi['refreshCloudInputTable']>) =>
-    dataApi().refreshCloudInputTable(...args),
+  importCloudRawTable: (...args: Parameters<DataApi['importCloudRawTable']>) =>
+    dataApi().importCloudRawTable(...args),
+  refreshCloudRawTable: (...args: Parameters<DataApi['refreshCloudRawTable']>) =>
+    dataApi().refreshCloudRawTable(...args),
   uploadDataTableToCloud: (...args: Parameters<DataApi['uploadDataTableToCloud']>) =>
     dataApi().uploadDataTableToCloud(...args),
   listCloudDriveFiles: (...args: Parameters<DataApi['listCloudDriveFiles']>) =>
@@ -138,16 +141,15 @@ export const dataClient = {
     dataApi().previewCloudDriveFile(...args),
   // ---- host pickers / auth used by the data feature ----
   selectFiles: () => window.electronAPI?.selectFiles?.() ?? Promise.resolve([]),
-  selectInputTableSource: (
-    ...args: Parameters<NonNullable<ElectronApi['selectInputTableSource']>>
-  ) => window.electronAPI?.selectInputTableSource?.(...args) ?? Promise.resolve(null),
-  /** Picks an input-table source path, falling back to a file picker. */
-  pickInputTableSourcePath: async (
-    kind: Parameters<NonNullable<ElectronApi['selectInputTableSource']>>[0]
+  selectRawTableSource: (...args: Parameters<NonNullable<ElectronApi['selectRawTableSource']>>) =>
+    window.electronAPI?.selectRawTableSource?.(...args) ?? Promise.resolve(null),
+  /** Picks an raw-table source path, falling back to a file picker. */
+  pickRawTableSourcePath: async (
+    kind: Parameters<NonNullable<ElectronApi['selectRawTableSource']>>[0]
   ): Promise<string | null> => {
     if (kind === 'cloud') return null;
-    if (window.electronAPI?.selectInputTableSource) {
-      const selection = await window.electronAPI.selectInputTableSource(kind);
+    if (window.electronAPI?.selectRawTableSource) {
+      const selection = await window.electronAPI.selectRawTableSource(kind);
       return selection?.path ?? null;
     }
     const files = await window.electronAPI?.selectFiles?.();

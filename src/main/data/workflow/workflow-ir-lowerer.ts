@@ -55,7 +55,7 @@ import {
   requirementMentionsColumn,
 } from './requirement-intent';
 export type {
-  GeneratedDataTaskWorkflow,
+  GeneratedDataPipelineWorkflow,
   GeneratedWorkflowColumnBinding,
   GeneratedWorkflowIrSemantics,
   GeneratedWorkflowPlatformOperatorDraft,

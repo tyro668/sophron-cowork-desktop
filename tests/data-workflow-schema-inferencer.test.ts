@@ -7,17 +7,17 @@ function compileMissingValueWorkflow(
 ) {
   return compileGeneratedJavaScriptWorkflow({
     javascriptSource: `function main() {
-  const input = workflow.input(INPUT_TABLE_ID, { alias: "source" });
+  const input = workflow.input(RAW_TABLE_ID, { alias: "source" });
   const cleaned = workflow.step(input, "missing_value", {
     config: {
       strategy: "by_column",
       rules: [{ column: "value", method: "${method}" }]
     }
   });
-  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });
+  return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });
 }`,
-    inputTableId: 'input-table',
-    outputTableName: 'result',
+    rawTableId: 'raw-table',
+    resultTableName: 'result',
     requirement: `Fill missing values using ${method}`,
     columns: [{ name: 'value', type }],
   });

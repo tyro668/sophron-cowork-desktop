@@ -176,13 +176,13 @@ function countSourceLines(source: string): number {
 
 export function executeWorkflowJavaScriptInSandbox({
   compiled,
-  inputTableId,
-  outputTableName,
+  rawTableId,
+  resultTableName,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: {
   compiled: CompiledWorkflowJavaScript;
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   timeoutMs?: number;
 }): WorkflowIr {
   const result = spawnSync(
@@ -198,8 +198,8 @@ export function executeWorkflowJavaScriptInSandbox({
       input: JSON.stringify({
         javascript: compiled.executableSource,
         expressions: compiled.expressions.map(({ id, ir }) => ({ id, ir })),
-        inputTableId,
-        outputTableName,
+        rawTableId,
+        resultTableName,
         timeoutMs,
         sdkVersion: WORKFLOW_SDK_VERSION,
         allowedOperationTypes: ALLOWED_WORKFLOW_IR_OPERATION_TYPES,

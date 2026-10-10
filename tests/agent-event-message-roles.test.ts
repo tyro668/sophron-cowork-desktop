@@ -46,19 +46,21 @@ describe('SDK message role routing', () => {
     const event = {
       type: 'tool_execution_end',
       toolCallId: 'tool',
-      toolName: 'data_generate_task_from_requirement',
+      toolName: 'data_generate_pipeline_from_requirement',
       isError: false,
       result: {
         content: [{ type: 'text', text: 'Saved' }],
-        details: { dataTaskCompletion: completion },
+        details: { dataPipelineCompletion: completion },
       },
     };
     emit(event);
-    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toEqual(completion);
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataPipelineCompletion).toEqual(
+      completion
+    );
     emit({ ...event, isError: true });
-    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toBeUndefined();
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataPipelineCompletion).toBeUndefined();
     emit({ ...event, toolName: 'other_tool' });
-    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataTaskCompletion).toBeUndefined();
+    expect(sendMessage.mock.calls.at(-1)?.[1].content[0].dataPipelineCompletion).toBeUndefined();
   });
 
   it.each([

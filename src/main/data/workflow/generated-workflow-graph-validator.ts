@@ -73,11 +73,13 @@ function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagn
 
   if (node.type === 'input_source') {
     const source = stringValue(config.source);
-    const hasDataset = Boolean(stringValue(config.datasetId));
+    const hasRawTable = Boolean(stringValue(config.rawTableId));
     const hasFile = Boolean(stringValue(config.filePath));
-    if (
-      !(source === 'task' || (source === 'dataset' && hasDataset) || (source === 'file' && hasFile))
-    ) {
+    if (!(
+      source === 'pipeline' ||
+      (source === 'rawTable' && hasRawTable) ||
+      (source === 'file' && hasFile)
+    )) {
       diagnostics.push(
         diagnostic(
           'NODE_INPUT_CONFIG_INVALID',
@@ -87,7 +89,7 @@ function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagn
       );
     }
   } else if (node.type === 'output') {
-    if (!stringValue(config.table) && !stringValue(config.outputTableName)) {
+    if (!stringValue(config.table) && !stringValue(config.resultTableName)) {
       diagnostics.push(
         diagnostic(
           'NODE_OUTPUT_CONFIG_INVALID',

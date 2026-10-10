@@ -40,46 +40,46 @@ import type {
   MemoryInjectionRecord,
   MemoryInspectSessionResult,
   MemoryRebuildResult,
-  DataCleaningTask,
+  DataPipeline,
   DataColumnTypeInfo,
-  DataCreateOutputTableInput,
-  DataCreateTaskInput,
+  DataCreateResultTableInput,
+  DataCreatePipelineInput,
   DataDashboard,
   DataDashboardQuery,
-  DataDataset,
-  DataDeleteInputTableNormalizerVersionInput,
-  DataDeleteInputTableNormalizerVersionResult,
-  DataGenerateInputTableNormalizerDraftInput,
-  DataGenerateInputTableNormalizerDraftResult,
-  DataInputTableNormalizerDraftProgressEvent,
-  DataInputTablePreview,
-  DataInputTableSourceSummary,
-  DataInputTableSourceKind,
-  DataInputTableSourceSelection,
-  DataImportDatasetInput,
-  DataInputTableNormalizerVersionSaveResult,
-  DataListInputTableNormalizerVersionsInput,
-  DataListInputTableNormalizerVersionsResult,
+  DataRawTable,
+  DataDeleteRawTableNormalizerVersionInput,
+  DataDeleteRawTableNormalizerVersionResult,
+  DataGenerateRawTableNormalizerDraftInput,
+  DataGenerateRawTableNormalizerDraftResult,
+  DataRawTableNormalizerDraftProgressEvent,
+  DataRawTablePreview,
+  DataRawTableSourceSummary,
+  DataRawTableSourceKind,
+  DataRawTableSourceSelection,
+  DataImportRawTableInput,
+  DataRawTableNormalizerVersionSaveResult,
+  DataListRawTableNormalizerVersionsInput,
+  DataListRawTableNormalizerVersionsResult,
   DataExportTableInput,
   DataExportTableResult,
-  DataPreviewDatasetInput,
-  DataPreviewInputTableInput,
-  DataPreviewInputTableNormalizerVersionInput,
+  DataPreviewRawTableSourceInput,
+  DataPreviewRawTableInput,
+  DataPreviewRawTableNormalizerVersionInput,
   DataPreviewWorkflowNodeInput,
-  DataPublishInputTableNormalizerVersionInput,
-  DataRunTaskInput,
-  DataSummarizeInputTableSourceInput,
-  DataTaskWorkflow,
-  DataUpdateDatasetInput,
-  DataUpdateOutputTableInput,
-  DataUpdateTaskInput,
+  DataPublishRawTableNormalizerVersionInput,
+  DataRunPipelineInput,
+  DataSummarizeRawTableSourceInput,
+  DataPipelineWorkflow,
+  DataUpdateRawTableInput,
+  DataUpdateResultTableInput,
+  DataUpdatePipelineInput,
   DataGroup,
   DataGroupScope,
   DataCreateGroupInput,
   DataRenameGroupInput,
   DataAssignGroupInput,
   DataWorkflowSaveInput,
-  DataOutputTable,
+  DataResultTable,
   AppUpdateState,
   Automation,
   AutomationActionDefinitionSummary,
@@ -109,8 +109,8 @@ import type {
   PreviewCloudDriveFileResult,
   PreviewCloudTableInput,
   PreviewCloudTableResult,
-  RefreshCloudInputTableInput,
-  RefreshCloudInputTableResult,
+  RefreshCloudRawTableInput,
+  RefreshCloudRawTableResult,
   SearchCloudTablesInput,
   SearchCloudTablesResult,
   UploadDataTableToCloudInput,
@@ -120,9 +120,9 @@ import type {
   CodexLoginPromptPayload,
   DiagnosticInput,
   DiagnosticResult,
-  RunTaskResult,
+  RunPipelineResult,
   WorkflowNodeRunStat,
-  DataTaskRun,
+  DataPipelineRun,
   McpServerConfig,
   McpTool,
   McpServerStatus,
@@ -163,9 +163,9 @@ export interface ElectronApi {
   showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
   openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;
   selectFiles: () => Promise<string[]>;
-  selectInputTableSource: (
-    kind?: DataInputTableSourceKind
-  ) => Promise<DataInputTableSourceSelection | null>;
+  selectRawTableSource: (
+    kind?: DataRawTableSourceKind
+  ) => Promise<DataRawTableSourceSelection | null>;
   artifacts: {
     listRecentFiles: (
       cwd: string,
@@ -175,35 +175,43 @@ export interface ElectronApi {
   };
   data: {
     getDashboard: (payload?: DataDashboardQuery) => Promise<DataDashboard>;
-    getTask: (id: string) => Promise<DataCleaningTask | null>;
-    createTask: (payload: DataCreateTaskInput) => Promise<DataCleaningTask>;
-    updateTask: (payload: DataUpdateTaskInput) => Promise<DataCleaningTask>;
+    getPipeline: (id: string) => Promise<DataPipeline | null>;
+    createPipeline: (payload: DataCreatePipelineInput) => Promise<DataPipeline>;
+    updatePipeline: (payload: DataUpdatePipelineInput) => Promise<DataPipeline>;
     listGroups: (scope: DataGroupScope) => Promise<DataGroup[]>;
     createGroup: (payload: DataCreateGroupInput) => Promise<DataGroup>;
     renameGroup: (payload: DataRenameGroupInput) => Promise<{ success: boolean }>;
     deleteGroup: (id: string) => Promise<{ success: boolean }>;
     assignGroup: (payload: DataAssignGroupInput) => Promise<{ success: boolean }>;
-    runTask: (id: string, payload?: DataRunTaskInput) => Promise<DataCleaningTask>;
-    runTaskWithDiagnostics: (id: string, payload?: DataRunTaskInput) => Promise<RunTaskResult>;
-    getTaskWorkflow: (id: string) => Promise<DataTaskWorkflow>;
-    getTaskNodeStats: (id: string) => Promise<WorkflowNodeRunStat[]>;
-    listTaskRuns: (id: string, limit?: number) => Promise<DataTaskRun[]>;
-    getTaskRunNodeStats: (id: string, runId: string) => Promise<WorkflowNodeRunStat[]>;
-    saveTaskWorkflow: (id: string, payload: DataWorkflowSaveInput) => Promise<DataTaskWorkflow>;
-    validateTaskWorkflowPlan: (
+    runPipeline: (id: string, payload?: DataRunPipelineInput) => Promise<DataPipeline>;
+    runPipelineWithDiagnostics: (
+      id: string,
+      payload?: DataRunPipelineInput
+    ) => Promise<RunPipelineResult>;
+    getPipelineWorkflow: (id: string) => Promise<DataPipelineWorkflow>;
+    getPipelineNodeStats: (id: string) => Promise<WorkflowNodeRunStat[]>;
+    listPipelineRuns: (id: string, limit?: number) => Promise<DataPipelineRun[]>;
+    getPipelineRunNodeStats: (id: string, runId: string) => Promise<WorkflowNodeRunStat[]>;
+    savePipelineWorkflow: (
+      id: string,
+      payload: DataWorkflowSaveInput
+    ) => Promise<DataPipelineWorkflow>;
+    validatePipelineWorkflowPlan: (
       id: string,
       payload: DataWorkflowSaveInput
     ) => Promise<WorkflowPlanDiagnostic[]>;
-    importDataset: (payload: DataImportDatasetInput) => Promise<DataDataset>;
-    getInputTable: (id: string) => Promise<DataDataset | null>;
-    updateDataset: (payload: DataUpdateDatasetInput) => Promise<DataDataset>;
-    getOutputTable: (id: string) => Promise<DataOutputTable | null>;
-    createOutputTable: (payload?: DataCreateOutputTableInput) => Promise<DataOutputTable>;
-    updateOutputTable: (payload: DataUpdateOutputTableInput) => Promise<DataOutputTable>;
-    previewInputTable: (payload: DataPreviewInputTableInput) => Promise<DataInputTablePreview>;
-    previewDataset: (payload: DataPreviewDatasetInput) => Promise<DataInputTablePreview>;
+    importRawTable: (payload: DataImportRawTableInput) => Promise<DataRawTable>;
+    getRawTable: (id: string) => Promise<DataRawTable | null>;
+    updateRawTable: (payload: DataUpdateRawTableInput) => Promise<DataRawTable>;
+    getResultTable: (id: string) => Promise<DataResultTable | null>;
+    createResultTable: (payload?: DataCreateResultTableInput) => Promise<DataResultTable>;
+    updateResultTable: (payload: DataUpdateResultTableInput) => Promise<DataResultTable>;
+    previewRawTableSource: (
+      payload: DataPreviewRawTableSourceInput
+    ) => Promise<DataRawTablePreview>;
+    previewRawTable: (payload: DataPreviewRawTableInput) => Promise<DataRawTablePreview>;
     exportTable: (payload: DataExportTableInput) => Promise<DataExportTableResult>;
-    previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput) => Promise<DataInputTablePreview>;
+    previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput) => Promise<DataRawTablePreview>;
     getWorkflowNodeColumns: (payload: DataPreviewWorkflowNodeInput) => Promise<string[]>;
     getWorkflowNodeColumnTypes: (
       payload: DataPreviewWorkflowNodeInput
@@ -211,38 +219,38 @@ export interface ElectronApi {
     getWorkflowNodeColumnValues: (
       payload: DataPreviewWorkflowNodeInput & { column: string }
     ) => Promise<string[]>;
-    summarizeInputTableSource: (
-      payload: DataSummarizeInputTableSourceInput
-    ) => Promise<DataInputTableSourceSummary>;
-    generateInputTableNormalizerDraft: (
-      payload: DataGenerateInputTableNormalizerDraftInput
-    ) => Promise<DataGenerateInputTableNormalizerDraftResult>;
-    onInputTableNormalizerDraftProgress: (
-      callback: (event: DataInputTableNormalizerDraftProgressEvent) => void
+    summarizeRawTableSource: (
+      payload: DataSummarizeRawTableSourceInput
+    ) => Promise<DataRawTableSourceSummary>;
+    generateRawTableNormalizerDraft: (
+      payload: DataGenerateRawTableNormalizerDraftInput
+    ) => Promise<DataGenerateRawTableNormalizerDraftResult>;
+    onRawTableNormalizerDraftProgress: (
+      callback: (event: DataRawTableNormalizerDraftProgressEvent) => void
     ) => () => void;
-    previewInputTableNormalizerVersion: (
-      payload: DataPreviewInputTableNormalizerVersionInput
-    ) => Promise<{ preview: DataInputTablePreview }>;
-    publishInputTableNormalizerVersion: (
-      payload: DataPublishInputTableNormalizerVersionInput
-    ) => Promise<DataInputTableNormalizerVersionSaveResult>;
-    deleteInputTableNormalizerVersion: (
-      payload: DataDeleteInputTableNormalizerVersionInput
-    ) => Promise<DataDeleteInputTableNormalizerVersionResult>;
-    listInputTableNormalizerVersions: (
-      payload: DataListInputTableNormalizerVersionsInput
-    ) => Promise<DataListInputTableNormalizerVersionsResult>;
-    deleteTask: (id: string) => Promise<{ success: boolean }>;
-    deleteDataset: (id: string) => Promise<{ success: boolean }>;
+    previewRawTableNormalizerVersion: (
+      payload: DataPreviewRawTableNormalizerVersionInput
+    ) => Promise<{ preview: DataRawTablePreview }>;
+    publishRawTableNormalizerVersion: (
+      payload: DataPublishRawTableNormalizerVersionInput
+    ) => Promise<DataRawTableNormalizerVersionSaveResult>;
+    deleteRawTableNormalizerVersion: (
+      payload: DataDeleteRawTableNormalizerVersionInput
+    ) => Promise<DataDeleteRawTableNormalizerVersionResult>;
+    listRawTableNormalizerVersions: (
+      payload: DataListRawTableNormalizerVersionsInput
+    ) => Promise<DataListRawTableNormalizerVersionsResult>;
+    deletePipeline: (id: string) => Promise<{ success: boolean }>;
+    deleteRawTable: (id: string) => Promise<{ success: boolean }>;
     listCloudSpaces: (payload?: ListCloudSpacesInput) => Promise<ListCloudSpacesResult>;
     listCloudProjects: (payload: ListCloudProjectsInput) => Promise<ListCloudProjectsResult>;
     listCloudTables: (payload: ListCloudTablesInput) => Promise<ListCloudTablesResult>;
     searchCloudTables: (payload: SearchCloudTablesInput) => Promise<SearchCloudTablesResult>;
     previewCloudTable: (payload: PreviewCloudTableInput) => Promise<PreviewCloudTableResult>;
-    importCloudTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
-    refreshCloudInputTable: (
-      payload: RefreshCloudInputTableInput
-    ) => Promise<RefreshCloudInputTableResult>;
+    importCloudRawTable: (payload: ImportCloudTableInput) => Promise<ImportCloudTableResult>;
+    refreshCloudRawTable: (
+      payload: RefreshCloudRawTableInput
+    ) => Promise<RefreshCloudRawTableResult>;
     uploadDataTableToCloud: (
       payload: UploadDataTableToCloudInput
     ) => Promise<UploadDataTableToCloudResult>;

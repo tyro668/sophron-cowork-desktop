@@ -61,8 +61,8 @@ export function buildWorkflowGenerationSystemPrompt(input?: {
 }
 
 export function buildWorkflowGenerationUserPrompt(input: {
-  inputTableId: string;
-  outputTableName: string;
+  rawTableId: string;
+  resultTableName: string;
   requirement: string;
   columns: Array<{ name: string; type?: string }>;
   requirementContract?: RequirementCapabilityContract;
@@ -77,12 +77,13 @@ export function buildWorkflowGenerationUserPrompt(input: {
       : undefined;
   return JSON.stringify(
     {
-      task: 'Convert the user requirement into standard JavaScript that builds a Sophron data workflow through the provided Workflow SDK.',
+      pipeline:
+        'Convert the user requirement into standard JavaScript that builds a Sophron data workflow through the provided Workflow SDK.',
       requirement: input.requirement,
       inputColumns: input.columns,
       compilationTarget: {
-        inputTableId: input.inputTableId,
-        outputTableName: input.outputTableName,
+        rawTableId: input.rawTableId,
+        resultTableName: input.resultTableName,
       },
       confirmedRequirementCapabilityContract: input.requirementContract
         ? {
@@ -116,7 +117,7 @@ export function buildWorkflowGenerationUserPrompt(input: {
             }
           : {
               javascriptSource:
-                'complete standard function-oriented JavaScript with named helpers and main(). Express data operations only through the provided Workflow SDK and use INPUT_TABLE_ID and OUTPUT_TABLE_NAME constants exactly.',
+                'complete standard function-oriented JavaScript with named helpers and main(). Express data operations only through the provided Workflow SDK and use RAW_TABLE_ID and RESULT_TABLE_NAME constants exactly.',
               requiredColumns: [{ name: 'input column referenced by the DSL', type: 'optional' }],
               changeSummary: 'brief user-facing summary of what the workflow changes',
             },
@@ -164,46 +165,46 @@ const WORKFLOW_GENERATION_EXAMPLES = [
   {
     requirement: '过滤掉Market为EU的数据',
     javascriptSource:
-      'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function filterEurope(input) {\n  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const filtered = filterEurope(input);\n  return workflow.output(filtered, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Market' }],
   },
   {
     requirement: '按照Sales升序排列，删除记录数',
     javascriptSource:
-      'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function sortSales(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["Sales"]), direction: "asc" });\n}\n\nfunction removeRecordCount(input) {\n  return workflow.step(input, "drop", { columns: ["记录数"] });\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const sorted = sortSales(input);\n  const cleaned = removeRecordCount(sorted);\n  return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Sales' }, { name: '记录数' }],
   },
   {
     requirement: '从 Date 提取年份和月份',
     javascriptSource:
-      'function extractYearAndMonth(input) {\n  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n  const withMonth = workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n  return withMonth;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const enriched = extractYearAndMonth(input);\n  return workflow.output(enriched, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function extractYearAndMonth(input) {\n  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });\n  const withMonth = workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });\n  return withMonth;\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const enriched = extractYearAndMonth(input);\n  return workflow.output(enriched, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Date' }],
   },
   {
     requirement:
       '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。',
     javascriptSource:
-      'function addProfitRate(input) {\n  return workflow.step(input, "derive", { column: "利润率", expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 })) });\n}\n\nfunction addOperatingGrade(input) {\n  return workflow.step(input, "derive", { column: "经营等级", expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损") });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const withProfitRate = addProfitRate(input);\n  const withOperatingGrade = addOperatingGrade(withProfitRate);\n  return workflow.output(withOperatingGrade, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function addProfitRate(input) {\n  return workflow.step(input, "derive", { column: "利润率", expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 })) });\n}\n\nfunction addOperatingGrade(input) {\n  return workflow.step(input, "derive", { column: "经营等级", expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损") });\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const withProfitRate = addProfitRate(input);\n  const withOperatingGrade = addOperatingGrade(withProfitRate);\n  return workflow.output(withOperatingGrade, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Sales' }, { name: 'Profit' }],
   },
   {
     requirement:
       '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
     javascriptSource:
-      'function pivotMarketSales(input) {\n  return workflow.step(input, "pivot", { config: { on: [{ field: "Market", values: ["Central", "East", "South", "West"] }], using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }], groupBy: ["Product Type"] } });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const pivoted = pivotMarketSales(input);\n  return workflow.output(pivoted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function pivotMarketSales(input) {\n  return workflow.step(input, "pivot", { config: { on: [{ field: "Market", values: ["Central", "East", "South", "West"] }], using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }], groupBy: ["Product Type"] } });\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const pivoted = pivotMarketSales(input);\n  return workflow.output(pivoted, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Product Type' }, { name: 'Market' }, { name: 'Sales' }],
   },
   {
     requirement: '按客户汇总销售额，找出销售额最高的前10名客户',
     javascriptSource:
-      'function summarizeCustomers(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Customer ID"]), expr(row => row["Customer Name"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] });\n}\n\nfunction rankCustomers(input) {\n  const sorted = workflow.step(input, "sort", { column: expr(row => row["总销售额"]), direction: "desc" });\n  const limited = workflow.step(sorted, "limit", { config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } });\n  return limited;\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCustomers(input);\n  const ranked = rankCustomers(summarized);\n  return workflow.output(ranked, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function summarizeCustomers(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Customer ID"]), expr(row => row["Customer Name"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] });\n}\n\nfunction rankCustomers(input) {\n  const sorted = workflow.step(input, "sort", { column: expr(row => row["总销售额"]), direction: "desc" });\n  const limited = workflow.step(sorted, "limit", { config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } });\n  return limited;\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCustomers(input);\n  const ranked = rankCustomers(summarized);\n  return workflow.output(ranked, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Customer ID' }, { name: 'Customer Name' }, { name: 'Sales' }],
   },
   {
     requirement:
       '按 Country 汇总 Sales，然后计算各国家销售额占全部国家销售额的比例，结果按占比降序排列。',
     javascriptSource:
-      'function summarizeCountrySales(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Country"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "国家销售额" }] });\n}\n\nfunction addOverallSales(input) {\n  return workflow.step(input, "derive_window", { column: "全部销售额", function: "sum", expression: expr(row => row["国家销售额"]), partitionBy: [], orderBy: [] });\n}\n\nfunction addSalesShare(input) {\n  return workflow.step(input, "derive", { column: "销售额占比", expression: expr(row => cast(row["全部销售额"] == null || row["全部销售额"] === 0 ? 0 : row["国家销售额"] / row["全部销售额"], "decimal", { scale: 4 })) });\n}\n\nfunction sortBySalesShare(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["销售额占比"]), direction: "desc" });\n}\n\nfunction main() {\n  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCountrySales(input);\n  const withOverallSales = addOverallSales(summarized);\n  const withSalesShare = addSalesShare(withOverallSales);\n  const sorted = sortBySalesShare(withSalesShare);\n  return workflow.output(sorted, OUTPUT_TABLE_NAME, { mode: "replace" });\n}',
+      'function summarizeCountrySales(input) {\n  return workflow.step(input, "aggregate", { groupBy: [expr(row => row["Country"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "国家销售额" }] });\n}\n\nfunction addOverallSales(input) {\n  return workflow.step(input, "derive_window", { column: "全部销售额", function: "sum", expression: expr(row => row["国家销售额"]), partitionBy: [], orderBy: [] });\n}\n\nfunction addSalesShare(input) {\n  return workflow.step(input, "derive", { column: "销售额占比", expression: expr(row => cast(row["全部销售额"] == null || row["全部销售额"] === 0 ? 0 : row["国家销售额"] / row["全部销售额"], "decimal", { scale: 4 })) });\n}\n\nfunction sortBySalesShare(input) {\n  return workflow.step(input, "sort", { column: expr(row => row["销售额占比"]), direction: "desc" });\n}\n\nfunction main() {\n  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });\n  const summarized = summarizeCountrySales(input);\n  const withOverallSales = addOverallSales(summarized);\n  const withSalesShare = addSalesShare(withOverallSales);\n  const sorted = sortBySalesShare(withSalesShare);\n  return workflow.output(sorted, RESULT_TABLE_NAME, { mode: "replace" });\n}',
     requiredColumns: [{ name: 'Country' }, { name: 'Sales' }],
   },
 ] as const;

@@ -13,7 +13,7 @@ import { mergeSelectedFields } from '../../../shared/operator-config';
 
 export default function FormFieldSelect({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
@@ -21,7 +21,7 @@ export default function FormFieldSelect({
   const tr = useFormTranslation('fieldSelect');
   const dataTypeLabel = useDataFieldTypeLabel();
 
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const columns = useMemo(

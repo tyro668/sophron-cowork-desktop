@@ -3,7 +3,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DuckDBInstance } from '@duckdb/node-api';
-import { createDataTaskStore, type DataTaskStore } from '../src/main/data/data-task-store';
+import {
+  createDataPipelineStore,
+  type DataPipelineStore,
+} from '../src/main/data/data-pipeline-store';
 import { validateGeneratedExecutableWorkflow } from '../src/main/data/workflow/generated-workflow-graph-validator';
 import {
   compileWorkflowJavaScript,
@@ -223,7 +226,7 @@ const CAPABILITY_VARIANT_CASES: Array<{
 ];
 
 const tempRoots: string[] = [];
-const stores: DataTaskStore[] = [];
+const stores: DataPipelineStore[] = [];
 
 afterEach(() => {
   while (stores.length > 0) stores.pop()?.close();
@@ -375,7 +378,7 @@ describe('AI workflow capability contract', () => {
     ]);
     const rows = await queryRows(
       result.dbPath,
-      `SELECT order_id, region, revenue, profit, margin FROM ${result.outputTable} ORDER BY revenue DESC`
+      `SELECT order_id, region, revenue, profit, margin FROM ${result.resultTable} ORDER BY revenue DESC`
     );
     expect(
       rows.map((row) => ({
@@ -412,7 +415,7 @@ describe('AI workflow capability contract', () => {
     });
     const rows = await queryRows(
       result.dbPath,
-      `SELECT id, amount, label FROM ${result.outputTable} WHERE id = 2`
+      `SELECT id, amount, label FROM ${result.resultTable} WHERE id = 2`
     );
 
     expect(
@@ -446,7 +449,7 @@ describe('AI workflow capability contract', () => {
     ]);
     const rows = await queryRows(
       result.dbPath,
-      `SELECT region, total_amount, row_count FROM ${result.outputTable} ORDER BY region`
+      `SELECT region, total_amount, row_count FROM ${result.resultTable} ORDER BY region`
     );
     expect(
       rows.map((row) => ({
@@ -504,7 +507,7 @@ describe('AI workflow capability contract', () => {
 
     const [row] = await queryRows(
       result.dbPath,
-      `SELECT *, CAST(month_start AS VARCHAR) AS month_text, CAST(parsed_date AS VARCHAR) AS parsed_text FROM ${result.outputTable}`
+      `SELECT *, CAST(month_start AS VARCHAR) AS month_text, CAST(parsed_date AS VARCHAR) AS parsed_text FROM ${result.resultTable}`
     );
     expect({
       day: Number(row.day_value),
@@ -581,7 +584,7 @@ describe('AI workflow capability contract', () => {
       ]),
     });
 
-    const [row] = await queryRows(result.dbPath, `SELECT * FROM ${result.outputTable}`);
+    const [row] = await queryRows(result.dbPath, `SELECT * FROM ${result.resultTable}`);
     expect(Number(row.median_amount)).toBe(20);
     expect(Number(row.mode_amount)).toBe(20);
     expect(Number(row.first_amount)).toBe(10);
@@ -651,7 +654,7 @@ describe('AI workflow capability contract', () => {
     });
     const rows = await queryRows(
       result.dbPath,
-      `SELECT country, country_sales, overall_sales, sales_share FROM ${result.outputTable} ORDER BY sales_share DESC`
+      `SELECT country, country_sales, overall_sales, sales_share FROM ${result.resultTable} ORDER BY sales_share DESC`
     );
     expect(
       rows.map((row) => ({
@@ -736,7 +739,7 @@ describe('AI workflow capability contract', () => {
 
     const rows = await queryRows(
       result.dbPath,
-      `SELECT region, id, row_number, amount_rank, bucket, previous_amount, next_amount, first_amount, second_amount, running_amount, moving_average FROM ${result.outputTable} ORDER BY region, id`
+      `SELECT region, id, row_number, amount_rank, bucket, previous_amount, next_amount, first_amount, second_amount, running_amount, moving_average FROM ${result.resultTable} ORDER BY region, id`
     );
     expect(
       rows.map((row) => ({
@@ -828,7 +831,7 @@ describe('AI workflow capability contract', () => {
     });
     const rows = await queryRows(
       result.dbPath,
-      `SELECT prior_day_amount FROM ${result.outputTable} ORDER BY event_date`
+      `SELECT prior_day_amount FROM ${result.resultTable} ORDER BY event_date`
     );
     expect(rows.map((row) => Number(row.prior_day_amount))).toEqual([10, 30, 40]);
   });
@@ -858,7 +861,7 @@ describe('AI workflow capability contract', () => {
     expect(result.plan.nodes.map((node) => node.type)).toEqual(['input_source', 'pivot', 'output']);
     const rows = await queryRows(
       result.dbPath,
-      `SELECT * FROM ${result.outputTable} ORDER BY region`
+      `SELECT * FROM ${result.resultTable} ORDER BY region`
     );
     expect(
       rows.map((row) => ({
@@ -900,7 +903,7 @@ describe('AI workflow capability contract', () => {
 
     const rows = await queryRows(
       result.dbPath,
-      `SELECT * FROM ${result.outputTable} ORDER BY region`
+      `SELECT * FROM ${result.resultTable} ORDER BY region`
     );
     expect(
       rows.map((row) => ({
@@ -968,7 +971,7 @@ describe('AI workflow capability contract', () => {
     });
     const rows = await queryRows(
       result.dbPath,
-      `SELECT region, score, label FROM ${result.outputTable} ORDER BY region, score DESC, label`
+      `SELECT region, score, label FROM ${result.resultTable} ORDER BY region, score DESC, label`
     );
     expect(rows.map((row) => `${row.region}:${row.score}:${row.label}`)).toEqual([
       'East:20:A',
@@ -995,7 +998,7 @@ describe('AI workflow capability contract', () => {
     });
     const [row] = await queryRows(
       result.dbPath,
-      `SELECT COUNT(*) AS count FROM ${result.outputTable}`
+      `SELECT COUNT(*) AS count FROM ${result.resultTable}`
     );
     expect(Number(row.count)).toBe(5);
   });
@@ -1021,8 +1024,8 @@ describe('AI workflow capability contract', () => {
       });
       executeWorkflowJavaScriptInSandbox({
         compiled,
-        inputTableId: 'input-1',
-        outputTableName: 'output-1',
+        rawTableId: 'input-1',
+        resultTableName: 'output-1',
       });
     }).toThrow(/groupBy|No overload matches|not assignable/);
   });
@@ -1054,7 +1057,7 @@ describe('AI workflow capability contract', () => {
     ]);
     const rows = await queryRows(
       result.dbPath,
-      `SELECT region, quarter, revenue FROM ${result.outputTable} ORDER BY region, quarter`
+      `SELECT region, quarter, revenue FROM ${result.resultTable} ORDER BY region, quarter`
     );
     expect(
       rows.map((row) => ({
@@ -1096,7 +1099,7 @@ describe('AI workflow capability contract', () => {
     ]);
     const rows = await queryRows(
       result.dbPath,
-      `SELECT id, CAST(item AS INTEGER) AS item FROM ${result.outputTable} ORDER BY id, item`
+      `SELECT id, CAST(item AS INTEGER) AS item FROM ${result.resultTable} ORDER BY id, item`
     );
     expect(
       rows.map((row) => ({
@@ -1124,12 +1127,12 @@ function workflowSource(steps: WorkflowStepSource[]): string {
   );
   const main = [
     'function main() {',
-    '  const input = workflow.input(INPUT_TABLE_ID, { alias: "src" });',
+    '  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });',
     ...steps.map(
       (step, index) =>
         `  const value${index + 1} = ${step.name}(${index === 0 ? 'input' : `value${index}`});`
     ),
-    `  return workflow.output(value${steps.length}, OUTPUT_TABLE_NAME, { mode: "replace" });`,
+    `  return workflow.output(value${steps.length}, RESULT_TABLE_NAME, { mode: "replace" });`,
     '}',
   ].join('\n');
   return [...helpers, main].join('\n\n');
@@ -1143,28 +1146,28 @@ async function runCertifiedWorkflow(input: {
   expectedOperationTypes: readonly string[];
 }): Promise<{
   dbPath: string;
-  outputTable: string;
+  resultTable: string;
   plan: ReturnType<typeof compileLoweredWorkflowToPlatformNodes>;
 }> {
   const { dbPath, store, tempRoot } = createStore(input.name);
   const csvPath = path.join(tempRoot, `${input.name}.csv`);
   fs.writeFileSync(csvPath, `${input.csv}\n`, 'utf8');
-  const dataset = await store.importDataset({
+  const rawTable = await store.importRawTable({
     name: `${input.name} input`,
     sourceKind: 'csv',
     filePath: csvPath,
   });
-  const task = await store.createTask({
-    name: `${input.name} task`,
-    sourceDatasetId: dataset.id,
+  const pipeline = await store.createPipeline({
+    name: `${input.name} pipeline`,
+    sourceRawTableId: rawTable.id,
   });
-  const outputTable = `ai_contract_${input.name.replace(/[^A-Za-z0-9_]/g, '_')}_output`;
+  const resultTable = `ai_contract_${input.name.replace(/[^A-Za-z0-9_]/g, '_')}_output`;
 
   const compiled = compileWorkflowJavaScript(input.javascriptSource, { columns: input.columns });
   const ir = executeWorkflowJavaScriptInSandbox({
     compiled,
-    inputTableId: dataset.id,
-    outputTableName: outputTable,
+    rawTableId: rawTable.id,
+    resultTableName: resultTable,
   });
   expect(ir.operations.map((operation) => operation.type)).toEqual(input.expectedOperationTypes);
 
@@ -1176,9 +1179,9 @@ async function runCertifiedWorkflow(input: {
   const plan = compileLoweredWorkflowToPlatformNodes({
     semantics,
     bindings: {
-      inputTableId: dataset.id,
-      inputTableName: dataset.name,
-      outputTableName: outputTable,
+      rawTableId: rawTable.id,
+      rawTableName: rawTable.name,
+      resultTableName: resultTable,
     },
   });
   for (const node of plan.nodes.slice(1, -1)) {
@@ -1186,21 +1189,21 @@ async function runCertifiedWorkflow(input: {
   }
   expect(validateGeneratedExecutableWorkflow({ nodes: plan.nodes, edges: plan.edges })).toEqual([]);
 
-  await store.saveTaskWorkflow(task.id, { nodes: plan.nodes, edges: plan.edges });
-  const saved = await store.getTaskWorkflow(task.id);
+  await store.savePipelineWorkflow(pipeline.id, { nodes: plan.nodes, edges: plan.edges });
+  const saved = await store.getPipelineWorkflow(pipeline.id);
   expect(saved.nodes.map((node) => node.type)).toEqual(plan.nodes.map((node) => node.type));
-  const completed = await store.runTask(task.id);
+  const completed = await store.runPipeline(pipeline.id);
   expect(completed.status).toBe('completed');
-  expect(completed.outputTable).toBe(outputTable);
+  expect(completed.resultTable).toBe(resultTable);
 
-  return { dbPath, outputTable, plan };
+  return { dbPath, resultTable, plan };
 }
 
-function createStore(name: string): { dbPath: string; store: DataTaskStore; tempRoot: string } {
+function createStore(name: string): { dbPath: string; store: DataPipelineStore; tempRoot: string } {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `sophron-ai-capability-${name}-`));
   tempRoots.push(tempRoot);
   const dbPath = path.join(tempRoot, 'workspace.duckdb');
-  const store = createDataTaskStore(dbPath, { now: () => 1_780_000_000_000 });
+  const store = createDataPipelineStore(dbPath, { now: () => 1_780_000_000_000 });
   stores.push(store);
   return { dbPath, store, tempRoot };
 }

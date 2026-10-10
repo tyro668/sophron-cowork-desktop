@@ -16,13 +16,13 @@ const ROW_OPERATORS = ['>', '>=', '=', '!=', '<=', '<'] as const;
 
 export default function FormExpect({
   node,
-  taskId,
+  pipelineId,
   fieldCompletions,
   sourceNode,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('expect');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const kind: ExpectKind =

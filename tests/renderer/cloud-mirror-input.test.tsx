@@ -4,11 +4,8 @@ import { useState } from 'react';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n-test';
-import type { DataDataset } from '../../src/renderer/types';
-import {
-  InputTableEditor,
-  InputTablesPanel,
-} from '../../src/renderer/components/data-view/input-tables';
+import type { DataRawTable } from '../../src/renderer/types';
+import { RawTableEditor, RawTablesPanel } from '../../src/renderer/components/data-view/raw-tables';
 import { ConfirmDialogProvider } from '../../src/renderer/components/ConfirmDialog';
 import {
   formatCloudMirrorLocation,
@@ -21,8 +18,8 @@ import {
 } from '../../src/renderer/features/data/hooks/use-data-actions';
 import type { DataViewUi } from '../../src/renderer/features/data/hooks/use-data-view-ui';
 import type { DataDashboardState } from '../../src/renderer/features/data/hooks/use-data-dashboard';
-import type { InputTablesState } from '../../src/renderer/features/data/hooks/use-input-tables';
-import type { InputTableDraftsState } from '../../src/renderer/features/data/hooks/use-input-table-drafts';
+import type { RawTablesState } from '../../src/renderer/features/data/hooks/use-raw-tables';
+import type { RawTableDraftsState } from '../../src/renderer/features/data/hooks/use-raw-table-drafts';
 import type { DataViewEditors } from '../../src/renderer/features/data/hooks/use-data-view-editors';
 
 const MIRROR = {
@@ -38,7 +35,7 @@ const MIRROR = {
   contentHash: 'abc123',
 };
 
-function makeCloudDataset(overrides?: Partial<DataDataset>): DataDataset {
+function makeCloudRawTable(overrides?: Partial<DataRawTable>): DataRawTable {
   return {
     id: 'ds1',
     name: 'Imported sales',
@@ -46,10 +43,10 @@ function makeCloudDataset(overrides?: Partial<DataDataset>): DataDataset {
     sourcePath: '/data/cloud-imports/cloud-remote.csv',
     sourceKind: 'cloud',
     fileCount: 1,
-    tableName: 'dataset_ds1',
+    tableName: 'rawTable_ds1',
     rowCount: 2,
     columnCount: 2,
-    relatedTaskNames: [],
+    relatedPipelineNames: [],
     createdAt: 1,
     updatedAt: 2,
     inputConfig: {
@@ -57,31 +54,31 @@ function makeCloudDataset(overrides?: Partial<DataDataset>): DataDataset {
       cloudMirror: { ...MIRROR },
     },
     ...overrides,
-  } as DataDataset;
+  } as DataRawTable;
 }
 
 function renderPanel() {
   (window as { electronAPI?: unknown }).electronAPI = { data: {} };
   return render(
-    <InputTablesPanel
-      datasets={[makeCloudDataset()]}
+    <RawTablesPanel
+      rawTables={[makeCloudRawTable()]}
       drafts={[]}
       groups={[]}
       groupCounts={{}}
       groupPages={{}}
-      totalDatasets={1}
+      totalRawTables={1}
       searchQuery=""
       isLoading={false}
       onSearchChange={vi.fn()}
       onCreate={vi.fn()}
       onRefresh={vi.fn()}
-      onPreviewDataset={vi.fn()}
+      onPreviewRawTable={vi.fn()}
       onDelete={vi.fn()}
       onDeleteAll={vi.fn()}
       onDeleteDraft={vi.fn()}
       onEditDraft={vi.fn()}
-      onEditDataset={vi.fn()}
-      onCreateTaskFromTable={vi.fn()}
+      onEditRawTable={vi.fn()}
+      onCreatePipelineFromTable={vi.fn()}
       onAssignToGroup={vi.fn()}
       onRenameGroup={vi.fn()}
       onDeleteGroup={vi.fn()}
@@ -93,31 +90,31 @@ function renderPanel() {
 }
 
 function renderEditor(handlers?: {
-  onSyncCloudSource?: (dataset: DataDataset) => Promise<DataDataset | undefined>;
+  onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
 }) {
-  const previewInputTable = vi.fn(async () => ({ columns: [], rows: [], totalRows: 2 }));
-  (window as { electronAPI?: unknown }).electronAPI = { data: { previewInputTable } };
+  const previewRawTableSource = vi.fn(async () => ({ columns: [], rows: [], totalRows: 2 }));
+  (window as { electronAPI?: unknown }).electronAPI = { data: { previewRawTableSource } };
   function Editor() {
-    const [dataset, setDataset] = useState(makeCloudDataset());
+    const [rawTable, setRawTable] = useState(makeCloudRawTable());
     return (
       <ConfirmDialogProvider>
-        <InputTableEditor
-          dataset={dataset}
+        <RawTableEditor
+          rawTable={rawTable}
           isBusy={false}
           onBack={vi.fn()}
-          onRenameDataset={vi.fn()}
-          onChooseDatasetSource={vi.fn()}
-          onUpdateDatasetConfig={vi.fn()}
+          onRenameRawTable={vi.fn()}
+          onChooseRawTableSource={vi.fn()}
+          onUpdateRawTableConfig={vi.fn()}
           onSyncCloudSource={async (source) => {
             const refreshed = await handlers?.onSyncCloudSource?.(source);
-            if (refreshed) setDataset(refreshed);
+            if (refreshed) setRawTable(refreshed);
             return refreshed;
           }}
         />
       </ConfirmDialogProvider>
     );
   }
-  return { ...render(<Editor />), previewInputTable };
+  return { ...render(<Editor />), previewRawTableSource };
 }
 
 function renderActions(overrides?: Partial<DataActionsDeps>) {
@@ -127,19 +124,19 @@ function renderActions(overrides?: Partial<DataActionsDeps>) {
     setActiveTab: vi.fn(),
     setSearchQuery: vi.fn(),
     searchQuery: '',
-    inputTableSourceFilter: 'all',
+    rawTableSourceFilter: 'all',
   } as unknown as DataViewUi;
   const dashboard = {
     loadDashboard: vi.fn(async () => undefined),
   } as unknown as DataDashboardState;
-  const inputTables = {
-    loadInputTables: vi.fn(async () => undefined),
-  } as unknown as InputTablesState;
+  const rawTables = {
+    loadRawTables: vi.fn(async () => undefined),
+  } as unknown as RawTablesState;
   const deps: DataActionsDeps = {
     ui,
     dashboard,
-    inputTables,
-    drafts: {} as InputTableDraftsState,
+    rawTables,
+    drafts: {} as RawTableDraftsState,
     editors: {} as DataViewEditors,
     t: i18n.t.bind(i18n) as DataActionsDeps['t'],
     confirmDelete: vi.fn(async () => true),
@@ -163,7 +160,7 @@ describe('cloud-mirrored input table', () => {
   });
 
   it('keeps plain CSV rows unchanged', () => {
-    const plain = makeCloudDataset({
+    const plain = makeCloudRawTable({
       id: 'ds2',
       sourceKind: 'csv',
       name: 'Plain csv',
@@ -178,25 +175,25 @@ describe('cloud-mirrored input table', () => {
     });
     (window as { electronAPI?: unknown }).electronAPI = { data: {} };
     render(
-      <InputTablesPanel
-        datasets={[plain]}
+      <RawTablesPanel
+        rawTables={[plain]}
         drafts={[]}
         groups={[]}
         groupCounts={{}}
         groupPages={{}}
-        totalDatasets={1}
+        totalRawTables={1}
         searchQuery=""
         isLoading={false}
         onSearchChange={vi.fn()}
         onCreate={vi.fn()}
         onRefresh={vi.fn()}
-        onPreviewDataset={vi.fn()}
+        onPreviewRawTable={vi.fn()}
         onDelete={vi.fn()}
         onDeleteAll={vi.fn()}
         onDeleteDraft={vi.fn()}
         onEditDraft={vi.fn()}
-        onEditDataset={vi.fn()}
-        onCreateTaskFromTable={vi.fn()}
+        onEditRawTable={vi.fn()}
+        onCreatePipelineFromTable={vi.fn()}
         onAssignToGroup={vi.fn()}
         onRenameGroup={vi.fn()}
         onDeleteGroup={vi.fn()}
@@ -211,7 +208,7 @@ describe('cloud-mirrored input table', () => {
   });
 
   it('keeps configuration compact and refreshes cloud data from the data tab', async () => {
-    const refreshed = makeCloudDataset({
+    const refreshed = makeCloudRawTable({
       sourcePath: '/data/cloud-imports/new.csv',
       updatedAt: 1750000005000,
       inputConfig: {
@@ -220,7 +217,7 @@ describe('cloud-mirrored input table', () => {
       },
     });
     const onSyncCloudSource = vi.fn(async () => refreshed);
-    const { container, previewInputTable } = renderEditor({ onSyncCloudSource });
+    const { container, previewRawTableSource } = renderEditor({ onSyncCloudSource });
     expect(container.innerHTML).not.toContain('cloud-remote.csv');
     expect(screen.queryByRole('button', { name: 'Change file' })).toBeNull();
     expect(screen.getAllByRole('combobox')[0].textContent).toContain('Cloud table');
@@ -238,13 +235,13 @@ describe('cloud-mirrored input table', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     });
     expect(onSyncCloudSource).toHaveBeenCalledWith(expect.objectContaining({ id: 'ds1' }));
-    expect(previewInputTable).toHaveBeenLastCalledWith(
+    expect(previewRawTableSource).toHaveBeenLastCalledWith(
       expect.objectContaining({ filePath: refreshed.sourcePath, config: refreshed.inputConfig })
     );
     expect(screen.getByRole('tab', { name: 'Data' }).getAttribute('aria-selected')).toBe('true');
     expect(
       screen.getByText(
-        i18n.t('data.outputTables.editor.dataMeta', {
+        i18n.t('data.resultTables.editor.dataMeta', {
           rows: 2,
           time: formatDateTime(refreshed.updatedAt),
         })
@@ -253,8 +250,8 @@ describe('cloud-mirrored input table', () => {
   });
 
   it('extracts cloud linkage and formats breadcrumbs', () => {
-    expect(getCloudMirror(makeCloudDataset())).toMatchObject({ tableId: 'remote' });
-    const excel = makeCloudDataset({
+    expect(getCloudMirror(makeCloudRawTable())).toMatchObject({ tableId: 'remote' });
+    const excel = makeCloudRawTable({
       sourceKind: 'excel',
       inputConfig: {
         sourceKind: 'excel',
@@ -276,79 +273,79 @@ describe('cloud-mirrored input table', () => {
   });
 
   it('creates a cloud input from a draft through the same import flow', async () => {
-    const importCloudTable = vi.fn(async () => ({ inputTable: makeCloudDataset() }));
+    const importCloudRawTable = vi.fn(async () => ({ rawTable: makeCloudRawTable() }));
     const pickFile = vi.fn();
     (window as { electronAPI?: unknown }).electronAPI = {
-      data: { importCloudTable },
-      selectInputTableSource: pickFile,
+      data: { importCloudRawTable },
+      selectRawTableSource: pickFile,
     };
     const removeDraft = vi.fn();
-    const upsertDataset = vi.fn();
+    const upsertRawTable = vi.fn();
     const { hook } = renderActions({
-      drafts: { removeDraft } as unknown as InputTableDraftsState,
-      inputTables: {
-        upsertDataset,
-        setDatasetPage: vi.fn(),
-        loadInputTables: vi.fn(async () => undefined),
-      } as unknown as InputTablesState,
+      drafts: { removeDraft } as unknown as RawTableDraftsState,
+      rawTables: {
+        upsertRawTable,
+        setRawTablePage: vi.fn(),
+        loadRawTables: vi.fn(async () => undefined),
+      } as unknown as RawTablesState,
       editors: {
-        setEditingInputTableDraftId: vi.fn(),
-        setEditingInputTableDatasetId: vi.fn(),
+        setEditingRawTableDraftId: vi.fn(),
+        setEditingRawTableId: vi.fn(),
       } as unknown as DataViewEditors,
     });
     await act(async () => {
-      await hook.result.current.handleImportInputTableSource(
+      await hook.result.current.handleImportRawTableSource(
         { id: 'draft', name: 'New input' } as never,
         'cloud',
         { sourceKind: 'cloud', cloudMirror: MIRROR }
       );
     });
-    expect(importCloudTable).toHaveBeenCalledWith(
+    expect(importCloudRawTable).toHaveBeenCalledWith(
       expect.objectContaining({ tableId: 'remote', name: 'New input' })
     );
     expect(pickFile).not.toHaveBeenCalled();
     expect(removeDraft).toHaveBeenCalledWith('draft');
-    expect(upsertDataset).toHaveBeenCalled();
+    expect(upsertRawTable).toHaveBeenCalled();
   });
 
   it('rebinds through cloud import without opening a file picker', async () => {
-    const importCloudTable = vi.fn(async () => ({ inputTable: makeCloudDataset() }));
+    const importCloudRawTable = vi.fn(async () => ({ rawTable: makeCloudRawTable() }));
     const pickFile = vi.fn();
     (window as { electronAPI?: unknown }).electronAPI = {
-      data: { importCloudTable, updateDataset: vi.fn() },
-      selectInputTableSource: pickFile,
+      data: { importCloudRawTable, updateRawTable: vi.fn() },
+      selectRawTableSource: pickFile,
     };
-    const updateDatasetRow = vi.fn();
+    const updateRawTableRow = vi.fn();
     const { hook } = renderActions({
-      inputTables: {
-        updateDatasetRow,
-        loadInputTables: vi.fn(async () => undefined),
-      } as unknown as InputTablesState,
+      rawTables: {
+        updateRawTableRow,
+        loadRawTables: vi.fn(async () => undefined),
+      } as unknown as RawTablesState,
     });
     await act(async () => {
-      await hook.result.current.handleUpdateInputTableSource(makeCloudDataset(), 'cloud', {
+      await hook.result.current.handleUpdateRawTableSource(makeCloudRawTable(), 'cloud', {
         sourceKind: 'cloud',
         cloudMirror: { ...MIRROR, tableId: 'next' },
       });
     });
-    expect(importCloudTable).toHaveBeenCalledWith(
-      expect.objectContaining({ inputTableId: 'ds1', tableId: 'next' })
+    expect(importCloudRawTable).toHaveBeenCalledWith(
+      expect.objectContaining({ rawTableId: 'ds1', tableId: 'next' })
     );
     expect(pickFile).not.toHaveBeenCalled();
-    expect(updateDatasetRow).toHaveBeenCalled();
+    expect(updateRawTableRow).toHaveBeenCalled();
   });
 
   it('refresh action calls the bridge and reloads the lists', async () => {
-    const refreshCloudInputTable = vi.fn(async () => ({ inputTable: makeCloudDataset() }));
+    const refreshCloudRawTable = vi.fn(async () => ({ rawTable: makeCloudRawTable() }));
     (window as { electronAPI?: unknown }).electronAPI = {
-      data: { refreshCloudInputTable },
+      data: { refreshCloudRawTable },
     };
     const { hook, deps } = renderActions();
     await act(async () => {
-      await hook.result.current.handleRefreshCloudInputTable(makeCloudDataset());
+      await hook.result.current.handleRefreshCloudRawTable(makeCloudRawTable());
     });
-    expect(refreshCloudInputTable).toHaveBeenCalledWith({ inputTableId: 'ds1' });
-    expect(deps.inputTables.loadInputTables).toHaveBeenCalled();
+    expect(refreshCloudRawTable).toHaveBeenCalledWith({ rawTableId: 'ds1' });
+    expect(deps.rawTables.loadRawTables).toHaveBeenCalled();
     expect(deps.dashboard.loadDashboard).toHaveBeenCalled();
   });
 });

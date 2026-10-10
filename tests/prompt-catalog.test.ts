@@ -57,8 +57,8 @@ describe('central prompt catalog', () => {
     );
     const generationUser = JSON.parse(
       buildWorkflowGenerationUserPrompt({
-        inputTableId: 'input-1',
-        outputTableName: 'output-1',
+        rawTableId: 'input-1',
+        resultTableName: 'output-1',
         requirement: '按销售额降序',
         columns: [{ name: 'Sales', type: 'decimal' }],
       })
@@ -78,8 +78,8 @@ describe('central prompt catalog', () => {
     });
     const user = JSON.parse(
       buildWorkflowGenerationUserPrompt({
-        inputTableId: 'input',
-        outputTableName: 'output',
+        rawTableId: 'input',
+        resultTableName: 'output',
         requirement: '利润大于0',
         columns: [{ name: '利润', type: 'string' }],
         failedJavascriptSource: 'function filterPositiveProfit() {}',

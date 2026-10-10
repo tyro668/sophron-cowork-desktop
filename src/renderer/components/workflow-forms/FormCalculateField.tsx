@@ -32,11 +32,11 @@ export default function FormCalculateField({
   node,
   fieldCompletions,
   sourceNode,
-  taskId,
+  pipelineId,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('calculateField');
-  const columnTypes = useWorkflowNodeColumnTypes({ taskId, sourceNode });
+  const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
   const calculations = useMemo(() => {
     const configuredCalculations =

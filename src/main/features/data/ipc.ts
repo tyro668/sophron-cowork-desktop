@@ -1,15 +1,15 @@
-import { notifyDataTaskCompleted } from '../../app/notifications';
+import { notifyDataPipelineCompleted } from '../../app/notifications';
 import { resolveModelRuntimeConfigForAutomation } from '../../app/runtime-config';
 import { registerDataIpcHandlers } from '../../data/ipc/register-data-ipc';
 import { logError } from '../../utils/logger';
-import { requireDataTaskStore, requireDataCommandService } from './service';
+import { requireDataPipelineStore, requireDataCommandService } from './service';
 
 export function registerDataIpc(): void {
   registerDataIpcHandlers({
-    requireDataTaskStore,
+    requireDataPipelineStore,
     requireDataCommandService,
     resolveModelRuntimeConfig: resolveModelRuntimeConfigForAutomation,
-    notifyDataTaskCompleted,
+    notifyDataPipelineCompleted,
     logError,
   });
 }

@@ -25,20 +25,20 @@ import { DataStoreContext } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
 import { normalizeSourcePath, readRelationForPath } from '../input-source';
 import { CacheRepository } from '../repositories/cache-repository';
-import { DatasetRepository } from '../repositories/dataset-repository';
+import { RawTableRepository } from '../repositories/raw-table-repository';
 import { stringConfigValue } from '../workflow-model';
 
 export class WorkflowCompiler {
   constructor(
     private readonly ctx: DataStoreContext,
-    private readonly datasets: DatasetRepository,
+    private readonly rawTables: RawTableRepository,
     private readonly caches: CacheRepository
   ) {}
   async resolveInputSourceColumns(
     node: DataWorkflowNode,
-    taskSourcePath: string | null
+    pipelineSourcePath: string | null
   ): Promise<string[] | null> {
-    const columns = await this.resolveInputSourceColumnTypes(node, taskSourcePath);
+    const columns = await this.resolveInputSourceColumnTypes(node, pipelineSourcePath);
     return columns ? columns.map((column) => column.name) : null;
   }
   /**
@@ -47,7 +47,7 @@ export class WorkflowCompiler {
    */
   async resolveInputSourceColumnTypes(
     node: DataWorkflowNode,
-    taskSourcePath: string | null
+    pipelineSourcePath: string | null
   ): Promise<{ name: string; type?: string }[] | null> {
     if (node.type !== 'input_source' || node.config.disabled === true) {
       return null;
@@ -56,23 +56,23 @@ export class WorkflowCompiler {
     const source =
       typeof node.config.source === 'string'
         ? node.config.source
-        : stringConfigValue(node.config.datasetId)
-          ? 'dataset'
-          : 'task';
-    const cachedTable = await this.caches.findWorkflowNodeCacheTable(node.taskId, node.id);
+        : stringConfigValue(node.config.rawTableId)
+          ? 'rawTable'
+          : 'pipeline';
+    const cachedTable = await this.caches.findWorkflowNodeCacheTable(node.pipelineId, node.id);
     if (cachedTable) {
       return this.ctx.getTableColumnTypes(cachedTable);
     }
 
-    if (source === 'dataset') {
-      const datasetRef = String(
-        node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
+    if (source === 'rawTable') {
+      const rawTableRef = String(
+        node.config.rawTableId ?? node.config.name ?? node.config.alias ?? ''
       );
-      const dataset = await this.datasets.findDatasetByReference(datasetRef);
-      if (!dataset || !(await this.ctx.physicalTableExists(dataset.tableName))) {
+      const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
+      if (!rawTable || !(await this.ctx.physicalTableExists(rawTable.tableName))) {
         return null;
       }
-      return this.ctx.getTableColumnTypes(dataset.tableName);
+      return this.ctx.getTableColumnTypes(rawTable.tableName);
     }
 
     const cachedTableName = tableNameFromId('workflow_source', node.id);
@@ -83,7 +83,7 @@ export class WorkflowCompiler {
     const filePath =
       source === 'file' && typeof node.config.filePath === 'string'
         ? normalizeSourcePath(node.config.filePath)
-        : taskSourcePath;
+        : pipelineSourcePath;
     if (!filePath) {
       return null;
     }
@@ -103,27 +103,27 @@ export class WorkflowCompiler {
   }
   async materializeInputSource(
     node: DataWorkflowNode,
-    taskSourcePath: string | null,
+    pipelineSourcePath: string | null,
     tableName: string
   ): Promise<string> {
     const source =
       typeof node.config.source === 'string'
         ? node.config.source
-        : stringConfigValue(node.config.datasetId)
-          ? 'dataset'
-          : 'task';
+        : stringConfigValue(node.config.rawTableId)
+          ? 'rawTable'
+          : 'pipeline';
     await this.ctx.dropTableIfExists(tableName);
-    if (source === 'dataset') {
-      const datasetRef = String(
-        node.config.datasetId ?? node.config.name ?? node.config.alias ?? ''
+    if (source === 'rawTable') {
+      const rawTableRef = String(
+        node.config.rawTableId ?? node.config.name ?? node.config.alias ?? ''
       );
-      const dataset = await this.datasets.findDatasetByReference(datasetRef);
-      if (!dataset) {
-        throw new Error(`Dataset source not found: ${datasetRef}`);
+      const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
+      if (!rawTable) {
+        throw new Error(`RawTable source not found: ${rawTableRef}`);
       }
       await this.ctx.runSql(
         `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(
-          dataset.tableName
+          rawTable.tableName
         )}`
       );
       return tableName;
@@ -132,9 +132,9 @@ export class WorkflowCompiler {
     const filePath =
       source === 'file' && typeof node.config.filePath === 'string'
         ? normalizeSourcePath(node.config.filePath)
-        : taskSourcePath;
+        : pipelineSourcePath;
     if (!filePath) {
-      throw new Error('Data source file is required before running a cleaning task');
+      throw new Error('Data source file is required before running a cleaning pipeline');
     }
     const relation = readRelationForPath(filePath, 'sourcePath');
     await this.ctx.runSql(

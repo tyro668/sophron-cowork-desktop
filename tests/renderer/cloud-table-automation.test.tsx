@@ -9,7 +9,7 @@ import {
 } from '../../src/renderer/components/settings/schedule/model';
 import { useAppStore } from '../../src/renderer/store';
 import { CloudSyncEditor } from '../../src/renderer/components/settings/schedule/cloud-sync-editor';
-import { InputTableAutomations } from '../../src/renderer/components/data-view/table-automations';
+import { RawTableAutomations } from '../../src/renderer/components/data-view/table-automations';
 import type { AutomationActionNode } from '../../src/shared/automation/types';
 
 // Keep the tests focused on resource selection; native Radix controls are covered
@@ -91,7 +91,7 @@ beforeEach(() => {
             name: 'Scheduled import',
             status: 'enabled',
             actionGraph: {
-              nodes: [{ type: 'cloud.sync', config: { direction: 'input', inputTableId: 'in' } }],
+              nodes: [{ type: 'cloud.sync', config: { direction: 'input', rawTableId: 'in' } }],
             },
           },
         ],
@@ -155,11 +155,11 @@ describe('cloud automation resource directions', () => {
         projectId: 'p',
         tableKind: 'analysis',
         tableId: 'a',
-        inputTableId: 'in',
+        rawTableId: 'in',
       },
     };
     const { rerender } = render(
-      <CloudSyncEditor node={node} inputTables={[]} outputTables={[]} onChange={onChange} />
+      <CloudSyncEditor node={node} rawTables={[]} resultTables={[]} onChange={onChange} />
     );
     await screen.findByRole('option', { name: 'Analysis only' });
     expect(screen.queryByRole('option', { name: 'Base only' })).toBeNull();
@@ -167,12 +167,10 @@ describe('cloud automation resource directions', () => {
     const next = onChange.mock.calls[0][0];
     expect(next.config).toMatchObject({
       tableKind: 'base',
-      inputTableId: 'in',
+      rawTableId: 'in',
       tableId: undefined,
     });
-    rerender(
-      <CloudSyncEditor node={next} inputTables={[]} outputTables={[]} onChange={onChange} />
-    );
+    rerender(<CloudSyncEditor node={next} rawTables={[]} resultTables={[]} onChange={onChange} />);
     await screen.findByRole('option', { name: 'Base only' });
     expect(screen.queryByRole('option', { name: 'Analysis only' })).toBeNull();
     expect(listFiles).not.toHaveBeenCalled();
@@ -188,7 +186,7 @@ describe('cloud automation resource directions', () => {
           config: {
             direction: 'output',
             type: 'drive_file',
-            outputTableId: 'out',
+            resultTableId: 'out',
             spaceId: 's',
             projectId: 'p',
             writeMode: 'append',
@@ -196,8 +194,8 @@ describe('cloud automation resource directions', () => {
             version: 3,
           },
         }}
-        inputTables={[]}
-        outputTables={[]}
+        rawTables={[]}
+        resultTables={[]}
         onChange={onChange}
       />
     );
@@ -211,12 +209,12 @@ describe('cloud automation resource directions', () => {
       projectId: '',
       fileId: undefined,
       version: undefined,
-      outputTableId: 'out',
+      resultTableId: 'out',
     });
     expect(listTables).not.toHaveBeenCalled();
   });
   it('finds input associations from actions and opens the existing automation', async () => {
-    render(<InputTableAutomations inputTable={{ id: 'in', name: 'Input' } as never} />);
+    render(<RawTableAutomations rawTable={{ id: 'in', name: 'Input' } as never} />);
     await screen.findByText('Scheduled import');
     expect(screen.queryByRole('switch')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Configure' }));

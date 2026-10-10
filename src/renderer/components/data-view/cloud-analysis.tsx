@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../store';
 import type {
   CloudTableChatAttachment,
-  DataInputTablePreview,
+  DataRawTablePreview,
   PersonalAnalysisConfig,
   PersonalAnalysisDriveFile,
   PersonalAnalysisProject,
@@ -40,7 +40,7 @@ import {
   isPersonalAnalysisServerError,
   getPersonalAnalysisErrorMessage,
 } from '../../../shared/personal-analysis';
-import { InputTablePreviewDialog } from './input-tables';
+import { RawTablePreviewDialog } from './raw-tables';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import {
   DataMoreMenu,
@@ -83,7 +83,7 @@ const CLOUD_TABLE_SOURCE_TYPE_LABELS: Record<string, string> = {
 interface NoticeState {
   type: 'success' | 'error' | 'info';
   message: string;
-  inputTableId?: string;
+  rawTableId?: string;
 }
 
 const CLOUD_TABLE_PAGE_SIZE = 10;
@@ -98,7 +98,7 @@ interface PreviewState {
   table?: PersonalAnalysisTable;
   loading: boolean;
   error: string | null;
-  data: DataInputTablePreview | null;
+  data: DataRawTablePreview | null;
 }
 
 interface PagedPageInfo {
@@ -355,12 +355,12 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
       showToast(
         next.type,
         next.message,
-        next.inputTableId
+        next.rawTableId
           ? {
-              actionLabel: t('cloudData.viewInputTable'),
+              actionLabel: t('cloudData.viewRawTable'),
               onAction: () => {
-                if (next.inputTableId) {
-                  navigateToDataElement({ kind: 'input_table', id: next.inputTableId });
+                if (next.rawTableId) {
+                  navigateToDataElement({ kind: 'raw_table', id: next.rawTableId });
                 }
               },
             }
@@ -1215,7 +1215,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
         projectsBySpace[targetSpaceId]?.find((project) => project.projectId === targetProjectId)
           ?.projectName ?? selectedProjectRecord?.projectName;
       navigateToTableAutomation({
-        newInputTableName: table.tableName,
+        newRawTableName: table.tableName,
         cloudSource: {
           spaceId: targetSpaceId,
           projectId: targetProjectId,
@@ -2064,8 +2064,8 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
       )}
 
       {preview && !serverUnavailable && (
-        <InputTablePreviewDialog
-          tableKind="input"
+        <RawTablePreviewDialog
+          tableKind="raw"
           title={t('cloudData.previewTitle', { name: preview.name })}
           preview={preview.data}
           isLoading={preview.loading}

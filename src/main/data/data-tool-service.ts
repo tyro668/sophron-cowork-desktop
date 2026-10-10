@@ -1,49 +1,49 @@
 import { randomUUID } from 'crypto';
-import { pendingDataTaskRequest } from '../../shared/data-task-authoring';
+import { pendingDataPipelineRequest } from '../../shared/data-pipeline-authoring';
 import type { BeforeSessionRunContext } from '../extensions/agent-runtime-extension';
 import type { DataCommandService } from './data-command-service';
 import type {
   ApplyOperatorDslCommand,
   ApplyWorkflowDslCommand,
   ApplyWorkflowPlanCommand,
-  AnalyzeTaskRequirementResult,
+  AnalyzePipelineRequirementResult,
   ConfigureInputOperatorCommand,
   ConfigureOutputOperatorCommand,
-  CreateInputTableCommand,
-  CreateInputTableWithProcessingStrategyCommand,
-  CreateOutputTableCommand,
-  CreateTaskCommand,
+  CreateRawTableCommand,
+  CreateRawTableWithProcessingStrategyCommand,
+  CreateResultTableCommand,
+  CreatePipelineCommand,
   ExportWorkflowDslCommand,
-  GenerateInputTableNormalizerDraftCommand,
-  GenerateTaskFromRequirementCommand,
-  GenerateTaskFromRequirementResult,
+  GenerateRawTableNormalizerDraftCommand,
+  GeneratePipelineFromRequirementCommand,
+  GeneratePipelineFromRequirementResult,
   GetRunResultCommand,
-  GetTaskWorkflowCommand,
+  GetPipelineWorkflowCommand,
   GetWorkflowCapabilityManifestCommand,
   ImportCloudTableCommand,
   ListCloudProjectsCommand,
   ListCloudSpacesCommand,
   ListCloudTablesCommand,
-  ListInputTableNormalizerVersionsCommand,
-  ListInputTablesInput,
+  ListRawTableNormalizerVersionsCommand,
+  ListRawTablesInput,
   PreviewTableCommand,
-  PreviewInputTableNormalizerVersionCommand,
-  PublishInputTableNormalizerVersionCommand,
-  RunTaskCommand,
-  RunTaskResult,
-  SummarizeInputTableSourceCommand,
-  UpdateInputTableCommand,
-  UpdateOutputTableCommand,
-  UpdateTaskCommand,
+  PreviewRawTableNormalizerVersionCommand,
+  PublishRawTableNormalizerVersionCommand,
+  RunPipelineCommand,
+  RunPipelineResult,
+  SummarizeRawTableSourceCommand,
+  UpdateRawTableCommand,
+  UpdateResultTableCommand,
+  UpdatePipelineCommand,
   UploadDataTableToCloudCommand,
   WorkflowNodeRunStat,
 } from './data-command-types';
 import type {
-  AnalyzeDataTaskRequirementToolInput,
+  AnalyzeDataPipelineRequirementToolInput,
   DataToolExecutionContext,
   DataToolPromptContext,
   DataToolResult,
-  GenerateDataTaskFromAnalysisToolInput,
+  GenerateDataPipelineFromAnalysisToolInput,
 } from './data-tool-types';
 import { DataCommandError } from './data-command-types';
 import type {
@@ -57,11 +57,11 @@ import { sliceWorkflowCapabilityManifest } from './workflow/workflow-capability-
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
 import { dataFieldTypeLabel } from '../../shared/data-field-types';
 import type {
-  DataCleaningTask,
-  DataDataset,
-  DataInputTablePreview,
-  DataOutputTable,
-  DataTaskWorkflow,
+  DataPipeline,
+  DataRawTable,
+  DataRawTablePreview,
+  DataResultTable,
+  DataPipelineWorkflow,
 } from '../../shared/contracts';
 import type {
   PersonalAnalysisProject,
@@ -71,7 +71,7 @@ import type {
 import { TOOL_RESULT_GUIDANCE } from '../prompts/tool-copy';
 
 /** Resources confirmed during a session — reused across turns so resolved ids do not need re-listing. */
-const SESSION_RESOURCE_KINDS = ['InputTable', 'OutputTable', 'Task'] as const;
+const SESSION_RESOURCE_KINDS = ['RawTable', 'ResultTable', 'Pipeline'] as const;
 const SESSION_RESOURCE_LIMIT = 8;
 
 interface SessionResourceEntry {
@@ -86,9 +86,9 @@ interface SessionResourceEntry {
 }
 
 interface SessionResourceLedger {
-  InputTable: Map<string, SessionResourceEntry>;
-  OutputTable: Map<string, SessionResourceEntry>;
-  Task: Map<string, SessionResourceEntry>;
+  RawTable: Map<string, SessionResourceEntry>;
+  ResultTable: Map<string, SessionResourceEntry>;
+  Pipeline: Map<string, SessionResourceEntry>;
   current: Partial<Record<(typeof SESSION_RESOURCE_KINDS)[number], { id: string; name?: string }>>;
 }
 
@@ -151,9 +151,9 @@ export class DataToolService {
   ): void {
     if (!sessionId) return;
     const ledger = this.sessionResources.get(sessionId) ?? {
-      InputTable: new Map<string, SessionResourceEntry>(),
-      OutputTable: new Map<string, SessionResourceEntry>(),
-      Task: new Map<string, SessionResourceEntry>(),
+      RawTable: new Map<string, SessionResourceEntry>(),
+      ResultTable: new Map<string, SessionResourceEntry>(),
+      Pipeline: new Map<string, SessionResourceEntry>(),
       current: {},
     };
     this.sessionResources.set(sessionId, ledger);
@@ -183,37 +183,39 @@ export class DataToolService {
     };
 
     const record = params && typeof params === 'object' ? (params as Record<string, unknown>) : {};
-    remember('Task', record.taskId);
-    remember('InputTable', record.inputTableId);
-    remember('OutputTable', record.outputTableId);
+    remember('Pipeline', record.pipelineId);
+    remember('RawTable', record.rawTableId);
+    remember('ResultTable', record.resultTableId);
     if (typeof record.id === 'string') {
-      if (record.tableKind === 'input' || toolName.includes('input_table'))
-        remember('InputTable', record.id);
-      else if (record.tableKind === 'output' || toolName.includes('output_table'))
-        remember('OutputTable', record.id);
-      else if (toolName.includes('task')) remember('Task', record.id);
+      if (record.tableKind === 'raw' || toolName.includes('raw_table'))
+        remember('RawTable', record.id);
+      else if (record.tableKind === 'result' || toolName.includes('result_table'))
+        remember('ResultTable', record.id);
+      else if (toolName.includes('pipeline')) remember('Pipeline', record.id);
     }
     for (const id of Object.values(
       (record.inputResources as Record<string, unknown> | undefined) ?? {}
     )) {
-      remember('InputTable', id);
+      remember('RawTable', id);
     }
 
     if (details && typeof details === 'object') {
       const d = details as Record<string, unknown>;
       const entity = (value: unknown): { id?: unknown; name?: unknown } =>
         value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-      const task = entity(d.task ?? (d.workflow as Record<string, unknown> | undefined)?.task);
-      const inputTable = entity(d.inputTable);
-      const outputTable = entity(d.outputTable);
-      remember('OutputTable', d.outputTableId);
-      remember('Task', task.id, task.name);
-      remember('InputTable', inputTable.id, inputTable.name);
-      remember('OutputTable', outputTable.id, outputTable.name);
+      const pipeline = entity(
+        d.pipeline ?? (d.workflow as Record<string, unknown> | undefined)?.pipeline
+      );
+      const rawTable = entity(d.rawTable);
+      const resultTable = entity(d.resultTable);
+      remember('ResultTable', d.resultTableId);
+      remember('Pipeline', pipeline.id, pipeline.name);
+      remember('RawTable', rawTable.id, rawTable.name);
+      remember('ResultTable', resultTable.id, resultTable.name);
       const lists: Array<[(typeof SESSION_RESOURCE_KINDS)[number], unknown]> = [
-        ['InputTable', d.inputTables],
-        ['OutputTable', d.outputTables],
-        ['Task', d.tasks],
+        ['RawTable', d.rawTables],
+        ['ResultTable', d.resultTables],
+        ['Pipeline', d.pipelines],
       ];
       for (const [kind, list] of lists) {
         if (!Array.isArray(list)) continue;
@@ -232,25 +234,26 @@ export class DataToolService {
       for (const message of context.existingMessages) {
         if (message.role !== 'assistant') continue;
         for (const block of message.content) {
-          if (block.type !== 'tool_result' || block.isError || !block.dataTaskCompletion) continue;
-          const result = block.dataTaskCompletion.result;
+          if (block.type !== 'tool_result' || block.isError || !block.dataPipelineCompletion)
+            continue;
+          const result = block.dataPipelineCompletion.result;
           this.rememberResolvedResources(
             context.session.id,
-            'data_generate_task_from_requirement',
+            'data_generate_pipeline_from_requirement',
             {},
             {
-              task: { id: result.taskId, name: result.taskName },
-              outputTable: { id: result.outputTableId, name: result.outputTableName },
+              pipeline: { id: result.pipelineId, name: result.pipelineName },
+              resultTable: { id: result.resultTableId, name: result.resultTableName },
             }
           );
         }
       }
     }
-    const authoringRequest = pendingDataTaskRequest(context.existingMessages);
+    const authoringRequest = pendingDataPipelineRequest(context.existingMessages);
     const ledger = this.sessionResources.get(context.session.id);
     const latest = (kind: (typeof SESSION_RESOURCE_KINDS)[number]) => ledger?.current[kind];
     const selectedIds = new Set(
-      (['Task', 'InputTable', 'OutputTable'] as const)
+      (['Pipeline', 'RawTable', 'ResultTable'] as const)
         .map((kind) => latest(kind)?.id)
         .filter(Boolean) as string[]
     );
@@ -270,37 +273,37 @@ export class DataToolService {
         block.tables.map((table) => ({ id: table.tableId, name: table.tableName }))
       )
       .slice(0, 4);
-    const selectedTask = latest('Task');
-    const selectedInput = latest('InputTable');
-    const selectedOutput = latest('OutputTable');
+    const selectedPipeline = latest('Pipeline');
+    const selectedInput = latest('RawTable');
+    const selectedOutput = latest('ResultTable');
     return {
       sessionId: context.session.id,
       workspacePath: context.session.cwd,
       authoringRequest,
-      selectedDataTaskId: authoringRequest?.reuseTaskId ?? selectedTask?.id,
-      selectedDataTaskName: selectedTask?.name,
-      selectedInputTableId: authoringRequest?.source.tableId ?? selectedInput?.id,
-      selectedInputTableName: selectedInput?.name,
-      selectedOutputTableId: selectedOutput?.id,
-      selectedOutputTableName: selectedOutput?.name,
+      selectedDataPipelineId: authoringRequest?.reusePipelineId ?? selectedPipeline?.id,
+      selectedDataPipelineName: selectedPipeline?.name,
+      selectedRawTableId: authoringRequest?.source.tableId ?? selectedInput?.id,
+      selectedRawTableName: selectedInput?.name,
+      selectedResultTableId: selectedOutput?.id,
+      selectedResultTableName: selectedOutput?.name,
       recentResources,
       attachedCloudTables,
       capabilities: {
-        canCreateInputTable: true,
-        canCreateOutputTable: true,
-        canCreateTask: true,
-        canRunTask: true,
+        canCreateRawTable: true,
+        canCreateResultTable: true,
+        canCreatePipeline: true,
+        canRunPipeline: true,
         canImportLocalFiles: true,
       },
     };
   }
 
-  async listInputTables(input: ListInputTablesInput): Promise<DataToolResult> {
-    const result = await this.commandService.listInputTables(input);
-    const lines = formatList(result.inputTables, formatInputTable);
+  async listRawTables(input: ListRawTablesInput): Promise<DataToolResult> {
+    const result = await this.commandService.listRawTables(input);
+    const lines = formatList(result.rawTables, formatRawTable);
     return toolResult(
       lines.length
-        ? `Found ${result.inputTables.length} of ${result.total} input table(s):\n${lines.join('\n')}`
+        ? `Found ${result.rawTables.length} of ${result.total} input table(s):\n${lines.join('\n')}`
         : 'No input tables found.',
       result
     );
@@ -316,20 +319,20 @@ export class DataToolService {
     return toolResult(text, { topic, text });
   }
 
-  async createInputTable(input: CreateInputTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.createInputTable(input);
+  async createRawTable(input: CreateRawTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.createRawTable(input);
     return toolResult(
-      [`Created input table: ${formatInputTable(result.inputTable)}`, formatPreview(result.preview)]
+      [`Created input table: ${formatRawTable(result.rawTable)}`, formatPreview(result.preview)]
         .filter(Boolean)
         .join('\n\n'),
       result
     );
   }
 
-  async createInputTableWithProcessingStrategy(
-    input: CreateInputTableWithProcessingStrategyCommand
+  async createRawTableWithProcessingStrategy(
+    input: CreateRawTableWithProcessingStrategyCommand
   ): Promise<DataToolResult> {
-    const result = await this.commandService.createInputTableWithProcessingStrategy(input);
+    const result = await this.commandService.createRawTableWithProcessingStrategy(input);
     const normalizer = result.normalizer
       ? [
           `Normalizer: artifact=${result.normalizer.artifact.id} version=${result.normalizer.publishedVersion.id} status=${result.normalizer.publishedVersion.status}`,
@@ -340,7 +343,7 @@ export class DataToolService {
       : '';
     return toolResult(
       [
-        `Created input table with ${result.processingStrategy} processing: ${formatInputTable(result.inputTable)}`,
+        `Created input table with ${result.processingStrategy} processing: ${formatRawTable(result.rawTable)}`,
         normalizer,
         formatPreview(result.preview),
       ]
@@ -350,27 +353,25 @@ export class DataToolService {
     );
   }
 
-  async updateInputTable(input: UpdateInputTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.updateInputTable(input);
+  async updateRawTable(input: UpdateRawTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.updateRawTable(input);
     return toolResult(
-      [`Updated input table: ${formatInputTable(result.inputTable)}`, formatPreview(result.preview)]
+      [`Updated input table: ${formatRawTable(result.rawTable)}`, formatPreview(result.preview)]
         .filter(Boolean)
         .join('\n\n'),
       result
     );
   }
 
-  async summarizeInputTableSource(
-    input: SummarizeInputTableSourceCommand
-  ): Promise<DataToolResult> {
-    const result = await this.commandService.summarizeInputTableSource(input);
-    return toolResult(formatInputTableSourceSummary(result.summary), result);
+  async summarizeRawTableSource(input: SummarizeRawTableSourceCommand): Promise<DataToolResult> {
+    const result = await this.commandService.summarizeRawTableSource(input);
+    return toolResult(formatRawTableSourceSummary(result.summary), result);
   }
 
-  async generateInputTableNormalizerDraft(
-    input: GenerateInputTableNormalizerDraftCommand
+  async generateRawTableNormalizerDraft(
+    input: GenerateRawTableNormalizerDraftCommand
   ): Promise<DataToolResult> {
-    const result = await this.commandService.generateInputTableNormalizerDraft(input);
+    const result = await this.commandService.generateRawTableNormalizerDraft(input);
     return toolResult(
       [
         `Generated normalizer draft: artifact=${result.artifact.id} version=${result.version.id} language=${result.artifact.primaryLanguage}`,
@@ -381,22 +382,22 @@ export class DataToolService {
     );
   }
 
-  async listOutputTables(input: ListInputTablesInput): Promise<DataToolResult> {
-    const result = await this.commandService.listOutputTables(input);
-    const lines = formatList(result.outputTables, formatOutputTable);
+  async listResultTables(input: ListRawTablesInput): Promise<DataToolResult> {
+    const result = await this.commandService.listResultTables(input);
+    const lines = formatList(result.resultTables, formatResultTable);
     return toolResult(
       lines.length
-        ? `Found ${result.outputTables.length} of ${result.total} output table(s):\n${lines.join('\n')}`
+        ? `Found ${result.resultTables.length} of ${result.total} output table(s):\n${lines.join('\n')}`
         : 'No output tables found.',
       result
     );
   }
 
-  async createOutputTable(input: CreateOutputTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.createOutputTable(input);
+  async createResultTable(input: CreateResultTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.createResultTable(input);
     return toolResult(
       [
-        `Created output table: ${formatOutputTable(result.outputTable)}`,
+        `Created output table: ${formatResultTable(result.resultTable)}`,
         formatPreview(result.preview),
       ]
         .filter(Boolean)
@@ -405,11 +406,11 @@ export class DataToolService {
     );
   }
 
-  async updateOutputTable(input: UpdateOutputTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.updateOutputTable(input);
+  async updateResultTable(input: UpdateResultTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.updateResultTable(input);
     return toolResult(
       [
-        `Updated output table: ${formatOutputTable(result.outputTable)}`,
+        `Updated output table: ${formatResultTable(result.resultTable)}`,
         formatPreview(result.preview),
       ]
         .filter(Boolean)
@@ -466,11 +467,11 @@ export class DataToolService {
     );
   }
 
-  async importCloudTable(input: ImportCloudTableCommand): Promise<DataToolResult> {
-    const result = await this.commandService.importCloudTable(input);
+  async importCloudRawTable(input: ImportCloudTableCommand): Promise<DataToolResult> {
+    const result = await this.commandService.importCloudRawTable(input);
     return toolResult(
       [
-        `Imported cloud table ${result.cloudTableId} as input table: ${formatInputTable(result.inputTable)}`,
+        `Imported cloud table ${result.cloudTableId} as input table: ${formatRawTable(result.rawTable)}`,
         result.cloudTable ? `Cloud source: ${formatCloudTable(result.cloudTable)}` : '',
         formatPreview(result.preview),
       ]
@@ -485,7 +486,7 @@ export class DataToolService {
     return toolResult(
       [
         `Uploaded ${result.sourceTable.tableKind} table ${result.sourceTable.name} (${result.sourceTable.id}) to cloud table ${result.upload.tableId}.`,
-        `Rows=${result.sourceTable.rowCount} columns=${result.sourceTable.columnCount} bytes=${result.csvBytes} status=${result.upload.status} importTaskId=${result.upload.importTaskId}`,
+        `Rows=${result.sourceTable.rowCount} columns=${result.sourceTable.columnCount} bytes=${result.csvBytes} status=${result.upload.status} importPipelineId=${result.upload.importPipelineId}`,
         result.upload.table ? `Cloud target: ${formatCloudTable(result.upload.table)}` : '',
       ]
         .filter(Boolean)
@@ -494,30 +495,30 @@ export class DataToolService {
     );
   }
 
-  async previewInputTableNormalizerVersion(
-    input: PreviewInputTableNormalizerVersionCommand
+  async previewRawTableNormalizerVersion(
+    input: PreviewRawTableNormalizerVersionCommand
   ): Promise<DataToolResult> {
-    const result = await this.commandService.previewInputTableNormalizerVersion(input);
+    const result = await this.commandService.previewRawTableNormalizerVersion(input);
     return toolResult(
       `Previewed normalizer version ${input.versionId}.\n\n${formatPreview(result.preview)}`,
       result
     );
   }
 
-  async publishInputTableNormalizerVersion(
-    input: PublishInputTableNormalizerVersionCommand
+  async publishRawTableNormalizerVersion(
+    input: PublishRawTableNormalizerVersionCommand
   ): Promise<DataToolResult> {
-    const result = await this.commandService.publishInputTableNormalizerVersion(input);
+    const result = await this.commandService.publishRawTableNormalizerVersion(input);
     return toolResult(
       `Published normalizer version: artifact=${result.artifact.id} version=${result.version.id}`,
       result
     );
   }
 
-  async listInputTableNormalizerVersions(
-    input: ListInputTableNormalizerVersionsCommand
+  async listRawTableNormalizerVersions(
+    input: ListRawTableNormalizerVersionsCommand
   ): Promise<DataToolResult> {
-    const result = await this.commandService.listInputTableNormalizerVersions(input);
+    const result = await this.commandService.listRawTableNormalizerVersions(input);
     const lines = formatList(
       result.versions,
       (version) =>
@@ -529,31 +530,31 @@ export class DataToolService {
     );
   }
 
-  async listTasks(input: ListInputTablesInput): Promise<DataToolResult> {
-    const result = await this.commandService.listTasks(input);
-    const lines = formatList(result.tasks, formatTask);
+  async listPipelines(input: ListRawTablesInput): Promise<DataToolResult> {
+    const result = await this.commandService.listPipelines(input);
+    const lines = formatList(result.pipelines, formatPipeline);
     return toolResult(
       lines.length
-        ? `Found ${result.tasks.length} of ${result.total} data task(s):\n${lines.join('\n')}`
-        : 'No data tasks found.',
+        ? `Found ${result.pipelines.length} of ${result.total} data pipeline(s):\n${lines.join('\n')}`
+        : 'No data pipelines found.',
       result
     );
   }
 
-  async analyzeTaskRequirement(
-    input: AnalyzeDataTaskRequirementToolInput,
+  async analyzePipelineRequirement(
+    input: AnalyzeDataPipelineRequirementToolInput,
     context: DataToolExecutionContext
   ): Promise<DataToolResult> {
     const request = context.authoringRequest ?? {
       id: randomUUID(),
-      source: { location: 'local' as const, tableId: input.inputTableId },
-      reuseTaskId: input.reuseTaskId,
+      source: { location: 'local' as const, tableId: input.rawTableId },
+      reusePipelineId: input.reusePipelineId,
       startFromNodeId: input.startFromNodeId,
     };
-    const result = await this.commandService.analyzeTaskRequirement({
+    const result = await this.commandService.analyzePipelineRequirement({
       authoringRequest: request,
       source: request.source,
-      reuseTaskId: request.reuseTaskId,
+      reusePipelineId: request.reusePipelineId,
       startFromNodeId: request.startFromNodeId,
       workflow: request.workflow,
       processRequirement: input.processRequirement,
@@ -576,9 +577,9 @@ export class DataToolService {
       status: result.status,
       originalRequirement: receipt.processRequirement,
       items: result.items,
-      inputTable: {
-        id: result.inputTableId,
-        name: result.inputTableName,
+      rawTable: {
+        id: result.rawTableId,
+        name: result.rawTableName,
         schemaHash: result.sourceSummaryHash,
       },
       capabilityProfileVersion: result.capabilityProfileVersion,
@@ -587,22 +588,22 @@ export class DataToolService {
     });
   }
 
-  async generateTaskFromAnalysis(
-    input: GenerateDataTaskFromAnalysisToolInput,
+  async generatePipelineFromAnalysis(
+    input: GenerateDataPipelineFromAnalysisToolInput,
     context: DataToolExecutionContext
   ): Promise<DataToolResult> {
     const generationKey = `${context.sessionId}:${input.analysisId}`;
     const existing = this.generationInFlight.get(generationKey);
     if (existing) return existing;
-    const generation = this.generateTaskFromAnalysisOnce(input, context).finally(() => {
+    const generation = this.generatePipelineFromAnalysisOnce(input, context).finally(() => {
       this.generationInFlight.delete(generationKey);
     });
     this.generationInFlight.set(generationKey, generation);
     return generation;
   }
 
-  private async generateTaskFromAnalysisOnce(
-    input: GenerateDataTaskFromAnalysisToolInput,
+  private async generatePipelineFromAnalysisOnce(
+    input: GenerateDataPipelineFromAnalysisToolInput,
     context: DataToolExecutionContext
   ): Promise<DataToolResult> {
     const receipt = this.analysisReceipts.get(input.analysisId);
@@ -643,12 +644,12 @@ export class DataToolService {
     if (receipt.capabilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
       throw new DataCommandError(
         'ANALYSIS_STALE',
-        'Data-task capabilities changed after analysis. Analyze the requirement again.'
+        'Data-pipeline capabilities changed after analysis. Analyze the requirement again.'
       );
     }
     const currentPreview = await this.commandService.previewTable({
-      tableKind: 'input',
-      id: receipt.inputTableId,
+      tableKind: 'raw',
+      id: receipt.rawTableId,
       limit: 1,
     });
     const currentSchemaHash = hashColumns(
@@ -664,24 +665,24 @@ export class DataToolService {
       );
     }
     if (receipt.generatedResult) {
-      return formatGeneratedTaskToolResult(receipt, receipt.generatedResult);
+      return formatGeneratedPipelineToolResult(receipt, receipt.generatedResult);
     }
     const request = receipt.authoringRequest;
-    const output = request.output ?? resolveGeneratedTaskOutput(input);
+    const output = request.output ?? resolveGeneratedPipelineOutput(input);
 
-    const result = await this.commandService.generateTaskFromRequirement({
+    const result = await this.commandService.generatePipelineFromRequirement({
       source: {
         location: 'local',
-        tableId: receipt.inputTableId,
-        tableName: receipt.inputTableName,
+        tableId: receipt.rawTableId,
+        tableName: receipt.rawTableName,
         columnsSnapshot: receipt.analysis.columnsSnapshot,
       },
       processRequirement: receipt.processRequirement,
-      reuseTaskId: request.reuseTaskId,
+      reusePipelineId: request.reusePipelineId,
       startFromNodeId: request.startFromNodeId,
       workflow: request.workflow,
       output,
-      taskName: input.taskName,
+      pipelineName: input.pipelineName,
       runtimeConfig: context.runtimeConfig,
       usageTraceId: receipt.sessionId,
       analysisId: receipt.id,
@@ -690,33 +691,33 @@ export class DataToolService {
       outputConflictPolicy: 'unique',
     });
     this.analysisReceipts.saveGeneratedResult(receipt.id, result);
-    return formatGeneratedTaskToolResult(receipt, result);
+    return formatGeneratedPipelineToolResult(receipt, result);
   }
 
-  async createTask(input: CreateTaskCommand): Promise<DataToolResult> {
-    const result = await this.commandService.createTask(input);
-    return toolResult(`Created data task: ${formatTask(result.task)}`, result);
+  async createPipeline(input: CreatePipelineCommand): Promise<DataToolResult> {
+    const result = await this.commandService.createPipeline(input);
+    return toolResult(`Created data pipeline: ${formatPipeline(result.pipeline)}`, result);
   }
 
-  async updateTask(input: UpdateTaskCommand): Promise<DataToolResult> {
-    const result = await this.commandService.updateTask(input);
-    return toolResult(`Updated data task: ${formatTask(result.task)}`, result);
+  async updatePipeline(input: UpdatePipelineCommand): Promise<DataToolResult> {
+    const result = await this.commandService.updatePipeline(input);
+    return toolResult(`Updated data pipeline: ${formatPipeline(result.pipeline)}`, result);
   }
 
-  async getTaskWorkflow(input: GetTaskWorkflowCommand): Promise<DataToolResult> {
-    const result = await this.commandService.getTaskWorkflow(input);
+  async getPipelineWorkflow(input: GetPipelineWorkflowCommand): Promise<DataToolResult> {
+    const result = await this.commandService.getPipelineWorkflow(input);
     const view = input.view ?? 'summary';
     if (view === 'node') {
       const node = result.workflow.nodes.find((item) => item.id === input.nodeId);
       if (!node) {
         throw new DataCommandError(
           'RESOURCE_NOT_FOUND',
-          `Node ${input.nodeId ?? '(missing)'} not found in task ${input.taskId}`
+          `Node ${input.nodeId ?? '(missing)'} not found in pipeline ${input.pipelineId}`
         );
       }
       return toolResult(
         compactJson({
-          task: { id: result.workflow.task.id, name: result.workflow.task.name },
+          pipeline: { id: result.workflow.pipeline.id, name: result.workflow.pipeline.name },
           node: { id: node.id, type: node.type, label: node.label, config: node.config },
           edges: result.workflow.edges
             .filter((edge) => edge.sourceNodeId === node.id || edge.targetNodeId === node.id)
@@ -728,7 +729,7 @@ export class DataToolService {
     if (view === 'graph') {
       return toolResult(
         compactJson({
-          task: { id: result.workflow.task.id, name: result.workflow.task.name },
+          pipeline: { id: result.workflow.pipeline.id, name: result.workflow.pipeline.name },
           nodes: result.workflow.nodes.map((node) => ({
             id: node.id,
             type: node.type,
@@ -740,7 +741,7 @@ export class DataToolService {
         result
       );
     }
-    return toolResult(formatWorkflow('Read data task workflow', result.workflow), result);
+    return toolResult(formatWorkflow('Read data pipeline workflow', result.workflow), result);
   }
 
   async applyWorkflowDsl(input: ApplyWorkflowDslCommand): Promise<DataToolResult> {
@@ -820,14 +821,14 @@ export class DataToolService {
     return toolResult(formatWorkflow('Configured output operator', result.workflow), result);
   }
 
-  async runTask(input: RunTaskCommand): Promise<DataToolResult> {
+  async runPipeline(input: RunPipelineCommand): Promise<DataToolResult> {
     const command = withAgentResultPreviewLimit(input);
-    const result = await this.commandService.runTask(command);
+    const result = await this.commandService.runPipeline(command);
     return toolResult(
       [
-        `Ran data task: ${formatTask(result.task)}`,
+        `Ran data pipeline: ${formatPipeline(result.pipeline)}`,
         formatRunEvidence(input, result),
-        formatRunTaskSafetyNotes(input),
+        formatRunPipelineSafetyNotes(input),
         formatPreview(result.preview),
         formatNodeStats(result.nodeStats),
         formatDiagnostics(result.diagnostics),
@@ -842,8 +843,8 @@ export class DataToolService {
     const result = await this.commandService.getRunResult(withAgentResultPreviewLimit(input));
     return toolResult(
       [
-        `Run result for ${formatTask(result.task)}`,
-        formatOutputEvidence(result.task, result.preview, result.outputTableId),
+        `Run result for ${formatPipeline(result.pipeline)}`,
+        formatOutputEvidence(result.pipeline, result.preview, result.resultTableId),
         formatPreview(result.preview),
       ]
         .filter(Boolean)
@@ -860,46 +861,46 @@ function toolResult(text: string, details: unknown): DataToolResult {
   };
 }
 
-function resolveGeneratedTaskOutput(
-  input: GenerateDataTaskFromAnalysisToolInput
-): GenerateTaskFromRequirementCommand['output'] {
-  const outputTableName = input.outputTableName?.trim();
-  const outputTableId = input.outputTableId?.trim();
+function resolveGeneratedPipelineOutput(
+  input: GenerateDataPipelineFromAnalysisToolInput
+): GeneratePipelineFromRequirementCommand['output'] {
+  const resultTableName = input.resultTableName?.trim();
+  const resultTableId = input.resultTableId?.trim();
   if (input.outputMode === 'create') {
-    if (outputTableId) {
+    if (resultTableId) {
       throw new DataCommandError(
         'INVALID_ARGUMENT',
-        'outputTableId must be omitted when outputMode=create. Pass outputTableName for the new table.'
+        'resultTableId must be omitted when outputMode=create. Pass resultTableName for the new table.'
       );
     }
     return {
       location: 'local',
       writeMode: 'create',
-      tableName: outputTableName || undefined,
+      tableName: resultTableName || undefined,
     };
   }
-  if (!outputTableId) {
+  if (!resultTableId) {
     throw new DataCommandError(
       'INVALID_ARGUMENT',
-      'outputTableId is required when outputMode=replace.'
+      'resultTableId is required when outputMode=replace.'
     );
   }
-  if (outputTableName) {
+  if (resultTableName) {
     throw new DataCommandError(
       'INVALID_ARGUMENT',
-      'outputTableName must be omitted when outputMode=replace. The existing table keeps its current name.'
+      'resultTableName must be omitted when outputMode=replace. The existing table keeps its current name.'
     );
   }
   return {
     location: 'local',
     writeMode: 'replace',
-    targetTableId: outputTableId,
+    targetTableId: resultTableId,
   };
 }
 
 function formatRequirementAnalysis(
   analysisId: string,
-  result: AnalyzeTaskRequirementResult,
+  result: AnalyzePipelineRequirementResult,
   expiresAt: number
 ): string {
   const items = result.items.map((item, index) => {
@@ -916,48 +917,48 @@ function formatRequirementAnalysis(
         : TOOL_RESULT_GUIDANCE.dataAnalysisUnsupported;
   return [
     `Requirement analysis: status=${result.status} analysisId=${analysisId}`,
-    `Input table: ${result.inputTableName} (${result.inputTableId})`,
+    `Input table: ${result.rawTableName} (${result.rawTableId})`,
     ...items,
     nextStep,
     `Analysis expires at ${new Date(expiresAt).toISOString()}.`,
   ].join('\n');
 }
 
-function formatGeneratedTaskToolResult(
+function formatGeneratedPipelineToolResult(
   receipt: RequirementAnalysisReceipt,
-  result: GenerateTaskFromRequirementResult
+  result: GeneratePipelineFromRequirementResult
 ): DataToolResult {
-  const taskLink = formatDataResourceLink('task', result.taskId, result.taskName);
+  const pipelineLink = formatDataResourceLink('pipeline', result.pipelineId, result.pipelineName);
   const outputLink = formatDataResourceLink(
-    'output_table',
-    result.outputTableId,
-    result.outputTableName
+    'result_table',
+    result.resultTableId,
+    result.resultTableName
   );
   return toolResult(
     [
-      `Generated and validated data task: ${taskLink} (${result.taskId})`,
-      `Input table: ${receipt.inputTableName} (${receipt.inputTableId})`,
-      `Output table: ${outputLink} (${result.outputTableId})`,
+      `Generated and validated data pipeline: ${pipelineLink} (${result.pipelineId})`,
+      `Input table: ${receipt.rawTableName} (${receipt.rawTableId})`,
+      `Output table: ${outputLink} (${result.resultTableId})`,
       `Temporary execution validation passed. Expected output columns=${result.expectedOutputSchema.length}.`,
-      TOOL_RESULT_GUIDANCE.dataTaskSaved,
+      TOOL_RESULT_GUIDANCE.dataPipelineSaved,
     ].join('\n'),
     {
       status: 'ready',
-      dataTaskCompletion: {
+      dataPipelineCompletion: {
         requestId: receipt.authoringRequest.id,
         result: { ...result, workflowDsl: undefined },
       },
       analysisId: receipt.id,
-      task: {
-        id: result.taskId,
-        name: result.taskName,
-        href: createDataResourceHref('task', result.taskId),
+      pipeline: {
+        id: result.pipelineId,
+        name: result.pipelineName,
+        href: createDataResourceHref('pipeline', result.pipelineId),
       },
-      inputTable: { id: receipt.inputTableId, name: receipt.inputTableName },
-      outputTable: {
-        id: result.outputTableId,
-        name: result.outputTableName,
-        href: createDataResourceHref('output_table', result.outputTableId),
+      rawTable: { id: receipt.rawTableId, name: receipt.rawTableName },
+      resultTable: {
+        id: result.resultTableId,
+        name: result.resultTableName,
+        href: createDataResourceHref('result_table', result.resultTableId),
       },
       validation: { temporaryRun: 'passed' },
       requiredColumns: result.requiredColumns,
@@ -969,8 +970,8 @@ function formatGeneratedTaskToolResult(
   );
 }
 
-function formatInputTable(table: DataDataset): string {
-  return `- ${formatDataResourceLink('input_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}`;
+function formatRawTable(table: DataRawTable): string {
+  return `- ${formatDataResourceLink('raw_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}`;
 }
 
 function formatCloudSpace(space: PersonalAnalysisSpace): string {
@@ -985,8 +986,8 @@ function formatCloudTable(table: PersonalAnalysisTable): string {
   return `- ${table.tableName} (${table.tableId}) projectId=${table.projectId} rows=${table.rowCount ?? '?'} columns=${table.columns?.length ?? '?'}`;
 }
 
-function formatInputTableSourceSummary(
-  summary: Awaited<ReturnType<DataCommandService['summarizeInputTableSource']>>['summary']
+function formatRawTableSourceSummary(
+  summary: Awaited<ReturnType<DataCommandService['summarizeRawTableSource']>>['summary']
 ): string {
   const files = summary.files
     .slice(0, 8)
@@ -1008,45 +1009,45 @@ function formatInputTableSourceSummary(
     .join('\n');
 }
 
-function formatOutputTable(table: DataOutputTable): string {
-  const source = table.sourceDatasetId ? ` sourceInput=${table.sourceDatasetId}` : '';
-  return `- ${formatDataResourceLink('output_table', table.id, table.name)} (${table.id}) table=${table.tableName} rows=${table.rowCount} columns=${table.columnCount}${source}`;
+function formatResultTable(table: DataResultTable): string {
+  const source = table.sourceRawTableId ? ` sourceInput=${table.sourceRawTableId}` : '';
+  return `- ${formatDataResourceLink('result_table', table.id, table.name)} (${table.id}) table=${table.tableName} rows=${table.rowCount} columns=${table.columnCount}${source}`;
 }
 
-function formatTask(task: DataCleaningTask): string {
-  const rows = task.rowCount === null ? 'n/a' : task.rowCount;
-  const columns = task.columnCount === null ? 'n/a' : task.columnCount;
-  return `${formatDataResourceLink('task', task.id, task.name)} (${task.id}) status=${task.status} nodes=${task.nodeCount} rows=${rows} columns=${columns}`;
+function formatPipeline(pipeline: DataPipeline): string {
+  const rows = pipeline.rowCount === null ? 'n/a' : pipeline.rowCount;
+  const columns = pipeline.columnCount === null ? 'n/a' : pipeline.columnCount;
+  return `${formatDataResourceLink('pipeline', pipeline.id, pipeline.name)} (${pipeline.id}) status=${pipeline.status} nodes=${pipeline.nodeCount} rows=${rows} columns=${columns}`;
 }
 
 /**
  * Model-visible execution evidence: commit status + output identity, so a
  * successful run does not require a follow-up data_get_run_result round-trip.
  */
-function formatRunEvidence(input: RunTaskCommand, result: RunTaskResult): string {
+function formatRunEvidence(input: RunPipelineCommand, result: RunPipelineResult): string {
   // The executor treats an omitted mode as a temporary validation run — the
   // evidence must say the same thing or the model would trust a phantom commit.
   const persisted = input.mode === 'persisted';
   const lines = [
     `Run: mode=${persisted ? 'persisted' : 'temporary'} commit=${persisted ? 'committed' : 'not_committed (validation only)'}`,
   ];
-  const output = formatOutputEvidence(result.task, result.preview, result.outputTableId);
+  const output = formatOutputEvidence(result.pipeline, result.preview, result.resultTableId);
   if (output) lines.push(output);
   return lines.join('\n');
 }
 
 function formatOutputEvidence(
-  task: DataCleaningTask,
-  preview: DataInputTablePreview | undefined,
-  outputTableId?: string
+  pipeline: DataPipeline,
+  preview: DataRawTablePreview | undefined,
+  resultTableId?: string
 ): string {
   const parts: string[] = [];
-  if (outputTableId) {
+  if (resultTableId) {
     parts.push(
-      `outputTableId=${outputTableId} outputTable=${formatDataResourceLink('output_table', outputTableId, task.outputTable || outputTableId)}`
+      `resultTableId=${resultTableId} resultTable=${formatDataResourceLink('result_table', resultTableId, pipeline.resultTable || resultTableId)}`
     );
-  } else if (task.outputTable) {
-    parts.push(`physicalTableName=${JSON.stringify(task.outputTable)}`);
+  } else if (pipeline.resultTable) {
+    parts.push(`physicalTableName=${JSON.stringify(pipeline.resultTable)}`);
   }
   if (preview) {
     parts.push(`outputRows=${preview.totalRows}`);
@@ -1054,7 +1055,7 @@ function formatOutputEvidence(
   return parts.length ? `Output: ${parts.join(' ')}` : '';
 }
 
-function formatRunTaskSafetyNotes(input: RunTaskCommand): string {
+function formatRunPipelineSafetyNotes(input: RunPipelineCommand): string {
   const notes: string[] = [];
   if (input.mode !== 'persisted') {
     notes.push(
@@ -1063,7 +1064,7 @@ function formatRunTaskSafetyNotes(input: RunTaskCommand): string {
   }
   if (input.workflowDsl && input.saveWorkflow !== true) {
     notes.push(
-      'The workflowDsl was used only for this run and was not saved to task nodes. Save the workflow before treating this task as reusable.'
+      'The workflowDsl was used only for this run and was not saved to pipeline nodes. Save the workflow before treating this pipeline as reusable.'
     );
   }
   return notes.length ? `Run notes:\n${notes.map((note) => `- ${note}`).join('\n')}` : '';
@@ -1077,10 +1078,10 @@ function escapeMarkdownLinkText(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
 }
 
-function formatWorkflow(title: string, workflow: DataTaskWorkflow): string {
+function formatWorkflow(title: string, workflow: DataPipelineWorkflow): string {
   const nodeLines = workflow.nodes.map(formatWorkflowNode);
   return [
-    `${title}: ${formatTask(workflow.task)}; nodes=${workflow.nodes.length}; edges=${workflow.edges.length}`,
+    `${title}: ${formatPipeline(workflow.pipeline)}; nodes=${workflow.nodes.length}; edges=${workflow.edges.length}`,
     nodeLines.length ? `Nodes:\n${nodeLines.join('\n')}` : '',
   ]
     .filter(Boolean)
@@ -1091,7 +1092,7 @@ function compactJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function formatWorkflowEdge(edge: DataTaskWorkflow['edges'][number]) {
+function formatWorkflowEdge(edge: DataPipelineWorkflow['edges'][number]) {
   return {
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
@@ -1100,15 +1101,17 @@ function formatWorkflowEdge(edge: DataTaskWorkflow['edges'][number]) {
   };
 }
 
-function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
+function formatWorkflowNode(node: DataPipelineWorkflow['nodes'][number]): string {
   const config = node.config ?? {};
   const details = [
     typeof config.source === 'string' ? `source=${config.source}` : '',
-    typeof config.datasetId === 'string' ? `datasetId=${config.datasetId}` : '',
+    typeof config.rawTableId === 'string' ? `rawTableId=${config.rawTableId}` : '',
     typeof config.alias === 'string' ? `alias=${config.alias}` : '',
-    typeof config.outputDatasetId === 'string' ? `outputTableId=${config.outputDatasetId}` : '',
-    typeof config.outputTableId === 'string' && config.outputTableId !== config.outputDatasetId
-      ? `outputTableId=${config.outputTableId}`
+    typeof config.outputResultTableId === 'string'
+      ? `resultTableId=${config.outputResultTableId}`
+      : '',
+    typeof config.resultTableId === 'string' && config.resultTableId !== config.outputResultTableId
+      ? `resultTableId=${config.resultTableId}`
       : '',
     typeof config.table === 'string' ? `table=${config.table}` : '',
   ].filter(Boolean);
@@ -1117,7 +1120,7 @@ function formatWorkflowNode(node: DataTaskWorkflow['nodes'][number]): string {
 
 /** Full model-readable snapshot. The runner's shared result budget keeps a
  * bounded page and a retrievable reference; never lose fields before that layer. */
-function formatPreview(preview: DataInputTablePreview | undefined, includeRows = true): string {
+function formatPreview(preview: DataRawTablePreview | undefined, includeRows = true): string {
   if (!preview) return '';
   const types = preview.columnTypes
     .map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`)

@@ -8,18 +8,18 @@ import * as XLSX from '../../../utils/xlsx';
 import type {
   DataColumnTypeInfo,
   DataExportTableInput,
-  DataOutputTable,
-  DataTaskRun,
+  DataResultTable,
+  DataPipelineRun,
 } from '../../../../shared/contracts';
 import { DATA_FIELD_TYPE_LABELS } from '../../../../shared/data-field-types';
 import { exportPrepWorkflowDsl } from '../../../../shared/prep-dsl';
 import { quoteIdentifier, toNumber } from '../../operators';
 import { csvCell } from '../input-source';
 import type { DataStoreContext } from '../data-store-context';
-import type { DatasetRepository } from '../repositories/dataset-repository';
-import type { TaskRepository } from '../repositories/task-repository';
+import type { RawTableRepository } from '../repositories/raw-table-repository';
+import type { PipelineRepository } from '../repositories/pipeline-repository';
 import type { WorkflowRepository } from '../repositories/workflow-repository';
-import type { TaskRunsRepository } from '../repositories/task-runs-repository';
+import type { PipelineRunsRepository } from '../repositories/pipeline-runs-repository';
 
 const EXPORT_MAX_ROWS = 200_000;
 const REPORT_SAMPLE_ROWS = 100;
@@ -36,9 +36,9 @@ interface TableRowsSnapshot {
   totalRows: number;
 }
 
-export interface TableReportTaskSection {
+export interface TableReportPipelineSection {
   name: string;
-  /** Canonical DSL for the task's workflow; null when not expressible. */
+  /** Canonical DSL for the pipeline's workflow; null when not expressible. */
   dsl: string | null;
 }
 
@@ -46,14 +46,14 @@ export interface TableReportData {
   locale: 'zh' | 'en';
   tableName: string;
   physicalTable: string;
-  tableKind: 'input' | 'output';
+  tableKind: 'raw' | 'result';
   rowCount: number;
   tableUpdatedAt: number;
   generatedAt: number;
-  sourceDatasetName: string | null;
-  tasks: TableReportTaskSection[];
+  sourceRawTableName: string | null;
+  pipelines: TableReportPipelineSection[];
   lastRun: Pick<
-    DataTaskRun,
+    DataPipelineRun,
     'seq' | 'status' | 'startedAt' | 'finishedAt' | 'inputRows' | 'outputRows' | 'workflowSignature'
   > | null;
   columnTypes: { name: string; label: string; storageType: string }[];
@@ -69,8 +69,8 @@ const REPORT_LABELS = {
     rows: '行数',
     physicalTable: '物理表',
     source: '来源',
-    sourceInput: '输入表',
-    producingTasks: '关联数据任务',
+    sourceInput: '原始表',
+    producingPipelines: '关联数据加工',
     noSource: '无关联来源',
     processing: '处理逻辑（DSL）',
     dslUnavailable: '（该流程无法用 DSL 表达）',
@@ -99,7 +99,7 @@ const REPORT_LABELS = {
     physicalTable: 'Physical table',
     source: 'Source',
     sourceInput: 'Input table',
-    producingTasks: 'Producing tasks',
+    producingPipelines: 'Producing pipelines',
     noSource: 'No linked source',
     processing: 'Processing logic (DSL)',
     dslUnavailable: '(Workflow cannot be expressed as DSL)',
@@ -111,7 +111,7 @@ const REPORT_LABELS = {
     runDuration: 'Duration',
     runInputRows: 'Input rows',
     runOutputRows: 'Output rows',
-    runSignature: 'Task version',
+    runSignature: 'Pipeline version',
     noRun: 'No runs recorded yet',
     schema: 'Schema',
     sampleData: 'Sample data',
@@ -170,20 +170,20 @@ export function buildTableReportHtml(data: TableReportData): string {
     run?.finishedAt && run.startedAt ? Math.max(0, run.finishedAt - run.startedAt) : null;
 
   const sourceRows: string[] = [];
-  if (data.sourceDatasetName) sourceRows.push(metaRow(L.sourceInput, data.sourceDatasetName));
-  if (data.tasks.length > 0) {
-    sourceRows.push(metaRow(L.producingTasks, data.tasks.map((t) => t.name).join('、')));
+  if (data.sourceRawTableName) sourceRows.push(metaRow(L.sourceInput, data.sourceRawTableName));
+  if (data.pipelines.length > 0) {
+    sourceRows.push(metaRow(L.producingPipelines, data.pipelines.map((t) => t.name).join('、')));
   }
   const sourceSection =
     sourceRows.length > 0
       ? `<table class="meta">${sourceRows.join('')}</table>`
       : `<p class="muted">${escapeHtml(L.noSource)}</p>`;
 
-  const processingSection = data.tasks
+  const processingSection = data.pipelines
     .map(
-      (task) => `
-      <h3>${escapeHtml(task.name)}</h3>
-      <pre class="dsl">${escapeHtml(task.dsl ?? L.dslUnavailable)}</pre>`
+      (pipeline) => `
+      <h3>${escapeHtml(pipeline.name)}</h3>
+      <pre class="dsl">${escapeHtml(pipeline.dsl ?? L.dslUnavailable)}</pre>`
     )
     .join('');
 
@@ -268,26 +268,26 @@ ${runSection}
 export class TableExportService {
   constructor(
     private readonly ctx: DataStoreContext,
-    private readonly datasets: DatasetRepository,
-    private readonly tasks: TaskRepository,
+    private readonly rawTables: RawTableRepository,
+    private readonly pipelines: PipelineRepository,
     private readonly workflows: WorkflowRepository,
-    private readonly taskRuns: TaskRunsRepository
+    private readonly pipelineRuns: PipelineRunsRepository
   ) {}
 
   async buildTableExport(input: DataExportTableInput): Promise<PreparedTableExport> {
     await this.ctx.ensureMetadataReady();
-    const dataset =
-      input.tableKind === 'output'
-        ? await this.datasets.requireOutputTable(input.id)
-        : await this.datasets.requireInputDataset(input.id);
+    const rawTable =
+      input.tableKind === 'result'
+        ? await this.rawTables.requireResultTable(input.id)
+        : await this.rawTables.requireInputRawTable(input.id);
     await this.ctx.ensureReady();
-    if (!(await this.ctx.physicalTableExists(dataset.tableName))) {
+    if (!(await this.ctx.physicalTableExists(rawTable.tableName))) {
       throw new Error(`Data table is not materialized: ${input.id}`);
     }
-    const baseName = sanitizeFileName(dataset.name);
+    const baseName = sanitizeFileName(rawTable.name);
 
     if (input.format === 'csv') {
-      const snapshot = await this.readRows(dataset.tableName, EXPORT_MAX_ROWS);
+      const snapshot = await this.readRows(rawTable.tableName, EXPORT_MAX_ROWS);
       const csv =
         [
           snapshot.columns.map(csvCell).join(','),
@@ -299,7 +299,7 @@ export class TableExportService {
     }
 
     if (input.format === 'xlsx') {
-      const snapshot = await this.readRows(dataset.tableName, EXPORT_MAX_ROWS);
+      const snapshot = await this.readRows(rawTable.tableName, EXPORT_MAX_ROWS);
       const sheet = XLSX.utils.aoa_to_sheet([
         snapshot.columns,
         ...snapshot.rows.map((row) => snapshot.columns.map((column) => row[column] ?? null)),
@@ -310,7 +310,7 @@ export class TableExportService {
       return { fileName: `${baseName}.xlsx`, content: buffer };
     }
 
-    const report = await this.buildReportData(dataset, input);
+    const report = await this.buildReportData(rawTable, input);
     return {
       fileName: `${baseName}-report.html`,
       content: buildTableReportHtml(report),
@@ -340,51 +340,51 @@ export class TableExportService {
   }
 
   private async buildReportData(
-    dataset: { id: string; name: string; tableName: string; rowCount: number; updatedAt: number },
+    rawTable: { id: string; name: string; tableName: string; rowCount: number; updatedAt: number },
     input: DataExportTableInput
   ): Promise<TableReportData> {
     const locale = input.locale === 'zh' ? 'zh' : 'en';
-    const isOutput = input.tableKind === 'output';
-    const outputTable = isOutput ? (dataset as DataOutputTable) : null;
+    const isOutput = input.tableKind === 'result';
+    const resultTable = isOutput ? (rawTable as DataResultTable) : null;
 
-    let sourceDatasetName: string | null = null;
-    if (outputTable?.sourceDatasetId) {
-      sourceDatasetName =
-        (await this.datasets.getDataset(outputTable.sourceDatasetId))?.name ?? null;
+    let sourceRawTableName: string | null = null;
+    if (resultTable?.sourceRawTableId) {
+      sourceRawTableName =
+        (await this.rawTables.getRawTable(resultTable.sourceRawTableId))?.name ?? null;
     }
 
-    const taskIds = outputTable?.relatedTaskIds ?? [];
-    const tasks: TableReportTaskSection[] = [];
+    const pipelineIds = resultTable?.relatedPipelineIds ?? [];
+    const pipelines: TableReportPipelineSection[] = [];
     let lastRun: TableReportData['lastRun'] = null;
-    for (const taskId of taskIds.slice(0, 4)) {
-      const task = await this.tasks.getTask(taskId);
-      if (!task) continue;
+    for (const pipelineId of pipelineIds.slice(0, 4)) {
+      const pipeline = await this.pipelines.getPipeline(pipelineId);
+      if (!pipeline) continue;
       let dsl: string | null = null;
       try {
-        const workflow = await this.workflows.getRuntimeWorkflow(taskId);
+        const workflow = await this.workflows.getRuntimeWorkflow(pipelineId);
         dsl =
           workflow.nodes.length > 0 ? exportPrepWorkflowDsl(workflow.nodes, workflow.edges) : '';
       } catch {
         dsl = null;
       }
-      tasks.push({ name: task.name, dsl });
+      pipelines.push({ name: pipeline.name, dsl });
     }
-    if (taskIds[0]) {
-      lastRun = await this.taskRuns.getLatestTaskRun(taskIds[0], 'run');
+    if (pipelineIds[0]) {
+      lastRun = await this.pipelineRuns.getLatestPipelineRun(pipelineIds[0], 'run');
     }
 
-    const snapshot = await this.readRows(dataset.tableName, EXPORT_MAX_ROWS);
+    const snapshot = await this.readRows(rawTable.tableName, EXPORT_MAX_ROWS);
     const sampleRows = snapshot.rows.slice(0, REPORT_SAMPLE_ROWS);
     return {
       locale,
-      tableName: dataset.name,
-      physicalTable: dataset.tableName,
+      tableName: rawTable.name,
+      physicalTable: rawTable.tableName,
       tableKind: input.tableKind,
       rowCount: snapshot.totalRows,
-      tableUpdatedAt: dataset.updatedAt,
+      tableUpdatedAt: rawTable.updatedAt,
       generatedAt: Date.now(),
-      sourceDatasetName,
-      tasks,
+      sourceRawTableName,
+      pipelines,
       lastRun,
       columnTypes: snapshot.columnTypes.map((column) => ({
         name: column.name,

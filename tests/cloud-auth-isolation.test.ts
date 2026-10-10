@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudAnalysisCommandService } from '../src/main/data/cloud-analysis-command-service';
-import type { DataTaskStore } from '../src/main/data/data-task-store';
+import type { DataPipelineStore } from '../src/main/data/data-pipeline-store';
 import { PersonalAnalysisClient } from '../src/main/data/personal-analysis-client';
 
 const ok = (data: unknown) => new Response(JSON.stringify({ success: true, data }));
@@ -11,8 +11,8 @@ function fixture(
   resolveAccount = vi.fn(),
   config = { apiOrigin: 'https://key.example', apiKey: 'fixed-key', updatedAt: 0 }
 ) {
-  return new CloudAnalysisCommandService({} as DataTaskStore, () => config, {
-    createInputTable: vi.fn(),
+  return new CloudAnalysisCommandService({} as DataPipelineStore, () => config, {
+    createRawTable: vi.fn(),
     getPersonalAnalysisConnection: resolveAccount,
   });
 }
@@ -72,8 +72,8 @@ describe('cloud credential isolation', () => {
       .mockResolvedValue({ apiOrigin: 'https://account.example', accessToken: 'account-token' });
     const fetchMock = vi.fn().mockResolvedValueOnce(denied()).mockResolvedValueOnce(ok([]));
     vi.stubGlobal('fetch', fetchMock);
-    const service = new CloudAnalysisCommandService({} as DataTaskStore, () => config, {
-      createInputTable: vi.fn(),
+    const service = new CloudAnalysisCommandService({} as DataPipelineStore, () => config, {
+      createRawTable: vi.fn(),
       getPersonalAnalysisConnection: account,
       onPersonalAnalysisKeyRejected: () => {
         config = { ...config, connectionStatus: 'disconnected' };

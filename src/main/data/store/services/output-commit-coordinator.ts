@@ -1,48 +1,48 @@
 /** Commits validated staging outputs with journaled rollback + recovery. */
-import type { DataCleaningTask, DataWorkflowSaveInput } from '../../../../shared/contracts';
+import type { DataPipeline, DataWorkflowSaveInput } from '../../../../shared/contracts';
 import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import { quoteIdentifier, toNumber } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
-import { DatasetRepository } from '../repositories/dataset-repository';
+import { RawTableRepository } from '../repositories/raw-table-repository';
 import { OutputCommitJournal } from '../repositories/output-commit-journal';
 import { RunStatsRepository } from '../repositories/run-stats-repository';
-import { TaskRepository } from '../repositories/task-repository';
+import { PipelineRepository } from '../repositories/pipeline-repository';
 import { WatermarkRepository } from '../repositories/watermark-repository';
 import { normalizeRuntimeWorkflowInput } from '../workflow-model';
 import { WorkflowBindingResolver } from './workflow-binding-resolver';
 import { v4 as uuidv4 } from 'uuid';
 
 export class OutputCommitCoordinator {
-  /** Called after a commit with the dataset ids of every committed output table. */
-  onOutputsCommitted?: (outputDatasetIds: string[]) => void;
+  /** Called after a commit with the rawTable ids of every committed output table. */
+  onOutputsCommitted?: (outputResultTableIds: string[]) => void;
 
   constructor(
     private readonly ctx: DataStoreContext,
-    private readonly tasks: TaskRepository,
-    private readonly datasets: DatasetRepository,
+    private readonly pipelines: PipelineRepository,
+    private readonly rawTables: RawTableRepository,
     private readonly runStats: RunStatsRepository,
     private readonly watermarks: WatermarkRepository,
     private readonly journal: OutputCommitJournal,
     private readonly binding: WorkflowBindingResolver
   ) {}
 
-  async commitValidatedTaskOutput(
+  async commitValidatedPipelineOutput(
     id: string,
-    temporaryTask: DataCleaningTask,
+    temporaryPipeline: DataPipeline,
     workflow: DataWorkflowSaveInput,
     watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
     nodeStats?: WorkflowNodeRunStat[],
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>,
     runId?: string
-  ): Promise<DataCleaningTask> {
+  ): Promise<DataPipeline> {
     return this.ctx.runExclusive(async () => {
       await this.ctx.ensureReady();
-      const task = await this.tasks.requireTask(id);
-      const temporaryTable = temporaryTask.outputTable;
+      const pipeline = await this.pipelines.requirePipeline(id);
+      const temporaryTable = temporaryPipeline.resultTable;
       if (!temporaryTable || !(await this.ctx.physicalTableExists(temporaryTable))) {
-        throw new Error('Validated temporary task output is no longer available');
+        throw new Error('Validated temporary pipeline output is no longer available');
       }
       const runtimeWorkflow = normalizeRuntimeWorkflowInput(id, workflow, this.ctx.now());
       const nodeById = new Map(runtimeWorkflow.nodes.map((node) => [node.id, node]));
@@ -50,7 +50,7 @@ export class OutputCommitCoordinator {
         (node) => node.type === 'output' && node.config.disabled !== true
       );
       // Every staged sink gets its own resolved target; the first sink keeps
-      // the task's primary output table for compatibility.
+      // the pipeline's primary output table for compatibility.
       const sinkInputs =
         stagedSinks && stagedSinks.length > 0
           ? stagedSinks
@@ -58,7 +58,7 @@ export class OutputCommitCoordinator {
 
       interface ResolvedTarget {
         tableName: string;
-        outputDatasetId?: string;
+        outputResultTableId?: string;
         mode: 'replace' | 'append' | 'error_if_exists' | 'merge';
         mergeKeys: string[];
         schemaPolicy: 'extend' | 'strict' | 'ignore';
@@ -78,17 +78,17 @@ export class OutputCommitCoordinator {
 
       const completedAt = this.ctx.now();
       const commitId = uuidv4();
-      const sourceDatasetId =
-        (await this.binding.findWorkflowSourceDatasetId(runtimeWorkflow.nodes)) ??
-        task.sourceDatasetId;
+      const sourceRawTableId =
+        (await this.binding.findWorkflowSourceRawTableId(runtimeWorkflow.nodes)) ??
+        pipeline.sourceRawTableId;
       const sinks: SinkPlan[] = [];
       const claimedTargets = new Set<string>();
       for (const [index, sink] of sinkInputs.entries()) {
         const outputNode = sink.nodeId ? nodeById.get(sink.nodeId) : undefined;
         const fallback =
           index === 0
-            ? task.outputTable || tableNameFromId('clean_task', task.id)
-            : tableNameFromId('task_sink', `${task.id}_${sink.nodeId || index}`);
+            ? pipeline.resultTable || tableNameFromId('clean_pipeline', pipeline.id)
+            : tableNameFromId('task_sink', `${pipeline.id}_${sink.nodeId || index}`);
         const target = await this.binding.resolveWorkflowOutputTarget(outputNode, fallback);
         const targetKey = target.tableName.toLowerCase();
         if (claimedTargets.has(targetKey)) {
@@ -200,16 +200,16 @@ export class OutputCommitCoordinator {
       for (const sink of sinks) {
         await this.journal.insertPreparedCommit({
           id: sink.journalId,
-          taskId: id,
+          pipelineId: id,
           temporaryTable: sink.stagingTable,
           targetTable: sink.target.tableName,
           backupTable: sink.backupTable,
           targetExisted: sink.targetExisted,
           intendedMetadataJson: JSON.stringify({
-            taskName: task.name,
-            sourcePath: temporaryTask.sourcePath,
-            sourceDatasetId,
-            outputDatasetId: sink.target.outputDatasetId ?? null,
+            pipelineName: pipeline.name,
+            sourcePath: temporaryPipeline.sourcePath,
+            sourceRawTableId,
+            outputResultTableId: sink.target.outputResultTableId ?? null,
             rowCount: sink.finalRowCount,
             nodeCount: runtimeWorkflow.nodes.length,
             // Persisted provenance: the committed output stays attributable to
@@ -259,20 +259,20 @@ export class OutputCommitCoordinator {
           const finalColumnCount = sink.appendToExisting
             ? (await this.ctx.getTableColumns(sink.target.tableName)).length
             : (await this.ctx.getTableColumns(sink.stagingTable)).length;
-          await this.datasets.upsertDatasetForTaskOutput(
-            task.name,
-            temporaryTask.sourcePath,
+          await this.rawTables.upsertRawTableForPipelineOutput(
+            pipeline.name,
+            temporaryPipeline.sourcePath,
             sink.target.tableName,
             sink.finalRowCount,
             finalColumnCount,
-            sink.target.outputDatasetId
+            sink.target.outputResultTableId
           );
           if (index === 0) {
-            await this.tasks.markTaskCompleted(id, {
+            await this.pipelines.markPipelineCompleted(id, {
               nodeCount: runtimeWorkflow.nodes.length,
-              sourcePath: temporaryTask.sourcePath,
-              sourceDatasetId,
-              outputTable: sink.target.tableName,
+              sourcePath: temporaryPipeline.sourcePath,
+              sourceRawTableId,
+              resultTable: sink.target.tableName,
               rowCount: sink.finalRowCount,
               columnCount: finalColumnCount,
               at: completedAt,
@@ -280,10 +280,10 @@ export class OutputCommitCoordinator {
           }
         }
         if (watermarkUpdates && watermarkUpdates.length > 0) {
-          await this.watermarks.upsertTaskWatermark(id, watermarkUpdates);
+          await this.watermarks.upsertPipelineWatermark(id, watermarkUpdates);
         }
         if (nodeStats && nodeStats.length > 0) {
-          await this.runStats.persistTaskNodeStats(id, runId ?? commitId, nodeStats);
+          await this.runStats.persistPipelineNodeStats(id, runId ?? commitId, nodeStats);
         }
         for (const sink of sinks) {
           await this.journal.updateOutputCommitState(sink.journalId, 'metadata_committed');
@@ -345,18 +345,18 @@ export class OutputCommitCoordinator {
           .updateOutputCommitState(sink.journalId, 'completed')
           .catch(() => undefined);
       }
-      const committedDatasetIds = sinks
-        .map((sink) => sink.target.outputDatasetId)
-        .filter((datasetId): datasetId is string => Boolean(datasetId));
-      if (committedDatasetIds.length > 0) {
+      const committedRawTableIds = sinks
+        .map((sink) => sink.target.outputResultTableId)
+        .filter((rawTableId): rawTableId is string => Boolean(rawTableId));
+      if (committedRawTableIds.length > 0) {
         try {
-          this.onOutputsCommitted?.(committedDatasetIds);
+          this.onOutputsCommitted?.(committedRawTableIds);
         } catch {
           // Listener errors must never fail the commit.
         }
       }
-      return this.tasks.requireTask(id);
-    }, `commitValidatedTaskOutput:${id}`);
+      return this.pipelines.requirePipeline(id);
+    }, `commitValidatedPipelineOutput:${id}`);
   }
   private async countMergeSurvivors(
     targetTable: string,

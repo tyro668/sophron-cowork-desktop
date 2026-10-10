@@ -14,7 +14,7 @@ export const outputCodec: OperatorDslCodec = {
     const { text } = command;
     const cursor = new PrepTokenCursor(text, command.line, diagnostics);
     cursor.expect('output', 'invalidOutput');
-    const target = cursor.expectOneOf(['table', 'dataset', 'file'], 'invalidOutputTarget');
+    const target = cursor.expectOneOf(['table', 'rawTable', 'file'], 'invalidOutputTarget');
     const targetLiteral = cursor.expectStringLiteral('invalidOutputName');
     let format: string | undefined;
     let mode = 'replace';
@@ -95,7 +95,7 @@ export const outputCodec: OperatorDslCodec = {
     return createOperator('output', text, {
       destination: target === 'table' ? 'duckdb_table' : target,
       table: target === 'table' ? targetValue : undefined,
-      dataset: target === 'dataset' ? targetValue : undefined,
+      rawTable: target === 'rawTable' ? targetValue : undefined,
       filePath: target === 'file' ? targetValue : undefined,
       format,
       mode,
@@ -107,12 +107,12 @@ export const outputCodec: OperatorDslCodec = {
   format: (config) => {
     const destination = String(config?.destination ?? 'duckdb_table');
     const target =
-      destination === 'dataset'
-        ? `dataset ${quoteString(String(config?.dataset ?? ''))}`
+      destination === 'rawTable'
+        ? `rawTable ${quoteString(String(config?.rawTable ?? ''))}`
         : destination === 'file'
           ? `file ${quoteString(String(config?.filePath ?? ''))}`
           : `table ${quoteString(
-              String(config?.outputTableName ?? config?.table ?? 'clean_result')
+              String(config?.resultTableName ?? config?.table ?? 'clean_result')
             )}`;
     const format =
       destination === 'file' && typeof config?.format === 'string'

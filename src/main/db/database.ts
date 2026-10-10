@@ -413,7 +413,7 @@ function createBaselineMainSchema(database: Database.Database): void {
   ensureColumn(database, 'messages', 'execution_time_ms', 'execution_time_ms INTEGER');
 
   // One-shot model calls do not belong to an interactive chat session. Keep
-  // their usage in a dedicated audit table so data-task generation and repair
+  // their usage in a dedicated audit table so data-pipeline generation and repair
   // costs can be queried without creating synthetic messages.
   database.exec(`
     CREATE TABLE IF NOT EXISTS llm_usage_events (
@@ -421,7 +421,7 @@ function createBaselineMainSchema(database: Database.Database): void {
       generation_id TEXT NOT NULL,
       feature TEXT NOT NULL,
       phase TEXT NOT NULL,
-      task_id TEXT,
+      pipeline_id TEXT,
       provider TEXT NOT NULL,
       model TEXT NOT NULL,
       input_tokens INTEGER NOT NULL,
@@ -443,8 +443,8 @@ function createBaselineMainSchema(database: Database.Database): void {
   `);
 
   database.exec(`
-    CREATE INDEX IF NOT EXISTS idx_llm_usage_events_task
-    ON llm_usage_events(task_id, created_at DESC)
+    CREATE INDEX IF NOT EXISTS idx_llm_usage_events_pipeline
+    ON llm_usage_events(pipeline_id, created_at DESC)
   `);
 
   database.exec(`

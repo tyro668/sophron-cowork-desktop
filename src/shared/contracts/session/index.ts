@@ -1,7 +1,7 @@
 import type {
-  DataTaskAuthoringRequest,
-  DataTaskAuthoringCompletion,
-} from '../../data-task-authoring';
+  DataPipelineAuthoringRequest,
+  DataPipelineAuthoringCompletion,
+} from '../../data-pipeline-authoring';
 /**
  * Cross-process session contracts. Shared by main, preload, and renderer.
  * Must not import from main/, renderer/, or preload/.
@@ -83,7 +83,7 @@ export type ContentBlock =
   | ToolUseContent
   | ToolResultContent
   | ThinkingContent
-  | { type: 'data_task_request'; request: DataTaskAuthoringRequest };
+  | { type: 'data_pipeline_request'; request: DataPipelineAuthoringRequest };
 
 export interface TextContent {
   type: 'text';
@@ -123,7 +123,7 @@ export interface ToolUseContent {
 
 export interface ToolResultContent {
   type: 'tool_result';
-  dataTaskCompletion?: DataTaskAuthoringCompletion;
+  dataPipelineCompletion?: DataPipelineAuthoringCompletion;
   toolUseId: string;
   content: string;
   isError?: boolean;

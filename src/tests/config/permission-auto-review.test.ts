@@ -104,9 +104,9 @@ describe('automatic permission risk classification', () => {
 
   it('auto-reviews local workflows, but confirms cloud writes and destructive actions', () => {
     for (const tool of [
-      'data_generate_task_from_requirement',
+      'data_generate_pipeline_from_requirement',
       'data_apply_workflow_plan',
-      'data_run_task',
+      'data_run_pipeline',
     ]) {
       expect(reviewAutoPermission(tool, { taskId: 't1' }).decision).toBe('allow');
     }

@@ -201,15 +201,13 @@ describe('FormFilter — type-aware value formatting', () => {
       rows.flatMap((row) => (row.colType ? [[row.field, row.colType]] : []))
     );
     return buildFilterCondition(
-      rows.map(
-        (row): FilterConditionRow => ({
-          field: row.field,
-          op: row.op,
-          val1: row.val1,
-          val2: row.val2 ?? '',
-          connective: row.connective === 'or' ? 'or' : 'and',
-        })
-      ),
+      rows.map((row): FilterConditionRow => ({
+        field: row.field,
+        op: row.op,
+        val1: row.val1,
+        val2: row.val2 ?? '',
+        connective: row.connective === 'or' ? 'or' : 'and',
+      })),
       columnTypes
     );
   }
@@ -1172,7 +1170,7 @@ describe('FormFilter — UI source inspection', () => {
   it('renders parser failures while keeping the graphical add action available', () => {
     const node: DataWorkflowNode = {
       id: 'filter-node',
-      taskId: 'task',
+      pipelineId: 'pipeline',
       type: 'filter',
       label: 'Filter',
       x: 0,
@@ -1478,7 +1476,7 @@ describe('FormFilter — empty-config run is blocked', () => {
   it('maps an empty condition through the shared validator to the renderer message key', () => {
     const node: DataWorkflowNode = {
       id: 'filter-node',
-      taskId: 'task',
+      pipelineId: 'pipeline',
       type: 'filter',
       label: 'Filter',
       x: 0,

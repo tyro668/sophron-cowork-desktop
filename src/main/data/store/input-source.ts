@@ -3,17 +3,17 @@ import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import * as XLSX from '../../utils/xlsx';
 import type {
-  DataInputTableConfig,
-  DataInputTableCloudConfig,
-  DataInputTableCsvConfig,
-  DataInputTableExcelConfig,
-  DataInputTableExcelMergedCellSummary,
-  DataInputTableFolderConfig,
-  DataInputTableHeaderCandidate,
-  DataInputTableSourceFileSummary,
-  DataInputTableSourceKind,
-  DataInputTableSourceSummary,
-  DataSaveInputTableNormalizerDraftInput,
+  DataRawTableConfig,
+  DataRawTableCloudConfig,
+  DataRawTableCsvConfig,
+  DataRawTableExcelConfig,
+  DataRawTableExcelMergedCellSummary,
+  DataRawTableFolderConfig,
+  DataRawTableHeaderCandidate,
+  DataRawTableSourceFileSummary,
+  DataRawTableSourceKind,
+  DataRawTableSourceSummary,
+  DataSaveRawTableNormalizerDraftInput,
 } from '../../../shared/contracts';
 import { type DataFieldType } from '../../../shared/data-field-types';
 import { isRecord, quoteIdentifier, stringArray } from '../operators';
@@ -25,41 +25,41 @@ export interface ParsedWorkbookRows {
   sheetNames: string[];
 }
 
-export interface PreparedInputTableNormalizerSourceContext {
+export interface PreparedRawTableNormalizerSourceContext {
   directory: string;
-  files: PreparedInputTableNormalizerSourceFile[];
+  files: PreparedRawTableNormalizerSourceFile[];
 }
 
-export interface PreparedInputTableNormalizerSourceFile {
+export interface PreparedRawTableNormalizerSourceFile {
   path: string;
   relativePath: string;
   originalPath: string;
   originalKind: 'excel' | 'csv';
   delimiter: ',';
   sheetName?: string;
-  headerCandidates?: DataInputTableHeaderCandidate[];
+  headerCandidates?: DataRawTableHeaderCandidate[];
   rowCountEstimate?: number;
   columnCountEstimate?: number;
 }
 
-export interface PreparedInputTableImport {
+export interface PreparedRawTableImport {
   rowCount: number;
   columnCount: number;
   fileCount: number;
-  config: DataInputTableConfig;
+  config: DataRawTableConfig;
 }
 
-export function normalizeInputTableNormalizerSourceKind(value: string): DataInputTableSourceKind {
+export function normalizeRawTableNormalizerSourceKind(value: string): DataRawTableSourceKind {
   if (value === 'excel' || value === 'csv' || value === 'folder' || value === 'cloud') {
     return value;
   }
   return 'excel';
 }
 
-export function normalizeStoredInputTableSourceKind(
+export function normalizeStoredRawTableSourceKind(
   value: string | null,
   sourcePath: string
-): DataInputTableSourceKind {
+): DataRawTableSourceKind {
   if (value === 'excel' || value === 'csv' || value === 'folder' || value === 'cloud') {
     return value;
   }
@@ -69,20 +69,20 @@ export function normalizeStoredInputTableSourceKind(
   return isExcelFile(sourcePath) ? 'excel' : 'csv';
 }
 
-export function parseInputTableConfig(
+export function parseRawTableConfig(
   value: string | null,
-  sourceKind: DataInputTableSourceKind,
+  sourceKind: DataRawTableSourceKind,
   sourcePath: string
-): DataInputTableConfig {
+): DataRawTableConfig {
   if (value) {
     try {
-      const parsed = JSON.parse(value) as DataInputTableConfig;
-      return normalizeStoredInputTableConfig(parsed, sourceKind, sourcePath);
+      const parsed = JSON.parse(value) as DataRawTableConfig;
+      return normalizeStoredRawTableConfig(parsed, sourceKind, sourcePath);
     } catch {
-      return normalizeStoredInputTableConfig(undefined, sourceKind, sourcePath);
+      return normalizeStoredRawTableConfig(undefined, sourceKind, sourcePath);
     }
   }
-  return normalizeStoredInputTableConfig(undefined, sourceKind, sourcePath);
+  return normalizeStoredRawTableConfig(undefined, sourceKind, sourcePath);
 }
 
 export function inferWorkbookColumnTypes(parsed: ParsedWorkbookRows): DataFieldType[] {
@@ -241,10 +241,10 @@ export function normalizeImportSourcePath(sourcePath: string): string {
   return sourcePath;
 }
 
-export function normalizeInputTableSourceKind(
-  requestedKind: DataInputTableSourceKind | undefined,
+export function normalizeRawTableSourceKind(
+  requestedKind: DataRawTableSourceKind | undefined,
   sourcePath: string
-): DataInputTableSourceKind {
+): DataRawTableSourceKind {
   if (requestedKind) {
     return requestedKind;
   }
@@ -255,11 +255,11 @@ export function normalizeInputTableSourceKind(
   return isExcelFile(sourcePath) ? 'excel' : 'csv';
 }
 
-export function normalizeInputTableConfig(
-  config: DataInputTableConfig | undefined,
-  sourceKind: DataInputTableSourceKind,
+export function normalizeRawTableConfig(
+  config: DataRawTableConfig | undefined,
+  sourceKind: DataRawTableSourceKind,
   sourcePath: string
-): DataInputTableConfig {
+): DataRawTableConfig {
   if (sourceKind === 'cloud') {
     const cloudConfig = defaultCloudConfig(config);
     if (!cloudConfig.cloudMirror.tableId.trim()) throw new Error('Cloud tableId is required');
@@ -280,7 +280,7 @@ export function normalizeInputTableConfig(
       sheetNames: fallback.sheetNames,
       headerMode: config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
-      dataProcessing: normalizeInputTableDataProcessing(config.dataProcessing),
+      dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
     };
   }
 
@@ -296,18 +296,18 @@ export function normalizeInputTableConfig(
         config.fileRange === 'excel' || config.fileRange === 'csv' ? config.fileRange : 'excel_csv',
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
-      dataProcessing: normalizeInputTableDataProcessing(config.dataProcessing),
+      dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
     };
   }
 
   return defaultCsvConfig(config);
 }
 
-export function normalizeStoredInputTableConfig(
-  config: DataInputTableConfig | undefined,
-  sourceKind: DataInputTableSourceKind,
+export function normalizeStoredRawTableConfig(
+  config: DataRawTableConfig | undefined,
+  sourceKind: DataRawTableSourceKind,
   sourcePath: string
-): DataInputTableConfig {
+): DataRawTableConfig {
   if (sourceKind === 'cloud') return defaultCloudConfig(config);
   if (sourceKind === 'excel') {
     const storedSheetNames =
@@ -329,7 +329,7 @@ export function normalizeStoredInputTableConfig(
         config?.sourceKind === 'excel' && config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow:
         config?.sourceKind === 'excel' ? Math.max(1, Math.floor(Number(config.headerRow) || 1)) : 1,
-      dataProcessing: normalizeInputTableDataProcessing(
+      dataProcessing: normalizeRawTableDataProcessing(
         config?.sourceKind === 'excel' ? config.dataProcessing : undefined
       ),
     };
@@ -337,14 +337,14 @@ export function normalizeStoredInputTableConfig(
 
   if (sourceKind === 'folder') {
     return config?.sourceKind === 'folder'
-      ? normalizeInputTableConfig(config, sourceKind, sourcePath)
+      ? normalizeRawTableConfig(config, sourceKind, sourcePath)
       : defaultFolderConfig();
   }
 
   return defaultCsvConfig(config);
 }
 
-export function defaultExcelConfig(filePath?: string): DataInputTableExcelConfig {
+export function defaultExcelConfig(filePath?: string): DataRawTableExcelConfig {
   const sheetNames =
     filePath && fs.existsSync(filePath) && isExcelFile(filePath)
       ? getWorkbookSheetNames(filePath)
@@ -355,22 +355,22 @@ export function defaultExcelConfig(filePath?: string): DataInputTableExcelConfig
     sheetNames,
     headerMode: 'auto',
     headerRow: 1,
-    dataProcessing: defaultInputTableDataProcessing(),
+    dataProcessing: defaultRawTableDataProcessing(),
   };
 }
 
-export function defaultCloudConfig(config?: DataInputTableConfig): DataInputTableCloudConfig {
+export function defaultCloudConfig(config?: DataRawTableConfig): DataRawTableCloudConfig {
   return {
     sourceKind: 'cloud',
     cloudMirror:
       (config?.sourceKind === 'cloud' || config?.sourceKind === 'csv') && config.cloudMirror
         ? { ...config.cloudMirror }
         : { tableId: '', contentHash: '' },
-    dataProcessing: normalizeInputTableDataProcessing(config?.dataProcessing),
+    dataProcessing: normalizeRawTableDataProcessing(config?.dataProcessing),
   };
 }
 
-export function defaultCsvConfig(config?: DataInputTableConfig): DataInputTableCsvConfig {
+export function defaultCsvConfig(config?: DataRawTableConfig): DataRawTableCsvConfig {
   return {
     sourceKind: 'csv',
     header: 'auto',
@@ -378,13 +378,13 @@ export function defaultCsvConfig(config?: DataInputTableConfig): DataInputTableC
     encoding: 'auto',
     delimiter: 'auto',
     ...(config?.sourceKind === 'csv' ? config : {}),
-    dataProcessing: normalizeInputTableDataProcessing(
+    dataProcessing: normalizeRawTableDataProcessing(
       config?.sourceKind === 'csv' ? config.dataProcessing : undefined
     ),
   };
 }
 
-export function defaultFolderConfig(): DataInputTableFolderConfig {
+export function defaultFolderConfig(): DataRawTableFolderConfig {
   return {
     sourceKind: 'folder',
     mergeMode: 'append_same_schema',
@@ -392,17 +392,17 @@ export function defaultFolderConfig(): DataInputTableFolderConfig {
     fileRange: 'excel_csv',
     skipEmptyFiles: true,
     keepSourceFileName: true,
-    dataProcessing: defaultInputTableDataProcessing(),
+    dataProcessing: defaultRawTableDataProcessing(),
   };
 }
 
-export function defaultInputTableDataProcessing(): DataInputTableConfig['dataProcessing'] {
+export function defaultRawTableDataProcessing(): DataRawTableConfig['dataProcessing'] {
   return { strategy: 'auto' };
 }
 
-export function normalizeInputTableDataProcessing(
-  value: DataInputTableConfig['dataProcessing'] | undefined
-): DataInputTableConfig['dataProcessing'] {
+export function normalizeRawTableDataProcessing(
+  value: DataRawTableConfig['dataProcessing'] | undefined
+): DataRawTableConfig['dataProcessing'] {
   if (value?.strategy === 'customize') {
     return {
       strategy: 'customize',
@@ -447,7 +447,7 @@ export function normalizeInputTableDataProcessing(
         typeof value.sourceSummaryHash === 'string' ? value.sourceSummaryHash : undefined,
     };
   }
-  return defaultInputTableDataProcessing();
+  return defaultRawTableDataProcessing();
 }
 
 export function getWorkbookSheetNames(filePath: string): string[] {
@@ -457,8 +457,8 @@ export function getWorkbookSheetNames(filePath: string): string[] {
 
 export function getImportSourceFiles(
   sourcePath: string,
-  sourceKind: DataInputTableSourceKind,
-  config: DataInputTableConfig
+  sourceKind: DataRawTableSourceKind,
+  config: DataRawTableConfig
 ): string[] {
   const stat = fs.statSync(sourcePath);
   if (stat.isFile()) {
@@ -477,9 +477,9 @@ export function getImportSourceFiles(
   return files;
 }
 
-export function writeInputTableNormalizerProjectFiles(
+export function writeRawTableNormalizerProjectFiles(
   projectDir: string,
-  files: DataSaveInputTableNormalizerDraftInput['files']
+  files: DataSaveRawTableNormalizerDraftInput['files']
 ): void {
   fs.rmSync(projectDir, { recursive: true, force: true });
   fs.mkdirSync(projectDir, { recursive: true });
@@ -513,16 +513,16 @@ export function sanitizeNormalizerPathSegment(value: string): string {
   return sanitized || 'unknown';
 }
 
-export function prepareInputTableNormalizerSources(input: {
+export function prepareRawTableNormalizerSources(input: {
   sourcePath: string;
-  sourceKind: DataInputTableSourceKind;
-  config: DataInputTableConfig;
-  summary: DataInputTableSourceSummary;
-}): PreparedInputTableNormalizerSourceContext {
+  sourceKind: DataRawTableSourceKind;
+  config: DataRawTableConfig;
+  summary: DataRawTableSourceSummary;
+}): PreparedRawTableNormalizerSourceContext {
   const directory = fs.mkdtempSync(join(os.tmpdir(), 'sophron-normalizer-input-'));
   const importFiles = getImportSourceFiles(input.sourcePath, input.sourceKind, input.config);
   const summaryByPath = new Map(input.summary.files.map((file) => [file.path, file]));
-  const files: PreparedInputTableNormalizerSourceFile[] = [];
+  const files: PreparedRawTableNormalizerSourceFile[] = [];
   try {
     for (const [fileIndex, filePath] of importFiles.entries()) {
       const summary = summaryByPath.get(filePath);
@@ -561,11 +561,11 @@ export function prepareInputTableNormalizerSources(input: {
 export function prepareWorkbookNormalizerSources(input: {
   filePath: string;
   sourcePath: string;
-  config: DataInputTableConfig;
-  summary: DataInputTableSourceFileSummary | undefined;
+  config: DataRawTableConfig;
+  summary: DataRawTableSourceFileSummary | undefined;
   directory: string;
   fileIndex: number;
-}): PreparedInputTableNormalizerSourceFile[] {
+}): PreparedRawTableNormalizerSourceFile[] {
   const workbook = readWorkbookFile(input.filePath);
   const selectedSheetNames = selectNormalizerWorkbookSheets(workbook.SheetNames, input.config);
   return selectedSheetNames.map((sheetName, sheetIndex) => {
@@ -594,7 +594,7 @@ export function prepareWorkbookNormalizerSources(input: {
 
 export function selectNormalizerWorkbookSheets(
   sheetNames: string[],
-  config: DataInputTableConfig
+  config: DataRawTableConfig
 ): string[] {
   if (sheetNames.length === 0) {
     return [];
@@ -610,10 +610,10 @@ export function selectNormalizerWorkbookSheets(
 export function prepareDelimitedNormalizerSource(input: {
   filePath: string;
   sourcePath: string;
-  summary: DataInputTableSourceFileSummary | undefined;
+  summary: DataRawTableSourceFileSummary | undefined;
   directory: string;
   fileIndex: number;
-}): PreparedInputTableNormalizerSourceFile {
+}): PreparedRawTableNormalizerSourceFile {
   const delimiter = extname(input.filePath).toLowerCase() === '.csv' ? ',' : '\t';
   const rows = parseDelimitedRows(fs.readFileSync(input.filePath, 'utf8'), delimiter);
   const preparedPath = join(
@@ -708,7 +708,7 @@ export function escapeCsvCell(value: string): string {
 
 export function listImportableFiles(
   folderPath: string,
-  fileRange: DataInputTableFolderConfig['fileRange'] = 'excel_csv'
+  fileRange: DataRawTableFolderConfig['fileRange'] = 'excel_csv'
 ): string[] {
   const files: string[] = [];
   const visit = (directory: string) => {
@@ -838,12 +838,12 @@ export function normalizePreviewCell(value: unknown): string | number | boolean 
 
 export function isImportableFile(filePath: string): boolean {
   return (
-    isInputTableFile(filePath) ||
+    isRawTableFile(filePath) ||
     ['.json', '.jsonl', '.ndjson', '.parquet'].includes(extname(filePath).toLowerCase())
   );
 }
 
-export function isInputTableFile(filePath: string): boolean {
+export function isRawTableFile(filePath: string): boolean {
   const extension = extname(filePath).toLowerCase();
   return (
     extension === '.csv' || extension === '.tsv' || extension === '.tab' || isExcelFile(filePath)
@@ -852,7 +852,7 @@ export function isInputTableFile(filePath: string): boolean {
 
 export function isFolderRangeFile(
   filePath: string,
-  fileRange: DataInputTableFolderConfig['fileRange']
+  fileRange: DataRawTableFolderConfig['fileRange']
 ): boolean {
   if (fileRange === 'excel') {
     return isExcelFile(filePath);
@@ -860,7 +860,7 @@ export function isFolderRangeFile(
   if (fileRange === 'csv') {
     return isCsvLikeFile(filePath);
   }
-  return isInputTableFile(filePath);
+  return isRawTableFile(filePath);
 }
 
 export function isCsvLikeFile(filePath: string): boolean {
@@ -875,7 +875,7 @@ export function isExcelFile(filePath: string): boolean {
 
 export function parseWorkbookRows(
   filePath: string,
-  config: DataInputTableExcelConfig
+  config: DataRawTableExcelConfig
 ): ParsedWorkbookRows {
   const workbook = readWorkbookFile(filePath);
   const sheetNames = workbook.SheetNames;
@@ -907,7 +907,7 @@ export function parseWorkbookRows(
   return { columns, rows, sheetName, sheetNames };
 }
 
-export function summarizeInputTableFile(
+export function summarizeRawTableFile(
   filePath: string,
   sourcePath: string,
   options: {
@@ -915,10 +915,10 @@ export function summarizeInputTableFile(
     maxRowsPerSheet: number;
     maxColumnsPerRow: number;
   }
-): DataInputTableSourceFileSummary {
+): DataRawTableSourceFileSummary {
   const stat = fs.statSync(filePath);
   const extension = extname(filePath).toLowerCase();
-  const baseSummary: DataInputTableSourceFileSummary = {
+  const baseSummary: DataRawTableSourceFileSummary = {
     path: filePath,
     name: basename(filePath),
     relativePath: getSourceRelativePath(sourcePath, filePath),
@@ -959,7 +959,7 @@ export function summarizeWorkbookSheets(
     maxRowsPerSheet: number;
     maxColumnsPerRow: number;
   }
-): DataInputTableSourceFileSummary['sheets'] {
+): DataRawTableSourceFileSummary['sheets'] {
   const workbook = readWorkbookFile(filePath, {
     sheetRows: Math.max(options.maxRowsPerSheet * 3, 24),
   });
@@ -992,7 +992,7 @@ export function summarizeWorkbookMergedCells(
   sheet: XLSX.WorkSheet,
   expandedRows: Array<Array<string | number | boolean | null>>,
   maxMergedCells = 40
-): DataInputTableExcelMergedCellSummary[] {
+): DataRawTableExcelMergedCellSummary[] {
   const merges = Array.isArray(sheet['!merges']) ? sheet['!merges'] : [];
   return merges.slice(0, maxMergedCells).map((merge) => {
     const value = expandedRows[merge.s.r]?.[merge.s.c];
@@ -1073,7 +1073,7 @@ export function summarizeDelimitedFileRows(
 export function detectHeaderCandidates(
   rows: Array<Array<string | number | boolean | null>>,
   maxColumnsPerRow: number
-): DataInputTableHeaderCandidate[] {
+): DataRawTableHeaderCandidate[] {
   return rows
     .map((row, index) => {
       const values = summarizeRowValues(row, maxColumnsPerRow);
@@ -1186,7 +1186,7 @@ export function hasCellValue(value: string | number | boolean | null | undefined
   return typeof value === 'string' ? value.trim().length > 0 : true;
 }
 
-export function datasetNameFromPath(filePath: string): string {
+export function rawTableNameFromPath(filePath: string): string {
   const name = basename(filePath);
   const extension = extname(name);
   return extension ? name.slice(0, -extension.length) : name;

@@ -5,20 +5,20 @@ import { DataStoreContext } from '../data-store-context';
 import {
   DataGroupRow,
   mapGroupRow,
-  outputTableConfigPredicateSql,
-  storedDatasetSourceKindSql,
+  resultTableConfigPredicateSql,
+  storedRawTableSourceKindSql,
 } from '../data-store-records';
 
 const MEMBER_TABLE: Record<DataGroupScope, string> = {
-  task: 'data_cleaning_tasks',
-  input: 'data_datasets',
-  output: 'data_datasets',
+  pipeline: 'data_pipelines',
+  raw: 'data_raw_tables',
+  result: 'data_raw_tables',
 };
 
 const MEMBER_PREDICATE: Record<DataGroupScope, string | null> = {
-  task: null,
-  input: `${storedDatasetSourceKindSql()} <> 'output'`,
-  output: outputTableConfigPredicateSql(),
+  pipeline: null,
+  raw: `${storedRawTableSourceKindSql()} <> 'output'`,
+  result: resultTableConfigPredicateSql(),
 };
 
 export class GroupRepository {

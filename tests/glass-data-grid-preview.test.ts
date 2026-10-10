@@ -26,7 +26,7 @@ import { GlassDataGridPreview } from '../src/renderer/components/GlassDataGridPr
 
 const labels = {
   loading: 'Loading',
-  empty: 'Run the task first',
+  empty: 'Run the pipeline first',
   total: (count: number) => `${count} rows`,
   pageSize: (count: number) => `${count} rows per page`,
 };
@@ -51,7 +51,7 @@ describe('GlassDataGridPreview', () => {
     expect(html).toContain('data-preview-grid="true"');
     expect(html).toContain('data-row-count="0"');
     expect(html).toContain('0 rows');
-    expect(html).not.toContain('Run the task first');
+    expect(html).not.toContain('Run the pipeline first');
   });
 
   it('keeps the run-first state when no cached columns are available', () => {
@@ -70,7 +70,7 @@ describe('GlassDataGridPreview', () => {
       })
     );
 
-    expect(html).toContain('Run the task first');
+    expect(html).toContain('Run the pipeline first');
     expect(html).not.toContain('data-preview-grid="true"');
   });
 });
