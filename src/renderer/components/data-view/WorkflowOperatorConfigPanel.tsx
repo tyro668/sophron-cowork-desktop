@@ -281,14 +281,14 @@ function WorkflowOperatorDslDialog({
       onOpenChange={onClose}
       busy={isRunningOperatorDsl}
       closeOnEscape={false}
-      ariaLabel={t('data.workflow.dslEditor', 'DSL 编辑器')}
+      ariaLabel={t('data.workflow.dslEditor', '结构化表达式编辑器')}
       overlayClassName="operator-ui bg-black/15 px-4 py-6 dark:bg-black/50"
       className="h-[42rem] w-[72rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
     >
       <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
         <div className="min-w-0">
           <div className="text-[14px] font-semibold text-text-primary">
-            {t('data.workflow.dslEditor', 'DSL 编辑器')}
+            {t('data.workflow.dslEditor', '结构化表达式编辑器')}
           </div>
           <div className="truncate text-[11px] text-text-muted">{nodeLabel}</div>
         </div>

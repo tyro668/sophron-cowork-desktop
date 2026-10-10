@@ -459,16 +459,6 @@ export function WorkflowInspector({
           ) : resolvedTab === 'data' ? (
             <div className="flex h-full min-h-0 flex-col gap-2">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <button
-                  type="button"
-                  onClick={onPreviewToHere}
-                  disabled={!onPreviewToHere || isPreviewRunning}
-                  title={t('data.workflow.previewToThisStepHint')}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                >
-                  <Play className="h-3 w-3" />
-                  {isPreviewRunning ? t('common.loading') : t('data.workflow.previewToThisStep')}
-                </button>
                 {runStat ? (
                   <span className="text-[11px] text-text-muted">
                     {formatNodeRunStatLine(runStat, t)}
@@ -486,6 +476,16 @@ export function WorkflowInspector({
                     {t('data.workflow.nodeDataStale')}
                   </span>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={onPreviewToHere}
+                  disabled={!onPreviewToHere || isPreviewRunning}
+                  title={t('data.workflow.previewToThisStepHint')}
+                  className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Play className="h-3 w-3" />
+                  {isPreviewRunning ? t('common.loading') : t('data.workflow.previewToThisStep')}
+                </button>
               </div>
               {firstZeroOutputNode && nodePreviewData && nodePreviewData.totalRows === 0 ? (
                 <div className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">

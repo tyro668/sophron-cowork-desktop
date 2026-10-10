@@ -33,6 +33,14 @@ function formatTime(value: number | null): string {
   return value === null ? '—' : new Date(value).toLocaleTimeString();
 }
 
+function formatWorkflowSignature(signature: string): string {
+  try {
+    return JSON.stringify(JSON.parse(signature), null, 2);
+  } catch {
+    return signature;
+  }
+}
+
 export function WorkflowRunLogsPanel({
   pipelineId,
   node,
@@ -209,9 +217,14 @@ export function WorkflowRunLogsPanel({
               {selectedRun.workflowSignature ? (
                 <>
                   <span>{t('data.workflow.runVersion')}</span>
-                  <span className="font-mono text-[11px] text-text-secondary">
-                    {selectedRun.workflowSignature.slice(0, 12)}
-                  </span>
+                  <details className="min-w-0">
+                    <summary className="cursor-pointer select-none font-mono text-[11px] text-text-secondary">
+                      {selectedRun.workflowSignature.slice(0, 24)}…
+                    </summary>
+                    <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border-subtle bg-surface-hover/40 p-1.5 font-mono text-[10px] leading-4 text-text-muted">
+                      {formatWorkflowSignature(selectedRun.workflowSignature)}
+                    </pre>
+                  </details>
                 </>
               ) : null}
             </div>
@@ -236,7 +249,7 @@ export function WorkflowRunLogsPanel({
                 {[...mergedStats.values()].map((stat) => (
                   <div
                     key={stat.nodeId}
-                    className={`truncate ${
+                    className={`break-words ${
                       stat.nodeId === node.id ? 'text-accent' : 'text-text-muted'
                     }`}
                   >
