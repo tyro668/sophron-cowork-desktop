@@ -2,7 +2,6 @@ import { Badge } from '../ui/badge';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import {
-  CalendarClock,
   ChevronRight,
   Cloud,
   Database,
@@ -18,7 +17,6 @@ import {
   MessageSquarePlus,
   MoreVertical,
   RefreshCw,
-  Settings,
   ShieldCheck,
   Table2,
   X,
@@ -222,9 +220,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   const setDesktopAuthStatus = useAppStore((state) => state.setDesktopAuthStatus);
   const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const setShowSettings = useAppStore((state) => state.setShowSettings);
-  const navigateToCloudAutomationTemplate = useAppStore(
-    (state) => state.navigateToCloudAutomationTemplate
-  );
   const navigateToTableAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const addCloudTablesToChat = useAppStore((state) => state.addCloudTablesToChat);
@@ -1237,39 +1232,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
     ]
   );
 
-  const startCloudTableAutomation = useCallback(
-    (table: PersonalAnalysisTable) => {
-      const targetSpaceId = table.spaceId || selectedProject?.spaceId || '';
-      const targetProjectId = table.projectId || selectedProject?.projectId || '';
-      const payload = {
-        createdAt: Date.now(),
-        source: {
-          tableId: table.tableId,
-          tableName: table.tableName,
-          spaceId: targetSpaceId,
-          spaceName: selectedSpace?.spaceName || '',
-          projectId: targetProjectId,
-          projectName: selectedProjectRecord?.projectName || '',
-          datasourceId: table.datasourceId,
-          rowCount: table.rowCount,
-          columns: table.columns ?? [],
-        },
-        accessModeLabel,
-        connectionLabel,
-      };
-      const rawTemplate = JSON.stringify(payload);
-      navigateToCloudAutomationTemplate(rawTemplate);
-    },
-    [
-      accessModeLabel,
-      connectionLabel,
-      navigateToCloudAutomationTemplate,
-      selectedProject,
-      selectedProjectRecord?.projectName,
-      selectedSpace?.spaceName,
-    ]
-  );
-
   const handleTableRowSelect = useCallback(
     (tableId: string) => {
       setSelectedTableIds((current) =>
@@ -1668,42 +1630,6 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                   }}
                 />
                 <DataToolbarButton
-                  icon={<Database className="h-3.5 w-3.5" />}
-                  label={t('cloudData.importAsInput')}
-                  disabled={listTab !== 'tables' || !singleSelectedTable}
-                  onClick={() => {
-                    if (singleSelectedTable) {
-                      importTable(singleSelectedTable);
-                    }
-                  }}
-                />
-                <DataToolbarButton
-                  icon={<CalendarClock className="h-3.5 w-3.5" />}
-                  label={t('cloudData.autoProcess')}
-                  disabled={listTab !== 'tables' || !singleSelectedTable}
-                  onClick={() => {
-                    if (singleSelectedTable) {
-                      startCloudTableAutomation(singleSelectedTable);
-                    }
-                  }}
-                />
-                <DataToolbarButton
-                  icon={
-                    addingToChat ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <MessageSquarePlus className="h-3.5 w-3.5" />
-                    )
-                  }
-                  label={
-                    selectedTables.length > 0
-                      ? `${t('cloudData.addToChat')} (${selectedTables.length})`
-                      : t('cloudData.addToChat')
-                  }
-                  disabled={listTab !== 'tables' || selectedTables.length === 0 || addingToChat}
-                  onClick={() => void addSelectedTablesToChat()}
-                />
-                <DataToolbarButton
                   icon={<ListChecks className="h-3.5 w-3.5" />}
                   label={t('cloudData.batchSelect')}
                   onClick={toggleBatchSelectMode}
@@ -1711,10 +1637,25 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                 <DataMoreMenu
                   items={[
                     {
-                      key: 'manage',
-                      label: t('cloudData.manageConnection'),
-                      icon: <Settings className="h-3.5 w-3.5" />,
-                      onClick: openSettings,
+                      key: 'import-raw-table',
+                      label: t('cloudData.importAsInput'),
+                      icon: <Database className="h-3.5 w-3.5" />,
+                      disabled: listTab !== 'tables' || !singleSelectedTable,
+                      onClick: () => {
+                        if (singleSelectedTable) {
+                          importTable(singleSelectedTable);
+                        }
+                      },
+                    },
+                    {
+                      key: 'add-to-chat',
+                      label:
+                        selectedTables.length > 0
+                          ? `${t('cloudData.addToChat')} (${selectedTables.length})`
+                          : t('cloudData.addToChat'),
+                      icon: <MessageSquarePlus className="h-3.5 w-3.5" />,
+                      disabled: listTab !== 'tables' || selectedTables.length === 0 || addingToChat,
+                      onClick: () => void addSelectedTablesToChat(),
                     },
                   ]}
                 />

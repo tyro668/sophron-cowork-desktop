@@ -5,10 +5,10 @@
  */
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Ban, Copy } from 'lucide-react';
+import { Ban, Copy, X } from 'lucide-react';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../types';
 import { exportPrepWorkflowDsl } from '../../../../../shared/prep-dsl';
-import { Dialog, DialogBody, DialogTitle } from '../../../ui/dialog';
+import { Dialog, DialogBody, DialogHeader, DialogTitle } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { getOperatorCatalog } from './operator-catalog';
 
@@ -79,9 +79,21 @@ export function WorkflowExplainDialog({
       ariaLabel={t('data.workflow.explainTitle')}
       className="w-full max-w-xl p-5"
     >
-      <DialogTitle className="text-sm font-semibold text-text-secondary">
-        {t('data.workflow.explainTitle')}
-      </DialogTitle>
+      <DialogHeader className="items-center">
+        <DialogTitle className="text-sm font-semibold text-text-secondary">
+          {t('data.workflow.explainTitle')}
+        </DialogTitle>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onOpenChange(false)}
+          className="text-text-muted hover:bg-accent-muted hover:text-accent"
+          title={t('common.close')}
+          aria-label={t('common.close')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </DialogHeader>
       <DialogBody className="mt-3 flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
         <ol className="flex flex-col gap-2">
           {orderedNodes.map((node, index) => {

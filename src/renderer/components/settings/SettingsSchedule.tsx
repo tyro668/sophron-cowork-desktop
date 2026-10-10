@@ -110,6 +110,25 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   }, []);
 
   const selectedAutomation = automations.find((automation) => automation.id === selectedId) ?? null;
+  // Save affordance is driven by whether the draft actually differs from what
+  // would be persisted — compare normalized payloads, same as save().
+  const draftSignature = useMemo(
+    () => (viewMode === 'detail' ? JSON.stringify(draftToPayload(draft, appConfig)) : null),
+    [viewMode, draft, appConfig]
+  );
+  const baselineSignature = useMemo(() => {
+    if (viewMode !== 'detail') return null;
+    if (selectedId && selectedAutomation) {
+      return JSON.stringify(draftToPayload(automationToDraft(selectedAutomation), appConfig));
+    }
+    if (!selectedId) {
+      return JSON.stringify(
+        draftToPayload(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')), appConfig)
+      );
+    }
+    return null;
+  }, [viewMode, selectedId, selectedAutomation, appConfig, tr]);
+  const isDraftDirty = draftSignature !== null && draftSignature !== baselineSignature;
   const dataPipelines = dataDashboard?.pipelines ?? [];
   const rawTables = dataDashboard?.rawTables ?? [];
   const resultTables = dataDashboard?.resultTables ?? [];
@@ -707,6 +726,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           selectedAutomation={selectedAutomation}
           draft={draft}
           isSaving={isSaving}
+          isDirty={isDraftDirty}
           onDraftChange={setDraft}
           onEnabledChange={updateDraftEnabled}
           onSave={() => void save()}

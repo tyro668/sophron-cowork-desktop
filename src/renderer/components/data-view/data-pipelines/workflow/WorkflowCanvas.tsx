@@ -215,6 +215,12 @@ function WorkflowCanvasContent({
         height: WORKFLOW_NODE_HEIGHT,
         initialWidth: WORKFLOW_NODE_WIDTH,
         initialHeight: WORKFLOW_NODE_HEIGHT,
+        // adoptUserNodes rebuilds the internal node whenever a new node object
+        // arrives; without `measured`, parseHandles wipes internals.handleBounds
+        // and every edge on that node hides until a re-measure (which can get
+        // stuck, leaving all edges invisible until remount). Passing the known
+        // fixed size keeps measured handleBounds across rebuilds.
+        measured: { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT },
         dragHandle: '.workflow-node-drag-handle',
         draggable: true,
         selectable: true,

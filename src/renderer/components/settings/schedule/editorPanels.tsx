@@ -23,6 +23,7 @@ export function EditorHeader({
   selectedAutomation,
   draft,
   isSaving,
+  isDirty,
   onDraftChange,
   onEnabledChange,
   onSave,
@@ -33,6 +34,7 @@ export function EditorHeader({
   selectedAutomation: Automation | null;
   draft: AutomationDraft;
   isSaving: boolean;
+  isDirty: boolean;
   onDraftChange: (draft: AutomationDraft) => void;
   onEnabledChange: (enabled: boolean) => void;
   onSave: () => void;
@@ -121,9 +123,9 @@ export function EditorHeader({
           tr={tr}
         />
         <Button
-          variant="secondary"
+          variant={isDirty ? 'primary' : 'secondary'}
           onClick={onSave}
-          disabled={isSaving}
+          disabled={isSaving || !isDirty}
           className="h-9 px-3 text-xs shadow-soft"
         >
           <Save className="h-3.5 w-3.5" />
