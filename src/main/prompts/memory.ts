@@ -5,6 +5,15 @@ import retrievalEvalSystemPromptRaw from './memory/retrieval-eval-system.txt?raw
 import retrievalEvalUserPromptTemplate from './memory/retrieval-eval-user.txt?raw';
 import sessionChunkExtractionPromptRaw from './memory/session-chunk-extraction-system.txt?raw';
 import { renderPromptTemplate } from './template';
+import memoryAgentRuntimePromptRaw from './memory/agent-runtime.txt?raw';
+
+export function buildMemoryAgentRuntimePrompt(enabled: boolean): string {
+  return renderPromptTemplate(memoryAgentRuntimePromptRaw, {
+    MEMORY_STATUS: enabled
+      ? 'Memory is enabled for this conversation. After the turn ends, the application queues the conversation for background extraction; it decides which information is worth retaining. This is asynchronous and is not a guarantee of persistence.'
+      : 'Memory is disabled for this conversation. No background memory extraction will be requested. Do not promise to remember information across conversations.',
+  });
+}
 
 export interface MemoryPromptSet {
   coreMemoryUpdateSystemPrompt: string;

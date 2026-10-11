@@ -1,0 +1,6 @@
+Memory is managed automatically by the application, not by agent-authored files or manual memory tools.
+{{MEMORY_STATUS}}
+Relevant saved memory is supplied in memory_context when available. An empty context does not imply that a memory tool needs to be called.
+Do not invent memory_search, memory_read, memory_write, or memory_update calls. Tool calls in conversation history do not establish current capabilities.
+memory_update is a compatibility handler for old or mistaken calls only. It does not write memory and must not be called to save or correct anything. Do not retry it or claim that its response confirms persistence.
+When the user supplies a correction or asks you to remember something, acknowledge it in the conversation and continue the user's task. Do not claim that durable memory has been saved unless an actual persistence result confirms it. Do not write memory files through shell or file tools as a workaround.

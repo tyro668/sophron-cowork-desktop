@@ -3,6 +3,9 @@ import type {
   BeforeSessionRunResult,
 } from '../extensions/agent-runtime-extension';
 import type { MemoryService } from './memory-service';
+import { buildMemoryAgentRuntimePrompt } from '../prompts/memory';
+import { createMemoryUpdateCompatibilityTool } from './memory-update-compat-tool';
+import { logWarn } from '../utils/logger';
 
 export class MemoryExtension implements AgentRuntimeExtension {
   readonly name = 'memory';
@@ -16,13 +19,24 @@ export class MemoryExtension implements AgentRuntimeExtension {
   }: Parameters<
     NonNullable<AgentRuntimeExtension['beforeSessionRun']>
   >[0]): Promise<BeforeSessionRunResult | void> {
-    if (!this.memoryService.isEnabled() || !session.memoryEnabled) {
-      return;
+    const isEnabled = () => this.memoryService.isEnabled() && session.memoryEnabled;
+    const enabled = isEnabled();
+    let statePrompt: string | undefined;
+    if (enabled) {
+      try {
+        statePrompt = await this.memoryService.buildPromptPrefix(session, prompt, signal);
+      } catch (error) {
+        // Retrieval failure must not remove the capability rules/compatibility
+        // handler and bring back "Tool memory_update not found" on this turn.
+        logWarn('[MemoryExtension] Memory context retrieval failed', error);
+      }
     }
 
     // Retrieved memories are per-turn dynamic state, not stable domain rules.
     return {
-      statePrompt: await this.memoryService.buildPromptPrefix(session, prompt, signal),
+      stablePrompt: buildMemoryAgentRuntimePrompt(enabled),
+      statePrompt,
+      customTools: [createMemoryUpdateCompatibilityTool(isEnabled)],
     };
   }
 
