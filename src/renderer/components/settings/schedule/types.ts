@@ -133,6 +133,7 @@ export interface AutomationRunLogEntry {
 }
 
 export interface AutomationDraft {
+  tableBindings?: Automation['tableBindings'];
   outputBindings?: Automation['outputBindings'];
   name: string;
   description: string;

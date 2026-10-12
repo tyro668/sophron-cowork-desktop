@@ -1,3 +1,4 @@
+import { getAutomationTableBindings } from '../../shared/automation/table-bindings';
 import { existsSync, watch, type FSWatcher } from 'fs';
 import { basename, dirname } from 'path';
 import type { AutomationService } from './automation-service';
@@ -15,7 +16,7 @@ export interface RawTableWatchTarget {
 interface AutomationSchedulerOptions {
   now?: () => number;
   resolveProjectCwd?: (projectId: string) => string | null;
-  /** Maps watchable raw-table ids (cloud.sync runOnChange links) to sources. */
+  /** Maps watchable raw-table ids (table bindings) to sources. */
   resolveRawTableWatchTargets?: (rawTableIds: string[]) => Promise<RawTableWatchTarget[]>;
   /** Re-imports the table's stored source into DuckDB — the commit fires links. */
   reimportRawTable?: (rawTableId: string) => Promise<void>;
@@ -104,7 +105,7 @@ export class AutomationScheduler {
     void this.syncTableWatchers();
   }
 
-  // File-backed raw tables linked via runOnChange cloud.sync inputs get a
+  // File-backed raw tables linked via table-change conditions get a
   // watcher: a source-file change re-imports into DuckDB, and that commit is
   // what fans out to the linked automations.
   private async syncTableWatchers(): Promise<void> {
@@ -117,20 +118,14 @@ export class AutomationScheduler {
       const watchedIds = new Set<string>();
       for (const automation of this.service.list({ status: 'all' }).automations) {
         if (!automation.enabled || automation.status === 'paused') continue;
-        for (const node of automation.actionGraph.nodes) {
-          if (
-            node.type === 'cloud.sync' &&
-            node.config.direction === 'input' &&
-            node.config.runOnChange === true &&
-            typeof node.config.rawTableId === 'string'
-          ) {
-            watchedIds.add(node.config.rawTableId);
-          }
+        for (const binding of getAutomationTableBindings(automation)) {
+          if (binding.kind === 'raw' && binding.runOnChange) watchedIds.add(binding.tableId);
         }
       }
       const targets = this.resolveRawTableWatchTargets
         ? await this.resolveRawTableWatchTargets([...watchedIds])
         : [];
+      if (!this.running) return;
       const desired = new Map(
         targets.map((target) => [
           target.rawTableId,
@@ -178,6 +173,12 @@ export class AutomationScheduler {
             if (filename && filename.toString() !== basename(target.sourcePath)) return;
             fire();
           });
+    record.watcher.on('error', (error) => {
+      if (record.timer) clearTimeout(record.timer);
+      record.watcher.close();
+      this.tableWatchers.delete(target.rawTableId);
+      console.warn('[Automation] Raw table watcher failed:', target.rawTableId, error);
+    });
     return record;
   }
 

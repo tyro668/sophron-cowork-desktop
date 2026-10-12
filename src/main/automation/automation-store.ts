@@ -1,7 +1,13 @@
+import {
+  DEFAULT_TABLE_POLICY,
+  getAutomationTableBindings,
+} from '../../shared/automation/table-bindings';
 import { randomUUID } from 'crypto';
 import type { DatabaseInstance, ScheduledTaskRow } from '../db/database';
 import type {
   Automation,
+  AutomationTableRef,
+  AutomationTablePolicy,
   AutomationActionGraph,
   AutomationArtifact,
   AutomationAssignGroupInput,
@@ -36,6 +42,11 @@ export interface AutomationRunRecoveryResult {
 }
 
 export interface AutomationStore {
+  getTablePolicy(table: AutomationTableRef): AutomationTablePolicy;
+  setTablePolicy(
+    table: AutomationTableRef,
+    patch: Partial<AutomationTablePolicy>
+  ): AutomationTablePolicy;
   list(query?: AutomationListQuery): AutomationListResult;
   get(id: string): Automation | null;
   listGroups(): AutomationGroup[];
@@ -45,6 +56,7 @@ export interface AutomationStore {
   assignToGroup(input: AutomationAssignGroupInput): void;
   create(input: AutomationCreateInput): Automation;
   update(id: string, updates: AutomationUpdateInput): Automation | null;
+  updateTogether(changes: Array<{ id: string; updates: AutomationUpdateInput }>): void;
   delete(id: string): boolean;
   listRunnable(now: number): Automation[];
   setRuntimeState(
@@ -80,6 +92,7 @@ interface AutomationRow {
   status: string;
   trigger_json: string;
   output_bindings_json: string;
+  table_bindings_json: string | null;
   action_graph_json: string;
   delivery_json: string | null;
   failure_policy_json: string;
@@ -102,6 +115,7 @@ interface AutomationGroupRow {
 }
 
 interface AutomationRunRow {
+  execution_summary_json?: string | null;
   id: string;
   automation_id: string;
   status: string;
@@ -139,6 +153,7 @@ interface AutomationRunCreateInput {
 }
 
 interface AutomationRunUpdateInput {
+  executionSummary?: AutomationRun['executionSummary'];
   status?: AutomationRunStatus;
   startedAt?: number | null;
   finishedAt?: number | null;
@@ -184,13 +199,66 @@ export const DEFAULT_AUTOMATION_DELIVERY: AutomationDeliveryConfig = {
 
 export function createAutomationStore(db: DatabaseInstance): AutomationStore {
   const raw = db.raw;
+  const findPolicy = (table: AutomationTableRef): AutomationTablePolicy | undefined => {
+    const row = raw
+      .prepare(
+        'SELECT run_on_change, run_on_trigger FROM automation_table_policies WHERE table_kind = ? AND table_id = ?'
+      )
+      .get(table.kind, table.tableId) as
+      { run_on_change: number; run_on_trigger: number } | undefined;
+    return row
+      ? { runOnChange: row.run_on_change === 1, runOnTrigger: row.run_on_trigger === 1 }
+      : undefined;
+  };
+  const getTablePolicy = (table: AutomationTableRef): AutomationTablePolicy =>
+    findPolicy(table) ?? { ...DEFAULT_TABLE_POLICY };
+  const seedPolicies = (automation: Automation) => {
+    const insert = raw.prepare(
+      'INSERT INTO automation_table_policies VALUES (?, ?, ?, ?) ON CONFLICT(table_kind, table_id) DO NOTHING'
+    );
+    for (const binding of getAutomationTableBindings(automation))
+      insert.run(
+        binding.kind,
+        binding.tableId,
+        Number(binding.runOnChange),
+        Number(binding.runOnTrigger)
+      );
+  };
+  const resolvePolicies = (automation: Automation): Automation => ({
+    ...automation,
+    tableBindings: getAutomationTableBindings(automation).map((binding) => ({
+      ...binding,
+      ...(findPolicy(binding) ?? binding),
+    })),
+  });
+  const mapResolvedRow = (row: AutomationRow) => resolvePolicies(mapAutomationRow(row));
+
   const getAutomationById = (id: string): Automation | null => {
     const row = raw.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
       AutomationRow | undefined;
-    return row ? mapAutomationRow(row) : null;
+    return row ? mapResolvedRow(row) : null;
   };
 
   return {
+    getTablePolicy,
+    updateTogether(changes) {
+      raw.transaction(() => {
+        for (const { id, updates } of changes) {
+          if (!this.update(id, updates)) throw new Error('Automation no longer exists');
+        }
+      })();
+    },
+    setTablePolicy: (table, patch) =>
+      raw.transaction(() => {
+        const policy = { ...getTablePolicy(table), ...patch };
+        raw
+          .prepare(
+            `INSERT INTO automation_table_policies VALUES (?, ?, ?, ?)
+        ON CONFLICT(table_kind, table_id) DO UPDATE SET run_on_change = excluded.run_on_change, run_on_trigger = excluded.run_on_trigger`
+          )
+          .run(table.kind, table.tableId, Number(policy.runOnChange), Number(policy.runOnTrigger));
+        return policy;
+      })(),
     list: (query = {}) => {
       const rows = raw
         .prepare(
@@ -200,7 +268,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         )
         .all() as AutomationRow[];
       const allAutomations = rows
-        .map(mapAutomationRow)
+        .map(mapResolvedRow)
         .filter((automation) => matchesAutomationQuery(automation, query));
 
       const groupCounts: Record<string, number> = {};
@@ -324,6 +392,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         status: enabled ? 'enabled' : 'disabled',
         trigger,
         outputBindings: input.outputBindings ?? [],
+        tableBindings: input.tableBindings,
         actionGraph: normalizeActionGraph(input.actionGraph),
         delivery: input.delivery ?? DEFAULT_AUTOMATION_DELIVERY,
         failurePolicy: mergeFailurePolicy(input.failurePolicy),
@@ -336,8 +405,11 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         createdAt: now,
         updatedAt: now,
       };
-      insertAutomation(raw, automation);
-      return automation;
+      raw.transaction(() => {
+        seedPolicies(automation);
+        insertAutomation(raw, automation);
+      })();
+      return resolvePolicies(automation);
     },
 
     update: (id: string, updates: AutomationUpdateInput) => {
@@ -360,6 +432,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         status: nextStatus,
         trigger: nextTrigger,
         outputBindings: updates.outputBindings ?? current.outputBindings ?? [],
+        tableBindings: updates.tableBindings ?? current.tableBindings,
         actionGraph:
           updates.actionGraph === undefined
             ? current.actionGraph
@@ -376,7 +449,10 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
         nextRunAt: nextEnabled ? computeNextAutomationRunAt(nextTrigger, Date.now()) : null,
         updatedAt: Date.now(),
       };
-      updateAutomation(raw, id, automationToUpdateRow(next));
+      raw.transaction(() => {
+        seedPolicies(next);
+        updateAutomation(raw, id, automationToUpdateRow(next));
+      })();
       return getAutomationById(id);
     },
 
@@ -396,7 +472,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
            ORDER BY next_run_at ASC`
         )
         .all(now) as AutomationRow[];
-      return rows.map(mapAutomationRow);
+      return rows.map(mapResolvedRow);
     },
 
     setRuntimeState: (id, updates) => {
@@ -412,7 +488,7 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       updateAutomation(raw, id, mapped);
       const row = raw.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
         AutomationRow | undefined;
-      return row ? mapAutomationRow(row) : null;
+      return row ? mapResolvedRow(row) : null;
     },
 
     createRun: (input) => {
@@ -462,6 +538,8 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       if (updates.status !== undefined) mapped.status = updates.status;
       if (updates.startedAt !== undefined) mapped.started_at = updates.startedAt;
       if (updates.finishedAt !== undefined) mapped.finished_at = updates.finishedAt;
+      if (updates.executionSummary !== undefined)
+        mapped.execution_summary_json = JSON.stringify(updates.executionSummary);
       if (updates.durationMs !== undefined) mapped.duration_ms = updates.durationMs;
       if (updates.error !== undefined) mapped.error = updates.error;
       if (updates.artifactCount !== undefined) mapped.artifact_count = updates.artifactCount;
@@ -639,8 +717,8 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
       `INSERT INTO automations (
         id, name, description, project_id, group_id, enabled, status, trigger_json, action_graph_json,
         delivery_json, failure_policy_json, concurrency_json, next_run_at, locked_run_id,
-        last_run_at, last_run_status, last_error, created_at, updated_at, output_bindings_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        last_run_at, last_run_status, last_error, created_at, updated_at, output_bindings_json, table_bindings_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       automation.id,
@@ -662,7 +740,8 @@ function insertAutomation(raw: DatabaseInstance['raw'], automation: Automation):
       automation.lastError,
       automation.createdAt,
       automation.updatedAt,
-      JSON.stringify(automation.outputBindings ?? [])
+      JSON.stringify(automation.outputBindings ?? []),
+      automation.tableBindings === undefined ? null : JSON.stringify(automation.tableBindings)
     );
 }
 
@@ -697,6 +776,8 @@ function automationToUpdateRow(automation: Automation): Record<string, unknown> 
     status: automation.status,
     trigger_json: JSON.stringify(automation.trigger),
     output_bindings_json: JSON.stringify(automation.outputBindings ?? []),
+    table_bindings_json:
+      automation.tableBindings === undefined ? null : JSON.stringify(automation.tableBindings),
     action_graph_json: JSON.stringify(automation.actionGraph),
     delivery_json: automation.delivery ? JSON.stringify(automation.delivery) : null,
     failure_policy_json: JSON.stringify(automation.failurePolicy),
@@ -718,6 +799,8 @@ function mapAutomationRow(row: AutomationRow): Automation {
     status: parseAutomationStatus(row.status, row.enabled === 1),
     trigger: parseJson(row.trigger_json, defaultOnceTrigger()),
     outputBindings: parseJson(row.output_bindings_json, []),
+    tableBindings:
+      row.table_bindings_json == null ? undefined : parseJson(row.table_bindings_json, []),
     actionGraph: normalizeActionGraph(parseJson(row.action_graph_json, emptyActionGraph())),
     delivery: parseJson(row.delivery_json, null),
     failurePolicy: mergeFailurePolicy(parseJson(row.failure_policy_json, {})),
@@ -742,6 +825,9 @@ function mapAutomationGroupRow(row: AutomationGroupRow): AutomationGroup {
 
 function mapRunRow(row: AutomationRunRow): AutomationRun {
   return {
+    executionSummary: row.execution_summary_json
+      ? parseJson(row.execution_summary_json, undefined)
+      : undefined,
     id: row.id,
     automationId: row.automation_id,
     status: parseRunStatus(row.status) ?? 'failed',

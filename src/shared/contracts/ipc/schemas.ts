@@ -7,6 +7,11 @@
  * forward-compatible extra fields are preserved rather than stripped.
  */
 import { z } from 'zod';
+import {
+  automationTableBindingsSchema,
+  automationTableRefSchema,
+  automationTablePolicyPatchSchema,
+} from '../../automation/table-bindings';
 
 const str = z.string();
 const strOpt = str.optional();
@@ -493,21 +498,42 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       .optional(),
   ],
   'automation.get': [str],
+  'automation.tableAssociation.replace': [
+    automationTableRefSchema,
+    z.string().min(1),
+    z.string().min(1),
+  ],
+  'automation.tablePolicy.get': [automationTableRefSchema],
+  'automation.tablePolicy.set': [automationTableRefSchema, automationTablePolicyPatchSchema],
   'automation.create': [
     z.looseObject({
       name: str,
       trigger: obj,
       actionGraph: obj,
+      tableBindings: automationTableBindingsSchema.optional(),
       outputBindings: z
-        .array(z.object({ resultTableId: z.string().trim().min(1), runOnChange: bool }))
+        .array(
+          z.object({
+            resultTableId: z.string().trim().min(1),
+            runOnChange: bool,
+            runOnTrigger: bool.optional(),
+          })
+        )
         .optional(),
     }),
   ],
   'automation.update': [
     str,
     z.looseObject({
+      tableBindings: automationTableBindingsSchema.optional(),
       outputBindings: z
-        .array(z.object({ resultTableId: z.string().trim().min(1), runOnChange: bool }))
+        .array(
+          z.object({
+            resultTableId: z.string().trim().min(1),
+            runOnChange: bool,
+            runOnTrigger: bool.optional(),
+          })
+        )
         .optional(),
     }),
   ],

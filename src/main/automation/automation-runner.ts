@@ -1,6 +1,9 @@
-import { automationRunScope } from './automation-run-scope';
+import { planTableExecution } from '../../shared/automation/table-execution-plan';
+import { tableBindingKey } from '../../shared/automation/table-bindings';
+import { automationRunScope, automationTableChangeScope } from './automation-run-scope';
 import type {
   Automation,
+  AutomationTableTriggerContext,
   AutomationActionNode,
   AutomationArtifact,
   AutomationRun,
@@ -36,6 +39,7 @@ export class AutomationRunner {
     runId: string;
     run: AutomationRun;
     ancestors: readonly string[];
+    context?: AutomationTableTriggerContext;
   }> = [];
 
   constructor(options: AutomationRunnerOptions) {
@@ -51,7 +55,11 @@ export class AutomationRunner {
     return this.queued.some((entry) => entry.automation.id === id);
   }
 
-  async run(automation: Automation, reason: AutomationTriggerReason): Promise<AutomationRun> {
+  async run(
+    automation: Automation,
+    reason: AutomationTriggerReason,
+    context?: AutomationTableTriggerContext
+  ): Promise<AutomationRun> {
     if (this.runningCount >= this.maxConcurrentRuns) {
       const queuedRun = this.store.createRun({
         automationId: automation.id,
@@ -62,18 +70,35 @@ export class AutomationRunner {
       this.queued.push({
         automation,
         reason,
+        context,
         runId: queuedRun.id,
         run: queuedRun,
         ancestors: automationRunScope.getStore() ?? [],
       });
       return queuedRun;
     }
-    return this.execute(automation, reason);
+    return this.execute(automation, reason, undefined, context);
   }
 
-  queueOnce(automation: Automation, reason: AutomationTriggerReason): AutomationRun {
+  queueOnce(
+    automation: Automation,
+    reason: AutomationTriggerReason,
+    context?: AutomationTableTriggerContext
+  ): AutomationRun {
     const existing = this.queued.find((entry) => entry.automation.id === automation.id);
-    if (existing) return existing.run;
+    if (existing) {
+      const tables = new Map(
+        [...(existing.context?.tables ?? []), ...(context?.tables ?? [])].map((table) => [
+          tableBindingKey(table),
+          table,
+        ])
+      );
+      existing.context = { tables: [...tables.values()] };
+      existing.ancestors = [
+        ...new Set([...existing.ancestors, ...(automationRunScope.getStore() ?? [])]),
+      ];
+      return existing.run;
+    }
     const run = this.store.createRun({
       automationId: automation.id,
       status: 'queued',
@@ -85,6 +110,7 @@ export class AutomationRunner {
       reason,
       runId: run.id,
       run,
+      context,
       ancestors: automationRunScope.getStore() ?? [],
     });
     return run;
@@ -93,17 +119,26 @@ export class AutomationRunner {
   private execute(
     automation: Automation,
     reason: AutomationTriggerReason,
-    existingRunId?: string
+    existingRunId?: string,
+    context?: AutomationTableTriggerContext
   ): Promise<AutomationRun> {
     return automationRunScope.run([...(automationRunScope.getStore() ?? []), automation.id], () =>
-      this.executeInScope(automation, reason, existingRunId)
+      automationTableChangeScope.run({ tables: [...(context?.tables ?? [])] }, () =>
+        this.executeInScope(
+          automation,
+          reason,
+          existingRunId,
+          automationTableChangeScope.getStore()
+        )
+      )
     );
   }
 
   private async executeInScope(
     automation: Automation,
     reason: AutomationTriggerReason,
-    existingRunId?: string
+    existingRunId?: string,
+    context?: AutomationTableTriggerContext
   ): Promise<AutomationRun> {
     this.runningCount += 1;
     const startedAt = this.now();
@@ -128,13 +163,27 @@ export class AutomationRunner {
     const emittedArtifacts: AutomationArtifact[] = [];
     const logs: AutomationRunLogEvent[] = [];
     const outputs = new Map<string, unknown>();
+    const skippedNodeIds: string[] = [];
+    const executionSummary = () => ({
+      tables: context?.tables ?? [],
+      executedNodeIds: [...outputs.keys()],
+      skippedNodeIds,
+    });
 
     try {
       for (const node of topoSortNodes(
         automation.actionGraph.nodes,
         automation.actionGraph.edges
       )) {
-        if (node.enabled === false) continue;
+        if (
+          !planTableExecution(automation, reason, context).execute.has(node.id) ||
+          Object.values(node.inputBindings ?? {}).some(
+            (ref) => ref.kind === 'node_output' && !outputs.has(ref.nodeId)
+          )
+        ) {
+          skippedNodeIds.push(node.id);
+          continue;
+        }
         const definition = this.registry.get(node.type);
         if (!definition) {
           throw new Error(`Automation action is not registered: ${node.type}`);
@@ -170,13 +219,15 @@ export class AutomationRunner {
         outputs.set(node.id, result);
       }
 
-      const deliveryStatus = automation.delivery?.enabled
-        ? await this.deliver?.(automation, run, emittedArtifacts)
-        : 'skipped';
+      const deliveryStatus =
+        outputs.size > 0 && automation.delivery?.enabled
+          ? await this.deliver?.(automation, run, emittedArtifacts)
+          : 'skipped';
       const finishedAt = this.now();
       run =
         this.store.updateRun(run.id, {
-          status: 'succeeded',
+          status: outputs.size > 0 ? 'succeeded' : 'cancelled',
+          executionSummary: executionSummary(),
           finishedAt,
           durationMs: finishedAt - startedAt,
           artifactCount: emittedArtifacts.length,
@@ -188,7 +239,7 @@ export class AutomationRunner {
         status: current.status === 'paused' ? 'paused' : current.enabled ? 'enabled' : 'disabled',
         lockedRunId: null,
         lastRunAt: finishedAt,
-        lastRunStatus: 'succeeded',
+        lastRunStatus: outputs.size > 0 ? 'succeeded' : 'cancelled',
         lastError: null,
       });
       this.notifyRunFinished?.(automation, run);
@@ -203,6 +254,7 @@ export class AutomationRunner {
       run =
         this.store.updateRun(run.id, {
           status: 'failed',
+          executionSummary: executionSummary(),
           finishedAt,
           durationMs: finishedAt - startedAt,
           error: message,
@@ -238,14 +290,14 @@ export class AutomationRunner {
       const [next] = this.queued.splice(index, 1);
       const current = this.store.get(next.automation.id);
       if (
-        next.reason === 'output_change' &&
+        ['output_change', 'timer', 'file_change', 'queued_overlap'].includes(next.reason) &&
         (!current || !current.enabled || current.status === 'paused')
       ) {
         this.store.updateRun(next.runId, { status: 'cancelled', finishedAt: this.now() });
         continue;
       }
       await automationRunScope.run(next.ancestors, () =>
-        this.execute(current ?? next.automation, next.reason, next.runId)
+        this.execute(current ?? next.automation, next.reason, next.runId, next.context)
       );
     }
   }

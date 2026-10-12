@@ -53,6 +53,9 @@ function createStore(): AutomationStore & {
   return {
     runs,
     artifacts,
+    updateTogether: vi.fn(),
+    getTablePolicy: vi.fn(() => ({ runOnChange: false, runOnTrigger: true })),
+    setTablePolicy: vi.fn(),
     list: vi.fn(() => ({ automations: [], groupCounts: {} })),
     listGroups: vi.fn(() => []),
     createGroup: vi.fn(),

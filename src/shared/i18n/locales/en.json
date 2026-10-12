@@ -489,14 +489,21 @@
         "create": "New automation",
         "select": "Select an automation",
         "link": "Link",
+        "addLink": "Add automation association",
         "linked": "Linked",
-        "run": "Run now",
+        "run": "Run entire automation",
         "edit": "Configure",
         "unlink": "Unlink",
         "locked": "Linked automations exist — unlink them first",
-        "triggerMode": "Trigger",
-        "triggerOnChange": "Run when the table changes",
-        "triggerByAutomation": "Follow automation trigger",
+        "linkCount": "{{count}} linked automations",
+        "unlinkSyncTitle": "Unlinking removes sync steps",
+        "confirmSwitch": "Confirm association switch",
+        "unlinkSyncMessage": "Unlinking “{{automation}}” from “{{table}}” will also remove these sync steps:",
+        "unlinkSyncStep": "Step {{index}}: {{name}}",
+        "unlinkSyncRetained": "The automation, its other steps, and links to other tables will be kept.",
+        "triggerCondition": "Trigger policy",
+        "onTableChange": "Run after this table updates",
+        "inheritAutomation": "Run with the automation",
         "missing": "This automation no longer exists. Refresh the list."
       }
     },
@@ -2610,6 +2617,7 @@
     "imagesCount_other": "+{{count}} images"
   },
   "schedule": {
+    "executionSummary": "{{executed}} executed, {{skipped}} skipped (trigger condition or prerequisite not met)",
     "dataPipelineLogic": "Pipeline logic",
     "summary": {
       "total": "Automations",
@@ -2650,7 +2658,7 @@
       "duration": "Duration",
       "artifacts": "Artifacts",
       "delivery": "Delivery",
-      "error": "Error"
+      "error": "Execution details"
     },
     "runStatus": {
       "queued": "Queued",
@@ -2665,7 +2673,7 @@
       "retry": "Retry",
       "queued_overlap": "Queued",
       "file_change": "File change",
-      "output_change": "Result table changed"
+      "output_change": "Table data changed"
     },
     "deliveryStatus": {
       "pending": "Pending",
@@ -2996,7 +3004,7 @@
     "pickerSuggestions": "Suggestions",
     "noActions": "No actions yet. Click \"Add action\" above.",
     "triggerManual": "Manual trigger",
-    "outputChangeTrigger": "After result table changes",
+    "outputChangeTrigger": "After a linked table changes",
     "cloudSync": {
       "title": "Write result table to drive file",
       "login": "Sign in",

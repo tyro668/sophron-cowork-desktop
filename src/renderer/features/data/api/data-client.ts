@@ -19,6 +19,13 @@ function dataApi(): DataApi {
 }
 
 export const dataClient = {
+  replaceTableAutomationAssociation: (
+    ...args: Parameters<ElectronApi['automation']['replaceTableAssociation']>
+  ) => window.electronAPI.automation.replaceTableAssociation(...args),
+  getTableAutomationPolicy: (...args: Parameters<ElectronApi['automation']['getTablePolicy']>) =>
+    window.electronAPI.automation.getTablePolicy(...args),
+  setTableAutomationPolicy: (...args: Parameters<ElectronApi['automation']['setTablePolicy']>) =>
+    window.electronAPI.automation.setTablePolicy(...args),
   listAutomations: (...args: Parameters<ElectronApi['automation']['list']>) =>
     window.electronAPI.automation.list(...args),
   getAutomation: (id: string) => window.electronAPI.automation.get(id),

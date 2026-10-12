@@ -380,6 +380,7 @@ export function RawTableInfo({
 }
 
 export function RawTableSelect({
+  searchPlaceholder,
   value,
   options,
   disabled,
@@ -387,6 +388,7 @@ export function RawTableSelect({
 }: {
   value: string;
   options: Array<{ value: string; label: string }>;
+  searchPlaceholder?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
@@ -399,7 +401,7 @@ export function RawTableSelect({
         onValueChange={onChange}
         options={options}
         searchable
-        searchPlaceholder={t('data.aiPipelineInputSearch')}
+        searchPlaceholder={searchPlaceholder ?? t('data.aiPipelineInputSearch')}
         searchEmptyText={t('common.noResults')}
         triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60"
         contentClassName="w-[var(--radix-select-trigger-width)]"

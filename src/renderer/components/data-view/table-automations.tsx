@@ -5,11 +5,21 @@ import { Play, Plus, Settings, Unlink } from 'lucide-react';
 import type { Automation, DataResultTable, DataRawTable } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
 import { useAppStore } from '../../store';
-import type { PendingCloudInputSource } from '../../store';
 import type { DataResourceTarget } from '../../../shared/data-resource-link';
 import { Button } from '../ui/button';
-import { Switch } from '../ui/switch';
-import { RawTableSelect, getCloudMirror } from './shared';
+import { useConfirmDialog } from '../ConfirmDialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '../ui/dropdown-menu';
+import {
+  DEFAULT_TABLE_POLICY,
+  getAutomationTableBindings,
+  tableBindingKey,
+} from '../../../shared/automation/table-bindings';
+import { RawTableSelect } from './shared';
 import { relinkLinearGraph } from '../settings/schedule/model';
 
 export function ResultTableAutomations({
@@ -44,32 +54,18 @@ export function RawTableAutomations({
   onNavigateAway?: () => void;
   Row?: AutomationConfigRow;
 }) {
-  // Carry the stored cloud source so a scheduled sync reuses the same cloud
-  // table instead of asking the user to locate it again.
-  const mirror = getCloudMirror(rawTable);
-  const cloudSource: PendingCloudInputSource | undefined = mirror
-    ? {
-        spaceId: mirror.spaceId ?? '',
-        projectId: mirror.projectId ?? '',
-        tableId: mirror.tableId,
-        tableKind: mirror.tableKind ?? 'analysis',
-        tableName: mirror.tableName,
-        spaceName: mirror.spaceName,
-        projectName: mirror.projectName,
-      }
-    : undefined;
   return (
     <TableAutomations
       table={rawTable}
       kind="raw"
       embedded={embedded}
-      cloudSource={cloudSource}
       onNavigateAway={onNavigateAway}
       Row={Row}
     />
   );
 }
 interface AutomationConfigRowProps {
+  align?: 'start' | 'center';
   label: ReactNode;
   children: ReactNode;
 }
@@ -79,37 +75,50 @@ function TableAutomations({
   table,
   kind,
   embedded,
-  cloudSource,
   onNavigateAway,
   Row,
 }: {
   table: { id: string; name: string };
   kind: 'raw' | 'result';
   embedded?: boolean;
-  cloudSource?: PendingCloudInputSource;
   onNavigateAway?: () => void;
   /** Label+content row renderer for embedded mode (matches each form's grid). */
   Row?: AutomationConfigRow;
 }) {
   const { t } = useTranslation();
+  const { confirm } = useConfirmDialog();
   const mainView = useAppStore((state) => state.mainView);
   const navigate = useAppStore((state) => state.navigateToTableAutomation);
   const [automations, setAutomations] = useState<Automation[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [associationOrder, setAssociationOrder] = useState<string[]>([]);
+  useEffect(() => setAssociationOrder([]), [kind, table.id]);
+  const [policy, setPolicy] = useState(DEFAULT_TABLE_POLICY);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const read = useCallback(
+    () =>
+      Promise.all([
+        dataClient.listAutomations(),
+        dataClient.getTableAutomationPolicy({ kind, tableId: table.id }),
+      ]),
+    [kind, table.id]
+  );
   const load = useCallback(async () => {
-    const result = await dataClient.listAutomations();
+    const [result, savedPolicy] = await read();
     setAutomations(result?.automations ?? []);
-  }, []);
+    setPolicy(savedPolicy);
+  }, [read]);
   useEffect(() => {
     let active = true;
     setLoading(true);
-    void Promise.resolve()
-      .then(() => dataClient.listAutomations())
-      .then((result) => {
-        if (active) setAutomations(result?.automations ?? []);
+    setError('');
+    void read()
+      .then(([result, savedPolicy]) => {
+        if (active) {
+          setAutomations(result?.automations ?? []);
+          setPolicy(savedPolicy);
+        }
       })
       .catch((error) => {
         if (active) setError(String(error));
@@ -120,7 +129,7 @@ function TableAutomations({
     return () => {
       active = false;
     };
-  }, [mainView]);
+  }, [mainView, read]);
   const execute = async (action: () => Promise<unknown>) => {
     setBusy(true);
     setError('');
@@ -133,225 +142,223 @@ function TableAutomations({
       setBusy(false);
     }
   };
-  const referencesTable = (automation: Automation) =>
-    automation.actionGraph.nodes.some(
-      (node) =>
-        node.type === 'cloud.sync' &&
-        node.config.direction === (kind === 'raw' ? 'input' : 'output') &&
-        node.config[kind === 'raw' ? 'rawTableId' : 'resultTableId'] === table.id
-    );
-  const linked = automations.filter(
-    (a) =>
-      referencesTable(a) ||
-      (kind === 'result' && a.outputBindings?.some((b) => b.resultTableId === table.id))
-  );
-  const [enabled, setEnabled] = useState(false);
-  useEffect(() => {
-    if (linked.length > 0) setEnabled(true);
-  }, [linked.length]);
-  // Echo the linked automation in the dropdown — after linking (or returning
-  // from the automation editor) the select should show the link, not the placeholder.
-  const firstLinkedId = linked[0]?.id;
-  useEffect(() => {
-    if (!selectedId && firstLinkedId) setSelectedId(firstLinkedId);
-  }, [firstLinkedId, selectedId]);
-  // Linked automations always show their controls — an active link must stay
-  // visible. The switch only expands configuration for tables without links.
-  const hasLinks = linked.length > 0;
-  const effectiveEnabled = enabled || hasLinks;
+  const isLinkedNode = (node: Automation['actionGraph']['nodes'][number]) =>
+    node.type === 'cloud.sync' &&
+    node.config.direction === (kind === 'raw' ? 'input' : 'output') &&
+    node.config[kind === 'raw' ? 'rawTableId' : 'resultTableId'] === table.id;
+  const tableRef = { kind, tableId: table.id };
+  const matchesTable = (binding: { kind: 'raw' | 'result'; tableId: string }) =>
+    tableBindingKey(binding) === tableBindingKey(tableRef);
+  const position = (id: string) => {
+    const index = associationOrder.indexOf(id);
+    return index === -1 ? associationOrder.length : index;
+  };
+  const linked = automations
+    .filter((a) => getAutomationTableBindings(a).some(matchesTable))
+    .sort((a, b) => position(a.id) - position(b.id));
+  const available = automations.filter((a) => !linked.includes(a));
   const returnTarget: DataResourceTarget = {
     kind: kind === 'raw' ? 'raw_table' : 'result_table',
     id: table.id,
   };
-  const navigation = kind === 'raw' ? { rawTable: table, cloudSource } : { resultTable: table };
   // The automations UI often lives inside a portaled dialog — close it before
   // switching views or it stays on top of the automation editor.
   const navigateAndClose = (target: Parameters<typeof navigate>[0]) => {
     onNavigateAway?.();
     navigate({ ...target, returnTarget });
   };
-  const bind = async (automationId: string, runOnChange: boolean | null) => {
+  const bind = async (
+    automationId: string,
+    updates: { runOnChange?: boolean; runOnTrigger?: boolean } | null
+  ) => {
     // Read current associations so editing another output does not lose its links.
     const current = await dataClient.getAutomation(automationId);
     if (!current) throw new Error(t('data.resultTables.automation.missing'));
-    const bindings = (current.outputBindings ?? []).filter((b) => b.resultTableId !== table.id);
-    if (runOnChange !== null) bindings.push({ resultTableId: table.id, runOnChange });
-    const saved = await dataClient.updateAutomation(automationId, { outputBindings: bindings });
+    const bindings = getAutomationTableBindings(current);
+    const existing = bindings.find(matchesTable);
+    const tableBindings = bindings.filter((b) => !matchesTable(b));
+    if (updates !== null)
+      tableBindings.push({
+        ...tableRef,
+        runOnChange: updates.runOnChange ?? existing?.runOnChange ?? false,
+        runOnTrigger: updates.runOnTrigger ?? existing?.runOnTrigger ?? true,
+      });
+    const saved = await dataClient.updateAutomation(automationId, { tableBindings });
     if (!saved) throw new Error(t('data.resultTables.automation.missing'));
   };
-  // Graph links live in the action graph — unlink removes the cloud.sync node
-  // pointing at this table, not just an outputBindings entry.
-  const unlinkNode = async (automationId: string) => {
+  const confirmSyncRemoval = async (automation: Automation, switching = false) => {
+    const steps = automation.actionGraph.nodes
+      .map((node, index) => ({ node, index }))
+      .filter(({ node }) => isLinkedNode(node));
+    if (steps.length === 0) return true;
+    return confirm({
+      title: t('data.resultTables.automation.unlinkSyncTitle'),
+      confirmLabel: t(
+        switching
+          ? 'data.resultTables.automation.confirmSwitch'
+          : 'data.resultTables.automation.unlink'
+      ),
+      message: (
+        <span className="block max-h-64 overflow-y-auto whitespace-pre-line">
+          {t('data.resultTables.automation.unlinkSyncMessage', {
+            automation: automation.name,
+            table: table.name,
+          })}
+          {'\n'}
+          {steps
+            .map(({ node, index }) =>
+              t('data.resultTables.automation.unlinkSyncStep', {
+                index: index + 1,
+                name:
+                  node.label ||
+                  t(kind === 'raw' ? 'schedule.cloudInput.title' : 'schedule.cloudSync.title'),
+              })
+            )
+            .join('\n')}
+          {'\n'}
+          {t('data.resultTables.automation.unlinkSyncRetained')}
+        </span>
+      ),
+    });
+  };
+  // Remove both the subscription and its sync actions in one persisted update.
+  const unlink = async (automationId: string) => {
     const current = await dataClient.getAutomation(automationId);
     if (!current) throw new Error(t('data.resultTables.automation.missing'));
-    const nodes = current.actionGraph.nodes.filter(
-      (node) =>
-        !(
-          node.type === 'cloud.sync' &&
-          node.config.direction === (kind === 'raw' ? 'input' : 'output') &&
-          node.config[kind === 'raw' ? 'rawTableId' : 'resultTableId'] === table.id
-        )
-    );
+    if (!(await confirmSyncRemoval(current))) return;
+    const nodes = current.actionGraph.nodes.filter((node) => !isLinkedNode(node));
     const saved = await dataClient.updateAutomation(automationId, {
+      tableBindings: getAutomationTableBindings(current).filter((b) => !matchesTable(b)),
+      outputBindings: current.outputBindings?.filter(
+        (b) => kind !== 'result' || b.resultTableId !== table.id
+      ),
       actionGraph: relinkLinearGraph({ ...current.actionGraph, nodes }),
     });
     if (!saved) throw new Error(t('data.resultTables.automation.missing'));
   };
-  // The trigger strategy for a raw-table link lives on the cloud.sync input
-  // node — update the flag inside the automation's action graph.
-  const setNodeRunOnChange = async (automationId: string, runOnChange: boolean) => {
-    const current = await dataClient.getAutomation(automationId);
-    if (!current) throw new Error(t('data.resultTables.automation.missing'));
-    const nodes = current.actionGraph.nodes.map((node) =>
-      node.type === 'cloud.sync' &&
-      node.config.direction === 'input' &&
-      node.config.rawTableId === table.id
-        ? { ...node, config: { ...node.config, runOnChange } }
-        : node
-    );
-    const saved = await dataClient.updateAutomation(automationId, {
-      actionGraph: { ...current.actionGraph, nodes },
-    });
-    if (!saved) throw new Error(t('data.resultTables.automation.missing'));
-  };
-  const applyTableStrategy = async (value: 'automation' | 'change') => {
-    const runOnChange = value === 'change';
-    for (const automation of linked) {
-      if (kind === 'raw') await setNodeRunOnChange(automation.id, runOnChange);
-      else await bind(automation.id, runOnChange);
-    }
-  };
-  const selectedAutomation = automations.find((a) => a.id === selectedId);
-  const selectedLinked = Boolean(selectedAutomation && linked.includes(selectedAutomation));
-  // The trigger strategy is table-wide: it applies to every linked automation.
-  const linkedRunOnChange = (a: Automation): boolean =>
-    kind === 'raw'
-      ? a.actionGraph.nodes.some(
-          (node) =>
-            node.type === 'cloud.sync' &&
-            node.config.direction === 'input' &&
-            node.config.rawTableId === table.id &&
-            node.config.runOnChange === true
-        )
-      : Boolean(a.outputBindings?.some((b) => b.resultTableId === table.id && b.runOnChange));
-  const tableStrategy: 'automation' | 'change' =
-    linked.length > 0 && linked.every(linkedRunOnChange) ? 'change' : 'automation';
-  const selectedRunning = selectedAutomation?.status === 'running';
-  const runSelected = () => {
-    if (!selectedId) return;
+  const runAutomation = (automationId: string) => {
     void execute(async () => {
-      const run = await dataClient.runAutomation(selectedId);
+      const run = await dataClient.runAutomation(automationId);
       if (!run) throw new Error(t('data.resultTables.automation.missing'));
       if (run.status === 'failed') throw new Error(run.error || t('schedule.runFailed'));
     });
   };
-  const switchBlock = (
-    <div className="flex items-center gap-2">
-      <span
-        title={hasLinks ? t('data.resultTables.automation.locked') : undefined}
-        className="inline-flex"
-      >
-        <Switch
-          checked={effectiveEnabled}
-          onCheckedChange={setEnabled}
-          disabled={busy || hasLinks}
-          aria-label={t('data.resultTables.automation.title')}
-        />
-      </span>
-      <span className="text-[13px] text-text-secondary">
-        {effectiveEnabled
-          ? t('data.resultTables.automation.enabled')
-          : t('data.resultTables.automation.disabled')}
-      </span>
-      {hasLinks ? (
-        <span className="text-xs text-text-muted">{t('data.resultTables.automation.locked')}</span>
-      ) : null}
-    </div>
+  const countBlock = (
+    <span className="text-[13px] text-text-secondary">
+      {t('data.resultTables.automation.linkCount', { count: linked.length })}
+    </span>
   );
-  const controlsBlock = effectiveEnabled ? (
-    <div className="min-w-0 space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <RawTableSelect
-            value={selectedId}
-            disabled={busy}
-            options={[
-              { value: '', label: t('data.resultTables.automation.select') },
-              ...automations.map((a) => ({
-                value: a.id,
-                label: linked.includes(a)
-                  ? `${a.name} · ${t('data.resultTables.automation.linked')}`
-                  : a.name,
-              })),
-            ]}
-            onChange={setSelectedId}
-          />
-        </div>
-        <Button
-          size="md"
-          variant="ghost"
-          className="px-2"
-          title={t('data.resultTables.automation.run')}
-          aria-label={t('data.resultTables.automation.run')}
-          disabled={busy || !selectedId || selectedRunning}
-          onClick={runSelected}
+  const controlsBlock = (
+    <div
+      role="group"
+      aria-label={t('data.resultTables.automation.info')}
+      className="min-w-0 space-y-3"
+    >
+      {linked.length > 0 && (
+        <ul
+          aria-label={t('data.resultTables.automation.info')}
+          className="divide-y divide-border-muted"
         >
-          <Play className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="md"
-          variant="ghost"
-          className="px-2"
-          title={t('data.resultTables.automation.edit')}
-          aria-label={t('data.resultTables.automation.edit')}
-          disabled={busy || !selectedId}
-          onClick={() => navigateAndClose({ automationId: selectedId })}
-        >
-          <Settings className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="md"
-          disabled={loading || busy || !selectedId}
-          onClick={() => {
-            if (!selectedId) return;
-            if (selectedLinked && selectedAutomation) {
-              void execute(() =>
-                referencesTable(selectedAutomation)
-                  ? unlinkNode(selectedId)
-                  : bind(selectedId, null)
-              );
-            } else if (kind === 'raw') {
-              navigateAndClose({
-                automationId: selectedId,
-                rawTable: table,
-                cloudSource,
-              });
-            } else {
-              void execute(() => bind(selectedId, tableStrategy === 'change'));
-            }
-          }}
-        >
-          {selectedLinked ? <Unlink className="h-3.5 w-3.5" /> : null}
-          {selectedLinked
-            ? t('data.resultTables.automation.unlink')
-            : t('data.resultTables.automation.link')}
-        </Button>
-      </div>
-      <Button
-        size="md"
-        variant="secondary"
-        className="w-full justify-center border-dashed"
-        title={t('data.resultTables.automation.create')}
-        disabled={busy}
-        onClick={() => navigateAndClose(navigation)}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
-      {selectedAutomation?.lastError && (
-        <p className="text-xs text-error">
-          {t(selectedAutomation.lastError, { defaultValue: selectedAutomation.lastError })}
-        </p>
+          {linked.map((automation) => {
+            return (
+              <li
+                key={automation.id}
+                aria-label={automation.name}
+                className="min-w-0 space-y-2 py-3 first:pt-0"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <RawTableSelect
+                      searchPlaceholder={t('schedule.searchPlaceholder')}
+                      value={automation.id}
+                      disabled={busy || loading || automation.status === 'running'}
+                      options={[automation, ...available.filter((a) => a.status !== 'running')].map(
+                        (a) => ({ value: a.id, label: a.name })
+                      )}
+                      onChange={(nextId) => {
+                        if (nextId !== automation.id)
+                          void execute(async () => {
+                            const current = await dataClient.getAutomation(automation.id);
+                            if (!current)
+                              throw new Error(t('data.resultTables.automation.missing'));
+                            if (!(await confirmSyncRemoval(current, true))) return;
+                            await dataClient.replaceTableAutomationAssociation(
+                              tableRef,
+                              automation.id,
+                              nextId
+                            );
+                            setAssociationOrder(
+                              linked.map((a) => (a.id === automation.id ? nextId : a.id))
+                            );
+                          });
+                      }}
+                    />
+                  </div>
+                  <Button
+                    size="md"
+                    variant="ghost"
+                    className="px-2"
+                    title={t('data.resultTables.automation.run')}
+                    aria-label={t('data.resultTables.automation.run')}
+                    disabled={busy || automation.status === 'running'}
+                    onClick={() => runAutomation(automation.id)}
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="md"
+                    variant="ghost"
+                    className="px-2"
+                    title={t('data.resultTables.automation.edit')}
+                    aria-label={t('data.resultTables.automation.edit')}
+                    disabled={busy}
+                    onClick={() => navigateAndClose({ automationId: automation.id })}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="md"
+                    disabled={busy}
+                    onClick={() => void execute(() => unlink(automation.id))}
+                  >
+                    <Unlink className="h-3.5 w-3.5" />
+                    {t('data.resultTables.automation.unlink')}
+                  </Button>
+                </div>
+                {automation.lastError && (
+                  <p className="text-xs text-error">
+                    {t(automation.lastError, { defaultValue: automation.lastError })}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="md"
+            variant="secondary"
+            className="w-full justify-center border-dashed"
+            disabled={busy || loading || available.length === 0}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('data.resultTables.automation.addLink')}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {available.map((automation) => (
+            <DropdownMenuItem
+              key={automation.id}
+              disabled={busy || automation.status === 'running'}
+              onSelect={() => void execute(() => bind(automation.id, policy))}
+            >
+              {automation.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {loading && <p className="text-xs text-text-muted">{t('common.loading')}</p>}
       {error && (
         <p role="alert" className="text-xs text-error">
@@ -359,49 +366,72 @@ function TableAutomations({
         </p>
       )}
     </div>
-  ) : null;
-  // Table-wide trigger strategy — its own config row right below the
-  // automation info row, applied to every linked automation at once.
-  const strategySelect = effectiveEnabled ? (
-    <div className="w-44">
-      <RawTableSelect
-        value={tableStrategy}
-        disabled={busy || linked.length === 0}
-        options={[
-          {
-            value: 'automation',
-            label: t('data.resultTables.automation.triggerByAutomation'),
-          },
-          {
-            value: 'change',
-            label: t('data.resultTables.automation.triggerOnChange'),
-          },
-        ]}
-        onChange={(value) =>
-          void execute(() => applyTableStrategy(value as 'automation' | 'change'))
-        }
-      />
+  );
+  const conditions = (
+    <div
+      role="group"
+      aria-label={t('data.resultTables.automation.triggerCondition')}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2"
+    >
+      <label className="flex items-center gap-2 text-[13px] text-text-secondary">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-accent"
+          checked={policy.runOnChange}
+          disabled={busy || loading}
+          onChange={(event) =>
+            void execute(() =>
+              dataClient.setTableAutomationPolicy(tableRef, { runOnChange: event.target.checked })
+            )
+          }
+        />
+        {t('data.resultTables.automation.onTableChange')}
+      </label>
+      <label className="flex items-center gap-2 text-[13px] text-text-secondary">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 accent-accent"
+          checked={policy.runOnTrigger}
+          disabled={busy || loading}
+          onChange={(event) =>
+            void execute(() =>
+              dataClient.setTableAutomationPolicy(tableRef, { runOnTrigger: event.target.checked })
+            )
+          }
+        />
+        {t('data.resultTables.automation.inheritAutomation')}
+      </label>
     </div>
-  ) : null;
-  const strategyLabel = t('data.resultTables.automation.triggerMode');
-  const strategyRow = strategySelect ? (
-    Row ? (
-      <Row label={strategyLabel}>{strategySelect}</Row>
-    ) : (
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-secondary">{strategyLabel}</span>
-        {strategySelect}
-      </div>
-    )
-  ) : null;
+  );
+  const strategyRow = Row ? (
+    <Row label={t('data.resultTables.automation.triggerCondition')}>{conditions}</Row>
+  ) : (
+    <div className="space-y-2">
+      <span className="text-xs text-text-secondary">
+        {t('data.resultTables.automation.triggerCondition')}
+      </span>
+      {conditions}
+    </div>
+  );
+  const infoBlock = Row ? (
+    <Row label={t('data.resultTables.automation.info')} align="start">
+      {controlsBlock}
+    </Row>
+  ) : (
+    <div className="space-y-2">
+      <h4 className="text-[13px] font-medium text-text-secondary">
+        {t('data.resultTables.automation.info')}
+      </h4>
+      {controlsBlock}
+    </div>
+  );
   if (embedded) {
     const title = t('data.resultTables.automation.title');
-    const info = t('data.resultTables.automation.info');
     return (
       <>
-        {Row ? <Row label={title}>{switchBlock}</Row> : switchBlock}
-        {controlsBlock ? Row ? <Row label={info}>{controlsBlock}</Row> : controlsBlock : null}
+        {Row ? <Row label={title}>{countBlock}</Row> : countBlock}
         {strategyRow}
+        {infoBlock}
       </>
     );
   }
@@ -412,9 +442,9 @@ function TableAutomations({
           {t('data.resultTables.automation.title')}
         </h3>
       </div>
-      {switchBlock}
-      {controlsBlock}
+      {countBlock}
       {strategyRow}
+      {infoBlock}
     </div>
   );
 }

@@ -459,7 +459,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             };
             next.actionGraph = relinkLinearGraph({
               ...next.actionGraph,
-              nodes: [...next.actionGraph.nodes, node],
+              nodes: [node, ...next.actionGraph.nodes],
             });
           }
           setDraft(next);
@@ -475,7 +475,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           kind: 'manual',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         },
-        outputBindings: [{ resultTableId: table.id, runOnChange: true }],
+        tableBindings: [
+          { kind: 'result', tableId: table.id, runOnChange: true, runOnTrigger: true },
+        ],
         actionGraph: {
           version: 1,
           edges: [],
@@ -504,6 +506,32 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         outputNavigation.newRawTableName ||
         tr('schedule.cloudInput.title', '云端表同步到原始表');
       setSelectedId(null);
+      if (table && !cloudSource) {
+        setDraft({
+          ...createEmptyDraft(name),
+          triggerMode: 'manual',
+          trigger: {
+            kind: 'manual',
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          },
+          tableBindings: [
+            { kind: 'raw', tableId: table.id, runOnChange: true, runOnTrigger: false },
+          ],
+          actionGraph: {
+            version: 1,
+            edges: [],
+            nodes: [
+              {
+                id: crypto.randomUUID(),
+                type: 'data.pipeline.run',
+                enabled: true,
+                config: { pipelineId: '', outputMode: 'persisted' },
+              },
+            ],
+          },
+        });
+        return;
+      }
       setDraft({
         ...createEmptyDraft(name),
         actionGraph: {

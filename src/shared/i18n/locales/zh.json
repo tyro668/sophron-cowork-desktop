@@ -489,14 +489,21 @@
         "create": "新建自动化",
         "select": "选择已有自动化",
         "link": "关联",
+        "addLink": "添加自动化关联",
         "linked": "已关联",
-        "run": "立即运行",
+        "run": "运行完整自动化",
         "edit": "配置",
         "unlink": "解除关联",
         "locked": "已有关联的自动化，请先解除关联",
-        "triggerMode": "触发策略",
-        "triggerOnChange": "表变更后触发",
-        "triggerByAutomation": "依照自动化触发",
+        "linkCount": "已关联 {{count}} 个自动化",
+        "unlinkSyncTitle": "解除关联将移除同步步骤",
+        "confirmSwitch": "确认切换关联",
+        "unlinkSyncMessage": "解除“{{automation}}”与“{{table}}”的关联，将同时移除以下同步步骤：",
+        "unlinkSyncStep": "步骤 {{index}}：{{name}}",
+        "unlinkSyncRetained": "自动化本身、其他步骤及其他表的关联将保留。",
+        "triggerCondition": "触发策略",
+        "onTableChange": "本表更新成功后执行",
+        "inheritAutomation": "随自动化执行",
         "missing": "自动化已不存在，请刷新列表"
       }
     },
@@ -2610,6 +2617,7 @@
     "imagesCount_other": "+{{count}} 张图片"
   },
   "schedule": {
+    "executionSummary": "已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）",
     "dataPipelineLogic": "加工逻辑",
     "summary": {
       "total": "自动化任务",
@@ -2650,7 +2658,7 @@
       "duration": "耗时",
       "artifacts": "产物",
       "delivery": "交付",
-      "error": "错误信息"
+      "error": "执行说明"
     },
     "runStatus": {
       "queued": "排队中",
@@ -2665,7 +2673,7 @@
       "retry": "重试",
       "queued_overlap": "排队",
       "file_change": "文件变更",
-      "output_change": "结果表更新"
+      "output_change": "表数据更新"
     },
     "deliveryStatus": {
       "pending": "待交付",
@@ -2996,7 +3004,7 @@
     "pickerSuggestions": "常用建议",
     "noActions": "还没有动作，点击右上角「添加动作」。",
     "triggerManual": "手动触发",
-    "outputChangeTrigger": "结果表更新后执行",
+    "outputChangeTrigger": "关联表更新后执行",
     "cloudSync": {
       "title": "结果表写入网盘文件",
       "login": "登录云空间",

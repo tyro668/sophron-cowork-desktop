@@ -111,7 +111,7 @@ describe('output table automation integration', () => {
     f.service.setEnabled(disabled.id, false);
     const paused = f.create('a');
     f.service.pause(paused.id);
-    f.create('a', false);
+    f.create('unwatched', false);
     await f.service.runForResultTables(['a', 'b', 'a']);
     await vi.waitFor(() => expect(f.store.listRuns(active.id)[0]?.status).toBe('succeeded'));
     expect(f.execute).toHaveBeenCalledTimes(1);

@@ -1,8 +1,18 @@
-import { automationRunScope } from './automation-run-scope';
+import {
+  automationTableBindingsSchema,
+  automationTableRefSchema,
+  automationTablePolicyPatchSchema,
+  getAutomationTableBindings,
+  tableBindingKey,
+} from '../../shared/automation/table-bindings';
+import { automationRunScope, automationTableChangeScope } from './automation-run-scope';
 import { cloudSyncSchema } from '../../shared/automation/cloud-sync';
 import { z } from 'zod';
 import type {
   Automation,
+  AutomationTableRef,
+  AutomationTablePolicy,
+  AutomationTableTriggerContext,
   AutomationActionDefinitionSummary,
   AutomationArtifact,
   AutomationAssignGroupInput,
@@ -26,6 +36,7 @@ const outputBindingsSchema = z
     z.object({
       resultTableId: z.string().trim().min(1),
       runOnChange: z.boolean(),
+      runOnTrigger: z.boolean().optional(),
     })
   )
   .refine(
@@ -54,6 +65,98 @@ export class AutomationService {
     this.now = options.now ?? (() => Date.now());
   }
 
+  getTablePolicy(table: AutomationTableRef): AutomationTablePolicy {
+    return this.store.getTablePolicy(automationTableRefSchema.parse(table));
+  }
+
+  setTablePolicy(
+    table: AutomationTableRef,
+    patch: Partial<AutomationTablePolicy>
+  ): AutomationTablePolicy {
+    return this.store.setTablePolicy(
+      automationTableRefSchema.parse(table),
+      automationTablePolicyPatchSchema.parse(patch)
+    );
+  }
+
+  replaceTableAssociation(table: AutomationTableRef, previousId: string, nextId: string): void {
+    const ref = automationTableRefSchema.parse(table);
+    const previous = this.store.get(previousId);
+    const next = this.store.get(nextId);
+    if (!previous || !next) throw new Error('Automation no longer exists');
+    if (previousId === nextId) return;
+    const matches = (binding: AutomationTableRef) =>
+      tableBindingKey(binding) === tableBindingKey(ref);
+    if (!getAutomationTableBindings(previous).some(matches))
+      throw new Error('Association no longer exists');
+    if (getAutomationTableBindings(next).some(matches))
+      throw new Error('Automation is already linked');
+    if (previous.lockedRunId || next.lockedRunId)
+      throw new Error('Cannot replace a running automation association');
+    const removed = new Set(
+      previous.actionGraph.nodes
+        .filter(
+          (node) =>
+            node.type === 'cloud.sync' &&
+            node.config.direction === (ref.kind === 'raw' ? 'input' : 'output') &&
+            node.config[ref.kind === 'raw' ? 'rawTableId' : 'resultTableId'] === ref.tableId
+        )
+        .map((node) => node.id)
+    );
+    // Bypass removed sync nodes, preserving branches and unrelated actions.
+    let edges = [...previous.actionGraph.edges];
+    for (const id of removed) {
+      const incoming = edges.filter((edge) => edge.targetNodeId === id);
+      const outgoing = edges.filter((edge) => edge.sourceNodeId === id);
+      edges = edges.filter((edge) => edge.sourceNodeId !== id && edge.targetNodeId !== id);
+      for (const source of incoming)
+        for (const target of outgoing) {
+          if (
+            !edges.some(
+              (edge) =>
+                edge.sourceNodeId === source.sourceNodeId &&
+                edge.targetNodeId === target.targetNodeId
+            )
+          ) {
+            edges.push({
+              id: `relink:${source.sourceNodeId}:${target.targetNodeId}`,
+              sourceNodeId: source.sourceNodeId,
+              targetNodeId: target.targetNodeId,
+            });
+          }
+        }
+    }
+    const actionGraph = {
+      ...previous.actionGraph,
+      nodes: previous.actionGraph.nodes.filter((node) => !removed.has(node.id)),
+      edges,
+    };
+    this.validateActionGraph(actionGraph);
+    this.store.updateTogether([
+      {
+        id: previousId,
+        updates: {
+          tableBindings: getAutomationTableBindings(previous).filter(
+            (binding) => !matches(binding)
+          ),
+          outputBindings: previous.outputBindings?.filter(
+            (binding) => ref.kind !== 'result' || binding.resultTableId !== ref.tableId
+          ),
+          actionGraph,
+        },
+      },
+      {
+        id: nextId,
+        updates: {
+          tableBindings: [
+            ...getAutomationTableBindings(next),
+            { ...ref, ...this.store.getTablePolicy(ref) },
+          ],
+        },
+      },
+    ]);
+  }
+
   list(query?: AutomationListQuery): AutomationListResult {
     return this.store.list(query);
   }
@@ -67,6 +170,9 @@ export class AutomationService {
     const outputBindings = outputBindingsSchema.parse(input.outputBindings ?? []);
     return this.store.create({
       ...input,
+      ...(input.tableBindings === undefined
+        ? {}
+        : { tableBindings: automationTableBindingsSchema.parse(input.tableBindings) }),
       outputBindings,
       trigger: normalizeAutomationTrigger(input.trigger),
     });
@@ -83,7 +189,32 @@ export class AutomationService {
       const current = this.store.get(id);
       if (current) this.validateActionGraph(current.actionGraph);
     }
-    return this.store.update(id, { ...input, ...(outputBindings ? { outputBindings } : {}) });
+    let tableBindings =
+      input.tableBindings === undefined
+        ? undefined
+        : automationTableBindingsSchema.parse(input.tableBindings);
+    // Once converted, the canonical list remains authoritative. Adding a new
+    // sync action creates a default link without resurrecting removed links.
+    if (input.actionGraph) {
+      const current = this.store.get(id);
+      if (current && (tableBindings ?? current.tableBindings) !== undefined) {
+        const base = tableBindings ?? current.tableBindings!;
+        const before = new Set(
+          getAutomationTableBindings({ actionGraph: current.actionGraph }).map(tableBindingKey)
+        );
+        const added = getAutomationTableBindings({ actionGraph: input.actionGraph }).filter(
+          (binding) =>
+            !before.has(tableBindingKey(binding)) &&
+            !base.some((b) => tableBindingKey(b) === tableBindingKey(binding))
+        );
+        tableBindings = [...base, ...added];
+      }
+    }
+    return this.store.update(id, {
+      ...input,
+      ...(outputBindings ? { outputBindings } : {}),
+      ...(tableBindings === undefined ? {} : { tableBindings }),
+    });
   }
 
   delete(id: string): { success: boolean } {
@@ -163,13 +294,17 @@ export class AutomationService {
 
   async runTriggered(
     id: string,
-    reason: 'timer' | 'file_change' | 'output_change'
+    reason: 'timer' | 'file_change' | 'output_change',
+    context?: AutomationTableTriggerContext
   ): Promise<AutomationRun | null> {
     const automation = this.store.get(id);
     if (!automation || !automation.enabled || automation.status === 'paused') return null;
+    if (reason === 'output_change' && this.runner.hasQueuedRun(automation.id)) {
+      return this.runner.queueOnce(automation, reason, context);
+    }
     if (automation.lockedRunId) {
       if (automation.concurrencyPolicy.overlapPolicy === 'queue_once') {
-        if (reason === 'output_change') return this.runner.queueOnce(automation, reason);
+        if (reason === 'output_change') return this.runner.queueOnce(automation, reason, context);
         return this.store.createRun({
           automationId: automation.id,
           status: 'queued',
@@ -179,46 +314,35 @@ export class AutomationService {
       }
       return null;
     }
-    return this.runner.run(automation, reason);
+    return this.runner.run(automation, reason, context);
   }
 
   async runForResultTables(resultTableIds: string[]): Promise<void> {
-    const committed = new Set(resultTableIds);
-    const ancestors = automationRunScope.getStore() ?? [];
-    for (const automation of this.store.list({ status: 'all' }).automations) {
-      if (
-        !automation.outputBindings?.some(
-          (binding) => binding.runOnChange && committed.has(binding.resultTableId)
-        )
-      )
-        continue;
-      // Skip causal cycles and coalesce commits already waiting in the queue.
-      // Independent overlapping changes still honor the automation's policy.
-      if (this.runner.hasQueuedRun(automation.id) || ancestors.includes(automation.id)) continue;
-      void this.runTriggered(automation.id, 'output_change').catch((error) => {
-        console.warn('[Automation] Output trigger failed:', automation.id, error);
-      });
-    }
+    return this.runForTables('result', resultTableIds);
   }
 
-  // Mirrors runForResultTables for input tables: a raw-table data commit runs
-  // automations whose cloud.sync input node points at it with runOnChange set.
   async runForRawTables(rawTableIds: string[]): Promise<void> {
-    const committed = new Set(rawTableIds);
+    return this.runForTables('raw', rawTableIds);
+  }
+
+  private async runForTables(kind: 'raw' | 'result', tableIds: string[]): Promise<void> {
+    const committed = new Set(tableIds);
+    const activeChanges = automationTableChangeScope.getStore();
+    if (activeChanges) {
+      const all = new Map(activeChanges.tables.map((table) => [tableBindingKey(table), table]));
+      for (const tableId of committed)
+        all.set(tableBindingKey({ kind, tableId }), { kind, tableId });
+      activeChanges.tables = [...all.values()];
+    }
     const ancestors = automationRunScope.getStore() ?? [];
     for (const automation of this.store.list({ status: 'all' }).automations) {
-      const linked = automation.actionGraph.nodes.some(
-        (node) =>
-          node.type === 'cloud.sync' &&
-          node.config.direction === 'input' &&
-          node.config.runOnChange === true &&
-          typeof node.config.rawTableId === 'string' &&
-          committed.has(node.config.rawTableId)
+      if (ancestors.includes(automation.id)) continue;
+      const tables = getAutomationTableBindings(automation).filter(
+        (binding) => binding.kind === kind && binding.runOnChange && committed.has(binding.tableId)
       );
-      if (!linked) continue;
-      if (this.runner.hasQueuedRun(automation.id) || ancestors.includes(automation.id)) continue;
-      void this.runTriggered(automation.id, 'output_change').catch((error) => {
-        console.warn('[Automation] Input trigger failed:', automation.id, error);
+      if (!tables.length) continue;
+      void this.runTriggered(automation.id, 'output_change', { tables }).catch((error) => {
+        console.warn('[Automation] Table change dispatch failed:', automation.id, error);
       });
     }
   }

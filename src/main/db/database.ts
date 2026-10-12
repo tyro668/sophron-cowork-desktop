@@ -1,3 +1,8 @@
+import {
+  getAutomationTableBindings,
+  tableBindingKey,
+} from '../../shared/automation/table-bindings';
+import type { AutomationTableBinding } from '../../shared/automation/types';
 /**
  * SQLite database implementation using better-sqlite3
  * Provides persistent storage for sessions, messages, and other data
@@ -699,6 +704,67 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
         ALTER TABLE automations ADD COLUMN group_id TEXT;
         CREATE INDEX IF NOT EXISTS idx_automations_group ON automations(group_id);
       `);
+    },
+  },
+  {
+    version: 5,
+    name: 'automation_table_bindings',
+    up: (database) => {
+      database.exec('ALTER TABLE automations ADD COLUMN table_bindings_json TEXT');
+    },
+  },
+  {
+    version: 6,
+    name: 'automation_execution_summary',
+    up: (database) => {
+      database.exec('ALTER TABLE automation_runs ADD COLUMN execution_summary_json TEXT');
+    },
+  },
+  {
+    version: 7,
+    name: 'shared_table_automation_policies',
+    up: (database) => {
+      database.exec(`CREATE TABLE automation_table_policies (
+        table_kind TEXT NOT NULL, table_id TEXT NOT NULL,
+        run_on_change INTEGER NOT NULL, run_on_trigger INTEGER NOT NULL,
+        PRIMARY KEY (table_kind, table_id)
+      )`);
+      const policies = new Map<string, AutomationTableBinding>();
+      const rows = database
+        .prepare(
+          'SELECT action_graph_json, table_bindings_json, output_bindings_json FROM automations'
+        )
+        .all() as Array<{
+        action_graph_json: string;
+        table_bindings_json: string | null;
+        output_bindings_json: string;
+      }>;
+      for (const row of rows) {
+        const bindings = getAutomationTableBindings({
+          actionGraph: JSON.parse(row.action_graph_json),
+          tableBindings:
+            row.table_bindings_json == null ? undefined : JSON.parse(row.table_bindings_json),
+          outputBindings: JSON.parse(row.output_bindings_json),
+        });
+        for (const binding of bindings) {
+          const previous = policies.get(tableBindingKey(binding));
+          // Conflicting legacy settings migrate conservatively: do not enable
+          // a trigger that was explicitly off on an existing association.
+          policies.set(tableBindingKey(binding), {
+            ...binding,
+            runOnChange: binding.runOnChange && (previous?.runOnChange ?? true),
+            runOnTrigger: binding.runOnTrigger && (previous?.runOnTrigger ?? true),
+          });
+        }
+      }
+      const insert = database.prepare('INSERT INTO automation_table_policies VALUES (?, ?, ?, ?)');
+      for (const policy of policies.values())
+        insert.run(
+          policy.kind,
+          policy.tableId,
+          Number(policy.runOnChange),
+          Number(policy.runOnTrigger)
+        );
     },
   },
 ];

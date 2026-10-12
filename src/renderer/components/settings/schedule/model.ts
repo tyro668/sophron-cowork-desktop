@@ -414,6 +414,7 @@ export function automationToDraft(automation: Automation): AutomationDraft {
   return {
     name: automation.name,
     outputBindings: automation.outputBindings ?? [],
+    tableBindings: automation.tableBindings,
     description: automation.description ?? '',
     projectId: automation.projectId ?? '',
     enabled: automation.enabled && automation.status !== 'paused',
@@ -433,6 +434,7 @@ export function draftToPayload(
   return {
     name: draft.name,
     outputBindings: draft.outputBindings ?? [],
+    tableBindings: draft.tableBindings,
     description: draft.description || null,
     projectId: draft.projectId || null,
     enabled: draft.enabled,

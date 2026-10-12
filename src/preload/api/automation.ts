@@ -18,6 +18,11 @@ import type { ElectronApi } from '../../shared/contracts/electron-api';
 
 export function createAutomationApi(): ElectronApi['automation'] {
   return {
+    replaceTableAssociation: (table, previousId, nextId) =>
+      ipcRenderer.invoke('automation.tableAssociation.replace', table, previousId, nextId),
+    getTablePolicy: (table) => ipcRenderer.invoke('automation.tablePolicy.get', table),
+    setTablePolicy: (table, patch) =>
+      ipcRenderer.invoke('automation.tablePolicy.set', table, patch),
     list: (query?: AutomationListQuery): Promise<AutomationListResult> =>
       ipcRenderer.invoke('automation.list', query),
     get: (id: string): Promise<Automation | null> => ipcRenderer.invoke('automation.get', id),

@@ -15,6 +15,8 @@ const cloudInputSyncShape = z.object({
   rawTableName: optionalName,
   // Run the automation when the linked input table's data commits.
   runOnChange: z.boolean().optional(),
+  // Legacy schedule participation, read only when tableBindings is absent.
+  runOnTrigger: z.boolean().optional(),
 });
 
 const cloudOutputSyncShape = z.object({
@@ -28,6 +30,7 @@ const cloudOutputSyncShape = z.object({
   fileId: optionalName,
   fileName: optionalName,
   version: z.number().int().nonnegative().optional(),
+  runOnTrigger: z.boolean().optional(),
 });
 
 // Direction-free shapes used by the data command layer; node configs add `direction`.

@@ -1641,10 +1641,22 @@ export function RawTableEditorWorkbench({
   );
 }
 
-export function RawTableConfigRow({ label, children }: { label: ReactNode; children: ReactNode }) {
+export function RawTableConfigRow({
+  label,
+  children,
+  align = 'center',
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  align?: 'start' | 'center';
+}) {
   return (
     <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 lg:grid-cols-[10rem_minmax(0,1fr)]">
-      <div className="text-[13px] font-medium text-text-secondary">{label}</div>
+      <div
+        className={`text-[13px] font-medium text-text-secondary ${align === 'start' ? 'lg:self-start lg:pt-1.5' : ''}`}
+      >
+        {label}
+      </div>
       <div className="min-w-0">{children}</div>
     </div>
   );

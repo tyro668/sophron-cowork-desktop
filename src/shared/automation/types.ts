@@ -171,9 +171,28 @@ export interface AutomationDeliveryChannel {
   config: Record<string, unknown>;
 }
 
+export interface AutomationTableRef {
+  kind: 'raw' | 'result';
+  tableId: string;
+}
+
+export interface AutomationTablePolicy {
+  runOnChange: boolean;
+  runOnTrigger: boolean;
+}
+
+/** Flags are a resolved snapshot of the table's shared policy, not overrides. */
+export interface AutomationTableBinding extends AutomationTableRef, AutomationTablePolicy {}
+
+export interface AutomationTableTriggerContext {
+  tables: AutomationTableRef[];
+}
+
 export interface AutomationOutputBinding {
   resultTableId: string;
   runOnChange: boolean;
+  /** Legacy schedule participation; canonical conditions live in tableBindings. */
+  runOnTrigger?: boolean;
 }
 
 export interface AutomationGroup {
@@ -197,6 +216,8 @@ export interface AutomationAssignGroupInput {
 }
 
 export interface Automation {
+  tableBindings?: AutomationTableBinding[];
+  /** Legacy bindings; used only until tableBindings is saved. */
   outputBindings?: AutomationOutputBinding[];
   id: string;
   name: string;
@@ -220,6 +241,11 @@ export interface Automation {
 }
 
 export interface AutomationRun {
+  executionSummary?: {
+    tables: AutomationTableRef[];
+    executedNodeIds: string[];
+    skippedNodeIds: string[];
+  };
   id: string;
   automationId: string;
   status: AutomationRunStatus;
@@ -280,6 +306,8 @@ export interface AutomationListResult {
 }
 
 export interface AutomationCreateInput {
+  tableBindings?: AutomationTableBinding[];
+  /** Legacy bindings; used only until tableBindings is saved. */
   outputBindings?: AutomationOutputBinding[];
   name: string;
   description?: string | null;
@@ -293,6 +321,8 @@ export interface AutomationCreateInput {
 }
 
 export interface AutomationUpdateInput {
+  tableBindings?: AutomationTableBinding[];
+  /** Legacy bindings; used only until tableBindings is saved. */
   outputBindings?: AutomationOutputBinding[];
   name?: string;
   description?: string | null;

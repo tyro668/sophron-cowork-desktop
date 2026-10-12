@@ -1,3 +1,4 @@
+import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
 import type { RemoteQrSetupState, RemoteQrChannel } from './remote/qr-setup';
 /**
  * @module shared/contracts/electron-api
@@ -496,6 +497,16 @@ export interface ElectronApi {
     runNow: (id: string) => Promise<ScheduleTask | null>;
   };
   automation: {
+    replaceTableAssociation: (
+      table: AutomationTableRef,
+      previousId: string,
+      nextId: string
+    ) => Promise<void>;
+    getTablePolicy: (table: AutomationTableRef) => Promise<AutomationTablePolicy>;
+    setTablePolicy: (
+      table: AutomationTableRef,
+      patch: Partial<AutomationTablePolicy>
+    ) => Promise<AutomationTablePolicy>;
     list: (query?: AutomationListQuery) => Promise<AutomationListResult>;
     get: (id: string) => Promise<Automation | null>;
     create: (payload: AutomationCreateInput) => Promise<Automation>;

@@ -1,3 +1,4 @@
+import { getAutomationTableBindings } from '../../../../shared/automation/table-bindings';
 import { useState, type ReactNode } from 'react';
 import {
   ArrowUpDown,
@@ -345,8 +346,11 @@ function AutomationRunTable({
               <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
                 {formatDeliveryStatus(run.deliveryStatus, tr)}
               </td>
-              <td className="truncate px-2 text-[12px] text-text-muted" title={run.error ?? ''}>
-                {run.error ?? '-'}
+              <td
+                className="truncate px-2 text-[12px] text-text-muted"
+                title={formatExecutionSummary(run, tr)}
+              >
+                {formatExecutionSummary(run, tr)}
               </td>
             </tr>
           ))}
@@ -556,7 +560,7 @@ function formatAutomationNextRun(
   tr: (key: string, fallback: string) => string
 ): string {
   if (automation.trigger.kind === 'manual') {
-    if (automation.outputBindings?.some((binding) => binding.runOnChange))
+    if (getAutomationTableBindings(automation).some((binding) => binding.runOnChange))
       return tr('schedule.outputChangeTrigger', '结果表更新后执行');
     return tr('schedule.noAutoTrigger', '无自动触发');
   }
@@ -720,4 +724,18 @@ function LoadingState({ label }: { label: string }) {
       </div>
     </div>
   );
+}
+
+function formatExecutionSummary(
+  run: AutomationRun,
+  tr: (key: string, fallback: string) => string
+): string {
+  if (run.error) return run.error;
+  if (!run.executionSummary) return '-';
+  return tr(
+    'schedule.executionSummary',
+    '已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）'
+  )
+    .replace('{{executed}}', String(run.executionSummary.executedNodeIds.length))
+    .replace('{{skipped}}', String(run.executionSummary.skippedNodeIds.length));
 }

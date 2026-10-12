@@ -1,5 +1,7 @@
 import type {
   AutomationAssignGroupInput,
+  AutomationTableRef,
+  AutomationTablePolicy,
   AutomationCreateGroupInput,
   AutomationCreateInput,
   AutomationListQuery,
@@ -11,6 +13,24 @@ import { handleIpc } from '../../ipc-handle';
 import { requireAutomationService, rescheduleAutomations } from './service';
 
 export function registerAutomationIpc(): void {
+  handleIpc(
+    'automation.tableAssociation.replace',
+    (_event, table: AutomationTableRef, previousId: string, nextId: string) => {
+      requireAutomationService().replaceTableAssociation(table, previousId, nextId);
+      rescheduleAutomations();
+    }
+  );
+  handleIpc('automation.tablePolicy.get', (_event, table: AutomationTableRef) =>
+    requireAutomationService().getTablePolicy(table)
+  );
+  handleIpc(
+    'automation.tablePolicy.set',
+    (_event, table: AutomationTableRef, patch: Partial<AutomationTablePolicy>) => {
+      const policy = requireAutomationService().setTablePolicy(table, patch);
+      rescheduleAutomations();
+      return policy;
+    }
+  );
   handleIpc('automation.list', (_event, query?: AutomationListQuery) => {
     return requireAutomationService().list(query);
   });
