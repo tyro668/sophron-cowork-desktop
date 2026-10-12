@@ -174,7 +174,7 @@ export function registerRawTablesIpc({
       }
       const filters =
         payload.format === 'csv'
-          ? [{ name: 'CSV', extensions: ['csv'] }]
+          ? [{ name: 'Csv', extensions: ['csv'] }]
           : payload.format === 'xlsx'
             ? [{ name: 'Excel', extensions: ['xlsx'] }]
             : [{ name: 'HTML', extensions: ['html'] }];

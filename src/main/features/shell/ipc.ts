@@ -77,9 +77,9 @@ export function registerShellIpc(): void {
           : kind === 'csv'
             ? {
                 properties: ['openFile'],
-                title: 'Select CSV Input Table',
+                title: 'Select Csv Input Table',
                 filters: [
-                  { name: 'CSV or TSV', extensions: ['csv', 'tsv', 'tab'] },
+                  { name: 'Csv or TSV', extensions: ['csv', 'tsv', 'tab'] },
                   { name: 'All Files', extensions: ['*'] },
                 ],
               }
@@ -87,7 +87,7 @@ export function registerShellIpc(): void {
                 properties: ['openFile', 'openDirectory'],
                 title: 'Select Input Table Source',
                 filters: [
-                  { name: 'Excel or CSV', extensions: ['xlsx', 'xls', 'csv', 'tsv', 'tab'] },
+                  { name: 'Excel or Csv', extensions: ['xlsx', 'xls', 'csv', 'tsv', 'tab'] },
                   { name: 'All Files', extensions: ['*'] },
                 ],
               };

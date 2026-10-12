@@ -1247,7 +1247,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       ) : (
         <div className="border-t border-border-subtle">
-          <div className="flex h-14 w-full items-center gap-2 bg-surface px-4">
+          <div className="flex h-12 w-full items-center gap-2 bg-surface px-4">
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}

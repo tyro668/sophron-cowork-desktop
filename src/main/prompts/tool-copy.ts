@@ -29,13 +29,13 @@ export const DATA_TOOL_COPY = {
   data_import_cloud_table: {
     label: 'Import cloud table',
     description:
-      'Export a personal analysis cloud/mock table as CSV, download it locally, and create a cowork raw table from it.' +
+      'Export a personal analysis cloud/mock table as Csv, download it locally, and create a cowork raw table from it.' +
       CLOUD_CONNECTION_RETRY_GUIDANCE,
   },
   data_upload_table_to_cloud: {
     label: 'Upload table to cloud',
     description:
-      'Export a cowork raw/result table to CSV, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode. For workflow outputs, only upload after a mode=persisted run and an result-table preview confirms the final rows.' +
+      'Export a cowork raw/result table to Csv, upload it to personal analysis cloud/mock storage, and submit an import with CREATE or REPLACE mode. For workflow outputs, only upload after a mode=persisted run and an result-table preview confirms the final rows.' +
       CLOUD_CONNECTION_RETRY_GUIDANCE,
   },
   data_create_raw_table: {
@@ -46,7 +46,7 @@ export const DATA_TOOL_COPY = {
   data_create_raw_table_with_processing_strategy: {
     label: 'Create raw table with processing strategy',
     description:
-      'Create a raw table using an explicit data-processing strategy. Use strategy=auto for built-in import. Use strategy=customize for complex Excel/CSV/folder standardization: the app samples the source, generates a normalizer project through the configured LLM, previews it, publishes the version, then imports the raw table bound to that published strategy.',
+      'Create a raw table using an explicit data-processing strategy. Use strategy=auto for built-in import. Use strategy=customize for complex Excel/Csv/folder standardization: the app samples the source, generates a normalizer project through the configured LLM, previews it, publishes the version, then imports the raw table bound to that published strategy.',
   },
   data_update_raw_table: {
     label: 'Update raw table',
@@ -236,7 +236,7 @@ export const TOOL_SCHEMA_COPY = {
     datasourceId:
       'Cloud space datasource id used for this upload. If omitted, the tool uses the only available datasource; when multiple datasources are available, ask the user to choose one.',
     replaceTableId: 'Required when writeMode=REPLACE. Must be omitted for CREATE.',
-    uploadFileName: 'CSV file name sent to the upload API.',
+    uploadFileName: 'Csv file name sent to the upload API.',
     authorizedFilePath: 'Authorized local file path.',
     authorizedFolderPath: 'Authorized local folder path.',
     sourceRawTableId: 'Optional raw table id to initialize the result table.',

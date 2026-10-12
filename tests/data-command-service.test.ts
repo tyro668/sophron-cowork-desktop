@@ -964,7 +964,7 @@ function main() {
       name: 'customers normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
-      rulePrompt: 'Normalize the customer CSV into a standard table.',
+      rulePrompt: 'Normalize the customer Csv into a standard table.',
       primaryLanguage: 'node',
     });
 
@@ -1016,7 +1016,7 @@ function main() {
       name: 'customers normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
-      rulePrompt: 'Normalize the customer CSV into a standard table with a second draft.',
+      rulePrompt: 'Normalize the customer Csv into a standard table with a second draft.',
       primaryLanguage: 'node',
     });
     expect(secondDraft.version.status).toBe('draft');
@@ -1061,7 +1061,7 @@ function main() {
       previewRows: 2,
       processingStrategy: {
         strategy: 'customize',
-        rulePrompt: 'Normalize the customer CSV into a standard two-dimensional table.',
+        rulePrompt: 'Normalize the customer Csv into a standard two-dimensional table.',
         primaryLanguage: 'node',
       },
     });
@@ -1088,7 +1088,7 @@ function main() {
       name: 'customers normalizer',
       sourcePath: csvPath,
       sourceKind: 'csv',
-      rulePrompt: 'Normalize the customer CSV into a standard table.',
+      rulePrompt: 'Normalize the customer Csv into a standard table.',
       primaryLanguage: 'node',
       onProgress: (event) => progressEvents.push(event),
     });
@@ -1224,7 +1224,7 @@ function main() {
     });
   });
 
-  it('previews normalizer CSV output with quoted multiline headers', async () => {
+  it('previews normalizer Csv output with quoted multiline headers', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'source.csv');
     fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
@@ -1318,7 +1318,7 @@ function main() {
       name: 'monthly normalizer',
       sourcePath: folderPath,
       sourceKind: 'folder',
-      rulePrompt: 'Combine monthly CSV files into a standard table.',
+      rulePrompt: 'Combine monthly Csv files into a standard table.',
       primaryLanguage: 'node',
     });
     expect(draft.summary.fileCount).toBe(2);
@@ -2285,7 +2285,7 @@ function main() {
         tableName: input.rawTable.name,
       },
       processRequirement:
-        '把这张 CSV 清洗成标准价格明细表：删除“记录数”，统一字段名，Adj Close 去掉 $ 转数值，NULL 置空，Ticker 转大写，并从 Date 提取年份和月份。',
+        '把这张 Csv 清洗成标准价格明细表：删除“记录数”，统一字段名，Adj Close 去掉 $ 转数值，NULL 置空，Ticker 转大写，并从 Date 提取年份和月份。',
       output: {
         location: 'local',
         writeMode: 'create',

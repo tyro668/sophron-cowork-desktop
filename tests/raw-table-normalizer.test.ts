@@ -44,7 +44,7 @@ describe('input table normalizer templates', () => {
   });
 
   it('creates a standard Node project with lock file metadata', () => {
-    const template = createRawTableNormalizerProjectTemplate('node', 'Read CSV files.');
+    const template = createRawTableNormalizerProjectTemplate('node', 'Read Csv files.');
 
     expect(template.primaryLanguage).toBe('node');
     expect(template.runtime).toMatchObject({ language: 'node', environment: 'npm' });
@@ -305,7 +305,7 @@ describe('input table normalizer runner', () => {
     const sourcePath = path.join(tempRoot, 'source.csv');
     const workspaceRoot = path.join(tempRoot, 'data', 'raw-table-normalizers', 'runs');
     fs.writeFileSync(sourcePath, 'id,name\n1,Alice\n', 'utf8');
-    const template = createRawTableNormalizerProjectTemplate('node', 'Normalize CSV.');
+    const template = createRawTableNormalizerProjectTemplate('node', 'Normalize Csv.');
     const files = template.files.map((file) =>
       file.path === 'src/transform.js'
         ? { ...file, content: GENERATED_NODE_NORMALIZER_TRANSFORM }
@@ -318,7 +318,7 @@ describe('input table normalizer runner', () => {
       status: 'draft',
       files,
       fileTreeHash: createNormalizerFileTreeHash(files),
-      rulePrompt: 'Normalize CSV.',
+      rulePrompt: 'Normalize Csv.',
       sourceSummaryHash: 'summary_hash',
       entrypoint: template.entrypoint,
       dependencyPrepare: template.dependencyPrepare,
@@ -356,7 +356,7 @@ describe('input table normalizer runner', () => {
     const sourcePath = path.join(tempRoot, 'source.csv');
     const workspaceRoot = path.join(tempRoot, 'data', 'raw-table-normalizers', 'runs');
     fs.writeFileSync(sourcePath, 'id,name\n1,Alice\n', 'utf8');
-    const template = createRawTableNormalizerProjectTemplate('python', 'Normalize CSV.');
+    const template = createRawTableNormalizerProjectTemplate('python', 'Normalize Csv.');
     const files = template.files.map((file) =>
       file.path === 'normalizer/transform.py'
         ? { ...file, content: GENERATED_PYTHON_NORMALIZER_TRANSFORM }
@@ -369,7 +369,7 @@ describe('input table normalizer runner', () => {
       status: 'draft',
       files,
       fileTreeHash: createNormalizerFileTreeHash(files),
-      rulePrompt: 'Normalize CSV.',
+      rulePrompt: 'Normalize Csv.',
       sourceSummaryHash: 'summary_hash',
       entrypoint: template.entrypoint,
       dependencyPrepare: template.dependencyPrepare,
@@ -421,7 +421,7 @@ describe('input table normalizer runner', () => {
       'version_project'
     );
     fs.writeFileSync(sourcePath, 'id,name\n1,Alice\n', 'utf8');
-    const template = createRawTableNormalizerProjectTemplate('node', 'Normalize CSV.');
+    const template = createRawTableNormalizerProjectTemplate('node', 'Normalize Csv.');
     const files = template.files.map((file) =>
       file.path === 'src/transform.js'
         ? { ...file, content: GENERATED_NODE_NORMALIZER_TRANSFORM }
@@ -434,7 +434,7 @@ describe('input table normalizer runner', () => {
       status: 'draft',
       files,
       fileTreeHash: createNormalizerFileTreeHash(files),
-      rulePrompt: 'Normalize CSV.',
+      rulePrompt: 'Normalize Csv.',
       sourceSummaryHash: 'summary_hash',
       entrypoint: template.entrypoint,
       dependencyPrepare: template.dependencyPrepare,

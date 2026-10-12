@@ -61,7 +61,7 @@ describe('PersonalAnalysisClient', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('downloads the complete drive CSV without forwarding the account token to storage', async () => {
+  it('downloads the complete drive Csv without forwarding the account token to storage', async () => {
     const csv = 'id,name\n' + Array.from({ length: 120 }, (_, index) => `${index},name`).join('\n');
     const fetchMock = vi.fn(async (url: string | URL, options?: RequestInit) => {
       if (String(url).includes('/drive-files/file%2Fid/download')) {

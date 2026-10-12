@@ -158,6 +158,7 @@ interface AppState {
     rawTable?: { id: string; name: string };
     newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
+    returnTarget?: DataResourceTarget;
   } | null;
   navigateToTableAutomation: (target: {
     automationId?: string;
@@ -165,6 +166,7 @@ interface AppState {
     rawTable?: { id: string; name: string };
     newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
+    returnTarget?: DataResourceTarget;
   }) => void;
   clearTableAutomationNavigation: () => void;
   welcomeCloudTableChatDrafts: CloudTableChatAttachment[];

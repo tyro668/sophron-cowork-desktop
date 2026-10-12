@@ -6,11 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type React
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
-  CalendarClock,
   Check,
   ChevronRight,
   Copy,
   Eye,
+  EyeOff,
   FileCode2,
   History,
   Info,
@@ -47,7 +47,6 @@ import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
 import {
-  DataMoreMenu,
   RAW_TABLE_PREVIEW_PAGE_SIZE,
   RawTableCheckbox,
   RawTableSelect,
@@ -58,8 +57,9 @@ import {
   formatDisplayPath,
   getCloudMirror,
   getRawTableSourceMeta,
-  underlineTabListClass,
-  underlineTabTriggerClass,
+  bottomTabBarClass,
+  bottomTabListClass,
+  bottomTabTriggerClass,
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -159,7 +159,7 @@ export function RawTableEditorWorkbench({
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [localSourceKind, setLocalSourceKind] = useState<DataRawTableSourceKind>(initialSourceKind);
   const [localConfig, setLocalConfig] = useState<DataRawTableConfig>(initialConfig);
-  const [automationsOpen, setAutomationsOpen] = useState(false);
+
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeViewTab, setActiveViewTab] = useState<'config' | 'data'>('config');
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -595,6 +595,16 @@ export function RawTableEditorWorkbench({
     await loadPreviewPage(1);
   };
 
+  // Header preview toggle: enter preview (data tab + reload) or exit back to
+  // the config tab.
+  const handlePreviewToggle = async () => {
+    if (activeViewTab === 'data') {
+      setActiveViewTab('config');
+      return;
+    }
+    await previewRawTable();
+  };
+
   const previewRawTableRef = useRef(previewRawTable);
   previewRawTableRef.current = previewRawTable;
 
@@ -821,6 +831,26 @@ export function RawTableEditorWorkbench({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => void handlePreviewToggle()}
+              disabled={!canPreview && activeViewTab !== 'data'}
+              aria-pressed={activeViewTab === 'data'}
+              className={`inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                activeViewTab === 'data'
+                  ? 'border border-accent/40 bg-accent-muted text-accent'
+                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
+              }`}
+            >
+              {activeViewTab === 'data' ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+              {activeViewTab === 'data'
+                ? t('data.rawTables.actions.exitPreview')
+                : t('data.rawTables.actions.preview')}
+            </button>
+            <button
+              type="button"
               onClick={saveRawTable}
               disabled={!canSave}
               className={`inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -832,33 +862,6 @@ export function RawTableEditorWorkbench({
               <Save className="h-3.5 w-3.5" />
               {isBusy ? t('common.saving') : t('common.save')}
             </button>
-            {rawTable && (
-              <>
-                <DataMoreMenu
-                  items={[
-                    {
-                      key: 'automations',
-                      label: t('data.resultTables.automation.title'),
-                      icon: <CalendarClock className="h-3.5 w-3.5" />,
-                      onClick: () => setAutomationsOpen(true),
-                    },
-                  ]}
-                />
-                <Dialog
-                  open={automationsOpen}
-                  onOpenChange={setAutomationsOpen}
-                  ariaLabel={t('data.resultTables.automation.title')}
-                  className="w-full max-w-2xl p-5"
-                >
-                  <RawTableAutomations rawTable={rawTable} />
-                  <div className="mt-4 flex justify-end">
-                    <Button size="sm" onClick={() => setAutomationsOpen(false)}>
-                      {t('common.close')}
-                    </Button>
-                  </div>
-                </Dialog>
-              </>
-            )}
           </div>
         </div>
 
@@ -875,41 +878,6 @@ export function RawTableEditorWorkbench({
           }}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-muted px-4">
-            <TabsList className={underlineTabListClass}>
-              <TabsTrigger value="config" className={underlineTabTriggerClass}>
-                {t('data.rawTables.editor.tabs.config')}
-              </TabsTrigger>
-              <TabsTrigger value="data" className={underlineTabTriggerClass} disabled={!canPreview}>
-                {t('data.rawTables.editor.tabs.data')}
-              </TabsTrigger>
-            </TabsList>
-            <div className="flex items-center gap-2 text-xs text-text-muted">
-              {activeViewTab === 'data' && previewData && rawTable && (
-                <span>
-                  {t('data.resultTables.editor.dataMeta', {
-                    rows: previewData.totalRows,
-                    time: formatDateTime(savedCloudSource?.syncedAt ?? rawTable.updatedAt),
-                  })}
-                </span>
-              )}
-              {activeViewTab === 'data' && canPreview && (
-                <button
-                  type="button"
-                  onClick={() => void refreshData()}
-                  disabled={previewLoading || cloudSyncBusy}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-                  aria-label={t('data.actions.refresh')}
-                  title={t('data.actions.refresh')}
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${previewLoading || cloudSyncBusy ? 'animate-spin' : ''}`}
-                  />
-                </button>
-              )}
-            </div>
-          </div>
-
           <TabsContent
             value="config"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
@@ -1017,6 +985,18 @@ export function RawTableEditorWorkbench({
                   contentClassName="w-[var(--radix-select-trigger-width)]"
                 />
               </RawTableConfigRow>
+
+              {rawTable ? (
+                <>
+                  <div className="border-t border-border-subtle pt-2" />
+                  <RawTableAutomations
+                    key={rawTable.id}
+                    rawTable={rawTable}
+                    embedded
+                    Row={RawTableConfigRow}
+                  />
+                </>
+              ) : null}
             </div>
 
             {dataProcessing.strategy === 'customize' ? (
@@ -1557,6 +1537,40 @@ export function RawTableEditorWorkbench({
               headerHeight={34}
             />
           </TabsContent>
+          <div className={`${bottomTabBarClass} justify-between`}>
+            <TabsList className={bottomTabListClass}>
+              <TabsTrigger value="config" className={bottomTabTriggerClass}>
+                {t('data.rawTables.editor.tabs.config')}
+              </TabsTrigger>
+              <TabsTrigger value="data" className={bottomTabTriggerClass} disabled={!canPreview}>
+                {t('data.rawTables.editor.tabs.data')}
+              </TabsTrigger>
+            </TabsList>
+            <div className="flex items-center gap-2 px-4 text-xs text-text-muted">
+              {activeViewTab === 'data' && previewData && rawTable && (
+                <span>
+                  {t('data.resultTables.editor.dataMeta', {
+                    rows: previewData.totalRows,
+                    time: formatDateTime(savedCloudSource?.syncedAt ?? rawTable.updatedAt),
+                  })}
+                </span>
+              )}
+              {activeViewTab === 'data' && canPreview && (
+                <button
+                  type="button"
+                  onClick={() => void refreshData()}
+                  disabled={previewLoading || cloudSyncBusy}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label={t('data.actions.refresh')}
+                  title={t('data.actions.refresh')}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${previewLoading || cloudSyncBusy ? 'animate-spin' : ''}`}
+                  />
+                </button>
+              )}
+            </div>
+          </div>
         </Tabs>
       </section>
       {cloudSourceDialogOpen && (

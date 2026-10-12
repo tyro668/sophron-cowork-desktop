@@ -363,7 +363,7 @@ interface AutomationActionDefinition<TConfig = unknown, TResult = unknown> {
 | `data.input.preview`  | `inputTableId`、`limit`                  | 表格预览                        | 读取输入表数据               |
 | `data.input.import`   | `filePath`、`name`、`config`             | 输入表引用                      | 自动导入输入数据             |
 | `data.output.preview` | `outputTableId`、`limit`                 | 表格预览                        | 读取输出表数据               |
-| `data.output.export`  | `outputTableId`、`format`                | 文件产物                        | 导出 CSV/JSON/XLSX 等        |
+| `data.output.export`  | `outputTableId`、`format`                | 文件产物                        | 导出 Csv/JSON/XLSX 等        |
 
 `artifact.compose`（组合产物）暂不作为内置 Action 暴露；等产物引用、模板编辑和通知正文生成规则稳定后再注册。
 
@@ -422,14 +422,7 @@ interface AutomationRunLogEvent {
 
 ```ts
 type AutomationArtifactKind =
-  | 'text'
-  | 'markdown'
-  | 'table'
-  | 'file'
-  | 'link'
-  | 'session'
-  | 'data_input'
-  | 'data_output';
+  'text' | 'markdown' | 'table' | 'file' | 'link' | 'session' | 'data_input' | 'data_output';
 
 interface AutomationArtifact {
   id: string;

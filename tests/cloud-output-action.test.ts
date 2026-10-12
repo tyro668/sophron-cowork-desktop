@@ -115,7 +115,7 @@ describe('automation cloud output action', () => {
   it('rejects missing output table or cloud destination configuration', () => {
     expect(() => fixture().action.validate?.({ resultTableId: 'out' })).toThrow();
   });
-  it('syncs drive CSV using the saved optimistic version without table-side configuration', async () => {
+  it('syncs drive Csv using the saved optimistic version without table-side configuration', async () => {
     syncDriveCsv.mockResolvedValue({
       file: { fileId: 'file', fileName: 'result.csv', version: 2 },
     });
@@ -196,7 +196,7 @@ describe('automation cloud output action', () => {
       service.syncResultTableToCloud('out', { ...config, writeMode: 'append' })
     ).rejects.toThrow('columns do not match');
     previewDriveFile.mockResolvedValueOnce({ file: { fileType: 'excel', version: 1 } });
-    await expect(service.syncResultTableToCloud('out', config)).rejects.toThrow('CSV');
+    await expect(service.syncResultTableToCloud('out', config)).rejects.toThrow('Csv');
     expect(syncDriveCsv).not.toHaveBeenCalled();
   });
 });

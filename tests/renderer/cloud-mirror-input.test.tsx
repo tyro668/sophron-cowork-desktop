@@ -159,7 +159,7 @@ describe('cloud-mirrored input table', () => {
     expect(screen.queryByText(/cloud-remote\.csv/)).toBeNull();
   });
 
-  it('keeps plain CSV rows unchanged', () => {
+  it('keeps plain Csv rows unchanged', () => {
     const plain = makeCloudRawTable({
       id: 'ds2',
       sourceKind: 'csv',
@@ -202,7 +202,7 @@ describe('cloud-mirrored input table', () => {
         actionId={null}
       />
     );
-    expect(screen.getByText('CSV')).toBeTruthy();
+    expect(screen.getByText('Csv')).toBeTruthy();
     expect(screen.queryByText('Cloud table')).toBeNull();
     expect(screen.queryByText('Alpha space / Beta project / Remote sales')).toBeNull();
   });

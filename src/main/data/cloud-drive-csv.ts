@@ -1,4 +1,4 @@
-/** Strict CSV parsing preserves strings, quoted newlines and leading zeroes. */
+/** Strict Csv parsing preserves strings, quoted newlines and leading zeroes. */
 export function parseCloudCsv(csv: string): string[][] {
   const text = csv.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
@@ -29,16 +29,16 @@ export function parseCloudCsv(csv: string): string[][] {
       }
     } else if (char === '"' && cell === '' && !closed) quoted = true;
     else {
-      if (closed || char === '"') throw new Error('Invalid cloud CSV quoting');
+      if (closed || char === '"') throw new Error('Invalid cloud Csv quoting');
       cell += char;
     }
   }
-  if (quoted) throw new Error('Unterminated cloud CSV field');
+  if (quoted) throw new Error('Unterminated cloud Csv field');
   if (row.length || cell || closed) rows.push([...row, cell]);
   if (!rows.length || rows[0].some((name) => !name) || new Set(rows[0]).size !== rows[0].length)
-    throw new Error('Cloud CSV requires unique, non-empty column names');
+    throw new Error('Cloud Csv requires unique, non-empty column names');
   if (rows.some((cells) => cells.length !== rows[0].length))
-    throw new Error('Cloud CSV has inconsistent column counts');
+    throw new Error('Cloud Csv has inconsistent column counts');
   return rows;
 }
 

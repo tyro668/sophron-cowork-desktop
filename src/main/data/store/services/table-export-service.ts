@@ -1,5 +1,5 @@
 /**
- * Table file exports — CSV / Excel data files and the self-contained HTML
+ * Table file exports — Csv / Excel data files and the self-contained HTML
  * report (source provenance, processing DSL, last-computation metadata).
  * The IPC layer owns the save dialog + file write; this service only builds
  * file payloads.

@@ -24,7 +24,7 @@
 | 版本资源   | 后续新增标准化程序 artifact/version 存储，支持 draft / published / archived、diff、rollback 和审计                                               |
 | 生成链路   | Skill 根据 `rulePrompt`、安全文件结构摘要和模板约束生成 Python/Node 项目草稿                                                                     |
 | 执行链路   | 预览阶段可准备依赖并运行草稿；生产阶段只运行 published 固定版本，不自动安装依赖                                                                  |
-| 导入链路   | 标准化程序输出 CSV/Parquet 与 manifest，应用校验后导入 DuckDB 输入表                                                                             |
+| 导入链路   | 标准化程序输出 Csv/Parquet 与 manifest，应用校验后导入 DuckDB 输入表                                                                             |
 
 ---
 
@@ -37,7 +37,7 @@
 交付：
 
 - 输入表配置支持 `dataProcessing.strategy = 'auto' | 'customize'`。
-- Excel、CSV、Folder 输入表默认配置均带 `auto`。
+- Excel、Csv、Folder 输入表默认配置均带 `auto`。
 - 存储层读取旧配置时自动补齐 `auto`。
 - 输入表配置界面支持策略切换。
 - `customize` 模式提供规则描述提示词文本输入。
@@ -163,7 +163,7 @@
 - 解包 published 标准化程序项目。
 - 校验 runtime、依赖锁和 entrypoint。
 - 执行标准化程序并读取 manifest。
-- 将输出 CSV/Parquet 导入 DuckDB，再进入现有数据任务 DSL。
+- 将输出 Csv/Parquet 导入 DuckDB，再进入现有数据任务 DSL。
 
 验收：
 
@@ -206,7 +206,7 @@
 已开始：
 
 - 类型层已加入 `DataInputTableProcessingConfig`、Python/Node runtime、entrypoint、依赖准备和项目文件类型。
-- 存储层已对 Excel、CSV、Folder 输入表补齐 `dataProcessing`。
+- 存储层已对 Excel、Csv、Folder 输入表补齐 `dataProcessing`。
 - 输入表编辑器已加入 `auto` / `customize` 选择和规则描述输入。
 
 下一步：

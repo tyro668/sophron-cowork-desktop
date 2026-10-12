@@ -140,8 +140,8 @@ space
 
 ```text
 Personal Analysis table
-  -> export CSV
-  -> temporary CSV file
+  -> export Csv
+  -> temporary Csv file
   -> cowork input table
   -> DuckDB
 ```
@@ -221,8 +221,8 @@ UI 和 Agent 共用 `DataCommandService`，避免导入、预览、上传逻辑�
   - API Key 换 token。
   - 复用传入的 access token。
   - 查询 spaces / projects / tables。
-  - 导出云端表 CSV。
-  - 上传 CSV 并提交 import。
+  - 导出云端表 Csv。
+  - 上传 Csv 并提交 import。
 
 ### 数据命令服务
 
@@ -367,7 +367,7 @@ curl http://127.0.0.1:3000/health
 - mock server 状态保存在内存中，重启后会从 seed 数据重新初始化。
 - 重新启动 mock server 会让已有 desktop token 失效，需要重新登录。
 - API Key 配置是高级路径，不应在普通用户主流程中过度突出。
-- 生产级大表上传需要流式导出和上传；当前 CSV 字符串方案适合 mock 联调和中小表验证。
+- 生产级大表上传需要流式导出和上传；当前 Csv 字符串方案适合 mock 联调和中小表验证。
 - 后续如果真实服务返回多个 datasource，需要在上传 UI 中支持选择 datasource。
 
 ## 后续优化

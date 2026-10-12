@@ -343,7 +343,7 @@ export interface DataRawTableCsvConfig {
   /** Per-column target types applied when the file is read into DuckDB. */
   columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
-  /** Legacy CSV imports; new cloud imports use DataRawTableCloudConfig. */
+  /** Legacy Csv imports; new cloud imports use DataRawTableCloudConfig. */
   cloudMirror?: DataRawTableCloudSource;
 }
 

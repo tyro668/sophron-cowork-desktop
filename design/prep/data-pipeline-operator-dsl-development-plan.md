@@ -429,7 +429,7 @@ SQL 编译清单：
 
 - `tests/data-duckdb-store.test.ts` 覆盖按 workflow 执行。
 - 每个算子至少有一个 DuckDB 执行测试。
-- 用 CSV fixture 验证：
+- 用 Csv fixture 验证：
   - 字段选择与字段映射
   - 缺失值处理
   - 类型转换
@@ -526,7 +526,7 @@ UI 要求：
 - 保留旧工作流节点保存/读取兼容。
 - 未知 `operator_type` 仍按现有规则降级或提示。
 - DSL parser diagnostics 使用稳定 code，UI 负责本地化文案。
-- 加入基础性能测试：100k 行 CSV、10 个清洗节点、2 个 join。
+- 加入基础性能测试：100k 行 Csv、10 个清洗节点、2 个 join。
 - 明确 DuckDB ASOF JOIN 对不同版本的 fallback 策略。
 - 增加字段名、表名、字符串字面量转义测试。
 - 检查设计文档和测试 fixture，避免出现真实个人路径。

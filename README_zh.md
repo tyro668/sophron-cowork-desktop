@@ -21,7 +21,7 @@
 
 ### 做可复用的数据准备
 
-- 将 CSV/TSV、Excel 文件或包含这类文件的文件夹导入为原始表，配置读取方式并预览行列。
+- 将 Csv/TSV、Excel 文件或包含这类文件的文件夹导入为原始表，配置读取方式并预览行列。
 - 用可视化流程画布或 Prep DSL 创建数据加工和结果表。算子包括筛选、字段选择与映射、去重、缺失值处理、类型转换、排序、关联、聚合、计算字段、透视/逆透视、集合操作、数组展开、行数限制和输出节点。
 - 预览流程中的节点、运行数据加工并检查结果表。图形流程、DSL 和生成的计划都会归一化为带版本的类型化计划，保存或运行前检查图结构与字段规则。
 - 让 Agent 通过与 UI 共用的命令服务列出、预览、导入和处理数据资源。需求分析可帮助生成待审阅的数据加工；生成的流程须通过校验才能执行。
@@ -37,9 +37,9 @@
 
 <p align="center"><img src="resources/sophron-architecture.png" alt="九思助理产品架构与系统交互 PNG 图：左侧为可选 Personal Analysis 云表服务，中间为 Electron 本地应用与 Agent、类型化数据工作流及 DuckDB，右侧为远程消息平台、模型与 MCP 服务、本地数据源；底部标示本地结果表、Agent 文件交付以及可选的云表回写闭环" width="100%" /></p>
 
-图的三栏沿用历史图“云端 ↔ 本地产品 ↔ 本地数据源”的关系，但内容以当前代码为准。历史图中的 FineBI Next 是场景参考，仓库并没有硬编码 FineBI Next 接口；目前实现的是按服务地址配置的 Personal Analysis API。云表可经 API 导出 CSV，再导入本地原始表；本地表可在明确选择后导出 CSV，以 CREATE 或 REPLACE 模式上传到云端。云侧图表、看板、报表和发布属于所连接的外部系统，不能算作本应用的内置数据工作台能力。
+图的三栏沿用历史图“云端 ↔ 本地产品 ↔ 本地数据源”的关系，但内容以当前代码为准。历史图中的 FineBI Next 是场景参考，仓库并没有硬编码 FineBI Next 接口；目前实现的是按服务地址配置的 Personal Analysis API。云表可经 API 导出 Csv，再导入本地原始表；本地表可在明确选择后导出 Csv，以 CREATE 或 REPLACE 模式上传到云端。云侧图表、看板、报表和发布属于所连接的外部系统，不能算作本应用的内置数据工作台能力。
 
-桌面 React 工作台经 preload IPC 调用 Electron 主进程。`SessionManager` 管理会话队列、Trace 与权限；Agent 运行时组合模型路由、内置工具、MCP、Skills、记忆和数据工具。数据工作台与 Agent 数据工具共用 `DataCommandService`。本地 CSV/TSV、Excel 及文件夹，和选择导入的云表，都进入原始表通路；GUI、Prep DSL 与 AI 计划统一构建类型化工作流，先做图结构与字段规则校验，再由 DuckDB 执行。SQLite 存储会话、Trace、定时任务及数据元信息，DuckDB 存储实际表数据。数据加工生成可预览、可复用的结果表；Agent 还可通过工具与 Skills 交付文档类文件。模型、MCP 与远程消息是独立的按需外部边界，本机定时任务和远程消息最终仍进入本地会话运行时。
+桌面 React 工作台经 preload IPC 调用 Electron 主进程。`SessionManager` 管理会话队列、Trace 与权限；Agent 运行时组合模型路由、内置工具、MCP、Skills、记忆和数据工具。数据工作台与 Agent 数据工具共用 `DataCommandService`。本地 Csv/TSV、Excel 及文件夹，和选择导入的云表，都进入原始表通路；GUI、Prep DSL 与 AI 计划统一构建类型化工作流，先做图结构与字段规则校验，再由 DuckDB 执行。SQLite 存储会话、Trace、定时任务及数据元信息，DuckDB 存储实际表数据。数据加工生成可预览、可复用的结果表；Agent 还可通过工具与 Skills 交付文档类文件。模型、MCP 与远程消息是独立的按需外部边界，本机定时任务和远程消息最终仍进入本地会话运行时。
 
 实现细节可从[开发文档入口](docs/development/README.md)、[数据工作区说明](docs/development/data-workspace.md)和 [Prep DSL 参考](docs/prep-dsl-reference.md)开始阅读。
 
@@ -77,7 +77,7 @@ npm run dev
 
 1. 打开应用，选择一个工作区文件夹。
 2. 在设置中选择模型通路：填写服务商凭据、连接 Ollama、登录支持的订阅通路，或使用可用的内置账号通路。费用及数据政策请以模型服务商为准。
-3. 在聊天中试试：“总结这个文件夹里的 CSV，并生成一份简短报告。”
+3. 在聊天中试试：“总结这个文件夹里的 Csv，并生成一份简短报告。”
 4. 需要重复处理表格时，打开数据工作台，导入原始表、创建或描述任务、预览各节点，再运行得到结果表。
 
 ## 数据与安全边界

@@ -70,7 +70,7 @@ type CloudConnection = Pick<PersonalAnalysisConfig, 'apiOrigin'> & {
 };
 
 const CLOUD_TABLE_SOURCE_TYPE_LABELS: Record<string, string> = {
-  csv: 'CSV',
+  csv: 'Csv',
   xls: 'Excel',
   xlsx: 'Excel',
   json: 'JSON',
@@ -158,7 +158,7 @@ function getCloudTableSourceType(table: PersonalAnalysisTable, fallback: string)
 
 function getDriveFileMeta(file: PersonalAnalysisDriveFile) {
   return file.fileType === 'csv'
-    ? { Icon: FileText, label: 'CSV', badgeClassName: 'bg-accent-muted text-accent' }
+    ? { Icon: FileText, label: 'Csv', badgeClassName: 'bg-accent-muted text-accent' }
     : {
         Icon: FileSpreadsheet,
         label: 'Excel',
@@ -252,6 +252,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [batchSelectMode, setBatchSelectMode] = useState(false);
   const [addingToChat, setAddingToChat] = useState(false);
+  const [importingTableId, setImportingTableId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const catalogRequestSeq = useRef(0);
@@ -941,24 +942,12 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
       setSelectedFileIds([]);
       resetTableResults({ cancelRequests: true });
       resetFileResults({ cancelRequests: true });
-      const hasCachedLists =
-        tableCacheRef.current.has(getProjectListCacheKey(target, connectionPayload, 'tables')) ||
-        fileCacheRef.current.has(getProjectListCacheKey(target, connectionPayload, 'files'));
-      setTableLookupStarted(hasCachedLists);
-      setDriveFileLookupStarted(hasCachedLists);
-      if (hasCachedLists) {
-        void loadTables(target, connectionPayload);
-        void loadDriveFiles(target, connectionPayload);
-      }
+      setTableLookupStarted(true);
+      setDriveFileLookupStarted(true);
+      void loadTables(target, connectionPayload);
+      void loadDriveFiles(target, connectionPayload);
     },
-    [
-      connectionPayload,
-      getProjectListCacheKey,
-      loadDriveFiles,
-      loadTables,
-      resetFileResults,
-      resetTableResults,
-    ]
+    [connectionPayload, loadDriveFiles, loadTables, resetFileResults, resetTableResults]
   );
 
   // Deep-link ("view original table" on a cloud-mirrored input): expand the
@@ -1197,38 +1186,82 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
     [connectionPayload, setNotice, t]
   );
 
-  const importTable = useCallback(
+  const resolveTableSource = useCallback(
     (table: PersonalAnalysisTable) => {
       const targetSpaceId = table.spaceId || selectedProject?.spaceId;
       const targetProjectId = table.projectId || selectedProject?.projectId;
-      if (!targetSpaceId || !targetProjectId) return;
+      if (!targetSpaceId || !targetProjectId) return null;
       const targetSpaceName =
         spaces.find((space) => space.spaceId === targetSpaceId)?.spaceName ??
         selectedSpace?.spaceName;
       const targetProjectName =
         projectsBySpace[targetSpaceId]?.find((project) => project.projectId === targetProjectId)
           ?.projectName ?? selectedProjectRecord?.projectName;
-      navigateToTableAutomation({
-        newRawTableName: table.tableName,
-        cloudSource: {
-          spaceId: targetSpaceId,
-          projectId: targetProjectId,
-          tableId: table.tableId,
-          tableKind: table.kind ?? 'analysis',
-          tableName: table.tableName,
-          spaceName: targetSpaceName,
-          projectName: targetProjectName,
-        },
-      });
+      return {
+        spaceId: targetSpaceId,
+        projectId: targetProjectId,
+        spaceName: targetSpaceName,
+        projectName: targetProjectName,
+      };
     },
     [
-      navigateToTableAutomation,
       selectedProject,
       selectedProjectRecord?.projectName,
       selectedSpace?.spaceName,
       spaces,
       projectsBySpace,
     ]
+  );
+
+  const importTable = useCallback(
+    async (table: PersonalAnalysisTable) => {
+      const source = resolveTableSource(table);
+      if (!source || importingTableId) return;
+      setImportingTableId(table.tableId);
+      try {
+        const result = await dataClient.importCloudRawTable({
+          ...connectionPayload,
+          tableId: table.tableId,
+          spaceId: source.spaceId,
+          projectId: source.projectId,
+          spaceName: source.spaceName,
+          projectName: source.projectName,
+        });
+        setNotice({
+          type: 'success',
+          message: t('cloudData.importSuccess', { name: result.rawTable.name }),
+          rawTableId: result.rawTable.id,
+        });
+      } catch (error) {
+        setNotice({
+          type: 'error',
+          message: getPersonalAnalysisErrorMessage(error, t),
+        });
+      } finally {
+        setImportingTableId(null);
+      }
+    },
+    [connectionPayload, importingTableId, resolveTableSource, setNotice, t]
+  );
+
+  const scheduleTableSync = useCallback(
+    (table: PersonalAnalysisTable) => {
+      const source = resolveTableSource(table);
+      if (!source) return;
+      navigateToTableAutomation({
+        newRawTableName: table.tableName,
+        cloudSource: {
+          spaceId: source.spaceId,
+          projectId: source.projectId,
+          tableId: table.tableId,
+          tableKind: table.kind ?? 'analysis',
+          tableName: table.tableName,
+          spaceName: source.spaceName,
+          projectName: source.projectName,
+        },
+      });
+    },
+    [navigateToTableAutomation, resolveTableSource]
   );
 
   const handleTableRowSelect = useCallback(
@@ -1701,12 +1734,33 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                     items={[
                       {
                         key: 'import-raw-table',
-                        label: t('cloudData.importAsInput'),
-                        icon: <Database className="h-3.5 w-3.5" />,
+                        label:
+                          singleSelectedTable && importingTableId === singleSelectedTable.tableId
+                            ? t('cloudData.importing')
+                            : t('cloudData.importNow'),
+                        icon:
+                          singleSelectedTable &&
+                          importingTableId === singleSelectedTable.tableId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Database className="h-3.5 w-3.5" />
+                          ),
+                        disabled:
+                          listTab !== 'tables' || !singleSelectedTable || importingTableId !== null,
+                        onClick: () => {
+                          if (singleSelectedTable) {
+                            void importTable(singleSelectedTable);
+                          }
+                        },
+                      },
+                      {
+                        key: 'schedule-sync',
+                        label: t('cloudData.scheduleSync'),
+                        icon: <RefreshCw className="h-3.5 w-3.5" />,
                         disabled: listTab !== 'tables' || !singleSelectedTable,
                         onClick: () => {
                           if (singleSelectedTable) {
-                            importTable(singleSelectedTable);
+                            scheduleTableSync(singleSelectedTable);
                           }
                         },
                       },
@@ -1955,7 +2009,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                       </table>
                     )}
                   </div>
-                  <div className="flex h-10 flex-shrink-0 items-stretch border-t border-border-muted">
+                  <div className="flex h-12 flex-shrink-0 items-stretch border-t border-border-muted">
                     {(['tables', 'files'] as const).map((tab) => (
                       <button
                         key={tab}

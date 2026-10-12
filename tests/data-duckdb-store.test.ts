@@ -799,7 +799,7 @@ describe('DuckDB data pipeline store', () => {
     }
   });
 
-  it('imports a folder by merging Excel and CSV files into one input table', async () => {
+  it('imports a folder by merging Excel and Csv files into one input table', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sophron-duckdb-'));
     tempRoots.push(tempRoot);
     const sourceFolder = path.join(tempRoot, 'monthly-inputs');

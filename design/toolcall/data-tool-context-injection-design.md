@@ -163,7 +163,7 @@ For creating input tables from local files/folders, persisted runs, output overw
 ```text
 帮我随便看看这个文件
 分析一下这份数据有什么问题
-算一下这个 CSV 里大概有哪些趋势
+算一下这个 Csv 里大概有哪些趋势
 用 Python 帮我处理这个文件
 ```
 

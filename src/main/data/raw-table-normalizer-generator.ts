@@ -210,9 +210,9 @@ function buildCodeGenerationSystemPrompt(language: DataNormalizerLanguage): stri
       ? 'For Python max(), never combine multiple positional arguments with default=. Use max([a, b], default=0) for possibly empty values, or max(a, b) when values are always present.'
       : 'Use standard JavaScript syntax compatible with the app runtime.',
     'The app first used built-in Node readers to inspect the real source file/folder and produce sourceStructureAnalysis. Follow that analysis when implementing the final code.',
-    'At runtime the app provides context.preparedSources.files: UTF-8 CSV files extracted from the original Excel/CSV/folder input by the same built-in Node reader.',
-    'For Excel sources, prepared CSV rows already include values expanded from merged cells, while context.sourceSummary still includes original merged-cell ranges.',
-    'Read context.preparedSources files whenever available. Use context.sourcePath only as a direct CSV fallback.',
+    'At runtime the app provides context.preparedSources.files: UTF-8 Csv files extracted from the original Excel/Csv/folder input by the same built-in Node reader.',
+    'For Excel sources, prepared Csv rows already include values expanded from merged cells, while context.sourceSummary still includes original merged-cell ranges.',
+    'Read context.preparedSources files whenever available. Use context.sourcePath only as a direct Csv fallback.',
     'Do not assume that the first non-empty row is always the header. Choose header rows, data start rows, and column names from sourceStructureAnalysis and runtime rows.',
     'The transform must write output/normalized.csv and return a manifest object with output, format="csv", rowCount, columns, warnings.',
     'Manifest columns must be an array of objects: [{"name":"column name","type":"string"}]. Do not return columns as a string array.',
@@ -241,7 +241,7 @@ function buildSourceAnalysisUserPrompt(
         'Describe robust runtime heuristics so the final code can process similar files, not just the exact sample.',
       ],
       outputJsonSchema: {
-        sourceKind: 'excel | csv | folder | cloud (downloaded CSV snapshot)',
+        sourceKind: 'excel | csv | folder | cloud (downloaded Csv snapshot)',
         sourceShape: 'short structural summary',
         sampleFindings: ['finding'],
         sheetSelection: {
@@ -286,7 +286,7 @@ function buildCodeGenerationUserPrompt(
       runtimeContextContract: {
         contextKeys: ['sourcePath', 'sourceKind', 'config', 'sourceSummary', 'preparedSources'],
         preparedSources:
-          'context.preparedSources.files is an array of CSV sources extracted by the app built-in Node reader. Each item has path, relativePath, originalPath, originalKind, sheetName, headerCandidates, rowCountEstimate, columnCountEstimate.',
+          'context.preparedSources.files is an array of Csv sources extracted by the app built-in Node reader. Each item has path, relativePath, originalPath, originalKind, sheetName, headerCandidates, rowCountEstimate, columnCountEstimate.',
       },
       existingProjectFiles: template.files.map((file) => ({
         path: file.path,

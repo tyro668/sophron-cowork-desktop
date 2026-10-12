@@ -21,6 +21,7 @@ import type {
 import { buildGroupSections } from '../data-view/group-ui';
 import type { AssignGroupTarget, DataListGroup } from '../data-view/group-ui';
 import { useAppStore } from '../../store';
+import type { DataResourceTarget } from '../../../shared/data-resource-link';
 import {
   AUTOMATION_TABLE_PAGE_SIZE,
   type AutomationDraft,
@@ -62,6 +63,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const outputNavigation = useAppStore((state) => state.pendingTableAutomationNavigation);
   const clearOutputNavigation = useAppStore((state) => state.clearTableAutomationNavigation);
   const projects = useAppStore((state) => state.projects);
+  const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
   const appConfig = useAppStore((state) => state.appConfig);
   const pendingCloudAutomationTemplateNavigation = useAppStore(
     (state) => state.pendingCloudAutomationTemplateNavigation
@@ -83,6 +85,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [dataDashboard, setDataDashboard] = useState<DataDashboard | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
+  const [tableReturnTarget, setTableReturnTarget] = useState<DataResourceTarget | null>(null);
   const [activeListTab, setActiveListTab] = useState<ListTab>('automations');
   const [automationRunLogs, setAutomationRunLogs] = useState<AutomationRunLogEntry[]>([]);
   const [draft, setDraft] = useState<AutomationDraft>(() =>
@@ -417,6 +420,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     clearOutputNavigation();
     skipNextAutoSelectRef.current = true;
     suppressSelectedAutomationSyncRef.current = true;
+    setTableReturnTarget(outputNavigation.returnTarget ?? null);
     setViewMode('detail');
     setActiveListTab('automations');
     setBanner(null);
@@ -444,10 +448,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               enabled: true,
               config: {
                 direction: 'input',
-                spaceId: '',
-                projectId: '',
-                tableId: '',
-                tableKind: 'analysis',
+                spaceId: outputNavigation.cloudSource?.spaceId ?? '',
+                projectId: outputNavigation.cloudSource?.projectId ?? '',
+                tableId: outputNavigation.cloudSource?.tableId ?? '',
+                tableKind: outputNavigation.cloudSource?.tableKind ?? 'analysis',
+                tableName: outputNavigation.cloudSource?.tableName,
                 rawTableId: outputNavigation.rawTable.id,
                 rawTableName: outputNavigation.rawTable.name,
               },
@@ -732,6 +737,12 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           onSave={() => void save()}
           onRun={() => void runNow()}
           onBack={() => {
+            if (tableReturnTarget) {
+              setTableReturnTarget(null);
+              setBanner(null);
+              navigateToDataElement(tableReturnTarget);
+              return;
+            }
             setViewMode('list');
             setBanner(null);
           }}

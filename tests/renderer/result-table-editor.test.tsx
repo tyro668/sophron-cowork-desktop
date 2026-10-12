@@ -106,7 +106,7 @@ describe('ResultTableEditor', () => {
       'true'
     );
     // The config form is the default view.
-    expect(await screen.findByText('Raw table')).toBeTruthy();
+    expect(await screen.findByText('Copy source')).toBeTruthy();
   });
 
   it('shows the preview grid after switching to the data tab', async () => {
@@ -134,16 +134,16 @@ describe('ResultTableEditor', () => {
     expect(screen.queryByRole('button', { name: 'Re-run' })).toBeNull();
   });
 
-  it('exports csv and report formats through the export bridge', async () => {
+  it('exports csv and excel formats through the export bridge', async () => {
     const { exportTable } = renderEditor();
 
     const openMenu = async () => {
-      const trigger = screen.getByRole('button', { name: /Export/ });
+      const trigger = screen.getByRole('button', { name: 'More' });
       fireEvent.pointerDown(trigger);
       fireEvent.click(trigger);
     };
     await openMenu();
-    fireEvent.click(await screen.findByText('CSV file'));
+    fireEvent.click(await screen.findByText('Csv file'));
     await waitFor(() =>
       expect(exportTable).toHaveBeenCalledWith(
         expect.objectContaining({ tableKind: 'result', id: 'ot1', format: 'csv' })
@@ -151,9 +151,9 @@ describe('ResultTableEditor', () => {
     );
 
     await openMenu();
-    fireEvent.click(await screen.findByText('Generate report (HTML)'));
+    fireEvent.click(await screen.findByText('Excel file (.xlsx)'));
     await waitFor(() =>
-      expect(exportTable).toHaveBeenCalledWith(expect.objectContaining({ format: 'html' }))
+      expect(exportTable).toHaveBeenCalledWith(expect.objectContaining({ format: 'xlsx' }))
     );
   });
 });

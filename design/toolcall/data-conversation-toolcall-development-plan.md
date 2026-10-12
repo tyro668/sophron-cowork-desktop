@@ -226,7 +226,7 @@ MVP 可先只支持显式 ID。第二步再让数据页面在打开任务、输�
 
 - LLM 能在用户确认后创建数据任务。
 - LLM 能基于用户提供或选择的本地文件创建输入表。
-- 输入表创建支持 CSV、Excel 和文件夹来源，文件/文件夹路径必须通过权限确认。
+- 输入表创建支持 Csv、Excel 和文件夹来源，文件/文件夹路径必须通过权限确认。
 - LLM 能创建输出表，并可指定来源输入表或仅创建空的输出目标配置。
 - 同名资源创建时返回冲突或候选提示，不静默覆盖。
 
@@ -512,7 +512,7 @@ npx vitest run tests/data-duckdb-store.test.ts tests/prep-dsl/parser-compiler.te
 - `DataCommandService` 参数校验和错误码。
 - 名称匹配歧义。
 - preview limit clamp。
-- 输入表创建的路径权限、CSV/Excel/文件夹配置校验。
+- 输入表创建的路径权限、Csv/Excel/文件夹配置校验。
 - 输出表创建的同名冲突和来源输入表校验。
 - workflow DSL dry-run/save。
 - operator DSL 类型校验。

@@ -5,7 +5,7 @@
 当前数据页面已经具备以下核心能力：
 
 - 数据任务：创建、编辑、保存工作流、运行工作流、删除。
-- 输入表：新增 Excel/CSV/文件夹输入表、编辑配置、预览、删除。
+- 输入表：新增 Excel/Csv/文件夹输入表、编辑配置、预览、删除。
 - 输出表：新增输出表、编辑来源输入表、预览、删除。
 - 数据任务算子：输入、DSL 算子、输出算子配置，工作流节点和连线保存。
 - 执行层：`DataTaskStore.runTask` 可以按工作流连线从输入算子执行到输出算子，并写入临时或正式 DuckDB 表。
@@ -442,7 +442,7 @@ sophron data input create \
   --header smart
 ```
 
-#### 新增 CSV 输入表
+#### 新增 Csv 输入表
 
 ```bash
 sophron data input create \
@@ -1750,7 +1750,7 @@ data_update_output_table
 
 输入：
 
-CSV 文件：
+Csv 文件：
 
 ```json
 {
@@ -2275,7 +2275,7 @@ from sales
 
 关键约束：
 
-- 不把 Excel/CSV 全量内容读进对话上下文。
+- 不把 Excel/Csv 全量内容读进对话上下文。
 - 不用 LLM 自己推断全量统计结果。
 - 所有聚合、连接、去重和类型转换都交给数据任务执行引擎。
 - 生成正式输出表前，必须让用户知道输出表名称和覆盖策略。
@@ -2489,7 +2489,7 @@ CREATE TABLE data_command_events (
 ### 14.2 集成测试
 
 - CLI 使用临时 SQLite/DuckDB 路径完整跑通。
-- 输入表 Excel/CSV/文件夹导入。
+- 输入表 Excel/Csv/文件夹导入。
 - 输出表创建和预览。
 - 工作流运行写正式表。
 - 临时运行不污染正式输出表。
@@ -2505,7 +2505,7 @@ CREATE TABLE data_command_events (
 - 调用 `data_validate_workflow_dsl` 校验任务级 DSL。
 - 调用 `data_validate_operator_dsl` 校验节点级 DSL。
 - 调用 `data_list_input_tables`。
-- 调用 `data_create_input_table` 创建 CSV/Excel/文件夹输入表，未授权路径返回 `FILE_ACCESS_DENIED`。
+- 调用 `data_create_input_table` 创建 Csv/Excel/文件夹输入表，未授权路径返回 `FILE_ACCESS_DENIED`。
 - 调用 `data_create_output_table` 创建输出表，同名时返回冲突或候选。
 - 调用 `data_create_task` 创建数据任务。
 - 调用 `data_apply_operator_dsl` 修改 filter。

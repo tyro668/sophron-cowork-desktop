@@ -21,7 +21,7 @@ The app is local, but **“local app” does not mean “no network traffic.”*
 
 ### Prepare structured data
 
-- Import CSV/TSV and Excel files, or a folder of such files, as raw tables. Configure source reading and preview rows and columns before processing.
+- Import Csv/TSV and Excel files, or a folder of such files, as raw tables. Configure source reading and preview rows and columns before processing.
 - Create data pipelines and result tables with a visual workflow canvas or Prep DSL. Operators cover filtering, selecting and mapping fields, deduplication, missing values, conversions, sorting, joins, aggregation, calculated fields, pivot/unpivot, set operations, unnesting, limits, and output sinks.
 - Preview individual workflow nodes, run a pipeline, and inspect the result table. GUI workflows, DSL, and generated plans converge on a versioned typed plan with graph and schema validation before saving or running.
 - Ask the agent to list, preview, import, and work with data resources through the same command services used by the UI. Requirement analysis can help generate a task for review; generated workflows are validated before execution.
@@ -37,9 +37,9 @@ The app is local, but **“local app” does not mean “no network traffic.”*
 
 <p align="center"><img src="resources/sophron-architecture.png" alt="Raster product architecture and system-interaction diagram: an optional Personal Analysis cloud-table service on the left; the local Electron app, agent runtime, typed data workflow and DuckDB in the center; remote message platforms, model and MCP services, and local data sources on the right; local result tables, agent file deliverables and optional cloud-table writeback below" width="100%" /></p>
 
-The diagram keeps the historical image's cloud ↔ local product ↔ local data-source relationship, but updates the facts to the current code. FineBI Next is a historical deployment scenario, not a hard-coded endpoint in this repository. The implemented cloud connection is a configurable Personal Analysis API: it exports a cloud table as CSV for local import, and can upload a selected local table as CSV using CREATE or REPLACE. Cloud-side charts, dashboards, reports, and publishing belong to the connected external system, not this app's native data workbench.
+The diagram keeps the historical image's cloud ↔ local product ↔ local data-source relationship, but updates the facts to the current code. FineBI Next is a historical deployment scenario, not a hard-coded endpoint in this repository. The implemented cloud connection is a configurable Personal Analysis API: it exports a cloud table as Csv for local import, and can upload a selected local table as Csv using CREATE or REPLACE. Cloud-side charts, dashboards, reports, and publishing belong to the connected external system, not this app's native data workbench.
 
-The React workbench reaches Electron's main process through the preload IPC bridge. `SessionManager` handles session queues, traces and permissions; the agent runtime combines model routing, built-in tools, MCP, Skills, memory and data tools. The UI and agent data tools share `DataCommandService`. Local CSV/TSV or Excel files (including folders of them), and selected cloud tables, enter the raw-table path. GUI workflows, Prep DSL and AI-generated plans converge on a typed plan that is graph- and schema-validated before DuckDB execution. SQLite keeps sessions, traces, schedules and data metadata; DuckDB keeps actual table data. A data pipeline produces a previewable, reusable result table, while the agent can separately create document deliverables with tools and Skills. Model, MCP and remote-message connections are independent optional external boundaries; remote and scheduled tasks still enter the local session runtime.
+The React workbench reaches Electron's main process through the preload IPC bridge. `SessionManager` handles session queues, traces and permissions; the agent runtime combines model routing, built-in tools, MCP, Skills, memory and data tools. The UI and agent data tools share `DataCommandService`. Local Csv/TSV or Excel files (including folders of them), and selected cloud tables, enter the raw-table path. GUI workflows, Prep DSL and AI-generated plans converge on a typed plan that is graph- and schema-validated before DuckDB execution. SQLite keeps sessions, traces, schedules and data metadata; DuckDB keeps actual table data. A data pipeline produces a previewable, reusable result table, while the agent can separately create document deliverables with tools and Skills. Model, MCP and remote-message connections are independent optional external boundaries; remote and scheduled tasks still enter the local session runtime.
 
 For implementation details, start with the [developer documentation](docs/development/README.md), the [data-workspace guide](docs/development/data-workspace.md), and the [Prep DSL reference](docs/prep-dsl-reference.md).
 
@@ -77,7 +77,7 @@ npm run dev
 
 1. Open the app and select a workspace folder.
 2. In settings, choose a model route: add the provider's credentials, connect Ollama, sign in for a supported subscription route, or use the available built-in account route. Check the provider's own pricing and data policy.
-3. Try chat: “Summarize the CSV files in this folder and make a short report.”
+3. Try chat: “Summarize the Csv files in this folder and make a short report.”
 4. For repeatable table processing, open the data workbench, import a raw table, build or describe a pipeline, preview its nodes, and run it into a result table.
 
 ## Data and security boundaries

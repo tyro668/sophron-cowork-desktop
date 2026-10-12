@@ -498,7 +498,7 @@ export function getImportSourceFiles(
   if (files.length === 0) {
     throw new Error(
       sourceKind === 'folder'
-        ? 'No Excel or CSV files were found in the selected folder'
+        ? 'No Excel or Csv files were found in the selected folder'
         : 'No input table file was found'
     );
   }

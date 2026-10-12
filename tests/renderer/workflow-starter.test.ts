@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * Starter-graph builder + explain ordering: the empty-canvas template must
- * produce a wired input → sql → output draft that binds the pipeline's input
+ * produce a wired input → filter → output draft that binds the pipeline's input
  * table when present.
  */
 import { describe, expect, it } from 'vitest';
@@ -10,7 +10,7 @@ import { buildWorkflowStarterGraph } from '../../src/renderer/components/data-vi
 import { orderWorkflowNodes } from '../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowExplainDialog';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../src/renderer/types';
 
-const LABELS = { input_source: 'Input', sql_query: 'SQL', output: 'Output' };
+const LABELS = { input_source: 'Input', filter: 'Filter', output: 'Output' };
 
 function makeNode(id: string, type = 'filter'): DataWorkflowNode {
   return {
@@ -39,7 +39,7 @@ function makeEdge(sourceNodeId: string, targetNodeId: string): DataWorkflowEdge 
 }
 
 describe('buildWorkflowStarterGraph', () => {
-  it('builds an input → sql → output chain with wired edges', () => {
+  it('builds an input → filter → output chain with wired edges', () => {
     const graph = buildWorkflowStarterGraph({
       pipelineId: 'task_1',
       sourceRawTableId: null,
@@ -47,7 +47,7 @@ describe('buildWorkflowStarterGraph', () => {
       labels: LABELS,
     });
 
-    expect(graph.nodes.map((node) => node.type)).toEqual(['input_source', 'sql_query', 'output']);
+    expect(graph.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
     expect(graph.edges).toHaveLength(2);
     expect(graph.edges[0].sourceNodeId).toBe(graph.nodes[0].id);
     expect(graph.edges[0].targetNodeId).toBe(graph.nodes[1].id);
@@ -55,7 +55,8 @@ describe('buildWorkflowStarterGraph', () => {
     expect(graph.edges[1].targetNodeId).toBe(graph.nodes[2].id);
     // Unbound pipeline: the input node stays in a pick-a-table draft state.
     expect(graph.nodes[0].config.rawTableId).toBeUndefined();
-    expect(graph.nodes[1].config.sql).toContain('FROM input');
+    // The middle node is a visual filter draft — empty condition until the user fills it.
+    expect(graph.nodes[1].config.condition).toBe('');
     expect(graph.nodes[2].config.outputStrategy).toBe('auto');
     expect(graph.nodes[2].config.resultTableName).toBe('my pipeline output');
   });

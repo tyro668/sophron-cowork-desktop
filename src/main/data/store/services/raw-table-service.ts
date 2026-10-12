@@ -448,7 +448,7 @@ export class RawTableService {
         }
       }
       if (tempTables.length === 0) {
-        throw new Error('No Excel or CSV files were found for the input table');
+        throw new Error('No Excel or Csv files were found for the input table');
       }
 
       const unionSql = buildUnionSqlFromTempTables(tempTables);
@@ -720,7 +720,7 @@ export class RawTableService {
   }
   async createRawTableTableFromTempTables(tableName: string, tempTables: string[]): Promise<void> {
     if (tempTables.length === 0) {
-      throw new Error('No Excel or CSV files were found for the input table');
+      throw new Error('No Excel or Csv files were found for the input table');
     }
 
     const unionSql = buildUnionSqlFromTempTables(tempTables);

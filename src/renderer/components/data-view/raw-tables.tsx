@@ -489,7 +489,10 @@ export function RawTablesPanel({
           ariaLabel={t('data.resultTables.automation.title')}
           className="w-full max-w-2xl p-5"
         >
-          <RawTableAutomations rawTable={selectedRawTable} />
+          <RawTableAutomations
+            rawTable={selectedRawTable}
+            onNavigateAway={() => setAutomationsOpen(false)}
+          />
           <div className="mt-4 flex justify-end">
             <Button size="sm" onClick={() => setAutomationsOpen(false)}>
               {t('common.close')}

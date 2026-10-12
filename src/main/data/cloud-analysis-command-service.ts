@@ -162,12 +162,19 @@ export class CloudAnalysisCommandService {
       }
       const csv = await client.exportTableCsv(tableId);
       const downloadedFilePath = await this.writeCloudSnapshotFile(tableId, csv);
+      const desiredName =
+        normalizeOptionalName(input.name) ||
+        existing?.name ||
+        cloudTable?.tableName ||
+        `Cloud table ${tableId}`;
+      // A fresh import derives its name from the cloud table; auto-number the
+      // copy instead of failing when the same table was imported before.
+      const name =
+        existing || normalizeOptionalName(input.name)
+          ? desiredName
+          : await this.resolveAvailableRawTableName(desiredName);
       const command = {
-        name:
-          normalizeOptionalName(input.name) ||
-          existing?.name ||
-          cloudTable?.tableName ||
-          `Cloud table ${tableId}`,
+        name,
         sourceKind: 'cloud' as const,
         filePath: downloadedFilePath,
         previewRows: input.previewRows,
@@ -398,7 +405,7 @@ export class CloudAnalysisCommandService {
         action.fileId
       );
       if (file.fileType !== 'csv' || file.writable === false)
-        throw new Error('Only writable CSV drive files can receive output tables');
+        throw new Error('Only writable Csv drive files can receive output tables');
       if (!Number.isInteger(file.version)) throw new Error('Drive file version is unavailable');
       if (version !== undefined && version !== file.version)
         throw new Error(
@@ -478,6 +485,14 @@ export class CloudAnalysisCommandService {
    * `sourcePath` survives OS temp cleanup and reimports stay re-runnable.
    * Files are keyed by cloud table id — each sync overwrites the latest snapshot.
    */
+  private async resolveAvailableRawTableName(base: string): Promise<string> {
+    if (!(await this.store.findRawTableRecordByName(base))) return base;
+    for (let index = 2; ; index += 1) {
+      const candidate = `${base} ${index}`;
+      if (!(await this.store.findRawTableRecordByName(candidate))) return candidate;
+    }
+  }
+
   private async writeCloudSnapshotFile(tableId: string, csv: string): Promise<string> {
     const directory = this.options.cloudImportDir ?? join(tmpdir(), 'sophron-cowork-cloud-imports');
     await mkdir(directory, { recursive: true });

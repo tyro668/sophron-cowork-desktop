@@ -215,12 +215,13 @@ describe('cloud automation resource directions', () => {
   });
   it('finds input associations from actions and opens the existing automation', async () => {
     render(<RawTableAutomations rawTable={{ id: 'in', name: 'Input' } as never} />);
-    await screen.findByText('Scheduled import');
-    expect(screen.queryByRole('switch')).toBeNull();
+    fireEvent.click(await screen.findByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: /Scheduled import/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Configure' }));
     await waitFor(() =>
       expect(useAppStore.getState().pendingTableAutomationNavigation).toEqual({
         automationId: 'auto',
+        returnTarget: { kind: 'raw_table', id: 'in' },
       })
     );
     expect(useAppStore.getState().mainView).toBe('automation');

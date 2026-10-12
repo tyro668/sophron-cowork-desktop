@@ -183,8 +183,8 @@ export class PersonalAnalysisClient {
     const { downloadUrl } = await this.apiJson<{ downloadUrl: string }>(
       `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files/${encodeURIComponent(fileId)}/download`
     );
-    const response = await fetchWithTimeout(downloadUrl, {}, 'Download drive CSV');
-    if (!response.ok) throw new Error(`Download drive CSV failed: HTTP ${response.status}`);
+    const response = await fetchWithTimeout(downloadUrl, {}, 'Download drive Csv');
+    if (!response.ok) throw new Error(`Download drive Csv failed: HTTP ${response.status}`);
     return response.text();
   }
 
@@ -200,7 +200,7 @@ export class PersonalAnalysisClient {
     }
   ): Promise<PersonalAnalysisDriveSyncResult> {
     if (!input.fileId?.trim() && !input.outputId?.trim()) {
-      throw new Error('Drive CSV sync requires fileId or outputId');
+      throw new Error('Drive Csv sync requires fileId or outputId');
     }
     const file = await this.apiJson<PersonalAnalysisDriveFile & { created?: boolean }>(
       `/spaces/${encodeURIComponent(spaceId)}/projects/${encodeURIComponent(projectId)}/drive-files/sync`,
@@ -275,9 +275,9 @@ export class PersonalAnalysisClient {
       }
     );
 
-    const response = await fetchWithTimeout(download.downloadUrl, {}, 'Download cloud CSV');
+    const response = await fetchWithTimeout(download.downloadUrl, {}, 'Download cloud Csv');
     if (!response.ok) {
-      throw new Error(`Download cloud CSV failed: HTTP ${response.status} ${response.statusText}`);
+      throw new Error(`Download cloud Csv failed: HTTP ${response.status} ${response.statusText}`);
     }
     return response.text();
   }
@@ -318,11 +318,11 @@ export class PersonalAnalysisClient {
         headers: { 'Content-Type': 'text/csv; charset=utf-8' },
         body: input.csv,
       },
-      'Upload cloud CSV'
+      'Upload cloud Csv'
     );
     if (!uploadResponse.ok) {
       throw new Error(
-        `Upload cloud CSV failed: HTTP ${uploadResponse.status} ${await uploadResponse.text()}`
+        `Upload cloud Csv failed: HTTP ${uploadResponse.status} ${await uploadResponse.text()}`
       );
     }
 

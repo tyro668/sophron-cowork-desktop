@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   ArrowUpDown,
-  BarChart3,
-  ChevronDown,
   Download,
   Eye,
+  EyeOff,
   FileText,
   FolderInput,
   Info,
@@ -29,7 +29,6 @@ import type {
 import { dataClient } from '../../features/data/api/data-client';
 import { showToast } from '../../utils/toast';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
-import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   AssignGroupDialog,
@@ -56,10 +55,21 @@ import {
   formatDateTime,
   formatResultTableRelatedPipelineNames,
   RAW_TABLE_PREVIEW_PAGE_SIZE,
-  underlineTabListClass,
-  underlineTabTriggerClass,
+  RESULT_TABLE_INPUT_CHOICES_LIMIT,
+  bottomTabBarClass,
+  bottomTabListClass,
+  bottomTabTriggerClass,
 } from './shared';
-import { Button } from '../ui/button';
+import {
+  Button,
+  cn,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from '../ui';
 import { ResultTableAutomations } from './table-automations';
 
 export function ResultTablesPanel({
@@ -93,7 +103,7 @@ export function ResultTablesPanel({
   isLoading: boolean;
   actionId: string | null;
   isCreateDisabled: boolean;
-  onCreate: () => void;
+  onCreate: (input: { name: string; sourceRawTableId: string | null }) => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
   onGroupPageChange: (groupKey: string, page: number) => void;
@@ -110,6 +120,7 @@ export function ResultTablesPanel({
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const selectedResultTable =
     resultTables.find((resultTable) => resultTable.id === selectedResultTableId) ?? null;
   const selectedBusy = selectedResultTable ? actionId === selectedResultTable.id : false;
@@ -181,7 +192,7 @@ export function ResultTablesPanel({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || resultTables.length > 0 || searchQuery.trim()) && (
             <button
-              onClick={onCreate}
+              onClick={() => setCreateDialogOpen(true)}
               disabled={isCreateDisabled || bulkBusy}
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -276,7 +287,11 @@ export function ResultTablesPanel({
                   </Button>
                 ) : (
                   !isCreateDisabled && (
-                    <Button variant="primary" onClick={onCreate} className="shadow-soft">
+                    <Button
+                      variant="primary"
+                      onClick={() => setCreateDialogOpen(true)}
+                      className="shadow-soft"
+                    >
                       <Plus className="h-4 w-4" />
                       {t('data.resultTables.add')}
                     </Button>
@@ -358,7 +373,199 @@ export function ResultTablesPanel({
           setRenameTarget(null);
         }}
       />
+      <ResultTableCreateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        busy={actionId === 'create-output'}
+        suggestedName={`${t('data.resultTables.defaultName')} ${totalResultTables + 1}`}
+        onSubmit={(input) => {
+          onCreate(input);
+          setCreateDialogOpen(false);
+        }}
+      />
     </div>
+  );
+}
+
+function ResultTableCreateDialog({
+  open,
+  onOpenChange,
+  busy,
+  suggestedName,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  busy?: boolean;
+  suggestedName: string;
+  onSubmit: (input: { name: string; sourceRawTableId: string | null }) => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(suggestedName);
+  const [purpose, setPurpose] = useState<'pipeline' | 'copy'>('pipeline');
+  const [sourceRawTableId, setSourceRawTableId] = useState('');
+  const [rawTables, setRawTables] = useState<DataRawTable[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(suggestedName);
+    setPurpose('pipeline');
+    setSourceRawTableId('');
+    if (!dataClient.has('getDashboard')) return;
+    let cancelled = false;
+    setSourcesLoading(true);
+    void dataClient
+      .getDashboard({
+        includeSummary: false,
+        includePipelines: false,
+        includeRawTables: true,
+        includeResultTables: false,
+        rawTableOffset: 0,
+        rawTableLimit: RESULT_TABLE_INPUT_CHOICES_LIMIT,
+        rawTableSourceKind: 'all',
+      })
+      .then((dashboard) => {
+        if (!cancelled) setRawTables(dashboard.rawTables);
+      })
+      .catch(() => {
+        if (!cancelled) setRawTables([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSourcesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, suggestedName]);
+
+  const trimmedName = name.trim();
+  const canSubmit =
+    Boolean(trimmedName) && !busy && (purpose === 'pipeline' || Boolean(sourceRawTableId));
+  const submit = () => {
+    if (canSubmit) {
+      onSubmit({
+        name: trimmedName,
+        sourceRawTableId: purpose === 'copy' ? sourceRawTableId : null,
+      });
+    }
+  };
+
+  const purposeOptionClass = (value: 'pipeline' | 'copy') =>
+    cn(
+      'flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition-colors',
+      purpose === value
+        ? 'border-accent/40 bg-accent-muted text-text-primary'
+        : 'border-border-subtle text-text-secondary hover:bg-surface-hover/40'
+    );
+
+  const sourceOptions = rawTables.map((rawTable) => ({
+    value: rawTable.id,
+    label: rawTable.name,
+  }));
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      busy={busy}
+      ariaLabel={t('data.resultTables.create.title')}
+      className="max-w-md"
+    >
+      <DialogHeader>
+        <DialogTitle>{t('data.resultTables.create.title')}</DialogTitle>
+      </DialogHeader>
+      <DialogBody className="flex flex-col gap-3">
+        <div className="grid gap-1">
+          <span className="text-xs font-medium text-text-secondary">
+            {t('data.resultTables.create.name')}
+          </span>
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t('data.resultTables.create.namePlaceholder')}
+            data-autofocus
+            className="text-[13px]"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') submit();
+            }}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <span className="text-xs font-medium text-text-secondary">
+            {t('data.resultTables.create.purpose')}
+          </span>
+          <label className={purposeOptionClass('pipeline')}>
+            <input
+              type="radio"
+              name="result-table-purpose"
+              checked={purpose === 'pipeline'}
+              onChange={() => setPurpose('pipeline')}
+              className="mt-0.5 h-3.5 w-3.5 accent-accent"
+            />
+            <span className="grid gap-0.5">
+              <span className="font-medium">{t('data.resultTables.create.purposePipeline')}</span>
+              <span className="text-xs text-text-muted">
+                {t('data.resultTables.create.purposePipelineDesc')}
+              </span>
+            </span>
+          </label>
+          <label className={purposeOptionClass('copy')}>
+            <input
+              type="radio"
+              name="result-table-purpose"
+              checked={purpose === 'copy'}
+              onChange={() => setPurpose('copy')}
+              className="mt-0.5 h-3.5 w-3.5 accent-accent"
+            />
+            <span className="grid gap-0.5">
+              <span className="font-medium">{t('data.resultTables.create.purposeCopy')}</span>
+              <span className="text-xs text-text-muted">
+                {t('data.resultTables.create.purposeCopyDesc')}
+              </span>
+            </span>
+          </label>
+        </div>
+        {purpose === 'copy' && (
+          <div className="grid gap-1">
+            <span className="text-xs font-medium text-text-secondary">
+              {t('data.resultTables.create.source')}
+            </span>
+            <RawTableSelect
+              value={sourceRawTableId}
+              options={[
+                {
+                  value: '',
+                  label: sourcesLoading
+                    ? t('data.resultTables.editor.loadingRawTables')
+                    : t('data.resultTables.create.selectSource'),
+                },
+                ...sourceOptions,
+              ]}
+              disabled={busy || sourcesLoading}
+              onChange={setSourceRawTableId}
+            />
+          </div>
+        )}
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
+          {t('common.cancel')}
+        </Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
+          {busy ? t('common.saving') : t('data.resultTables.create.confirm')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+function AutomationConfigGridRow({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <>
+      <RawTableFormLabel className="lg:self-start lg:pt-1.5">{label}</RawTableFormLabel>
+      <div className="min-w-0">{children}</div>
+    </>
   );
 }
 
@@ -405,9 +612,6 @@ export function ResultTableEditor({
     (trimmedName !== resultTable.name ||
       (sourceRawTableId || null) !== resultTable.sourceRawTableId)
   );
-  const handleSave = async () => {
-    if (canSave) await onSave(resultTable, localName, sourceRawTableId || null);
-  };
 
   const rawTableOptions = useMemo(() => {
     const options = rawTables.map((rawTable) => ({
@@ -456,6 +660,23 @@ export function ResultTableEditor({
     },
     [resultTable.id]
   );
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    await onSave(resultTable, localName, sourceRawTableId || null);
+    await loadPreview(previewPage);
+  };
+
+  // Header preview toggle: enter preview (data tab + reload) or exit back to
+  // the config tab.
+  const handlePreviewToggle = async () => {
+    if (activeTab === 'data') {
+      setActiveTab('config');
+      return;
+    }
+    setActiveTab('data');
+    await loadPreview(1);
+  };
 
   useEffect(() => {
     setPreview(null);
@@ -580,38 +801,26 @@ export function ResultTableEditor({
                 : t('data.resultTables.editor.runPipeline')}
             </button>
           )}
-          <GlassDropdownMenu
-            align="end"
-            trigger={
-              <Button variant="secondary" size="sm" disabled={exportDisabled}>
-                <Download className="h-3.5 w-3.5" />
-                {t('data.resultTables.editor.export')}
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            }
+          <button
+            type="button"
+            onClick={() => void handlePreviewToggle()}
+            disabled={busy && activeTab !== 'data'}
+            aria-pressed={activeTab === 'data'}
+            className={`inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              activeTab === 'data'
+                ? 'border border-accent/40 bg-accent-muted text-accent'
+                : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
+            }`}
           >
-            <GlassMenuItem
-              icon={<FileText className="h-3.5 w-3.5" />}
-              disabled={exportBusy !== null}
-              onSelect={() => void handleExport('csv')}
-            >
-              {t('data.resultTables.editor.exportCsv')}
-            </GlassMenuItem>
-            <GlassMenuItem
-              icon={<Download className="h-3.5 w-3.5" />}
-              disabled={exportBusy !== null}
-              onSelect={() => void handleExport('xlsx')}
-            >
-              {t('data.resultTables.editor.exportExcel')}
-            </GlassMenuItem>
-            <GlassMenuItem
-              icon={<BarChart3 className="h-3.5 w-3.5" />}
-              disabled={exportBusy !== null}
-              onSelect={() => void handleExport('html')}
-            >
-              {t('data.resultTables.editor.exportReport')}
-            </GlassMenuItem>
-          </GlassDropdownMenu>
+            {activeTab === 'data' ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
+            {activeTab === 'data'
+              ? t('data.rawTables.actions.exitPreview')
+              : t('data.rawTables.actions.preview')}
+          </button>
           <button
             type="button"
             onClick={() => void handleSave()}
@@ -621,6 +830,24 @@ export function ResultTableEditor({
             <Save className="h-3.5 w-3.5" />
             {busy ? t('common.saving') : t('common.save')}
           </button>
+          <DataMoreMenu
+            items={[
+              {
+                key: 'export-csv',
+                label: t('data.resultTables.editor.exportCsv'),
+                icon: <FileText className="h-3.5 w-3.5" />,
+                disabled: exportDisabled,
+                onClick: () => void handleExport('csv'),
+              },
+              {
+                key: 'export-xlsx',
+                label: t('data.resultTables.editor.exportExcel'),
+                icon: <Download className="h-3.5 w-3.5" />,
+                disabled: exportDisabled,
+                onClick: () => void handleExport('xlsx'),
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -629,16 +856,59 @@ export function ResultTableEditor({
         onValueChange={(value) => setActiveTab(value as 'data' | 'config')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex h-10 items-center justify-between border-b border-border-muted px-4">
-          <TabsList className={underlineTabListClass}>
-            <TabsTrigger value="config" className={underlineTabTriggerClass}>
+        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3">
+          <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+            <RawTableFormLabel>
+              <span className="inline-flex items-center gap-1.5">
+                {t('data.resultTables.editor.rawTable')}
+                <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
+              </span>
+            </RawTableFormLabel>
+            <RawTableSelect
+              value={sourceRawTableId}
+              options={rawTableOptions}
+              disabled={busy || isRawTablesLoading}
+              onChange={setSourceRawTableId}
+            />
+
+            <div className="col-span-full border-t border-border-subtle" />
+
+            <ResultTableAutomations
+              key={resultTable.id}
+              resultTable={resultTable}
+              embedded
+              Row={AutomationConfigGridRow}
+            />
+          </div>
+        </TabsContent>
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
+          <GlassDataGridPreview
+            preview={preview}
+            isLoading={previewLoading}
+            error={previewError}
+            currentPage={previewPage}
+            onPageChange={(page) => void loadPreview(page)}
+            labels={{
+              loading: t('data.resultTables.editor.dataLoading'),
+              empty: t('data.resultTables.editor.dataEmpty'),
+              total: (count) => t('data.workflow.nodeDataTotal', { count }),
+              pageSize: (count) => t('data.workflow.nodeDataPageSize', { count }),
+            }}
+            edgeToEdge
+            rowHeight={32}
+            headerHeight={34}
+          />
+        </TabsContent>
+        <div className={`${bottomTabBarClass} justify-between`}>
+          <TabsList className={bottomTabListClass}>
+            <TabsTrigger value="config" className={bottomTabTriggerClass}>
               {t('data.resultTables.editor.tabs.config')}
             </TabsTrigger>
-            <TabsTrigger value="data" className={underlineTabTriggerClass}>
+            <TabsTrigger value="data" className={bottomTabTriggerClass}>
               {t('data.resultTables.editor.tabs.data')}
             </TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
+          <div className="flex items-center gap-2 px-4 text-xs text-text-muted">
             {activeTab === 'data' && preview && (
               <span>
                 {t('data.resultTables.editor.dataMeta', {
@@ -661,50 +931,6 @@ export function ResultTableEditor({
             )}
           </div>
         </div>
-
-        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3">
-          <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-            <RawTableFormLabel>
-              <span className="inline-flex items-center gap-1.5">
-                {t('data.resultTables.editor.rawTable')}
-                <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
-              </span>
-            </RawTableFormLabel>
-            <RawTableSelect
-              value={sourceRawTableId}
-              options={rawTableOptions}
-              disabled={busy || isRawTablesLoading}
-              onChange={setSourceRawTableId}
-            />
-
-            <div className="col-span-full border-t border-border-subtle" />
-
-            <RawTableFormLabel className="lg:self-start lg:pt-1.5">
-              {t('data.resultTables.automation.title')}
-            </RawTableFormLabel>
-            <div className="min-w-0">
-              <ResultTableAutomations key={resultTable.id} resultTable={resultTable} embedded />
-            </div>
-          </div>
-        </TabsContent>
-        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
-          <GlassDataGridPreview
-            preview={preview}
-            isLoading={previewLoading}
-            error={previewError}
-            currentPage={previewPage}
-            onPageChange={(page) => void loadPreview(page)}
-            labels={{
-              loading: t('data.resultTables.editor.dataLoading'),
-              empty: t('data.resultTables.editor.dataEmpty'),
-              total: (count) => t('data.workflow.nodeDataTotal', { count }),
-              pageSize: (count) => t('data.workflow.nodeDataPageSize', { count }),
-            }}
-            edgeToEdge
-            rowHeight={32}
-            headerHeight={34}
-          />
-        </TabsContent>
       </Tabs>
     </section>
   );

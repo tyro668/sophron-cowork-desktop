@@ -55,6 +55,20 @@ export const underlineTabListClass =
   'inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0';
 
 /**
+ * Bottom tab bar (cloud list panels style): the strip sits at the panel's
+ * bottom edge; the active tab is tinted and marked by a top accent line.
+ */
+export const bottomTabBarClass =
+  'flex h-12 flex-shrink-0 items-stretch border-t border-border-muted';
+export const bottomTabListClass =
+  'flex h-full items-stretch gap-0 rounded-none border-0 bg-transparent p-0';
+export const bottomTabTriggerClass =
+  'relative h-full rounded-none bg-transparent px-4 text-xs font-medium text-text-secondary shadow-none ' +
+  'hover:bg-surface-hover/50 hover:text-text-primary ' +
+  'data-[state=active]:bg-accent-muted/60 data-[state=active]:text-accent data-[state=active]:shadow-none ' +
+  'after:absolute after:inset-x-0 after:top-0 after:h-px data-[state=active]:after:bg-accent';
+
+/**
  * Flat full-width header strip for workspace list pages: search/create on the
  * left, row actions on the right. Replaces the old floating `mb-3` toolbar so
  * the bar sits flush against the tab underline and the table below it.
@@ -568,7 +582,7 @@ export type CloudMirrorInfo = NonNullable<
   Extract<DataRawTable['inputConfig'], { sourceKind: 'cloud' }>['cloudMirror']
 >;
 
-/** Includes legacy CSV mirrors while older records are being migrated. */
+/** Includes legacy Csv mirrors while older records are being migrated. */
 export function getCloudMirror(
   rawTable: Pick<DataRawTable, 'inputConfig'> | null | undefined
 ): CloudMirrorInfo | undefined {

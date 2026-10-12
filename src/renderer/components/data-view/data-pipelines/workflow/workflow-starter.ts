@@ -1,11 +1,10 @@
 /**
  * Starter-graph builder for an empty workflow canvas: a ready-to-edit
- * input_source → sql_query → output chain so a new pipeline never lands on a
+ * input_source → filter → output chain so a new pipeline never lands on a
  * blank canvas. Node ids/positions follow the editor's own conventions
  * (makeLocalId / getNextWorkflowNodePosition); the graph is a draft — it
  * persists only when the user saves.
  */
-import { DEFAULT_SQL_QUERY } from '../../../../../shared/sql-query';
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
@@ -64,7 +63,7 @@ export function buildWorkflowStarterGraph({
    */
   resultTableName?: string;
   /** Localized operator labels (t(catalog.labelKey)). */
-  labels: Record<'input_source' | 'sql_query' | 'output', string>;
+  labels: Record<'input_source' | 'filter' | 'output', string>;
 }): WorkflowStarterGraph {
   const createdAt = Date.now();
   const inputConfig: Record<string, unknown> = { source: 'rawTable' };
@@ -82,12 +81,12 @@ export function buildWorkflowStarterGraph({
     config: inputConfig,
     createdAt,
   });
-  const sql = starterNode({
+  const filter = starterNode({
     pipelineId,
-    type: 'sql_query',
-    label: labels.sql_query,
+    type: 'filter',
+    label: labels.filter,
     index: 1,
-    config: { sql: DEFAULT_SQL_QUERY },
+    config: { condition: '' },
     createdAt,
   });
   const output = starterNode({
@@ -112,5 +111,8 @@ export function buildWorkflowStarterGraph({
     targetHandle: 'input',
     createdAt,
   });
-  return { nodes: [source, sql, output], edges: [link(source, sql), link(sql, output)] };
+  return {
+    nodes: [source, filter, output],
+    edges: [link(source, filter), link(filter, output)],
+  };
 }

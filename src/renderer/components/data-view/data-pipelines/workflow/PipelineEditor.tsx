@@ -580,7 +580,7 @@ export function PipelineEditor({
     [selectedNode, selectSingleNode, t, pipeline.id]
   );
 
-  // Empty-canvas starter: input → SQL → output as an unsaved draft so the
+  // Empty-canvas starter: input → filter → output as an unsaved draft so the
   // user reviews/adjusts before persisting.
   const applyStarterTemplate = useCallback(() => {
     setWorkflow((current) => {
@@ -592,7 +592,7 @@ export function PipelineEditor({
         resultTableName: t('data.workflow.starterOutputName', { name: pipeline.name }),
         labels: {
           input_source: t(getOperatorCatalog('input_source').labelKey),
-          sql_query: t(getOperatorCatalog('sql_query').labelKey),
+          filter: t(getOperatorCatalog('filter').labelKey),
           output: t(getOperatorCatalog('output').labelKey),
         },
       });

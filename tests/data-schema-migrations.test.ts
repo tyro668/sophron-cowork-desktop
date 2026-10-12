@@ -363,7 +363,7 @@ describe('metadata migrations', () => {
     );
   });
 
-  it('migrates cloud CSV mirrors once without moving cache files or changing table identity', async () => {
+  it('migrates cloud Csv mirrors once without moving cache files or changing table identity', async () => {
     const root = makeTempRoot();
     const raw = new Database(path.join(root, 'meta.sqlite'));
     rawDbs.push(raw);

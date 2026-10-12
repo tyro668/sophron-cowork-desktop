@@ -162,7 +162,7 @@ rect(75, 397, 385, 550, fill="blue_fill", border="blue_border")
 txt(97, 415, "云端表目录", 22, color="blue")
 txt(97, 452, "空间  /  项目  /  数据表", 17)
 txt(97, 481, "浏览 · 搜索 · 预览", 16, color="muted")
-txt(97, 511, "云表导出 CSV 后可导入本地", 16, color="muted")
+txt(97, 511, "云表导出 Csv 后可导入本地", 16, color="muted")
 
 rect(75, 647, 385, 837, fill="slate_fill", border="slate_border")
 txt(97, 665, "云侧分析与可视化", 21, color="blue")
@@ -172,8 +172,8 @@ txt(97, 775, "九思仅上传本地表数据；", 16, color="muted")
 txt(97, 801, "不把云侧产品能力计入本应用", 16, color="muted")
 
 txt(80, 891, "云表双向通路", 20, color="blue")
-txt(80, 930, "读取：云表 → CSV → 本地输入表", 16)
-txt(80, 958, "回写：本地表 → CSV → 云表", 16)
+txt(80, 930, "读取：云表 → Csv → 本地输入表", 16)
+txt(80, 958, "回写：本地表 → Csv → 云表", 16)
 txt(80, 986, "回写可选 CREATE / REPLACE", 15, color="muted")
 
 
@@ -261,7 +261,7 @@ arrow([(1365, 584), (1455, 584)], color="orange")
 
 rect(1455, 718, 1775, 864, fill="orange_fill", border="orange_border")
 txt(1477, 734, "本地数据源", 21, color="orange")
-txt(1477, 775, "CSV / TSV、Excel (.xls/.xlsx)", 16)
+txt(1477, 775, "Csv / TSV、Excel (.xls/.xlsx)", 16)
 txt(1477, 807, "及上述文件的文件夹", 16)
 txt(1477, 834, "导入为数据工作台输入表", 15, color="muted")
 arrow([(1455, 808), (1410, 808), (1410, 771), (1365, 771)], color="orange")
@@ -271,11 +271,11 @@ txt(1460, 936, "模型调用不等于云表上传", 16, color="muted")
 txt(1460, 966, "远程 / 定时任务需要主机运行", 15, color="muted")
 
 
-# Cross-column CSV import. Paths run in gutters so they never imply direct
+# Cross-column Csv import. Paths run in gutters so they never imply direct
 # renderer-to-cloud or renderer-to-local-file access.
 arrow([(385, 493), (426, 493), (426, 819), (485, 819)], color="blue")
 badge(426, 599, "1", color="blue")
-txt(80, 575, "1  云表 CSV 导入 → 本地输入表", 16, color="blue")
+txt(80, 575, "1  云表 Csv 导入 → 本地输入表", 16, color="blue")
 
 
 # Bottom results and optional cloud write-back. Output tables are native data
@@ -283,7 +283,7 @@ txt(80, 575, "1  云表 CSV 导入 → 本地输入表", 16, color="blue")
 rect(55, 1039, 1795, 1192, fill="bg", border="slate_border", radius=14)
 txt(80, 1053, "本地结果与可选数据闭环", 23, color="blue")
 txt(80, 1096, "4  可选云表回写", 18, color="green")
-txt(80, 1126, "输出表 CSV → CREATE / REPLACE", 16, color="muted")
+txt(80, 1126, "输出表 Csv → CREATE / REPLACE", 16, color="muted")
 
 rect(470, 1083, 988, 1155, fill="blue_fill", border="blue_border")
 txt(493, 1095, "数据任务输出表（DuckDB）", 20, color="blue")

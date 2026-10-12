@@ -12,7 +12,7 @@
 
 其中：
 
-- `auto` 策略沿用当前输入表自动导入能力，适合标准 Excel、CSV 和结构稳定的文件夹。
+- `auto` 策略沿用当前输入表自动导入能力，适合标准 Excel、Csv 和结构稳定的文件夹。
 - `customize` 策略通过一个自定义标准化程序项目处理复杂输入，适合复杂 Excel、多表头、合并单元格、跨 Sheet、模板化报表等非标准二维表。项目必须包含入口命令、模块、依赖声明、测试样例和 manifest 输出契约。
 - `Skill` 用于辅助用户分析样例文件并生成/维护标准化程序，但定时任务和生产运行不依赖 LLM。
 - 当前阶段暂不把语言 runtime 打包进应用安装包。标准化程序项目支持 Python 和 Node.js，在执行阶段依赖用户环境或系统路径提供的 runtime，应用负责检测、校验和记录版本。
@@ -25,9 +25,9 @@
 
 当前输入表适合处理已经接近二维表的文件：
 
-- CSV / TSV。
+- Csv / TSV。
 - 单 Sheet Excel。
-- 文件夹中结构一致的 Excel 或 CSV。
+- 文件夹中结构一致的 Excel 或 Csv。
 
 但业务中常见的 Excel 往往不是标准二维表：
 
@@ -97,7 +97,7 @@ flowchart LR
   B --> C{"数据处理策略"}
   C -->|auto| D["当前自动导入逻辑"]
   C -->|customize| E["可执行标准化程序项目"]
-  E --> F["输出 CSV/Parquet + manifest"]
+  E --> F["输出 Csv/Parquet + manifest"]
   D --> G["DuckDB 输入表"]
   F --> G
   G --> H["数据任务 DSL"]
@@ -383,7 +383,7 @@ tests/
   normalizer.test.mjs
 ```
 
-Python 和 Node.js 项目都必须通过统一入口命令接收 context 和 manifest，并输出 CSV 或 Parquet。差异只体现在项目依赖和入口命令，不改变输入表刷新链路。
+Python 和 Node.js 项目都必须通过统一入口命令接收 context 和 manifest，并输出 Csv 或 Parquet。差异只体现在项目依赖和入口命令，不改变输入表刷新链路。
 
 Python 和 Node.js 项目模板需要保持最小同构模块边界：
 
@@ -643,7 +643,7 @@ export async function transform(context) {
 
 控件：
 
-- 来源类型：Excel / CSV / 文件夹。
+- 来源类型：Excel / Csv / 文件夹。
 - 文件或文件夹路径。
 - 文件匹配：例如 `*.xlsx`。
 - 是否递归子目录。
@@ -1004,7 +1004,7 @@ input source dataset "<inputTableId>" as src
 - 支持外部 Python runtime 检测和自定义路径配置。
 - 手动运行预览。
 - manifest 校验。
-- 导入 CSV 输出。
+- 导入 Csv 输出。
 
 ### Phase 2：Node.js 运行时支持
 

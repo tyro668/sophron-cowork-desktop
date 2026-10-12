@@ -198,7 +198,7 @@ describe('useDataActions pipeline creation', () => {
               rawTableId: 'ds_orders',
             }),
           }),
-          expect.objectContaining({ type: 'sql_query' }),
+          expect.objectContaining({ type: 'filter' }),
           expect.objectContaining({
             type: 'output',
             // The seeded output stays unnamed so no output table is

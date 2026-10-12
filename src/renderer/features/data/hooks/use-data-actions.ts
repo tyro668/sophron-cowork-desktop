@@ -21,6 +21,7 @@ import { DATA_DELETE_BATCH_SIZE, matchesSearchText } from '../../../components/d
 import { getOperatorCatalog } from '../../../components/data-view/data-pipelines/workflow/operator-catalog';
 import { buildWorkflowStarterGraph } from '../../../components/data-view/data-pipelines/workflow/workflow-starter';
 import { dataClient } from '../api/data-client';
+import { showToast } from '../../../utils/toast';
 import { uniquePipelineName } from '../model/pipeline-names';
 import type { RawTableDraft } from '../model/types';
 import type { DataViewUi } from './use-data-view-ui';
@@ -98,7 +99,7 @@ export function useDataActions(deps: DataActionsDeps) {
         let focused = pipeline;
         if (sourceRawTable) {
           try {
-            // Seed the same input → SQL → output starter graph the empty
+            // Seed the same input → filter → output starter graph the empty
             // canvas offers — bound to the table this pipeline was created from.
             const starter = buildWorkflowStarterGraph({
               pipelineId: pipeline.id,
@@ -106,7 +107,7 @@ export function useDataActions(deps: DataActionsDeps) {
               sourceName: sourceRawTable.name,
               labels: {
                 input_source: t(getOperatorCatalog('input_source').labelKey),
-                sql_query: t(getOperatorCatalog('sql_query').labelKey),
+                filter: t(getOperatorCatalog('filter').labelKey),
                 output: t(getOperatorCatalog('output').labelKey),
               },
             });
@@ -579,26 +580,37 @@ export function useDataActions(deps: DataActionsDeps) {
     }
   }, [confirmDelete, drafts, editors, rawTables, loadRawTables, t, ui]);
 
-  const handleCreateResultTable = useCallback(async () => {
-    if (!dataClient.has('createResultTable')) return;
-    ui.setActionId('create-output');
-    ui.setError(null);
-    try {
-      ui.setActiveTab('result_tables');
-      ui.setSearchQuery('');
-      dashboard.setOutputPage(1);
-      const resultTable = await dataClient.createResultTable({
-        name: `${t('data.resultTables.defaultName')} ${dashboard.dashboard.totalResultTables + 1}`,
-      });
-      editors.setEditingResultTableId(resultTable.id);
-      await loadDashboard({ preserveError: true, tab: 'result_tables', outputPage: 1 });
-    } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
-      await loadDashboard({ preserveError: true, tab: 'result_tables' });
-    } finally {
-      ui.setActionId(null);
-    }
-  }, [dashboard, editors, loadDashboard, t, ui]);
+  const handleCreateResultTable = useCallback(
+    async (input: { name: string; sourceRawTableId: string | null }) => {
+      if (!dataClient.has('createResultTable')) return;
+      ui.setActionId('create-output');
+      ui.setError(null);
+      try {
+        ui.setActiveTab('result_tables');
+        ui.setSearchQuery('');
+        dashboard.setOutputPage(1);
+        const resultTable = await dataClient.createResultTable({
+          name: input.name.trim(),
+        });
+        let opened = resultTable;
+        if (input.sourceRawTableId && dataClient.has('updateResultTable')) {
+          opened = await dataClient.updateResultTable({
+            id: resultTable.id,
+            sourceRawTableId: input.sourceRawTableId,
+          });
+          showToast('success', t('data.resultTables.copiedRows', { count: opened.rowCount }));
+        }
+        editors.setEditingResultTableId(opened.id);
+        await loadDashboard({ preserveError: true, tab: 'result_tables', outputPage: 1 });
+      } catch (err) {
+        ui.setError(err instanceof Error ? err.message : String(err));
+        await loadDashboard({ preserveError: true, tab: 'result_tables' });
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [dashboard, editors, loadDashboard, t, ui]
+  );
 
   const handleUpdateResultTable = useCallback(
     async (resultTable: DataResultTable, name: string, sourceRawTableId: string | null) => {
@@ -615,11 +627,14 @@ export function useDataActions(deps: DataActionsDeps) {
       ui.setActionId(resultTable.id);
       ui.setError(null);
       try {
-        await dataClient.updateResultTable({
+        const updated = await dataClient.updateResultTable({
           id: resultTable.id,
           name: trimmedName,
           sourceRawTableId: nextSourceRawTableId,
         });
+        if (nextSourceRawTableId && nextSourceRawTableId !== resultTable.sourceRawTableId) {
+          showToast('success', t('data.resultTables.copiedRows', { count: updated.rowCount }));
+        }
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } catch (err) {
         ui.setError(err instanceof Error ? err.message : String(err));
@@ -628,7 +643,7 @@ export function useDataActions(deps: DataActionsDeps) {
         ui.setActionId(null);
       }
     },
-    [loadDashboard, ui]
+    [loadDashboard, t, ui]
   );
 
   const handleDeleteResultTable = useCallback(
