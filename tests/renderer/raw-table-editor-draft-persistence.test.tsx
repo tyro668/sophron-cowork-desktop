@@ -193,6 +193,10 @@ describe('RawTableEditorWorkbench custom draft persistence', () => {
       publish,
     }).render();
 
+    // A persisted artifact lands on the review step — go back to step 1 to
+    // edit the rule prompt.
+    fireEvent.click(screen.getByRole('button', { name: '1 Describe rules' }));
+
     // Make the config dirty so Save is enabled.
     fireEvent.change(promptTextarea(), {
       target: { value: 'keep paid rows, drop test data' },

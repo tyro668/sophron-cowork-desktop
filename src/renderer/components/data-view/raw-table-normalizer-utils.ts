@@ -265,13 +265,12 @@ export function buildNormalizerProjectTree(
   return roots;
 }
 
-export function getNormalizerVersionDiffSummary(
+export function getNormalizerVersionDiff(
   version: DataRawTableNormalizerArtifactVersion,
-  current: DataRawTableNormalizerArtifactVersion | undefined,
-  t: TranslateFn
-): string {
+  current: DataRawTableNormalizerArtifactVersion | undefined
+): { changed: number; added: number; removed: number; ruleSame: boolean } | null {
   if (!current || version.id === current.id) {
-    return '';
+    return null;
   }
   const currentFiles = new Map(current.files.map((file) => [file.path, file.content]));
   const versionFiles = new Map(version.files.map((file) => [file.path, file.content]));
@@ -290,15 +289,12 @@ export function getNormalizerVersionDiffSummary(
       removed += 1;
     }
   }
-  return t('data.rawTables.editor.versionDiffSummary', {
+  return {
     changed,
     added,
     removed,
-    rule:
-      version.rulePrompt === current.rulePrompt
-        ? t('data.rawTables.editor.versionRuleSame')
-        : t('data.rawTables.editor.versionRuleChanged'),
-  });
+    ruleSame: version.rulePrompt === current.rulePrompt,
+  };
 }
 
 export function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataNormalizerLanguage {
