@@ -197,8 +197,45 @@ function TableAutomations({
     });
     if (!saved) throw new Error(t('data.resultTables.automation.missing'));
   };
+  // The trigger strategy for a raw-table link lives on the cloud.sync input
+  // node — update the flag inside the automation's action graph.
+  const setNodeRunOnChange = async (automationId: string, runOnChange: boolean) => {
+    const current = await dataClient.getAutomation(automationId);
+    if (!current) throw new Error(t('data.resultTables.automation.missing'));
+    const nodes = current.actionGraph.nodes.map((node) =>
+      node.type === 'cloud.sync' &&
+      node.config.direction === 'input' &&
+      node.config.rawTableId === table.id
+        ? { ...node, config: { ...node.config, runOnChange } }
+        : node
+    );
+    const saved = await dataClient.updateAutomation(automationId, {
+      actionGraph: { ...current.actionGraph, nodes },
+    });
+    if (!saved) throw new Error(t('data.resultTables.automation.missing'));
+  };
+  const applyTableStrategy = async (value: 'automation' | 'change') => {
+    const runOnChange = value === 'change';
+    for (const automation of linked) {
+      if (kind === 'raw') await setNodeRunOnChange(automation.id, runOnChange);
+      else await bind(automation.id, runOnChange);
+    }
+  };
   const selectedAutomation = automations.find((a) => a.id === selectedId);
   const selectedLinked = Boolean(selectedAutomation && linked.includes(selectedAutomation));
+  // The trigger strategy is table-wide: it applies to every linked automation.
+  const linkedRunOnChange = (a: Automation): boolean =>
+    kind === 'raw'
+      ? a.actionGraph.nodes.some(
+          (node) =>
+            node.type === 'cloud.sync' &&
+            node.config.direction === 'input' &&
+            node.config.rawTableId === table.id &&
+            node.config.runOnChange === true
+        )
+      : Boolean(a.outputBindings?.some((b) => b.resultTableId === table.id && b.runOnChange));
+  const tableStrategy: 'automation' | 'change' =
+    linked.length > 0 && linked.every(linkedRunOnChange) ? 'change' : 'automation';
   const selectedRunning = selectedAutomation?.status === 'running';
   const runSelected = () => {
     if (!selectedId) return;
@@ -290,7 +327,7 @@ function TableAutomations({
                 cloudSource,
               });
             } else {
-              void execute(() => bind(selectedId, true));
+              void execute(() => bind(selectedId, tableStrategy === 'change'));
             }
           }}
         >
@@ -323,6 +360,40 @@ function TableAutomations({
       )}
     </div>
   ) : null;
+  // Table-wide trigger strategy — its own config row right below the
+  // automation info row, applied to every linked automation at once.
+  const strategySelect = effectiveEnabled ? (
+    <div className="w-44">
+      <RawTableSelect
+        value={tableStrategy}
+        disabled={busy || linked.length === 0}
+        options={[
+          {
+            value: 'automation',
+            label: t('data.resultTables.automation.triggerByAutomation'),
+          },
+          {
+            value: 'change',
+            label: t('data.resultTables.automation.triggerOnChange'),
+          },
+        ]}
+        onChange={(value) =>
+          void execute(() => applyTableStrategy(value as 'automation' | 'change'))
+        }
+      />
+    </div>
+  ) : null;
+  const strategyLabel = t('data.resultTables.automation.triggerMode');
+  const strategyRow = strategySelect ? (
+    Row ? (
+      <Row label={strategyLabel}>{strategySelect}</Row>
+    ) : (
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-secondary">{strategyLabel}</span>
+        {strategySelect}
+      </div>
+    )
+  ) : null;
   if (embedded) {
     const title = t('data.resultTables.automation.title');
     const info = t('data.resultTables.automation.info');
@@ -330,6 +401,7 @@ function TableAutomations({
       <>
         {Row ? <Row label={title}>{switchBlock}</Row> : switchBlock}
         {controlsBlock ? Row ? <Row label={info}>{controlsBlock}</Row> : controlsBlock : null}
+        {strategyRow}
       </>
     );
   }
@@ -342,6 +414,7 @@ function TableAutomations({
       </div>
       {switchBlock}
       {controlsBlock}
+      {strategyRow}
     </div>
   );
 }

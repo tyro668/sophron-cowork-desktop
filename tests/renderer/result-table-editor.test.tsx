@@ -141,6 +141,8 @@ describe('ResultTableEditor', () => {
       const trigger = screen.getByRole('button', { name: 'More' });
       fireEvent.pointerDown(trigger);
       fireEvent.click(trigger);
+      const exportItem = await screen.findByText('Export');
+      fireEvent.pointerMove(exportItem, { pointerType: 'mouse' });
     };
     await openMenu();
     fireEvent.click(await screen.findByText('Csv file'));
@@ -151,7 +153,7 @@ describe('ResultTableEditor', () => {
     );
 
     await openMenu();
-    fireEvent.click(await screen.findByText('Excel file (.xlsx)'));
+    fireEvent.click(await screen.findByText('Excel file (2013)'));
     await waitFor(() =>
       expect(exportTable).toHaveBeenCalledWith(expect.objectContaining({ format: 'xlsx' }))
     );

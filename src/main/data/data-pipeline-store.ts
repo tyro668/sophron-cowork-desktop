@@ -226,20 +226,19 @@ export class DataPipelineStore {
   createResultTable(input: DataCreateResultTableInput = {}): Promise<DataResultTable> {
     return this.rawTableRepo.createResultTable(input);
   }
-  async updateResultTable(input: DataUpdateResultTableInput): Promise<DataResultTable> {
-    const previous = await this.rawTableRepo.getResultTableRecord(input.id);
-    const updated = await this.rawTables.updateResultTable(input);
-    if (updated.sourceRawTableId && updated.sourceRawTableId !== previous?.sourceRawTableId) {
-      try {
-        this.commitCoordinator.onOutputsCommitted?.([updated.id]);
-      } catch {
-        // Listener errors must never fail the update.
-      }
-    }
-    return updated;
+  updateResultTable(input: DataUpdateResultTableInput): Promise<DataResultTable> {
+    // Rebind commits fire onTableCommitted — data-change listeners get the
+    // accurate post-commit signal, including re-copies of an existing source.
+    return this.rawTables.updateResultTable(input);
   }
   setOutputCommitListener(listener: (outputResultTableIds: string[]) => void): void {
     this.commitCoordinator.onOutputsCommitted = listener;
+  }
+  /** Fired after any staged table commit: 'reimport' = raw table, 'rebind_output' = result table. */
+  setTableCommitListener(
+    listener: (tableId: string, operation: 'reimport' | 'rebind_output') => void
+  ): void {
+    this.rawTables.onTableCommitted = listener;
   }
   findRawTableByAutomationSyncKey(syncKey: string): Promise<DataRawTable | null> {
     return this.rawTableRepo.findRawTableByAutomationSyncKey(syncKey);

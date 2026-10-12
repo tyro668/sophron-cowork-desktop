@@ -469,8 +469,9 @@
         "runPipeline": "重新运行",
         "running": "运行中…",
         "runPipelineTitle": "重新运行数据加工「{{name}}」",
+        "export": "导出",
         "exportCsv": "Csv 文件",
-        "exportExcel": "Excel 文件 (.xlsx)",
+        "exportExcel": "Excel 文件（2013）",
         "exportDone": "已导出：{{path}}",
         "dataMeta": "共 {{rows}} 行 · 数据更新于 {{time}}",
         "tabs": {
@@ -493,6 +494,9 @@
         "edit": "配置",
         "unlink": "解除关联",
         "locked": "已有关联的自动化，请先解除关联",
+        "triggerMode": "触发策略",
+        "triggerOnChange": "表变更后触发",
+        "triggerByAutomation": "依照自动化触发",
         "missing": "自动化已不存在，请刷新列表"
       }
     },
@@ -2829,7 +2833,6 @@
     "triggerTitle": "触发条件",
     "triggerMethod": "触发方式",
     "triggerScheduled": "定时触发",
-    "triggerFileChange": "文件变更时触发",
     "noAutoTrigger": "无自动触发",
     "noAutoTriggerDesc": "未配置自动触发。你仍可以在自动化列表或详情页点击“运行”立即执行。",
     "frequency": "执行频率",
@@ -2992,7 +2995,7 @@
     "pickerNone": "还没有选择时段",
     "pickerSuggestions": "常用建议",
     "noActions": "还没有动作，点击右上角「添加动作」。",
-    "triggerManual": "手动或结果表更新时触发",
+    "triggerManual": "手动触发",
     "outputChangeTrigger": "结果表更新后执行",
     "cloudSync": {
       "title": "结果表写入网盘文件",

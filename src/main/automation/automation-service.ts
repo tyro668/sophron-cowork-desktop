@@ -201,6 +201,28 @@ export class AutomationService {
     }
   }
 
+  // Mirrors runForResultTables for input tables: a raw-table data commit runs
+  // automations whose cloud.sync input node points at it with runOnChange set.
+  async runForRawTables(rawTableIds: string[]): Promise<void> {
+    const committed = new Set(rawTableIds);
+    const ancestors = automationRunScope.getStore() ?? [];
+    for (const automation of this.store.list({ status: 'all' }).automations) {
+      const linked = automation.actionGraph.nodes.some(
+        (node) =>
+          node.type === 'cloud.sync' &&
+          node.config.direction === 'input' &&
+          node.config.runOnChange === true &&
+          typeof node.config.rawTableId === 'string' &&
+          committed.has(node.config.rawTableId)
+      );
+      if (!linked) continue;
+      if (this.runner.hasQueuedRun(automation.id) || ancestors.includes(automation.id)) continue;
+      void this.runTriggered(automation.id, 'output_change').catch((error) => {
+        console.warn('[Automation] Input trigger failed:', automation.id, error);
+      });
+    }
+  }
+
   listRuns(id: string, query?: AutomationRunQuery): AutomationRun[] {
     return this.store.listRuns(id, query);
   }

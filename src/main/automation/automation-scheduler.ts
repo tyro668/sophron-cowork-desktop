@@ -1,12 +1,24 @@
 import { existsSync, watch, type FSWatcher } from 'fs';
+import { basename, dirname } from 'path';
 import type { AutomationService } from './automation-service';
 import type { Automation } from '../../shared/automation/types';
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const TABLE_WATCH_DEBOUNCE_MS = 2_000;
+
+export interface RawTableWatchTarget {
+  rawTableId: string;
+  sourcePath: string;
+  kind: 'file' | 'dir';
+}
 
 interface AutomationSchedulerOptions {
   now?: () => number;
   resolveProjectCwd?: (projectId: string) => string | null;
+  /** Maps watchable raw-table ids (cloud.sync runOnChange links) to sources. */
+  resolveRawTableWatchTargets?: (rawTableIds: string[]) => Promise<RawTableWatchTarget[]>;
+  /** Re-imports the table's stored source into DuckDB — the commit fires links. */
+  reimportRawTable?: (rawTableId: string) => Promise<void>;
 }
 
 interface FileWatcherRecord {
@@ -19,10 +31,17 @@ export class AutomationScheduler {
   private readonly service: AutomationService;
   private readonly now: () => number;
   private readonly resolveProjectCwd?: (projectId: string) => string | null;
+  private readonly resolveRawTableWatchTargets?: (
+    rawTableIds: string[]
+  ) => Promise<RawTableWatchTarget[]>;
+  private readonly reimportRawTable?: (rawTableId: string) => Promise<void>;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private ticking = false;
   private readonly fileWatchers = new Map<string, FileWatcherRecord>();
+  private readonly tableWatchers = new Map<string, FileWatcherRecord>();
+  private tableWatchSyncing = false;
+  private tableWatchPending = false;
 
   constructor(
     service: AutomationService,
@@ -32,9 +51,13 @@ export class AutomationScheduler {
     if (typeof optionsOrNow === 'function') {
       this.now = optionsOrNow;
       this.resolveProjectCwd = undefined;
+      this.resolveRawTableWatchTargets = undefined;
+      this.reimportRawTable = undefined;
     } else {
       this.now = optionsOrNow.now ?? (() => Date.now());
       this.resolveProjectCwd = optionsOrNow.resolveProjectCwd;
+      this.resolveRawTableWatchTargets = optionsOrNow.resolveRawTableWatchTargets;
+      this.reimportRawTable = optionsOrNow.reimportRawTable;
     }
   }
 
@@ -42,6 +65,7 @@ export class AutomationScheduler {
     if (this.running) return;
     this.running = true;
     this.syncFileWatchers();
+    void this.syncTableWatchers();
     this.scheduleNextTick();
   }
 
@@ -56,6 +80,11 @@ export class AutomationScheduler {
       if (record.timer) clearTimeout(record.timer);
     }
     this.fileWatchers.clear();
+    for (const record of this.tableWatchers.values()) {
+      record.watcher.close();
+      if (record.timer) clearTimeout(record.timer);
+    }
+    this.tableWatchers.clear();
   }
 
   reschedule(): void {
@@ -65,7 +94,91 @@ export class AutomationScheduler {
       this.timer = null;
     }
     this.syncFileWatchers();
+    void this.syncTableWatchers();
     this.scheduleNextTick();
+  }
+
+  /** Re-resolves which raw tables need file watching (e.g. after a source path changes). */
+  refreshTableWatchers(): void {
+    if (!this.running) return;
+    void this.syncTableWatchers();
+  }
+
+  // File-backed raw tables linked via runOnChange cloud.sync inputs get a
+  // watcher: a source-file change re-imports into DuckDB, and that commit is
+  // what fans out to the linked automations.
+  private async syncTableWatchers(): Promise<void> {
+    if (this.tableWatchSyncing) {
+      this.tableWatchPending = true;
+      return;
+    }
+    this.tableWatchSyncing = true;
+    try {
+      const watchedIds = new Set<string>();
+      for (const automation of this.service.list({ status: 'all' }).automations) {
+        if (!automation.enabled || automation.status === 'paused') continue;
+        for (const node of automation.actionGraph.nodes) {
+          if (
+            node.type === 'cloud.sync' &&
+            node.config.direction === 'input' &&
+            node.config.runOnChange === true &&
+            typeof node.config.rawTableId === 'string'
+          ) {
+            watchedIds.add(node.config.rawTableId);
+          }
+        }
+      }
+      const targets = this.resolveRawTableWatchTargets
+        ? await this.resolveRawTableWatchTargets([...watchedIds])
+        : [];
+      const desired = new Map(
+        targets.map((target) => [
+          target.rawTableId,
+          { target, signature: JSON.stringify({ path: target.sourcePath, kind: target.kind }) },
+        ])
+      );
+      for (const [rawTableId, record] of this.tableWatchers) {
+        const next = desired.get(rawTableId);
+        if (next && next.signature === record.signature) continue;
+        record.watcher.close();
+        if (record.timer) clearTimeout(record.timer);
+        this.tableWatchers.delete(rawTableId);
+      }
+      for (const [rawTableId, next] of desired) {
+        if (this.tableWatchers.has(rawTableId)) continue;
+        this.tableWatchers.set(rawTableId, this.createTableWatcher(next.target, next.signature));
+      }
+    } catch (error) {
+      console.warn('[Automation] Raw table watcher sync failed:', error);
+    } finally {
+      this.tableWatchSyncing = false;
+      if (this.tableWatchPending) {
+        this.tableWatchPending = false;
+        void this.syncTableWatchers();
+      }
+    }
+  }
+
+  private createTableWatcher(target: RawTableWatchTarget, signature: string): FileWatcherRecord {
+    const record: FileWatcherRecord = { signature, watcher: null as never, timer: null };
+    const fire = () => {
+      if (record.timer) clearTimeout(record.timer);
+      record.timer = setTimeout(() => {
+        record.timer = null;
+        void this.reimportRawTable?.(target.rawTableId).catch((error) => {
+          console.warn('[Automation] Raw table reimport failed:', target.rawTableId, error);
+        });
+      }, TABLE_WATCH_DEBOUNCE_MS);
+    };
+    record.watcher =
+      target.kind === 'dir'
+        ? watchWorkspace(target.sourcePath, () => fire())
+        : watch(dirname(target.sourcePath), (_eventType, filename) => {
+            // Watch the parent dir so atomic save-rename swaps keep firing.
+            if (filename && filename.toString() !== basename(target.sourcePath)) return;
+            fire();
+          });
+    return record;
   }
 
   private scheduleNextTick(): void {

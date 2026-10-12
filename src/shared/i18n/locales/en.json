@@ -469,8 +469,9 @@
         "runPipeline": "Re-run",
         "running": "Running…",
         "runPipelineTitle": "Re-run pipeline \"{{name}}\"",
+        "export": "Export",
         "exportCsv": "Csv file",
-        "exportExcel": "Excel file (.xlsx)",
+        "exportExcel": "Excel file (2013)",
         "exportDone": "Exported: {{path}}",
         "dataMeta": "{{rows}} rows · data updated {{time}}",
         "tabs": {
@@ -493,6 +494,9 @@
         "edit": "Configure",
         "unlink": "Unlink",
         "locked": "Linked automations exist — unlink them first",
+        "triggerMode": "Trigger",
+        "triggerOnChange": "Run when the table changes",
+        "triggerByAutomation": "Follow automation trigger",
         "missing": "This automation no longer exists. Refresh the list."
       }
     },
@@ -2829,7 +2833,6 @@
     "triggerTitle": "Trigger conditions",
     "triggerMethod": "Trigger method",
     "triggerScheduled": "Scheduled trigger",
-    "triggerFileChange": "Trigger on file changes",
     "noAutoTrigger": "No automatic trigger",
     "noAutoTriggerDesc": "No automatic trigger is configured. You can still use Run from the automation list or detail page to execute it immediately.",
     "frequency": "Frequency",
@@ -2992,7 +2995,7 @@
     "pickerNone": "No time slots selected yet",
     "pickerSuggestions": "Suggestions",
     "noActions": "No actions yet. Click \"Add action\" above.",
-    "triggerManual": "Manual or result table changes",
+    "triggerManual": "Manual trigger",
     "outputChangeTrigger": "After result table changes",
     "cloudSync": {
       "title": "Write result table to drive file",

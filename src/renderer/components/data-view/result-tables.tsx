@@ -833,18 +833,26 @@ export function ResultTableEditor({
           <DataMoreMenu
             items={[
               {
-                key: 'export-csv',
-                label: t('data.resultTables.editor.exportCsv'),
-                icon: <FileText className="h-3.5 w-3.5" />,
-                disabled: exportDisabled,
-                onClick: () => void handleExport('csv'),
-              },
-              {
-                key: 'export-xlsx',
-                label: t('data.resultTables.editor.exportExcel'),
+                key: 'export',
+                label: t('data.resultTables.editor.export'),
                 icon: <Download className="h-3.5 w-3.5" />,
                 disabled: exportDisabled,
-                onClick: () => void handleExport('xlsx'),
+                children: [
+                  {
+                    key: 'export-csv',
+                    label: t('data.resultTables.editor.exportCsv'),
+                    icon: <FileText className="h-3.5 w-3.5" />,
+                    disabled: exportDisabled,
+                    onClick: () => void handleExport('csv'),
+                  },
+                  {
+                    key: 'export-xlsx',
+                    label: t('data.resultTables.editor.exportExcel'),
+                    icon: <Download className="h-3.5 w-3.5" />,
+                    disabled: exportDisabled,
+                    onClick: () => void handleExport('xlsx'),
+                  },
+                ],
               },
             ]}
           />

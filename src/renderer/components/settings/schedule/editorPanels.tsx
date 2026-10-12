@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, PencilLine, Play, Plus, Save } from 'lucide-react';
-import type { Automation, AutomationTrigger, Project } from '../../../types';
+import type { Automation, Project } from '../../../types';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassSelect } from '../../GlassSelect';
 import { GlassSwitch } from '../../GlassSwitch';
 import { Button } from '../../ui/button';
 import {
   type AutomationDraft,
-  type EditableAutomationTrigger,
   type ScheduledAutomationTrigger,
   type TriggerMode,
   getProjectOptionLabel,
 } from './types';
 import { normalizeDraftTrigger } from './model';
-import { FieldStack, SegmentedControl, splitCsv } from './editor-controls';
+import { FieldStack, SegmentedControl } from './editor-controls';
 import { MonthlyDayPicker, TimesEditor, WeekdayPicker } from './schedule-time-pickers';
 import { flatToolbarRowClass } from '../../data-view/shared';
 
@@ -231,7 +230,6 @@ export function ExecutionProjectPanel({
 
 export function TriggerConditionPanel({
   draft,
-  projects,
   onDraftChange,
   tr,
 }: {
@@ -241,9 +239,9 @@ export function TriggerConditionPanel({
   tr: (key: string, fallback: string) => string;
 }) {
   const trigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
-  const triggerMethod = ['file_change', 'manual'].includes(draft.triggerMode)
-    ? draft.triggerMode
-    : 'scheduled';
+  // Triggering on data changes lives on the tables themselves (关联自动化 →
+  // 触发策略); the automation only offers manual and scheduled triggers.
+  const triggerMethod = draft.triggerMode === 'manual' ? 'manual' : 'scheduled';
   const setMode = (mode: TriggerMode) => {
     onDraftChange({
       ...draft,
@@ -262,14 +260,11 @@ export function TriggerConditionPanel({
           <GlassSelect
             value={triggerMethod}
             options={[
-              { value: 'manual', label: tr('schedule.triggerManual', '手动或结果表更新时触发') },
+              { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
-              { value: 'file_change', label: tr('schedule.triggerFileChange', '文件变更时触发') },
             ]}
             onValueChange={(value) => {
-              setMode(
-                value === 'manual' ? 'manual' : value === 'file_change' ? 'file_change' : 'daily'
-              );
+              setMode(value === 'manual' ? 'manual' : 'daily');
             }}
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
@@ -278,18 +273,15 @@ export function TriggerConditionPanel({
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
-        {trigger.kind === 'manual' ? null : trigger.kind === 'file_change' ? (
-          <FileChangeConfigCard
-            draft={draft}
-            trigger={trigger}
-            projects={projects}
-            onDraftChange={onDraftChange}
-            tr={tr}
-          />
-        ) : (
+        {trigger.kind === 'manual' ? null : (
           <ScheduledConfigCard
-            trigger={trigger}
-            mode={draft.triggerMode}
+            trigger={
+              // Legacy file_change drafts open as a daily schedule on next save.
+              trigger.kind === 'file_change'
+                ? (normalizeDraftTrigger('daily', trigger) as ScheduledAutomationTrigger)
+                : trigger
+            }
+            mode={draft.triggerMode === 'file_change' ? 'daily' : draft.triggerMode}
             onModeChange={setMode}
             onChange={(next) => onDraftChange({ ...draft, triggerMode: next.kind, trigger: next })}
             tr={tr}
@@ -480,71 +472,6 @@ function ScheduledConfigCard({
             </FieldStack>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function FileChangeConfigCard({
-  draft,
-  trigger,
-  projects,
-  onDraftChange,
-  tr,
-}: {
-  draft: AutomationDraft;
-  trigger: Extract<EditableAutomationTrigger, { kind: 'file_change' }>;
-  projects: Project[];
-  onDraftChange: (draft: AutomationDraft) => void;
-  tr: (key: string, fallback: string) => string;
-}) {
-  const projectId = trigger.projectId ?? draft.projectId;
-  const updateTrigger = (next: Extract<AutomationTrigger, { kind: 'file_change' }>) => {
-    onDraftChange({ ...draft, projectId: next.projectId ?? draft.projectId, trigger: next });
-  };
-  return (
-    <div>
-      <div className="space-y-3.5">
-        <FieldStack label={tr('schedule.watchProject', '监听项目')}>
-          <GlassSelect
-            value={projectId ?? ''}
-            options={[
-              { value: '', label: tr('schedule.projectPlaceholder', '不指定项目') },
-              ...projects.map((project) => ({
-                value: project.id,
-                label: getProjectOptionLabel(project, tr),
-              })),
-            ]}
-            onValueChange={(value) => updateTrigger({ ...trigger, projectId: value || null })}
-            placeholder={tr('schedule.projectPlaceholder', '不指定项目')}
-            triggerClassName="h-9 w-full justify-between"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
-          />
-        </FieldStack>
-        <FieldStack label={tr('schedule.watchPatterns', '文件范围')}>
-          <input
-            value={trigger.patterns.join(', ')}
-            onChange={(event) =>
-              updateTrigger({ ...trigger, patterns: splitCsv(event.target.value) })
-            }
-            placeholder="**/*, **/*.csv"
-            className="input h-9 w-full text-xs"
-          />
-        </FieldStack>
-        <FieldStack label={tr('schedule.debounceSeconds', '防抖秒数')}>
-          <input
-            type="number"
-            min={1}
-            value={Math.round(trigger.debounceMs / 1000)}
-            onChange={(event) =>
-              updateTrigger({
-                ...trigger,
-                debounceMs: Math.max(1, Number(event.target.value) || 30) * 1000,
-              })
-            }
-            className="input h-9 w-full text-xs"
-          />
-        </FieldStack>
       </div>
     </div>
   );

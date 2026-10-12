@@ -13,6 +13,8 @@ const cloudInputSyncShape = z.object({
   tableName: optionalName,
   rawTableId: optionalName,
   rawTableName: optionalName,
+  // Run the automation when the linked input table's data commits.
+  runOnChange: z.boolean().optional(),
 });
 
 const cloudOutputSyncShape = z.object({

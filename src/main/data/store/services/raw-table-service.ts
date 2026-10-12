@@ -49,6 +49,9 @@ import { basename } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 export class RawTableService {
+  /** Fired after a staged table commit completes — 'reimport' carries a raw
+   * table id, 'rebind_output' a result table id. Listener errors are swallowed. */
+  onTableCommitted?: (tableId: string, operation: 'reimport' | 'rebind_output') => void;
   constructor(
     private readonly ctx: DataStoreContext,
     private readonly rawTables: RawTableRepository,
@@ -347,6 +350,11 @@ export class RawTableService {
     }
     await this.ctx.dropTableIfExists(input.stagingTable).catch(() => undefined);
     await this.tableCommits.updateCommitState(journalId, 'completed').catch(() => undefined);
+    try {
+      this.onTableCommitted?.(input.rawTableId, input.operation);
+    } catch {
+      // Listener errors must never fail the commit.
+    }
   }
   private async restoreTableCommit(input: {
     targetTable: string;

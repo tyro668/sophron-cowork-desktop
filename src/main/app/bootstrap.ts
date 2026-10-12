@@ -283,8 +283,44 @@ export async function bootstrap(): Promise<void> {
       logWarn('[Automation] Output change dispatch failed:', error);
     });
   });
+  initializedDataPipelineStore.setTableCommitListener((tableId, operation) => {
+    const service = appContext.automationService;
+    const task =
+      operation === 'rebind_output'
+        ? service?.runForResultTables([tableId])
+        : service?.runForRawTables([tableId]);
+    void task?.catch((error) => {
+      logWarn('[Automation] Table change dispatch failed:', error);
+    });
+    // A reimport may have moved the table to a new source file — re-resolve watches.
+    appContext.automationScheduler?.refreshTableWatchers();
+  });
   appContext.automationScheduler = new AutomationScheduler(appContext.automationService, {
     resolveProjectCwd: (projectId) => db.projects?.get(projectId)?.cwd ?? null,
+    resolveRawTableWatchTargets: async (rawTableIds) => {
+      const targets = [];
+      for (const rawTableId of rawTableIds) {
+        const record = await initializedDataPipelineStore
+          .getRawTableRecord(rawTableId)
+          .catch(() => null);
+        if (!record?.sourcePath || !fs.existsSync(record.sourcePath)) continue;
+        if (!['csv', 'excel', 'folder'].includes(record.sourceKind)) continue;
+        targets.push({
+          rawTableId,
+          sourcePath: record.sourcePath,
+          kind: (record.sourceKind === 'folder' ? 'dir' : 'file') as 'dir' | 'file',
+        });
+      }
+      return targets;
+    },
+    reimportRawTable: async (rawTableId) => {
+      const record = await initializedDataPipelineStore.getRawTableRecord(rawTableId);
+      if (!record?.sourcePath) return;
+      await initializedDataPipelineStore.updateRawTable({
+        id: rawTableId,
+        filePath: record.sourcePath,
+      });
+    },
   });
   appContext.automationScheduler.start();
   const automationToolService = new AutomationToolService({

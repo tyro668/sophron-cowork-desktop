@@ -215,7 +215,8 @@ describe('cloud automation resource directions', () => {
   });
   it('finds input associations from actions and opens the existing automation', async () => {
     render(<RawTableAutomations rawTable={{ id: 'in', name: 'Input' } as never} />);
-    fireEvent.click(await screen.findByRole('combobox'));
+    // First combobox is the automation selector; the second is the trigger strategy.
+    fireEvent.click((await screen.findAllByRole('combobox'))[0]);
     fireEvent.click(await screen.findByRole('option', { name: /Scheduled import/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Configure' }));
     await waitFor(() =>
