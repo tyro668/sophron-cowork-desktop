@@ -3,6 +3,7 @@ import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
 import * as XLSX from '../../utils/xlsx';
 import type {
+  DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTableCloudConfig,
   DataRawTableCsvConfig,
@@ -15,7 +16,7 @@ import type {
   DataRawTableSourceSummary,
   DataSaveRawTableNormalizerDraftInput,
 } from '../../../shared/contracts';
-import { type DataFieldType } from '../../../shared/data-field-types';
+import { isDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
 import { isRecord, quoteIdentifier, stringArray } from '../operators';
 
 export interface ParsedWorkbookRows {
@@ -255,6 +256,25 @@ export function normalizeRawTableSourceKind(
   return isExcelFile(sourcePath) ? 'excel' : 'csv';
 }
 
+export function normalizeColumnTypeOverrides(
+  value: unknown
+): DataRawTableColumnTypeOverride[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const overrides: DataRawTableColumnTypeOverride[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = String((entry as { name?: unknown }).name ?? '').trim();
+    const type = String((entry as { type?: unknown }).type ?? '')
+      .trim()
+      .toLowerCase();
+    if (!name || seen.has(name) || !isDataFieldType(type)) continue;
+    seen.add(name);
+    overrides.push({ name, type: type as DataFieldType });
+  }
+  return overrides.length > 0 ? overrides : undefined;
+}
+
 export function normalizeRawTableConfig(
   config: DataRawTableConfig | undefined,
   sourceKind: DataRawTableSourceKind,
@@ -280,6 +300,7 @@ export function normalizeRawTableConfig(
       sheetNames: fallback.sheetNames,
       headerMode: config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
+      columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
     };
   }
@@ -296,6 +317,7 @@ export function normalizeRawTableConfig(
         config.fileRange === 'excel' || config.fileRange === 'csv' ? config.fileRange : 'excel_csv',
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
+      columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
     };
   }
@@ -329,6 +351,9 @@ export function normalizeStoredRawTableConfig(
         config?.sourceKind === 'excel' && config.headerMode === 'manual' ? 'manual' : 'auto',
       headerRow:
         config?.sourceKind === 'excel' ? Math.max(1, Math.floor(Number(config.headerRow) || 1)) : 1,
+      columnTypeOverrides: normalizeColumnTypeOverrides(
+        config?.sourceKind === 'excel' ? config.columnTypeOverrides : undefined
+      ),
       dataProcessing: normalizeRawTableDataProcessing(
         config?.sourceKind === 'excel' ? config.dataProcessing : undefined
       ),
@@ -378,6 +403,9 @@ export function defaultCsvConfig(config?: DataRawTableConfig): DataRawTableCsvCo
     encoding: 'auto',
     delimiter: 'auto',
     ...(config?.sourceKind === 'csv' ? config : {}),
+    columnTypeOverrides: normalizeColumnTypeOverrides(
+      config?.sourceKind === 'csv' ? config.columnTypeOverrides : undefined
+    ),
     dataProcessing: normalizeRawTableDataProcessing(
       config?.sourceKind === 'csv' ? config.dataProcessing : undefined
     ),

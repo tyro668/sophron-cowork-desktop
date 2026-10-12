@@ -1,5 +1,6 @@
 /** Input/output table materialization: import, update, preview, export. */
 import type {
+  DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTablePreview,
   DataRawTableSourceKind,
@@ -627,23 +628,31 @@ export class RawTableService {
     forceVarchar: boolean,
     config: DataRawTableConfig
   ): Promise<void> {
+    const columnTypeOverrides =
+      config.sourceKind === 'cloud' ? undefined : config.columnTypeOverrides;
     if (isExcelFile(filePath)) {
       const workbookConfig = config.sourceKind === 'excel' ? config : defaultExcelConfig(filePath);
       await this.createTempTableFromWorkbookRows(
         tableName,
-        parseWorkbookRows(filePath, workbookConfig)
+        parseWorkbookRows(filePath, workbookConfig),
+        columnTypeOverrides
       );
       return;
     }
 
     const parameterName = `sourcePath${index}`;
     const relation = readImportRelationForPath(filePath, parameterName, forceVarchar);
-    await this.ctx.runSql(
-      `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
-      {
-        [parameterName]: filePath,
-      }
+    const castClauses = (columnTypeOverrides ?? []).map(
+      (override) =>
+        `TRY_CAST(${quoteValueIdentifier(override.name)} AS ${duckDbTypeForDataFieldType(override.type)}) AS ${quoteValueIdentifier(override.name)}`
     );
+    const selectSql =
+      castClauses.length > 0
+        ? `SELECT * REPLACE (${castClauses.join(', ')}) FROM ${relation}`
+        : `SELECT * FROM ${relation}`;
+    await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS ${selectSql}`, {
+      [parameterName]: filePath,
+    });
   }
   async appendSourceFileNameColumn(tableName: string, filePath: string): Promise<void> {
     const existingColumns = new Set(
@@ -665,17 +674,24 @@ export class RawTableService {
   }
   async createTempTableFromWorkbookRows(
     tableName: string,
-    parsed: ParsedWorkbookRows
+    parsed: ParsedWorkbookRows,
+    columnTypeOverrides?: DataRawTableColumnTypeOverride[]
   ): Promise<void> {
     if (parsed.columns.length === 0) {
       throw new Error('Excel workbook has no readable columns');
     }
 
+    const overrideMap = new Map(
+      (columnTypeOverrides ?? []).map((override) => [override.name, override.type])
+    );
     const inferredTypes = inferWorkbookColumnTypes(parsed);
+    const resolvedTypes = parsed.columns.map(
+      (column, index) => overrideMap.get(column) ?? inferredTypes[index]
+    );
     const columnSql = parsed.columns
       .map(
         (column, index) =>
-          `${quoteValueIdentifier(column)} ${duckDbTypeForDataFieldType(inferredTypes[index])}`
+          `${quoteValueIdentifier(column)} ${duckDbTypeForDataFieldType(resolvedTypes[index])}`
       )
       .join(', ');
     await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} (${columnSql})`);
@@ -685,13 +701,19 @@ export class RawTableService {
     }
 
     const columnList = parsed.columns.map(quoteValueIdentifier).join(', ');
-    const placeholders = parsed.columns.map((_, index) => `$value${index}`).join(', ');
+    const placeholders = parsed.columns
+      .map((column, index) =>
+        overrideMap.has(column)
+          ? `TRY_CAST($value${index} AS ${duckDbTypeForDataFieldType(resolvedTypes[index])})`
+          : `$value${index}`
+      )
+      .join(', ');
     const sql = `INSERT INTO ${quoteIdentifier(tableName)} (${columnList}) VALUES (${placeholders})`;
     for (const row of parsed.rows) {
       const values: Record<string, string | number | null> = {};
       for (let index = 0; index < parsed.columns.length; index += 1) {
         const value = row[index];
-        values[`value${index}`] = normalizeWorkbookValueForDuckDb(value, inferredTypes[index]);
+        values[`value${index}`] = normalizeWorkbookValueForDuckDb(value, resolvedTypes[index]);
       }
       await this.ctx.runSql(sql, values);
     }

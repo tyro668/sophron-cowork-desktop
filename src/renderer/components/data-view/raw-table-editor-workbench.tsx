@@ -15,14 +15,20 @@ import {
   History,
   Info,
   PencilLine,
+  Plus,
   RefreshCw,
   Save,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
+import { DATA_FIELD_TYPES, type DataFieldType } from '../../../shared/data-field-types';
+import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import type {
+  DataColumnTypeInfo,
   DataRawTable,
+  DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTableExcelConfig,
   DataRawTableFolderConfig,
@@ -314,6 +320,24 @@ export function RawTableEditorWorkbench({
       return preferredPath;
     });
   }, [normalizerLanguage, normalizerProjectFileSignature, normalizerProjectFiles]);
+
+  // Reads the real materialized column list from the source file on demand —
+  // forced to the auto strategy so names reflect the raw source, not
+  // normalizer output. Triggered by the column-type editor's picker button.
+  const loadSourceColumns = useCallback(async (): Promise<DataColumnTypeInfo[]> => {
+    if (!rawTable || !dataClient.has('previewRawTableSource')) return [];
+    const preview = await dataClient.previewRawTableSource({
+      filePath: rawTable.sourcePath,
+      sourceKind: localSourceKind,
+      config: { ...localConfig, dataProcessing: { strategy: 'auto' } } as DataRawTableConfig,
+      limit: 1,
+      offset: 0,
+    });
+    if (preview.columnTypes && preview.columnTypes.length > 0) {
+      return preview.columnTypes;
+    }
+    return preview.columns.map((name) => ({ name, type: 'text' as const, storageType: '' }));
+  }, [rawTable, localSourceKind, localConfig]);
 
   const handleNameChange = (value: string) => {
     setLocalName(value);
@@ -1413,6 +1437,16 @@ export function RawTableEditorWorkbench({
                           ) : null}
                         </div>
                       </RawTableConfigRow>
+                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
+                        <ColumnTypeOverridesEditor
+                          overrides={excelConfig.columnTypeOverrides ?? []}
+                          onChange={(columnTypeOverrides) =>
+                            updateConfig({ ...excelConfig, columnTypeOverrides })
+                          }
+                          disabled={isBusy || !rawTable}
+                          loadColumns={loadSourceColumns}
+                        />
+                      </RawTableConfigRow>
                     </>
                   ) : null}
 
@@ -1430,6 +1464,22 @@ export function RawTableEditorWorkbench({
                           </div>
                         </RawTableConfigRow>
                       ))}
+                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
+                        <ColumnTypeOverridesEditor
+                          overrides={
+                            localConfig.sourceKind === 'csv'
+                              ? (localConfig.columnTypeOverrides ?? [])
+                              : []
+                          }
+                          onChange={(columnTypeOverrides) =>
+                            localConfig.sourceKind === 'csv'
+                              ? updateConfig({ ...localConfig, columnTypeOverrides })
+                              : undefined
+                          }
+                          disabled={isBusy || !rawTable}
+                          loadColumns={loadSourceColumns}
+                        />
+                      </RawTableConfigRow>
                     </div>
                   ) : null}
 
@@ -1473,6 +1523,16 @@ export function RawTableEditorWorkbench({
                           }
                         />
                       </div>
+                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
+                        <ColumnTypeOverridesEditor
+                          overrides={folderConfig.columnTypeOverrides ?? []}
+                          onChange={(columnTypeOverrides) =>
+                            updateConfig({ ...folderConfig, columnTypeOverrides })
+                          }
+                          disabled={isBusy || !rawTable}
+                          loadColumns={loadSourceColumns}
+                        />
+                      </RawTableConfigRow>
                     </div>
                   ) : null}
                 </div>
@@ -1572,6 +1632,213 @@ export function RawTableConfigRow({ label, children }: { label: ReactNode; child
     <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 lg:grid-cols-[10rem_minmax(0,1fr)]">
       <div className="text-[13px] font-medium text-text-secondary">{label}</div>
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function ColumnTypeOverridesEditor({
+  overrides,
+  onChange,
+  disabled,
+  loadColumns,
+}: {
+  overrides: DataRawTableColumnTypeOverride[];
+  onChange: (next: DataRawTableColumnTypeOverride[] | undefined) => void;
+  disabled?: boolean;
+  loadColumns: () => Promise<DataColumnTypeInfo[]>;
+}) {
+  const { t } = useTranslation();
+  const dataTypeLabel = useDataFieldTypeLabel();
+  const [fileColumns, setFileColumns] = useState<DataColumnTypeInfo[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const configuredNames = useMemo(
+    () => new Set(overrides.map((entry) => entry.name.trim()).filter(Boolean)),
+    [overrides]
+  );
+  const setOverride = (index: number, patch: Partial<DataRawTableColumnTypeOverride>) => {
+    onChange(overrides.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)));
+  };
+  const openPicker = async () => {
+    setPicked(new Set());
+    setPickerOpen(true);
+    setPickerLoading(true);
+    try {
+      const columns = await loadColumns();
+      setFileColumns(columns);
+    } finally {
+      setPickerLoading(false);
+    }
+  };
+  const selectableColumns = fileColumns.filter((column) => !configuredNames.has(column.name));
+  const confirmPicked = () => {
+    const additions = fileColumns
+      .filter((column) => picked.has(column.name) && !configuredNames.has(column.name))
+      .map((column) => ({ name: column.name, type: column.type }));
+    if (additions.length > 0) {
+      onChange([...overrides, ...additions]);
+    }
+    setPickerOpen(false);
+  };
+  return (
+    <div className="grid gap-1.5">
+      {overrides.map((entry, index) => (
+        <div key={index} className="grid grid-cols-[minmax(0,1fr)_9rem_1.75rem] items-center gap-2">
+          <input
+            type="text"
+            value={entry.name}
+            placeholder={t('data.rawTables.editor.columnTypeNamePlaceholder')}
+            disabled={disabled}
+            onChange={(event) => setOverride(index, { name: event.target.value })}
+            className="box-border !h-8 w-full rounded-lg border border-border-muted bg-surface px-2.5 text-[13px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          <GlassSelect
+            value={entry.type}
+            onValueChange={(value) => setOverride(index, { type: value as DataFieldType })}
+            options={DATA_FIELD_TYPES.map((type) => ({
+              value: type,
+              label: dataTypeLabel(type),
+            }))}
+            disabled={disabled}
+            triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
+          />
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const next = overrides.filter((_, i) => i !== index);
+              onChange(next.length > 0 ? next : undefined);
+            }}
+            aria-label={t('data.rawTables.editor.removeColumnType')}
+            title={t('data.rawTables.editor.removeColumnType')}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange([...overrides, { name: '', type: 'text' }])}
+          className="inline-flex h-7 w-fit items-center gap-1 rounded-md px-2 text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('data.rawTables.editor.addColumnType')}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => void openPicker()}
+          className="inline-flex h-7 w-fit items-center gap-1 rounded-md px-2 text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          {t('data.rawTables.editor.pickColumnsFromFile')}
+        </button>
+      </div>
+      <Dialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        ariaLabel={t('data.rawTables.editor.pickColumnsTitle')}
+        className="w-full max-w-md p-5"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-[14px] font-semibold text-text-primary">
+            {t('data.rawTables.editor.pickColumnsTitle')}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setPickerOpen(false)}
+            className="text-text-muted hover:bg-accent-muted hover:text-accent"
+            title={t('common.close')}
+            aria-label={t('common.close')}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          {pickerLoading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-[12px] text-text-muted">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              {t('data.rawTables.editor.columnsLoading')}
+            </div>
+          ) : fileColumns.length === 0 ? (
+            <div className="py-10 text-center text-[12px] text-text-muted">
+              {t('data.rawTables.editor.columnsEmpty')}
+            </div>
+          ) : (
+            <div className="grid gap-0.5">
+              {fileColumns.map((column) => {
+                const isConfigured = configuredNames.has(column.name);
+                const isPicked = picked.has(column.name);
+                return (
+                  <label
+                    key={column.name}
+                    className={`flex h-8 items-center gap-2 rounded-md px-2 text-[13px] ${
+                      isConfigured
+                        ? 'cursor-not-allowed text-text-muted/60'
+                        : 'cursor-pointer text-text-primary hover:bg-surface-hover'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isConfigured || isPicked}
+                      disabled={isConfigured}
+                      onChange={(event) => {
+                        setPicked((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) {
+                            next.add(column.name);
+                          } else {
+                            next.delete(column.name);
+                          }
+                          return next;
+                        });
+                      }}
+                      className="h-4 w-4 rounded border-border-muted text-accent focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium">{column.name}</span>
+                    <span className="flex-shrink-0 text-[11px] text-text-muted">
+                      {isConfigured
+                        ? t('data.rawTables.editor.columnTypeAdded')
+                        : dataTypeLabel(column.type)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <RawTableCheckbox
+            checked={
+              selectableColumns.length > 0 && selectableColumns.every((c) => picked.has(c.name))
+            }
+            disabled={pickerLoading || selectableColumns.length === 0}
+            label={t('common.selectAll')}
+            onChange={(checked) =>
+              setPicked(checked ? new Set(selectableColumns.map((c) => c.name)) : new Set())
+            }
+          />
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setPickerOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={picked.size === 0}
+              onClick={confirmPicked}
+            >
+              {t('data.rawTables.editor.confirmAddColumns', { count: picked.size })}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

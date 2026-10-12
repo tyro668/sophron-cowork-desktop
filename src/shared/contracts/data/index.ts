@@ -2,7 +2,7 @@
  * Cross-process data contracts. Shared by main, preload, and renderer.
  * Must not import from main/, renderer/, or preload/.
  */
-import type { DataColumnTypeInfo } from '../../data-field-types';
+import type { DataColumnTypeInfo, DataFieldType } from '../../data-field-types';
 import type {
   CloudOutputAction,
   PersonalAnalysisConnectionInput,
@@ -318,12 +318,19 @@ export interface DataRawTableProcessingFields {
   dataProcessing: DataRawTableProcessingConfig;
 }
 
+export interface DataRawTableColumnTypeOverride {
+  name: string;
+  type: DataFieldType;
+}
+
 export interface DataRawTableExcelConfig {
   sourceKind: 'excel';
   sheetName: string | null;
   sheetNames: string[];
   headerMode: 'auto' | 'manual';
   headerRow: number;
+  /** Per-column target types applied when rows are materialized into DuckDB. */
+  columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
 }
 
@@ -333,6 +340,8 @@ export interface DataRawTableCsvConfig {
   dataRegion: 'auto';
   encoding: 'auto';
   delimiter: 'auto';
+  /** Per-column target types applied when the file is read into DuckDB. */
+  columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
   /** Legacy CSV imports; new cloud imports use DataRawTableCloudConfig. */
   cloudMirror?: DataRawTableCloudSource;
@@ -367,6 +376,8 @@ export interface DataRawTableFolderConfig {
   fileRange: 'excel_csv' | 'excel' | 'csv';
   skipEmptyFiles: boolean;
   keepSourceFileName: boolean;
+  /** Per-column target types applied to every imported file. */
+  columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
 }
 
