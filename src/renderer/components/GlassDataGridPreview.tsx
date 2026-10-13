@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import DataEditor, {
   GridCellKind,
   GridColumnIcon,
@@ -39,6 +39,8 @@ export interface GlassDataGridPreviewProps {
   rowHeight?: number;
   headerHeight?: number;
   edgeToEdge?: boolean;
+  footerLeading?: ReactNode;
+  footerTrailing?: ReactNode;
 }
 
 export function GlassDataGridPreview({
@@ -52,6 +54,8 @@ export function GlassDataGridPreview({
   rowHeight = 34,
   headerHeight = 36,
   edgeToEdge = false,
+  footerLeading,
+  footerTrailing,
 }: GlassDataGridPreviewProps) {
   const theme = useGlassDataGridTheme();
   const columns = preview?.columns ?? EMPTY_COLUMNS;
@@ -134,10 +138,11 @@ export function GlassDataGridPreview({
           color: 'var(--data-grid-text-primary)',
         }}
       >
-        <span className="min-w-0 truncate">
-          {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
-        </span>
+        <div className="flex min-w-0 items-center gap-x-3">{footerLeading}</div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
+          <span className="mr-2">
+            {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
+          </span>
           <span
             className="mr-2 hidden sm:inline"
             style={{ color: 'var(--data-grid-text-secondary)' }}
@@ -175,6 +180,7 @@ export function GlassDataGridPreview({
           >
             <ChevronRight className="h-4 w-4" />
           </button>
+          {footerTrailing}
         </div>
       </div>
     </div>

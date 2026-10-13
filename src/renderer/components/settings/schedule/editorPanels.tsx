@@ -121,6 +121,12 @@ export function EditorHeader({
           onEnabledChange={onEnabledChange}
           tr={tr}
         />
+        {selectedAutomation && (
+          <Button variant="primary" onClick={onRun} className="h-9 px-3 text-xs shadow-soft">
+            <Play className="h-3.5 w-3.5" />
+            {tr('schedule.runNowDetail', '立即运行')}
+          </Button>
+        )}
         <Button
           variant={isDirty ? 'primary' : 'secondary'}
           onClick={onSave}
@@ -130,12 +136,6 @@ export function EditorHeader({
           <Save className="h-3.5 w-3.5" />
           {tr('schedule.save', '保存')}
         </Button>
-        {selectedAutomation && (
-          <Button variant="primary" onClick={onRun} className="h-9 px-3 text-xs shadow-soft">
-            <Play className="h-3.5 w-3.5" />
-            {tr('schedule.runNowDetail', '立即运行')}
-          </Button>
-        )}
       </div>
     </div>
   );

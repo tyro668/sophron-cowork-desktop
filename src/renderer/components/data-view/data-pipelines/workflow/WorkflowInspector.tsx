@@ -444,7 +444,10 @@ export function WorkflowInspector({
           value={resolvedTab}
           forceMount
           className={`min-h-0 flex-1 overflow-hidden ${
-            (resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl ? 'p-0' : 'p-2.5'
+            resolvedTab === 'data' ||
+            ((resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl)
+              ? 'p-0'
+              : 'p-2.5'
           }`}
         >
           {resolvedTab === 'logs' ? (
@@ -458,37 +461,8 @@ export function WorkflowInspector({
             />
           ) : resolvedTab === 'data' ? (
             <div className="flex h-full min-h-0 flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {runStat ? (
-                  <span className="text-[11px] text-text-muted">
-                    {formatNodeRunStatLine(runStat, t)}
-                  </span>
-                ) : null}
-                {nodePreviewGeneratedAt ? (
-                  <span className="text-[11px] text-text-muted">
-                    {t('data.workflow.nodeDataUpdatedAt', {
-                      time: new Date(nodePreviewGeneratedAt).toLocaleTimeString(),
-                    })}
-                  </span>
-                ) : null}
-                {nodePreviewStale ? (
-                  <span className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                    {t('data.workflow.nodeDataStale')}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={onPreviewToHere}
-                  disabled={!onPreviewToHere || isPreviewRunning}
-                  title={t('data.workflow.previewToThisStepHint')}
-                  className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Play className="h-3 w-3" />
-                  {isPreviewRunning ? t('common.loading') : t('data.workflow.previewToThisStep')}
-                </button>
-              </div>
               {firstZeroOutputNode && nodePreviewData && nodePreviewData.totalRows === 0 ? (
-                <div className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
+                <div className="mx-2 mt-2 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
                   {firstZeroOutputNode.id === node?.id
                     ? t('data.workflow.firstZeroOutputHere')
                     : t('data.workflow.firstZeroOutputUpstream', {
@@ -503,6 +477,39 @@ export function WorkflowInspector({
                   error={nodePreviewError}
                   currentPage={nodePreviewPage}
                   onPageChange={setNodePreviewPage}
+                  footerLeading={
+                    <>
+                      <button
+                        type="button"
+                        onClick={onPreviewToHere}
+                        disabled={!onPreviewToHere || isPreviewRunning}
+                        title={t('data.workflow.previewToThisStepHint')}
+                        className="inline-flex h-7 flex-shrink-0 items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Play className="h-3 w-3" />
+                        {isPreviewRunning
+                          ? t('common.loading')
+                          : t('data.workflow.previewToThisStep')}
+                      </button>
+                      {runStat ? (
+                        <span className="flex-shrink-0 text-[11px] text-text-muted">
+                          {formatNodeRunStatLine(runStat, t)}
+                        </span>
+                      ) : null}
+                      {nodePreviewGeneratedAt ? (
+                        <span className="flex-shrink-0 text-[11px] text-text-muted">
+                          {t('data.workflow.nodeDataUpdatedAt', {
+                            time: new Date(nodePreviewGeneratedAt).toLocaleTimeString(),
+                          })}
+                        </span>
+                      ) : null}
+                      {nodePreviewStale ? (
+                        <span className="flex-shrink-0 rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                          {t('data.workflow.nodeDataStale')}
+                        </span>
+                      ) : null}
+                    </>
+                  }
                 />
               </div>
             </div>

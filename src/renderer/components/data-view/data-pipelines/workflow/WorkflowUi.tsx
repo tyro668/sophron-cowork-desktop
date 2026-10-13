@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BaseEdge,
@@ -288,12 +288,16 @@ export function WorkflowNodeDataPreview({
   error,
   currentPage,
   onPageChange,
+  footerLeading,
+  footerTrailing,
 }: {
   preview: DataRawTablePreview | null;
   isLoading: boolean;
   error: string | null;
   currentPage: number;
   onPageChange: (page: number) => void;
+  footerLeading?: ReactNode;
+  footerTrailing?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -303,6 +307,9 @@ export function WorkflowNodeDataPreview({
       error={error}
       currentPage={currentPage}
       onPageChange={onPageChange}
+      footerLeading={footerLeading}
+      footerTrailing={footerTrailing}
+      edgeToEdge
       labels={{
         loading: t('data.workflow.nodeDataLoading'),
         empty: t('data.workflow.nodeDataEmpty'),
