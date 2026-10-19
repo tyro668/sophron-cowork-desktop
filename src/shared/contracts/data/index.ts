@@ -422,14 +422,12 @@ export interface DataResultTable {
 }
 
 /** File export formats supported by `data.exportTable`. */
-export type DataTableExportFormat = 'csv' | 'xlsx' | 'html';
+export type DataTableExportFormat = 'csv' | 'xlsx';
 
 export interface DataExportTableInput {
   tableKind: 'raw' | 'result';
   id: string;
   format: DataTableExportFormat;
-  /** Report language ('zh' | 'en'); other formats ignore it. */
-  locale?: string;
 }
 
 export interface DataExportTableResult {

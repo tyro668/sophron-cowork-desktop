@@ -161,13 +161,7 @@ export class DataPipelineStore {
       commitCoordinator,
       binding
     );
-    const tableExport = new TableExportService(
-      this.ctx,
-      rawTableRepo,
-      pipelines,
-      workflows,
-      pipelineRuns
-    );
+    const tableExport = new TableExportService(this.ctx, rawTableRepo);
 
     this.ctx.registerPostReadyHook(() => commitCoordinator.recoverPendingOutputCommits());
     this.ctx.registerPostReadyHook(() => rawTables.recoverPendingTableCommits());
@@ -214,7 +208,7 @@ export class DataPipelineStore {
   }): Promise<DataRawTableCsvExport> {
     return this.rawTables.exportRawTableCsv(input);
   }
-  /** Builds an export file payload (csv/xlsx/html report) — the IPC layer owns dialogs + writes. */
+  /** Builds an export file payload (csv/xlsx) — the IPC layer owns dialogs + writes. */
   buildTableExport(input: DataExportTableInput): Promise<PreparedTableExport> {
     return this.tableExport.buildTableExport(input);
   }

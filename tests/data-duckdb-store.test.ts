@@ -1047,18 +1047,6 @@ describe('DuckDB data pipeline store', () => {
     );
     expect(xlsxRows.length).toBe(3); // header + 2 rows
 
-    const report = await store.buildTableExport({
-      tableKind: 'result',
-      id: resultTableId,
-      format: 'html',
-      locale: 'en',
-    });
-    const html = String(report.content);
-    expect(report.fileName).toBe('Sales curated output-report.html');
-    expect(html).toContain('Auto publish'); // producing pipeline
-    expect(html).toContain('Computed at'); // computation timestamp
-    expect(html).toContain('Processing logic'); // DSL section
-
     const renamedNodes = saved.nodes.map((node) => {
       const config = { ...node.config };
       if (node.type === 'output') {

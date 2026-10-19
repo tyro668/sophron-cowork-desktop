@@ -74,7 +74,7 @@ import { ResultTableAutomations } from './table-automations';
 
 /** Shared export flow for result tables (save dialog, success toast, silent cancel). */
 function useResultTableExport() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [exportBusy, setExportBusy] = useState<DataTableExportFormat | null>(null);
   const exportResultTable = async (id: string, format: DataTableExportFormat) => {
     if (exportBusy) return;
@@ -84,7 +84,6 @@ function useResultTableExport() {
         tableKind: 'result',
         id,
         format,
-        locale: i18n.language.startsWith('zh') ? 'zh' : 'en',
       });
       if (result.success) {
         showToast('success', t('data.resultTables.editor.exportDone', { path: result.path }));

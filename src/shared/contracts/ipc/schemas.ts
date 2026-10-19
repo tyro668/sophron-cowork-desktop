@@ -705,8 +705,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
     z.looseObject({
       tableKind: z.enum(['raw', 'result']),
       id: str,
-      format: z.enum(['csv', 'xlsx', 'html']),
-      locale: str.optional(),
+      format: z.enum(['csv', 'xlsx']),
     }),
   ],
   'data.previewWorkflowNode': [dataPreviewWorkflowNodeInput],

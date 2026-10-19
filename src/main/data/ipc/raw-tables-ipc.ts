@@ -175,9 +175,7 @@ export function registerRawTablesIpc({
       const filters =
         payload.format === 'csv'
           ? [{ name: 'Csv', extensions: ['csv'] }]
-          : payload.format === 'xlsx'
-            ? [{ name: 'Excel', extensions: ['xlsx'] }]
-            : [{ name: 'HTML', extensions: ['html'] }];
+          : [{ name: 'Excel', extensions: ['xlsx'] }];
       const mainWindow = appContext.mainWindow;
       if (!mainWindow) {
         return { success: false, error: 'Main window is not available' };
