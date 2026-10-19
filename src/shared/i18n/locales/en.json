@@ -3477,6 +3477,7 @@
     "expandPreview": "Expand command content",
     "collapsePreview": "Collapse command content",
     "warning": "This action may modify your system. Review carefully.",
+    "readOnlyNotice": "This command appears to only read information and will not modify files.",
     "deny": "Deny",
     "allow": "Allow",
     "alwaysAllow": "Always allow this tool",

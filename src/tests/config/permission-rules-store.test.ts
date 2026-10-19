@@ -329,6 +329,44 @@ describe('permission-rules-store', () => {
       setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'));
       expect(decidePermission(SESSION_A, 'bash', {})).toBe('ask');
     });
+
+    it('keeps always-allow when the next turn switches to a more permissive policy', () => {
+      // Regression: a bash grant made under "default" was dropped when the user
+      // switched the composer to auto-review, so bash prompted again.
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'), 'default');
+      rememberAlwaysAllow(SESSION_A, 'bash');
+      clearSessionPermissionRules(SESSION_A);
+
+      setSessionPermissionRules(
+        SESSION_A,
+        getPermissionRulesForPolicy('auto_review'),
+        'auto_review'
+      );
+      expect(evaluatePermission(SESSION_A, 'bash', { command: 'python3 build.py' })).toEqual({
+        decision: 'allow',
+        source: 'remembered',
+      });
+    });
+
+    it('keeps always-allow across turns with an unchanged policy', () => {
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'), 'default');
+      rememberAlwaysAllow(SESSION_A, 'bash');
+      clearSessionPermissionRules(SESSION_A);
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'), 'default');
+      expect(decidePermission(SESSION_A, 'bash', { command: 'node x.js' })).toBe('allow');
+    });
+
+    it('revokes always-allow when the next turn switches to a stricter policy', () => {
+      setSessionPermissionRules(
+        SESSION_A,
+        getPermissionRulesForPolicy('auto_review'),
+        'auto_review'
+      );
+      rememberAlwaysAllow(SESSION_A, 'bash');
+      clearSessionPermissionRules(SESSION_A);
+      setSessionPermissionRules(SESSION_A, getPermissionRulesForPolicy('default'), 'default');
+      expect(decidePermission(SESSION_A, 'bash', {})).toBe('ask');
+    });
   });
 
   it('keeps simultaneous sessions on their own policy after the global policy changes', () => {

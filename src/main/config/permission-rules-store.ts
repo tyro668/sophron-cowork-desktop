@@ -25,7 +25,24 @@ let activePolicy: PermissionPolicyId = 'default';
 const alwaysAllowBySession = new Map<string, Set<string>>();
 const scopedRulesBySession = new Map<string, PermissionRule[]>();
 const scopedPolicyBySession = new Map<string, PermissionPolicyId>();
-const lastRunRulesBySession = new Map<string, string>();
+const lastRunRulesBySession = new Map<string, { signature: string; policy: PermissionPolicyId }>();
+
+/**
+ * Relative permissiveness of the built-in policies. "Always allow" grants
+ * survive a switch to a strictly more permissive policy (e.g. default →
+ * auto_review), where they cannot widen what the user already allowed; any
+ * other snapshot change (stricter policy, or different rules under the same
+ * policy) revokes them.
+ */
+const POLICY_PERMISSIVENESS: Record<PermissionPolicyId, number> = {
+  default: 0,
+  auto_review: 1,
+  full_access: 2,
+};
+
+function keepsGrants(previous: PermissionPolicyId | undefined, next: PermissionPolicyId): boolean {
+  return previous !== undefined && POLICY_PERMISSIVENESS[next] > POLICY_PERMISSIVENESS[previous];
+}
 
 export interface PermissionEvaluation {
   decision: PermissionRule['action'];
@@ -65,9 +82,10 @@ export function setPermissionRules(next: unknown, policy: unknown = 'default'): 
   const nextRules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
   const nextPolicy = isPermissionPolicy(policy) && sanitized?.length ? policy : 'default';
   if (JSON.stringify(nextRules) !== JSON.stringify(rules) || nextPolicy !== activePolicy) {
-    // A policy change revokes grants from earlier, potentially less restrictive
-    // modes. Per-run snapshots remain intact until their run completes.
-    alwaysAllowBySession.clear();
+    // Moving to a stricter (or differently configured) mode revokes grants
+    // from earlier, potentially less restrictive modes. Per-run snapshots
+    // remain intact until their run completes.
+    if (!keepsGrants(activePolicy, nextPolicy)) alwaysAllowBySession.clear();
   }
   rules = nextRules;
   activePolicy = nextPolicy;
@@ -87,9 +105,10 @@ export function setSessionPermissionRules(
   const nextRules = sanitized && sanitized.length > 0 ? sanitized : [...DEFAULT_PERMISSION_RULES];
   const nextPolicy = isPermissionPolicy(policy) && sanitized?.length ? policy : 'default';
   const signature = JSON.stringify([nextPolicy, nextRules]);
-  if (lastRunRulesBySession.get(sessionId) !== signature) {
-    alwaysAllowBySession.delete(sessionId);
-    lastRunRulesBySession.set(sessionId, signature);
+  const previous = lastRunRulesBySession.get(sessionId);
+  if (previous?.signature !== signature) {
+    if (!keepsGrants(previous?.policy, nextPolicy)) alwaysAllowBySession.delete(sessionId);
+    lastRunRulesBySession.set(sessionId, { signature, policy: nextPolicy });
   }
   scopedRulesBySession.set(
     sessionId,

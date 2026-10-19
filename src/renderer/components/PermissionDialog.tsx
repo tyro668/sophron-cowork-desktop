@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useIPC } from '../hooks/useIPC';
 import type { PermissionRequest } from '../types';
-import { AlertTriangle, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Info, ShieldAlert } from 'lucide-react';
+import { isReadOnlyShellCommand } from '../../shared/read-only-command';
 import { Button } from './ui/button';
 import { Dialog, DialogTitle } from './ui/dialog';
 
@@ -47,8 +48,10 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
   const [rememberTool, setRememberTool] = useState(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
 
-  const isHighRisk = isHighRiskTool(permission.toolName);
   const preview = formatInputPreview(permission.input);
+  // Wording only: read-only commands still need the user's approval.
+  const isReadOnlyCommand = preview.isCommand && isReadOnlyShellCommand(preview.text);
+  const isHighRisk = !isReadOnlyCommand && isHighRiskTool(permission.toolName);
   const singleLinePreview = preview.text.replace(/\s+/g, ' ');
   const previewLabel = preview.isCommand
     ? t('permission.commandPreview')
@@ -125,6 +128,17 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
             </button>
           </div>
         </div>
+
+        {isReadOnlyCommand && (
+          <div className="mt-4 rounded-xl border border-border-subtle bg-surface-muted px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Info className="h-5 w-5 flex-shrink-0 text-text-muted" strokeWidth={1.9} />
+              <p className="text-[13px] leading-5 text-text-secondary">
+                {t('permission.readOnlyNotice')}
+              </p>
+            </div>
+          </div>
+        )}
 
         {isHighRisk && (
           <div className="mt-4 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3">

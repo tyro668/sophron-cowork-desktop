@@ -135,6 +135,30 @@ describe('permission confirmation lifecycle', () => {
     await expect(second).resolves.toBe('allow_always');
   });
 
+  it('always-allow also approves queued requests for the same tool in that task', async () => {
+    const events = vi.fn();
+    const manager = new SessionManager(makeDb(), events);
+    const first = manager.requestPermission('s1', 'p1', 'bash', { command: 'ls' });
+    const queuedSameTool = manager.requestPermission('s1', 'p2', 'bash', { command: 'cat a' });
+    const otherTool = manager.requestPermission('s1', 'p3', 'write', { path: 'a' });
+    const otherTask = manager.requestPermission('s2', 'p4', 'bash', { command: 'ls' });
+    const pendingOther = vi.fn();
+    void otherTool.then(pendingOther);
+    void otherTask.then(pendingOther);
+
+    manager.handlePermissionResponse('p1', 'allow_always');
+    await expect(first).resolves.toBe('allow_always');
+    await expect(queuedSameTool).resolves.toBe('allow');
+    expect(events).toHaveBeenCalledWith({
+      type: 'permission.dismiss',
+      payload: { toolUseId: 'p2' },
+    });
+    await Promise.resolve();
+    expect(pendingOther).not.toHaveBeenCalled();
+    manager.stopSession('s1');
+    manager.stopSession('s2');
+  });
+
   it('aborting a run dismisses approval and an already cancelled run never opens it', async () => {
     const events = vi.fn();
     const manager = new SessionManager(makeDb(), events);

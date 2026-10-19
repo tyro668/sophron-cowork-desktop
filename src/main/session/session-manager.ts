@@ -120,7 +120,7 @@ export class SessionManager {
   private idleWaiters: Map<string, Set<() => void>> = new Map();
   private pendingPermissions = new Map<
     string,
-    { sessionId: string; resolve: (result: PermissionResult) => void }
+    { sessionId: string; toolName: string; resolve: (result: PermissionResult) => void }
   >();
   private pendingSudoPasswords: Map<
     string,
@@ -1374,7 +1374,18 @@ export class SessionManager {
 
   // Handle permission response
   handlePermissionResponse(toolUseId: string, result: PermissionResult): void {
-    this.pendingPermissions.get(toolUseId)?.resolve(result);
+    const pending = this.pendingPermissions.get(toolUseId);
+    pending?.resolve(result);
+    if (!pending || result !== 'allow_always') return;
+    // Parallel tool calls of the same tool may already be queued behind this
+    // dialog. "Always allow" covers them too; otherwise the user is asked
+    // again for each one right after ticking the box.
+    for (const [otherId, other] of [...this.pendingPermissions]) {
+      if (other.sessionId === pending.sessionId && other.toolName === pending.toolName) {
+        log('[SessionManager] Always-allow also approves queued request:', otherId);
+        other.resolve('allow');
+      }
+    }
   }
 
   // Request permission for a tool
@@ -1396,7 +1407,7 @@ export class SessionManager {
         this.sendToRenderer({ type: 'permission.dismiss', payload: { toolUseId } });
       };
       const onAbort = () => settle('deny');
-      this.pendingPermissions.set(toolUseId, { sessionId, resolve: settle });
+      this.pendingPermissions.set(toolUseId, { sessionId, toolName, resolve: settle });
       signal?.addEventListener('abort', onAbort, { once: true });
       this.sendToRenderer({
         type: 'permission.request',

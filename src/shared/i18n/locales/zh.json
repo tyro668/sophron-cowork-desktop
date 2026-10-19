@@ -3477,6 +3477,7 @@
     "expandPreview": "展开命令内容",
     "collapsePreview": "收起命令内容",
     "warning": "此操作可能会修改您的系统。请仔细审查。",
+    "readOnlyNotice": "此命令看起来只会读取信息，不会修改文件。",
     "deny": "拒绝",
     "allow": "允许",
     "alwaysAllow": "始终允许此工具",
