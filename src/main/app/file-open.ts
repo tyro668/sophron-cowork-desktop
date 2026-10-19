@@ -63,6 +63,107 @@ export function resolveFilePathForShell(filePath: string, cwd?: string, logScope
   return normalizedPath;
 }
 
+/** Breadth-first search for a file by name under the given roots (bounded). */
+function findFileByName(fileName: string, roots: string[]): string | null {
+  if (!fileName) {
+    return null;
+  }
+
+  const visited = new Set<string>();
+  const queue = roots
+    .filter((root) => !!root)
+    .map((root) => resolve(root))
+    .filter((root) => fs.existsSync(root) && fs.statSync(root).isDirectory());
+
+  let scannedDirs = 0;
+  const MAX_DIRS = 2000;
+
+  while (queue.length > 0 && scannedDirs < MAX_DIRS) {
+    const dir = queue.shift()!;
+    if (visited.has(dir)) {
+      continue;
+    }
+    visited.add(dir);
+    scannedDirs += 1;
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isFile() && entry.name === fileName) {
+        return fullPath;
+      }
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+      }
+    }
+  }
+
+  return null;
+}
+
+function discoverFileByName(missingPath: string, cwd?: string): string | null {
+  return findFileByName(basename(missingPath), [
+    cwd || '',
+    getWorkingDir() || '',
+    join(app.getPath('userData'), DEFAULT_WORKING_DIR_NAME),
+    join(app.getPath('userData'), LEGACY_DEFAULT_WORKING_DIR_NAME),
+  ]);
+}
+
+/**
+ * Open a local file (or folder) with the system default application.
+ *
+ * Artifact and chat file links used to call `shell.showItemInFolder`, which on
+ * Linux without a D-Bus file manager degrades to `xdg-open <parent dir>`; the
+ * user then saw the folder listing in the browser instead of the file.
+ */
+export async function openLocalFile(filePath: string, cwd?: string): Promise<boolean> {
+  const requestedPath = resolveFilePathForShell(filePath, cwd, 'shell.openPath');
+  if (!requestedPath) {
+    return false;
+  }
+
+  try {
+    let targetPath = requestedPath;
+    if (!fs.existsSync(targetPath)) {
+      const discoveredPath = discoverFileByName(targetPath, cwd);
+      if (!discoveredPath) {
+        logWarn('[shell.openPath] path does not exist:', targetPath);
+        return false;
+      }
+      logWarn('[shell.openPath] resolved path not found, discovered by filename:', {
+        requested: targetPath,
+        discoveredPath,
+      });
+      targetPath = discoveredPath;
+    }
+    log('[shell.openPath] request:', { filePath, cwd, resolved: targetPath });
+
+    if (fs.statSync(targetPath).isFile()) {
+      const preparation = await prepareGeneratedReportForOpen(targetPath);
+      if (preparation.prepared) {
+        log('[shell.openPath] prepared report viewer controls:', preparation);
+      }
+    }
+
+    const openResult = await shell.openPath(targetPath);
+    if (openResult) {
+      logWarn('[shell.openPath] openPath returned error:', openResult);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    logError('[shell.openPath] failed:', error);
+    return false;
+  }
+}
+
 export async function openGeneratedReport(filePath: string, cwd?: string): Promise<boolean> {
   const normalizedPath = resolveFilePathForShell(filePath, cwd, 'reports.openGeneratedReport');
   if (!normalizedPath) {
@@ -153,48 +254,6 @@ export async function revealFileInFolder(filePath: string, cwd?: string): Promis
   }
   log('[shell.showItemInFolder] request:', { filePath, cwd, resolved: normalizedPath });
 
-  const findFileByName = (fileName: string, roots: string[]): string | null => {
-    if (!fileName) {
-      return null;
-    }
-
-    const visited = new Set<string>();
-    const queue = roots
-      .map((root) => resolve(root))
-      .filter((root) => !!root && fs.existsSync(root) && fs.statSync(root).isDirectory());
-
-    let scannedDirs = 0;
-    const MAX_DIRS = 2000;
-
-    while (queue.length > 0 && scannedDirs < MAX_DIRS) {
-      const dir = queue.shift()!;
-      if (visited.has(dir)) {
-        continue;
-      }
-      visited.add(dir);
-      scannedDirs += 1;
-
-      let entries: fs.Dirent[] = [];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isFile() && entry.name === fileName) {
-          return fullPath;
-        }
-        if (entry.isDirectory()) {
-          queue.push(fullPath);
-        }
-      }
-    }
-
-    return null;
-  };
-
   try {
     if (fs.existsSync(normalizedPath)) {
       const stat = fs.statSync(normalizedPath);
@@ -221,14 +280,7 @@ export async function revealFileInFolder(filePath: string, cwd?: string): Promis
       return true;
     }
 
-    const fileName = basename(normalizedPath);
-    const defaultWorkingDir = getWorkingDir() || '';
-    const discoveredPath = findFileByName(fileName, [
-      cwd || '',
-      defaultWorkingDir,
-      join(app.getPath('userData'), DEFAULT_WORKING_DIR_NAME),
-      join(app.getPath('userData'), LEGACY_DEFAULT_WORKING_DIR_NAME),
-    ]);
+    const discoveredPath = discoverFileByName(normalizedPath, cwd);
 
     if (discoveredPath) {
       logWarn('[shell.showItemInFolder] resolved path not found, discovered by filename:', {

@@ -6,6 +6,7 @@ export function createShellApi(): Pick<
   ElectronApi,
   | 'openExternal'
   | 'showItemInFolder'
+  | 'openPath'
   | 'openGeneratedReport'
   | 'selectFiles'
   | 'selectRawTableSource'
@@ -31,6 +32,9 @@ export function createShellApi(): Pick<
 
     showItemInFolder: (filePath: string, cwd?: string) =>
       ipcRenderer.invoke('shell.showItemInFolder', filePath, cwd),
+
+    openPath: (filePath: string, cwd?: string) =>
+      ipcRenderer.invoke('shell.openPath', filePath, cwd),
 
     openGeneratedReport: (filePath: string, cwd?: string) =>
       ipcRenderer.invoke('reports.openGeneratedReport', filePath, cwd),

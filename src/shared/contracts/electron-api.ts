@@ -162,6 +162,8 @@ export interface ElectronApi {
   };
   openExternal: (url: string) => Promise<boolean>;
   showItemInFolder: (filePath: string, cwd?: string) => Promise<boolean>;
+  /** Open a local file or folder with the system default application. */
+  openPath: (filePath: string, cwd?: string) => Promise<boolean>;
   openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;
   selectFiles: () => Promise<string[]>;
   selectRawTableSource: (

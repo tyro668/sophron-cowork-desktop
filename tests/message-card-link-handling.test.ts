@@ -20,11 +20,12 @@ describe('MessageCard local link handling', () => {
     expect(source).toContain(
       'const localFilePath = resolveLocalFilePathFromHref(href, currentWorkingDir);'
     );
-    expect(source).toContain("title={localFilePath}");
+    expect(source).toContain('title={localFilePath}');
+    expect(source).toContain('await api.openPath(resolvedPath, cwd)');
     expect(source).toContain('api.openGeneratedReport');
     expect(source).toContain('await api.showItemInFolder(');
     expect(source).toContain('await openOrRevealFile(localFilePath);');
-    expect(source).toContain('currentWorkingDir ?? undefined');
+    expect(source).toContain('const cwd = currentWorkingDir ?? undefined;');
     expect(source).not.toContain('const fallbackUrl = `file://${encodeURI(localFilePath)}`;');
     expect(source).not.toContain('target="_blank"');
   });
@@ -40,6 +41,8 @@ describe('MessageCard local link handling', () => {
   it('treats Windows forward-slash paths as absolute file targets', () => {
     const source = readAllMessageContent();
 
-    expect(source).toContain('const resolveFilePath = (value: string) => resolvePathAgainstWorkspace(value, currentWorkingDir);');
+    expect(source).toContain(
+      'const resolveFilePath = (value: string) => resolvePathAgainstWorkspace(value, currentWorkingDir);'
+    );
   });
 });

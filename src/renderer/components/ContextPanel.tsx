@@ -74,6 +74,7 @@ export function ContextPanel() {
     typeof window !== 'undefined' && !!window.electronAPI?.showItemInFolder;
   const canOpenGeneratedReport =
     typeof window !== 'undefined' && !!window.electronAPI?.openGeneratedReport;
+  const canOpenPath = typeof window !== 'undefined' && !!window.electronAPI?.openPath;
 
   // Session info computations
   const messages = useMemo(
@@ -388,7 +389,8 @@ export function ContextPanel() {
                   const artifactPath = artifact.path;
                   const isReport = isHtmlReportPath(artifactPath || label);
                   const canClick = Boolean(
-                    artifactPath && (canShowItemInFolder || (isReport && canOpenGeneratedReport))
+                    artifactPath &&
+                    (canOpenPath || canShowItemInFolder || (isReport && canOpenGeneratedReport))
                   );
                   const iconComponent = getArtifactIconComponent(label);
                   const IconComponent =
@@ -419,18 +421,18 @@ export function ContextPanel() {
                       onClick={async () => {
                         if (!canClick) return;
                         const api = window.electronAPI;
+                        const cwd = currentWorkingDir ?? undefined;
+                        // Open the file itself with the default app; only fall
+                        // back to revealing it when opening is unavailable/failed.
                         const handled =
-                          isReport && api.openGeneratedReport
-                            ? await api.openGeneratedReport(
-                                artifactPath,
-                                currentWorkingDir ?? undefined
-                              )
-                            : api.showItemInFolder
-                              ? await api.showItemInFolder(
-                                  artifactPath,
-                                  currentWorkingDir ?? undefined
-                                )
-                              : false;
+                          (api.openPath
+                            ? await api.openPath(artifactPath, cwd)
+                            : isReport && api.openGeneratedReport
+                              ? await api.openGeneratedReport(artifactPath, cwd)
+                              : false) ||
+                          (api.showItemInFolder
+                            ? await api.showItemInFolder(artifactPath, cwd)
+                            : false);
                         if (!handled) {
                           setGlobalNotice({
                             id: `artifact-reveal-failed-${Date.now()}`,

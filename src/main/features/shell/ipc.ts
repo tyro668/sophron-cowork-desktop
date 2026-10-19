@@ -2,7 +2,7 @@ import { dialog, shell, type OpenDialogOptions } from 'electron';
 import * as fs from 'fs';
 import { isAbsolute } from 'path';
 import type { DataRawTableSourceKind } from '../../../shared/contracts';
-import { openGeneratedReport, revealFileInFolder } from '../../app/file-open';
+import { openGeneratedReport, openLocalFile, revealFileInFolder } from '../../app/file-open';
 import { handleIpc } from '../../ipc-handle';
 import { logWarn } from '../../utils/logger';
 import { listRecentWorkspaceFiles } from '../../utils/recent-workspace-files';
@@ -29,6 +29,10 @@ export function registerShellIpc(): void {
 
   handleIpc('shell.showItemInFolder', async (_event, filePath: string, cwd?: string) => {
     return revealFileInFolder(filePath, cwd);
+  });
+
+  handleIpc('shell.openPath', async (_event, filePath: string, cwd?: string) => {
+    return openLocalFile(filePath, cwd);
   });
 
   handleIpc('reports.openGeneratedReport', async (_event, filePath: string, cwd?: string) => {

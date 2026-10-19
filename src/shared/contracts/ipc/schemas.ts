@@ -377,6 +377,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   // shell / dialog / reports / artifacts
   'shell.openExternal': [str],
   'shell.showItemInFolder': [str, strOpt],
+  'shell.openPath': [str, strOpt],
   'reports.openGeneratedReport': [str, strOpt],
   'dialog.selectFiles': [],
   'dialog.selectRawTableSource': [rawTableSourceKind.exclude(['cloud']).optional()],

@@ -22,4 +22,9 @@ describe('ContextPanel recent workspace files integration', () => {
     expect(source).toContain('isHtmlReportPath(artifactPath || label)');
     expect(source).toContain('api.openGeneratedReport');
   });
+
+  it('opens artifacts with the default app instead of revealing their folder', () => {
+    const source = fs.readFileSync(contextPanelPath, 'utf8');
+    expect(source).toContain('await api.openPath(artifactPath, cwd)');
+  });
 });

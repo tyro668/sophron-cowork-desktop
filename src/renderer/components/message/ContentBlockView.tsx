@@ -98,12 +98,16 @@ export const ContentBlockView = memo(function ContentBlockView({
 
       try {
         const api = window.electronAPI;
+        const cwd = currentWorkingDir ?? undefined;
+        // Open the file itself with the default app; only fall back to
+        // revealing it in its folder when opening is unavailable or failed.
         const handled =
-          isHtmlReportPath(resolvedPath) && api.openGeneratedReport
-            ? await api.openGeneratedReport(resolvedPath, currentWorkingDir ?? undefined)
-            : api.showItemInFolder
-              ? await api.showItemInFolder(resolvedPath, currentWorkingDir ?? undefined)
-              : false;
+          (api.openPath
+            ? await api.openPath(resolvedPath, cwd)
+            : isHtmlReportPath(resolvedPath) && api.openGeneratedReport
+              ? await api.openGeneratedReport(resolvedPath, cwd)
+              : false) ||
+          (api.showItemInFolder ? await api.showItemInFolder(resolvedPath, cwd) : false);
         if (!handled) {
           setGlobalNotice({
             id: `message-card-reveal-failed-${Date.now()}`,
