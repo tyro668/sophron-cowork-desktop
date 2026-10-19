@@ -1,3 +1,4 @@
+import { normalizeCsvEncoding } from './csv-encoding';
 import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
@@ -400,9 +401,9 @@ export function defaultCsvConfig(config?: DataRawTableConfig): DataRawTableCsvCo
     sourceKind: 'csv',
     header: 'auto',
     dataRegion: 'auto',
-    encoding: 'auto',
     delimiter: 'auto',
     ...(config?.sourceKind === 'csv' ? config : {}),
+    encoding: normalizeCsvEncoding(config?.sourceKind === 'csv' ? config.encoding : undefined),
     columnTypeOverrides: normalizeColumnTypeOverrides(
       config?.sourceKind === 'csv' ? config.columnTypeOverrides : undefined
     ),

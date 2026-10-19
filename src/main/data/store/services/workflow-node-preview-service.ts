@@ -1,3 +1,4 @@
+import { resolveCsvReadPath } from '../csv-encoding';
 import { resolveSqlQuerySchemas } from '../../workflow/sql-query-schemas';
 /** Node-level previews: rows, columns, column types, distinct values. */
 import type {
@@ -331,7 +332,7 @@ export class WorkflowNodePreviewService {
       const relation = readRelationForPath(filePath, 'sourcePath');
       await this.ctx.runSql(
         `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
-        { sourcePath: filePath }
+        { sourcePath: resolveCsvReadPath(filePath) }
       );
     }
 

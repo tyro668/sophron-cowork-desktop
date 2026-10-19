@@ -12,6 +12,7 @@ import type {
   DataUpdateRawTableInput,
   DataUpdateResultTableInput,
 } from '../../../../shared/contracts';
+import { normalizeCsvEncoding, resolveCsvReadPath } from '../csv-encoding';
 import { duckDbTypeForDataFieldType } from '../../../../shared/data-field-types';
 import { quoteIdentifier, toNumber, quoteValueIdentifier } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
@@ -658,8 +659,12 @@ export class RawTableService {
       castClauses.length > 0
         ? `SELECT * REPLACE (${castClauses.join(', ')}) FROM ${relation}`
         : `SELECT * FROM ${relation}`;
+    const readPath = resolveCsvReadPath(
+      filePath,
+      config.sourceKind === 'csv' ? normalizeCsvEncoding(config.encoding) : 'auto'
+    );
     await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS ${selectSql}`, {
-      [parameterName]: filePath,
+      [parameterName]: readPath,
     });
   }
   async appendSourceFileNameColumn(tableName: string, filePath: string): Promise<void> {

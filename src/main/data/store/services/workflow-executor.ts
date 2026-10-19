@@ -1,4 +1,5 @@
 /** Executes workflows into staging tables (temporary output mode). */
+import { resolveCsvReadPath } from '../csv-encoding';
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
@@ -328,7 +329,7 @@ export class WorkflowExecutor {
     try {
       await this.ctx.runSql(
         `CREATE TEMP TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${relation}`,
-        { sourcePath }
+        { sourcePath: resolveCsvReadPath(sourcePath) }
       );
       const columns = await this.ctx.getTableColumns(stagingTable);
       const nonEmptyFilter =

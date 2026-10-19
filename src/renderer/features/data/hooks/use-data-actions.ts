@@ -3,6 +3,7 @@
  * backend lives here, expressed against the domain hooks' state + actions.
  * IPC goes through `dataClient` — no `window.electronAPI` in this file.
  */
+import { formatDataErrorMessage } from '../model/errors';
 import { useCallback } from 'react';
 import type { TFunction } from 'i18next';
 import type {
@@ -119,7 +120,7 @@ export function useDataActions(deps: DataActionsDeps) {
           } catch (err) {
             // Pipeline exists and the editor still opens — binding can be redone
             // in the input node's config if the seed save failed.
-            ui.setError(err instanceof Error ? err.message : String(err));
+            ui.setError(formatDataErrorMessage(err, t));
           }
         }
         editors.setFocusedPipeline(focused);
@@ -127,7 +128,7 @@ export function useDataActions(deps: DataActionsDeps) {
         editors.setPipelineNameEditRequested(true);
         await loadDashboard({ query: '', pipelinePage: 1 });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true, query: '' });
       } finally {
         ui.setActionId(null);
@@ -217,13 +218,13 @@ export function useDataActions(deps: DataActionsDeps) {
         ]);
         return result.rawTable;
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [loadDashboard, loadRawTables, ui]
+    [loadDashboard, loadRawTables, ui, t]
   );
 
   const handleEditPipeline = useCallback(
@@ -252,10 +253,10 @@ export function useDataActions(deps: DataActionsDeps) {
       } catch (err) {
         // Generation already persisted the pipeline. Do not leave a retry button that
         // would create it again just because refreshing the workspace failed.
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
       }
     },
-    [ui, editors, dashboard, loadDashboard]
+    [ui, editors, dashboard, loadDashboard, t]
   );
 
   const handleClosePipelineEditor = useCallback(() => {
@@ -325,13 +326,13 @@ export function useDataActions(deps: DataActionsDeps) {
         rawTables.setRawTablePage(1);
         await loadRawTables({ preserveError: true, page: 1 });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [drafts, editors, rawTables, loadRawTables, ui]
+    [drafts, editors, rawTables, loadRawTables, ui, t]
   );
 
   const handleEditRawTable = useCallback(
@@ -359,13 +360,13 @@ export function useDataActions(deps: DataActionsDeps) {
         rawTables.updateRawTableRow(updated);
         await loadRawTables({ preserveError: true });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [rawTables, loadRawTables, ui]
+    [rawTables, loadRawTables, ui, t]
   );
 
   const handleUpdateRawTableSource = useCallback(
@@ -401,13 +402,13 @@ export function useDataActions(deps: DataActionsDeps) {
         rawTables.updateRawTableRow(updated);
         await loadRawTables({ preserveError: true });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [rawTables, loadRawTables, ui]
+    [rawTables, loadRawTables, ui, t]
   );
 
   const handleUpdateRawTableConfig = useCallback(
@@ -425,13 +426,13 @@ export function useDataActions(deps: DataActionsDeps) {
         rawTables.updateRawTableRow(updated);
         await loadRawTables({ preserveError: true });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
       }
     },
-    [rawTables, loadRawTables, ui]
+    [rawTables, loadRawTables, ui, t]
   );
 
   const handleDeletePipeline = useCallback(
@@ -453,7 +454,7 @@ export function useDataActions(deps: DataActionsDeps) {
         }
         await loadDashboard();
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true });
       } finally {
         ui.setActionId(null);
@@ -496,7 +497,7 @@ export function useDataActions(deps: DataActionsDeps) {
       dashboard.setPipelinePage(1);
       await loadDashboard({ preserveError: true, tab: 'pipelines', pipelinePage: 1 });
     } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
+      ui.setError(formatDataErrorMessage(err, t));
       await loadDashboard({ preserveError: true, tab: 'pipelines' });
     } finally {
       ui.setActionId(null);
@@ -520,7 +521,7 @@ export function useDataActions(deps: DataActionsDeps) {
         rawTables.removeRawTable(rawTable.id);
         await loadRawTables({ preserveError: true });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
       } finally {
         ui.setActionId(null);
@@ -573,7 +574,7 @@ export function useDataActions(deps: DataActionsDeps) {
       rawTables.setRawTablePage(1);
       await loadRawTables({ preserveError: true, page: 1 });
     } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
+      ui.setError(formatDataErrorMessage(err, t));
       await loadRawTables({ preserveError: true });
     } finally {
       ui.setActionId(null);
@@ -603,7 +604,7 @@ export function useDataActions(deps: DataActionsDeps) {
         editors.setEditingResultTableId(opened.id);
         await loadDashboard({ preserveError: true, tab: 'result_tables', outputPage: 1 });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } finally {
         ui.setActionId(null);
@@ -637,7 +638,7 @@ export function useDataActions(deps: DataActionsDeps) {
         }
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } finally {
         ui.setActionId(null);
@@ -665,7 +666,7 @@ export function useDataActions(deps: DataActionsDeps) {
         }
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await loadDashboard({ preserveError: true, tab: 'result_tables' });
       } finally {
         ui.setActionId(null);
@@ -712,7 +713,7 @@ export function useDataActions(deps: DataActionsDeps) {
         outputPage: 1,
       });
     } catch (err) {
-      ui.setError(err instanceof Error ? err.message : String(err));
+      ui.setError(formatDataErrorMessage(err, t));
       await loadDashboard({ preserveError: true, tab: 'result_tables' });
     } finally {
       ui.setActionId(null);
@@ -747,13 +748,13 @@ export function useDataActions(deps: DataActionsDeps) {
         await dataClient.assignGroup({ scope, ids, groupId });
         await reloadScope(scope);
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await reloadScope(scope);
       } finally {
         ui.setActionId(null);
       }
     },
-    [reloadScope, ui]
+    [reloadScope, ui, t]
   );
 
   const handleRenameGroup = useCallback(
@@ -766,13 +767,13 @@ export function useDataActions(deps: DataActionsDeps) {
         await dataClient.renameGroup({ id: group.id, name: trimmed });
         await reloadScope(scope);
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await reloadScope(scope);
       } finally {
         ui.setActionId(null);
       }
     },
-    [reloadScope, ui]
+    [reloadScope, ui, t]
   );
 
   const handleDeleteGroup = useCallback(
@@ -788,7 +789,7 @@ export function useDataActions(deps: DataActionsDeps) {
         await dataClient.deleteGroup(group.id);
         await reloadScope(scope);
       } catch (err) {
-        ui.setError(err instanceof Error ? err.message : String(err));
+        ui.setError(formatDataErrorMessage(err, t));
         await reloadScope(scope);
       } finally {
         ui.setActionId(null);

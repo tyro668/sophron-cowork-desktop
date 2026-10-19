@@ -1,4 +1,5 @@
 /** Compiles workflow nodes to SQL and resolves input-source schemas. */
+import { resolveCsvReadPath } from '../csv-encoding';
 import { buildSqlQuery, describeSqlQuery } from '../../operators/sql-query';
 import { SqlQueryConfigSchema } from '../../../../shared/operator-schemas/sql-query';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../shared/contracts';
@@ -94,7 +95,7 @@ export class WorkflowCompiler {
       const relation = readRelationForPath(filePath, 'sourcePath');
       await this.ctx.runSql(
         `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
-        { sourcePath: filePath }
+        { sourcePath: resolveCsvReadPath(filePath) }
       );
       return await this.ctx.getTableColumnTypes(schemaTableName);
     } finally {
@@ -140,7 +141,7 @@ export class WorkflowCompiler {
     await this.ctx.runSql(
       `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
       {
-        sourcePath: filePath,
+        sourcePath: resolveCsvReadPath(filePath),
       }
     );
     return tableName;

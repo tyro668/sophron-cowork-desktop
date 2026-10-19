@@ -324,6 +324,8 @@
         "csvHeader": "表头",
         "csvDataRegion": "数据区域",
         "csvEncoding": "编码",
+        "csvEncodingAuto": "自动识别",
+        "csvEncodingGbk": "GBK / GB18030（简体中文 Windows 常用）",
         "csvDelimiter": "分隔符",
         "autoDetected": "自动识别",
         "csvInfo": "Csv 文件已自动识别表头与数据，无需额外手动配置。如识别结果有误，请更换文件后重试。",
@@ -374,6 +376,9 @@
         "createPipelineMenu": "创建数据加工",
         "createPipelineManual": "手动创建",
         "createPipelineAi": "AI 创建"
+      },
+      "errors": {
+        "csvEncoding": "文件编码无法识别，请在原始表配置中将「编码」改为 GBK 或 UTF-8 后重试。"
       },
       "sources": {
         "excel": "Excel",

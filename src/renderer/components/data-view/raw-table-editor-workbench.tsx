@@ -1,3 +1,4 @@
+import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
 import { Button } from '../ui/button';
@@ -31,6 +32,7 @@ import type {
   DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTableExcelConfig,
+  DataRawTableCsvConfig,
   DataRawTableFolderConfig,
   DataRawTableNormalizerArtifactVersion,
   DataRawTableNormalizerDraftProgressEvent,
@@ -563,7 +565,7 @@ export function RawTableEditorWorkbench({
       });
       setPreviewData(nextPreview);
     } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : String(err));
+      setPreviewError(formatDataErrorMessage(err, t));
     } finally {
       setPreviewLoading(false);
     }
@@ -582,7 +584,7 @@ export function RawTableEditorWorkbench({
         await loadPreviewPage(1, refreshed, refreshed.inputConfig);
       }
     } catch (error) {
-      setPreviewError(error instanceof Error ? error.message : String(error));
+      setPreviewError(formatDataErrorMessage(error, t));
     } finally {
       setCloudSyncBusy(false);
     }
@@ -655,7 +657,7 @@ export function RawTableEditorWorkbench({
       });
       setPreviewData(result.preview);
     } catch (err) {
-      setPreviewError(err instanceof Error ? err.message : String(err));
+      setPreviewError(formatDataErrorMessage(err, t));
     } finally {
       setPreviewLoading(false);
     }
@@ -1435,7 +1437,6 @@ export function RawTableEditorWorkbench({
                       {[
                         ['header', 'data.rawTables.editor.csvHeader'],
                         ['dataRegion', 'data.rawTables.editor.csvDataRegion'],
-                        ['encoding', 'data.rawTables.editor.csvEncoding'],
                         ['delimiter', 'data.rawTables.editor.csvDelimiter'],
                       ].map(([key, labelKey]) => (
                         <RawTableConfigRow key={key} label={t(labelKey)}>
@@ -1444,6 +1445,25 @@ export function RawTableEditorWorkbench({
                           </div>
                         </RawTableConfigRow>
                       ))}
+                      <RawTableConfigRow label={t('data.rawTables.editor.csvEncoding')}>
+                        <RawTableSelect
+                          value={localConfig.sourceKind === 'csv' ? localConfig.encoding : 'auto'}
+                          disabled={isBusy || !rawTable}
+                          onChange={(value) =>
+                            localConfig.sourceKind === 'csv'
+                              ? updateConfig({
+                                  ...localConfig,
+                                  encoding: value as DataRawTableCsvConfig['encoding'],
+                                })
+                              : undefined
+                          }
+                          options={[
+                            { value: 'auto', label: t('data.rawTables.editor.csvEncodingAuto') },
+                            { value: 'utf-8', label: 'UTF-8' },
+                            { value: 'gbk', label: t('data.rawTables.editor.csvEncodingGbk') },
+                          ]}
+                        />
+                      </RawTableConfigRow>
                       <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
                         <ColumnTypeOverridesEditor
                           overrides={

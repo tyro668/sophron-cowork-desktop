@@ -338,7 +338,8 @@ export interface DataRawTableCsvConfig {
   sourceKind: 'csv';
   header: 'auto';
   dataRegion: 'auto';
-  encoding: 'auto';
+  /** 'auto' detects UTF-8 (with/without BOM) and falls back to GBK/GB18030. */
+  encoding: 'auto' | 'utf-8' | 'gbk';
   delimiter: 'auto';
   /** Per-column target types applied when the file is read into DuckDB. */
   columnTypeOverrides?: DataRawTableColumnTypeOverride[];
