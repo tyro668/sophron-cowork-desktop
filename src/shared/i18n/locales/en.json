@@ -51,6 +51,7 @@
     "projectDirectory": "Project directory",
     "openFolder": "Open folder…",
     "attachFiles": "Attach Files",
+    "mentionSkill": "Reference a skill (@)",
     "letsGo": "Let's go",
     "starting": "Starting...",
     "chromeRequired": "Chrome",

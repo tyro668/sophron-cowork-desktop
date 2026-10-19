@@ -31,6 +31,7 @@ import {
   Check,
   ChevronDown,
   Folder,
+  AtSign,
 } from 'lucide-react';
 
 type AttachedFile = {
@@ -759,6 +760,17 @@ export function WelcomeView() {
                 title={t('welcome.attachFiles')}
               >
                 <Plus className="h-5 w-5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={skillMentions.insertMentionTrigger}
+                disabled={isSubmitting}
+                className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                title={t('welcome.mentionSkill')}
+                aria-label={t('welcome.mentionSkill')}
+              >
+                <AtSign className="h-5 w-5" />
               </button>
 
               <PermissionPolicySelector

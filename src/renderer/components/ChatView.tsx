@@ -21,7 +21,7 @@ import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import { Button } from './ui';
 import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
-import { Square, Plus, Plug, X, Clock, ArrowUp, ArrowDown, Table2 } from 'lucide-react';
+import { Square, Plus, Plug, X, Clock, ArrowUp, ArrowDown, Table2, AtSign } from 'lucide-react';
 
 type AttachedFile = {
   name: string;
@@ -1147,6 +1147,17 @@ export function ChatView() {
                     title={t('welcome.attachFiles')}
                   >
                     <Plus className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={skillMentions.insertMentionTrigger}
+                    disabled={isSubmitting}
+                    className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    title={t('welcome.mentionSkill')}
+                    aria-label={t('welcome.mentionSkill')}
+                  >
+                    <AtSign className="h-4 w-4" />
                   </button>
 
                   <PermissionPolicySelector

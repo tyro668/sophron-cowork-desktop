@@ -242,6 +242,27 @@ export function useSkillMentions({
     ]
   );
 
+  /**
+   * Insert "@" at the caret (space-separated when needed, since the trigger
+   * only fires at a word boundary) and open the same picker typing "@" opens.
+   */
+  const insertMentionTrigger = useCallback(() => {
+    const textarea = textareaRef.current;
+    const value = textarea?.value ?? prompt;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? start;
+    const before = value.slice(0, start);
+    const insert = before.length > 0 && !/\s$/.test(before) ? ' @' : '@';
+    const nextPrompt = `${before}${insert}${value.slice(end)}`;
+    const nextCursor = start + insert.length;
+    setPrompt(nextPrompt);
+    updateMentionTrigger(nextPrompt, nextCursor);
+    requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [prompt, setPrompt, textareaRef, updateMentionTrigger]);
+
   const removeSkill = useCallback(
     (skillName: string) => {
       const next = selectedSkills.filter((skill) => skill.name !== skillName);
@@ -307,6 +328,7 @@ export function useSkillMentions({
     handlePromptChange,
     handlePromptKeyDown,
     selectSkill,
+    insertMentionTrigger,
     removeSkill,
     clearSelectedSkills,
     closeMentionMenu,

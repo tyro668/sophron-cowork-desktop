@@ -51,6 +51,7 @@
     "projectDirectory": "项目目录",
     "openFolder": "打开文件夹…",
     "attachFiles": "附加文件",
+    "mentionSkill": "引用技能 (@)",
     "letsGo": "开始",
     "starting": "启动中...",
     "chromeRequired": "需要 Chrome",
