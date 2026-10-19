@@ -43,6 +43,7 @@ export function TaskActivity({
       (step) =>
         step.type === 'tool_call' && step.status === 'running' && step.parentId === activeTurnStepId
     );
+  const pendingRetry = steps.find((step) => step.id === activeTurnStepId)?.retry ?? null;
   const showingInput = activeTool?.toolPhase === 'preparing' || activeTool?.toolPhase === 'ready';
   const liveOutput = showingInput
     ? activeTool?.toolInputPreview
@@ -71,7 +72,14 @@ export function TaskActivity({
       )
     : hasStreamingText
       ? t('chat.activity.responding')
-      : t('chat.activity.waitingModel');
+      : pendingRetry
+        ? t(
+            pendingRetry.reason === 'network'
+              ? 'chat.activity.retryingNetwork'
+              : 'chat.activity.retryingProvider',
+            { attempt: pendingRetry.attempt, max: pendingRetry.maxAttempts }
+          )
+        : t('chat.activity.waitingModel');
   const idleSeconds = lastActivityAt ? Math.max(0, Math.floor((now - lastActivityAt) / 1000)) : 0;
 
   return (

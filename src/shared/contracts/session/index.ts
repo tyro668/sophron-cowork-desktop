@@ -169,9 +169,19 @@ export interface TraceStep {
   outcome?: TraceOutcome;
   /** Aggregated evaluation metrics for the root span of one agent turn. */
   metrics?: TraceEvaluationMetrics;
+  /** Set on the root span while an automatic model-turn retry is pending; null clears it. */
+  retry?: TraceRetryStatus | null;
   timestamp: number;
   endedAt?: number;
   duration?: number;
+}
+
+export interface TraceRetryStatus {
+  attempt: number;
+  maxAttempts: number;
+  /** 'network' = dropped/interrupted connection; 'provider' = overload/5xx/rate limit. */
+  reason: 'network' | 'provider';
+  delayMs?: number;
 }
 
 export interface TraceError {

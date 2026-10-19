@@ -89,6 +89,9 @@ describe('SDK message role routing', () => {
         errorMessage: 'OAuth auth derivation failed: missing module',
       },
     });
+    // The error bubble waits for agent_end so a retried attempt never shows one.
+    expect(sendMessage).not.toHaveBeenCalled();
+    emit({ type: 'agent_end', messages: [], willRetry: false });
     expect(bridge.terminalErrorText).toContain('OAuth auth derivation failed');
     expect(sendMessage).toHaveBeenCalledOnce();
     const text = sendMessage.mock.calls[0][1].content[0].text;

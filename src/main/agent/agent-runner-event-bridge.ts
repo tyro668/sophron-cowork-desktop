@@ -28,6 +28,7 @@ import type {
 import { log, logWarn, logError, logCtx, logCtxError } from '../utils/logger';
 import { extractArtifactsFromText, buildArtifactTraceSteps } from '../utils/artifact-parser';
 import { resolveMessageEndPayload, toUserFacingErrorText } from './agent-runner-message-end';
+import { classifyRetryReason, formatRetryStatus } from './agent-runner-retry';
 import { ThinkTagStreamParser } from './think-tag-parser';
 import { containsPseudoToolCallMarkup, PseudoToolCallStreamGuard } from './agent-protocol-safety';
 import {
@@ -87,6 +88,14 @@ export class AgentRunEventBridge {
   compactionStartedAt: number | undefined;
   hasEmittedError = false;
   terminalErrorText: string | undefined;
+  /**
+   * Error from the latest failed assistant attempt, held back until `agent_end`
+   * tells us whether the SDK will retry the turn. A retried attempt must not
+   * leave an "Error" bubble in the chat.
+   */
+  pendingErrorText: string | undefined;
+  /** Tool calls streamed by the current assistant message (reset per attempt). */
+  currentMessageToolCallIds = new Set<string>();
   terminalProtocolViolation = false;
   thinkParser = new ThinkTagStreamParser();
   protocolGuard = new PseudoToolCallStreamGuard();
@@ -300,6 +309,7 @@ export class AgentRunEventBridge {
           this.thinkParser = new ThinkTagStreamParser();
           this.protocolGuard.reset();
           this.currentMessageProtocolViolation = false;
+          this.currentMessageToolCallIds = new Set<string>();
           this.ctx.modelClock.startedAt = Date.now();
           this.ctx.evaluationMetrics.modelCallCount += 1;
         }
@@ -387,6 +397,7 @@ export class AgentRunEventBridge {
               this.ctx.evaluationMetrics.toolCallCount += 1;
             }
             this.attemptToolCallIds.add(toolCallId);
+            this.currentMessageToolCallIds.add(toolCallId);
             this.ctx.sendTraceStep(this.ctx.session.id, {
               id: toolCallId,
               turnId: this.ctx.turnId,
@@ -519,21 +530,9 @@ export class AgentRunEventBridge {
           }
           if (resolvedPayload.errorText) {
             this.terminalErrorText = resolvedPayload.errorText;
-            if (!this.hasEmittedError) {
-              this.hasEmittedError = true;
-              this.ctx.sendMessage(this.ctx.session.id, {
-                id: uuidv4(),
-                sessionId: this.ctx.session.id,
-                role: 'assistant',
-                content: [
-                  {
-                    type: 'text',
-                    text: `**Error**: ${resolvedPayload.errorText}`,
-                  },
-                ],
-                timestamp: Date.now(),
-              });
-            }
+            // Defer the chat bubble: `agent_end.willRetry` decides whether this
+            // attempt is discarded and re-run, or is the final answer.
+            this.pendingErrorText = resolvedPayload.errorText;
             break;
           }
           if (this.currentMessageProtocolViolation && !hasStructuredToolCall) {
@@ -762,22 +761,43 @@ export class AgentRunEventBridge {
         }
 
         case 'auto_retry_start': {
+          logWarn(
+            `[AgentRunner] Auto-retry ${event.attempt}/${event.maxAttempts} in ${event.delayMs}ms:`,
+            event.errorMessage
+          );
           this.ctx.sendTraceUpdate(this.ctx.session.id, this.ctx.thinkingStepId, {
-            title: `Retrying (${event.attempt}/${event.maxAttempts})...`,
+            title: formatRetryStatus(event.attempt, event.maxAttempts, event.errorMessage),
+            retry: {
+              attempt: event.attempt,
+              maxAttempts: event.maxAttempts,
+              reason: classifyRetryReason(event.errorMessage),
+              delayMs: event.delayMs,
+            },
           });
           break;
         }
 
         case 'auto_retry_end': {
+          this.ctx.sendTraceUpdate(this.ctx.session.id, this.ctx.thinkingStepId, {
+            title: 'Processing request...',
+            retry: null,
+          });
           if (event.success) {
             this.terminalErrorText = undefined;
+            this.pendingErrorText = undefined;
             this.hasEmittedError = false;
+          } else {
+            this.flushPendingError();
           }
           break;
         }
 
         case 'agent_end': {
-          logCtx('[AgentRunner] Agent finished');
+          logCtx('[AgentRunner] Agent finished', event.willRetry ? '(will retry)' : '');
+          if (this.pendingErrorText) {
+            if (event.willRetry) this.discardFailedAttempt();
+            else this.flushPendingError();
+          }
           break;
         }
 
@@ -856,6 +876,54 @@ export class AgentRunEventBridge {
         });
       }
     }
+  };
+
+  /**
+   * Show the held-back error of the last failed attempt (if any). Safe to call
+   * more than once; the runner calls it after `prompt()` returns as a backstop.
+   */
+  flushPendingError = (): void => {
+    const errorText = this.pendingErrorText;
+    this.pendingErrorText = undefined;
+    if (!errorText || this.hasEmittedError || this.ctx.controller.signal.aborted) return;
+    this.hasEmittedError = true;
+    this.ctx.sendMessage(this.ctx.session.id, {
+      id: uuidv4(),
+      sessionId: this.ctx.session.id,
+      role: 'assistant',
+      content: [{ type: 'text', text: `**Error**: ${errorText}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  /**
+   * The SDK is about to re-run a turn whose stream broke. Its partial output is
+   * already omitted from the model context; drop it from the UI as well so the
+   * retry does not show duplicated text or tool calls stuck in "preparing".
+   */
+  discardFailedAttempt = (): void => {
+    this.pendingErrorText = undefined;
+    this.streamedText = '';
+    this.thinkParser = new ThinkTagStreamParser();
+    this.protocolGuard.reset();
+    this.ctx.sendToRenderer({
+      type: 'stream.reset',
+      payload: { sessionId: this.ctx.session.id },
+    });
+    const endedAt = Date.now();
+    for (const toolCallId of this.currentMessageToolCallIds) {
+      this.toolInputSentAt.delete(toolCallId);
+      this.ctx.sendTraceUpdate(this.ctx.session.id, toolCallId, {
+        status: 'error',
+        toolPhase: undefined,
+        toolInputPreview: undefined,
+        isError: true,
+        error: buildTraceError('连接中断，已丢弃未完成的工具调用并重试', 'provider'),
+        outcome: 'provider_failed',
+        endedAt,
+      });
+    }
+    this.currentMessageToolCallIds = new Set<string>();
   };
 
   discardLastMalformedAssistant = (): void => {

@@ -71,6 +71,7 @@ import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extens
 import { configStore } from '../config/config-store';
 import { normalizeOpenAICompatibleBaseUrl } from '../config/auth-utils';
 import { toUserFacingErrorText } from './agent-runner-message-end';
+import { AGENT_TURN_RETRY_SETTINGS } from './agent-runner-retry';
 import {
   applyPiModelRuntimeOverrides,
   buildSyntheticPiModel,
@@ -1537,7 +1538,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           sessionManager: piSessionManager,
           settingsManager: PiSettingsManager.inMemory({
             compaction: compactionSettings,
-            retry: { enabled: true, maxRetries: 2 },
+            retry: { ...AGENT_TURN_RETRY_SETTINGS },
           }),
           resourceLoader,
           cwd: effectiveCwd,
@@ -1714,6 +1715,8 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         }
         const promptResult = await piSession.prompt(contextualPrompt);
         controller.signal.throwIfAborted();
+        // Backstop: surface a held-back attempt error if no agent_end flushed it.
+        eventBridge.flushPendingError();
         log(
           '[AgentRunner] prompt() returned:',
           JSON.stringify(promptResult ?? 'void').substring(0, 1000)

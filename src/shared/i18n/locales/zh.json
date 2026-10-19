@@ -2534,6 +2534,8 @@
     "activity": {
       "waitingModel": "等待模型响应",
       "responding": "正在生成回复",
+      "retryingNetwork": "连接中断，正在重试 ({{attempt}}/{{max}})",
+      "retryingProvider": "模型服务异常，正在重试 ({{attempt}}/{{max}})",
       "runningTool": "正在执行：{{tool}}",
       "preparingTool": "正在生成工具参数：{{tool}}",
       "readyTool": "等待执行：{{tool}}",

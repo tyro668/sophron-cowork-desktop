@@ -2534,6 +2534,8 @@
     "activity": {
       "waitingModel": "Waiting for model response",
       "responding": "Generating a response",
+      "retryingNetwork": "Connection lost, retrying ({{attempt}}/{{max}})",
+      "retryingProvider": "Model service error, retrying ({{attempt}}/{{max}})",
       "runningTool": "Running: {{tool}}",
       "preparingTool": "Generating tool arguments: {{tool}}",
       "readyTool": "Waiting to run: {{tool}}",

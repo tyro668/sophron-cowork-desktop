@@ -4,6 +4,7 @@ import type {
   ThinkingContent,
   ToolCall,
 } from '@earendil-works/pi-ai';
+import { isTransientNetworkError } from './agent-runner-retry';
 import { splitThinkTagBlocks } from './think-tag-parser';
 
 type MessageEndContentBlock = TextContent | ThinkingContent | ToolCall;
@@ -70,7 +71,8 @@ export function toUserFacingErrorText(errorText: string): string {
     lower.includes('other side closed') ||
     lower.includes('reset before headers') ||
     lower.includes('upstream connect') ||
-    lower.includes('retry delay')
+    lower.includes('retry delay') ||
+    isTransientNetworkError(errorText)
   ) {
     return `网络连接中断（${errorText}），可能是代理/网关不稳定。`;
   }
