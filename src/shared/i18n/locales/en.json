@@ -390,6 +390,7 @@
       }
     },
     "resultTables": {
+      "exportSelectHint": "Select a result table in the list first",
       "searchPlaceholder": "Search result tables...",
       "add": "Add result table",
       "empty": "No result tables",

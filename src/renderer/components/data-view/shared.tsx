@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
@@ -16,7 +16,12 @@ import {
 } from 'lucide-react';
 import type { DataRawTable, DataResultTable, DataPipelineStatus } from '../../types';
 import type { RawTableSourceKind } from '../../features/data/model/types';
-import { GlassDropdownMenu, GlassMenuItem, GlassMenuSub } from '../GlassDropdownMenu';
+import {
+  GlassDropdownMenu,
+  GlassMenuItem,
+  GlassMenuSeparator,
+  GlassMenuSub,
+} from '../GlassDropdownMenu';
 import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
 
@@ -154,6 +159,10 @@ export interface DataMoreMenuItem {
   disabled?: boolean;
   onClick?: () => void;
   children?: DataMoreMenuItem[];
+  /** Secondary hint text under the label (leaf items only). */
+  description?: ReactNode;
+  /** Render a divider above this item, e.g. to separate destructive actions. */
+  separatorBefore?: boolean;
 }
 
 export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
@@ -178,33 +187,36 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
         </Button>
       }
     >
-      {items.map((item) =>
-        item.children?.length ? (
-          <GlassMenuSub key={item.key} label={item.label} icon={item.icon} disabled={item.disabled}>
-            {item.children.map((child) => (
-              <GlassMenuItem
-                key={child.key}
-                disabled={child.disabled}
-                danger={child.danger}
-                icon={child.icon}
-                onSelect={child.onClick}
-              >
-                {child.label}
-              </GlassMenuItem>
-            ))}
-          </GlassMenuSub>
-        ) : (
-          <GlassMenuItem
-            key={item.key}
-            disabled={item.disabled}
-            danger={item.danger}
-            icon={item.icon}
-            onSelect={item.onClick}
-          >
-            {item.label}
-          </GlassMenuItem>
-        )
-      )}
+      {items.map((item) => (
+        <Fragment key={item.key}>
+          {item.separatorBefore ? <GlassMenuSeparator /> : null}
+          {item.children?.length ? (
+            <GlassMenuSub label={item.label} icon={item.icon} disabled={item.disabled}>
+              {item.children.map((child) => (
+                <GlassMenuItem
+                  key={child.key}
+                  disabled={child.disabled}
+                  danger={child.danger}
+                  icon={child.icon}
+                  onSelect={child.onClick}
+                >
+                  {child.label}
+                </GlassMenuItem>
+              ))}
+            </GlassMenuSub>
+          ) : (
+            <GlassMenuItem
+              disabled={item.disabled}
+              danger={item.danger}
+              icon={item.icon}
+              description={item.description}
+              onSelect={item.onClick}
+            >
+              {item.label}
+            </GlassMenuItem>
+          )}
+        </Fragment>
+      ))}
     </GlassDropdownMenu>
   );
 }

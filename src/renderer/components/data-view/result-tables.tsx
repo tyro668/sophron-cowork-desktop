@@ -72,6 +72,34 @@ import {
 } from '../ui';
 import { ResultTableAutomations } from './table-automations';
 
+/** Shared export flow for result tables (save dialog, success toast, silent cancel). */
+function useResultTableExport() {
+  const { t, i18n } = useTranslation();
+  const [exportBusy, setExportBusy] = useState<DataTableExportFormat | null>(null);
+  const exportResultTable = async (id: string, format: DataTableExportFormat) => {
+    if (exportBusy) return;
+    setExportBusy(format);
+    try {
+      const result = await dataClient.exportTable({
+        tableKind: 'result',
+        id,
+        format,
+        locale: i18n.language.startsWith('zh') ? 'zh' : 'en',
+      });
+      if (result.success) {
+        showToast('success', t('data.resultTables.editor.exportDone', { path: result.path }));
+      } else if (result.error && result.error !== 'cancelled') {
+        showToast('error', result.error);
+      }
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportBusy(null);
+    }
+  };
+  return { exportBusy, exportResultTable, canExport: dataClient.has('exportTable') };
+}
+
 export function ResultTablesPanel({
   resultTables,
   totalResultTables,
@@ -116,6 +144,7 @@ export function ResultTablesPanel({
   onDeleteGroup: (group: DataListGroup) => void;
 }) {
   const { t } = useTranslation();
+  const { exportBusy, exportResultTable, canExport } = useResultTableExport();
   const [selectedResultTableId, setSelectedResultTableId] = useState<string | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
@@ -257,11 +286,45 @@ export function ResultTablesPanel({
                 disabled: bulkBusy,
                 onClick: onRefresh,
               },
+              ...(canExport
+                ? [
+                    selectedResultTable && !selectedBusy && !bulkBusy && exportBusy === null
+                      ? {
+                          key: 'export',
+                          label: t('data.resultTables.editor.export'),
+                          icon: <Download className="h-3.5 w-3.5" />,
+                          children: [
+                            {
+                              key: 'export-csv',
+                              label: t('data.resultTables.editor.exportCsv'),
+                              icon: <FileText className="h-3.5 w-3.5" />,
+                              onClick: () => void exportResultTable(selectedResultTable.id, 'csv'),
+                            },
+                            {
+                              key: 'export-xlsx',
+                              label: t('data.resultTables.editor.exportExcel'),
+                              icon: <Download className="h-3.5 w-3.5" />,
+                              onClick: () => void exportResultTable(selectedResultTable.id, 'xlsx'),
+                            },
+                          ],
+                        }
+                      : {
+                          key: 'export',
+                          label: t('data.resultTables.editor.export'),
+                          icon: <Download className="h-3.5 w-3.5" />,
+                          disabled: true,
+                          description: selectedResultTable
+                            ? undefined
+                            : t('data.resultTables.exportSelectHint'),
+                        },
+                  ]
+                : []),
               {
                 key: 'delete-all',
                 label: t('data.actions.deleteAll'),
                 icon: <Trash2 className="h-3.5 w-3.5" />,
                 danger: true,
+                separatorBefore: true,
                 disabled: totalResultTables <= 0 || bulkBusy,
                 onClick: onDeleteAll,
               },
@@ -592,7 +655,7 @@ export function ResultTableEditor({
   ) => void | Promise<void>;
   onRunPipeline: (pipeline: DataPipeline) => void | Promise<void>;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [localName, setLocalName] = useState(resultTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceRawTableId, setSourceRawTableId] = useState(resultTable.sourceRawTableId ?? '');
@@ -602,7 +665,7 @@ export function ResultTableEditor({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [runBusy, setRunBusy] = useState(false);
-  const [exportBusy, setExportBusy] = useState<DataTableExportFormat | null>(null);
+  const { exportBusy, exportResultTable, canExport } = useResultTableExport();
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const busy = isBusy;
   const trimmedName = localName.trim();
@@ -708,29 +771,9 @@ export function ResultTableEditor({
     }
   };
 
-  const handleExport = async (format: DataTableExportFormat) => {
-    if (exportBusy) return;
-    setExportBusy(format);
-    try {
-      const result = await dataClient.exportTable({
-        tableKind: 'result',
-        id: resultTable.id,
-        format,
-        locale: i18n.language.startsWith('zh') ? 'zh' : 'en',
-      });
-      if (result.success) {
-        showToast('success', t('data.resultTables.editor.exportDone', { path: result.path }));
-      } else if (result.error && result.error !== 'cancelled') {
-        showToast('error', result.error);
-      }
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : String(err));
-    } finally {
-      setExportBusy(null);
-    }
-  };
+  const handleExport = (format: DataTableExportFormat) => exportResultTable(resultTable.id, format);
 
-  const exportDisabled = busy || exportBusy !== null || !dataClient.has('exportTable');
+  const exportDisabled = busy || exportBusy !== null || !canExport;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">

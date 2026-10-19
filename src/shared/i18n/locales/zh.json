@@ -390,6 +390,7 @@
       }
     },
     "resultTables": {
+      "exportSelectHint": "请先在列表中选择一个结果表",
       "searchPlaceholder": "搜索结果表...",
       "add": "新增结果表",
       "empty": "暂无结果表",
