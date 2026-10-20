@@ -23,6 +23,7 @@ import {
   Trash2,
   Upload,
   X,
+  XCircle,
 } from 'lucide-react';
 import { DATA_FIELD_TYPES, type DataFieldType } from '../../../shared/data-field-types';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
@@ -98,13 +99,13 @@ export type RawTableEditorProps = {
     sourceKind: DataRawTableSourceKind,
     config: DataRawTableConfig,
     name?: string
-  ) => void | Promise<void>;
+  ) => void | Promise<void | string | null>;
   onChooseRawTableSource?: (
     rawTable: DataRawTable,
     sourceKind: DataRawTableSourceKind,
     config: DataRawTableConfig,
     name?: string
-  ) => void | Promise<void>;
+  ) => void | Promise<void | string | null>;
   onUpdateRawTableConfig?: (
     rawTable: DataRawTable,
     config: DataRawTableConfig,
@@ -166,6 +167,8 @@ export function RawTableEditorWorkbench({
   const [activeViewTab, setActiveViewTab] = useState<'config' | 'data'>('config');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Import / source-change failure, shown inline under the source row (B11).
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DataRawTablePreview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
@@ -352,11 +355,16 @@ export function RawTableEditorWorkbench({
     const nextConfig =
       config.sourceKind === sourceKind ? config : getDefaultRawTableConfig(sourceKind);
     autoPreviewArmed.current = true;
-    if (draft && onChooseDraftSource) {
-      void onChooseDraftSource(draft, sourceKind, nextConfig, localName);
-    } else if (rawTable && onChooseRawTableSource) {
-      void onChooseRawTableSource(rawTable, sourceKind, nextConfig, localName);
-    }
+    setSourceError(null);
+    const pending =
+      draft && onChooseDraftSource
+        ? onChooseDraftSource(draft, sourceKind, nextConfig, localName)
+        : rawTable && onChooseRawTableSource
+          ? onChooseRawTableSource(rawTable, sourceKind, nextConfig, localName)
+          : undefined;
+    void Promise.resolve(pending).then((result) => {
+      if (typeof result === 'string' && result) setSourceError(result);
+    });
   };
 
   const handleSourceKindChange = (sourceKind: DataRawTableSourceKind) => {
@@ -902,7 +910,9 @@ export function RawTableEditorWorkbench({
                     }
                   >
                     <div className="flex min-w-0 items-stretch">
-                      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border border-border-muted bg-surface px-2.5 shadow-soft">
+                      <div
+                        className={`flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border bg-surface px-2.5 shadow-soft ${sourceError ? 'border-error ring-2 ring-error/15' : 'border-border-muted'}`}
+                      >
                         <span
                           className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
                         >
@@ -946,6 +956,28 @@ export function RawTableEditorWorkbench({
                               : t('data.rawTables.editor.chooseFile')}
                       </button>
                     </div>
+                    {sourceError && (
+                      <div
+                        role="alert"
+                        className="mt-2 flex items-start gap-2 rounded-lg border border-error/25 bg-error/6 px-2.5 py-2 text-[12.5px] leading-[18px] text-text-primary"
+                      >
+                        <XCircle className="mt-px h-3.5 w-3.5 flex-shrink-0 text-error" />
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold text-error">
+                            {t('data.rawTables.editor.importFailedInline')}
+                          </span>
+                          {sourceError}
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={t('common.close')}
+                          onClick={() => setSourceError(null)}
+                          className="flex-shrink-0 text-text-muted hover:text-text-secondary"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </RawTableConfigRow>
 
                   <RawTableConfigRow label={t('data.rawTables.editor.sourceType')}>
