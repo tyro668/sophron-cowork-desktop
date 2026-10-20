@@ -7,11 +7,21 @@ function getAppLocale(language = i18n.resolvedLanguage || i18n.language): string
   return 'en-US';
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+/** 24-hour clock time, e.g. 13:31. */
+export function formatClockTime(value: number | string | Date): string {
+  const date = new Date(value);
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** Canonical app date-time format: YYYY-MM-DD HH:mm (24-hour, locale independent). */
 export function formatAppDateTime(value: number | string | Date): string {
-  return new Intl.DateTimeFormat(getAppLocale(), {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${formatClockTime(date)}`;
 }
 
 export function formatAppDate(

@@ -35,7 +35,6 @@ import {
   flatToolbarRowClass,
   LoadingState,
   formatDateTime,
-  formatDisplayPath,
   formatRelatedPipelineNames,
   formatCloudMirrorLocation,
   getCloudMirror,
@@ -187,9 +186,7 @@ export function RawTablesPanel({
           }
         }}
         className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
-          selected
-            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-            : 'hover:bg-surface-hover/35'
+          selected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
         }`}
       >
         <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
@@ -201,7 +198,16 @@ export function RawTablesPanel({
                 <Table2 className="h-4 w-4" />
               </div>
             )}
-            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+            <div
+              className="min-w-0 truncate text-[13px] font-medium text-text-primary"
+              title={
+                cloudMirror
+                  ? formatCloudMirrorLocation(cloudMirror)
+                  : rawTable
+                    ? rawTable.sourcePath
+                    : t('data.rawTables.notConfigured')
+              }
+            >
               {rowName}
             </div>
           </div>
@@ -213,17 +219,12 @@ export function RawTablesPanel({
             {t(sourceMeta.labelKey)}
           </span>
         </td>
-        <td className="px-2">
-          <div
-            className="truncate text-[13px] font-medium text-text-secondary"
-            title={cloudMirror ? formatCloudMirrorLocation(cloudMirror) : rawTable?.sourcePath}
-          >
-            {cloudMirror
-              ? formatCloudMirrorLocation(cloudMirror)
-              : rawTable
-                ? formatDisplayPath(rawTable.sourcePath)
-                : t('data.rawTables.notConfigured')}
-          </div>
+        <td className="whitespace-nowrap px-2 pr-6 text-right text-[13px] tabular-nums text-text-secondary">
+          {rawTable ? (
+            rawTable.rowCount.toLocaleString('en-US')
+          ) : (
+            <span className="text-text-muted">—</span>
+          )}
         </td>
         <td className="px-2">
           <div className="truncate text-[13px] font-medium text-text-secondary">
@@ -273,51 +274,42 @@ export function RawTablesPanel({
             disabled={bulkBusy}
             onClick={() => navigateToAutomation({ newRawTableName: '' })}
           />
-          <DataToolbarButton
-            icon={<Eye className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.preview')}
-            disabled={!selectedRawTable || bulkBusy}
-            onClick={() => {
-              if (selectedRawTable) {
-                onPreviewRawTable(selectedRawTable);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<PencilLine className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.edit')}
-            disabled={!selectedRow || bulkBusy}
-            onClick={() => {
-              if (selectedDraft) {
-                onEditDraft(selectedDraft.id);
-              } else if (selectedRawTable) {
-                onEditRawTable(selectedRawTable.id);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<FolderInput className="h-3.5 w-3.5" />}
-            label={t('data.groups.moveToGroup')}
-            disabled={!selectedRawTable || selectedRowBusy || bulkBusy}
-            onClick={() => {
-              if (selectedRawTable) {
-                setAssignDialogOpen(true);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.delete')}
-            disabled={!selectedRow || selectedRowBusy || bulkBusy}
-            danger
-            onClick={() => {
-              if (selectedDraft) {
-                onDeleteDraft(selectedDraft.id);
-              } else if (selectedRawTable) {
-                onDelete(selectedRawTable);
-              }
-            }}
-          />
+          {selectedRow && (
+            <>
+              <DataToolbarButton
+                icon={<Eye className="h-3.5 w-3.5" />}
+                label={t('data.rawTables.actions.preview')}
+                disabled={!selectedRawTable || bulkBusy}
+                onClick={() => {
+                  if (selectedRawTable) {
+                    onPreviewRawTable(selectedRawTable);
+                  }
+                }}
+              />
+              <DataToolbarButton
+                icon={<PencilLine className="h-3.5 w-3.5" />}
+                label={t('data.rawTables.actions.edit')}
+                disabled={!selectedRow || bulkBusy}
+                onClick={() => {
+                  if (selectedDraft) {
+                    onEditDraft(selectedDraft.id);
+                  } else if (selectedRawTable) {
+                    onEditRawTable(selectedRawTable.id);
+                  }
+                }}
+              />
+              <DataToolbarButton
+                icon={<FolderInput className="h-3.5 w-3.5" />}
+                label={t('data.groups.moveToGroup')}
+                disabled={!selectedRawTable || selectedRowBusy || bulkBusy}
+                onClick={() => {
+                  if (selectedRawTable) {
+                    setAssignDialogOpen(true);
+                  }
+                }}
+              />
+            </>
+          )}
           <DataMoreMenu
             items={[
               {
@@ -367,6 +359,20 @@ export function RawTablesPanel({
                 onClick: onRefresh,
               },
               {
+                key: 'delete-selected',
+                label: t('data.rawTables.actions.delete'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                disabled: !selectedRow || selectedRowBusy || bulkBusy,
+                onClick: () => {
+                  if (selectedDraft) {
+                    onDeleteDraft(selectedDraft.id);
+                  } else if (selectedRawTable) {
+                    onDelete(selectedRawTable);
+                  }
+                },
+              },
+              {
                 key: 'delete-all',
                 label: t('data.actions.deleteAll'),
                 icon: <Trash2 className="h-3.5 w-3.5" />,
@@ -409,16 +415,16 @@ export function RawTablesPanel({
               <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                    <th className="w-[24%] whitespace-nowrap px-2">
+                    <th className="w-[30%] whitespace-nowrap px-2">
                       {t('data.columns.rawTableName')}
                     </th>
                     <th className="w-[10%] whitespace-nowrap px-2">
                       {t('data.columns.sourceType')}
                     </th>
-                    <th className="w-[23%] whitespace-nowrap px-2">
-                      {t('data.columns.sourceLocation')}
+                    <th className="w-[12%] whitespace-nowrap px-2 pr-6 text-right">
+                      {t('data.columns.rowCount')}
                     </th>
-                    <th className="w-[17%] whitespace-nowrap px-2">
+                    <th className="w-[22%] whitespace-nowrap px-2">
                       {t('data.columns.relatedPipelines')}
                     </th>
                     <th className="w-[16%] whitespace-nowrap px-2">

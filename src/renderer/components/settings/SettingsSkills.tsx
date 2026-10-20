@@ -1,3 +1,4 @@
+import { formatAppDateTime } from '../../utils/i18n-format';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -995,11 +996,6 @@ function getPluginTags(
 }
 
 function formatSkillDate(value?: number): string {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  if (!value) return '—';
+  return formatAppDateTime(value);
 }

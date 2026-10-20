@@ -1,3 +1,4 @@
+import { formatAppDateTime, formatClockTime } from '../../utils/i18n-format';
 import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -473,15 +474,12 @@ export function getVisiblePageNumbers(currentPage: number, pageCount: number): n
 }
 
 export function formatTimestamp(timestamp: number | null, t: (key: string) => string): string {
-  if (!timestamp) return '-';
+  if (!timestamp) return '—';
   const date = new Date(timestamp);
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startYesterday = startToday - 86_400_000;
-  const time = new Intl.DateTimeFormat(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  const time = formatClockTime(date);
 
   if (timestamp >= startToday) {
     return `${t('data.relative.today')} ${time}`;
@@ -489,23 +487,12 @@ export function formatTimestamp(timestamp: number | null, t: (key: string) => st
   if (timestamp >= startYesterday) {
     return `${t('data.relative.yesterday')} ${time}`;
   }
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  return formatAppDateTime(date);
 }
 
 export function formatDateTime(timestamp: number | null): string {
-  if (!timestamp) return '-';
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(timestamp));
+  if (!timestamp) return '—';
+  return formatAppDateTime(timestamp);
 }
 
 export function formatRelatedPipelineNames(

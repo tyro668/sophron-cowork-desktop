@@ -1,3 +1,4 @@
+import { formatAppDateTime } from '../../utils/i18n-format';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -885,16 +886,10 @@ function getEntryTime(entry: ManagedMemoryEntry): number {
 }
 
 function formatDate(value?: string): string {
-  if (!value) return '-';
+  if (!value) return '—';
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '-';
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  if (!Number.isFinite(date.getTime())) return '—';
+  return formatAppDateTime(date);
 }
 
 function countDuplicateMemories(records: MemoryRecord[]): number {
