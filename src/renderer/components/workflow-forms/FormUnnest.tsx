@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
 import type { OperatorFormProps } from './types';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
-import { GlassFormLabel } from './shared/GlassFormLabel';
+import {
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  GlassCommitTextInput,
+  LabelCell,
+  SegmentCells,
+} from './shared/FormGrid';
+import { UNNEST_GRID_COLUMNS } from './shared/gridColumns';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -21,157 +27,147 @@ export default function FormUnnest({
 
   const sourceKind = (node.config.sourceKind as 'list' | 'json') ?? 'list';
   const field = (node.config.column as string) ?? '';
+  const alias = (node.config.alias as string) ?? '';
   const path = (node.config.path as string) ?? '$';
   const withIndex = node.config.withIndex as string | undefined;
   const keepParentNames = !!node.config.keepParentNames;
   const preserveOrder = !!node.config.preserveOrder;
   const isListMode = sourceKind === 'list';
-  const hasIndexColumn = typeof withIndex === 'string' && withIndex.length > 0;
-
-  const [localAlias, setLocalAlias] = useState((node.config.alias as string) ?? '');
-  const [localPath, setLocalPath] = useState(path);
-  const [localIndex, setLocalIndex] = useState(withIndex ?? '');
-
-  useEffect(() => {
-    setLocalAlias((node.config.alias as string) ?? '');
-    setLocalPath(path);
-    setLocalIndex(withIndex ?? '');
-  }, [node.config.alias, path, withIndex]);
+  const hasIndexColumn = typeof withIndex === 'string';
+  const aliasMissing = isListMode && alias.trim().length === 0;
+  const indexMissing = isListMode && hasIndexColumn && withIndex.trim().length === 0;
 
   return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('unnestSourceType')}</GlassFormLabel>
-        <GlassSegmentedControl
+    <FormScroll>
+      <FormGrid columns={UNNEST_GRID_COLUMNS} testId="unnest-form-grid">
+        <LabelCell>{tr('unnestSourceType')}</LabelCell>
+        <SegmentCells
           value={sourceKind}
-          options={[
-            {
-              value: 'list',
-              label: tr('unnestSourceTypeList'),
-              tip: tr('unnestSourceTypeListTip'),
-            },
-            {
-              value: 'json',
-              label: tr('unnestSourceTypeObject'),
-              tip: tr('unnestSourceTypeJsonTip'),
-            },
-          ]}
-          onChange={(value) =>
-            updateConfig((cfg) => ({ ...cfg, sourceKind: value as 'list' | 'json' }))
-          }
           ariaLabel={tr('unnestSourceType')}
+          options={[
+            { value: 'list', label: tr('unnestSourceTypeList') },
+            { value: 'json', label: tr('unnestSourceTypeObject') },
+          ]}
+          onChange={(value) => updateConfig((cfg) => ({ ...cfg, sourceKind: value }))}
         />
-      </div>
+        <Cell v={['muted']}>
+          {isListMode ? tr('unnestSourceTypeListTip') : tr('unnestSourceTypeJsonTip')}
+        </Cell>
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('unnestSourceField')}</GlassFormLabel>
-        <GlassFieldSingleSelect
-          value={field}
-          options={fieldCompletions}
-          columnTypes={columnTypes}
-          onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v }))}
-          placeholder={tr('unnestSelectField')}
-          searchPlaceholder={tr('fieldPicker.searchField')}
-          emptyText={tr('fieldPicker.noMatch')}
-          className="h-8 flex-1"
-        />
-      </div>
-
-      {isListMode && (
-        <div className="flex items-center gap-2">
-          <GlassFormLabel>{tr('unnestAlias')}</GlassFormLabel>
-          <GlassFormTextInput
-            value={localAlias}
-            onChange={(v) => {
-              setLocalAlias(v);
-              const value = v.trim();
-              if (value.length > 0) {
-                updateConfig((cfg) => ({ ...cfg, alias: value }));
-              }
-            }}
-            placeholder={tr('unnestAliasPlaceholder')}
-            className="h-8 w-60 rounded-md px-2"
+        <LabelCell required>{tr('unnestSourceField')}</LabelCell>
+        <Cell span={3} v={['ctl']}>
+          <GlassFieldSingleSelect
+            value={field}
+            options={fieldCompletions}
+            columnTypes={columnTypes}
+            onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v }))}
+            placeholder={tr('unnestSelectField')}
+            searchPlaceholder={tr('fieldPicker.searchField')}
+            emptyText={tr('fieldPicker.noMatch')}
+            className="w-full"
           />
-        </div>
-      )}
+        </Cell>
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('unnestPathLabel')}</GlassFormLabel>
-        <GlassFormTextInput
-          value={localPath}
-          onChange={(v) => {
-            setLocalPath(v);
-            updateConfig((cfg) => ({ ...cfg, path: v }));
-          }}
-          placeholder={tr('unnestPathPlaceholder')}
-          className="h-8 w-60 rounded-md px-2"
-        />
-      </div>
-
-      {isListMode && (
-        <div className="flex items-center gap-2">
-          <GlassFormLabel>{tr('unnestIndexCol')}</GlassFormLabel>
-          <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={hasIndexColumn}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  updateConfig((cfg) => ({ ...cfg, withIndex: localIndex || 'idx' }));
-                } else {
-                  updateConfig((cfg) => ({ ...cfg, withIndex: undefined }));
-                }
-              }}
-              className="h-3.5 w-3.5 accent-accent"
-            />
-            {tr('unnestGenerateIndex')}
-          </label>
-          {hasIndexColumn && (
-            <GlassFormTextInput
-              value={localIndex}
-              onChange={(v) => {
-                setLocalIndex(v);
-                const value = v.trim();
-                if (value.length > 0) {
-                  updateConfig((cfg) => ({ ...cfg, withIndex: value }));
-                }
-              }}
-              placeholder={tr('unnestIndexPlaceholder')}
-              className="h-8 w-40 rounded-md px-2"
-            />
-          )}
-        </div>
-      )}
-
-      {isListMode && (
-        <div className="flex items-center gap-2">
-          <GlassFormLabel>{tr('unnestOutputHeader')}</GlassFormLabel>
-          <div className="flex min-w-0 flex-1 items-center gap-4">
-            <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
-              <input
-                type="checkbox"
-                checked={keepParentNames}
-                onChange={(e) =>
-                  updateConfig((cfg) => ({ ...cfg, keepParentNames: e.target.checked }))
-                }
-                className="h-3.5 w-3.5 accent-accent"
+        {isListMode ? (
+          <>
+            <LabelCell required>{tr('unnestAlias')}</LabelCell>
+            <Cell span={2} v={['ctl', aliasMissing && 'err']}>
+              <GlassCommitTextInput
+                value={alias}
+                // Clearing must clear the config too — previously the old alias
+                // was silently kept while the input looked empty.
+                onCommit={(v) => updateConfig((cfg) => ({ ...cfg, alias: v.trim() || undefined }))}
+                placeholder={tr('unnestAliasPlaceholder')}
+                ariaLabel={tr('unnestAlias')}
+                ariaInvalid={aliasMissing}
               />
-              {tr('unnestKeepParent')}
-            </label>
-            <label className="flex h-8 cursor-pointer items-center gap-1.5 text-[13px] text-text-secondary">
-              <input
-                type="checkbox"
-                checked={preserveOrder}
-                onChange={(e) =>
-                  updateConfig((cfg) => ({ ...cfg, preserveOrder: e.target.checked }))
-                }
-                className="h-3.5 w-3.5 accent-accent"
+            </Cell>
+            <Cell v={['muted']}>{tr('unnestAliasTip')}</Cell>
+            {aliasMissing ? (
+              <>
+                <Cell v={['lab']} />
+                <ErrorRow span={3}>{tr('unnestAliasRequired')}</ErrorRow>
+              </>
+            ) : null}
+          </>
+        ) : null}
+
+        <LabelCell>{tr('unnestPathLabel')}</LabelCell>
+        <Cell span={2} v={['ctl']}>
+          <GlassCommitTextInput
+            value={path}
+            onCommit={(v) => updateConfig((cfg) => ({ ...cfg, path: v.trim() || '$' }))}
+            placeholder={tr('unnestPathPlaceholder')}
+            ariaLabel={tr('unnestPathLabel')}
+            className="font-mono"
+          />
+        </Cell>
+        <Cell v={['muted']}>{tr('unnestPathTip')}</Cell>
+
+        {isListMode ? (
+          <>
+            <LabelCell>{tr('unnestIndexCol')}</LabelCell>
+            <SegmentCells
+              value={hasIndexColumn ? 'on' : 'off'}
+              ariaLabel={tr('unnestIndexCol')}
+              options={[
+                { value: 'off', label: tr('unnestNoIndex') },
+                { value: 'on', label: tr('unnestGenerateIndex') },
+              ]}
+              onChange={(value) =>
+                updateConfig((cfg) => ({
+                  ...cfg,
+                  withIndex: value === 'on' ? 'idx' : undefined,
+                }))
+              }
+            />
+            <Cell v={['ctl', indexMissing && 'err']}>
+              <GlassCommitTextInput
+                value={withIndex ?? ''}
+                disabled={!hasIndexColumn}
+                onCommit={(v) => updateConfig((cfg) => ({ ...cfg, withIndex: v.trim() }))}
+                placeholder={tr('unnestIndexPlaceholder')}
+                ariaLabel={tr('unnestIndexCol')}
+                ariaInvalid={indexMissing}
               />
-              {tr('unnestPreserveOrder')}
-            </label>
-          </div>
-        </div>
-      )}
-    </div>
+            </Cell>
+            {indexMissing ? (
+              <>
+                <Cell v={['lab']} />
+                <ErrorRow span={3}>{tr('unnestIndexRequired')}</ErrorRow>
+              </>
+            ) : null}
+
+            <LabelCell>{tr('unnestOutputHeader')}</LabelCell>
+            <Cell span={2}>
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={keepParentNames}
+                  onChange={(e) =>
+                    updateConfig((cfg) => ({ ...cfg, keepParentNames: e.target.checked }))
+                  }
+                  className="opg-cbx"
+                />
+                {tr('unnestKeepParent')}
+              </label>
+            </Cell>
+            <Cell>
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  checked={preserveOrder}
+                  onChange={(e) =>
+                    updateConfig((cfg) => ({ ...cfg, preserveOrder: e.target.checked }))
+                  }
+                  className="opg-cbx"
+                />
+                {tr('unnestPreserveOrder')}
+              </label>
+            </Cell>
+          </>
+        ) : null}
+      </FormGrid>
+    </FormScroll>
   );
 }

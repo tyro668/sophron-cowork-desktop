@@ -1215,7 +1215,12 @@
           "unnestPathLabel": "Locator path",
           "unnestPathPlaceholder": "e.g. $.xxx",
           "unnestPreserveOrder": "Preserve original row order",
-          "unnestIndexPlaceholder": "Enter a non-empty index name"
+          "unnestIndexPlaceholder": "Enter a non-empty index name",
+          "unnestAliasTip": "Name of the unnested column",
+          "unnestAliasRequired": "Alias is required; the node cannot be saved without it.",
+          "unnestPathTip": "e.g. $.items; $ means the whole value",
+          "unnestNoIndex": "None",
+          "unnestIndexRequired": "Index column name is required."
         },
         "calculateField": {
           "calcFieldFn_sum": "Sum",

@@ -1215,7 +1215,12 @@
           "unnestPathLabel": "定位路径",
           "unnestPathPlaceholder": "如 $.xxx",
           "unnestPreserveOrder": "保持原始行顺序",
-          "unnestIndexPlaceholder": "请输入非空索引名"
+          "unnestIndexPlaceholder": "请输入非空索引名",
+          "unnestAliasTip": "展开后的列名",
+          "unnestAliasRequired": "别名不能为空；留空将无法保存。",
+          "unnestPathTip": "如 $.items；$ 表示整个值",
+          "unnestNoIndex": "不生成",
+          "unnestIndexRequired": "索引列名不能为空。"
         },
         "calculateField": {
           "calcFieldFn_sum": "求和",
