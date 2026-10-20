@@ -2704,7 +2704,9 @@
     "copyPath": "复制路径",
     "openInFileManager": "在文件管理器中打开",
     "contextUsage": "上下文用量",
-    "contextUsageLabel": "{{used}} / {{total}}"
+    "contextUsageLabel": "{{used}} / {{total}}",
+    "dataObjects": "数据对象 {{count}}",
+    "files": "文件"
   },
   "messageCard": {
     "request": "请求",
@@ -2727,7 +2729,18 @@
     "linesCount_one": "{{count}} 行",
     "linesCount_other": "{{count}} 行",
     "imagesCount_one": "+{{count}} 张图片",
-    "imagesCount_other": "+{{count}} 张图片"
+    "imagesCount_other": "+{{count}} 张图片",
+    "editMessage": "编辑（填回输入框）",
+    "resendMessage": "重新发送",
+    "copy": "复制",
+    "regenerate": "重新生成",
+    "dataObjectKind": {
+      "pipeline": "数据加工",
+      "raw_table": "原始表",
+      "result_table": "结果表"
+    },
+    "openDataObject": "打开",
+    "viewReason": "查看原因"
   },
   "schedule": {
     "executionSummary": "已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）",

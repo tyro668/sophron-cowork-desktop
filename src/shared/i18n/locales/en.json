@@ -2704,7 +2704,9 @@
     "copyPath": "Copy path",
     "openInFileManager": "Open in file manager",
     "contextUsage": "Context Usage",
-    "contextUsageLabel": "{{used}} / {{total}}"
+    "contextUsageLabel": "{{used}} / {{total}}",
+    "dataObjects": "Data objects {{count}}",
+    "files": "Files"
   },
   "messageCard": {
     "request": "Request",
@@ -2727,7 +2729,18 @@
     "linesCount_one": "{{count}} line",
     "linesCount_other": "{{count}} lines",
     "imagesCount_one": "+{{count}} image",
-    "imagesCount_other": "+{{count}} images"
+    "imagesCount_other": "+{{count}} images",
+    "editMessage": "Edit (back to composer)",
+    "resendMessage": "Resend",
+    "copy": "Copy",
+    "regenerate": "Regenerate",
+    "dataObjectKind": {
+      "pipeline": "Data pipeline",
+      "raw_table": "Raw table",
+      "result_table": "Result table"
+    },
+    "openDataObject": "Open",
+    "viewReason": "View reason"
   },
   "schedule": {
     "executionSummary": "{{executed}} executed, {{skipped}} skipped (trigger condition or prerequisite not met)",

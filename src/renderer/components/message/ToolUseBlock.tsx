@@ -124,7 +124,11 @@ export const ToolUseBlock = memo(function ToolUseBlock({
       {/* Flat activity row — Codex-style, no card chrome */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-hover/60"
+        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+          isError
+            ? 'border border-error/20 bg-error/5 hover:bg-error/8'
+            : 'hover:bg-surface-hover/60'
+        }`}
       >
         {/* Status icon */}
         <span
@@ -158,6 +162,14 @@ export const ToolUseBlock = memo(function ToolUseBlock({
         {isSuccess && summary && !expanded && (
           <span className="max-w-[220px] flex-shrink-0 truncate text-[11px] text-text-muted">
             {summary}
+          </span>
+        )}
+        {isError && summary && !expanded && (
+          <span className="min-w-0 max-w-[260px] truncate text-[11px] text-error">{summary}</span>
+        )}
+        {isError && !expanded && (
+          <span className="flex-shrink-0 text-[11px] text-accent-text">
+            {t('messageCard.viewReason')}
           </span>
         )}
         {validImages.length > 0 && (
