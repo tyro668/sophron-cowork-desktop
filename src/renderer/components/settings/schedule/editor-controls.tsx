@@ -142,16 +142,25 @@ export function LocalTableSelect({
 export function MiniIcon({
   onClick,
   children,
+  disabled = false,
+  title,
 }: {
   onClick: (event: MouseEvent) => void;
   children: ReactNode;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <span
       role="button"
-      tabIndex={0}
-      onClick={onClick}
-      className="flex h-5 w-5 items-center justify-center rounded text-text-muted hover:bg-surface-muted"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      title={title}
+      aria-label={title}
+      onClick={disabled ? undefined : onClick}
+      className={`flex h-5 w-5 items-center justify-center rounded text-text-muted ${
+        disabled ? 'cursor-not-allowed opacity-35' : 'hover:bg-surface-muted'
+      }`}
     >
       {children}
     </span>

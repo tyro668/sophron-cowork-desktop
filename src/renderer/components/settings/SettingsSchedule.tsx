@@ -132,6 +132,28 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     return null;
   }, [viewMode, selectedId, selectedAutomation, appConfig, tr]);
   const isDraftDirty = draftSignature !== null && draftSignature !== baselineSignature;
+  // Which sections differ from the saved automation (for the unsaved bar).
+  const unsavedParts = useMemo(() => {
+    if (!isDraftDirty || !selectedAutomation) return [];
+    const saved = draftToPayload(automationToDraft(selectedAutomation), appConfig);
+    const current = draftToPayload(draft, appConfig);
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const parts: string[] = [];
+    if (saved.name !== current.name) parts.push(tr('schedule.partName', '名称'));
+    if (!same(saved.trigger, current.trigger)) parts.push(tr('schedule.partTrigger', '触发条件'));
+    if (saved.projectId !== current.projectId) parts.push(tr('schedule.partProject', '执行项目'));
+    if (saved.enabled !== current.enabled) parts.push(tr('schedule.partEnabled', '启用状态'));
+    if (!same(saved.actionGraph, current.actionGraph)) {
+      const savedNodes = saved.actionGraph?.nodes ?? [];
+      const changed = (current.actionGraph?.nodes ?? []).filter(
+        (node, index) => !same(savedNodes[index] ?? null, node)
+      ).length;
+      parts.push(
+        `${tr('schedule.partActions', '动作')} ${Math.max(changed, 1)} ${tr('schedule.partActionsUnit', '项')}`
+      );
+    }
+    return parts;
+  }, [isDraftDirty, selectedAutomation, draft, appConfig, tr]);
   const dataPipelines = dataDashboard?.pipelines ?? [];
   const rawTables = dataDashboard?.rawTables ?? [];
   const resultTables = dataDashboard?.resultTables ?? [];
@@ -804,6 +826,24 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           }}
           tr={tr}
         />
+        {isDraftDirty && selectedAutomation && (
+          <div className="flex h-9 flex-shrink-0 items-center justify-between gap-3 border-b border-warning/20 bg-warning/8 px-4 text-[12.5px] text-text-primary">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" />
+              <span className="truncate">
+                {tr('schedule.unsavedChanges', '有未保存的修改')}
+                {unsavedParts.length > 0 && `：${unsavedParts.join('、')}`}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="flex-shrink-0 text-xs text-text-secondary hover:text-text-primary"
+              onClick={() => setDraft(automationToDraft(selectedAutomation))}
+            >
+              {tr('schedule.discardChanges', '放弃修改')}
+            </button>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] md:overflow-hidden">
           <div className="min-h-0 border-b border-border-muted md:overflow-y-auto md:border-b-0 md:border-r">
@@ -823,6 +863,11 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             </div>
           </div>
           <ActionChainSection
+            baselineNodes={
+              selectedAutomation
+                ? automationToDraft(selectedAutomation).actionGraph.nodes
+                : undefined
+            }
             workingDirectory={projects.find((project) => project.id === draft.projectId)?.cwd}
             draft={draft}
             actionDefinitions={actionDefinitions}
