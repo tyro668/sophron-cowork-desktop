@@ -912,12 +912,9 @@ export function ResultTableEditor({
         onValueChange={(value) => setActiveTab(value as 'data' | 'config' | 'automation')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsContent
-          value="config"
-          className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 py-4"
-        >
-          <div className="grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+          <div className="grid">
+            <div className="grid gap-px border-b border-border-muted bg-border-muted sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label={t('data.resultTables.stats.rows')}
                 value={resultTable.rowCount.toLocaleString('en-US')}
@@ -935,7 +932,7 @@ export function ResultTableEditor({
                 value={formatDateTime(resultTable.updatedAt)}
               />
             </div>
-            <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+            <section className="border-b border-border-muted bg-surface px-4 py-2.5">
               <div className="mb-2 text-[13px] font-semibold text-text-primary">
                 {t('data.resultTables.lineage.title')}
               </div>
@@ -960,8 +957,8 @@ export function ResultTableEditor({
                 />
               </div>
             </section>
-            <div className="grid gap-3">
-              <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+            <div className="grid">
+              <section className="border-b border-border-muted bg-surface px-4 py-2.5">
                 <div className="mb-2 text-[13px] font-semibold text-text-primary">
                   {t('data.resultTables.sections.basic')}
                 </div>
@@ -982,7 +979,7 @@ export function ResultTableEditor({
               </section>
             </div>
             {onDelete && (
-              <section className="rounded-[10px] border border-error/35 bg-surface px-4 py-3">
+              <section className="border-b border-error/35 bg-surface px-4 py-2.5">
                 <div className="mb-2 text-[13px] font-semibold text-error">
                   {t('data.resultTables.danger.title')}
                 </div>
@@ -1031,11 +1028,8 @@ export function ResultTableEditor({
             headerHeight={34}
           />
         </TabsContent>
-        <TabsContent
-          value="automation"
-          className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 py-4"
-        >
-          <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+        <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+          <section className="border-b border-border-muted bg-surface px-4 py-2.5">
             <div className="mb-2 text-[13px] font-semibold text-text-primary">
               {t('data.resultTables.sections.automation')}
             </div>
@@ -1108,7 +1102,7 @@ function InlineInfoTooltip({ label }: { label: string }) {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[10px] border border-border-muted bg-surface px-3.5 py-3">
+    <div className="bg-surface px-4 py-2.5">
       <div className="text-xs text-text-muted">{label}</div>
       <div
         className="mt-1 truncate text-[15px] font-semibold tabular-nums text-text-primary"

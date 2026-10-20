@@ -79,7 +79,7 @@ export function SettingsGeneral() {
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="border-t border-border-muted">
       <SettingsCard title={t('general.appearance')}>
         <SettingsRow label={t('general.theme')}>
           <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
@@ -228,7 +228,7 @@ export function SettingsGeneral() {
 
 function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="glass-card space-y-3 rounded-xl px-4 py-3.5">
+    <section className="space-y-2 border-b border-border-muted bg-surface px-4 py-2.5">
       <h4 className="text-[13px] font-semibold text-text-primary">{title}</h4>
       {children}
     </section>

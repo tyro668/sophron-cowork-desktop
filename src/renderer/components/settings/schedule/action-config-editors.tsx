@@ -196,8 +196,7 @@ function ActionDependencyConnector({
       failurePolicy: value ? { onFailure: 'continue', emitErrorArtifact: false } : undefined,
     });
   return (
-    <div className="relative flex h-8 items-center pl-9">
-      <span className="absolute bottom-0 left-[1.6rem] top-0 w-px bg-border-muted" />
+    <div className="relative flex h-8 items-center border-b border-border-muted bg-background-secondary pl-4">
       <GlassDropdownMenu
         trigger={
           <button
@@ -258,8 +257,8 @@ export function ActionStepCard({
 }) {
   const Icon = getActionIcon(node.type, node);
   return (
-    <div className="mx-4 mt-3 rounded-xl border border-border-muted bg-surface px-4 py-3.5 shadow-soft first:mt-4">
-      <div className="mb-3 flex items-center gap-2.5">
+    <div className="border-b border-border-muted bg-surface px-4 py-3">
+      <div className="mb-2 flex items-center gap-2.5">
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-text-secondary">
           {index + 1}
         </span>

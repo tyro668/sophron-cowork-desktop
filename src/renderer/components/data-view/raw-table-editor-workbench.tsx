@@ -892,11 +892,9 @@ export function RawTableEditorWorkbench({
             value="config"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
           >
-            <div
-              className={`flex-shrink-0 bg-background-secondary px-6 ${dataProcessing.strategy === 'customize' ? 'border-b border-border-muted/80 py-4' : 'pb-3 pt-4'}`}
-            >
-              <div className="grid gap-3">
-                <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+            <div className="flex-shrink-0 bg-surface">
+              <div className="grid">
+                <section className="border-b border-border-muted bg-surface px-4 py-2.5">
                   <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionSource')}
                   </div>
@@ -1005,8 +1003,8 @@ export function RawTableEditorWorkbench({
                     />
                   </RawTableConfigRow>
                 </section>
-                <div className="grid gap-3">
-                  <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                <div className="grid">
+                  <section className="border-b border-border-muted bg-surface px-4 py-2.5">
                     <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                       {t('data.rawTables.editor.sectionParsing')}
                     </div>
@@ -1368,8 +1366,8 @@ export function RawTableEditorWorkbench({
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 pb-4">
-                <div className="grid gap-1 rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
+                <div className="grid gap-1 border-b border-border-muted bg-surface px-4 py-2.5">
                   <div className="mb-0.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionParsingDetail')}
                   </div>
@@ -1607,12 +1605,9 @@ export function RawTableEditorWorkbench({
             />
           </TabsContent>
           {rawTable ? (
-            <TabsContent
-              value="automation"
-              className="min-h-0 flex-1 overflow-y-auto bg-background-secondary"
-            >
-              <div className="px-6 py-4">
-                <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+            <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+              <div>
+                <section className="border-b border-border-muted bg-surface px-4 py-2.5">
                   <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionLinkage')}
                   </div>
