@@ -671,6 +671,34 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     }
   };
 
+  const toggleEnabled = async (automation: Automation, enabled: boolean) => {
+    setAutomations((rows) =>
+      rows.map((row) => (row.id === automation.id ? { ...row, enabled } : row))
+    );
+    try {
+      let saved = await window.electronAPI.automation.update(automation.id, { enabled });
+      if (saved?.status === 'paused' && enabled) {
+        saved = await window.electronAPI.automation.resume(saved.id);
+      }
+      await load();
+      setBanner({
+        tone: 'success',
+        text: enabled
+          ? tr('schedule.enabledNotice', '已启用「{{name}}」').replace('{{name}}', automation.name)
+          : tr('schedule.disabledNotice', '已停用「{{name}}」').replace(
+              '{{name}}',
+              automation.name
+            ),
+      });
+    } catch (error) {
+      await load();
+      setBanner({
+        tone: 'error',
+        text: error instanceof Error ? error.message : tr('schedule.saveFailed', '保存自动化失败'),
+      });
+    }
+  };
+
   const runNow = async () => {
     if (!selectedAutomation) return;
     try {
@@ -869,6 +897,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               onRun={() => void runNow()}
               onEdit={openSelectedDetail}
               onDelete={() => void remove()}
+              onToggleEnabled={(automation, enabled) => void toggleEnabled(automation, enabled)}
               onAssignToGroup={(target) => void assignToGroup(target)}
               onRenameGroup={(group, name) => void renameGroup(group, name)}
               onDeleteGroup={(group) => void deleteGroup(group)}
