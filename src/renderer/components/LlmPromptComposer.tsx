@@ -1,3 +1,4 @@
+import { handleNewlineShortcut } from '../utils/composer-keys';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowUp } from 'lucide-react';
@@ -127,6 +128,9 @@ export function LlmPromptComposer({
         onChange={skillMentions.handlePromptChange}
         onKeyDown={(event) => {
           if (skillMentions.handlePromptKeyDown(event)) {
+            return;
+          }
+          if (onSubmit && handleNewlineShortcut(event)) {
             return;
           }
           if (onSubmit && event.key === 'Enter' && !event.shiftKey) {
