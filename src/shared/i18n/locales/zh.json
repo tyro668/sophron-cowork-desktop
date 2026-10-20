@@ -1010,8 +1010,14 @@
           "unpivotValueCol": "值列",
           "unpivotValueColPlaceholder": "请输入字段名，默认为 Value",
           "unpivotIncludeNulls": "包含空值行",
-          "unpivotIncludeNullsTip": "勾选后，空值也会生成对应行",
-          "unpivotNullsLabel": "空值处理"
+          "unpivotIncludeNullsTip": "勾选「包含空值行」时空值也会生成对应行",
+          "unpivotNullsLabel": "空值处理",
+          "unpivotNameColTip": "存放原字段名，默认 Name",
+          "unpivotValueColTip": "存放原字段值，默认 Value",
+          "unpivotSkipNulls": "跳过空值",
+          "unpivotOutputPreview": "输出列：{{cols}}　（{{count}} 列 → 行，每行 ×{{count}}）",
+          "unpivotErrSameName": "值列不能与名称列同名。",
+          "unpivotErrKeptConflict": "「{{name}}」与保留的列重名，请换一个名称。"
         },
         "limit": {
           "limitMode": "模式",

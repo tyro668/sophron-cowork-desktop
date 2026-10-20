@@ -1010,8 +1010,14 @@
           "unpivotValueCol": "Value column",
           "unpivotValueColPlaceholder": "Enter field name, default Value",
           "unpivotIncludeNulls": "Include null rows",
-          "unpivotIncludeNullsTip": "When checked, NULL values also produce a row",
-          "unpivotNullsLabel": "Nulls"
+          "unpivotIncludeNullsTip": "With Include nulls, null values also produce rows",
+          "unpivotNullsLabel": "Nulls",
+          "unpivotNameColTip": "Holds the original field name; default Name",
+          "unpivotValueColTip": "Holds the original value; default Value",
+          "unpivotSkipNulls": "Skip nulls",
+          "unpivotOutputPreview": "Output columns: {{cols}}  ({{count}} columns → rows, ×{{count}} per row)",
+          "unpivotErrSameName": "Value column cannot share the name column's name.",
+          "unpivotErrKeptConflict": "\"{{name}}\" clashes with a kept column; choose another name."
         },
         "limit": {
           "limitMode": "Mode",
