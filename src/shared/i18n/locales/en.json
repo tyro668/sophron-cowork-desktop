@@ -1022,7 +1022,7 @@
           "limitUnitRows": "Rows",
           "limitUnitPercent": "Percent",
           "limitOffset": "Offset",
-          "limitPercentError": "Percentage cannot exceed 100",
+          "limitPercentError": "Percent cannot exceed 100.",
           "limitFixedMode": "Fixed limit",
           "limitFixedModeTip": "Keep a specified amount of data using input order or sort rules",
           "limitRandomMode": "Random sample",
@@ -1034,7 +1034,17 @@
           "limitSampleBernoulli": "Row-based",
           "limitSampleSystem": "Block-based",
           "limitTies": "Keep ties",
-          "limitIncompleteField": "Please enter a row limit"
+          "limitIncompleteField": "Please enter a row limit",
+          "limitCountError": "Count must be an integer greater than 0.",
+          "limitSeedError": "Seed must be a non-negative integer.",
+          "limitSeedTip": "The same seed reproduces the same sample",
+          "limitOffsetTip": "Skip the first N rows first",
+          "limitTiesLong": "Keep ties (rows equal to the last row's sort value)",
+          "limitHintRows": "rows",
+          "limitHintSorted": "Sort by {{keys}}, then keep the first {{count}} {{unit}}",
+          "limitHintKey": "\"{{field}}\" {{dir}}",
+          "limitHintInput": "Keep the first {{count}} {{unit}} in input order",
+          "limitSortFieldHeader": "Sort field"
         },
         "sort": {
           "sortIncompleteField": "Select a field for every sort row or remove blank rows"
@@ -1471,7 +1481,14 @@
           "sortNullsHeader": "Null handling",
           "sortNullsDefault": "Default",
           "sortNullsFirst": "Null first",
-          "sortNullsLast": "Null last"
+          "sortNullsLast": "Null last",
+          "sortHintFirst": "Sort by ",
+          "sortHintThen": "then by ",
+          "sortHintKey": "\"{{field}}\" {{dir}}",
+          "sortHintNullsFirst": " (nulls first)",
+          "sortHintNullsLast": " (nulls last)",
+          "sortHintSeparator": ", ",
+          "sortHintEmpty": "Pick fields; keys apply in the listed order"
         },
         "rowList": {
           "dragToReorder": "Drag to reorder",

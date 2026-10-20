@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import type { OperatorFormProps } from './types';
 import { SortKeysEditor } from './shared/SortKeysEditor';
+import { FormGrid, FormScroll } from './shared/FormGrid';
+import { SORT_GRID_COLUMNS } from './shared/gridColumns';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import type { SortKey } from '../../../shared/operator-schemas';
@@ -26,13 +28,15 @@ export default function FormSort({
   );
 
   return (
-    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
-      <SortKeysEditor
-        keys={keys}
-        fieldCompletions={fieldCompletions}
-        columnTypes={columnTypes}
-        onChange={commitKeys}
-      />
-    </div>
+    <FormScroll>
+      <FormGrid columns={SORT_GRID_COLUMNS} testId="sort-form-grid">
+        <SortKeysEditor
+          keys={keys}
+          fieldCompletions={fieldCompletions}
+          columnTypes={columnTypes}
+          onChange={commitKeys}
+        />
+      </FormGrid>
+    </FormScroll>
   );
 }

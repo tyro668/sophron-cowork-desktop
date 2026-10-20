@@ -1022,7 +1022,7 @@
           "limitUnitRows": "行数",
           "limitUnitPercent": "百分比",
           "limitOffset": "偏移量",
-          "limitPercentError": "百分比不能超过 100",
+          "limitPercentError": "百分比不能超过 100。",
           "limitFixedMode": "限制取样",
           "limitFixedModeTip": "按输入顺序或排序规则保留指定数量的数据",
           "limitRandomMode": "随机采样",
@@ -1034,7 +1034,17 @@
           "limitSampleBernoulli": "逐行随机",
           "limitSampleSystem": "按块抽样",
           "limitTies": "保留并列值",
-          "limitIncompleteField": "请输入限制行数"
+          "limitIncompleteField": "请输入限制行数",
+          "limitCountError": "数量需为大于 0 的整数。",
+          "limitSeedError": "随机种子需为非负整数。",
+          "limitSeedTip": "相同种子可复现同一批样本",
+          "limitOffsetTip": "跳过前 N 行后再取",
+          "limitTiesLong": "保留并列值（与最后一行排序值相同的行一并保留）",
+          "limitHintRows": "行",
+          "limitHintSorted": "按{{keys}}后保留前 {{count}} {{unit}}",
+          "limitHintKey": "「{{field}}」{{dir}}",
+          "limitHintInput": "按输入顺序保留前 {{count}} {{unit}}",
+          "limitSortFieldHeader": "排序字段"
         },
         "sort": {
           "sortIncompleteField": "请为每个排序项选择字段，或删除空白行"
@@ -1471,7 +1481,14 @@
           "sortNullsHeader": "空值处理方式",
           "sortNullsDefault": "空值默认",
           "sortNullsFirst": "空值在前",
-          "sortNullsLast": "空值在后"
+          "sortNullsLast": "空值在后",
+          "sortHintFirst": "先按",
+          "sortHintThen": "再按",
+          "sortHintKey": "「{{field}}」{{dir}}",
+          "sortHintNullsFirst": "（空值在前）",
+          "sortHintNullsLast": "（空值在后）",
+          "sortHintSeparator": "，",
+          "sortHintEmpty": "选择字段后，按添加顺序依次排序"
         },
         "rowList": {
           "dragToReorder": "拖拽排序",
