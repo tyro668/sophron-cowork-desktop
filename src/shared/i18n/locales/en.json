@@ -1840,7 +1840,18 @@
     "logoFold": "Collaborative fold",
     "language": "Language",
     "updateAvailableBadge": "New version",
-    "updateAvailableBadgeTitle": "Download and install version {{version}}"
+    "updateAvailableBadgeTitle": "Download and install version {{version}}",
+    "logoFollowsAccent": "Icon color follows the accent",
+    "languageAndFormat": "Language & format",
+    "dateTime": "Date & time",
+    "hour24": "24-hour",
+    "numbers": "Numbers",
+    "numberFormatHint": "Thousands separators · 2 decimals for amounts",
+    "accountAndLogin": "Account & login",
+    "loginService": "Login service",
+    "testConnection": "Test connection",
+    "loginServiceReachable": "Service reachable",
+    "loginServiceUnreachable": "Login service is currently unreachable"
   },
   "memory": {
     "title": "Memory",

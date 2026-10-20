@@ -1840,7 +1840,18 @@
     "logoFold": "协作折页",
     "language": "语言",
     "updateAvailableBadge": "有新版本",
-    "updateAvailableBadgeTitle": "下载并安装新版本 {{version}}"
+    "updateAvailableBadgeTitle": "下载并安装新版本 {{version}}",
+    "logoFollowsAccent": "图标颜色随强调色",
+    "languageAndFormat": "语言与格式",
+    "dateTime": "日期时间",
+    "hour24": "24 小时制",
+    "numbers": "数字",
+    "numberFormatHint": "千分位 · 金额 2 位小数",
+    "accountAndLogin": "账号与登录",
+    "loginService": "登录服务",
+    "testConnection": "测试连接",
+    "loginServiceReachable": "服务可连接",
+    "loginServiceUnreachable": "当前无法连接登录服务"
   },
   "memory": {
     "title": "Memory 机制",
