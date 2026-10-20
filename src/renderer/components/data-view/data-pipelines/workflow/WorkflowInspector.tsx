@@ -386,8 +386,8 @@ export function WorkflowInspector({
         onValueChange={(v) => onActiveTabChange(v as WorkflowInspectorTab)}
         className="contents"
       >
-        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border-muted px-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3 pr-2">
+        <div className="flex h-10 shrink-0 items-stretch justify-between border-b border-border-subtle pl-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
             <span
               className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${catalog.colorClassName}`}
             >
@@ -426,13 +426,14 @@ export function WorkflowInspector({
               </button>
             </div>
           </div>
-          <div className="flex flex-shrink-0 items-center gap-2">
-            <TabsList className="flex gap-0 rounded-lg border-0 bg-surface-active p-0.5 text-xs">
+          <div className="flex flex-shrink-0 items-stretch">
+            {/* Flush segmented tabs: same position, compact divider style. */}
+            <TabsList className="flex h-full gap-0 rounded-none border-0 border-l border-border-subtle bg-transparent p-0 text-xs">
               {inspectorTabs.map((tab) => (
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className="h-7 whitespace-nowrap rounded-md px-3 data-[state=active]:bg-background data-[state=active]:text-accent"
+                  className="h-full whitespace-nowrap rounded-none border-r border-border-subtle px-3.5 text-[12px] font-medium text-text-secondary shadow-none last:border-r-0 data-[state=active]:bg-accent-muted data-[state=active]:text-accent-text data-[state=active]:shadow-[inset_0_-2px_0_var(--color-accent)]"
                 >
                   {tab.label}
                 </TabsTrigger>
