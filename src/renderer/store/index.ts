@@ -182,6 +182,8 @@ interface AppState {
   // Sandbox sync (per-session)
   sandboxSyncStatus: SandboxSyncStatus | null;
   skillsStorageChangedAt: number;
+  /** Skill to pre-select in the welcome composer ("在对话中使用"). */
+  pendingSkillMention: string | null;
   skillsStorageChangeEvent: SkillsStorageChangeEvent | null;
 
   // System theme (from OS native theme)
@@ -270,6 +272,7 @@ interface AppState {
   // Sandbox sync actions
   setSandboxSyncStatus: (status: SandboxSyncStatus | null) => void;
   setSkillsStorageChangedAt: (timestamp: number) => void;
+  setPendingSkillMention: (name: string | null) => void;
   setSkillsStorageChangeEvent: (event: SkillsStorageChangeEvent | null) => void;
 
   // Context window actions
@@ -346,6 +349,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isSandboxSetupComplete: false,
   sandboxSyncStatus: null,
   skillsStorageChangedAt: 0,
+  pendingSkillMention: null,
   skillsStorageChangeEvent: null,
   systemDarkMode: false,
 
@@ -918,6 +922,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Sandbox sync actions
   setSandboxSyncStatus: (status) => set({ sandboxSyncStatus: status }),
   setSkillsStorageChangedAt: (timestamp) => set({ skillsStorageChangedAt: timestamp }),
+  setPendingSkillMention: (name) => set({ pendingSkillMention: name }),
   setSkillsStorageChangeEvent: (event) => set({ skillsStorageChangeEvent: event }),
 
   // Context window actions

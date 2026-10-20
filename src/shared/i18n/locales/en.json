@@ -2457,7 +2457,11 @@
         "readyToUse": "Ready after install",
         "skillPackage": "Skill package extension",
         "commandActions": "Command action extension"
-      }
+      },
+      "chatDisplay": "Shown in chat as",
+      "usedSkillChip": "Used skill · {{name}}",
+      "directory": "Directory",
+      "useInChat": "Use in chat"
     },
     "noCustomSkills": "No custom skills installed",
     "installSkillsDesc": "Install skills to extend local data capabilities",

@@ -28,6 +28,8 @@ interface UseSkillMentionsOptions {
   selectedSkillNames?: string[];
   onSelectedSkillNamesChange?: (names: string[]) => void;
   onSkillSelectionCommit?: (next: { prompt: string; selectedSkillNames: string[] }) => void;
+  /** Pick up `pendingSkillMention` from the store (welcome composer only). */
+  consumePendingSkill?: boolean;
 }
 
 const MAX_VISIBLE_SKILLS = 8;
@@ -63,11 +65,27 @@ export function useSkillMentions({
   selectedSkillNames: controlledSelectedSkillNames,
   onSelectedSkillNamesChange,
   onSkillSelectionCommit,
+  consumePendingSkill = false,
 }: UseSkillMentionsOptions) {
   const { i18n } = useTranslation();
   const skillsStorageChangedAt = useAppStore((state) => state.skillsStorageChangedAt);
   const [availableSkills, setAvailableSkills] = useState<SkillMention[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<SkillMention[]>([]);
+  const pendingSkillMention = useAppStore((state) => state.pendingSkillMention);
+  useEffect(() => {
+    if (!consumePendingSkill || !pendingSkillMention) return;
+    const skill = availableSkills.find((item) => item.name === pendingSkillMention);
+    if (!skill) return;
+    useAppStore.getState().setPendingSkillMention(null);
+    setSelectedSkills((current) => {
+      if (current.some((item) => item.name === skill.name)) return current;
+      const next = [...current, skill];
+      onSelectedSkillNamesChange?.(next.map((item) => item.name));
+      return next;
+    });
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableSkills, consumePendingSkill, pendingSkillMention]);
   const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const controlledSelectedSignature = useMemo(

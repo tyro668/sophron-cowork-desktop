@@ -2457,7 +2457,11 @@
         "readyToUse": "安装后即可使用",
         "skillPackage": "技能包扩展",
         "commandActions": "命令动作扩展"
-      }
+      },
+      "chatDisplay": "在对话中显示为",
+      "usedSkillChip": "已使用技能 · {{name}}",
+      "directory": "目录",
+      "useInChat": "在对话中使用"
     },
     "noCustomSkills": "未安装自定义技能",
     "installSkillsDesc": "安装技能以扩展本地数据处理能力",
