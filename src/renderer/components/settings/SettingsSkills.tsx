@@ -746,7 +746,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       {selectedItem.description || t('skills.installSkillsDesc')}
                     </p>
 
-                    <div className="mt-4 border-t border-border-muted pt-4">
+                    <div className="mt-3 border-t border-border-muted pt-3">
                       <h4 className="text-[13px] font-semibold text-text-primary">
                         {t('skills.workspace.supportedCapabilities')}
                       </h4>
@@ -766,7 +766,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     </div>
 
                     {selectedSkill && (
-                      <div className="mt-4 border-t border-border-muted pt-4">
+                      <div className="mt-3 border-t border-border-muted pt-3">
                         <h4 className="text-[13px] font-semibold text-text-primary">
                           {t('skills.workspace.chatDisplay')}
                         </h4>
@@ -777,7 +777,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       </div>
                     )}
 
-                    <dl className="mt-4 space-y-3 border-t border-border-muted pt-4 text-[12px]">
+                    <dl className="mt-3 space-y-2 border-t border-border-muted pt-3 text-[12px]">
                       <div>
                         <dt className="font-semibold text-text-primary">
                           {t('skills.workspace.table.updatedAt')}

@@ -237,7 +237,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 <div className={activeTab === 'logs' ? '' : 'hidden'}>
                   {viewedTabs.has('logs') && <SettingsLogs isActive={activeTab === 'logs'} />}
                 </div>
-                <div className={activeTab === 'general' ? '' : 'hidden'}>
+                <div className={activeTab === 'general' ? '-mx-3 -my-3 sm:-mx-4' : 'hidden'}>
                   {viewedTabs.has('general') && <SettingsGeneral />}
                 </div>
                 <div className={activeTab === 'shortcuts' ? '' : 'hidden'}>
