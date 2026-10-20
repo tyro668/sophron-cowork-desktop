@@ -118,3 +118,26 @@ describe('validateAggregateMetrics', () => {
     ]);
   });
 });
+
+describe('validateFieldMappings', () => {
+  it('flags duplicate result names and collisions with untouched upstream fields', async () => {
+    const { validateFieldMappings } =
+      await import('../../src/renderer/components/workflow-forms/FormFieldMapping');
+    const issues = validateFieldMappings(
+      [
+        { id: 'a', source: '省份', targetMode: 'rename', targetValue: '省' },
+        { id: 'b', source: '金额', targetMode: 'suffix', targetValue: '_元' },
+        { id: 'c', source: '城市', targetMode: 'rename', targetValue: '省' },
+        { id: 'd', source: '单价', targetMode: 'rename', targetValue: '数量' },
+      ],
+      ['省份', '金额', '城市', '单价', '数量']
+    );
+    expect(issues[0]).toBeNull();
+    expect(issues[1]).toBeNull();
+    expect(issues[2]).toEqual({
+      key: 'fieldMappingDuplicateTarget',
+      params: { name: '省', row: 1 },
+    });
+    expect(issues[3]?.key).toBe('fieldMappingTargetExists');
+  });
+});

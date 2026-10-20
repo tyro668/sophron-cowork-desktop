@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { Fragment, useCallback, useMemo } from 'react';
+import { ArrowRight } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
+import {
+  AddRow,
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  GlassCommitTextInput,
+  GridRow,
+  RowActionsCell,
+  SegmentCells,
+} from './shared/FormGrid';
+import { useGridRowDrag } from './shared/useGridRowDrag';
+import { FIELD_MAPPING_GRID_COLUMNS } from './shared/gridColumns';
 import { createStableRowId, ensureStableRowIds, patchRowAt } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
-import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { computeUsedFields } from '../../../shared/collections/used-fields';
@@ -52,18 +62,9 @@ export default function FormFieldMapping({
 
   const {
     activeItems: activeMappings,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnd,
-    handleKeyboardMove,
-    isDragging,
-    resetDrag,
-    dragIndexRef,
-  } = useDragReorder(editableMappings, commitMappings);
-
-  useEffect(() => {
-    if (!isDragging) resetDrag();
-  }, [mappings, isDragging, resetDrag]);
+    rowProps,
+    dragHandle,
+  } = useGridRowDrag(editableMappings, commitMappings);
 
   const usedFields = useMemo(
     () => computeUsedFields(activeMappings, (m) => m.source),
@@ -122,117 +123,136 @@ export default function FormFieldMapping({
 
   const targetModeOptions = useMemo(
     () => [
-      { value: 'prefix', label: tr('fieldMappingModePrefix') },
-      { value: 'suffix', label: tr('fieldMappingModeSuffix') },
-      { value: 'rename', label: tr('fieldMappingModeRename') },
+      { value: 'prefix' as const, label: tr('fieldMappingSegPrefix') },
+      { value: 'suffix' as const, label: tr('fieldMappingSegSuffix') },
+      { value: 'rename' as const, label: tr('fieldMappingModeRename') },
     ],
     [tr]
   );
 
-  const columns = useMemo<GlassRowListColumn<FieldMappingEntry>[]>(
-    () => [
-      {
-        flex: 'flex-[1]',
-        header: tr('fieldMappingSourceField'),
-        render: (item, i) => {
-          const disabledFields = new Set(usedFields);
-          if (item.source) disabledFields.delete(item.source);
-          return (
-            <GlassFieldSingleSelect
-              value={item.source}
-              options={fieldCompletions}
-              columnTypes={columnTypes}
-              onChange={(value) => updateMapping(i, { source: value })}
-              placeholder={tr('fieldMappingSelectField')}
-              searchPlaceholder={tr('fieldPicker.searchField')}
-              emptyText={tr('fieldPicker.noMatch')}
-              disabledOptions={disabledFields}
-              className="flex-1 min-w-0 h-8"
-            />
-          );
-        },
-      },
-      {
-        flex: 'flex-[1]',
-        header: tr('fieldMappingMode'),
-        render: (item, i) => (
-          <GlassOptionSingleSelect
-            value={item.targetMode}
-            onChange={(v) => updateMapping(i, { targetMode: v as FieldMappingEntry['targetMode'] })}
-            groups={[{ key: 'mode', items: targetModeOptions }]}
-            variant="highlight"
-            className="h-8 w-full text-[12px]"
-          />
-        ),
-      },
-      {
-        flex: 'flex-[1]',
-        header: tr('fieldMappingValue'),
-        render: (item, i) => (
-          <GlassFormTextInput
-            value={item.targetValue}
-            onChange={(v) => updateMapping(i, { targetValue: v })}
-            placeholder={
-              item.targetMode === 'rename'
-                ? tr('fieldMappingRenamePlaceholder')
-                : item.targetMode === 'prefix'
-                  ? tr('fieldMappingPrefixPlaceholder')
-                  : tr('fieldMappingSuffixPlaceholder')
-            }
-            className="h-8 px-1.5 text-[12px] w-full"
-          />
-        ),
-      },
-      {
-        flex: 'flex-[1]',
-        header: tr('fieldMappingTargetField'),
-        render: (item, _i) => {
-          const target = computeFieldMappingTarget(item);
-          return (
-            <span
-              className="truncate w-full rounded border border-border-subtle/80 bg-surface-hover/45 px-1.5 py-1 text-[12px] text-text-muted"
-              title={target}
-            >
-              {target || '—'}
-            </span>
-          );
-        },
-      },
-    ],
-    [columnTypes, fieldCompletions, usedFields, tr, updateMapping, targetModeOptions]
+  const issues = useMemo(
+    () => validateFieldMappings(activeMappings, fieldCompletions),
+    [activeMappings, fieldCompletions]
   );
+  const canAdd = activeMappings.length < fieldCompletions.length;
+  const rowLabels = {
+    add: tr('rowAdd'),
+    copy: tr('rowCopy'),
+    remove: tr('fieldMappingRemove'),
+    drag: tr('rowDrag'),
+  };
 
   return (
-    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
-      <GlassRowList
-        headerClassName=""
-        rowPaddingClassName="px-0"
-        items={activeMappings}
-        getKey={(mapping, index) => mapping.id ?? `mapping-${index}`}
-        columns={columns}
-        actions={['add', 'copy', 'remove']}
-        onAdd={addMappingAfter}
-        onRemove={removeMapping}
-        onCopy={copyMapping}
-        addTitle={tr('fieldMappingAdd')}
-        removeTitle={tr('fieldMappingRemove')}
-        canAct={(action: RowAction) =>
-          action === 'copy'
-            ? activeMappings.length < fieldCompletions.length
-            : action === 'add'
-              ? activeMappings.length < fieldCompletions.length
-              : true
-        }
-        draggable
-        dragHandlePosition="end"
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onKeyboardMove={handleKeyboardMove}
-        getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-        getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
-        dragTitle={tr('rowList.dragToReorder')}
-      />
-    </div>
+    <FormScroll>
+      <FormGrid columns={FIELD_MAPPING_GRID_COLUMNS} testId="field-mapping-form-grid">
+        <Cell v={['th']}>{tr('fieldMappingSourceField')}</Cell>
+        <Cell span={3} v={['th']}>
+          {tr('fieldMappingModeHeader')}
+        </Cell>
+        <Cell v={['th']}>{tr('fieldMappingValue')}</Cell>
+        <Cell v={['th']}>{tr('fieldMappingResultField')}</Cell>
+        <Cell v={['th']} />
+        {activeMappings.map((item, i) => {
+          const disabledFields = new Set(usedFields);
+          if (item.source) disabledFields.delete(item.source);
+          const target = computeFieldMappingTarget(item);
+          const issue = issues[i];
+          return (
+            <Fragment key={item.id ?? `mapping-${i}`}>
+              <GridRow {...rowProps(i)} testId={`field-mapping-row-${i}`}>
+                <Cell v={['ctl']}>
+                  <GlassFieldSingleSelect
+                    value={item.source}
+                    options={fieldCompletions}
+                    columnTypes={columnTypes}
+                    onChange={(value) => updateMapping(i, { source: value })}
+                    placeholder={tr('fieldMappingSelectField')}
+                    searchPlaceholder={tr('fieldPicker.searchField')}
+                    emptyText={tr('fieldPicker.noMatch')}
+                    disabledOptions={disabledFields}
+                    className="w-full"
+                  />
+                </Cell>
+                <SegmentCells
+                  value={item.targetMode}
+                  options={targetModeOptions}
+                  onChange={(v) => updateMapping(i, { targetMode: v })}
+                  ariaLabel={tr('fieldMappingMode')}
+                />
+                <Cell v={['ctl']}>
+                  <GlassCommitTextInput
+                    value={item.targetValue}
+                    onCommit={(v) => updateMapping(i, { targetValue: v })}
+                    placeholder={
+                      item.targetMode === 'rename'
+                        ? tr('fieldMappingRenamePlaceholder')
+                        : item.targetMode === 'prefix'
+                          ? tr('fieldMappingPrefixPlaceholder')
+                          : tr('fieldMappingSuffixPlaceholder')
+                    }
+                    ariaLabel={tr('fieldMappingValue')}
+                    className="h-full w-full px-2.5 text-[13px]"
+                  />
+                </Cell>
+                <Cell v={[issue && 'err']} title={target}>
+                  <ArrowRight className="opg-ic h-3.5 w-3.5" />
+                  <span
+                    className={`truncate font-mono text-[12px] ${issue ? 'text-error' : 'text-text-secondary'}`}
+                  >
+                    {target || '—'}
+                  </span>
+                </Cell>
+                <RowActionsCell
+                  labels={rowLabels}
+                  onAdd={() => addMappingAfter(i)}
+                  onCopy={() => copyMapping(i)}
+                  onRemove={() => removeMapping(i)}
+                  canAdd={canAdd}
+                  dragHandle={dragHandle(i)}
+                />
+              </GridRow>
+              {issue ? (
+                <ErrorRow span={7}>
+                  <b>{tr('rowPrefix', { index: i + 1 })}</b>
+                  {tr(issue.key, issue.params)}
+                </ErrorRow>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        <AddRow
+          span={7}
+          label={tr('fieldMappingAdd')}
+          onClick={() => addMappingAfter(activeMappings.length - 1)}
+          disabled={!canAdd}
+        />
+      </FormGrid>
+    </FormScroll>
   );
+}
+
+/** Result-name collisions: with an earlier row, or with an untouched upstream field. */
+export function validateFieldMappings(
+  mappings: FieldMappingEntry[],
+  upstreamFields: string[]
+): Array<{ key: string; params: Record<string, unknown> } | null> {
+  const renamedSources = new Set(
+    mappings
+      .filter((m) => m.source && computeFieldMappingTarget(m) !== m.source)
+      .map((m) => m.source)
+  );
+  const seen = new Map<string, number>();
+  return mappings.map((m, index) => {
+    const target = computeFieldMappingTarget(m);
+    if (!m.source || !target) return null;
+    const prev = seen.get(target);
+    if (prev !== undefined) {
+      return { key: 'fieldMappingDuplicateTarget', params: { name: target, row: prev + 1 } };
+    }
+    seen.set(target, index);
+    if (target !== m.source && upstreamFields.includes(target) && !renamedSources.has(target)) {
+      return { key: 'fieldMappingTargetExists', params: { name: target } };
+    }
+    return null;
+  });
 }

@@ -1121,7 +1121,13 @@
           "fieldMappingModeRename": "Rename",
           "fieldMappingRenamePlaceholder": "New field name",
           "fieldMappingPrefixPlaceholder": "Prefix",
-          "fieldMappingSuffixPlaceholder": "Suffix"
+          "fieldMappingSuffixPlaceholder": "Suffix",
+          "fieldMappingSegPrefix": "Prefix",
+          "fieldMappingSegSuffix": "Suffix",
+          "fieldMappingResultField": "Result field",
+          "fieldMappingDuplicateTarget": "Result field \"{{name}}\" duplicates row {{row}}.",
+          "fieldMappingTargetExists": "Result field \"{{name}}\" collides with an existing upstream field.",
+          "fieldMappingModeHeader": "Mode"
         },
         "setOp": {
           "setOpIncompleteField": "Please select the right input source",
