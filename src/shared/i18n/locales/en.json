@@ -1641,7 +1641,15 @@
     },
     "preview": {
       "loadFailed": "Failed to load data",
-      "retry": "Retry"
+      "retry": "Retry",
+      "filter": "Filter",
+      "removeFilter": "Remove filter",
+      "filterContains": "contains",
+      "filterScope": "{{shown}} / {{total}} rows on this page",
+      "filterColumn": "Column",
+      "filterOperator": "Operator",
+      "filterValue": "Value",
+      "addFilter": "Add"
     },
     "pipelineList": {
       "io": "Input → Output",

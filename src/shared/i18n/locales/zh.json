@@ -1641,7 +1641,15 @@
     },
     "preview": {
       "loadFailed": "读取失败",
-      "retry": "重试"
+      "retry": "重试",
+      "filter": "筛选",
+      "removeFilter": "移除筛选",
+      "filterContains": "包含",
+      "filterScope": "本页 {{shown}} / {{total}} 行",
+      "filterColumn": "列",
+      "filterOperator": "条件",
+      "filterValue": "值",
+      "addFilter": "添加"
     },
     "pipelineList": {
       "io": "输入 → 输出",
