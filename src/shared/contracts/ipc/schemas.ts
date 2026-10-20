@@ -102,6 +102,10 @@ export const clientEventSchema = z.discriminatedUnion('type', [
   z.looseObject({ type: z.literal('session.stop'), payload: z.looseObject({ sessionId: str }) }),
   z.looseObject({ type: z.literal('session.delete'), payload: z.looseObject({ sessionId: str }) }),
   z.looseObject({
+    type: z.literal('session.rename'),
+    payload: z.looseObject({ sessionId: str, title: str }),
+  }),
+  z.looseObject({
     type: z.literal('session.batchDelete'),
     payload: z.looseObject({ sessionIds: z.array(str) }),
   }),
