@@ -5,8 +5,8 @@ import type {
   DataWorkflowSaveInput,
 } from '../../../../types';
 
-export const WORKFLOW_NODE_WIDTH = 116;
-export const WORKFLOW_NODE_HEIGHT = 36;
+export const WORKFLOW_NODE_WIDTH = 148;
+export const WORKFLOW_NODE_HEIGHT = 48;
 export const WORKFLOW_OPERATOR_MIME = 'application/x-sophron-workflow-operator';
 export const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
 export const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;

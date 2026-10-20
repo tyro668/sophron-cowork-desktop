@@ -125,6 +125,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   data,
   selected,
 }: NodeProps<WorkflowFlowNode>) {
+  const { t } = useTranslation();
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   // Edge endpoints declared by the operator registry (empty => no handles).
@@ -190,14 +191,24 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
                 className="workflow-node-handle !h-2.5 !w-2.5 !rounded-full !border-2 !border-current !bg-background !opacity-100"
               />
             ))}
-      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-current/10">
+        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5 leading-tight">
         <span
-          className={`truncate text-xs font-medium ${invalid ? 'text-error' : 'text-text-secondary'}`}
+          className={`truncate text-xs font-medium ${invalid ? 'text-error' : 'text-text-primary'}`}
         >
           {node.label}
         </span>
+        {t(catalog.labelKey) !== node.label && (
+          <span className="truncate text-[11px] text-text-muted">{t(catalog.labelKey)}</span>
+        )}
       </span>
+      {invalid && (
+        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-error text-[10px] font-bold text-white">
+          !
+        </span>
+      )}
     </div>
   );
 });
