@@ -2548,7 +2548,7 @@
       "outputTruncated": "Showing recent output only",
       "lastActivity": "No new activity for {{count}} seconds"
     },
-    "typeMessage": "Type a message, Enter to send, Shift + Enter for a new line",
+    "typeMessage": "Type a message · Enter to send · Ctrl + Enter for a new line",
     "loadingConversation": "Loading conversation...",
     "startConversation": "Start the conversation",
     "startFailed": "Failed to start session. Please try again.",
