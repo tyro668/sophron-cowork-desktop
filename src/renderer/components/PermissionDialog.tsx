@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useIPC } from '../hooks/useIPC';
 import type { PermissionRequest } from '../types';
-import { AlertTriangle, ChevronDown, ChevronUp, Info, ShieldAlert } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  ShieldAlert,
+  ShieldCheck,
+} from 'lucide-react';
+import { Badge } from './ui/badge';
 import { isReadOnlyShellCommand } from '../../shared/read-only-command';
 import { Button } from './ui/button';
 import { Dialog, DialogTitle } from './ui/dialog';
@@ -58,22 +66,53 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
     : t('permission.inputPreview');
 
   const allowResult = rememberTool ? 'allow_always' : 'allow';
+  const deny = () => respondToPermission(permission.toolUseId, 'deny');
+  const risk: 'read' | 'write' | 'normal' = isReadOnlyCommand
+    ? 'read'
+    : isHighRisk
+      ? 'write'
+      : 'normal';
+  const riskTile =
+    risk === 'write'
+      ? 'bg-warning/10 text-warning'
+      : risk === 'read'
+        ? 'bg-surface-active text-text-secondary'
+        : 'bg-accent-muted text-accent';
+  const RiskIcon = risk === 'read' ? ShieldCheck : ShieldAlert;
 
   return (
     <Dialog
       open
+      onOpenChange={(open) => {
+        // Esc / overlay dismissal counts as a denial; Enter never auto-allows.
+        if (!open) deny();
+      }}
+      closeOnOverlayClick={false}
       ariaLabelledBy="permission-dialog-title"
       overlayClassName="animate-fade-in bg-black/25 p-5"
       className="max-h-[calc(100vh-40px)] max-w-[720px] animate-slide-up gap-0 overflow-y-auto px-5 pb-5 pt-4"
     >
-      <div className="flex items-center justify-center gap-3 border-b border-border-subtle pb-4 text-center">
-        <ShieldAlert className="h-9 w-9 flex-shrink-0 text-accent" strokeWidth={1.9} />
+      <div className="flex items-center gap-3 border-b border-border-subtle pb-4">
+        <span
+          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] ${riskTile}`}
+        >
+          <RiskIcon className="h-5 w-5" strokeWidth={1.9} />
+        </span>
         <DialogTitle
           id="permission-dialog-title"
-          className="text-[18px] font-semibold leading-tight text-text-primary"
+          className="min-w-0 flex-1 text-[15px] font-semibold leading-tight text-text-primary"
         >
           {t('permission.permissionRequired')}
         </DialogTitle>
+        <Badge tone={risk === 'write' ? 'warning' : 'default'}>
+          {t(
+            risk === 'read'
+              ? 'permission.risk.read'
+              : risk === 'write'
+                ? 'permission.risk.write'
+                : 'permission.risk.normal'
+          )}
+        </Badge>
       </div>
 
       <div className="pt-4">
@@ -150,29 +189,41 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
         )}
 
         <div className="mt-5 flex flex-wrap items-center gap-4">
-          <label className="flex min-h-9 flex-1 cursor-pointer items-center gap-3 text-[13px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={rememberTool}
-              onChange={(event) => setRememberTool(event.target.checked)}
-              className="h-[18px] w-[18px] flex-shrink-0 rounded border-border text-accent accent-accent focus:ring-2 focus:ring-accent/25"
-            />
-            <span>{t('permission.alwaysAllow')}</span>
-          </label>
-          <div className="ml-auto grid w-[250px] flex-shrink-0 grid-cols-2 gap-4">
+          <div
+            role="radiogroup"
+            aria-label={t('permission.scopeLabel')}
+            className="flex min-h-9 flex-1 flex-wrap items-center gap-4 text-[13px] text-text-secondary"
+          >
+            {[
+              { value: false, label: t('permission.scopeOnce') },
+              { value: true, label: t('permission.scopeTask') },
+            ].map((option) => (
+              <label key={String(option.value)} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="permission-scope"
+                  checked={rememberTool === option.value}
+                  onChange={() => setRememberTool(option.value)}
+                  className="h-4 w-4 flex-shrink-0 accent-accent"
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="ml-auto flex flex-shrink-0 items-center gap-3">
             <Button
               variant="secondary"
-              onClick={() => respondToPermission(permission.toolUseId, 'deny')}
-              className="h-10 rounded-xl text-[13px] shadow-soft"
+              onClick={deny}
+              className="h-9 min-w-[96px] rounded-lg text-[13px]"
             >
               {t('permission.deny')}
             </Button>
             <Button
               variant="primary"
               onClick={() => respondToPermission(permission.toolUseId, allowResult)}
-              className="h-10 rounded-xl text-[13px] shadow-soft"
+              className="h-9 min-w-[96px] rounded-lg text-[13px]"
             >
-              {t('permission.allow')}
+              {rememberTool ? t('permission.allowForTask') : t('permission.allow')}
             </Button>
           </div>
         </div>

@@ -1650,7 +1650,7 @@
       "undo": "Undo (pipeline canvas)",
       "redo": "Redo (pipeline canvas)",
       "deleteNode": "Delete selected node or edge",
-      "escape": "Close dialog or menu"
+      "escape": "Close dialog · deny permission request"
     }
   },
   "personalAnalysis": {
@@ -3528,7 +3528,16 @@
       "execute_command": "Execute shell commands in the workspace",
       "glob": "Search files by pattern",
       "grep": "Search file contents"
-    }
+    },
+    "risk": {
+      "read": "Read-only",
+      "write": "May modify",
+      "normal": "Needs approval"
+    },
+    "scopeLabel": "Scope",
+    "scopeOnce": "This time only",
+    "scopeTask": "Allow similar requests in this task",
+    "allowForTask": "Allow for this task"
   },
   "sudo": {
     "title": "Administrator Permission Required",
