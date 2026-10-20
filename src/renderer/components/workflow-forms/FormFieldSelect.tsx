@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, GripVertical, Search } from 'lucide-react';
 import type { OperatorFormProps } from './types';
-import { GlassRowList, type RowAction } from './shared/GlassRowList';
-import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
+import { Cell, FormGrid, FormScroll, GridRow, SegmentCells } from './shared/FormGrid';
+import { FIELD_SELECT_GRID_COLUMNS } from './shared/gridColumns';
 import { DataTypeIcon } from './shared/DataTypeIcon';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -116,160 +116,164 @@ export default function FormFieldSelect({
     },
   ];
 
+  const handleSelectAll = () => {
+    if (allVisibleSelected) {
+      const visibleSet = new Set(visibleFields);
+      commitColumns(columns.filter((field) => !visibleSet.has(field)));
+    } else {
+      commitColumns(mergeSelectedFields(columns, visibleFields));
+    }
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden p-4">
-      <div className="flex min-h-8 shrink-0 items-center gap-2">
-        <GlassSegmentedControl
+    <FormScroll>
+      <FormGrid columns={FIELD_SELECT_GRID_COLUMNS} testId="field-select-form-grid">
+        <Cell v={['ctr']}>
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={handleSelectAll}
+            aria-label={tr('fieldPicker.selectAll')}
+            title={tr('fieldPicker.selectAll')}
+            className="opg-cbx"
+          />
+        </Cell>
+        <SegmentCells
           value={mode}
-          options={modeOptions}
-          onChange={(value) =>
-            updateConfig((cfg) => ({
-              ...cfg,
-              mode: value,
-            }))
-          }
+          options={modeOptions.map((option) => ({
+            value: option.value,
+            label: option.label,
+            title: option.tip,
+          }))}
+          onChange={(value) => updateConfig((cfg) => ({ ...cfg, mode: value }))}
           ariaLabel={tr('fieldSelectMode')}
         />
-
-        <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border-muted bg-surface px-2.5">
-          <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          <input
-            type="text"
-            value={rightSearch}
-            onChange={(event) => setRightSearch(event.target.value)}
-            placeholder={tr('fieldPicker.searchField')}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-secondary"
-          />
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[12px] text-text-secondary hover:text-text-primary">
+        <Cell v={['ctl']}>
+          <label className="flex min-w-0 flex-1 items-center gap-2 pl-2.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={() => {
-                if (allVisibleSelected) {
-                  const visibleSet = new Set(visibleFields);
-                  commitColumns(columns.filter((field) => !visibleSet.has(field)));
-                } else {
-                  commitColumns(mergeSelectedFields(columns, visibleFields));
-                }
-              }}
-              className="h-3.5 w-3.5 accent-accent"
+              type="text"
+              value={rightSearch}
+              onChange={(event) => setRightSearch(event.target.value)}
+              placeholder={tr('fieldSelectSearchPlaceholder')}
+              aria-label={tr('fieldPicker.searchField')}
+              className="h-full min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
             />
-            {tr('fieldPicker.selectAll')}
           </label>
-          <span className="text-[12px] text-text-secondary">
-            {tr('fieldSelectCount', {
-              n: String(columns.length),
-              total: String(fieldCompletions.length),
-            })}
-          </span>
-        </div>
-      </div>
-
-      <div className="scrollbar-hover mt-2 flex-1 min-h-0 overflow-y-auto">
+        </Cell>
+        <Cell v={['muted', 'ctr']}>
+          {tr('fieldSelectCountShort', {
+            n: String(columns.length),
+            total: String(fieldCompletions.length),
+          })}
+        </Cell>
         {visibleFields.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-[12px] text-text-muted">
+          <Cell span={5} v={['muted', 'ctr']}>
             {rightSearch ? tr('fieldPicker.noMatch') : tr('fieldPicker.noFields')}
-          </div>
-        ) : (
-          <GlassRowList
-            items={visibleFields}
-            hideHeader
-            rowPaddingClassName="px-0"
-            actionsOnHover
-            draggable
-            dragHandlePosition="end"
-            onDragStart={(i) => {
-              const field = visibleFields[i];
-              handleDragStart(orderedFields.indexOf(field));
-            }}
-            onDragOver={(e, i) => {
-              const field = visibleFields[i];
-              handleDragOver(e, orderedFields.indexOf(field));
-            }}
-            onDragEnd={handleDragEnd}
-            onKeyboardMove={(i, direction) => {
-              const field = visibleFields[i];
-              const adjacentField = visibleFields[direction === 'up' ? i - 1 : i + 1];
-              if (!field || !adjacentField) return;
-              const next = [...orderedFields];
-              const fieldIndex = next.indexOf(field);
-              const adjacentIndex = next.indexOf(adjacentField);
-              [next[fieldIndex], next[adjacentIndex]] = [next[adjacentIndex], next[fieldIndex]];
-              commitReorder(next);
-            }}
-            getRowOpacity={(i) => {
-              const field = visibleFields[i];
-              return !!(isDragging && dragIndexRef.current === orderedFields.indexOf(field));
-            }}
-            getDropMarker={(i) => {
-              const field = visibleFields[i];
-              return isDragging && dragIndexRef.current === orderedFields.indexOf(field)
-                ? 'before'
-                : null;
-            }}
-            dragTitle={tr('rowList.dragToReorder')}
-            actions={['toTop', 'toBottom']}
-            onToTop={(i) => moveToTop(visibleFields[i])}
-            onToBottom={(i) => moveToBottom(visibleFields[i])}
-            toTopTitle={tr('rowList.toTop')}
-            toBottomTitle={tr('rowList.toBottom')}
-            canAct={(action: RowAction, i) => {
-              const field = visibleFields[i];
-              if (action === 'toTop') return orderedFields[0] !== field;
-              if (action === 'toBottom') return orderedFields[orderedFields.length - 1] !== field;
-              return true;
-            }}
-            columns={[
-              {
-                flex: 'w-8',
-                header: '',
-                render: (field: string) => {
-                  const selected = columns.includes(field);
-                  return (
-                    <label className="flex h-8 cursor-pointer items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() =>
-                          commitColumns(
-                            selected
-                              ? columns.filter((candidate) => candidate !== field)
-                              : [...columns, field]
-                          )
-                        }
-                        className="h-3.5 w-3.5 accent-accent"
-                      />
-                    </label>
-                  );
-                },
-              },
-              {
-                flex: 'flex-[1]',
-                header: '',
-                render: (field: string) => {
-                  const missing = !fieldCompletions.includes(field);
-                  const missingTitle = fieldCompletions.length
-                    ? tr('fieldPicker.fieldNotFound')
-                    : tr('fieldPicker.fieldPendingInference');
-                  return (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <DataTypeIcon type={columnTypes?.[field]} />
-                      <span
-                        title={missing ? missingTitle : undefined}
-                        className={`min-w-0 truncate ${missing ? 'text-error' : 'text-text-primary'}`}
-                      >
-                        {field}
-                        {missing ? ' (?)' : ''}
-                      </span>
-                    </div>
-                  );
-                },
-              },
-            ]}
-          />
-        )}
-      </div>
-    </div>
+          </Cell>
+        ) : null}
+        {visibleFields.map((field, i) => {
+          const selected = columns.includes(field);
+          const orderIndex = orderedFields.indexOf(field);
+          const missing = !fieldCompletions.includes(field);
+          const dragging = Boolean(isDragging && dragIndexRef.current === orderIndex);
+          return (
+            <GridRow
+              key={field}
+              dragging={dragging}
+              hover
+              compact
+              onDragOver={(event) => handleDragOver(event, orderIndex)}
+              testId={`field-select-row-${i}`}
+            >
+              <Cell v={['ctr']}>
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() =>
+                    commitColumns(
+                      selected
+                        ? columns.filter((candidate) => candidate !== field)
+                        : [...columns, field]
+                    )
+                  }
+                  aria-label={field}
+                  className="opg-cbx"
+                />
+              </Cell>
+              <Cell span={3}>
+                <DataTypeIcon type={columnTypes?.[field]} />
+                <span
+                  className={`min-w-0 truncate ${missing ? 'text-error' : 'text-text-primary'}`}
+                >
+                  {field}
+                </span>
+                {missing ? (
+                  <span
+                    className={`shrink-0 text-[11px] ${fieldCompletions.length ? 'text-error' : 'text-text-muted'}`}
+                  >
+                    {fieldCompletions.length
+                      ? tr('fieldPicker.fieldNotFoundShort')
+                      : tr('fieldPicker.fieldPendingInference')}
+                  </span>
+                ) : null}
+              </Cell>
+              <Cell v={['acts']}>
+                <button
+                  type="button"
+                  className="opg-act"
+                  onClick={() => moveToTop(field)}
+                  disabled={orderedFields[0] === field}
+                  title={tr('rowList.toTop')}
+                  aria-label={tr('rowList.toTop')}
+                >
+                  <ArrowUpToLine className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="opg-act"
+                  onClick={() => moveToBottom(field)}
+                  disabled={orderedFields[orderedFields.length - 1] === field}
+                  title={tr('rowList.toBottom')}
+                  aria-label={tr('rowList.toBottom')}
+                >
+                  <ArrowDownToLine className="h-3.5 w-3.5" />
+                </button>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  draggable
+                  className="opg-act cursor-grab"
+                  onDragStart={(event) => {
+                    event.dataTransfer?.setData('text/plain', field);
+                    handleDragStart(orderIndex);
+                  }}
+                  onDragEnd={handleDragEnd}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+                    event.preventDefault();
+                    const adjacentField = visibleFields[event.key === 'ArrowUp' ? i - 1 : i + 1];
+                    if (!adjacentField) return;
+                    const next = [...orderedFields];
+                    const adjacentIndex = next.indexOf(adjacentField);
+                    [next[orderIndex], next[adjacentIndex]] = [
+                      next[adjacentIndex],
+                      next[orderIndex],
+                    ];
+                    commitReorder(next);
+                  }}
+                  title={tr('rowList.dragToReorder')}
+                  aria-label={tr('rowList.dragToReorder')}
+                  aria-keyshortcuts="ArrowUp ArrowDown"
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </span>
+              </Cell>
+            </GridRow>
+          );
+        })}
+      </FormGrid>
+    </FormScroll>
   );
 }

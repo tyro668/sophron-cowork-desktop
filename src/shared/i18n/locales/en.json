@@ -1105,7 +1105,9 @@
           "fieldSelectIncludeMode": "Keep fields",
           "fieldSelectIncludeModeTip": "Output only checked fields in their selected order",
           "fieldSelectExcludeMode": "Exclude fields",
-          "fieldSelectExcludeModeTip": "Remove checked fields and keep all remaining fields"
+          "fieldSelectExcludeModeTip": "Remove checked fields and keep all remaining fields",
+          "fieldSelectSearchPlaceholder": "Search fields…",
+          "fieldSelectCountShort": "{{n}} / {{total}} selected"
         },
         "fieldMapping": {
           "fieldMappingSourceField": "Source field",

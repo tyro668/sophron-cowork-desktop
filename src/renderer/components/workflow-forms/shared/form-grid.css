@@ -385,3 +385,18 @@
 .opg-c.ctl input {
   height: 100% !important;
 }
+/* Grid checkbox (design `.cbx`): 14px, accent fill when checked. */
+.opg-cbx {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+.opg-row.hov:hover > .opg-c:not(.acts) {
+  background: var(--color-surface-hover);
+}
+.opg-row.compact > .opg-c {
+  min-height: 32px;
+  height: 32px;
+}

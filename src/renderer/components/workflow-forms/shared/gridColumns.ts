@@ -4,3 +4,4 @@ export const AGGREGATE_GRID_COLUMNS = '104px 170px minmax(220px,1.4fr) minmax(16
 export const PIVOT_GRID_COLUMNS = AGGREGATE_GRID_COLUMNS;
 export const FIELD_MAPPING_GRID_COLUMNS =
   'minmax(180px,1fr) 58px 58px 58px minmax(160px,1fr) minmax(160px,1fr) 112px';
+export const FIELD_SELECT_GRID_COLUMNS = '40px 88px 88px minmax(200px,1fr) 84px';
