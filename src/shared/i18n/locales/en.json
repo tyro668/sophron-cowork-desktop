@@ -1611,7 +1611,9 @@
       "aiReanalyze": "Send & re-analyze",
       "aiStartOver": "Start over",
       "undo": "Undo (Ctrl+Z)",
-      "redo": "Redo (Ctrl+Y)"
+      "redo": "Redo (Ctrl+Y)",
+      "errorBannerTitle": "Can't save or run",
+      "locateNode": "Locate issue nodes ({{count}})"
     },
     "relative": {
       "today": "Today",

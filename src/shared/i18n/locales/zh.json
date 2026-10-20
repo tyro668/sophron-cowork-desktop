@@ -1611,7 +1611,9 @@
       "aiReanalyze": "发送并重新分析",
       "aiStartOver": "重新开始",
       "undo": "撤销 (Ctrl+Z)",
-      "redo": "重做 (Ctrl+Y)"
+      "redo": "重做 (Ctrl+Y)",
+      "errorBannerTitle": "无法保存或运行",
+      "locateNode": "定位问题节点（{{count}}）"
     },
     "relative": {
       "today": "今天",

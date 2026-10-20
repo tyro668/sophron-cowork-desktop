@@ -38,7 +38,6 @@ import {
 } from '../../../../../shared/prep-dsl';
 import { dataFieldTypeFromDuckDbType } from '../../../../../shared/data-field-types';
 import { dataClient } from '../../../../features/data/api/data-client';
-import { showToast } from '../../../../utils/toast';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
@@ -56,6 +55,7 @@ import { WorkflowInspector } from './WorkflowInspector';
 import { WorkflowDslDialog, WorkflowNodeDataPreview, WorkflowOperatorPalette } from './WorkflowUi';
 import { Button } from '../../../ui/button';
 import { Dialog } from '../../../ui/dialog';
+import { InlineBanner } from '../../../ui/inline-banner';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import {
   connectWorkflowNodes as connectWorkflowGraphNodes,
@@ -246,12 +246,6 @@ export function PipelineEditor({
   useEffect(() => {
     void loadWorkflow();
   }, [loadWorkflow]);
-
-  useEffect(() => {
-    if (!localError) return;
-    showToast('error', localError);
-    setLocalError(null);
-  }, [localError]);
 
   useEffect(() => {
     if (skipInitialTitleResetRef.current) {
@@ -593,14 +587,14 @@ export function PipelineEditor({
         const x = Math.max(
           0,
           Math.round(
-            anchor && spliceTarget ? (anchor.x + spliceTarget.x) / 2 : (anchor?.x ?? fallback.x)
+            anchor && spliceTarget ? anchor.x + WORKFLOW_NODE_WIDTH + 52 : (anchor?.x ?? fallback.x)
           )
         );
         const y = Math.max(
           0,
           Math.round(
             anchor && spliceTarget
-              ? (anchor.y + spliceTarget.y) / 2
+              ? anchor.y
               : anchor
                 ? anchor.y + WORKFLOW_NODE_HEIGHT + 56
                 : fallback.y
@@ -617,7 +611,26 @@ export function PipelineEditor({
           createdAt,
           updatedAt: createdAt,
         };
-        let next: DataPipelineWorkflow = { ...current, nodes: [...current.nodes, nextNode] };
+        // Splicing: push the downstream chain right so the new node gets its own slot.
+        let baseNodes = current.nodes;
+        if (spliceTarget && spliceTarget.x < x + WORKFLOW_NODE_WIDTH + 52) {
+          const shift = x + WORKFLOW_NODE_WIDTH + 52 - spliceTarget.x;
+          const downstream = new Set<string>([spliceTarget.id]);
+          const queue = [spliceTarget.id];
+          while (queue.length > 0) {
+            const from = queue.shift()!;
+            for (const edge of current.edges) {
+              if (edge.sourceNodeId === from && !downstream.has(edge.targetNodeId)) {
+                downstream.add(edge.targetNodeId);
+                queue.push(edge.targetNodeId);
+              }
+            }
+          }
+          baseNodes = current.nodes.map((node) =>
+            downstream.has(node.id) ? { ...node, x: node.x + shift } : node
+          );
+        }
+        let next: DataPipelineWorkflow = { ...current, nodes: [...baseNodes, nextNode] };
         if (canLink && anchor && (canSplice || outEdges.length <= 1)) {
           const newEdge = (targetNodeId: string, targetHandle: string): DataWorkflowEdge => ({
             id: makeLocalId('edge'),
@@ -1525,6 +1538,28 @@ export function PipelineEditor({
             {/* grid + stretch keeps WorkflowCanvas at the full row height so the
                 empty-state overlay can anchor absolute to this wrapper */}
             <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)]">
+              {localError && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-16">
+                  <InlineBanner
+                    tone="error"
+                    className="pointer-events-auto w-full max-w-xl bg-surface shadow-md"
+                    title={t('data.workflow.errorBannerTitle')}
+                    description={localError}
+                    onDismiss={() => setLocalError(null)}
+                    actions={
+                      invalidNodeIds.size > 0 ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => selectSingleNode([...invalidNodeIds][0])}
+                        >
+                          {t('data.workflow.locateNode', { count: invalidNodeIds.size })}
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </div>
+              )}
               <WorkflowCanvas
                 nodes={nodes}
                 edges={edges}
