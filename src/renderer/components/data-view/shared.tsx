@@ -258,16 +258,23 @@ export function EmptyState({
   label,
   description,
   action,
+  icon,
 }: {
   label: string;
   description?: string;
   action?: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <div className="flex min-h-[16rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-      <p className="text-[14px] font-medium text-text-primary">{label}</p>
+      {icon && (
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
+          {icon}
+        </div>
+      )}
+      <p className="text-[15px] font-semibold text-text-primary">{label}</p>
       {description && (
-        <p className="max-w-sm text-[13px] leading-6 text-text-secondary">{description}</p>
+        <p className="max-w-sm text-[13px] leading-6 text-text-muted">{description}</p>
       )}
       {action}
     </div>

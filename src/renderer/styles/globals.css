@@ -227,6 +227,7 @@
     --color-accent-text: #8bd4f5;
     --color-accent-text-hover: #b8e8fb;
     --color-accent-text-muted: #a4def7;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-rgb: 47 159 209;
     --color-accent-hover-rgb: 36 133 178;
     --color-accent-muted-rgb: 32 68 82;
@@ -299,6 +300,7 @@
     --color-accent-text: #247da5;
     --color-accent-text-hover: #1c688c;
     --color-accent-text-muted: #2b7395;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-muted-rgb: 232 245 251;
     --color-accent-text-rgb: 36 125 165;
     --color-accent-text-hover-rgb: 28 104 140;
@@ -361,6 +363,7 @@
     --color-accent-text: #c4b5fd;
     --color-accent-text-hover: #ddd6fe;
     --color-accent-text-muted: #d0c5fd;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-foreground: #ffffff;
     --color-accent-rgb: 118 86 232;
     --color-accent-hover-rgb: 98 68 204;
@@ -435,6 +438,7 @@
     --color-accent-text: #6546c8;
     --color-accent-text-hover: #5338ad;
     --color-accent-text-muted: #6145b7;
+    --color-brand-mark: #6546c8;
     --color-accent-foreground: #ffffff;
     --color-accent-muted-rgb: 240 237 255;
     --color-accent-text-rgb: 101 70 200;
@@ -499,6 +503,7 @@
     --color-accent-text: #fdba74;
     --color-accent-text-hover: #fed7aa;
     --color-accent-text-muted: #fdc68e;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-rgb: 228 123 46;
     --color-accent-hover-rgb: 201 102 33;
     --color-accent-muted-rgb: 80 55 35;
@@ -571,6 +576,7 @@
     --color-accent-text: #b85c1d;
     --color-accent-text-hover: #974916;
     --color-accent-text-muted: #a5521a;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-muted-rgb: 255 241 230;
     --color-accent-text-rgb: 184 92 29;
     --color-accent-text-hover-rgb: 151 73 22;
@@ -633,6 +639,7 @@
     --color-accent-text: #f9a8c4;
     --color-accent-text-hover: #fbcfe0;
     --color-accent-text-muted: #fabbd0;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-rgb: 217 77 120;
     --color-accent-hover-rgb: 189 61 102;
     --color-accent-muted-rgb: 82 48 60;
@@ -705,6 +712,7 @@
     --color-accent-text: #b83a63;
     --color-accent-text-hover: #982e50;
     --color-accent-text-muted: #a9365a;
+    --color-brand-mark: var(--color-accent-text);
     --color-accent-muted-rgb: 252 235 241;
     --color-accent-text-rgb: 184 58 99;
     --color-accent-text-hover-rgb: 152 46 80;
