@@ -845,7 +845,20 @@
           "filterAddAnd": "添加且条件",
           "filterAddOr": "添加或条件",
           "filterAddValue": "添加",
-          "filterIncompleteField": "请输入筛选条件，或删除空白筛选行"
+          "filterIncompleteField": "请输入筛选条件，或删除空白筛选行",
+          "filterWhen": "当",
+          "filterNoValueNeeded": "无需填写值",
+          "filterValuePlaceholderFull": "请输入或选择值",
+          "filterCopyCondition": "复制本条",
+          "filterAddMenu": "添加且 / 或条件",
+          "filterRowPrefix": "第 {{index}} 条：",
+          "filterFieldRequired": "请选择字段。补全或删除该条件后才能保存。",
+          "filterValueRequired": "值不能为空。补全或删除该条件后才能保存。",
+          "filterHeaderField": "字段",
+          "filterHeaderOp": "条件",
+          "filterHeaderValue": "值",
+          "filterAddConditionShort": "添加条件",
+          "filterAddHint": "或在任意行点击 ＋ 选择「且 / 或」"
         },
         "join": {
           "joinType": "连接类型",

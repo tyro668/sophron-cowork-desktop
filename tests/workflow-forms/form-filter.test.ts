@@ -5,7 +5,9 @@ import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/pr
 import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 import { getOperatorConfigIssue } from '../../src/shared/operator-validation';
 import FormFilter, {
+  flattenFilterTree,
   getFilterConditionNodeLayout,
+  validateFilterLeaf,
 } from '../../src/renderer/components/workflow-forms/FormFilter';
 import { incompleteConfigMessageKey } from '../../src/renderer/components/data-view/workflow-config-guards';
 import type { DataWorkflowNode } from '../../src/renderer/types';
@@ -32,7 +34,6 @@ import {
   validFilterOpsForType,
   splitInValues,
   joinInValues,
-  MAX_NESTING_DEPTH,
   type FilterConditionLeaf,
   type FilterConditionBranch,
 } from '../../src/shared/filter-condition';
@@ -1166,250 +1167,95 @@ const filterOpsSource = fs.readFileSync(
   'utf8'
 );
 
-describe('FormFilter — UI source inspection', () => {
-  it('renders parser failures while keeping the graphical add action available', () => {
-    const node: DataWorkflowNode = {
-      id: 'filter-node',
-      pipelineId: 'pipeline',
-      type: 'filter',
-      label: 'Filter',
-      x: 0,
-      y: 0,
-      config: { condition: '[a] =' },
-      createdAt: 0,
-      updatedAt: 0,
-    };
-
-    const html = renderToStaticMarkup(
+describe('FormFilter — grid UI', () => {
+  const makeFilterNode = (condition: string): DataWorkflowNode => ({
+    id: 'filter-node',
+    pipelineId: 'pipeline',
+    type: 'filter',
+    label: 'Filter',
+    x: 0,
+    y: 0,
+    config: { condition },
+    createdAt: 0,
+    updatedAt: 0,
+  });
+  const render = (condition: string) =>
+    renderToStaticMarkup(
       React.createElement(FormFilter, {
-        node,
-        fieldCompletions: ['a'],
+        node: makeFilterNode(condition),
+        fieldCompletions: ['a', 'b', 'c'],
         otherNodes: [],
         onNodeChange: () => undefined,
       })
     );
 
-    expect(html).toContain('role="alert"');
+  it('renders parser failures as an error row while row add menus stay enabled', () => {
+    const html = render('[a] =');
+    expect(html).toContain('opg-c erow');
     expect(html).toContain('Invalid filter condition segment');
     const addMenuTrigger = html.match(/<button[^>]*aria-haspopup="menu"[^>]*>/)?.[0];
     expect(addMenuTrigger).toBeDefined();
     expect(addMenuTrigger).not.toMatch(/\sdisabled(?:=|\s|>)/);
-    expect(html).toContain('data.workflow.formLabels.filter.filterAddCondition');
+    expect(html).toContain('filterAddConditionShort');
   });
 
-  it('tracks and renders the selected filter condition', () => {
-    expect(formFilterSource).toContain('selectedLeafId');
-    expect(formFilterSource).toContain("data-selected={selected ? 'true' : 'false'}");
-    expect(formFilterSource).toContain('onPointerDownCapture={() => ctx.selectLeaf(leaf.id)}');
-    expect(formFilterSource).toContain('onFocusCapture={() => ctx.selectLeaf(leaf.id)}');
-    expect(formFilterSource).toContain("selected ? 'bg-accent' : 'bg-transparent'");
-    expect(formFilterSource).toContain('absolute bottom-1 right-0 top-1 w-0.5');
-    expect(formFilterSource).not.toContain('absolute bottom-1 left-0 top-1 w-0.5');
-    expect(formFilterSource).not.toContain(
-      "selected ? 'bg-accent/10 ring-1 ring-inset ring-accent/30'"
+  it('uses one shared 5-column grid with a header row and bottom add row', () => {
+    const html = render("[a] = 'x'");
+    expect(html).toContain(
+      'grid-template-columns:56px minmax(160px,1fr) 120px minmax(200px,1.6fr) 84px'
     );
+    expect(html).toContain('filterHeaderField');
+    expect(html).toContain('opg-c add');
+    expect(html).not.toContain('aria-pressed');
   });
 
-  it('provides an explicit selection point in the safe area on the far right', () => {
-    expect(formFilterSource).toContain('-ml-1 -mr-3');
-    expect(formFilterSource).toContain('py-0.5 pl-1 pr-3');
-    expect(formFilterSource).toContain('aria-pressed={selected}');
-    expect(formFilterSource).toContain("ctx.tr('filterSelectCondition')");
-    expect(formFilterSource).toContain('group/selector');
-    expect(formFilterSource).toContain("? 'border-accent bg-accent'");
+  it('shows 当 for the first row and connective badges for following rows', () => {
+    const html = render("[a] = 'x' and ([b] = 'y' or [c] = 'z')");
+    expect(html).toContain('filterWhen');
+    expect((html.match(/class="opg-lgc"/g) ?? []).length).toBe(2);
+    expect(html).toContain('box-shadow:inset 2px 0 0 var(--color-accent-muted)');
   });
 
-  it('vertically centers group connectives across all connected conditions', () => {
-    expect(formFilterSource).toContain(
-      'const branchLayout = getFilterConditionNodeLayout(branch);'
+  it('flattens nested groups with the connective that joins each row', () => {
+    const tree = parseConditionTree("[a] = 'x' and ([b] = 'y' or [c] = 'z')");
+    const rows = flattenFilterTree(tree);
+    expect(rows.map((r) => [r.leaf.field, r.connective, r.depth])).toEqual([
+      ['a', null, 0],
+      ['b', 'and', 1],
+      ['c', 'or', 1],
+    ]);
+  });
+
+  it('keeps row actions always visible (no hover-only opacity)', () => {
+    expect(formFilterSource).not.toContain('opacity-0 pointer-events-none');
+    expect(formFilterSource).toContain('RowActionsCell');
+  });
+
+  it('validates leaves: value required once a field is chosen', () => {
+    const leaf = { ...createEmptyLeaf(), field: 'a', op: '=', val1: '' };
+    expect(validateFilterLeaf(leaf, '=', 1)).toBe('valueRequired');
+    expect(validateFilterLeaf({ ...leaf, val1: '1' }, '=', 1)).toBeNull();
+    expect(validateFilterLeaf({ ...leaf, val1: '1', val2: '' }, 'between', 1)).toBe(
+      'valueRequired'
     );
-    expect(formFilterSource).toContain('style={{ top: branchLayout.anchor }}');
-    expect(formFilterSource).not.toContain('self-stretch items-center');
+    expect(validateFilterLeaf(leaf, 'is null', 1)).toBeNull();
+    expect(validateFilterLeaf({ ...leaf, field: '' }, '=', 1)).toBeNull();
+    expect(validateFilterLeaf({ ...leaf, field: '' }, '=', 2)).toBe('fieldRequired');
+    const html = render("[a] = 'x' and [b] = ''");
+    expect(html).toContain('filterValueRequired');
   });
 
-  it('renders the add-condition trigger as a subdued secondary action', () => {
-    expect(formFilterSource).toContain(
-      'border-border-subtle bg-transparent px-2.5 text-[12px] font-medium text-text-muted opacity-75'
-    );
-    expect(formFilterSource).toContain('hover:bg-surface-hover');
-    expect(formFilterSource).toContain('hover:opacity-100');
-  });
-
-  it('moves AND and OR add actions into the global add-condition dropdown', () => {
-    expect(formFilterSource).toContain('<DropdownMenu.Trigger asChild>');
-    expect(formFilterSource).toContain('<DropdownMenu.Content');
-    expect(formFilterSource).toContain("onSelect={() => addConditionWithConnective('and')}");
-    expect(formFilterSource).toContain("onSelect={() => addConditionWithConnective('or')}");
-    expect(formFilterSource).toContain("tr('filterAddAnd')");
-    expect(formFilterSource).toContain("tr('filterAddOr')");
-  });
-
-  it('does not render per-row AND or OR add buttons', () => {
-    expect(formFilterSource).not.toContain('ctx.addWithConnective');
-    expect(formFilterSource).not.toContain('canAddAnd');
-    expect(formFilterSource).not.toContain('canAddOr');
-  });
-
-  it('disables a different connective after reaching max depth', () => {
-    expect(formFilterSource).toContain('function canAddWithConnective(');
-    expect(formFilterSource).toContain(
-      'location.parentConnective === connective || location.depth < MAX_NESTING_DEPTH'
-    );
-    expect(formFilterSource).toContain(
-      "disabled={!canAddWithConnective(selectedLeafLocation, 'and')}"
-    );
-    expect(formFilterSource).toContain(
-      "disabled={!canAddWithConnective(selectedLeafLocation, 'or')}"
-    );
-  });
-
-  it('limits graphical condition groups to root plus one nested group', () => {
-    expect(MAX_NESTING_DEPTH).toBe(1);
-    expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
-  });
-
-  it('counts every nested branch as one visual tree level', () => {
-    expect(formFilterSource).toContain('depth={depth + 1}');
-    expect(formFilterSource).not.toContain('item.items.length > 1 ? depth + 1 : depth');
-  });
-
-  it('inserts the new condition immediately after the selected leaf', () => {
-    expect(formFilterSource).toContain('const targetLeafId = selectedLeafLocation?.leafId;');
-    expect(formFilterSource).toContain('const location = findLeafLocation(prev, targetLeafId);');
-    expect(formFilterSource).toContain('items.splice(location.index + 1, 0, newLeaf);');
-    expect(formFilterSource).toContain('setSelectedLeafId(newLeaf.id);');
-  });
-
-  it('creates a child group when the requested connective differs from the selected group', () => {
-    expect(formFilterSource).toContain(
-      'if (location.parentConnective === targetConnective) return withNewLeaf;'
-    );
-    expect(formFilterSource).toContain(
-      'wrapItemsInGroup(withNewLeaf, [targetLeafId, newLeaf.id], targetConnective)'
-    );
-  });
-
-  it('does not escape to the ancestor group after reaching max depth', () => {
-    expect(formFilterSource).not.toContain('ancestorBranchId');
-    expect(formFilterSource).not.toContain('ancestorConnective');
-  });
-
-  it('delete button still present', () => {
-    expect(formFilterSource).toContain('Trash2');
-    expect(formFilterSource).toContain("ctx.tr('filterDeleteCondition'");
-  });
-
-  it('imports MAX_NESTING_DEPTH from shared module', () => {
-    expect(formFilterSource).toContain('MAX_NESTING_DEPTH');
-    expect(formFilterSource).toContain("from '../../../shared/filter-condition'");
-  });
-
-  it('no longer imports Layers icon', () => {
-    expect(formFilterSource).not.toContain('Layers');
-  });
-
-  it('renders logical nodes and orthogonal tree connectors only for multi-item groups', () => {
-    expect(formFilterSource).toContain('if (itemCount === 1)');
-    expect(formFilterSource).toContain('grid-cols-[36px_minmax(0,1fr)]');
-    expect(formFilterSource).toContain('const itemLayout = getFilterConditionNodeLayout(item);');
-    expect(formFilterSource).toContain('style={{ top: itemLayout.anchor }}');
-    expect(formFilterSource).toContain('style={{ top: -2, height: itemLayout.anchor + 2 }}');
-    expect(formFilterSource).toContain('style={{ top: itemLayout.anchor, bottom: -2 }}');
-    expect(formFilterSource).toContain('i > 0');
-    expect(formFilterSource).toContain('i < itemCount - 1');
-    expect(formFilterSource).toContain('border-l border-text-secondary/55');
-    expect(formFilterSource).toContain('border-t border-text-secondary/55');
-    expect(formFilterSource).not.toContain('-bottom-[18px]');
-    expect(formFilterSource).not.toContain('ResizeObserver');
-    expect(formFilterSource).not.toContain('diagLines');
-    expect(formFilterSource).not.toContain('<svg');
-    expect(formFilterSource).not.toContain('pl-[56px]');
-  });
-
-  it('owns a global vertical scrollbar like other operator forms', () => {
-    expect(formFilterSource).toContain('flex h-full min-h-0 overflow-hidden');
-    expect(formFilterSource).toContain('scrollbar-hover');
-    expect(formFilterSource).toContain('flex-1 overflow-y-auto');
-    // The root must not rely on the host panel's own scroll (double scrollbar).
-    expect(formFilterSource).not.toContain('grid content-start gap-2.5 min-w-0');
-  });
-
-  it('uses stable columns so value variants do not shift row actions', () => {
-    expect(formFilterSource).toContain(
-      'grid-cols-[minmax(140px,180px)_112px_minmax(180px,1fr)_28px_32px]'
-    );
-    expect(formFilterSource).toContain('className="!w-full"');
-  });
-
-  it('passes column types into the condition tree builder', () => {
-    expect(formFilterSource).toContain('const columnTypesRef = useRef(columnTypes);');
-    expect(formFilterSource).toContain('columnTypesRef.current = columnTypes;');
-    expect(formFilterSource).toMatch(/buildFilterConditionTree\(next, columnTypesRef\.current\)/);
-    expect(formFilterSource).not.toMatch(
-      /buildFilterConditionTree\(root, columnTypesRef\.current\)/
-    );
-  });
-
-  it('guards external config sync so local write-back and column-type refreshes never clobber edits', () => {
-    expect(formFilterSource).toContain('lastSyncedConfigRef');
-    expect(formFilterSource).toContain('useRef<string | undefined>(');
-    expect(formFilterSource).toContain('incoming === lastSyncedConfigRef.current');
-    expect(formFilterSource).toContain('lastSyncedConfigRef.current = incoming;');
-    // The old round-trip comparison that could reparse on column-type drift
-    // must be gone.
-    expect(formFilterSource).not.toContain('(fromTree || undefined) === (fromConfig || undefined)');
-  });
-
-  it('does not auto-fetch value suggestions on mount', () => {
-    expect(formFilterSource).not.toContain('const walk = (branch: FilterConditionBranch) => {');
-    expect(formFilterSource).not.toContain('walk(root);');
-  });
-
-  it('lazily fetches value suggestions when a value input opens', () => {
-    const matches = formFilterSource.match(
-      /onOpen=\{\(\) => ctx\.fetchColumnValues\(leaf\.field\)\}/g
-    );
-    expect(matches?.length).toBe(3);
-  });
-
-  it('resets the operator to a value valid for the new field type on field switch', () => {
-    expect(formFilterSource).toMatch(
-      /const nextOp = validFilterOpsForType\(ctx\.columnTypes\[v\]\)\.includes\(leaf\.op\)/
-    );
-    expect(formFilterSource).toMatch(/: firstValidFilterOp\(ctx\.columnTypes\[v\]\);/);
-    expect(formFilterSource).not.toMatch(/updateLeaf\(leaf\.id, \{ field: v, op: effectiveOp \}\)/);
-  });
-
-  it('renders empty values without falling back to stale val1 after clear', () => {
-    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
-    expect(formFilterSource).toMatch(
-      /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
-    );
-    // The multi-value input must not carry a `value`/`onChange` pair that could
-    // fall back to a stale comma-joined val1 after values are cleared.
-    expect(formFilterSource).not.toMatch(
-      /joinInValues\(leaf\.values \?\? splitInValues\(leaf\.val1\)\)/
-    );
-    expect(formFilterSource).not.toMatch(
-      /onChange=\{\(v\) => ctx\.updateLeaf\(leaf\.id, \{ values: splitInValues\(v\), val1: v \}\)\}/
-    );
-  });
-
-  it('passes structured multi-values to avoid splitting values that contain commas', () => {
-    expect(formFilterSource).toMatch(/values=\{leaf\.values \?\? splitInValues\(leaf\.val1\)\}/);
+  it('updates IN lists through values + joined val1', () => {
     expect(formFilterSource).toMatch(
       /onValuesChange=\{\(values\) =>\s*ctx\.updateLeaf\(leaf\.id, \{ values, val1: joinInValues\(values\) \}\)\s*\}/
     );
   });
 
   it('offers is null / is not null operators and hides the value input for them', () => {
-    // op values live in shared/filter-condition/ops since the type-compatibility refactor
     expect(filterOpsSource).toContain("value: 'is null'");
     expect(filterOpsSource).toContain("value: 'is not null'");
-    expect(formFilterSource).toMatch(
-      /isNullOp = effectiveOp === 'is null' \|\| effectiveOp === 'is not null'/
-    );
-    expect(formFilterSource).toMatch(/!isNullOp &&\s*\(isMultiValue \?/);
+    const html = render('[a] is null');
+    expect(html).toContain('filterNoValueNeeded');
   });
 });
 
