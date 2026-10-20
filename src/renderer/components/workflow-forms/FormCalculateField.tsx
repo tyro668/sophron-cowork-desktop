@@ -186,13 +186,16 @@ export default function FormCalculateField({
       flex: 'flex-[2]',
       header: tr('calcFieldExpressionLabel'),
       render: (calculation, index) => (
-        <CalculateFieldExpressionInput
-          value={calculation.expression}
-          onChange={(expression) => updateCalculation(index, { expression })}
-          fieldCompletions={fieldCompletions}
-          columnTypes={columnTypes}
-          placeholder={tr('expression.expressionPlaceholder')}
-        />
+        <div className="h-8 overflow-hidden rounded-md border border-border-muted bg-surface">
+          <CalculateFieldExpressionInput
+            subtitle={tr('calcFieldEditorSubtitle', { index: index + 1 })}
+            value={calculation.expression}
+            onChange={(expression) => updateCalculation(index, { expression })}
+            fieldCompletions={fieldCompletions}
+            columnTypes={columnTypes}
+            placeholder={tr('expression.expressionPlaceholder')}
+          />
+        </div>
       ),
     },
   ];

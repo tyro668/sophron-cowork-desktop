@@ -1,23 +1,32 @@
 import {
+  Fragment,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { SquareFunction, X, ChevronDown, Search, WandSparkles } from 'lucide-react';
+import { AlertCircle, ChevronDown, Search, SquareFunction, X } from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, placeholder, keymap } from '@codemirror/view';
+import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/state';
+import {
+  Decoration,
+  EditorView,
+  lineNumbers,
+  placeholder,
+  keymap,
+  type DecorationSet,
+} from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { tags } from '@lezer/highlight';
 import { DataTypeIcon } from './DataTypeIcon';
+import './form-grid.css';
+import { closerFor, lintExpression, type ExpressionIssue } from './expressionLint';
 import { isCalculationSceneDslId } from '../../../../shared/calculate-field/function-registry';
-import { Button } from '../../ui/button';
 import { Dialog } from '../../ui/dialog';
 
 export interface ExpressionAssistantPanelContext {
@@ -25,11 +34,18 @@ export interface ExpressionAssistantPanelContext {
   insertExpression: (expression: string) => void;
   replaceExpression: (expression: string) => void;
   closePanel: () => void;
+  /** When set, the assistant must render this in place of its footer row. */
+  footerOverride?: ReactNode;
 }
 
 export interface ExpressionAssistantPanel {
   openLabel: string;
   closeLabel: string;
+  /** Grid template for the assistant mode; the dialog header is laid on it. */
+  gridColumns: string;
+  /** Number of columns the header title spans in assistant mode. */
+  titleSpan: number;
+
   render: (context: ExpressionAssistantPanelContext) => ReactNode;
 }
 
@@ -61,15 +77,6 @@ export function functionToken(
   };
 }
 
-const FN_CHIP =
-  'flex min-h-8 w-full cursor-pointer items-center px-3 text-left font-mono text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
-const FN_CHIP_HOVERED =
-  'flex min-h-8 w-full cursor-pointer items-center bg-accent-muted px-3 text-left font-mono text-[12px] text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
-const MIN_EXPRESSION_EDITOR_HEIGHT = 80;
-const DEFAULT_EXPRESSION_EDITOR_HEIGHT = 104;
-const MAX_EXPRESSION_EDITOR_HEIGHT = 240;
-const EXPRESSION_EDITOR_RESIZE_STEP = 16;
-
 export interface ExpressionFunctionGroup {
   i18nKey: string;
   tokens: HelperToken[];
@@ -90,7 +97,7 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
           { name: 'elseExpr', type: 'any' },
         ],
         returnType: 'any',
-        examples: ['if [revenue] > 0 then [profit] / [revenue] else 0 end'],
+        examples: ['if [amount] > 0 then [amount] / [quantity] else 0 end'],
       },
       {
         label: 'if … then … end',
@@ -595,6 +602,10 @@ export interface GlassExpressionInputProps {
   excludeFunctionCategories?: string[];
   functionGroups?: ExpressionFunctionGroup[];
   assistantPanel?: ExpressionAssistantPanel;
+  /** Dialog title (defaults to the generic formula-editor title). */
+  title?: string;
+  /** Muted context shown next to the title, e.g. 「计算字段 · 第 1 行」. */
+  subtitle?: string;
 }
 
 const EXPR_KEYWORDS = new Set([
@@ -673,43 +684,97 @@ const exprHighlightStyle = HighlightStyle.define([
   { tag: tags.string, color: '#b45309' },
   { tag: tags.number, color: '#7c3aed' },
   { tag: tags.atom, color: '#2563eb' },
-  { tag: tags.keyword, color: '#0f766e', fontWeight: '500' },
+  { tag: tags.keyword, color: '#1e1b4b', fontWeight: '600' },
   { tag: tags.namespace, color: '#db2777', fontWeight: '600' },
-  { tag: FUNCTION_CALL_TAG, color: '#0891b2', fontWeight: '500' },
-  { tag: tags.operator, color: '#dc2626' },
+  { tag: FUNCTION_CALL_TAG, color: '#7c3aed', fontWeight: '600' },
+  { tag: tags.operator, color: '#475569' },
   { tag: tags.punctuation, color: '#64748b' },
 ]);
 
 const exprTheme = EditorView.theme({
   '&': {
-    border: '1px solid var(--color-border-muted)',
-    borderRadius: '0.5rem',
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--color-surface)',
     fontSize: '13px',
     height: '100%',
-    minHeight: '80px',
   },
-  '&.cm-focused': {
-    outline: 'none',
-    borderColor: 'var(--color-accent)',
-    boxShadow: '0 0 0 2px rgb(var(--color-accent-rgb) / 0.15)',
-  },
+  '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
     fontFamily:
       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-    lineHeight: '1.6',
+    lineHeight: '22px',
+    paddingTop: '8px',
+    // Paint the gutter strip across the top padding too.
+    background:
+      'linear-gradient(to right, var(--color-background-secondary) 35px, var(--color-border-subtle) 35px 36px, transparent 36px)',
     overflow: 'auto',
     height: '100%',
   },
+  '.cm-gutters': {
+    width: '36px',
+    backgroundColor: 'var(--color-background-secondary)',
+    borderRight: '1px solid var(--color-border-subtle)',
+    color: 'var(--color-text-muted)',
+    fontSize: '11.5px',
+  },
+  '.cm-lineNumbers .cm-gutterElement': {
+    minWidth: '35px',
+    padding: '0',
+    textAlign: 'center',
+  },
   '.cm-content': {
     boxSizing: 'border-box',
-    minHeight: '80px',
-    padding: '0.5rem 0.625rem',
-    caretColor: 'var(--color-text-primary)',
+    padding: '0 12px 8px',
+    caretColor: 'var(--color-accent)',
   },
   '.cm-line': { padding: '0' },
   '.cm-placeholder': { color: 'var(--color-text-muted)' },
+  '.cm-expr-issue': {
+    textDecoration: 'underline wavy var(--color-error)',
+    textDecorationSkipInk: 'none',
+    textUnderlineOffset: '3px',
+  },
+  '.cm-expr-issue-field': { color: 'var(--color-error)' },
 });
+
+const setIssuesEffect = StateEffect.define<ExpressionIssue[]>();
+const issueField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    let next = deco.map(tr.changes);
+    for (const effect of tr.effects) {
+      if (effect.is(setIssuesEffect)) {
+        const len = tr.state.doc.length;
+        next = Decoration.set(
+          effect.value
+            .filter((issue) => issue.to <= len && issue.from < issue.to)
+            .map((issue) =>
+              Decoration.mark({
+                class:
+                  issue.kind === 'unknownField'
+                    ? 'cm-expr-issue cm-expr-issue-field'
+                    : 'cm-expr-issue',
+              }).range(issue.from, issue.to)
+            ),
+          true
+        );
+      }
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+export const FORMULA_EDITOR_GRID_COLUMNS =
+  '36px minmax(0,1fr) minmax(0,1.13fr) 64px minmax(0,1fr) 96px 96px 44px';
+
+const EDITOR_HEIGHT = 96;
+const ROW_BORDER = 'border-b border-border-subtle';
+const COL_BORDER = 'border-r border-border-subtle';
+const PANE_HEADER = `flex h-[30px] shrink-0 items-center bg-background-secondary px-3 text-[11.5px] font-medium text-text-muted ${ROW_BORDER}`;
+const PANE_SEARCH = `relative flex h-9 shrink-0 items-center ${ROW_BORDER}`;
+const PANE_SEARCH_INPUT =
+  'h-full w-full bg-transparent pl-8 pr-3 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted';
+const LIST_ROW = `flex h-9 w-full shrink-0 cursor-pointer items-center gap-2.5 px-2.5 text-left text-[13px] transition-colors ${ROW_BORDER} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30`;
 
 function sortFields(fields: string[], query: string): string[] {
   const filtered = query.trim()
@@ -718,169 +783,231 @@ function sortFields(fields: string[], query: string): string[] {
   return [...filtered].sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
+type Tr = (key: string, params?: Record<string, unknown>) => string;
+
+/** Localized helper vocabulary (param names, types, example fields). */
+function helpTerm(tr: Tr, group: 'params' | 'types' | 'fields', name: string): string {
+  return tr(`expressionHelp.${group}.${name.replace(/[^A-Za-z0-9_]/g, '_')}`, {
+    defaultValue: name,
+  });
+}
+
+function localizeExample(example: string, tr: Tr): string {
+  return example.replace(/\[([A-Za-z_][A-Za-z0-9_]*)\]/g, (_m, name: string) => {
+    return `[${helpTerm(tr, 'fields', name)}]`;
+  });
+}
+
+/** Function-list label: `year(日期)` for plain calls, raw label for syntax forms. */
+function tokenDisplayLabel(token: HelperToken, tr: Tr): string {
+  if (!token.apply.endsWith('()') || !token.params) return token.label;
+  return `${token.label}(${token.params.map((p) => helpTerm(tr, 'params', p.name)).join(', ')})`;
+}
+
+function returnTypeText(token: HelperToken, tr: Tr): string {
+  if (!token.returnType) return '—';
+  if (token.returnType === 'any') {
+    const same = token.params?.find((p) => p.name === 'thenExpr' || p.name === 'result');
+    const source = same ?? token.params?.find((p) => p.type === 'any');
+    if (source) return tr('expressionReturnSameAs', { name: helpTerm(tr, 'params', source.name) });
+  }
+  return helpTerm(tr, 'types', token.returnType);
+}
+
 function FunctionDetailPanel({
   token,
   tr,
+  onInsert,
 }: {
   token: HelperToken | null;
-  tr: (key: string) => string;
+  tr: Tr;
+  onInsert: (text: string, cursorOffset?: number) => void;
 }) {
   if (!token) {
     return (
-      <div className="flex h-full items-center justify-center text-[11px] text-text-muted px-3 text-center leading-5">
+      <div className="flex flex-1 items-center justify-center px-3 text-center text-[12px] text-text-muted">
         {tr('expressionFunctionDetailHint')}
       </div>
     );
   }
-  return (
-    <div className="space-y-2.5 text-[11px]">
-      <div className="text-[13px] font-semibold text-text-primary font-mono">{token.label}</div>
-      <div className="space-y-0.5">
-        <div className="flex gap-2">
-          <span className="text-text-muted shrink-0">{tr('expressionFunctionDescription')}:</span>
-          <span className="text-text-secondary">
-            {token.i18nDescKey ? tr(token.i18nDescKey) : '-'}
-          </span>
-        </div>
-        {token.returnType && (
-          <div className="flex gap-2">
-            <span className="text-text-muted shrink-0">{tr('aggregateReturnType')}:</span>
-            <code className="rounded bg-accent-muted px-1 text-accent">{token.returnType}</code>
-          </div>
-        )}
+  const row = (label: string, body: ReactNode, key: string) => (
+    <Fragment key={key}>
+      <div
+        className={`flex min-h-9 items-center bg-background-secondary px-3 text-[12px] text-text-muted ${ROW_BORDER} ${COL_BORDER}`}
+      >
+        {label}
       </div>
-      {token.params && token.params.length > 0 && (
-        <div>
-          <div className="mb-1 text-text-muted">{tr('expressionFunctionArgument')}:</div>
-          <div className="space-y-0.5">
-            {token.params.map((p) => (
-              <div key={p.name} className="flex items-center gap-2 rounded bg-surface px-2 py-1">
-                <code className="text-text-primary shrink-0">{p.name}</code>
-                <code className="rounded bg-accent-muted px-1 text-[10px] text-accent">
-                  {p.type}
-                </code>
-                {p.optional && (
-                  <span className="text-[10px] text-text-muted">{tr('optional')}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className={`flex min-h-9 min-w-0 items-center px-3 py-1.5 text-[12.5px] ${ROW_BORDER}`}>
+        {body}
+      </div>
+    </Fragment>
+  );
+  return (
+    <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] content-start overflow-y-auto">
+      {row(
+        tr('expressionDetailPurpose'),
+        <span className="text-text-primary">
+          {token.i18nDescKey ? tr(token.i18nDescKey) : '—'}
+        </span>,
+        'purpose'
       )}
-      {token.examples && token.examples.length > 0 && (
-        <div>
-          <div className="mb-1 text-text-muted">{tr('expressionFunctionExampleLabel')}:</div>
-          <div className="space-y-1">
-            {token.examples.map((ex) => (
-              <pre
-                key={ex}
-                className="rounded-md border border-border-muted/60 bg-surface px-2 py-1 font-mono text-[11px] text-text-secondary leading-5 whitespace-pre-wrap break-all"
-              >
-                {ex}
-              </pre>
+      {row(
+        tr('expressionDetailParams'),
+        token.params && token.params.length > 0 ? (
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {token.params.map((p) => (
+              <span key={p.name} className="inline-flex items-center gap-1 text-text-primary">
+                {helpTerm(tr, 'params', p.name)}
+                <span className="rounded-full border border-accent/30 bg-accent-muted px-1.5 text-[11px] leading-[18px] text-accent">
+                  {helpTerm(tr, 'types', p.type)}
+                </span>
+                {p.optional && (
+                  <span className="text-[11px] text-text-muted">{tr('optional')}</span>
+                )}
+              </span>
             ))}
-          </div>
-        </div>
+          </span>
+        ) : (
+          <span className="text-text-muted">—</span>
+        ),
+        'params'
+      )}
+      {row(
+        tr('expressionDetailReturn'),
+        <span className="text-text-primary">{returnTypeText(token, tr)}</span>,
+        'return'
+      )}
+      {(token.examples ?? [])
+        .slice(0, 2)
+        .map((ex, i) =>
+          row(
+            i === 0 ? tr('expressionDetailExample') : '',
+            <code className="break-all font-mono text-[12.5px] text-text-primary">
+              {localizeExample(ex, tr)}
+            </code>,
+            `ex-${i}`
+          )
+        )}
+      {row(
+        '',
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onInsert(token.apply, token.cursorOffset)}
+          className="text-[12.5px] text-accent hover:underline"
+        >
+          {tr('expressionInsertAtCursor')}
+        </button>,
+        'insert'
       )}
     </div>
   );
 }
 
-function GlassFunctionHelper({
-  onInsert,
+function FunctionList({
   functionGroups,
   excludeCategories,
-  onTokenHover,
+  selected,
+  onSelect,
+  onInsert,
+  tr,
 }: {
-  onInsert: (text: string, cursorOffset?: number) => void;
   functionGroups: ExpressionFunctionGroup[];
   excludeCategories?: string[];
-  onTokenHover?: (token: HelperToken | null) => void;
+  selected: HelperToken | null;
+  onSelect: (token: HelperToken) => void;
+  onInsert: (text: string, cursorOffset?: number) => void;
+  tr: Tr;
 }) {
-  const tr = useFormTranslation('expression');
   const [query, setQuery] = useState('');
-  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
-
-  const rawGroups = useMemo(
-    () =>
-      excludeCategories
-        ? functionGroups.filter((g) => !excludeCategories.includes(g.i18nKey))
-        : functionGroups,
-    [excludeCategories, functionGroups]
-  );
   const groups = useMemo(() => {
-    if (!query.trim()) return rawGroups;
+    const raw = excludeCategories
+      ? functionGroups.filter((g) => !excludeCategories.includes(g.i18nKey))
+      : functionGroups;
+    if (!query.trim()) return raw;
     const q = query.toLowerCase();
-    return rawGroups
-      .map((g) => ({ ...g, tokens: g.tokens.filter((t) => t.label.toLowerCase().includes(q)) }))
+    return raw
+      .map((g) => ({
+        ...g,
+        tokens: g.tokens.filter(
+          (t) =>
+            t.label.toLowerCase().includes(q) || tokenDisplayLabel(t, tr).toLowerCase().includes(q)
+        ),
+      }))
       .filter((g) => g.tokens.length > 0);
-  }, [rawGroups, query]);
+  }, [excludeCategories, functionGroups, query, tr]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="relative shrink-0 border-b border-border-muted/60 p-2">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+    <>
+      <div className={PANE_SEARCH}>
+        <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-text-muted" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={tr('expressionFunctionSearchPlaceholder')}
-          className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+          aria-label={tr('expressionFunctionSearchPlaceholder')}
+          className={PANE_SEARCH_INPUT}
         />
       </div>
-      <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
+      <div className="fx-list min-h-0 flex-1" role="listbox">
         {groups.length === 0 ? (
-          <div className="px-2 py-4 text-center text-[11px] text-text-muted">
+          <div className="px-3 py-4 text-center text-[12px] text-text-muted">
             {tr('fieldPicker.noMatch')}
           </div>
         ) : (
-          groups.map((group) => (
-            <div key={group.i18nKey} className="border-b border-border-muted/60 last:border-b-0">
-              <button
-                type="button"
-                aria-expanded={!collapsedGroups.has(group.i18nKey)}
-                onClick={() => {
-                  setCollapsedGroups((current) => {
-                    const next = new Set(current);
-                    if (next.has(group.i18nKey)) next.delete(group.i18nKey);
-                    else next.add(group.i18nKey);
-                    return next;
-                  });
-                }}
-                className="flex w-full items-center gap-2 border-b border-border-muted/60 bg-surface px-3 py-2 text-left text-[11px] font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
-              >
-                <ChevronDown
-                  className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsedGroups.has(group.i18nKey) ? '-rotate-90' : ''}`}
-                />
-                <span>{tr(group.i18nKey)}</span>
-              </button>
-              {!collapsedGroups.has(group.i18nKey) && (
-                <div className="divide-y divide-border-muted/60">
-                  {group.tokens.map((token) => (
-                    <button
-                      key={token.label}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        onInsert(token.apply, token.cursorOffset);
-                      }}
-                      onMouseEnter={() => {
-                        setHoveredLabel(token.label);
-                        onTokenHover?.(token);
-                      }}
-                      className={hoveredLabel === token.label ? FN_CHIP_HOVERED : FN_CHIP}
-                    >
-                      {token.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))
+          groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.i18nKey);
+            return (
+              <div key={group.i18nKey}>
+                <button
+                  type="button"
+                  aria-expanded={!collapsed}
+                  onClick={() =>
+                    setCollapsedGroups((current) => {
+                      const next = new Set(current);
+                      if (next.has(group.i18nKey)) next.delete(group.i18nKey);
+                      else next.add(group.i18nKey);
+                      return next;
+                    })
+                  }
+                  className={`flex h-[30px] w-full items-center gap-1.5 bg-background-secondary px-3 text-left text-[12px] text-text-muted hover:text-text-secondary ${ROW_BORDER}`}
+                >
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}
+                  />
+                  {tr(group.i18nKey)}
+                </button>
+                {!collapsed &&
+                  group.tokens.map((token) => {
+                    const isSelected = selected?.label === token.label;
+                    return (
+                      <button
+                        key={token.label}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        title={tr('expressionFunctionInsertHint')}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => onSelect(token)}
+                        onDoubleClick={() => onInsert(token.apply, token.cursorOffset)}
+                        className={`${LIST_ROW} font-mono text-[12.5px] ${
+                          isSelected
+                            ? 'bg-accent-muted text-accent'
+                            : 'text-text-secondary hover:bg-surface-hover'
+                        }`}
+                      >
+                        <span className="truncate">{tokenDisplayLabel(token, tr)}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            );
+          })
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -893,42 +1020,48 @@ export function GlassExpressionInput({
   excludeFunctionCategories,
   functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
   assistantPanel,
+  title,
+  subtitle,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation('expression');
   const [open, setOpen] = useState(false);
+  const label = title ?? tr('expressionEditorTitle');
 
-  if (!open) {
-    return (
-      <div
+  return (
+    <>
+      <button
+        type="button"
         onClick={() => setOpen(true)}
-        className="relative h-8 w-full cursor-pointer rounded-md border border-border-muted bg-surface text-[12px] text-text-primary outline-none hover:border-accent/40 transition-colors"
+        aria-haspopup="dialog"
+        aria-label={label}
+        title={value || undefined}
+        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 pr-8 text-left font-mono text-[12.5px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
       >
-        <span className="block truncate px-1.5 pr-6 leading-7">
+        <span className="block min-w-0 truncate">
           {value || (
-            <span className="text-text-muted">
+            <span className="font-sans text-text-muted">
               {placeholderProp ?? tr('expressionPlaceholder')}
             </span>
           )}
         </span>
-        <span className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-text-muted opacity-60 transition-opacity hover:opacity-100">
-          <SquareFunction className="h-3.5 w-3.5" />
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <ExpressionEditorDialog
-      value={value}
-      onChange={onChange}
-      fieldCompletions={fieldCompletions}
-      columnTypes={columnTypes}
-      onClose={() => setOpen(false)}
-      excludeFunctionCategories={excludeFunctionCategories}
-      functionGroups={functionGroups}
-      assistantPanel={assistantPanel}
-      tr={tr}
-    />
+        <SquareFunction className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+      </button>
+      {open && (
+        <ExpressionEditorDialog
+          value={value}
+          onChange={onChange}
+          fieldCompletions={fieldCompletions}
+          columnTypes={columnTypes}
+          onClose={() => setOpen(false)}
+          excludeFunctionCategories={excludeFunctionCategories}
+          functionGroups={functionGroups}
+          assistantPanel={assistantPanel}
+          title={label}
+          subtitle={subtitle}
+          tr={tr}
+        />
+      )}
+    </>
   );
 }
 
@@ -941,22 +1074,21 @@ function ExpressionEditorDialog({
   excludeFunctionCategories,
   functionGroups = COMMON_EXPRESSION_FUNCTION_GROUPS,
   assistantPanel,
+  title,
+  subtitle,
   tr,
 }: GlassExpressionInputProps & {
   onClose: () => void;
-  tr: (key: string) => string;
+  tr: Tr;
 }) {
   const [draft, setDraft] = useState(value);
   const initialDraftRef = useRef(value);
-  const [showAssistantPanel, setShowAssistantPanel] = useState(false);
-  const [editorHeight, setEditorHeight] = useState(DEFAULT_EXPRESSION_EDITOR_HEIGHT);
-  const editorResizeRef = useRef<{
-    pointerId: number;
-    startY: number;
-    startHeight: number;
-  } | null>(null);
+  const [mode, setMode] = useState<'functions' | 'wizard'>('functions');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [fieldQuery, setFieldQuery] = useState('');
-  const [hoveredToken, setHoveredToken] = useState<HelperToken | null>(null);
+  const [selectedToken, setSelectedToken] = useState<HelperToken | null>(
+    () => functionGroups[0]?.tokens[0] ?? null
+  );
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeCompartment = useRef(new Compartment());
@@ -965,7 +1097,12 @@ function ExpressionEditorDialog({
     () => sortFields(fieldCompletions, fieldQuery),
     [fieldCompletions, fieldQuery]
   );
+  const issues = useMemo(() => lintExpression(draft, fieldCompletions), [draft, fieldCompletions]);
+  const dirty = draft !== initialDraftRef.current;
   const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
+
+  const confirmRef = useRef<() => void>(() => undefined);
+  const requestCloseRef = useRef<() => void>(() => undefined);
 
   useLayoutEffect(() => {
     if (!hostRef.current) return;
@@ -974,11 +1111,22 @@ function ExpressionEditorDialog({
       state: EditorState.create({
         doc: initialDraftRef.current,
         extensions: [
+          lineNumbers(),
           exprLanguage,
           syntaxHighlighting(exprHighlightStyle),
           exprTheme,
+          issueField,
           placeholder(placeholderText),
-          keymap.of(defaultKeymap),
+          keymap.of([
+            {
+              key: 'Mod-Enter',
+              run: () => {
+                confirmRef.current();
+                return true;
+              },
+            },
+            ...defaultKeymap,
+          ]),
           EditorView.lineWrapping,
           onChangeCompartment.current.of(
             EditorView.updateListener.of((update) => {
@@ -989,11 +1137,17 @@ function ExpressionEditorDialog({
       }),
     });
     viewRef.current = view;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    view.focus();
     return () => {
       view.destroy();
       viewRef.current = null;
     };
   }, [placeholderText]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setIssuesEffect.of(issues) });
+  }, [issues]);
 
   const editAtCursor = useCallback((text: string, cursorOffset?: number) => {
     const view = viewRef.current;
@@ -1016,210 +1170,280 @@ function ExpressionEditorDialog({
     view.focus();
   }, []);
 
-  const clampEditorHeight = useCallback(
-    (height: number) =>
-      Math.min(MAX_EXPRESSION_EDITOR_HEIGHT, Math.max(MIN_EXPRESSION_EDITOR_HEIGHT, height)),
-    []
-  );
-
-  const handleEditorResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.setPointerCapture(event.pointerId);
-      editorResizeRef.current = {
-        pointerId: event.pointerId,
-        startY: event.clientY,
-        startHeight: editorHeight,
-      };
-    },
-    [editorHeight]
-  );
-
-  const handleEditorResizeMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const resize = editorResizeRef.current;
-      if (!resize || resize.pointerId !== event.pointerId) return;
-      setEditorHeight(clampEditorHeight(resize.startHeight + event.clientY - resize.startY));
-    },
-    [clampEditorHeight]
-  );
-
-  const handleEditorResizeEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (editorResizeRef.current?.pointerId !== event.pointerId) return;
-    editorResizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+  const jumpTo = useCallback((offset: number) => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ selection: { anchor: offset }, scrollIntoView: true });
+    view.focus();
   }, []);
 
-  function handleConfirm() {
+  const handleConfirm = useCallback(() => {
+    if (issues.length > 0) return;
     onChange(draft);
     onClose();
-  }
+  }, [draft, issues.length, onChange, onClose]);
+  confirmRef.current = handleConfirm;
+
+  const requestClose = useCallback(() => {
+    if (dirty) setConfirmDiscard(true);
+    else onClose();
+  }, [dirty, onClose]);
+  requestCloseRef.current = requestClose;
+
+  const wizard = mode === 'wizard' && assistantPanel;
+  const columns = wizard ? assistantPanel.gridColumns : FORMULA_EDITOR_GRID_COLUMNS;
+  const titleSpan = wizard ? assistantPanel.titleSpan : 5;
+  const rows = wizard
+    ? '44px 36px minmax(0,1fr) 48px'
+    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}minmax(0,1fr) 48px`;
+
+  const tabClass = (active: boolean) =>
+    `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors ${ROW_BORDER} ${
+      active
+        ? 'bg-accent-muted text-accent'
+        : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+    }`;
+
+  const footerButton = `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors`;
+
+  const discardFooter = confirmDiscard && (
+    <Fragment key="discard">
+      <div
+        style={{ gridColumn: `span ${titleSpan}` }}
+        className="flex items-center gap-2 px-3 text-[12.5px] text-text-primary"
+        role="alert"
+      >
+        <AlertCircle className="h-3.5 w-3.5 text-warning" />
+        {tr('expressionDiscardPrompt')}
+      </div>
+      <button
+        type="button"
+        autoFocus
+        onClick={() => setConfirmDiscard(false)}
+        className={`${footerButton} bg-surface text-text-primary hover:bg-surface-hover`}
+      >
+        {tr('expressionKeepEditing')}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        style={{ gridColumn: 'span 2' }}
+        className={`${footerButton} bg-error text-white hover:bg-error/90`}
+      >
+        {tr('expressionDiscardChanges')}
+      </button>
+    </Fragment>
+  );
 
   return (
     <Dialog
       open
-      onOpenChange={onClose}
+      onOpenChange={() => requestCloseRef.current()}
       closeOnOverlayClick
-      closeOnEscape={false}
-      ariaLabel={tr('aggregateExpressionEditor')}
+      closeOnEscape
+      ariaLabel={title}
       overlayClassName="bg-black/28 px-4 py-6"
-      className="h-[36rem] w-[56rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
+      className={`${wizard ? 'h-[520px]' : 'h-[600px]'} w-[920px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card`}
     >
-      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-[14px] font-medium text-text-primary">
-            {tr('aggregateExpressionEditor')}
-          </h3>
-          {assistantPanel && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowAssistantPanel((current) => !current)}
-              className={`gap-1 border px-2 text-[11px] ${
-                showAssistantPanel
-                  ? 'border-accent/30 bg-accent-muted text-accent hover:bg-accent-muted hover:text-accent'
-                  : 'border-border-muted bg-surface'
-              }`}
-            >
-              <WandSparkles className="h-3.5 w-3.5" />
-              {showAssistantPanel ? assistantPanel.closeLabel : assistantPanel.openLabel}
-            </Button>
-          )}
+      <div
+        data-testid="formula-editor-grid"
+        className="grid h-full w-full min-h-0"
+        style={{ gridTemplateColumns: columns, gridTemplateRows: rows }}
+      >
+        <div
+          key="title"
+          style={{ gridColumn: `span ${titleSpan}` }}
+          className={`flex min-w-0 items-center gap-2.5 px-3 ${ROW_BORDER}`}
+        >
+          <h3 className="shrink-0 text-[14px] font-semibold text-text-primary">{title}</h3>
+          {subtitle && <span className="truncate text-[12.5px] text-text-muted">{subtitle}</span>}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="text-text-muted"
+        {assistantPanel ? (
+          <>
+            <button
+              key="tab-fn"
+              type="button"
+              aria-pressed={!wizard}
+              onClick={() => setMode('functions')}
+              className={tabClass(!wizard)}
+            >
+              {tr('expressionTabFunctions')}
+            </button>
+            <button
+              key="tab-wiz"
+              type="button"
+              aria-pressed={!!wizard}
+              onClick={() => setMode('wizard')}
+              className={tabClass(!!wizard)}
+            >
+              {assistantPanel.openLabel}
+            </button>
+          </>
+        ) : (
+          <div key="tab-blank" style={{ gridColumn: 'span 2' }} className={ROW_BORDER} />
+        )}
+        <button
+          key="close"
+          type="button"
+          onClick={requestClose}
           aria-label={tr('cancel')}
+          className={`flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary ${ROW_BORDER}`}
         >
           <X className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="flex flex-1 flex-col overflow-hidden p-4">
-        {/* Keep the CodeMirror host mounted (display:none) while the assistant
-            wizard takes over the whole dialog body — unmounting would drop the
-            editor DOM and blank the input on return. */}
+        </button>
+
+        {/* The CodeMirror host stays mounted while the wizard is shown so the
+            draft and cursor survive the mode switch. */}
         <div
+          key="editor"
           ref={hostRef}
-          className={showAssistantPanel ? 'hidden' : 'shrink-0'}
-          style={{ height: editorHeight }}
+          aria-label={title}
+          style={{ gridColumn: '1 / -1' }}
+          className={wizard ? 'hidden' : `min-h-0 ${ROW_BORDER}`}
         />
-        {!showAssistantPanel && (
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-valuemin={MIN_EXPRESSION_EDITOR_HEIGHT}
-            aria-valuemax={MAX_EXPRESSION_EDITOR_HEIGHT}
-            aria-valuenow={editorHeight}
-            tabIndex={0}
-            onPointerDown={handleEditorResizeStart}
-            onPointerMove={handleEditorResizeMove}
-            onPointerUp={handleEditorResizeEnd}
-            onPointerCancel={handleEditorResizeEnd}
-            onKeyDown={(event) => {
-              if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-              event.preventDefault();
-              const delta =
-                event.key === 'ArrowUp'
-                  ? -EXPRESSION_EDITOR_RESIZE_STEP
-                  : EXPRESSION_EDITOR_RESIZE_STEP;
-              setEditorHeight((current) => clampEditorHeight(current + delta));
-            }}
-            className="group flex h-4 shrink-0 cursor-row-resize items-center justify-center outline-none"
-          >
-            <span className="h-px w-full bg-border-muted/60 transition-colors group-hover:bg-accent/50 group-focus-visible:bg-accent" />
-          </div>
-        )}
-        {showAssistantPanel && assistantPanel ? (
+
+        {wizard ? (
           assistantPanel.render({
             currentExpression: draft,
-            insertExpression: editAtCursor,
-            replaceExpression,
-            closePanel: () => setShowAssistantPanel(false),
+            insertExpression: (text) => {
+              editAtCursor(text);
+              setMode('functions');
+            },
+            replaceExpression: (text) => {
+              replaceExpression(text);
+              setMode('functions');
+            },
+            closePanel: () => setMode('functions'),
+            footerOverride: discardFooter || undefined,
           })
         ) : (
-          <div className="grid grid-cols-[1fr_1fr_1.5fr] min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
-            <div className="flex flex-col border-r border-border-muted/60 min-h-0">
-              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted border-b border-border-muted/60">
-                {tr('expressionFieldsTab')}
-              </div>
-              <div className="flex-1 flex flex-col min-h-0">
-                <div className="relative shrink-0 px-3 pt-2 pb-2">
-                  <Search className="pointer-events-none absolute left-[22px] top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-                  <input
-                    type="text"
-                    value={fieldQuery}
-                    onChange={(e) => setFieldQuery(e.target.value)}
-                    placeholder={tr('expressionFieldSearchPlaceholder')}
-                    className="h-8 w-full rounded-md border border-border-muted bg-surface pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
-                  />
-                </div>
-                <div className="scrollbar-hover flex-1 overflow-y-auto min-h-0">
-                  {sortedFields.length === 0 ? (
-                    <div className="px-2 py-4 text-center text-[11px] text-text-muted">
-                      {tr('fieldPicker.noMatch')}
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border-muted/60">
-                      {sortedFields.map((col) => {
-                        const colType = columnTypes?.[col];
-                        return (
-                          <button
-                            key={col}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              editAtCursor(`[${col}]`);
-                            }}
-                            className="flex min-h-8 w-full cursor-pointer items-center justify-between gap-2 px-3 text-left text-[12px] text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
-                          >
-                            <span className="flex min-w-0 items-center gap-2">
-                              <DataTypeIcon type={colType} />
-                              <span className="min-w-0 truncate">{col}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col border-r border-border-muted/60 min-h-0">
-              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
-                {tr('expressionFunctionHelperLabel')}
-              </div>
-              <div className="flex-1 border-t border-border-muted/60 min-h-0">
-                <GlassFunctionHelper
-                  onInsert={editAtCursor}
-                  functionGroups={functionGroups}
-                  excludeCategories={excludeFunctionCategories}
-                  onTokenHover={setHoveredToken}
+          <>
+            {issues.map((issue) => (
+              <button
+                key={`issue-${issue.from}-${issue.kind}`}
+                type="button"
+                onClick={() => jumpTo(issue.from)}
+                style={{ gridColumn: '1 / -1' }}
+                className={`flex min-w-0 items-center gap-2 bg-error/[0.06] px-3 text-left text-[12px] text-error ${ROW_BORDER}`}
+              >
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <b className="shrink-0 font-semibold">
+                  {tr('expressionLineCol', { line: issue.line, column: issue.column })}
+                </b>
+                <span className="truncate">
+                  {issue.kind === 'unknownField'
+                    ? tr('expressionLintUnknownField', { name: issue.detail })
+                    : issue.kind === 'unclosed'
+                      ? tr('expressionLintUnclosed', { closer: closerFor(issue.detail) })
+                      : tr('expressionLintUnexpectedClose', { char: issue.detail })}
+                </span>
+              </button>
+            ))}
+
+            <div
+              key="fields"
+              style={{ gridColumn: 'span 2' }}
+              className={`flex min-h-0 flex-col ${COL_BORDER} ${ROW_BORDER}`}
+            >
+              <div className={PANE_HEADER}>{tr('expressionFieldsTab')}</div>
+              <div className={PANE_SEARCH}>
+                <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-text-muted" />
+                <input
+                  type="text"
+                  value={fieldQuery}
+                  onChange={(e) => setFieldQuery(e.target.value)}
+                  placeholder={tr('expressionFieldSearchPlaceholder')}
+                  aria-label={tr('expressionFieldSearchPlaceholder')}
+                  className={PANE_SEARCH_INPUT}
                 />
               </div>
+              <div className="fx-list min-h-0 flex-1">
+                {sortedFields.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-[12px] text-text-muted">
+                    {tr('fieldPicker.noMatch')}
+                  </div>
+                ) : (
+                  sortedFields.map((col) => (
+                    <button
+                      key={col}
+                      type="button"
+                      title={tr('expressionFieldInsertHint')}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        editAtCursor(`[${col}]`);
+                      }}
+                      className={`${LIST_ROW} text-text-primary hover:bg-surface-hover`}
+                    >
+                      <DataTypeIcon type={columnTypes?.[col]} />
+                      <span className="min-w-0 truncate">{col}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
-            <div className="flex flex-col min-h-0">
-              <div className="flex w-full items-center px-3 py-1.5 text-[11px] font-medium text-text-muted">
+            <div key="functions" className={`flex min-h-0 flex-col ${COL_BORDER} ${ROW_BORDER}`}>
+              <div className={PANE_HEADER}>{tr('expressionFunctionHelperLabel')}</div>
+              <FunctionList
+                functionGroups={functionGroups}
+                excludeCategories={excludeFunctionCategories}
+                selected={selectedToken}
+                onSelect={setSelectedToken}
+                onInsert={editAtCursor}
+                tr={tr}
+              />
+            </div>
+            <div
+              key="detail"
+              style={{ gridColumn: 'span 5' }}
+              className={`flex min-h-0 flex-col ${ROW_BORDER}`}
+            >
+              <div className={PANE_HEADER}>
                 {tr('expressionFunctionDetailLabel')}
+                {selectedToken && (
+                  <span className="ml-1 truncate font-normal">· {selectedToken.label}</span>
+                )}
               </div>
-              <div className="scrollbar-hover flex-1 overflow-y-auto border-t border-border-muted/60 p-2 min-h-0">
-                <FunctionDetailPanel token={hoveredToken} tr={tr} />
-              </div>
+              <FunctionDetailPanel token={selectedToken} tr={tr} onInsert={editAtCursor} />
             </div>
-          </div>
-        )}
-      </div>
-      <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-4 py-3">
-        <Button variant="secondary" size="sm" onClick={onClose} className="text-[12px]">
-          {tr('cancel')}
-        </Button>
-        {!showAssistantPanel && (
-          <Button variant="primary" size="sm" onClick={handleConfirm} className="text-[12px]">
-            {tr('confirm')}
-          </Button>
+
+            {discardFooter || (
+              <>
+                <div
+                  key="status"
+                  style={{ gridColumn: 'span 5' }}
+                  className="flex min-w-0 items-center gap-2.5 px-3 text-[12px] text-text-muted"
+                >
+                  {issues.length > 0 && (
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-error/[0.08] px-2 py-0.5 text-[12.5px] text-error">
+                      <span className="h-1.5 w-1.5 rounded-full bg-error" />
+                      {tr('expressionIssueCount', { count: issues.length })}
+                    </span>
+                  )}
+                  <span className="truncate">{tr('expressionShortcutHint')}</span>
+                </div>
+                <button
+                  key="cancel"
+                  type="button"
+                  onClick={requestClose}
+                  className={`${footerButton} bg-surface text-text-primary hover:bg-surface-hover`}
+                >
+                  {tr('cancel')}
+                </button>
+                <button
+                  key="confirm"
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={issues.length > 0}
+                  aria-disabled={issues.length > 0}
+                  title={issues.length > 0 ? tr('expressionConfirmBlocked') : undefined}
+                  style={{ gridColumn: 'span 2' }}
+                  className={`${footerButton} bg-accent text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent`}
+                >
+                  {tr('confirm')}
+                </button>
+              </>
+            )}
+          </>
         )}
       </div>
     </Dialog>
