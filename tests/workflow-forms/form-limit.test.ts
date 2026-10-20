@@ -1,3 +1,7 @@
+import {
+  validateLimitCount,
+  validateLimitSeed,
+} from '../../src/renderer/components/workflow-forms/FormLimit';
 import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import { readFileSync } from 'fs';
@@ -202,13 +206,15 @@ describe('FormLimit — UI source structure', () => {
   });
 
   it('uses a segmented control for the mode row', () => {
-    expect(limitSource).toContain('GlassSegmentedControl');
+    expect(limitSource).toContain('<SegmentCells');
     expect(limitSource).toContain("'limitMode'");
     expect(limitSource).toContain('onChange={setMode}');
   });
 
   it('clears the persisted limit when the quantity input is cleared', () => {
-    expect(limitSource).toContain('updateConfig((cfg) => ({ ...cfg, limit: undefined }))');
+    // Empty / invalid input commits `limit: undefined` (n is undefined).
+    expect(limitSource).toContain('updateConfig((cfg) => ({ ...cfg, limit: n }))');
+    expect(validateLimitCount('', 'rows')).toBe('count');
   });
 
   it('edits sort keys with the shared sort-keys editor', () => {
@@ -217,13 +223,32 @@ describe('FormLimit — UI source structure', () => {
   });
 
   it('only shows system and bernoulli methods for percentage sampling', () => {
-    expect(limitSource).toContain('{!isRows && (');
+    expect(limitSource).toContain('{!isRows ? (');
+    expect(limitSource).toContain("value: 'bernoulli'");
+    expect(limitSource).toContain("value: 'system'");
   });
 
   it('WITH TIES checkbox shows whenever sort keys exist (no isRows guard)', () => {
     // The checkbox condition should be just `hasSort`, not `isRows && hasSort`
-    const tiesCheckbox = limitSource.match(/\{hasSort\s*&&\s*\(/);
+    const tiesCheckbox = limitSource.match(/const tiesRow = hasSort \?/);
     expect(tiesCheckbox).not.toBeNull();
     expect(limitSource).not.toContain('isRows && hasSort && (');
+  });
+});
+
+describe('limit count / seed validation', () => {
+  it('requires a positive integer count and caps percent at 100', () => {
+    expect(validateLimitCount('0', 'rows')).toBe('count');
+    expect(validateLimitCount('1.5', 'rows')).toBe('count');
+    expect(validateLimitCount('-3', 'rows')).toBe('count');
+    expect(validateLimitCount('10', 'rows')).toBeNull();
+    expect(validateLimitCount('101', 'percent')).toBe('percent');
+    expect(validateLimitCount('100', 'percent')).toBeNull();
+  });
+  it('accepts an empty seed but rejects non-integers', () => {
+    expect(validateLimitSeed('')).toBe(true);
+    expect(validateLimitSeed('42')).toBe(true);
+    expect(validateLimitSeed('4.2')).toBe(false);
+    expect(validateLimitSeed('abc')).toBe(false);
   });
 });
