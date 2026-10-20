@@ -3091,7 +3091,24 @@
     "deleteEllipsis": "Delete…",
     "toggleEnabled": "Enable / disable",
     "enabledNotice": "Enabled \"{{name}}\"",
-    "disabledNotice": "Disabled \"{{name}}\""
+    "disabledNotice": "Disabled \"{{name}}\"",
+    "artifactCount": "{{count}} artifacts",
+    "deliveryNotConfigured": "Not configured",
+    "runNoActions": "No action details",
+    "executionSummaryAll": "Ran {{executed}} actions",
+    "actionRunState": {
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "running": "Running"
+    },
+    "actionTypeName": {
+      "data_pipeline_run": "Run pipeline",
+      "conversation_run": "Spawn conversation task",
+      "cloud_table_process": "Process cloud table",
+      "data_raw_preview": "Read raw table",
+      "data_result_preview": "Read result table"
+    }
   },
   "remote": {
     "title": "Remote Control",
