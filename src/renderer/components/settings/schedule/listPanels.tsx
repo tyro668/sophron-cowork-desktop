@@ -2,9 +2,7 @@ import { getAutomationTableBindings } from '../../../../shared/automation/table-
 import { useState, type ReactNode } from 'react';
 import {
   ArrowUpDown,
-  Bell,
   CalendarClock,
-  Database,
   FolderInput,
   MoreHorizontal,
   PencilLine,
@@ -13,7 +11,7 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  type LucideIcon,
+  Hand,
 } from 'lucide-react';
 import type { Automation, AutomationRun } from '../../../types';
 import { formatAppDateTime } from '../../../utils/i18n-format';
@@ -99,35 +97,32 @@ export function AutomationListPanel({
           />
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <DataToolbarButton
-            icon={<Play className="h-3.5 w-3.5" />}
-            label={tr('schedule.runNow', '立即运行')}
-            disabled={!selectedAutomation || selectedAutomation.status === 'running'}
-            onClick={onRun}
-          />
-          <DataToolbarButton
-            icon={<PencilLine className="h-3.5 w-3.5" />}
-            label={tr('schedule.configure', '配置')}
-            disabled={!selectedAutomation}
-            onClick={onEdit}
-          />
-          <DataToolbarButton
-            icon={<FolderInput className="h-3.5 w-3.5" />}
-            label={tr('data.groups.moveToGroup', '移动到分组')}
-            disabled={!selectedAutomation}
-            onClick={() => {
-              if (selectedAutomation) {
-                setAssignDialogOpen(true);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            label={tr('schedule.delete', '删除')}
-            disabled={!selectedAutomation}
-            danger
-            onClick={onDelete}
-          />
+          {selectedAutomation && (
+            <>
+              <DataToolbarButton
+                icon={<Play className="h-3.5 w-3.5" />}
+                label={tr('schedule.runNow', '立即运行')}
+                disabled={!selectedAutomation || selectedAutomation.status === 'running'}
+                onClick={onRun}
+              />
+              <DataToolbarButton
+                icon={<PencilLine className="h-3.5 w-3.5" />}
+                label={tr('schedule.configure', '配置')}
+                disabled={!selectedAutomation}
+                onClick={onEdit}
+              />
+              <DataToolbarButton
+                icon={<FolderInput className="h-3.5 w-3.5" />}
+                label={tr('data.groups.moveToGroup', '移动到分组')}
+                disabled={!selectedAutomation}
+                onClick={() => {
+                  if (selectedAutomation) {
+                    setAssignDialogOpen(true);
+                  }
+                }}
+              />
+            </>
+          )}
           <DataMoreMenu
             items={[
               {
@@ -135,6 +130,14 @@ export function AutomationListPanel({
                 label: tr('schedule.refresh', '刷新'),
                 icon: <RefreshCw className="h-3.5 w-3.5" />,
                 onClick: onRefresh,
+              },
+              {
+                key: 'delete',
+                label: tr('schedule.deleteEllipsis', '删除…'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                disabled: !selectedAutomation,
+                onClick: onDelete,
               },
             ]}
             tr={tr}
@@ -391,19 +394,20 @@ function AutomationTable({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const sections = buildGroupSections(automations, groups, (automation) => automation.groupId);
   const grouped = hasNamedSections(sections);
-  const renderRow = (automation: Automation, index: number, indented = false) => {
+  const renderRow = (automation: Automation, _index: number, indented = false) => {
     const selected = automation.id === selectedId;
-    const icon = AUTOMATION_ICON_STYLES[index % AUTOMATION_ICON_STYLES.length];
-    const RowIcon = icon.Icon;
+    const inactive = !automation.enabled;
+    const RowIcon = automation.trigger.kind === 'manual' ? Hand : CalendarClock;
+    const icon = inactive
+      ? { bgClass: 'bg-surface-active text-text-muted', textClass: 'text-text-muted' }
+      : { bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' };
     return (
       <tr
         key={automation.id}
         onClick={() => onSelect(automation)}
         onDoubleClick={onEdit}
         className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-          selected
-            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-            : 'hover:bg-surface-hover/35'
+          selected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
         }`}
       >
         <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
@@ -418,7 +422,9 @@ function AutomationTable({
               </div>
             )}
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[13px] font-medium text-text-secondary">
+              <span
+                className={`truncate text-[13px] font-medium ${inactive ? 'text-text-muted' : 'text-text-primary'}`}
+              >
                 {automation.name}
               </span>
               {automation.description && (
@@ -435,7 +441,9 @@ function AutomationTable({
         <td className="px-2 text-[13px] font-medium text-text-secondary">
           {automation.actionGraph.nodes.length}
         </td>
-        <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+        <td
+          className={`truncate whitespace-nowrap px-2 text-[13px] font-medium ${inactive ? 'text-text-muted' : 'text-text-secondary'}`}
+        >
           <span className="truncate">{formatAutomationNextRun(automation, tr)}</span>
         </td>
         <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
@@ -498,12 +506,6 @@ function AutomationTable({
   );
 }
 
-const AUTOMATION_ICON_STYLES: Array<{ Icon: LucideIcon; bgClass: string; textClass: string }> = [
-  { Icon: CalendarClock, bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' },
-  { Icon: Database, bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' },
-  { Icon: Bell, bgClass: 'bg-warning/10 text-warning', textClass: 'text-warning' },
-];
-
 const AUTOMATION_STATUS_TONES: Record<Automation['status'], string> = {
   enabled: 'bg-success/10 text-success',
   disabled: 'bg-surface-muted text-text-muted',
@@ -560,12 +562,13 @@ function formatAutomationNextRun(
   automation: Automation,
   tr: (key: string, fallback: string) => string
 ): string {
+  if (!automation.enabled) return '—';
   if (automation.trigger.kind === 'manual') {
     if (getAutomationTableBindings(automation).some((binding) => binding.runOnChange))
       return tr('schedule.outputChangeTrigger', '结果表更新后执行');
-    return tr('schedule.noAutoTrigger', '无自动触发');
+    return '—';
   }
-  return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-';
+  return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '—';
 }
 
 function AutomationRunStatusBadge({

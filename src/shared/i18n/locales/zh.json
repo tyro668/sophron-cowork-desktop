@@ -3071,7 +3071,8 @@
       "name": "原始表名称",
       "invalid": "请选择分析空间、项目、来源表和目标原始表",
       "addFromCloud": "从云端添加"
-    }
+    },
+    "deleteEllipsis": "删除…"
   },
   "remote": {
     "title": "远程控制",
