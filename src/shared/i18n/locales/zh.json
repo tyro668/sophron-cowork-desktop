@@ -1105,7 +1105,9 @@
           "fieldSelectIncludeMode": "保留字段",
           "fieldSelectIncludeModeTip": "仅输出勾选的字段，并使用勾选后的排列顺序",
           "fieldSelectExcludeMode": "排除字段",
-          "fieldSelectExcludeModeTip": "移除勾选的字段，保留其余字段"
+          "fieldSelectExcludeModeTip": "移除勾选的字段，保留其余字段",
+          "fieldSelectSearchPlaceholder": "搜索字段…",
+          "fieldSelectCountShort": "已选 {{n}} / {{total}}"
         },
         "fieldMapping": {
           "fieldMappingSourceField": "源字段",

@@ -387,16 +387,22 @@ export function GridRow({
   children,
   onDragOver,
   dragging,
+  hover,
+  compact,
   testId,
 }: {
   children?: ReactNode;
   onDragOver?: (event: React.DragEvent) => void;
   dragging?: boolean;
+  /** Tint the whole row on hover (list-style rows). */
+  hover?: boolean;
+  /** 32px list rows (field lists). */
+  compact?: boolean;
   testId?: string;
 }) {
   return (
     <div
-      className={`opg-row${dragging ? ' dragging' : ''}`}
+      className={`opg-row${dragging ? ' dragging' : ''}${hover ? ' hov' : ''}${compact ? ' compact' : ''}`}
       onDragOver={onDragOver}
       data-testid={testId}
     >
