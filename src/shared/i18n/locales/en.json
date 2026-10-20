@@ -845,7 +845,20 @@
           "filterAddAnd": "Add AND condition",
           "filterAddOr": "Add OR condition",
           "filterAddValue": "Add",
-          "filterIncompleteField": "Enter a filter condition or remove the blank filter row"
+          "filterIncompleteField": "Enter a filter condition or remove the blank filter row",
+          "filterWhen": "When",
+          "filterNoValueNeeded": "No value needed",
+          "filterValuePlaceholderFull": "Enter or pick a value",
+          "filterCopyCondition": "Duplicate condition",
+          "filterAddMenu": "Add AND / OR condition",
+          "filterRowPrefix": "Condition {{index}}: ",
+          "filterFieldRequired": "Pick a field. Complete or delete this condition before saving.",
+          "filterValueRequired": "Value is required. Complete or delete this condition before saving.",
+          "filterHeaderField": "Field",
+          "filterHeaderOp": "Condition",
+          "filterHeaderValue": "Value",
+          "filterAddConditionShort": "Add condition",
+          "filterAddHint": "or click ＋ on any row to choose AND / OR"
         },
         "join": {
           "joinType": "Join type",

@@ -361,3 +361,27 @@
 .opg-c.chips span.rounded-md.border > button {
   color: var(--color-text-muted);
 }
+.opg-lgc {
+  border: 0;
+  cursor: pointer;
+}
+.opg-lgc:hover {
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.opg-between-sep {
+  flex: 0 0 auto !important;
+  align-self: center;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+/* Icon-only trailing buttons inside controls (value-input chevron etc.) keep their 32px box. */
+.opg-c.ctl button.w-8 {
+  width: 32px !important;
+  flex: 0 0 32px !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+.opg-c.ctl input {
+  height: 100% !important;
+}
