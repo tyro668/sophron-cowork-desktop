@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { useConfirmDialog } from './ConfirmDialog';
 import {
   normalizePermissionPolicy,
   type PermissionPolicyId,
@@ -33,10 +34,21 @@ export function PermissionPolicySelector({
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const activePolicy = normalizePermissionPolicy(settings.permissionPolicy);
+  const { t } = useTranslation();
+  const { confirm } = useConfirmDialog();
 
-  const handleSelect = (policy: PermissionPolicyId) => {
+  const handleSelect = async (policy: PermissionPolicyId) => {
     onOpenChange(false);
     if (policy === activePolicy) return;
+    if (policy === 'full_access') {
+      const ok = await confirm({
+        title: t('chat.fullAccessConfirmTitle'),
+        message: t('chat.fullAccessConfirmMessage'),
+        confirmLabel: t('chat.fullAccessConfirmAction'),
+        cancelLabel: t('common.cancel'),
+      });
+      if (!ok) return;
+    }
     updateSettings({
       permissionPolicy: policy,
     });
@@ -47,10 +59,14 @@ export function PermissionPolicySelector({
       open={open}
       onOpenChange={onOpenChange}
       value={activePolicy}
-      onValueChange={handleSelect}
+      onValueChange={(policy) => void handleSelect(policy)}
       side="top"
       align="start"
-      triggerClassName={`${buttonClassName} w-auto !text-accent`}
+      triggerClassName={`${buttonClassName} w-auto ${
+        activePolicy === 'full_access'
+          ? '!border-warning/30 !bg-warning/10 !text-warning'
+          : '!text-text-secondary'
+      }`}
     />
   );
 }
@@ -88,7 +104,17 @@ export function PermissionPolicySelect({
       placeholder={activeLabel}
       side={side}
       align={align}
-      triggerIcon={showIcon ? <ShieldCheck className="h-[18px] w-[18px] shrink-0" /> : undefined}
+      triggerIcon={
+        showIcon ? (
+          activePolicy === 'full_access' ? (
+            <ShieldAlert className="h-[18px] w-[18px] shrink-0" />
+          ) : activePolicy === 'auto_review' ? (
+            <ShieldCheck className="h-[18px] w-[18px] shrink-0" />
+          ) : (
+            <Shield className="h-[18px] w-[18px] shrink-0" />
+          )
+        ) : undefined
+      }
       triggerClassName={triggerClassName}
       contentClassName="w-[15rem]"
     />
