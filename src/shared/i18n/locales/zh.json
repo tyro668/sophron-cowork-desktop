@@ -2647,7 +2647,13 @@
     "connectorCount_other": "{{count}} 个连接器",
     "fullAccessConfirmTitle": "切换到完全访问权限？",
     "fullAccessConfirmMessage": "智能体将无需询问即可执行命令、修改或删除工作目录中的文件、访问网络。切换后输入框中的权限标签会显示为黄色，可随时在此菜单切回。",
-    "fullAccessConfirmAction": "切换为完全访问"
+    "fullAccessConfirmAction": "切换为完全访问",
+    "searchSkills": "搜索技能",
+    "skillsSection": "技能",
+    "skillMenuHint": "↑↓ 选择 · Enter 插入 · Esc 关闭",
+    "skillMenuCount": "{{count}} 项",
+    "modelGroupCurrent": "当前使用",
+    "manageModels": "管理模型配置…"
   },
   "context": {
     "progress": "进度",

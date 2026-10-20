@@ -343,6 +343,7 @@ export function useSkillMentions({
     filteredSkills,
     highlightedIndex,
     isMentionMenuOpen: Boolean(mentionTrigger),
+    mentionQuery: mentionTrigger?.query ?? '',
     handlePromptChange,
     handlePromptKeyDown,
     selectSkill,

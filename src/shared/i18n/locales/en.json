@@ -2647,7 +2647,13 @@
     "connectorCount_other": "{{count}} connectors",
     "fullAccessConfirmTitle": "Switch to full access?",
     "fullAccessConfirmMessage": "The agent will run commands, modify or delete files in the working directory and access the network without asking. The permission chip turns yellow while active; switch back from this menu at any time.",
-    "fullAccessConfirmAction": "Switch to full access"
+    "fullAccessConfirmAction": "Switch to full access",
+    "searchSkills": "Search skills",
+    "skillsSection": "Skills",
+    "skillMenuHint": "↑↓ select · Enter insert · Esc close",
+    "skillMenuCount": "{{count}} items",
+    "modelGroupCurrent": "Current",
+    "manageModels": "Manage model configs…"
   },
   "context": {
     "progress": "Progress",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type CSSProperties, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { AtSign, X } from 'lucide-react';
+import { Box, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SkillMention } from '../hooks/useSkillMentions';
 
@@ -15,12 +15,14 @@ interface SkillMentionMenuProps {
   skills: SkillMention[];
   highlightedIndex: number;
   onSelect: (skill: SkillMention) => void;
+  /** Text typed after `@`; mirrored in the header search field. */
+  query?: string;
   anchorRef?: RefObject<HTMLElement | null>;
   placement?: 'top' | 'bottom';
 }
 
 const MENU_GAP = 8;
-const MENU_HEADER_HEIGHT = 32;
+const MENU_HEADER_HEIGHT = 84;
 const MENU_MAX_WIDTH = 448;
 const MENU_MIN_WIDTH = 280;
 const MENU_MAX_LIST_HEIGHT = 256;
@@ -35,17 +37,14 @@ export function SelectedSkillChips({ skills, disabled, onRemove }: SelectedSkill
 
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5">
-      <span className="inline-flex h-6 items-center gap-1 rounded-full border border-accent/18 bg-accent-muted px-2 text-[12px] font-medium text-accent">
-        <AtSign className="h-3.5 w-3.5" />
-        {t('chat.selectedSkills')}
-      </span>
       {skills.map((skill) => (
         <span
           key={skill.id}
-          className="inline-flex h-6 max-w-[14rem] items-center gap-1 rounded-full border border-border-subtle bg-background px-2 text-[12px] text-text-secondary shadow-soft"
+          className="inline-flex h-6 max-w-[14rem] items-center gap-1 rounded-md border border-accent/20 bg-accent-muted px-2 text-[12px] font-medium text-accent-text"
           title={skill.description || skill.name}
         >
-          <span className="truncate">@{skill.name}</span>
+          <Box className="h-3 w-3 shrink-0" />
+          <span className="truncate">{skill.name}</span>
           <button
             type="button"
             disabled={disabled}
@@ -66,6 +65,7 @@ export function SkillMentionMenu({
   skills,
   highlightedIndex,
   onSelect,
+  query = '',
   anchorRef,
   placement = 'top',
 }: SkillMentionMenuProps) {
@@ -163,13 +163,22 @@ export function SkillMentionMenu({
       }
       style={portalLayout?.style}
     >
-      <div className="flex h-8 items-center gap-2 border-b border-border-subtle px-3 text-[12px] font-medium text-text-secondary">
-        <AtSign className="h-3.5 w-3.5 text-accent" />
-        {t('chat.insertSkill')}
+      <div className="p-2 pb-1">
+        <div className="flex h-8 items-center gap-2 rounded-lg border border-accent/40 bg-surface px-2.5 text-[13px] ring-2 ring-accent/10">
+          <Search className="h-3.5 w-3.5 text-text-muted" />
+          {query ? (
+            <span className="truncate text-text-primary">{query}</span>
+          ) : (
+            <span className="truncate text-text-muted">{t('chat.searchSkills')}</span>
+          )}
+        </div>
+      </div>
+      <div className="px-3 pb-1 pt-1 text-[11.5px] font-medium text-text-muted">
+        {t('chat.skillsSection')}
       </div>
       {skills.length > 0 ? (
         <div
-          className="overflow-y-auto py-1"
+          className="overflow-y-auto px-1 pb-1"
           style={{ maxHeight: portalLayout?.listMaxHeight ?? MENU_MAX_LIST_HEIGHT }}
         >
           {skills.map((skill, index) => (
@@ -178,29 +187,30 @@ export function SkillMentionMenu({
               type="button"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onSelect(skill)}
-              className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors ${
+              title={skill.description || skill.name}
+              className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors ${
                 index === highlightedIndex
                   ? 'bg-accent-muted text-text-primary'
                   : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
               }`}
             >
-              <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-muted text-accent">
-                <AtSign className="h-3.5 w-3.5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-medium">@{skill.name}</span>
-                {skill.description && (
-                  <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-text-muted">
-                    {skill.description}
-                  </span>
-                )}
-              </span>
+              <Box className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="shrink-0 text-[13px] font-medium">{skill.name}</span>
+              {skill.description && (
+                <span className="min-w-0 truncate text-[12px] text-text-muted">
+                  {skill.description}
+                </span>
+              )}
             </button>
           ))}
         </div>
       ) : (
         <div className="px-3 py-3 text-[12px] text-text-muted">{t('chat.noMatchingSkills')}</div>
       )}
+      <div className="flex h-7 items-center justify-between border-t border-border-subtle px-3 text-[11px] text-text-muted">
+        <span>{t('chat.skillMenuHint')}</span>
+        <span>{t('chat.skillMenuCount', { count: skills.length })}</span>
+      </div>
     </div>
   );
 
