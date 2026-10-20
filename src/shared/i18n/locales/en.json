@@ -3071,7 +3071,8 @@
       "name": "Raw table name",
       "invalid": "Select an analysis space, project, source table and target raw table",
       "addFromCloud": "Add from cloud"
-    }
+    },
+    "deleteEllipsis": "Delete…"
   },
   "remote": {
     "title": "Remote Control",
