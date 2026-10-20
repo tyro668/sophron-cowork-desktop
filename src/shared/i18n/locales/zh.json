@@ -1188,7 +1188,14 @@
           "setOpExceptDistinctTip": "排除左表中在右表出现过的记录并去重",
           "setOpByNameTip": "根据列名自动匹配，列数或顺序不一致时自动对齐",
           "setOpByPositionTip": "按列的顺序位置匹配，两表列数必须一致",
-          "setOpConnection": "集合方式"
+          "setOpConnection": "集合方式",
+          "inputTables": "输入表",
+          "leftSide": "左表",
+          "rightSide": "右表",
+          "columnCount": "{{count}} 列",
+          "missingInRight": "右表缺少 {{count}} 列（{{cols}}），结果中补空值。",
+          "missingInLeft": "左表缺少 {{count}} 列（{{cols}}），结果中补空值。",
+          "positionMismatch": "按位置匹配时两表列数必须一致：左表 {{left}} 列，右表 {{right}} 列。"
         },
         "unnest": {
           "unnestIncompleteField": "请填写展开列",

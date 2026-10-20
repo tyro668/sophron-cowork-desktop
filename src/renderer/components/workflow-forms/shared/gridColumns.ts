@@ -21,3 +21,5 @@ export const LIMIT_GRID_COLUMNS =
   '104px minmax(96px,120px) minmax(96px,120px) minmax(80px,1fr) minmax(64px,88px) minmax(64px,88px) minmax(76px,96px) minmax(76px,96px) minmax(76px,96px) 112px';
 export const CALCULATE_FIELD_GRID_COLUMNS = '88px 88px minmax(180px,1fr) minmax(280px,2fr) 112px';
 export const UNPIVOT_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr)';
+export const SET_OP_GRID_COLUMNS = '104px 120px 120px 120px minmax(200px,1fr)';
+export const UNNEST_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr)';
