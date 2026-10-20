@@ -2107,10 +2107,12 @@ function writeWorkbookSheets(filePath: string, sheets: Record<string, unknown[][
   XLSX.writeFile(workbook, filePath);
 }
 
-async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+// Time-based (not tick-based): the awaited work does real DuckDB I/O, which
+// under a loaded full-suite run can take far longer than 20 macrotask ticks.
+async function waitFor(predicate: () => boolean, timeoutMs = 4_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   expect(predicate()).toBe(true);
 }
