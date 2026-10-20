@@ -25,7 +25,11 @@ export class WorkflowBindingResolver {
           ? configuredStrategy
           : selectedOutputRawTableId
             ? 'existing'
-            : '';
+            : // Unsaved strategy: the editor shows 「自动」, so treat it as auto here too.
+              // Legacy nodes that only carry a physical `table` keep their old behaviour.
+              stringConfigValue(config.table)
+              ? ''
+              : 'auto';
 
       if (outputStrategy === 'auto') {
         const outputName =

@@ -155,7 +155,11 @@ export function WorkflowInspector({
     const requestSeq = operatorFieldsRequestSeq.current + 1;
     operatorFieldsRequestSeq.current = requestSeq;
 
-    if (!node || !usesOperatorDsl || operatorFieldSourceCandidates.length === 0) {
+    if (
+      !node ||
+      !(usesOperatorDsl || node.type === 'output') ||
+      operatorFieldSourceCandidates.length === 0
+    ) {
       setOperatorFieldCompletions([]);
       setOperatorFieldTypes([]);
       return;
@@ -446,7 +450,8 @@ export function WorkflowInspector({
           forceMount
           className={`min-h-0 flex-1 overflow-hidden ${
             resolvedTab === 'data' ||
-            ((resolvedTab === 'config' || resolvedTab === 'dsl') && usesOperatorDsl)
+            ((resolvedTab === 'config' || resolvedTab === 'dsl') &&
+              (usesOperatorDsl || node.type === 'output'))
               ? 'p-0'
               : 'p-2.5'
           }`}
@@ -564,24 +569,21 @@ export function WorkflowInspector({
               isLoading={isRawTablesLoading}
               onNodeChange={onNodeChange}
             />
+          ) : node.type === 'output' ? (
+            <WorkflowOutputConfig
+              node={node}
+              resultTables={resultTables}
+              fieldCompletions={operatorFieldCompletions}
+              onNodeChange={onNodeChange}
+            />
           ) : (
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
               <div className="grid content-start gap-3 sm:grid-cols-2">
-                {node.type === 'output' ? (
-                  <WorkflowOutputConfig
-                    node={node}
-                    resultTables={resultTables}
-                    onNodeChange={onNodeChange}
-                  />
-                ) : (
-                  <>
-                    <SelectLike
-                      label={t('data.workflow.input')}
-                      value={t('data.workflow.previousOutput')}
-                    />
-                    <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
-                  </>
-                )}
+                <SelectLike
+                  label={t('data.workflow.input')}
+                  value={t('data.workflow.previousOutput')}
+                />
+                <SelectLike label={t('data.workflow.output')} value={t(catalog.labelKey)} />
               </div>
               <WorkflowSummaryPanel
                 title={t('data.workflow.summary')}

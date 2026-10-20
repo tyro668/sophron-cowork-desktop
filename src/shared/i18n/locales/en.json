@@ -1626,7 +1626,7 @@
       },
       "mergeKeys": "Business key fields",
       "mergeKeysPlaceholder": "e.g. order_id, sku (comma-separated)",
-      "schemaPolicy": "Schema drift policy",
+      "schemaPolicy": "New columns",
       "assertion": "Assertion",
       "rejectStream": "Reject stream",
       "aiGenerate": "Generate with AI",
@@ -1678,7 +1678,31 @@
       "undo": "Undo (Ctrl+Z)",
       "redo": "Redo (Ctrl+Y)",
       "errorBannerTitle": "Can't save or run",
-      "locateNode": "Locate issue nodes ({{count}})"
+      "locateNode": "Locate issue nodes ({{count}})",
+      "mergeKeysPick": "Pick business key fields",
+      "outputStrategyTips": {
+        "auto": "Create and maintain the result table automatically",
+        "existing": "Write into the selected result table"
+      },
+      "schemaPolicyTips": {
+        "extend": "When upstream adds columns: add them to the result table",
+        "strict": "When upstream adds columns: stop and report an error",
+        "ignore": "When upstream adds columns: drop them, write existing columns only"
+      },
+      "outputSummary": {
+        "prefix": "Writes to DuckDB table ",
+        "mode": {
+          "replace": "replacing existing data",
+          "append": "appending to existing data",
+          "error_if_exists": "failing if the table exists",
+          "merge": "merging by \"{{keys}}\""
+        },
+        "policy": {
+          "extend": "new columns auto-extend",
+          "strict": "new columns raise an error",
+          "ignore": "new columns ignored"
+        }
+      }
     },
     "relative": {
       "today": "Today",

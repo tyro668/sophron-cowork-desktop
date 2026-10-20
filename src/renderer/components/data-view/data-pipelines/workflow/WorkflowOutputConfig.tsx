@@ -2,16 +2,30 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DataResultTable, DataWorkflowNode } from '../../../../types';
 import { GlassSelect } from '../../../GlassSelect';
-import { GlassSegmentedControl } from '../../../workflow-forms/shared/GlassSegmentedControl';
+import { Info } from 'lucide-react';
+import {
+  Cell,
+  FormGrid,
+  FormScroll,
+  GlassCommitTextInput,
+  HintRow,
+  LabelCell,
+  SegmentCells,
+} from '../../../workflow-forms/shared/FormGrid';
+import { GlassOptionMultiSelect } from '../../../workflow-forms/shared/GlassOptionMultiSelect';
+import { OUTPUT_GRID_COLUMNS } from '../../../workflow-forms/shared/gridColumns';
 import { stringValue } from './workflow-summary';
 
 export function WorkflowOutputConfig({
   node,
   resultTables,
+  fieldCompletions = [],
   onNodeChange,
 }: {
   node: DataWorkflowNode;
   resultTables: DataResultTable[];
+  /** Upstream fields, offered as business-key options. */
+  fieldCompletions?: string[];
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }) {
   const { t } = useTranslation();
@@ -28,9 +42,9 @@ export function WorkflowOutputConfig({
     stringValue(node.config.resultTableName) || stringValue(node.config.table);
   const mode = stringValue(node.config.mode, 'replace');
   const schemaPolicy = stringValue(node.config.schemaPolicy, 'extend');
-  const mergeKeysText = Array.isArray(node.config.mergeKeys)
-    ? node.config.mergeKeys.map((key) => String(key)).join(', ')
-    : '';
+  const mergeKeys = Array.isArray(node.config.mergeKeys)
+    ? node.config.mergeKeys.map((key) => String(key))
+    : [];
   const availableResultTables = resultTables.filter(
     (resultTable) =>
       resultTable.relatedPipelineNames.length === 0 || resultTable.id === selectedOutputRawTableId
@@ -110,11 +124,10 @@ export function WorkflowOutputConfig({
   );
 
   const handleMergeKeysChange = useCallback(
-    (raw: string) => {
+    (keys: string[]) => {
       updateOutputConfig((config) => ({
         ...config,
-        mergeKeys: raw
-          .split(',')
+        mergeKeys: keys
           .map((key) =>
             key
               .trim()
@@ -163,13 +176,27 @@ export function WorkflowOutputConfig({
     [resultTables, updateOutputConfig]
   );
 
+  const showSchemaPolicy = mode === 'append' || mode === 'merge';
+  const tableLabel =
+    strategy === 'auto'
+      ? autoResultTableName || t('data.workflow.autoResultTable')
+      : stringValue(node.config.resultTableName) ||
+        availableResultTables.find((item) => item.id === selectedOutputRawTableId)?.name ||
+        t('data.workflow.noAvailableResultTables');
+  const summaryParts = [
+    mode === 'merge'
+      ? t('data.workflow.outputSummary.mode.merge', {
+          keys: mergeKeys.length > 0 ? mergeKeys.join('、') : '—',
+        })
+      : t(`data.workflow.outputSummary.mode.${mode}`),
+    showSchemaPolicy ? t(`data.workflow.outputSummary.policy.${schemaPolicy}`) : '',
+  ].filter(Boolean);
+
   return (
-    <div className="grid gap-x-3 gap-y-2.5 sm:col-span-2 sm:grid-cols-2">
-      <div>
-        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-          {t('data.workflow.outputStrategy')}
-        </span>
-        <GlassSegmentedControl
+    <FormScroll>
+      <FormGrid columns={OUTPUT_GRID_COLUMNS} testId="output-form-grid">
+        <LabelCell>{t('data.workflow.outputStrategy')}</LabelCell>
+        <SegmentCells
           value={strategy}
           onChange={handleStrategyChange}
           options={[
@@ -178,62 +205,63 @@ export function WorkflowOutputConfig({
           ]}
           ariaLabel={t('data.workflow.outputStrategy')}
         />
-      </div>
+        <Cell span={3} v={['muted']}>
+          <span className="truncate">{t(`data.workflow.outputStrategyTips.${strategy}`)}</span>
+        </Cell>
 
-      {strategy === 'auto' ? (
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-            {t('data.workflow.resultTableName')}
-          </span>
-          <input
-            value={autoResultTableName}
-            onChange={(event) => handleAutoTableNameChange(event.target.value)}
-            placeholder={t('data.workflow.autoResultTable')}
-            className="h-8 w-full rounded-lg border border-border-muted bg-surface px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
-        </label>
-      ) : (
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-            {t('data.workflow.resultTable')}
-          </span>
-          <GlassSelect
-            value={selectedOutputRawTableId || undefined}
-            onValueChange={handleResultTableChange}
-            options={[
-              // Bound table missing from choices (still loading or beyond the
-              // fetch cap): keep the option selectable but display its saved
-              // display name instead of the raw id.
-              ...(selectedOutputRawTableId &&
-              !availableResultTables.some(
-                (resultTable) => resultTable.id === selectedOutputRawTableId
-              )
-                ? [
-                    {
-                      value: selectedOutputRawTableId,
-                      label: stringValue(node.config.resultTableName) || selectedOutputRawTableId,
-                    },
-                  ]
-                : []),
-              ...availableResultTables.map((resultTable) => ({
-                value: resultTable.id,
-                label: resultTable.name,
-              })),
-            ]}
-            placeholder={t('data.workflow.noAvailableResultTables')}
-            disabled={!selectedOutputRawTableId && availableResultTables.length === 0}
-            triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-2 text-xs font-medium text-text-secondary"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
-          />
-        </label>
-      )}
+        {strategy === 'auto' ? (
+          <>
+            <LabelCell required>{t('data.workflow.resultTableName')}</LabelCell>
+            <Cell span={5} v={['ctl', !autoResultTableName.trim() && 'err']}>
+              <GlassCommitTextInput
+                value={autoResultTableName}
+                onCommit={(value) => handleAutoTableNameChange(value.trim())}
+                placeholder={t('data.workflow.autoResultTable')}
+                ariaLabel={t('data.workflow.resultTableName')}
+                ariaInvalid={!autoResultTableName.trim()}
+                className="h-full w-full px-2.5 text-[13px]"
+              />
+            </Cell>
+          </>
+        ) : (
+          <>
+            <LabelCell required>{t('data.workflow.resultTable')}</LabelCell>
+            <Cell span={5} v={['ctl']}>
+              <GlassSelect
+                value={selectedOutputRawTableId || undefined}
+                onValueChange={handleResultTableChange}
+                options={[
+                  // Bound table missing from choices (still loading or beyond the
+                  // fetch cap): keep the option selectable but display its saved
+                  // display name instead of the raw id.
+                  ...(selectedOutputRawTableId &&
+                  !availableResultTables.some(
+                    (resultTable) => resultTable.id === selectedOutputRawTableId
+                  )
+                    ? [
+                        {
+                          value: selectedOutputRawTableId,
+                          label:
+                            stringValue(node.config.resultTableName) || selectedOutputRawTableId,
+                        },
+                      ]
+                    : []),
+                  ...availableResultTables.map((resultTable) => ({
+                    value: resultTable.id,
+                    label: resultTable.name,
+                  })),
+                ]}
+                placeholder={t('data.workflow.noAvailableResultTables')}
+                disabled={!selectedOutputRawTableId && availableResultTables.length === 0}
+                triggerClassName="w-full justify-between text-[13px] text-text-primary"
+                contentClassName="w-[var(--radix-select-trigger-width)]"
+              />
+            </Cell>
+          </>
+        )}
 
-      <div className="sm:col-span-2">
-        <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-          {t('data.workflow.outputMode')}
-        </span>
-        <GlassSegmentedControl
-          fill
+        <LabelCell>{t('data.workflow.outputMode')}</LabelCell>
+        <SegmentCells
           value={mode}
           onChange={handleModeChange}
           options={[
@@ -247,39 +275,54 @@ export function WorkflowOutputConfig({
           ]}
           ariaLabel={t('data.workflow.outputMode')}
         />
-      </div>
+        <Cell v={['blank']} />
 
-      {mode === 'merge' && (
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-            {t('data.workflow.mergeKeys')}
-          </span>
-          <input
-            value={mergeKeysText}
-            onChange={(event) => handleMergeKeysChange(event.target.value)}
-            placeholder={t('data.workflow.mergeKeysPlaceholder')}
-            className="h-8 w-full rounded-lg border border-border-muted bg-surface px-2 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-          />
-        </label>
-      )}
+        {mode === 'merge' ? (
+          <>
+            <LabelCell required>{t('data.workflow.mergeKeys')}</LabelCell>
+            <Cell span={5} v={['ctl', 'chips', mergeKeys.length === 0 && 'err']}>
+              <GlassOptionMultiSelect
+                options={[...new Set([...fieldCompletions, ...mergeKeys])]}
+                selected={mergeKeys}
+                onChange={handleMergeKeysChange}
+                placeholder={t('data.workflow.mergeKeysPick')}
+                maxHeight="300px"
+              />
+            </Cell>
+          </>
+        ) : null}
 
-      {(mode === 'append' || mode === 'merge') && (
-        <div>
-          <span className="mb-1.5 block text-xs font-medium text-text-secondary">
-            {t('data.workflow.schemaPolicy')}
+        {showSchemaPolicy ? (
+          <>
+            <LabelCell>{t('data.workflow.schemaPolicy')}</LabelCell>
+            <SegmentCells
+              value={schemaPolicy}
+              onChange={handleSchemaPolicyChange}
+              options={[
+                { value: 'extend', label: t('data.workflow.values.schemaPolicies.extend') },
+                { value: 'strict', label: t('data.workflow.values.schemaPolicies.strict') },
+                { value: 'ignore', label: t('data.workflow.values.schemaPolicies.ignore') },
+              ]}
+              ariaLabel={t('data.workflow.schemaPolicy')}
+            />
+            <Cell span={2} v={['muted']}>
+              <span className="truncate">
+                {t(`data.workflow.schemaPolicyTips.${schemaPolicy}`)}
+              </span>
+            </Cell>
+          </>
+        ) : null}
+
+        <HintRow span={6}>
+          <Info className="opg-ic h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">
+            {t('data.workflow.outputSummary.prefix')}
+            <b className="font-medium text-text-secondary">{tableLabel}</b>
+            {' · '}
+            {summaryParts.join('，')}
           </span>
-          <GlassSegmentedControl
-            value={schemaPolicy}
-            onChange={handleSchemaPolicyChange}
-            options={[
-              { value: 'extend', label: t('data.workflow.values.schemaPolicies.extend') },
-              { value: 'strict', label: t('data.workflow.values.schemaPolicies.strict') },
-              { value: 'ignore', label: t('data.workflow.values.schemaPolicies.ignore') },
-            ]}
-            ariaLabel={t('data.workflow.schemaPolicy')}
-          />
-        </div>
-      )}
-    </div>
+        </HintRow>
+      </FormGrid>
+    </FormScroll>
   );
 }

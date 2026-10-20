@@ -1626,7 +1626,7 @@
       },
       "mergeKeys": "业务键字段",
       "mergeKeysPlaceholder": "例如 order_id, sku（逗号分隔）",
-      "schemaPolicy": "Schema 漂移策略",
+      "schemaPolicy": "新增列处理",
       "assertion": "断言",
       "rejectStream": "Reject 流",
       "aiGenerate": "AI 生成",
@@ -1678,7 +1678,31 @@
       "undo": "撤销 (Ctrl+Z)",
       "redo": "重做 (Ctrl+Y)",
       "errorBannerTitle": "无法保存或运行",
-      "locateNode": "定位问题节点（{{count}}）"
+      "locateNode": "定位问题节点（{{count}}）",
+      "mergeKeysPick": "选择业务键字段",
+      "outputStrategyTips": {
+        "auto": "自动创建并维护结果表",
+        "existing": "写入已选的结果表"
+      },
+      "schemaPolicyTips": {
+        "extend": "上游出现新列时：自动添加到结果表",
+        "strict": "上游出现新列时：停止写入并报错",
+        "ignore": "上游出现新列时：丢弃新列，只写已有列"
+      },
+      "outputSummary": {
+        "prefix": "将写入 DuckDB 表 ",
+        "mode": {
+          "replace": "覆盖已有数据",
+          "append": "追加到已有数据",
+          "error_if_exists": "表已存在时报错",
+          "merge": "按「{{keys}}」合并"
+        },
+        "policy": {
+          "extend": "新列自动扩展",
+          "strict": "出现新列时报错",
+          "ignore": "忽略新列"
+        }
+      }
     },
     "relative": {
       "today": "今天",
