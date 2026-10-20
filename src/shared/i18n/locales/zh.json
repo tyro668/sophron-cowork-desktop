@@ -771,7 +771,11 @@
           "syntaxError": "SQL 语法有误",
           "format": "格式化",
           "validate": "校验",
-          "validatePassed": "校验通过"
+          "validatePassed": "校验通过",
+          "availableData": "可用数据",
+          "validateOkDetail": "单条 SELECT，只读",
+          "insertShort": "插入",
+          "statusLine": "Ctrl + Enter 校验 · 可用 input 引用上游数据"
         },
         "common": {
           "selectColumns": "选择字段",
