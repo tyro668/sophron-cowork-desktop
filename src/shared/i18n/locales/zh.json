@@ -1121,7 +1121,13 @@
           "fieldMappingModeRename": "改名",
           "fieldMappingRenamePlaceholder": "新字段名",
           "fieldMappingPrefixPlaceholder": "前缀",
-          "fieldMappingSuffixPlaceholder": "后缀"
+          "fieldMappingSuffixPlaceholder": "后缀",
+          "fieldMappingSegPrefix": "前缀",
+          "fieldMappingSegSuffix": "后缀",
+          "fieldMappingResultField": "结果字段名",
+          "fieldMappingDuplicateTarget": "结果字段名「{{name}}」与第 {{row}} 行重复。",
+          "fieldMappingTargetExists": "结果字段名「{{name}}」与上游已有字段重名。",
+          "fieldMappingModeHeader": "方式"
         },
         "setOp": {
           "setOpIncompleteField": "请选择右表数据源",
