@@ -1,5 +1,5 @@
 import { getAutomationTableBindings } from '../../../../shared/automation/table-bindings';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowUpDown,
   CalendarClock,
@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   Hand,
+  ChevronRight,
 } from 'lucide-react';
 import type { Automation, AutomationRun } from '../../../types';
 import { formatAppDateTime } from '../../../utils/i18n-format';
@@ -236,6 +237,13 @@ export function AutomationRunLogPanel({
   onRefresh: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
+  const hasRunning = entries.some(({ run }) => run.status === 'running' || run.status === 'queued');
+  // Poll every 3s only while something is running (design 15).
+  useEffect(() => {
+    if (!hasRunning) return;
+    const timer = window.setInterval(onRefresh, 3000);
+    return () => window.clearInterval(timer);
+  }, [hasRunning, onRefresh]);
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-end`}>
@@ -249,6 +257,7 @@ export function AutomationRunLogPanel({
       <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
         <div className="min-h-0 flex-1 overflow-auto">
           <AutomationRunTable
+            automations={automations}
             entries={entries}
             isLoading={isLoading}
             hasAutomations={automations.length > 0}
@@ -261,16 +270,19 @@ export function AutomationRunLogPanel({
 }
 
 function AutomationRunTable({
+  automations,
   entries,
   isLoading,
   hasAutomations,
   tr,
 }: {
+  automations: Automation[];
   entries: AutomationRunLogEntry[];
   isLoading: boolean;
   hasAutomations: boolean;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   if (!hasAutomations) {
     return (
       <EmptyState
@@ -301,7 +313,7 @@ function AutomationRunTable({
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="w-[22%] whitespace-nowrap px-3">
+            <th className="w-[22%] whitespace-nowrap px-3 pl-8">
               {tr('schedule.runColumns.automation', '自动化')}
             </th>
             <th className="w-[12%] whitespace-nowrap px-2">
@@ -329,38 +341,15 @@ function AutomationRunTable({
         </thead>
         <tbody>
           {entries.map(({ automation, run }) => (
-            <tr
+            <RunLogRow
               key={run.id}
-              className="h-[3.25rem] border-b border-border-muted/85 last:border-b-0 transition-colors hover:bg-surface-hover/35"
-            >
-              <td className="truncate px-3 text-[13px] font-medium text-text-secondary">
-                {automation.name}
-              </td>
-              <td className="px-3">
-                <AutomationRunStatusBadge status={run.status} tr={tr} />
-              </td>
-              <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
-                {formatRunReason(run.triggerReason, tr)}
-              </td>
-              <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                {formatAppDateTime(run.startedAt ?? run.queuedAt ?? run.createdAt)}
-              </td>
-              <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-                {formatDurationMs(run.durationMs)}
-              </td>
-              <td className="px-2 text-[13px] font-medium text-text-secondary">
-                {run.artifactCount}
-              </td>
-              <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
-                {formatDeliveryStatus(run.deliveryStatus, tr)}
-              </td>
-              <td
-                className="truncate px-2 text-[12px] text-text-muted"
-                title={formatExecutionSummary(run, tr)}
-              >
-                {formatExecutionSummary(run, tr)}
-              </td>
-            </tr>
+              automationName={automation.name}
+              graph={automations.find((item) => item.id === automation.id)?.actionGraph ?? null}
+              run={run}
+              expanded={expandedRunId === run.id}
+              onToggle={() => setExpandedRunId((current) => (current === run.id ? null : run.id))}
+              tr={tr}
+            />
           ))}
         </tbody>
       </table>
@@ -621,14 +610,142 @@ function formatDeliveryStatus(
   return tr(`schedule.deliveryStatus.${status}`, status);
 }
 
+function RunLogRow({
+  automationName,
+  graph,
+  run,
+  expanded,
+  onToggle,
+  tr,
+}: {
+  automationName: string;
+  graph: Automation['actionGraph'] | null;
+  run: AutomationRun;
+  expanded: boolean;
+  onToggle: () => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const executed = new Set(run.executionSummary?.executedNodeIds ?? []);
+  const skipped = new Set(run.executionSummary?.skippedNodeIds ?? []);
+  const nodes = graph?.nodes ?? [];
+  const failed = run.status === 'failed';
+  const lastExecutedId = [...nodes].reverse().find((node) => executed.has(node.id))?.id;
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 transition-colors ${
+          expanded ? 'bg-surface-muted' : 'hover:bg-surface-hover'
+        }`}
+      >
+        <td className="truncate px-3 text-[13px] font-medium text-text-primary">
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <ChevronRight
+              className={`h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${expanded ? 'rotate-90' : ''}`}
+            />
+            <span className="truncate">{automationName}</span>
+          </span>
+        </td>
+        <td className="px-3">
+          <AutomationRunStatusBadge status={run.status} tr={tr} />
+        </td>
+        <td className="truncate px-2 text-[13px] font-medium text-text-secondary">
+          {formatRunReason(run.triggerReason, tr)}
+        </td>
+        <td className="truncate whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+          {formatAppDateTime(run.startedAt ?? run.queuedAt ?? run.createdAt)}
+        </td>
+        <td className="truncate whitespace-nowrap px-2 text-[13px] tabular-nums text-text-secondary">
+          {formatDurationMs(run.durationMs)}
+        </td>
+        <td className="px-2 text-[13px] text-text-secondary">
+          {run.artifactCount > 0
+            ? tr('schedule.artifactCount', '{{count}} 个产物').replace(
+                '{{count}}',
+                String(run.artifactCount)
+              )
+            : '—'}
+        </td>
+        <td className="truncate px-2 text-[13px] text-text-secondary">
+          {run.deliveryStatus
+            ? formatDeliveryStatus(run.deliveryStatus, tr)
+            : tr('schedule.deliveryNotConfigured', '未配置')}
+        </td>
+        <td
+          className={`truncate px-2 text-[12px] ${failed ? 'text-error' : 'text-text-muted'}`}
+          title={formatExecutionSummary(run, tr)}
+        >
+          {formatExecutionSummary(run, tr)}
+        </td>
+      </tr>
+      {expanded && (
+        <tr
+          className={`border-b border-border-muted/85 ${failed ? 'bg-error/[0.04]' : 'bg-surface-muted'}`}
+        >
+          <td colSpan={8} className="px-8 py-3">
+            {nodes.length === 0 ? (
+              <div className="text-xs text-text-muted">
+                {tr('schedule.runNoActions', '没有可显示的动作明细')}
+              </div>
+            ) : (
+              <ol className="space-y-1.5">
+                {nodes.map((node, index) => {
+                  const state = executed.has(node.id)
+                    ? failed && node.id === lastExecutedId
+                      ? 'failed'
+                      : 'succeeded'
+                    : skipped.has(node.id)
+                      ? 'skipped'
+                      : run.status === 'running'
+                        ? 'running'
+                        : 'skipped';
+                  return (
+                    <li key={node.id} className="flex items-center gap-2.5 text-[13px]">
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-accent-muted text-[11px] font-semibold text-accent">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-text-primary">
+                        {node.label ||
+                          tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type)}
+                      </span>
+                      <span
+                        className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                          state === 'succeeded'
+                            ? 'bg-success/10 text-success'
+                            : state === 'failed'
+                              ? 'bg-error/10 text-error'
+                              : state === 'running'
+                                ? 'bg-accent-muted text-accent'
+                                : 'bg-surface-active text-text-muted'
+                        }`}
+                      >
+                        {tr(`schedule.actionRunState.${state}`, state)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {run.error && (
+              <div className="mt-2 whitespace-pre-wrap break-words text-xs text-error">
+                {run.error}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function formatDurationMs(durationMs: number | null): string {
-  if (durationMs === null) return '-';
-  if (durationMs < 1000) return `${durationMs}ms`;
+  if (durationMs === null) return '—';
+  if (durationMs < 1000) return `${durationMs} 毫秒`;
   const totalSeconds = Math.round(durationMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  if (minutes === 0) return `${seconds}s`;
-  return `${minutes}m ${seconds}s`;
+  if (minutes === 0) return `${seconds} 秒`;
+  return `${minutes} 分 ${seconds} 秒`;
 }
 
 export function getRunSortTime(run: AutomationRun): number {
@@ -753,7 +870,13 @@ function formatExecutionSummary(
   tr: (key: string, fallback: string) => string
 ): string {
   if (run.error) return run.error;
-  if (!run.executionSummary) return '-';
+  if (!run.executionSummary) return '—';
+  if (run.executionSummary.skippedNodeIds.length === 0) {
+    return tr('schedule.executionSummaryAll', '已执行 {{executed}} 个动作').replace(
+      '{{executed}}',
+      String(run.executionSummary.executedNodeIds.length)
+    );
+  }
   return tr(
     'schedule.executionSummary',
     '已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）'

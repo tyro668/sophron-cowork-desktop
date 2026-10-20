@@ -3091,7 +3091,24 @@
     "deleteEllipsis": "删除…",
     "toggleEnabled": "启用 / 停用",
     "enabledNotice": "已启用「{{name}}」",
-    "disabledNotice": "已停用「{{name}}」"
+    "disabledNotice": "已停用「{{name}}」",
+    "artifactCount": "{{count}} 个产物",
+    "deliveryNotConfigured": "未配置",
+    "runNoActions": "没有可显示的动作明细",
+    "executionSummaryAll": "已执行 {{executed}} 个动作",
+    "actionRunState": {
+      "succeeded": "成功",
+      "failed": "失败",
+      "skipped": "已跳过",
+      "running": "运行中"
+    },
+    "actionTypeName": {
+      "data_pipeline_run": "运行数据加工",
+      "conversation_run": "派生对话任务",
+      "cloud_table_process": "处理云端表",
+      "data_raw_preview": "读取原始表",
+      "data_result_preview": "读取结果表"
+    }
   },
   "remote": {
     "title": "远程控制",
