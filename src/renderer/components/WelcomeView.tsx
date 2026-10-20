@@ -1,3 +1,5 @@
+import { handleNewlineShortcut } from '../utils/composer-keys';
+import { ComposerShortcutHint } from './ComposerShortcutHint';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -739,7 +741,10 @@ export function WelcomeView() {
               if (skillMentions.handlePromptKeyDown(e)) {
                 return;
               }
-              // Enter to send, Shift+Enter for new line
+              // Enter to send; Ctrl+Enter (and Shift+Enter) for new line
+              if (handleNewlineShortcut(e)) {
+                return;
+              }
               if (e.key === 'Enter' && !e.shiftKey) {
                 if (e.nativeEvent.isComposing || isComposingRef.current || e.keyCode === 229) {
                   return;
@@ -860,6 +865,7 @@ export function WelcomeView() {
             </div>
           </div>
         </form>
+        <ComposerShortcutHint className="mx-auto mt-1.5 w-full max-w-[860px] px-1" />
         {/* Quick Action Tags */}
         <div className="mx-auto mt-4 flex w-full max-w-[860px] flex-wrap items-center justify-center gap-2">
           {quickTags.map((tag) => (

@@ -3521,5 +3521,9 @@
     "automationHint": "Choose a trigger and actions to automate recurring work.",
     "rawTablesHint": "Add Csv, Excel files, or folders as input data.",
     "resultTablesHint": "Create a result table for data pipelines to write results into."
+  },
+  "composer": {
+    "shortcutSend": "to send",
+    "shortcutNewline": "for a new line"
   }
 }

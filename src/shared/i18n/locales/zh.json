@@ -3521,5 +3521,9 @@
     "automationHint": "设置触发时间和执行动作，让重复工作自动完成。",
     "rawTablesHint": "添加 Csv、Excel 文件或文件夹作为输入数据。",
     "resultTablesHint": "新建一张结果表，供数据加工写入处理结果。"
+  },
+  "composer": {
+    "shortcutSend": "发送",
+    "shortcutNewline": "换行"
   }
 }

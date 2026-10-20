@@ -1,3 +1,4 @@
+import { handleNewlineShortcut } from '../utils/composer-keys';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -1123,7 +1124,10 @@ export function ChatView() {
                   if (skillMentions.handlePromptKeyDown(e)) {
                     return;
                   }
-                  // Enter to send, Shift+Enter for new line
+                  // Enter to send; Ctrl+Enter (and Shift+Enter) for new line
+                  if (handleNewlineShortcut(e)) {
+                    return;
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     if (e.nativeEvent.isComposing || isComposingRef.current || e.keyCode === 229) {
                       return;
