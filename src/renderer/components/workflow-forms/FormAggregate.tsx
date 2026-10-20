@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { Copy, Ellipsis, Plus, Settings, Trash2 } from 'lucide-react';
+import { Fragment, useCallback, useMemo } from 'react';
+import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
-import { GlassFormLabel } from './shared/GlassFormLabel';
-import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import {
+  AddRow,
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  GlassCommitTextInput,
+  GridRow,
+  LabelCell,
+  RowActionsCell,
+} from './shared/FormGrid';
+import { useGridRowDrag } from './shared/useGridRowDrag';
+import { AGGREGATE_GRID_COLUMNS } from './shared/gridColumns';
+import { validateAggregateMetrics } from './shared/metricValidation';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -15,10 +26,8 @@ import {
   patchRowAt,
 } from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
-import { DropdownMenuSeparator } from '../ui';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
 import { AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas/common';
@@ -152,18 +161,9 @@ export default function FormAggregate({
 
   const {
     activeItems: activeMetrics,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnd,
-    handleKeyboardMove,
-    isDragging,
-    resetDrag,
-    dragIndexRef,
-  } = useDragReorder(metrics, handleMetricsChange);
-
-  useEffect(() => {
-    if (!isDragging) resetDrag();
-  }, [metrics, isDragging, resetDrag]);
+    rowProps,
+    dragHandle,
+  } = useGridRowDrag(metrics, handleMetricsChange);
 
   const addMetricAfter = useCallback(
     (index: number) => {
@@ -180,11 +180,11 @@ export default function FormAggregate({
       const clone: MetricEntry = {
         ...source,
         id: createMetricId(),
-        alias: '',
+        alias: source.alias ? tr('copyNameSuffix', { name: source.alias }) : '',
       };
       handleMetricsChange(insertRowAfter(activeMetrics, index, clone));
     },
-    [activeMetrics, handleMetricsChange]
+    [activeMetrics, handleMetricsChange, tr]
   );
 
   const removeMetric = useCallback(
@@ -196,51 +196,23 @@ export default function FormAggregate({
 
   const canAddMetric = canAppendRow(activeMetrics.length, MAX_METRIC_COUNT);
 
-  const metricColumns: GlassRowListColumn<MetricEntry>[] = [
-    {
-      flex: 'flex-[0.8]',
-      header: tr('aggregateFns.aggregateFunction'),
-      render: (metric, index) => (
-        <GlassOptionSingleSelect
-          value={metric.function}
-          groups={functionGroups}
-          onChange={(value) => updateMetric(index, { function: value as AggregateFunction })}
-          className="h-8 w-full text-[12px] [&>span]:text-left"
-        />
-      ),
-    },
-    {
-      flex: 'flex-[1.6]',
-      header: tr('aggregateExpressionColumn'),
-      render: (metric, index) => (
-        <GlassExpressionInput
-          value={metric.expression}
-          onChange={(value) => updateMetric(index, { expression: value })}
-          fieldCompletions={fieldCompletions}
-          columnTypes={columnTypes}
-          placeholder={tr('aggregateExpressionPlaceholder')}
-        />
-      ),
-    },
-    {
-      flex: 'flex-[1]',
-      header: tr('aggregateAlias'),
-      render: (metric, index) => (
-        <GlassFormTextInput
-          value={metric.alias ?? ''}
-          onChange={(value) => updateMetric(index, { alias: value })}
-          placeholder={tr('aggregateAliasPlaceholder')}
-          className="h-8 w-full px-2 text-[12px]"
-        />
-      ),
-    },
-  ];
+  const issues = useMemo(
+    () => validateAggregateMetrics(activeMetrics, groupBy),
+    [activeMetrics, groupBy]
+  );
+  const rowLabels = {
+    add: tr('rowAdd'),
+    copy: tr('rowCopy'),
+    remove: tr('rowRemove'),
+    drag: tr('rowDrag'),
+  };
+  const errorCount = issues.reduce((n, item) => n + item.messages.length, 0);
 
   return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-1.5 overflow-y-auto px-3 py-2">
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('aggregateDimensionsLabel')}</GlassFormLabel>
-        <div className="min-w-0 flex-1">
+    <FormScroll>
+      <FormGrid columns={AGGREGATE_GRID_COLUMNS} testId="aggregate-form-grid">
+        <LabelCell>{tr('aggregateGroupFieldsLabel')}</LabelCell>
+        <Cell span={4} v={['ctl', 'chips']}>
           <GlassOptionMultiSelect
             options={fieldCompletions}
             selected={groupBy}
@@ -287,78 +259,74 @@ export default function FormAggregate({
               );
             }}
           />
-        </div>
-      </div>
+        </Cell>
 
-      <div className="border-t border-border-subtle" />
-
-      <div className="flex items-center justify-between">
-        <span className="text-[13px] text-text-secondary">{tr('aggregateMeasuresLabel')}</span>
-        <button
-          type="button"
+        <LabelCell rowSpan={1 + activeMetrics.length + errorCount + 1}>
+          {tr('aggregateMeasuresLabel')}
+        </LabelCell>
+        <Cell v={['th']}>{tr('aggregateFns.aggregateFunction')}</Cell>
+        <Cell v={['th']}>{tr('aggregateExpressionColumn')}</Cell>
+        <Cell v={['th']}>{tr('aggregateAlias')}</Cell>
+        <Cell v={['th']} />
+        {activeMetrics.map((metric, index) => {
+          const issue = issues[index];
+          return (
+            <Fragment key={metric.id ?? `metric-${index}`}>
+              <GridRow {...rowProps(index)} testId={`aggregate-metric-row-${index}`}>
+                <Cell v={['ctl']}>
+                  <GlassOptionSingleSelect
+                    value={metric.function}
+                    groups={functionGroups}
+                    onChange={(value) =>
+                      updateMetric(index, { function: value as AggregateFunction })
+                    }
+                    className="w-full"
+                  />
+                </Cell>
+                <Cell v={['ctl', issue.expressionError && 'err']}>
+                  <GlassExpressionInput
+                    value={metric.expression}
+                    onChange={(value) => updateMetric(index, { expression: value })}
+                    fieldCompletions={fieldCompletions}
+                    columnTypes={columnTypes}
+                    placeholder={tr('aggregateExpressionPlaceholder')}
+                  />
+                </Cell>
+                <Cell v={['ctl', issue.aliasError && 'err']}>
+                  <GlassCommitTextInput
+                    value={metric.alias ?? ''}
+                    onCommit={(value) => updateMetric(index, { alias: value.trim() })}
+                    placeholder={tr('aggregateAliasPlaceholder')}
+                    ariaLabel={tr('aggregateAlias')}
+                    ariaInvalid={issue.aliasError}
+                    className="h-full w-full px-2.5 text-[13px]"
+                  />
+                </Cell>
+                <RowActionsCell
+                  labels={rowLabels}
+                  onAdd={() => addMetricAfter(index)}
+                  onCopy={() => copyMetric(index)}
+                  onRemove={() => removeMetric(index)}
+                  canAdd={canAddMetric}
+                  dragHandle={dragHandle(index)}
+                />
+              </GridRow>
+              {issue.messages.map((message) => (
+                <ErrorRow key={`${index}-${message.key}`} span={4}>
+                  <b>{tr('rowPrefix', { index: index + 1 })}</b>
+                  {tr(message.key, message.params)}
+                </ErrorRow>
+              ))}
+            </Fragment>
+          );
+        })}
+        <AddRow
+          span={4}
+          label={tr('aggregateAddMetric')}
           onClick={() => addMetricAfter(activeMetrics.length - 1)}
           disabled={!canAddMetric}
-          className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {tr('aggregateAddMetric')}
-        </button>
-      </div>
-
-      <GlassRowList
-        items={activeMetrics}
-        getKey={(metric, index) => metric.id ?? `metric-${index}`}
-        columns={metricColumns}
-        actions={[]}
-        renderExtraActions={(index) => (
-          <GlassDropdownMenu
-            trigger={
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30"
-                title={tr('aggregateMetricActions')}
-                aria-label={tr('aggregateMetricActions')}
-              >
-                <Ellipsis className="h-4 w-4" />
-              </button>
-            }
-            align="end"
-            side="bottom"
-          >
-            <GlassMenuItem
-              icon={<Plus className="h-3.5 w-3.5" />}
-              disabled={!canAddMetric}
-              onSelect={() => addMetricAfter(index)}
-            >
-              {tr('aggregateAddMetric')}
-            </GlassMenuItem>
-            <GlassMenuItem
-              icon={<Copy className="h-3.5 w-3.5" />}
-              disabled={!canAddMetric}
-              onSelect={() => copyMetric(index)}
-            >
-              {tr('rowList.copyRow')}
-            </GlassMenuItem>
-            <DropdownMenuSeparator />
-            <GlassMenuItem
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              danger
-              onSelect={() => removeMetric(index)}
-            >
-              {tr('aggregateRemoveMetric')}
-            </GlassMenuItem>
-          </GlassDropdownMenu>
-        )}
-        draggable
-        dragHandlePosition="end"
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onKeyboardMove={handleKeyboardMove}
-        getRowOpacity={(index) => !!(isDragging && dragIndexRef.current === index)}
-        getDropMarker={(index) => (isDragging && dragIndexRef.current === index ? 'before' : null)}
-        dragTitle={tr('rowList.dragToReorder')}
-      />
-    </div>
+        />
+      </FormGrid>
+    </FormScroll>
   );
 }

@@ -302,3 +302,62 @@
   color: var(--color-text-muted);
   font-family: var(--opg-mono);
 }
+
+.opg-row {
+  display: contents;
+}
+.opg-row.dragging > .opg-c {
+  opacity: 0.45;
+  box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+/* Generic frame reset for nested control wrappers (expression input, multi-select). */
+.opg-c.ctl > div > div,
+.opg-c.ctl > div.relative {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  height: 100% !important;
+  min-height: 35px;
+}
+/* Inner text already carries px-2 (8px): cell text sits 10px from the divider like the design. */
+.opg-c.ctl > button,
+.opg-c.ctl > div > button {
+  padding-left: 2px;
+  padding-right: 10px;
+}
+.opg-c.ctl > div.relative {
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+}
+.opg-c.ctl > div.relative > span.block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* Multi-select (chips): content padded like `.c.chips`, chevron flush right without its own divider. */
+.opg-c.ctl.chips > div > div {
+  padding-left: 8px;
+  align-items: center;
+}
+.opg-c.ctl.chips > div > div > button {
+  width: 32px !important;
+  flex: 0 0 32px;
+  min-height: 0;
+  padding: 0 !important;
+  border: 0 !important;
+}
+/* Chips inside grid cells: 22px, surface fill, accent hairline (design `.c.chips .chip`). */
+.opg-c.chips span.rounded-md.border {
+  height: 22px;
+  padding: 0 4px 0 7px;
+  gap: 4px;
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color: var(--color-text-primary);
+  font-weight: 400;
+}
+.opg-c.chips span.rounded-md.border > button {
+  color: var(--color-text-muted);
+}

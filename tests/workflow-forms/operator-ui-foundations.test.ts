@@ -88,7 +88,21 @@ describe('operator UI foundations', () => {
     expect(html).toContain('flex-1 min-w-0 truncate');
   });
 
-  it.each(['FormAggregate.tsx', 'FormUnpivot.tsx'])(
+  it.each(['FormAggregate.tsx', 'FormPivot.tsx', 'FormJoin.tsx'])(
+    'renders %s on the shared FormGrid inside a flush scroll container',
+    (fileName) => {
+      const source = readFileSync(
+        resolve(__dirname, '../../src/renderer/components/workflow-forms', fileName),
+        'utf8'
+      );
+
+      expect(source).toContain('<FormGrid');
+      expect(source).toMatch(/<FormScroll>|className="opg-scroll"/);
+      expect(source).not.toContain('GlassRowList');
+    }
+  );
+
+  it.each(['FormUnpivot.tsx'])(
     'renders %s as compact label rows with a scrollable container',
     (fileName) => {
       const source = readFileSync(

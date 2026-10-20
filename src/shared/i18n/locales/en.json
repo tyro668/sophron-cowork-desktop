@@ -799,7 +799,12 @@
           "rowAdd": "Add below",
           "rowCopy": "Duplicate row",
           "rowRemove": "Delete row",
-          "rowDrag": "Drag to reorder"
+          "rowDrag": "Drag to reorder",
+          "rowPrefix": "Row {{index}}: ",
+          "copyNameSuffix": "{{name}}_copy",
+          "metricExpressionEmpty": "Field / expression is required.",
+          "metricAliasDuplicate": "Output name \"{{name}}\" duplicates row {{row}}; rename it.",
+          "metricAliasGroupConflict": "Output name \"{{name}}\" collides with a group-by field; rename it."
         },
         "filter": {
           "filterDeleteCondition": "Delete this condition",
@@ -941,7 +946,8 @@
           "granularityMonth": "By month",
           "granularityWeek": "By week",
           "granularityDay": "By day",
-          "aggregateIncompleteField": "Please add at least one aggregate metric with an alias"
+          "aggregateIncompleteField": "Please add at least one aggregate metric with an alias",
+          "aggregateGroupFieldsLabel": "Group by"
         },
         "pivot": {
           "aggregateGroupByPlaceholder": "Select group fields...",
@@ -973,7 +979,12 @@
           "pivotCustomValuePlaceholder": "Enter a custom value",
           "pivotCustomValueLimit": "Up to {{max}} values can be configured",
           "pivotValuesLoadFailed": "Failed to load values, you can enter them manually",
-          "pivotValuesEmpty": "No suggestions; enter manually"
+          "pivotValuesEmpty": "No suggestions; enter manually",
+          "pivotValuesHeader": "Values",
+          "pivotAllValuesAuto": "All values (auto)",
+          "pivotValuesAria": "Values of pivot field \"{{field}}\": {{values}}",
+          "pivotPreviewPrefix": "Output columns: ",
+          "pivotPreviewSuffix": " (values × measures)"
         },
         "unpivot": {
           "unpivotIncompleteField": "Please select at least one column to unpivot",

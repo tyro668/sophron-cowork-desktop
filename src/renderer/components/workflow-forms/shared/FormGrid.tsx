@@ -381,3 +381,26 @@ export function GlassCommitTextInput({
 export function FormScroll({ children }: { children?: ReactNode }) {
   return <div className="opg-scroll">{children}</div>;
 }
+
+/** Logical grid row (display: contents) — groups cells for drag-over / dragging state. */
+export function GridRow({
+  children,
+  onDragOver,
+  dragging,
+  testId,
+}: {
+  children?: ReactNode;
+  onDragOver?: (event: React.DragEvent) => void;
+  dragging?: boolean;
+  testId?: string;
+}) {
+  return (
+    <div
+      className={`opg-row${dragging ? ' dragging' : ''}`}
+      onDragOver={onDragOver}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}

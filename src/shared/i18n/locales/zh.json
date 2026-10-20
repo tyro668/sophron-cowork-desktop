@@ -799,7 +799,12 @@
           "rowAdd": "在下方添加",
           "rowCopy": "复制本行",
           "rowRemove": "删除本行",
-          "rowDrag": "拖动排序"
+          "rowDrag": "拖动排序",
+          "rowPrefix": "第 {{index}} 行：",
+          "copyNameSuffix": "{{name}}_副本",
+          "metricExpressionEmpty": "字段 / 表达式不能为空。",
+          "metricAliasDuplicate": "输出名称「{{name}}」与第 {{row}} 行重复，请改名。",
+          "metricAliasGroupConflict": "输出名称「{{name}}」与分组字段重名，请改名。"
         },
         "filter": {
           "filterDeleteCondition": "删除此条件",
@@ -941,7 +946,8 @@
           "granularityMonth": "按月",
           "granularityWeek": "按周",
           "granularityDay": "按天",
-          "aggregateIncompleteField": "请至少配置一个聚合指标并填写别名"
+          "aggregateIncompleteField": "请至少配置一个聚合指标并填写别名",
+          "aggregateGroupFieldsLabel": "分组字段"
         },
         "pivot": {
           "aggregateGroupByPlaceholder": "选择分组字段...",
@@ -973,7 +979,12 @@
           "pivotCustomValuePlaceholder": "输入自定义值",
           "pivotCustomValueLimit": "最多可配置 {{max}} 个值",
           "pivotValuesLoadFailed": "值加载失败，可手工输入",
-          "pivotValuesEmpty": "暂无建议值，可手动输入"
+          "pivotValuesEmpty": "暂无建议值，可手动输入",
+          "pivotValuesHeader": "取值",
+          "pivotAllValuesAuto": "全部值（自动）",
+          "pivotValuesAria": "透视字段「{{field}}」的取值：{{values}}",
+          "pivotPreviewPrefix": "输出列示例：",
+          "pivotPreviewSuffix": "（取值 × 度量）"
         },
         "unpivot": {
           "unpivotIncompleteField": "请至少选择一个展开列",
