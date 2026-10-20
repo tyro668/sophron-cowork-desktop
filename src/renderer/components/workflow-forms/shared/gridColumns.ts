@@ -23,3 +23,4 @@ export const CALCULATE_FIELD_GRID_COLUMNS = '88px 88px minmax(180px,1fr) minmax(
 export const UNPIVOT_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr)';
 export const SET_OP_GRID_COLUMNS = '104px 120px 120px 120px minmax(200px,1fr)';
 export const UNNEST_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr)';
+export const SQL_QUERY_GRID_COLUMNS = '192px minmax(0,1fr) 88px 88px';

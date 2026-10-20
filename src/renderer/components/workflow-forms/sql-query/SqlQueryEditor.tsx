@@ -19,15 +19,14 @@ import {
   bracketMatching,
   indentOnInput,
   syntaxHighlighting,
-  syntaxTree,
 } from '@codemirror/language';
 import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { PostgreSQL, sql } from '@codemirror/lang-sql';
 import { tags } from '@lezer/highlight';
-import { normalizeSqlQuery } from '@/shared/sql-query';
+import { findSqlSyntaxErrors, validateSqlText, type SqlValidationResult } from './sqlLint';
 
 const highlight = HighlightStyle.define([
-  { tag: tags.keyword, color: 'var(--code-token-keyword)' },
+  { tag: tags.keyword, color: 'var(--code-token-keyword)', fontWeight: '600' },
   { tag: tags.string, color: 'var(--code-token-string)' },
   { tag: tags.number, color: 'var(--code-token-number)' },
   { tag: [tags.atom, tags.bool, tags.null], color: 'var(--code-token-atom)' },
@@ -48,13 +47,14 @@ const theme = EditorView.theme({
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     lineHeight: '1.6',
   },
-  '.cm-content': { padding: '8px 0', caretColor: 'var(--color-text-primary)' },
+  '.cm-content': { padding: '6px 4px', caretColor: 'var(--color-text-primary)' },
   '.cm-gutters': {
-    backgroundColor: 'var(--color-surface)',
+    backgroundColor: 'var(--code-preview-gutter-background, var(--color-surface-muted))',
     color: 'var(--color-text-muted)',
-    border: 'none',
-    paddingRight: '6px',
+    borderRight: '1px solid var(--color-border-subtle)',
+    fontSize: '11.5px',
   },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px 0 10px', minWidth: '36px' },
   '.cm-activeLine': { backgroundColor: 'var(--color-surface-hover)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--color-surface-hover)' },
   '.cm-content ::selection, .cm-line ::selection': {
@@ -93,31 +93,25 @@ function sqlSupport(fields: string[]) {
 }
 
 function syntaxErrorLinter(message: () => string) {
-  return linter((view) => {
-    const diagnostics: Diagnostic[] = [];
-    syntaxTree(view.state)
-      .cursor()
-      .iterate((node) => {
-        if (node.type.isError) {
-          diagnostics.push({
-            from: node.from,
-            to: Math.max(node.to, node.from + 1),
-            severity: 'error',
-            message: message(),
-          });
-        }
-      });
-    return diagnostics;
-  });
+  // Parses a CJK-sanitised copy (see sqlLint.ts) so Chinese column names are
+  // not reported as syntax errors.
+  return linter((view) =>
+    findSqlSyntaxErrors(view.state.doc.toString()).map((range): Diagnostic => ({
+      ...range,
+      severity: 'error',
+      message: message(),
+    }))
+  );
 }
 
-export type SqlValidationResult = 'ok' | 'invalid' | 'syntax';
+export type { SqlValidationResult };
 
 export interface SqlQueryEditorHandle {
   insertText: (text: string) => void;
   getValue: () => string;
   replaceAll: (text: string) => void;
   validate: () => SqlValidationResult;
+  jumpToFirstError: () => void;
   focus: () => void;
 }
 
@@ -129,8 +123,12 @@ export const SqlQueryEditor = forwardRef<
     fields: string[];
     label: string;
     syntaxErrorLabel: string;
+    /** Mod-Enter handler (validate). */
+    onValidate?: () => void;
   }
->(function SqlQueryEditor({ value, onChange, fields, label, syntaxErrorLabel }, ref) {
+>(function SqlQueryEditor({ value, onChange, fields, label, syntaxErrorLabel, onValidate }, ref) {
+  const validateRef = useRef(onValidate);
+  validateRef.current = onValidate;
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const applyingValue = useRef(false);
@@ -161,6 +159,13 @@ export const SqlQueryEditor = forwardRef<
           autocompletion(),
           syntaxErrorLinter(() => errorMessage.current),
           keymap.of([
+            {
+              key: 'Mod-Enter',
+              run: () => {
+                validateRef.current?.();
+                return true;
+              },
+            },
             ...closeBracketsKeymap,
             ...completionKeymap,
             ...defaultKeymap,
@@ -210,18 +215,16 @@ export const SqlQueryEditor = forwardRef<
       validate: () => {
         const editor = view.current;
         if (!editor) return 'syntax';
-        try {
-          normalizeSqlQuery(editor.state.doc.toString());
-        } catch {
-          return 'invalid';
+        return validateSqlText(editor.state.doc.toString());
+      },
+      jumpToFirstError: () => {
+        const editor = view.current;
+        if (!editor) return;
+        const first = findSqlSyntaxErrors(editor.state.doc.toString())[0];
+        if (first) {
+          editor.dispatch({ selection: { anchor: first.from }, scrollIntoView: true });
         }
-        let hasError = false;
-        syntaxTree(editor.state)
-          .cursor()
-          .iterate((node) => {
-            if (node.type.isError) hasError = true;
-          });
-        return hasError ? 'syntax' : 'ok';
+        editor.focus();
       },
       focus: () => view.current?.focus(),
     }),
@@ -246,5 +249,5 @@ export const SqlQueryEditor = forwardRef<
       ],
     });
   }, [fields, label]);
-  return <div ref={host} className="min-h-[160px] flex-1 overflow-hidden" />;
+  return <div ref={host} className="h-full min-h-[160px] w-full min-w-0 overflow-hidden" />;
 });

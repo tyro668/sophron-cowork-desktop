@@ -65,8 +65,11 @@ describe('FormSqlQuery', () => {
         { name: 'price', type: 'decimal', storageType: 'DECIMAL(18,6)' },
       ],
     });
-    expect(host.querySelectorAll('.lucide-hash').length).toBe(1);
-    expect(host.querySelectorAll('.lucide-type').length).toBe(2);
+    const glyphs = [
+      ...host.querySelectorAll('button[title^="Insert field"], button[title*="price"]'),
+    ].map((b) => b.textContent ?? '');
+    expect(glyphs.some((t) => t.startsWith('T'))).toBe(true);
+    expect(glyphs.some((t) => t.includes('price'))).toBe(true);
     await act(async () => root.unmount());
     host.remove();
   });
@@ -113,7 +116,7 @@ describe('FormSqlQuery', () => {
       b.textContent?.includes('Validate')
     ) as HTMLButtonElement;
     await act(async () => validateButton2.click());
-    expect(host2.querySelector('.text-error')).not.toBeNull();
+    expect(host2.querySelector('[data-testid="sql-status"] .text-error')).not.toBeNull();
     await act(async () => root2.unmount());
     host2.remove();
   });

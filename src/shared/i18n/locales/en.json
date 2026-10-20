@@ -771,7 +771,11 @@
           "syntaxError": "SQL syntax error",
           "format": "Format",
           "validate": "Validate",
-          "validatePassed": "Validation passed"
+          "validatePassed": "Validation passed",
+          "availableData": "Available data",
+          "validateOkDetail": "single SELECT, read-only",
+          "insertShort": "Insert",
+          "statusLine": "Ctrl + Enter to validate · use input to reference upstream data"
         },
         "common": {
           "selectColumns": "Select columns",
