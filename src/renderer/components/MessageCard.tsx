@@ -2,16 +2,29 @@
 // Delegates block rendering to ContentBlockView and its sub-components.
 import { useState, memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Check, Clock, XCircle } from 'lucide-react';
+import { Copy, Check, Clock, PencilLine, RotateCcw, XCircle } from 'lucide-react';
 import type { Message, ContentBlock, ToolUseContent, ToolResultContent } from '../types';
 import { ContentBlockView } from './message/ContentBlockView';
+import { DataObjectCards, extractDataObjects } from './message/DataObjectCards';
 
 interface MessageCardProps {
   message: Message;
   isStreaming?: boolean;
+  /** User message: load its text back into the composer. */
+  onEdit?: (text: string) => void;
+  /** User message: send the same text again as a new message. */
+  onResend?: (text: string) => void;
+  /** Assistant message (last of a turn): re-ask the preceding user message. */
+  onRegenerate?: () => void;
 }
 
-export const MessageCard = memo(function MessageCard({ message, isStreaming }: MessageCardProps) {
+export const MessageCard = memo(function MessageCard({
+  message,
+  isStreaming,
+  onEdit,
+  onResend,
+  onRegenerate,
+}: MessageCardProps) {
   const { t } = useTranslation();
   const isUser = message.role === 'user';
   const isQueued = message.localStatus === 'queued';
@@ -47,6 +60,19 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
       .filter((block) => block.type === 'text')
       .map((block) => (block as { type: 'text'; text: string }).text)
       .join('\n');
+
+  const hasText = getTextContent().trim().length > 0;
+  const dataObjects = useMemo(
+    () =>
+      isUser || isStreaming
+        ? []
+        : extractDataObjects(
+            contentBlocks
+              .filter((block) => block.type === 'text')
+              .map((block) => (block as { text: string }).text)
+          ),
+    [contentBlocks, isUser, isStreaming]
+  );
 
   const handleCopy = async () => {
     const text = getTextContent();
@@ -98,17 +124,27 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
               ))
             )}
           </div>
-          <button
-            onClick={handleCopy}
-            className="mt-1.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted opacity-0 transition-all hover:bg-surface-hover hover:text-text-primary group-hover:opacity-100"
-            title={t('messageCard.copyMessage')}
-          >
-            {copied ? (
-              <Check className="w-3 h-3 text-success" />
-            ) : (
-              <Copy className="w-3 h-3 text-text-muted" />
+          <div className="mt-1.5 flex flex-shrink-0 flex-col gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <MessageActionButton onClick={handleCopy} title={t('messageCard.copyMessage')}>
+              {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+            </MessageActionButton>
+            {onEdit && hasText && (
+              <MessageActionButton
+                onClick={() => onEdit(getTextContent())}
+                title={t('messageCard.editMessage')}
+              >
+                <PencilLine className="h-3 w-3" />
+              </MessageActionButton>
             )}
-          </button>
+            {onResend && hasText && (
+              <MessageActionButton
+                onClick={() => onResend(getTextContent())}
+                title={t('messageCard.resendMessage')}
+              >
+                <RotateCcw className="h-3 w-3" />
+              </MessageActionButton>
+            )}
+          </div>
         </div>
       ) : (
         // Assistant message — no bubble, direct content.
@@ -132,8 +168,51 @@ export const MessageCard = memo(function MessageCard({ message, isStreaming }: M
               />
             );
           })}
+          <DataObjectCards objects={dataObjects} />
+          {onRegenerate && !isStreaming && (
+            <div className="flex items-center gap-1 pt-1 text-xs text-text-muted">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 hover:bg-surface-hover hover:text-text-primary"
+              >
+                {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+                {t('messageCard.copy')}
+              </button>
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 hover:bg-surface-hover hover:text-text-primary"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {t('messageCard.regenerate')}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 });
+
+function MessageActionButton({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+    >
+      {children}
+    </button>
+  );
+}

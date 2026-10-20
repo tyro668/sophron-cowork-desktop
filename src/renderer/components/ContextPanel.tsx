@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { DATA_OBJECT_ICONS, extractDataObjects } from './message/DataObjectCards';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { resolveArtifactPath } from '../utils/artifact-path';
@@ -82,6 +83,20 @@ export function ContextPanel() {
     [activeSessionId, sessionStates]
   );
   const messageCount = messages.length;
+  const navigateToDataElement = useAppStore((state) => state.navigateToDataElement);
+  const sessionDataObjects = useMemo(
+    () =>
+      extractDataObjects(
+        messages
+          .filter((message) => message.role === 'assistant' && Array.isArray(message.content))
+          .flatMap((message) =>
+            (message.content as Array<{ type: string; text?: string }>)
+              .filter((block) => block.type === 'text' && typeof block.text === 'string')
+              .map((block) => block.text as string)
+          )
+      ),
+    [messages]
+  );
   const toolCallCount = steps.filter((s) => s.type === 'tool_call').length;
   const modelName = activeSession?.model || appConfig?.model || '—';
 
@@ -375,6 +390,31 @@ export function ContextPanel() {
           )}
         </button>
 
+        {artifactsOpen && sessionDataObjects.length > 0 && (
+          <div className="border-b border-border-subtle pb-1.5">
+            <div className="px-4 pb-1 text-[11px] text-text-muted">
+              {t('context.dataObjects', { count: sessionDataObjects.length })}
+            </div>
+            {sessionDataObjects.map((object) => {
+              const Icon = DATA_OBJECT_ICONS[object.kind];
+              return (
+                <button
+                  key={`${object.kind}:${object.id}`}
+                  type="button"
+                  onClick={() => navigateToDataElement({ kind: object.kind, id: object.id })}
+                  className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover"
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
+                  <span className="min-w-0 flex-1 truncate">{object.name}</span>
+                  <span className="shrink-0 text-[11px] text-text-muted">
+                    {t(`messageCard.dataObjectKind.${object.kind}`)}
+                  </span>
+                </button>
+              );
+            })}
+            <div className="px-4 pt-1 text-[11px] text-text-muted">{t('context.files')}</div>
+          </div>
+        )}
         {artifactsOpen && (
           <div className="pb-2 max-h-64 overflow-y-auto">
             {displayArtifacts.length === 0 ? (

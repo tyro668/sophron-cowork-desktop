@@ -846,6 +846,40 @@ export function ChatView() {
     }
   };
 
+  const canActOnMessages = Boolean(activeSessionId) && !activeTurn && !isSubmitting;
+  const editIntoComposer = useCallback((text: string) => {
+    setPrompt(text);
+    if (textareaRef.current) {
+      textareaRef.current.value = text;
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(text.length, text.length);
+      });
+    }
+  }, []);
+  const resendText = useCallback(
+    (text: string) => {
+      if (!activeSessionId || !text.trim()) return;
+      void continueSession(activeSessionId, [{ type: 'text', text: text.trim() }], {});
+    },
+    [activeSessionId, continueSession]
+  );
+  const findPreviousUserText = (index: number): string | null => {
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const candidate = displayedMessages[i];
+      if (candidate.role !== 'user') continue;
+      const content = candidate.content as unknown;
+      const text = Array.isArray(content)
+        ? (content as ContentBlock[])
+            .filter((block) => block.type === 'text')
+            .map((block) => (block as { text: string }).text)
+            .join('\n')
+        : String(content ?? '');
+      if (text.trim()) return text.trim();
+    }
+    return null;
+  };
+
   const messageElements = useMemo(
     () =>
       displayedMessages.map((message, index) => {
@@ -857,7 +891,21 @@ export function ChatView() {
             key={message.id}
             className={`chat-message-row ${index === 0 ? '' : startsTurn ? 'mt-6' : 'mt-3'}`}
           >
-            <MessageCard message={message} isStreaming={isPendingReply} />
+            <MessageCard
+              message={message}
+              isStreaming={isPendingReply}
+              onEdit={canActOnMessages && message.role === 'user' ? editIntoComposer : undefined}
+              onResend={canActOnMessages && message.role === 'user' ? resendText : undefined}
+              onRegenerate={
+                canActOnMessages &&
+                message.role === 'assistant' &&
+                !isPendingReply &&
+                displayedMessages[index + 1]?.role !== 'assistant' &&
+                findPreviousUserText(index)
+                  ? () => resendText(findPreviousUserText(index) ?? '')
+                  : undefined
+              }
+            />
             {isPendingReply && activeSessionId && activeTurn && (
               <TaskActivity
                 sessionId={activeSessionId}
@@ -870,8 +918,12 @@ export function ChatView() {
           </div>
         );
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       displayedMessages,
+      canActOnMessages,
+      editIntoComposer,
+      resendText,
       activeSessionId,
       activeTurn,
       partialMessage,
