@@ -164,7 +164,7 @@ export function RawTableEditorWorkbench({
   const [localConfig, setLocalConfig] = useState<DataRawTableConfig>(initialConfig);
 
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data'>('config');
+  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>('config');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Import / source-change failure, shown inline under the source row (B11).
@@ -878,7 +878,7 @@ export function RawTableEditorWorkbench({
         <Tabs
           value={activeViewTab}
           onValueChange={(value) => {
-            const next = value as 'config' | 'data';
+            const next = value as 'config' | 'data' | 'automation';
             setActiveViewTab(next);
             // previewData may currently hold a customize-draft preview — always
             // reload the raw source preview when entering the data tab.
@@ -1005,7 +1005,7 @@ export function RawTableEditorWorkbench({
                     />
                   </RawTableConfigRow>
                 </section>
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid gap-3">
                   <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
                     <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                       {t('data.rawTables.editor.sectionParsing')}
@@ -1039,19 +1039,6 @@ export function RawTableEditorWorkbench({
                       />
                     </RawTableConfigRow>
                   </section>
-                  {rawTable ? (
-                    <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
-                      <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
-                        {t('data.rawTables.editor.sectionLinkage')}
-                      </div>
-                      <RawTableAutomations
-                        key={rawTable.id}
-                        rawTable={rawTable}
-                        embedded
-                        Row={RawTableConfigRow}
-                      />
-                    </section>
-                  ) : null}
                 </div>
               </div>
             </div>
@@ -1619,6 +1606,26 @@ export function RawTableEditorWorkbench({
               headerHeight={34}
             />
           </TabsContent>
+          {rawTable ? (
+            <TabsContent
+              value="automation"
+              className="min-h-0 flex-1 overflow-y-auto bg-background-secondary"
+            >
+              <div className="px-6 py-4">
+                <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                  <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
+                    {t('data.rawTables.editor.sectionLinkage')}
+                  </div>
+                  <RawTableAutomations
+                    key={rawTable.id}
+                    rawTable={rawTable}
+                    embedded
+                    Row={RawTableConfigRow}
+                  />
+                </section>
+              </div>
+            </TabsContent>
+          ) : null}
           <div className={`${bottomTabBarClass} justify-between`}>
             <TabsList className={bottomTabListClass}>
               <TabsTrigger value="config" className={bottomTabTriggerClass}>
@@ -1627,6 +1634,11 @@ export function RawTableEditorWorkbench({
               <TabsTrigger value="data" className={bottomTabTriggerClass} disabled={!canPreview}>
                 {t('data.rawTables.editor.tabs.data')}
               </TabsTrigger>
+              {rawTable ? (
+                <TabsTrigger value="automation" className={bottomTabTriggerClass}>
+                  {t('data.rawTables.editor.tabs.automation')}
+                </TabsTrigger>
+              ) : null}
             </TabsList>
             <div className="flex items-center gap-2 px-4 text-xs text-text-muted">
               {activeViewTab === 'data' && previewData && rawTable && (

@@ -362,7 +362,8 @@
         },
         "tabs": {
           "config": "Configuration",
-          "data": "Data"
+          "data": "Data",
+          "automation": "Automation"
         },
         "sectionSource": "Data source",
         "sectionParsing": "Parsing",
@@ -489,7 +490,8 @@
         "dataMeta": "Data updated {{time}}",
         "tabs": {
           "data": "Data",
-          "config": "Configuration"
+          "config": "Configuration",
+          "automation": "Automation"
         },
         "dataLoading": "Loading data…",
         "dataEmpty": "No data in this result table yet"
