@@ -1088,7 +1088,13 @@
           "missingMethodHeader": "处理方式",
           "missingValueHeader": "值",
           "missingValueIncompleteField": "请完整填写缺失值处理规则",
-          "missingColListSeparator": "、"
+          "missingColListSeparator": "、",
+          "missingRulesLabel": "处理规则",
+          "missingNoValueNeeded": "无需填写",
+          "missingAddRule": "添加规则",
+          "missingFillRequired": "请填写填充值。",
+          "missingErrNumber": "「{{field}}」是数值字段，请输入有效数字。",
+          "missingErrBoolean": "「{{field}}」是布尔字段，请输入 true 或 false。"
         },
         "typeConvert": {
           "typeConvertIncompleteField": "请至少配置一个类型转换字段",

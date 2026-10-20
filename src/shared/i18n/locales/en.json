@@ -1088,7 +1088,13 @@
           "missingMethodHeader": "Method",
           "missingValueHeader": "Value",
           "missingValueIncompleteField": "Please complete the missing-value rules",
-          "missingColListSeparator": ", "
+          "missingColListSeparator": ", ",
+          "missingRulesLabel": "Rules",
+          "missingNoValueNeeded": "Not needed",
+          "missingAddRule": "Add rule",
+          "missingFillRequired": "Enter a fill value.",
+          "missingErrNumber": "\"{{field}}\" is numeric; enter a valid number.",
+          "missingErrBoolean": "\"{{field}}\" is boolean; enter true or false."
         },
         "typeConvert": {
           "typeConvertIncompleteField": "Please add at least one type conversion",
