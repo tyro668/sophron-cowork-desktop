@@ -435,3 +435,15 @@
 .opg-c.ctl > div > button[aria-haspopup='listbox'] {
   padding-left: 10px;
 }
+
+/* Formula editor panes: lists run flush to the column divider; the scrollbar
+   only takes space while the pointer is over the list. */
+.fx-list {
+  overflow-y: auto;
+  scrollbar-width: none;
+  overflow-anchor: none;
+}
+.fx-list:hover {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-muted) transparent;
+}

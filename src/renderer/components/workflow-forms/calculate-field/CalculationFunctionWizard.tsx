@@ -26,7 +26,6 @@ import {
 } from '../../../../shared/calculate-field/wizard-state';
 import { AlertCircle, Check } from 'lucide-react';
 import { useDragReorder } from '../../../hooks/useDragReorder';
-import { Button } from '../../ui/button';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from '../shared/GlassOptionMultiSelect';
@@ -39,7 +38,11 @@ interface CalculationFunctionWizardProps {
   fieldCompletions: string[];
   columnTypes?: Record<string, string>;
   initialInput?: CalculationFunctionInput;
-  onInsert: (expression: string) => void;
+  /** Formula currently in the editor (shown read-only at the top). */
+  currentExpression: string;
+  onInsertAtCursor: (expression: string) => void;
+  onReplace: (expression: string) => void;
+  footerOverride?: React.ReactNode;
   tr: (key: string, params?: Record<string, unknown>) => string;
 }
 
@@ -68,20 +71,14 @@ const BOUND_LABEL_KEYS: Record<CalculationFrameBoundType, string> = {
   'unbounded following': 'calcFieldUnboundedFoll',
 };
 
-type WizardStep = 'basic' | 'fields' | 'window' | 'preview';
-
-const WIZARD_STEP_LABEL_KEYS: Record<WizardStep, string> = {
-  basic: 'calcFieldBasicConfig',
-  fields: 'calcFieldFieldConfig',
-  window: 'calcFieldSpecialConfig',
-  preview: 'calcFieldExpressionPreview',
-};
-
 export function CalculationFunctionWizard({
   fieldCompletions,
   columnTypes,
   initialInput,
-  onInsert,
+  currentExpression,
+  onInsertAtCursor,
+  onReplace,
+  footerOverride,
   tr,
 }: CalculationFunctionWizardProps) {
   const initialDefinition = initialInput
@@ -117,7 +114,6 @@ export function CalculationFunctionWizard({
   const [frameExclude, setFrameExclude] = useState<CalculationWindowFrame['exclude']>(
     initialFrame?.exclude ?? 'no others'
   );
-  const [stepIndex, setStepIndex] = useState(0);
 
   const definitions = useMemo(() => calculationFunctionsByCategory(category), [category]);
   const definition = definitions.find((item) => item.id === functionId) ?? definitions[0];
@@ -285,7 +281,6 @@ export function CalculationFunctionWizard({
     setFunctionId(firstDefinition.id);
     setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
     setParameterValues(defaultCalculationParameterValues(firstDefinition.parameters));
-    setStepIndex(0);
   }
 
   function selectFunction(nextFunctionId: string): void {
@@ -293,7 +288,6 @@ export function CalculationFunctionWizard({
     setFunctionId(nextFunctionId);
     setExtraParameter(nextDefinition?.extraParameter?.defaultValue ?? '');
     setParameterValues(defaultCalculationParameterValues(nextDefinition?.parameters));
-    setStepIndex(0);
   }
 
   const allowsStar =
@@ -330,10 +324,6 @@ export function CalculationFunctionWizard({
   }
 
   const hasSpecialConfig = definition.frame === 'custom';
-  const hasBasicConfig =
-    definition.valueArgument !== 'none' ||
-    !!definition.extraParameter ||
-    (definition.parameters?.length ?? 0) > 0;
   // Column types load asynchronously; when unknown, don't filter every field out.
   const columnTypesKnown = columnTypes != null && Object.keys(columnTypes).length > 0;
   const temporalFields = columnTypesKnown
@@ -341,18 +331,10 @@ export function CalculationFunctionWizard({
     : fieldCompletions;
   const showNoTemporalFieldHint = columnTypesKnown && temporalFields.length === 0;
 
-  const steps = useMemo<WizardStep[]>(
-    () =>
-      hasSpecialConfig ? ['basic', 'fields', 'window', 'preview'] : ['basic', 'fields', 'preview'],
-    [hasSpecialConfig]
-  );
-  const currentStepIndex = Math.min(stepIndex, steps.length - 1);
-  const activeStep = steps[currentStepIndex];
-
   const basicRows = (
     <>
       {definition.valueArgument !== 'none' && (
-        <FormRow label={tr('expression.expressionFunctionArgument')}>
+        <FormRow label={tr('calcFieldValueLabel')} required>
           <FieldError error={fieldErrors.value}>
             <GlassFieldSingleSelect
               value={value}
@@ -443,7 +425,7 @@ export function CalculationFunctionWizard({
 
   const fieldRows = (
     <>
-      <FormRow label={tr('calcFieldPartitionBy')}>
+      <FormRow label={tr('calcFieldPartitionBy')} variant="chips">
         <GlassOptionMultiSelect
           options={fieldCompletions}
           selected={partitionBy}
@@ -455,7 +437,7 @@ export function CalculationFunctionWizard({
         />
       </FormRow>
 
-      <FormRow label={tr('calcFieldOrderBy')}>
+      <FormRow label={tr('calcFieldOrderBy')} variant="text">
         <FieldError error={fieldErrors.order}>
           {definition.order === 'required' ? (
             <GlassRowList
@@ -519,236 +501,236 @@ export function CalculationFunctionWizard({
               dragTitle={tr('rowList.dragToReorder')}
             />
           ) : (
-            <div className="rounded-md bg-surface px-3 py-2 text-[11px] text-text-muted">
-              {tr('calcFieldOrderNotRequired')}
-            </div>
+            <span className="text-[12.5px] text-text-muted">{tr('calcFieldOrderNotRequired')}</span>
           )}
         </FieldError>
       </FormRow>
     </>
   );
 
+  const listRow =
+    'flex h-8 w-full shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  const paneHeader =
+    'flex h-[30px] shrink-0 items-center border-b border-border-subtle bg-background-secondary px-3 text-[11.5px] font-medium text-text-muted';
+  const cellBorder = 'border-b border-border-subtle';
+
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border-muted/60">
-      <div className="flex w-[17.5rem] shrink-0 border-r border-border-muted/60">
+    <>
+      <div
+        key="wiz-current-label"
+        className={`flex items-center bg-background-secondary px-3 text-[12px] font-medium text-text-secondary ${cellBorder} border-r`}
+      >
+        {tr('calcFieldCurrentFormula')}
+      </div>
+      <div
+        key="wiz-current"
+        style={{ gridColumn: 'span 6' }}
+        className={`flex min-w-0 items-center px-3 ${cellBorder}`}
+      >
+        {currentExpression.trim() ? (
+          <FormulaText text={currentExpression} />
+        ) : (
+          <span className="text-[12.5px] text-text-muted">
+            {tr('calcFieldCurrentFormulaEmpty')}
+          </span>
+        )}
+      </div>
+
+      <div
+        key="wiz-categories"
+        className={`flex min-h-0 flex-col border-r border-border-subtle ${cellBorder}`}
+      >
+        <div className={paneHeader}>{tr('calcFieldCategoryHeader')}</div>
         <div
           role="listbox"
-          aria-label={tr('calcFieldOpenWizard')}
-          className="scrollbar-hover w-28 shrink-0 overflow-y-auto border-r border-border-muted/60 py-1.5"
+          aria-label={tr('calcFieldCategoryHeader')}
+          className="fx-list min-h-0 flex-1"
         >
           {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
             <button
               key={item}
               type="button"
+              role="option"
+              aria-selected={item === category}
               onClick={() => selectCategory(item)}
-              className={`flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors ${
+              className={`${listRow} ${
                 item === category
-                  ? 'bg-accent-muted font-medium text-accent'
-                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                  ? 'bg-accent-muted text-accent'
+                  : 'text-text-primary hover:bg-surface-hover'
               }`}
             >
               {tr(CATEGORY_LABEL_KEYS[item])}
             </button>
           ))}
         </div>
-        <div className="scrollbar-hover min-w-0 flex-1 overflow-y-auto p-2">
-          <div className="flex flex-col gap-1.5">
-            {definitions.map((item) => {
-              const selected = item.id === definition.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => selectFunction(item.id)}
-                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[12px] transition-colors ${
-                    selected
-                      ? 'border-accent/40 bg-accent-muted font-medium text-accent'
-                      : 'border-border-muted/60 bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted/50 hover:text-text-primary'
-                  }`}
-                >
-                  <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
-                  {selected && <Check className="h-3.5 w-3.5 shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
+      </div>
+      <div
+        key="wiz-functions"
+        className={`flex min-h-0 flex-col border-r border-border-subtle ${cellBorder}`}
+      >
+        <div className={paneHeader}>{tr('calcFieldFunctionHeader')}</div>
+        <div
+          role="listbox"
+          aria-label={tr('calcFieldFunctionHeader')}
+          className="fx-list min-h-0 flex-1"
+        >
+          {definitions.map((item) => {
+            const selected = item.id === definition.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => selectFunction(item.id)}
+                className={`${listRow} ${
+                  selected
+                    ? 'bg-accent-muted text-accent'
+                    : 'text-text-primary hover:bg-surface-hover'
+                }`}
+              >
+                <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
+                {selected && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div
+        key="wiz-params"
+        style={{ gridColumn: 'span 5' }}
+        className={`flex min-h-0 flex-col ${cellBorder}`}
+      >
+        <div className={paneHeader}>{tr('calcFieldParamsHeader')}</div>
+        <div className="opg fx-list min-h-0 flex-1 grid-cols-[104px_minmax(0,1fr)]">
+          {basicRows}
+          {fieldRows}
+          {hasSpecialConfig && (
+            <FrameEditor
+              frameType={frameType}
+              setFrameType={setFrameType}
+              startType={frameStartType}
+              setStartType={setFrameStartType}
+              startOffset={frameStartOffset}
+              setStartOffset={setFrameStartOffset}
+              startUnit={frameStartUnit}
+              setStartUnit={setFrameStartUnit}
+              endType={frameEndType}
+              setEndType={setFrameEndType}
+              endOffset={frameEndOffset}
+              setEndOffset={setFrameEndOffset}
+              endUnit={frameEndUnit}
+              setEndUnit={setFrameEndUnit}
+              exclude={frameExclude}
+              setExclude={setFrameExclude}
+              usesTemporalRangeUnit={usesTemporalRangeUnit}
+              tr={tr}
+            />
+          )}
+          <FormRow label={tr('calcFieldGeneratedFormula')} variant="text">
+            {preview.expression ? (
+              <FormulaText text={preview.expression} />
+            ) : (
+              <span className="text-[12.5px] text-error">
+                {preview.error || tr('calcFieldGeneratedFormulaIncomplete')}
+              </span>
+            )}
+          </FormRow>
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto">
-          {!hasSpecialConfig && (
-            <section className="flex flex-col gap-3 px-4 py-3">
-              {basicRows}
-              {hasBasicConfig && <div className="border-t border-border-muted/60" />}
-              {fieldRows}
-            </section>
-          )}
-          {hasSpecialConfig && activeStep === 'basic' && (
-            <section className="flex max-w-[34rem] flex-col gap-3 px-4 py-3">{basicRows}</section>
-          )}
-
-          {hasSpecialConfig && activeStep === 'fields' && (
-            <section className="flex min-w-0 flex-col gap-4 px-4 py-3">{fieldRows}</section>
-          )}
-
-          {hasSpecialConfig && activeStep === 'window' && (
-            <section className="flex max-w-[34rem] flex-col gap-3 px-4 py-3">
-              <FrameEditor
-                frameType={frameType}
-                setFrameType={setFrameType}
-                startType={frameStartType}
-                setStartType={setFrameStartType}
-                startOffset={frameStartOffset}
-                setStartOffset={setFrameStartOffset}
-                startUnit={frameStartUnit}
-                setStartUnit={setFrameStartUnit}
-                endType={frameEndType}
-                setEndType={setFrameEndType}
-                endOffset={frameEndOffset}
-                setEndOffset={setFrameEndOffset}
-                endUnit={frameEndUnit}
-                setEndUnit={setFrameEndUnit}
-                exclude={frameExclude}
-                setExclude={setFrameExclude}
-                usesTemporalRangeUnit={usesTemporalRangeUnit}
-                tr={tr}
-              />
-            </section>
-          )}
-
-          {hasSpecialConfig && activeStep === 'preview' && (
-            <section className="flex h-full flex-col p-4">
-              <pre
-                className={`scrollbar-hover min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-surface p-3 font-mono text-[12px] leading-6 ${
-                  preview.error ? 'text-error' : 'text-text-secondary'
-                }`}
-              >
-                {preview.error || preview.expression}
-              </pre>
-            </section>
-          )}
-        </div>
-
-        {!hasSpecialConfig ? (
-          <div className="flex items-end gap-3 border-t border-border-muted/60 bg-surface px-3 py-2">
-            <div className="min-w-0 flex-1">
-              <div className="mb-1 text-[10px] font-medium text-text-muted">
-                {tr('calcFieldExpressionPreview')}
-              </div>
-              <pre
-                className={`scrollbar-hover max-h-20 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 ${
-                  preview.error ? 'text-error' : 'text-text-secondary'
-                }`}
-              >
-                {preview.error || preview.expression}
-              </pre>
-            </div>
-            <button
-              type="button"
-              disabled={!preview.expression}
-              onClick={() => onInsert(preview.expression)}
-              className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {tr('calcFieldInsertExpression')}
-            </button>
+      {footerOverride ?? (
+        <>
+          <div
+            key="wiz-hint"
+            style={{ gridColumn: 'span 4' }}
+            className="flex items-center px-3 text-[12px] text-text-muted"
+          >
+            {tr('calcFieldWizardFooterHint')}
           </div>
-        ) : (
-          <div className="flex items-center justify-between gap-2 border-t border-border-muted/60 bg-surface px-3 py-2">
-            <div className="flex min-w-0 items-center" role="list">
-              {steps.map((step, index) => (
-                <WizardStepArrow
-                  key={step}
-                  index={index}
-                  label={tr(WIZARD_STEP_LABEL_KEYS[step])}
-                  active={index === currentStepIndex}
-                  first={index === 0}
-                  last={index === steps.length - 1}
-                  onClick={() => setStepIndex(index)}
-                />
-              ))}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {currentStepIndex > 0 && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setStepIndex(currentStepIndex - 1)}
-                >
-                  {tr('calcFieldStepPrev')}
-                </Button>
-              )}
-              {activeStep === 'preview' ? (
-                <button
-                  type="button"
-                  disabled={!preview.expression}
-                  onClick={() => onInsert(preview.expression)}
-                  className="h-8 shrink-0 rounded-md bg-accent px-3 text-[12px] text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {tr('calcFieldInsertExpression')}
-                </button>
-              ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="border-accent/30 text-accent"
-                  onClick={() => setStepIndex(currentStepIndex + 1)}
-                >
-                  {tr('calcFieldStepNext')}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          <button
+            key="wiz-insert"
+            type="button"
+            disabled={!preview.expression}
+            onClick={() => onInsertAtCursor(preview.expression)}
+            className="flex items-center justify-center border-l border-border-subtle bg-surface text-[12.5px] font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {tr('calcFieldInsertAtCursor')}
+          </button>
+          <button
+            key="wiz-replace"
+            type="button"
+            disabled={!preview.expression}
+            onClick={() => onReplace(preview.expression)}
+            style={{ gridColumn: 'span 2' }}
+            className="flex items-center justify-center bg-accent text-[12.5px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {tr('calcFieldReplaceFormula')}
+          </button>
+        </>
+      )}
+    </>
   );
 }
 
-function WizardStepArrow({
+/** Read-only formula with the editor's token palette. */
+function FormulaText({ text }: { text: string }) {
+  const parts = text.split(/(\[[^\]]*\]|'[^']*'|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+(?:\.\d+)?)/g);
+  return (
+    <code
+      className="min-w-0 truncate whitespace-pre font-mono text-[12.5px] text-text-primary"
+      title={text}
+    >
+      {parts.map((part, i) => {
+        if (!part) return null;
+        let cls = '';
+        if (part.startsWith('[')) cls = 'text-[#2563eb]';
+        else if (part.startsWith("'")) cls = 'text-[#b45309]';
+        else if (/^\d/.test(part)) cls = 'text-[#7c3aed]';
+        else if (/^[A-Za-z_]/.test(part)) {
+          const next = text.slice(parts.slice(0, i + 1).join('').length).trimStart();
+          cls = next.startsWith('(')
+            ? 'font-semibold text-[#7c3aed]'
+            : 'font-semibold text-[#1e1b4b]';
+        }
+        return (
+          <span key={i} className={cls}>
+            {part}
+          </span>
+        );
+      })}
+    </code>
+  );
+}
+
+/** One flush parameter row on the shared operator grid: 104px label + cell. */
+function FormRow({
   label,
-  index,
-  active,
-  first,
-  last,
-  onClick,
+  required,
+  variant = 'ctl',
+  error,
+  children,
 }: {
   label: string;
-  index: number;
-  active: boolean;
-  first: boolean;
-  last: boolean;
-  onClick: () => void;
+  required?: boolean;
+  variant?: 'ctl' | 'chips' | 'text';
+  error?: boolean;
+  children: React.ReactNode;
 }) {
-  const clipPath = last
-    ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 10px 50%)'
-    : first
-      ? 'polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%)'
-      : 'polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%, 10px 50%)';
+  const cellClass =
+    variant === 'text'
+      ? 'opg-c wrap py-1.5'
+      : `opg-c ctl${variant === 'chips' ? ' chips' : ''}${error ? ' err' : ''}`;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{ clipPath }}
-      className={`flex h-7 shrink-0 items-center text-[11px] font-medium transition-colors ${
-        first ? 'pl-3' : 'pl-4'
-      } ${last ? 'pr-3' : 'pr-5'} ${
-        active
-          ? 'bg-accent text-accent-foreground'
-          : 'bg-surface-active/60 text-text-muted hover:text-text-secondary'
-      }`}
-    >
-      {index + 1} {label}
-    </button>
-  );
-}
-
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[7rem_minmax(0,1fr)] items-start gap-x-4">
-      <div className="pt-[7px] text-[12px] font-medium text-text-secondary">{label}</div>
-      <div className="min-w-0">{children}</div>
-    </div>
+    <>
+      <div className="opg-c lab" style={{ minHeight: 44 }}>
+        <span className="truncate">{label}</span>
+        {required && <span className="req">*</span>}
+      </div>
+      <div className={cellClass} style={{ minHeight: 44 }}>
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -772,13 +754,14 @@ function FieldError({ error, children }: { error?: string; children: React.React
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="min-w-0 flex-1">{children}</div>
+    <>
+      {children}
       {error && (
         <>
           <span
             ref={iconRef}
-            className="inline-flex shrink-0"
+            style={{ flex: '0 0 32px' }}
+            className="inline-flex items-center justify-center"
             onMouseEnter={showTooltip}
             onMouseLeave={() => setTooltipStyle(null)}
           >
@@ -801,7 +784,7 @@ function FieldError({ error, children }: { error?: string; children: React.React
             )}
         </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -903,7 +886,7 @@ interface BoundEditorProps {
 function BoundEditor(props: BoundEditorProps) {
   const needsOffset = props.type === 'preceding' || props.type === 'following';
   return (
-    <FormRow label={props.label}>
+    <FormRow label={props.label} variant="text">
       <div className="flex gap-2">
         <GlassOptionSingleSelect
           value={props.type}
