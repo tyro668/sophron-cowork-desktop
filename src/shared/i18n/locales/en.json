@@ -1633,6 +1633,10 @@
     "pipelineNameFromTable": "{{name}} pipeline",
     "pipelines": {
       "selection": "Select data pipeline"
+    },
+    "preview": {
+      "loadFailed": "Failed to load data",
+      "retry": "Retry"
     }
   },
   "settings": {

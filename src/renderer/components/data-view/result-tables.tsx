@@ -1029,10 +1029,13 @@ export function ResultTableEditor({
             error={previewError}
             currentPage={previewPage}
             onPageChange={(page) => void loadPreview(page)}
+            onRetry={() => void loadPreview(previewPage)}
             labels={{
               loading: t('data.resultTables.editor.dataLoading'),
               empty: t('data.resultTables.editor.dataEmpty'),
               total: (count) => t('data.workflow.nodeDataTotal', { count }),
+              errorTitle: t('data.preview.loadFailed'),
+              retry: t('data.preview.retry'),
               pageSize: (count) => t('data.workflow.nodeDataPageSize', { count }),
             }}
             edgeToEdge

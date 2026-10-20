@@ -1,3 +1,5 @@
+import { InlineBanner } from './ui/inline-banner';
+import { Button } from './ui/button';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import DataEditor, {
   GridCellKind,
@@ -10,7 +12,7 @@ import DataEditor, {
   type Theme,
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import type { DataRawTablePreview } from '../types';
 import {
   isNumericDataFieldType,
@@ -26,6 +28,8 @@ interface GlassDataGridPreviewLabels {
   empty: string;
   total: (count: number) => string;
   pageSize: (count: number) => string;
+  errorTitle?: string;
+  retry?: string;
 }
 
 export interface GlassDataGridPreviewProps {
@@ -41,6 +45,7 @@ export interface GlassDataGridPreviewProps {
   edgeToEdge?: boolean;
   footerLeading?: ReactNode;
   footerTrailing?: ReactNode;
+  onRetry?: () => void;
 }
 
 export function GlassDataGridPreview({
@@ -56,22 +61,44 @@ export function GlassDataGridPreview({
   edgeToEdge = false,
   footerLeading,
   footerTrailing,
+  onRetry,
 }: GlassDataGridPreviewProps) {
   const theme = useGlassDataGridTheme();
   const columns = preview?.columns ?? EMPTY_COLUMNS;
+  const [sort, setSort] = useState<{ column: string; dir: 'asc' | 'desc' } | null>(null);
+  // Avoid skeleton flicker for fast loads (< 300ms).
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      setShowSkeleton(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowSkeleton(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [isLoading]);
   const columnTypeByName = useMemo(
     () => new Map((preview?.columnTypes ?? []).map((column) => [column.name, column])),
     [preview?.columnTypes]
   );
-  const rows = preview?.rows ?? EMPTY_ROWS;
+  const rawRows = preview?.rows ?? EMPTY_ROWS;
+  const rows = useMemo(() => {
+    if (!sort || !columns.includes(sort.column)) return rawRows;
+    const factor = sort.dir === 'asc' ? 1 : -1;
+    return [...rawRows].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
+  }, [rawRows, sort, columns]);
   const totalRows = preview?.totalRows ?? 0;
   const pageSize = preview?.limit ?? rows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize || 1)));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
   const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
   const gridColumns = useMemo(
-    () => buildGridColumns(columns, rows, columnTypeByName),
-    [columns, rows, columnTypeByName]
+    () =>
+      buildGridColumns(columns, rawRows, columnTypeByName).map((column) =>
+        sort && column.id === sort.column
+          ? { ...column, title: `${column.title} ${sort.dir === 'asc' ? '↑' : '↓'}` }
+          : column
+      ),
+    [columns, rawRows, columnTypeByName, sort]
   );
   const hasColumns = columns.length > 0;
   const getCellContent = useMemo(() => {
@@ -89,9 +116,25 @@ export function GlassDataGridPreview({
     <div className={containerClassName}>
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {isLoading ? (
-          <PreviewState label={labels.loading} kind="loading" />
+          showSkeleton ? (
+            <GridSkeleton columns={Math.max(4, Math.min(columns.length || 6, 10))} />
+          ) : null
         ) : error ? (
-          <PreviewState label={error} kind="error" />
+          <div className="p-4">
+            <InlineBanner
+              tone="error"
+              title={labels.errorTitle ?? error}
+              description={labels.errorTitle ? error : undefined}
+              actions={
+                onRetry ? (
+                  <Button size="sm" variant="secondary" onClick={onRetry}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    {labels.retry ?? 'Retry'}
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
         ) : !hasColumns ? (
           <PreviewState label={labels.empty} kind="empty" />
         ) : (
@@ -125,6 +168,17 @@ export function GlassDataGridPreview({
             theme={theme}
             headerIcons={DATA_FIELD_HEADER_ICONS}
             drawHeader={drawStaticHeader}
+            onHeaderClicked={(col) => {
+              const column = columns[col];
+              if (!column) return;
+              setSort((current) =>
+                current?.column !== column
+                  ? { column, dir: 'asc' }
+                  : current.dir === 'asc'
+                    ? { column, dir: 'desc' }
+                    : null
+              );
+            }}
             onPaste={false}
             keybindings={{ paste: false, delete: false }}
           />
@@ -183,6 +237,42 @@ export function GlassDataGridPreview({
           {footerTrailing}
         </div>
       </div>
+    </div>
+  );
+}
+
+function compareCells(a: unknown, b: unknown): number {
+  const aEmpty = a === null || a === undefined || a === '';
+  const bEmpty = b === null || b === undefined || b === '';
+  if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+  const an = typeof a === 'number' ? a : Number(a);
+  const bn = typeof b === 'number' ? b : Number(b);
+  if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+  return String(a).localeCompare(String(b), 'zh-CN');
+}
+
+function GridSkeleton({ columns }: { columns: number }) {
+  return (
+    <div className="h-full overflow-hidden" aria-busy="true">
+      <div className="flex h-9 items-center gap-4 border-b border-border-muted bg-[var(--data-grid-header-surface)] px-4">
+        {Array.from({ length: columns }, (_, index) => (
+          <span key={index} className="h-2.5 flex-1 rounded bg-surface-active" />
+        ))}
+      </div>
+      {Array.from({ length: 16 }, (_, row) => (
+        <div
+          key={row}
+          className="flex h-[34px] items-center gap-4 border-b border-border-subtle px-4"
+        >
+          {Array.from({ length: columns }, (_, index) => (
+            <span
+              key={index}
+              className="h-2.5 flex-1 animate-pulse rounded bg-surface-active"
+              style={{ maxWidth: `${55 + ((row * 7 + index * 13) % 40)}%` }}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
