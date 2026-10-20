@@ -11,3 +11,5 @@ export const DEDUPE_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr) 80px 80p
 export const EXPECT_GRID_COLUMNS = '104px 120px 120px 120px minmax(200px,1fr) 56px';
 export const MISSING_VALUE_GRID_COLUMNS =
   '104px 120px 120px minmax(180px,1fr) minmax(200px,1.2fr) 112px';
+export const TYPE_CONVERT_GRID_COLUMNS =
+  'minmax(180px,1fr) 150px minmax(180px,1fr) 84px 84px 84px 112px';

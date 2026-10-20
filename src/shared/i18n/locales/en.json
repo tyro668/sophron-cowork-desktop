@@ -1112,7 +1112,8 @@
           "typeConvertAutoParse": "Auto parse",
           "typeConvertAutoParseHint": "Automatically detect common date and datetime formats",
           "typeConvertFormatExample": "Example: {{example}}",
-          "typeConvertScaleOption": "Keep {{n}} places"
+          "typeConvertScaleOption": "Keep {{n}} places",
+          "typeConvertOnFailure": "On failure"
         },
         "fieldSelect": {
           "fieldSelectMustSelectField": "Select at least one field",
