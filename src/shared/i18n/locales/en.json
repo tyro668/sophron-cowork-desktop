@@ -1341,7 +1341,14 @@
           "calcFieldGeneratedFormulaIncomplete": "Complete the parameters above",
           "calcFieldWizardFooterHint": "Returns to the function list after generating; keep editing there",
           "calcFieldInsertAtCursor": "Insert at cursor",
-          "calcFieldReplaceFormula": "Replace formula"
+          "calcFieldReplaceFormula": "Replace formula",
+          "calcFieldAddRow": "Add calculation",
+          "calcFieldRemoveRow": "Remove calculation",
+          "calcFieldDuplicateTarget": "target field \"{{field}}\" duplicates row {{row}}",
+          "calcFieldUpstreamConflict": "new field \"{{field}}\" already exists upstream; rename it or choose Replace",
+          "calcFieldFormulaIssues": "the formula has {{count}} issue(s); open the editor to see them",
+          "calcFieldMessageSeparator": "; ",
+          "calcFieldMessageEnd": "."
         },
         "expression": {
           "aggregateExpressionEditor": "Formula editor",

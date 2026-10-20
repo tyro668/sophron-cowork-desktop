@@ -1,43 +1,27 @@
 import { createElement, type ComponentProps } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { describe, expect, it, vi } from 'vitest';
 import type { CalculationRow } from '../../src/shared/calculate-field';
-
-interface CapturedRowListProps {
-  items: CalculationRow[];
-  getKey?: (item: CalculationRow, index: number) => string;
-  canAct?: (action: 'add' | 'copy' | 'remove', index: number) => boolean;
-}
-
-const captured = vi.hoisted(() => ({ rowListProps: null as CapturedRowListProps | null }));
-
-vi.mock('../../src/renderer/components/workflow-forms/shared/GlassRowList', async () => {
-  const React = await import('react');
-  return {
-    GlassRowList: (props: CapturedRowListProps) => {
-      captured.rowListProps = props;
-      return React.createElement('div');
-    },
-  };
-});
 
 vi.mock('../../src/renderer/hooks/useUpdateConfig', () => ({
   useUpdateConfig: () => () => undefined,
 }));
-
 vi.mock('../../src/renderer/hooks/useFormTranslation', () => ({
   useFormTranslation: () => (key: string) => key,
 }));
-
 vi.mock('../../src/renderer/hooks/useWorkflowNodeColumnTypes', () => ({
   useWorkflowNodeColumnTypes: () => ({}),
 }));
 
-import FormCalculateField from '../../src/renderer/components/workflow-forms/FormCalculateField';
+import FormCalculateField, {
+  validateCalculationRows,
+} from '../../src/renderer/components/workflow-forms/FormCalculateField';
 
 type FormProps = ComponentProps<typeof FormCalculateField>;
 
-function renderForm(calculations: CalculationRow[]): CapturedRowListProps {
+function renderForm(calculations: CalculationRow[]): string {
   const props = {
     node: { config: { calculations } },
     fieldCompletions: ['amount', 'tax'],
@@ -45,30 +29,21 @@ function renderForm(calculations: CalculationRow[]): CapturedRowListProps {
     pipelineId: 'pipeline-1',
     onNodeChange: () => undefined,
   } as unknown as FormProps;
-
-  renderToStaticMarkup(createElement(FormCalculateField, props));
-
-  if (!captured.rowListProps) throw new Error('FormCalculateField did not render GlassRowList');
-  return captured.rowListProps;
+  return renderToStaticMarkup(createElement(FormCalculateField, props));
 }
 
-describe('FormCalculateField row identity', () => {
-  beforeEach(() => {
-    captured.rowListProps = null;
-  });
-
-  it('keeps the surviving expression row key stable after the preceding row is removed', () => {
-    const first = { id: 'calc-a', field: 'a', expression: '[amount]', action: 'add' } as const;
-    const second = { id: 'calc-b', field: 'b', expression: '[tax]', action: 'add' } as const;
-
-    const beforeRemoval = renderForm([first, second]);
-    const keyBeforeRemoval = beforeRemoval.getKey?.(beforeRemoval.items[1], 1);
-
-    const afterRemoval = renderForm([second]);
-    const keyAfterRemoval = afterRemoval.getKey?.(afterRemoval.items[0], 0);
-
-    expect(keyBeforeRemoval).toBe('calc-b');
-    expect(keyAfterRemoval).toBe('calc-b');
+describe('FormCalculateField grid rows', () => {
+  it('keys grid rows by the persisted calculation id', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../src/renderer/components/workflow-forms/FormCalculateField.tsx'),
+      'utf8'
+    );
+    expect(source).toContain('<Fragment key={calculation.id}>');
+    const html = renderForm([
+      { id: 'calc-b', field: 'b', expression: '[tax]', action: 'add' } as CalculationRow,
+    ]);
+    expect(html).toContain('calculate-field-row-0');
+    expect(html).not.toContain('calculate-field-row-1');
   });
 
   it('disables add and copy actions after reaching the schema row limit', () => {
@@ -78,11 +53,31 @@ describe('FormCalculateField row identity', () => {
       expression: String(index),
       action: 'add' as const,
     }));
+    const html = renderForm(rows as CalculationRow[]);
+    // The trailing AddRow is disabled once the limit is reached.
+    expect(html).toMatch(/<button[^>]*class="opg-c add"[^>]*disabled=""/);
+  });
+});
 
-    const rowList = renderForm(rows);
-
-    expect(rowList.canAct?.('add', 0)).toBe(false);
-    expect(rowList.canAct?.('copy', 0)).toBe(false);
-    expect(rowList.canAct?.('remove', 0)).toBe(true);
+describe('validateCalculationRows', () => {
+  it('flags duplicate targets, upstream conflicts and formula issues', () => {
+    const issues = validateCalculationRows(
+      [
+        { field: 'double', expression: '[amount] * 2', action: 'add' },
+        { field: 'tax', expression: 'round([tax], 2)', action: 'replace' },
+        { field: 'double', expression: '[missing] * (', action: 'add' },
+        { field: 'amount', expression: '[double] + 1', action: 'add' },
+      ],
+      ['amount', 'tax']
+    );
+    expect(issues[0]).toEqual({
+      duplicateOf: undefined,
+      upstreamConflict: false,
+      formulaIssues: 0,
+    });
+    expect(issues[1].upstreamConflict).toBe(false);
+    expect(issues[2]).toMatchObject({ duplicateOf: 0, formulaIssues: 2 });
+    // Earlier rows' new fields are known to later formulas.
+    expect(issues[3]).toMatchObject({ upstreamConflict: true, formulaIssues: 0 });
   });
 });
