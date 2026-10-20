@@ -7,7 +7,7 @@ import {
   Wifi,
   AlertCircle,
   Globe,
-  ChevronRight,
+  Keyboard,
   BrainCircuit,
   Database,
 } from 'lucide-react';
@@ -22,6 +22,7 @@ import { SettingsGeneral } from './settings/SettingsGeneral';
 import { SettingsLogs } from './settings/SettingsLogs';
 import { SettingsMemory } from './settings/SettingsMemory';
 import { SettingsPersonalAnalysis } from './settings/SettingsPersonalAnalysis';
+import { SettingsShortcuts } from './settings/SettingsShortcuts';
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -33,7 +34,8 @@ interface SettingsPanelProps {
     | 'personal-analysis'
     | 'remote'
     | 'logs'
-    | 'general';
+    | 'general'
+    | 'shortcuts';
 }
 
 type TabId =
@@ -44,7 +46,8 @@ type TabId =
   | 'personal-analysis'
   | 'remote'
   | 'logs'
-  | 'general';
+  | 'general'
+  | 'shortcuts';
 
 const VALID_TABS = new Set<TabId>([
   'api',
@@ -55,6 +58,7 @@ const VALID_TABS = new Set<TabId>([
   'remote',
   'logs',
   'general',
+  'shortcuts',
 ]);
 
 export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProps) {
@@ -85,47 +89,67 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
     setViewedTabs((prev) => (prev.has(activeTab) ? prev : new Set([...prev, activeTab])));
   }, [activeTab]);
 
-  const tabs = [
+  const tabs: Array<{ id: TabId; label: string; icon: typeof Settings; group: string }> = [
     {
       id: 'api' as TabId,
+      group: 'models',
       label: t('settings.apiSettings'),
       icon: Settings,
     },
     {
       id: 'sandbox' as TabId,
+      group: 'models',
       label: t('settings.sandbox'),
       icon: Shield,
     },
     {
       id: 'connectors' as TabId,
+      group: 'models',
       label: t('settings.connectors'),
       icon: Plug,
     },
     {
       id: 'memory' as TabId,
+      group: 'data',
       label: t('settings.memory'),
       icon: BrainCircuit,
     },
     {
       id: 'personal-analysis' as TabId,
+      group: 'data',
       label: t('settings.personalAnalysis', 'Cloud Space'),
       icon: Database,
     },
     {
       id: 'remote' as TabId,
+      group: 'collab',
       label: t('settings.remote', '远程控制'),
       icon: Wifi,
     },
     {
       id: 'logs' as TabId,
+      group: 'app',
       label: t('settings.logs'),
       icon: AlertCircle,
     },
     {
       id: 'general' as TabId,
+      group: 'app',
       label: t('settings.general'),
       icon: Globe,
     },
+    {
+      id: 'shortcuts' as TabId,
+      group: 'app',
+      label: t('settings.shortcuts'),
+      icon: Keyboard,
+    },
+  ];
+  const tabGroups = [
+    { id: 'models', label: t('settings.groups.models') },
+    { id: 'data', label: t('settings.groups.data') },
+    { id: 'collab', label: t('settings.groups.collab') },
+    { id: 'app', label: t('settings.groups.app') },
   ];
 
   return (
@@ -143,32 +167,38 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         <div
-          className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-60'} ml-2 mr-0 mt-3 mb-2 rounded-2xl border border-border-subtle bg-surface flex flex-col flex-shrink-0 shadow-card`}
+          className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-56'} flex flex-shrink-0 flex-col border-r border-border-subtle bg-background-secondary`}
         >
           <div
-            className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'p-1.5 space-y-1' : 'p-3 space-y-1.5'}`}
+            className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'space-y-1 p-1.5' : 'p-3'}`}
           >
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                title={compactSidebar ? tab.label : undefined}
-                className={`w-full flex items-center ${compactSidebar ? 'justify-center p-2.5' : 'gap-3 px-3.5 py-3'} rounded-lg text-left transition-colors active:scale-[0.98] ${
-                  activeTab === tab.id
-                    ? 'bg-accent-muted text-text-primary font-medium shadow-soft'
-                    : 'hover:bg-surface-hover text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                <tab.icon className="w-4.5 h-4.5 flex-shrink-0" />
+            {tabGroups.map((group) => (
+              <div key={group.id} className={compactSidebar ? 'space-y-1' : 'space-y-0.5 pb-2'}>
                 {!compactSidebar && (
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{tab.label}</p>
+                  <div className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    {group.label}
                   </div>
                 )}
-                {!compactSidebar && activeTab === tab.id && (
-                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
-                )}
-              </button>
+                {tabs
+                  .filter((tab) => tab.group === group.id)
+                  .map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      title={compactSidebar ? tab.label : undefined}
+                      className={`flex w-full items-center ${compactSidebar ? 'justify-center p-2.5' : 'h-9 gap-2.5 px-3'} rounded-lg text-left transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-surface-active font-medium text-accent'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      }`}
+                    >
+                      <tab.icon className="h-4 w-4 flex-shrink-0" />
+                      {!compactSidebar && (
+                        <span className="min-w-0 flex-1 truncate text-[13px]">{tab.label}</span>
+                      )}
+                    </button>
+                  ))}
+              </div>
             ))}
           </div>
         </div>
@@ -209,6 +239,9 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 </div>
                 <div className={activeTab === 'general' ? '' : 'hidden'}>
                   {viewedTabs.has('general') && <SettingsGeneral />}
+                </div>
+                <div className={activeTab === 'shortcuts' ? '' : 'hidden'}>
+                  {viewedTabs.has('shortcuts') && <SettingsShortcuts />}
                 </div>
               </div>
             </div>
