@@ -367,7 +367,8 @@
         "sectionSource": "Data source",
         "sectionParsing": "Parsing",
         "sectionLinkage": "Linkage",
-        "sectionParsingDetail": "Parsing details"
+        "sectionParsingDetail": "Parsing details",
+        "importFailedInline": "Can't import: "
       },
       "status": {
         "available": "Available",

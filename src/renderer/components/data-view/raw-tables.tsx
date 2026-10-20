@@ -534,13 +534,13 @@ export function RawTableEditor({
     sourceKind: DataRawTableSourceKind,
     config: DataRawTableConfig,
     name?: string
-  ) => void | Promise<void>;
+  ) => void | Promise<void | string | null>;
   onChooseRawTableSource?: (
     rawTable: DataRawTable,
     sourceKind: DataRawTableSourceKind,
     config: DataRawTableConfig,
     name?: string
-  ) => void | Promise<void>;
+  ) => void | Promise<void | string | null>;
   onUpdateRawTableConfig?: (
     rawTable: DataRawTable,
     config: DataRawTableConfig,

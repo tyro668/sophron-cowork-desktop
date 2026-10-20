@@ -367,7 +367,8 @@
         "sectionSource": "数据来源",
         "sectionParsing": "解析设置",
         "sectionLinkage": "联动",
-        "sectionParsingDetail": "解析详情"
+        "sectionParsingDetail": "解析详情",
+        "importFailedInline": "无法导入："
       },
       "status": {
         "available": "可用",

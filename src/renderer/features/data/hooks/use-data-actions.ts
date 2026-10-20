@@ -296,14 +296,14 @@ export function useDataActions(deps: DataActionsDeps) {
       sourceKind: DataRawTableSourceKind,
       config: DataRawTableConfig,
       name?: string
-    ) => {
-      if (!dataClient.isAvailable()) return;
+    ): Promise<string | null> => {
+      if (!dataClient.isAvailable()) return null;
       ui.setActionId(draft.id);
       ui.setError(null);
       try {
         const sourcePath =
           sourceKind === 'cloud' ? undefined : await dataClient.pickRawTableSourcePath(sourceKind);
-        if (sourceKind !== 'cloud' && !sourcePath) return;
+        if (sourceKind !== 'cloud' && !sourcePath) return null;
         ui.setActiveTab('raw_tables');
         const imported =
           config.sourceKind === 'cloud'
@@ -325,9 +325,12 @@ export function useDataActions(deps: DataActionsDeps) {
         editors.setEditingRawTableId(imported.id);
         rawTables.setRawTablePage(1);
         await loadRawTables({ preserveError: true, page: 1 });
+        return null;
       } catch (err) {
-        ui.setError(formatDataErrorMessage(err, t));
+        // Shown inline under the source row by the editor (no toast).
+        const message = formatDataErrorMessage(err, t);
         await loadRawTables({ preserveError: true });
+        return message;
       } finally {
         ui.setActionId(null);
       }
@@ -375,14 +378,14 @@ export function useDataActions(deps: DataActionsDeps) {
       sourceKind: DataRawTableSourceKind,
       config: DataRawTableConfig,
       name?: string
-    ) => {
-      if (!dataClient.has('updateRawTable')) return;
+    ): Promise<string | null> => {
+      if (!dataClient.has('updateRawTable')) return null;
       ui.setActionId(rawTable.id);
       ui.setError(null);
       try {
         const sourcePath =
           sourceKind === 'cloud' ? undefined : await dataClient.pickRawTableSourcePath(sourceKind);
-        if (sourceKind !== 'cloud' && !sourcePath) return;
+        if (sourceKind !== 'cloud' && !sourcePath) return null;
         const updated =
           config.sourceKind === 'cloud'
             ? (
@@ -401,9 +404,11 @@ export function useDataActions(deps: DataActionsDeps) {
               });
         rawTables.updateRawTableRow(updated);
         await loadRawTables({ preserveError: true });
+        return null;
       } catch (err) {
-        ui.setError(formatDataErrorMessage(err, t));
+        const message = formatDataErrorMessage(err, t);
         await loadRawTables({ preserveError: true });
+        return message;
       } finally {
         ui.setActionId(null);
       }
