@@ -664,7 +664,7 @@ export function ResultTableEditor({
   const [localName, setLocalName] = useState(resultTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceRawTableId, setSourceRawTableId] = useState(resultTable.sourceRawTableId ?? '');
-  const [activeTab, setActiveTab] = useState<'data' | 'config'>('config');
+  const [activeTab, setActiveTab] = useState<'data' | 'config' | 'automation'>('config');
   const [preview, setPreview] = useState<DataRawTablePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -909,7 +909,7 @@ export function ResultTableEditor({
 
       <Tabs
         value={activeTab}
-        onValueChange={(value) => setActiveTab(value as 'data' | 'config')}
+        onValueChange={(value) => setActiveTab(value as 'data' | 'config' | 'automation')}
         className="flex min-h-0 flex-1 flex-col"
       >
         <TabsContent
@@ -960,7 +960,7 @@ export function ResultTableEditor({
                 />
               </div>
             </section>
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3">
               <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
                 <div className="mb-2 text-[13px] font-semibold text-text-primary">
                   {t('data.resultTables.sections.basic')}
@@ -977,19 +977,6 @@ export function ResultTableEditor({
                     options={rawTableOptions}
                     disabled={busy || isRawTablesLoading}
                     onChange={setSourceRawTableId}
-                  />
-                </div>
-              </section>
-              <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
-                <div className="mb-2 text-[13px] font-semibold text-text-primary">
-                  {t('data.resultTables.sections.automation')}
-                </div>
-                <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-                  <ResultTableAutomations
-                    key={resultTable.id}
-                    resultTable={resultTable}
-                    embedded
-                    Row={AutomationConfigGridRow}
                   />
                 </div>
               </section>
@@ -1044,6 +1031,24 @@ export function ResultTableEditor({
             headerHeight={34}
           />
         </TabsContent>
+        <TabsContent
+          value="automation"
+          className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 py-4"
+        >
+          <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+            <div className="mb-2 text-[13px] font-semibold text-text-primary">
+              {t('data.resultTables.sections.automation')}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+              <ResultTableAutomations
+                key={resultTable.id}
+                resultTable={resultTable}
+                embedded
+                Row={AutomationConfigGridRow}
+              />
+            </div>
+          </section>
+        </TabsContent>
         <div className={`${bottomTabBarClass} justify-between`}>
           <TabsList className={bottomTabListClass}>
             <TabsTrigger value="config" className={bottomTabTriggerClass}>
@@ -1051,6 +1056,9 @@ export function ResultTableEditor({
             </TabsTrigger>
             <TabsTrigger value="data" className={bottomTabTriggerClass}>
               {t('data.resultTables.editor.tabs.data')}
+            </TabsTrigger>
+            <TabsTrigger value="automation" className={bottomTabTriggerClass}>
+              {t('data.resultTables.editor.tabs.automation')}
             </TabsTrigger>
           </TabsList>
           <div className="flex items-center gap-2 px-4 text-xs text-text-muted">

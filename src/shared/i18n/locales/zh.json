@@ -362,7 +362,8 @@
         },
         "tabs": {
           "config": "配置",
-          "data": "数据"
+          "data": "数据",
+          "automation": "自动化"
         },
         "sectionSource": "数据来源",
         "sectionParsing": "解析设置",
@@ -489,7 +490,8 @@
         "dataMeta": "数据更新于 {{time}}",
         "tabs": {
           "data": "数据",
-          "config": "配置"
+          "config": "配置",
+          "automation": "自动化"
         },
         "dataLoading": "正在加载数据…",
         "dataEmpty": "该结果表暂无数据"
