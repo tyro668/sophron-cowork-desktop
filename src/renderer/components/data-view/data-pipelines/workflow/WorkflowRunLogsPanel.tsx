@@ -14,6 +14,7 @@ import { dataClient } from '../../../../features/data/api/data-client';
 import { useWorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { closestFieldName, parseWorkflowRunError } from './run-error';
 import { formatNodeRunStatLine } from './workflow-summary';
+import { formatClockTime } from '../../../../utils/i18n-format';
 
 const RUN_LIST_LIMIT = 20;
 
@@ -30,7 +31,7 @@ function formatDuration(run: DataPipelineRun): string {
 }
 
 function formatTime(value: number | null): string {
-  return value === null ? '—' : new Date(value).toLocaleTimeString();
+  return value === null ? '—' : formatClockTime(value);
 }
 
 function formatWorkflowSignature(signature: string): string {
