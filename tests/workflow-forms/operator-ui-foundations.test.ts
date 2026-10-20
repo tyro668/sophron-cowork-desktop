@@ -103,17 +103,16 @@ describe('operator UI foundations', () => {
   );
 
   it.each(['FormUnpivot.tsx'])(
-    'renders %s as compact label rows with a scrollable container',
+    'renders %s on the shared form grid with a scrollable container',
     (fileName) => {
       const source = readFileSync(
         resolve(__dirname, '../../src/renderer/components/workflow-forms', fileName),
         'utf8'
       );
 
-      expect(source).toContain('GlassFormLabel');
+      expect(source).toContain('<FormGrid');
       expect(source).toContain('GlassOptionMultiSelect');
-      expect(source).toContain('scrollbar-hover flex h-full min-h-0 flex-col');
-      expect(source).toContain('overflow-y-auto');
+      expect(source).toMatch(/<FormScroll>/);
     }
   );
 });
