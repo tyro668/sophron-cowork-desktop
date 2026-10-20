@@ -35,6 +35,8 @@ interface GlassOptionSingleSelectProps {
   className?: string;
   placeholder?: string;
   variant?: 'default' | 'highlight' | 'muted';
+  /** Icon shown in the trigger instead of the selected item's own icon. */
+  triggerIcon?: ReactNode;
 }
 
 export function GlassOptionSingleSelect({
@@ -45,6 +47,7 @@ export function GlassOptionSingleSelect({
   className,
   placeholder,
   variant = 'default',
+  triggerIcon,
 }: GlassOptionSingleSelectProps) {
   const {
     open,
@@ -187,7 +190,7 @@ export function GlassOptionSingleSelect({
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate whitespace-nowrap px-2 text-left">
           {value ? (
             <>
-              {selectedItem?.icon}
+              {triggerIcon ?? selectedItem?.icon}
               <span className="truncate">{selectedLabel}</span>
             </>
           ) : placeholder ? (

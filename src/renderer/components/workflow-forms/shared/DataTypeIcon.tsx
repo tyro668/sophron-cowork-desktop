@@ -39,7 +39,7 @@ export const DataTypeIcon = memo(function DataTypeIcon({ type, className }: Data
   if (type == null || String(type).trim() === '' || !isDataFieldType(type)) {
     return (
       <span
-        className={`inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] border border-dashed border-border-muted bg-transparent text-[9px] font-semibold leading-none text-text-muted ${className ?? ''}`}
+        className={`dt-icon inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] border border-dashed border-border-muted bg-transparent text-[9px] font-semibold leading-none text-text-muted ${className ?? ''}`}
         title={label}
         aria-label={label}
       >
@@ -53,7 +53,7 @@ export const DataTypeIcon = memo(function DataTypeIcon({ type, className }: Data
 
   return (
     <span
-      className={`inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] bg-accent-muted font-semibold leading-none text-accent ${className ?? ''}`}
+      className={`dt-icon inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] bg-accent-muted font-semibold leading-none text-accent ${className ?? ''}`}
       title={label}
       aria-label={label}
     >
