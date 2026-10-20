@@ -136,7 +136,7 @@ function toNode(operator: PrepOperatorAst, id: string, index: number): PrepWorkf
     id,
     type: operator.type,
     label: operator.label ?? operator.type,
-    x: 64 + (index % 4) * 150,
+    x: 64 + (index % 4) * 200,
     y: 72 + Math.floor(index / 4) * 64,
     config: operator.config,
   };

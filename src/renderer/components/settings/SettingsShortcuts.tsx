@@ -3,6 +3,15 @@ import { useTranslation } from 'react-i18next';
 const SHORTCUTS: Array<{ keys: string[][]; labelKey: string }> = [
   { keys: [['Enter']], labelKey: 'settings.shortcutList.send' },
   { keys: [['Ctrl', 'Enter']], labelKey: 'settings.shortcutList.newline' },
+  { keys: [['Ctrl', 'Z']], labelKey: 'settings.shortcutList.undo' },
+  {
+    keys: [
+      ['Ctrl', 'Y'],
+      ['Ctrl', 'Shift', 'Z'],
+    ],
+    labelKey: 'settings.shortcutList.redo',
+  },
+  { keys: [['Delete']], labelKey: 'settings.shortcutList.deleteNode' },
   { keys: [['Esc']], labelKey: 'settings.shortcutList.escape' },
 ];
 

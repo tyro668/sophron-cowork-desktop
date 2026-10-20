@@ -1609,7 +1609,9 @@
       "runErrorDetails": "技术详情",
       "aiFollowUpPlaceholder": "补充说明或逐项回答上面的问题，例如：region 就是省份",
       "aiReanalyze": "发送并重新分析",
-      "aiStartOver": "重新开始"
+      "aiStartOver": "重新开始",
+      "undo": "撤销 (Ctrl+Z)",
+      "redo": "重做 (Ctrl+Y)"
     },
     "relative": {
       "today": "今天",
@@ -1675,7 +1677,7 @@
       "newline": "输入框内换行",
       "undo": "撤销（加工画布）",
       "redo": "重做（加工画布）",
-      "deleteNode": "删除选中的节点或连线",
+      "deleteNode": "删除选中的节点（加工画布）",
       "escape": "关闭弹窗 · 拒绝权限请求"
     }
   },

@@ -11,7 +11,7 @@ import {
 
 export function getNextWorkflowNodePosition(index: number): { x: number; y: number } {
   return {
-    x: 64 + (index % 4) * 150,
+    x: 64 + (index % 4) * 200,
     y: 72 + Math.floor(index / 4) * 64,
   };
 }

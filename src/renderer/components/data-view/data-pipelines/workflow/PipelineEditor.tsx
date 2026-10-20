@@ -15,6 +15,8 @@ import {
   Waypoints,
   Workflow,
   X,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import type {
   DataPipeline,
@@ -68,8 +70,23 @@ import {
   getWorkflowUpstreamSignature,
   toWorkflowSaveInput,
   WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
   type WorkflowInspectorTab,
 } from './workflow-model';
+
+function hasOverlappingNodes(nodes: Array<{ x: number; y: number }>): boolean {
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      if (
+        Math.abs(nodes[i].x - nodes[j].x) < WORKFLOW_NODE_WIDTH + 12 &&
+        Math.abs(nodes[i].y - nodes[j].y) < WORKFLOW_NODE_HEIGHT + 8
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 export function PipelineEditor({
   pipeline,
@@ -134,11 +151,86 @@ export function PipelineEditor({
   // effect below must not cancel that on the first run.
   const skipInitialTitleResetRef = useRef(autoEditTitle === true);
 
+  // --- Undo / redo history (design 10, B06) -------------------------------
+  // Snapshot-based: every workflow change pushes the previous state; rapid
+  // successive changes (e.g. drag moves) within 400ms collapse into one step.
+  const historyRef = useRef<{ past: DataPipelineWorkflow[]; future: DataPipelineWorkflow[] }>({
+    past: [],
+    future: [],
+  });
+  const lastWorkflowRef = useRef<DataPipelineWorkflow | null>(null);
+  const skipHistoryRef = useRef(true);
+  const burstOpenRef = useRef(false);
+  const burstTimerRef = useRef<number | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  useEffect(() => {
+    const previous = lastWorkflowRef.current;
+    lastWorkflowRef.current = workflow;
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      return;
+    }
+    if (!previous || !workflow || previous === workflow) return;
+    if (!burstOpenRef.current) {
+      historyRef.current.past = [...historyRef.current.past.slice(-49), previous];
+      historyRef.current.future = [];
+      burstOpenRef.current = true;
+      setHistoryVersion((v) => v + 1);
+    }
+    if (burstTimerRef.current) window.clearTimeout(burstTimerRef.current);
+    burstTimerRef.current = window.setTimeout(() => {
+      burstOpenRef.current = false;
+    }, 400);
+  }, [workflow]);
+  const resetHistory = useCallback(() => {
+    historyRef.current = { past: [], future: [] };
+    skipHistoryRef.current = true;
+    burstOpenRef.current = false;
+    setHistoryVersion((v) => v + 1);
+  }, []);
+  const canUndo = historyVersion >= 0 && historyRef.current.past.length > 0;
+  const canRedo = historyVersion >= 0 && historyRef.current.future.length > 0;
+  const undo = useCallback(() => {
+    const { past, future } = historyRef.current;
+    const previous = past[past.length - 1];
+    const current = lastWorkflowRef.current;
+    if (!previous || !current) return;
+    historyRef.current = { past: past.slice(0, -1), future: [current, ...future] };
+    skipHistoryRef.current = true;
+    burstOpenRef.current = false;
+    setWorkflow(previous);
+    setHistoryVersion((v) => v + 1);
+  }, []);
+  const redo = useCallback(() => {
+    const { past, future } = historyRef.current;
+    const next = future[0];
+    const current = lastWorkflowRef.current;
+    if (!next || !current) return;
+    historyRef.current = { past: [...past, current], future: future.slice(1) };
+    skipHistoryRef.current = true;
+    burstOpenRef.current = false;
+    setWorkflow(next);
+    setHistoryVersion((v) => v + 1);
+  }, []);
+
   const loadWorkflow = useCallback(async () => {
     if (!dataClient.isAvailable()) return;
     setLocalError(null);
     try {
-      const nextWorkflow = await dataClient.getPipelineWorkflow(pipeline.id);
+      const fetchedWorkflow = await dataClient.getPipelineWorkflow(pipeline.id);
+      // Layouts saved for the old 116px node width can overlap at 148px; re-layout
+      // once on open (treated as the baseline so it does not mark the editor dirty).
+      const nextWorkflow = hasOverlappingNodes(fetchedWorkflow.nodes)
+        ? {
+            ...fetchedWorkflow,
+            nodes: layoutWorkflowNodes(
+              fetchedWorkflow.nodes,
+              fetchedWorkflow.edges,
+              canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
+            ),
+          }
+        : fetchedWorkflow;
+      resetHistory();
       setWorkflow(nextWorkflow);
       setSavedWorkflowSignature(getWorkflowSaveInputSignature(nextWorkflow));
       setLoadedWorkflowInput(toWorkflowSaveInput(nextWorkflow));
@@ -149,7 +241,7 @@ export function PipelineEditor({
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
     }
-  }, [pipeline.id]);
+  }, [pipeline.id, resetHistory]);
 
   useEffect(() => {
     void loadWorkflow();
@@ -758,6 +850,37 @@ export function PipelineEditor({
     setSelectedNodeId((current) => (current && selectionIdSet.has(current) ? null : current));
   }, [confirmDelete, selectionIdSet, selectionTargets, t]);
 
+  // Keyboard: Ctrl/Cmd+Z undo, Ctrl+Y / Ctrl/Cmd+Shift+Z redo, Delete removes the
+  // selection. Ignored while typing in inputs or editors.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+          target.closest('[role="dialog"], .cm-editor, .monaco-editor'))
+      ) {
+        return;
+      }
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (mod && key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if (mod && (key === 'y' || (key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        redo();
+      } else if (!mod && (event.key === 'Delete' || event.key === 'Backspace')) {
+        if (selectionTargets.length === 0) return;
+        event.preventDefault();
+        void deleteSelectedNode();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [deleteSelectedNode, redo, selectionTargets.length, undo]);
+
   /**
    * Runs the shared plan validation (graph + propagated schemas) and marks the
    * offending nodes red on the canvas. Returns the first error message, or
@@ -1288,6 +1411,30 @@ export function PipelineEditor({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-0.5 rounded-lg border border-border-muted bg-surface p-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={undo}
+              disabled={isBusy || !canUndo}
+              className="h-7 w-7"
+              title={t('data.workflow.undo')}
+              aria-label={t('data.workflow.undo')}
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={redo}
+              disabled={isBusy || !canRedo}
+              className="h-7 w-7"
+              title={t('data.workflow.redo')}
+              aria-label={t('data.workflow.redo')}
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <Button
             variant="secondary"
             onClick={() => setAiDialogOpen(true)}

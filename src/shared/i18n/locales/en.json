@@ -1609,7 +1609,9 @@
       "runErrorDetails": "Technical details",
       "aiFollowUpPlaceholder": "Add clarification or answer the questions above, e.g. \"region\" means province",
       "aiReanalyze": "Send & re-analyze",
-      "aiStartOver": "Start over"
+      "aiStartOver": "Start over",
+      "undo": "Undo (Ctrl+Z)",
+      "redo": "Redo (Ctrl+Y)"
     },
     "relative": {
       "today": "Today",
@@ -1675,7 +1677,7 @@
       "newline": "New line in the composer",
       "undo": "Undo (pipeline canvas)",
       "redo": "Redo (pipeline canvas)",
-      "deleteNode": "Delete selected node or edge",
+      "deleteNode": "Delete selected nodes (pipeline canvas)",
       "escape": "Close dialog · deny permission request"
     }
   },
