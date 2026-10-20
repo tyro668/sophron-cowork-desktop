@@ -3173,7 +3173,20 @@
       "cloud_table_process": "处理云端表",
       "data_raw_preview": "读取原始表",
       "data_result_preview": "读取结果表"
-    }
+    },
+    "dependencyAlways": "总是执行",
+    "dependencyOnSuccess": "上一步成功后执行",
+    "actionModified": "已修改",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "unsavedChanges": "有未保存的修改",
+    "discardChanges": "放弃修改",
+    "partName": "名称",
+    "partTrigger": "触发条件",
+    "partProject": "执行项目",
+    "partEnabled": "启用状态",
+    "partActions": "动作",
+    "partActionsUnit": "项"
   },
   "remote": {
     "title": "远程控制",

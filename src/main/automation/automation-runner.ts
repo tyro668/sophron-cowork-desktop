@@ -188,34 +188,49 @@ export class AutomationRunner {
         if (!definition) {
           throw new Error(`Automation action is not registered: ${node.type}`);
         }
-        await definition.validate?.(node.config);
-        const result = await definition.execute(
-          node.config,
-          {
-            automationId: automation.id,
-            runId: run.id,
-            projectId: automation.projectId,
-            now: this.now(),
-            outputs,
-            emitArtifact: (artifact) => {
-              const created = this.store.createArtifact({
-                runId: run.id,
-                sourceNodeId: artifact.sourceNodeId ?? node.id,
-                kind: artifact.kind,
-                title: artifact.title,
-                summary: artifact.summary,
-                mimeType: artifact.mimeType,
-                content: artifact.content,
-                filePath: artifact.filePath,
-                href: artifact.href,
-                dataRef: artifact.dataRef,
-              });
-              emittedArtifacts.push(created);
+        let result: unknown;
+        try {
+          await definition.validate?.(node.config);
+          result = await definition.execute(
+            node.config,
+            {
+              automationId: automation.id,
+              runId: run.id,
+              projectId: automation.projectId,
+              now: this.now(),
+              outputs,
+              emitArtifact: (artifact) => {
+                const created = this.store.createArtifact({
+                  runId: run.id,
+                  sourceNodeId: artifact.sourceNodeId ?? node.id,
+                  kind: artifact.kind,
+                  title: artifact.title,
+                  summary: artifact.summary,
+                  mimeType: artifact.mimeType,
+                  content: artifact.content,
+                  filePath: artifact.filePath,
+                  href: artifact.href,
+                  dataRef: artifact.dataRef,
+                });
+                emittedArtifacts.push(created);
+              },
+              log: (event) => logs.push({ ...event, nodeId: event.nodeId ?? node.id }),
             },
-            log: (event) => logs.push({ ...event, nodeId: event.nodeId ?? node.id }),
-          },
-          node
-        );
+            node
+          );
+        } catch (error) {
+          // Per-action "always run next" (failurePolicy.onFailure = 'continue'):
+          // record the failure and move on instead of aborting the run.
+          if (node.failurePolicy?.onFailure !== 'continue') throw error;
+          logs.push({
+            level: 'error',
+            message: error instanceof Error ? error.message : String(error),
+            nodeId: node.id,
+            timestamp: this.now(),
+          });
+          skippedNodeIds.push(node.id);
+          continue;
+        }
         outputs.set(node.id, result);
       }
 

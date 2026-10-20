@@ -1,8 +1,11 @@
 import { useDataPipelineAuthoringCompletion } from '../../../features/data/hooks/use-data-pipeline-authoring';
 import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ChevronDown,
+  ChevronUp,
   ChevronRight,
   Database,
   Loader2,
@@ -58,9 +61,12 @@ export function ActionChainSection({
   onDraftChange,
   onGeneratedPipelineSuccess,
   workingDirectory,
+  baselineNodes,
   tr,
 }: {
   draft: AutomationDraft;
+  /** Saved nodes, used to flag per-action "已修改". */
+  baselineNodes?: AutomationActionNode[];
   actionDefinitions: AutomationActionDefinitionSummary[];
   dataPipelines: DataPipeline[];
   rawTables: DataDashboard['rawTables'];
@@ -126,26 +132,94 @@ export function ActionChainSection({
           </div>
         ) : (
           nodes.map((node, index) => (
-            <ActionStepCard
-              key={node.id}
-              node={node}
-              index={index}
-              dataPipelines={dataPipelines}
-              rawTables={rawTables}
-              resultTables={resultTables}
-              appConfig={appConfig}
-              onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
-              workingDirectory={workingDirectory}
-              onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
-              onChange={(next) =>
-                updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
-              }
-              tr={tr}
-            />
+            <Fragment key={node.id}>
+              {index > 0 && (
+                <ActionDependencyConnector
+                  previous={nodes[index - 1]}
+                  onChange={(previous) =>
+                    updateNodes(nodes.map((item) => (item.id === previous.id ? previous : item)))
+                  }
+                  tr={tr}
+                />
+              )}
+              <ActionStepCard
+                node={node}
+                index={index}
+                modified={
+                  baselineNodes !== undefined &&
+                  JSON.stringify(baselineNodes.find((item) => item.id === node.id) ?? null) !==
+                    JSON.stringify(node)
+                }
+                onMove={(delta) => {
+                  const target = index + delta;
+                  if (target < 0 || target >= nodes.length) return;
+                  const next = [...nodes];
+                  [next[index], next[target]] = [next[target], next[index]];
+                  updateNodes(next);
+                }}
+                isFirst={index === 0}
+                isLast={index === nodes.length - 1}
+                dataPipelines={dataPipelines}
+                rawTables={rawTables}
+                resultTables={resultTables}
+                appConfig={appConfig}
+                onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
+                workingDirectory={workingDirectory}
+                onRemove={() => updateNodes(nodes.filter((item) => item.id !== node.id))}
+                onChange={(next) =>
+                  updateNodes(nodes.map((item) => (item.id === next.id ? next : item)))
+                }
+                tr={tr}
+              />
+            </Fragment>
           ))
         )}
       </div>
     </section>
+  );
+}
+
+/** "上一步成功后执行" (default, stop on failure) vs "总是执行" (continue). */
+function ActionDependencyConnector({
+  previous,
+  onChange,
+  tr,
+}: {
+  previous: AutomationActionNode;
+  onChange: (previous: AutomationActionNode) => void;
+  tr: (key: string, fallback: string) => string;
+}) {
+  const always = previous.failurePolicy?.onFailure === 'continue';
+  const setAlways = (value: boolean) =>
+    onChange({
+      ...previous,
+      failurePolicy: value ? { onFailure: 'continue', emitErrorArtifact: false } : undefined,
+    });
+  return (
+    <div className="relative flex h-8 items-center pl-9">
+      <span className="absolute bottom-0 left-[1.6rem] top-0 w-px bg-border-muted" />
+      <GlassDropdownMenu
+        trigger={
+          <button
+            type="button"
+            className="relative z-[1] inline-flex h-6 items-center gap-1 rounded-full border border-border-muted bg-surface px-2.5 text-[11.5px] text-text-secondary shadow-soft hover:border-accent/40"
+          >
+            <ArrowDown size={12} />
+            {always
+              ? tr('schedule.dependencyAlways', '总是执行')
+              : tr('schedule.dependencyOnSuccess', '上一步成功后执行')}
+            <ChevronDown size={12} className="text-text-muted" />
+          </button>
+        }
+      >
+        <GlassMenuItem selected={!always} onSelect={() => setAlways(false)}>
+          {tr('schedule.dependencyOnSuccess', '上一步成功后执行')}
+        </GlassMenuItem>
+        <GlassMenuItem selected={always} onSelect={() => setAlways(true)}>
+          {tr('schedule.dependencyAlways', '总是执行')}
+        </GlassMenuItem>
+      </GlassDropdownMenu>
+    </div>
   );
 }
 
@@ -160,10 +234,18 @@ export function ActionStepCard({
   workingDirectory,
   onRemove,
   onChange,
+  modified = false,
+  onMove,
+  isFirst = true,
+  isLast = true,
   tr,
 }: {
   node: AutomationActionNode;
   index: number;
+  modified?: boolean;
+  onMove?: (delta: -1 | 1) => void;
+  isFirst?: boolean;
+  isLast?: boolean;
   dataPipelines: DataPipeline[];
   rawTables: DataDashboard['rawTables'];
   resultTables: DataDashboard['resultTables'];
@@ -176,7 +258,7 @@ export function ActionStepCard({
 }) {
   const Icon = getActionIcon(node.type, node);
   return (
-    <div className="border-b border-border-muted px-4 py-4">
+    <div className="mx-4 mt-3 rounded-xl border border-border-muted bg-surface px-4 py-3.5 shadow-soft first:mt-4">
       <div className="mb-3 flex items-center gap-2.5">
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-text-secondary">
           {index + 1}
@@ -184,7 +266,36 @@ export function ActionStepCard({
         <Icon className="h-4 w-4 flex-shrink-0 text-text-muted" />
         <div className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text-primary">
           {getNodeLabel(node, tr)}
+          {modified && (
+            <span className="ml-2 rounded-md bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">
+              {tr('schedule.actionModified', '已修改')}
+            </span>
+          )}
         </div>
+        {onMove && (
+          <>
+            <MiniIcon
+              disabled={isFirst}
+              title={tr('schedule.moveUp', '上移')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMove(-1);
+              }}
+            >
+              <ChevronUp size={13} />
+            </MiniIcon>
+            <MiniIcon
+              disabled={isLast}
+              title={tr('schedule.moveDown', '下移')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onMove(1);
+              }}
+            >
+              <ChevronDown size={13} />
+            </MiniIcon>
+          </>
+        )}
         <MiniIcon
           onClick={(event) => {
             event.stopPropagation();

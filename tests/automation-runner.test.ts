@@ -194,4 +194,51 @@ describe('AutomationRunner', () => {
     expect(run.error).toBe('boom');
     expect(notifyRunFinished).toHaveBeenCalledWith(automation, run);
   });
+
+  it('continues to the next action when a failed action has onFailure=continue', async () => {
+    const store = createStore();
+    const registry = new AutomationActionRegistry();
+    const second = vi.fn(async () => ({ ok: true }));
+    for (const [type, execute] of [
+      [
+        'test.first',
+        async () => {
+          throw new Error('boom');
+        },
+      ],
+      ['test.second', second],
+    ] as const) {
+      registry.register({
+        type,
+        title: type,
+        category: 'custom',
+        icon: 'play',
+        version: 1,
+        configSchema: objectSchema({}),
+        defaultConfig: {},
+        execute,
+      });
+    }
+    const runner = new AutomationRunner({ store, registry, now: () => 2_000 });
+    const automation = createAutomation({
+      actionGraph: {
+        version: 1,
+        nodes: [
+          {
+            id: 'first',
+            type: 'test.first',
+            enabled: true,
+            config: {},
+            failurePolicy: { onFailure: 'continue', emitErrorArtifact: false },
+          },
+          { id: 'second', type: 'test.second', enabled: true, config: {} },
+        ],
+        edges: [{ id: 'edge-1', sourceNodeId: 'first', targetNodeId: 'second' }],
+      },
+    });
+    const run = await runner.run(automation, 'manual');
+
+    expect(second).toHaveBeenCalled();
+    expect(run.status).toBe('succeeded');
+  });
 });

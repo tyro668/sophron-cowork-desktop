@@ -3173,7 +3173,20 @@
       "cloud_table_process": "Process cloud table",
       "data_raw_preview": "Read raw table",
       "data_result_preview": "Read result table"
-    }
+    },
+    "dependencyAlways": "Always run",
+    "dependencyOnSuccess": "Run after previous succeeds",
+    "actionModified": "Modified",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "unsavedChanges": "Unsaved changes",
+    "discardChanges": "Discard changes",
+    "partName": "name",
+    "partTrigger": "trigger",
+    "partProject": "project",
+    "partEnabled": "enabled state",
+    "partActions": "actions",
+    "partActionsUnit": ""
   },
   "remote": {
     "title": "Remote Control",
