@@ -95,3 +95,26 @@ describe('GlassCommitTextInput', () => {
     await cleanup();
   });
 });
+
+describe('validateAggregateMetrics', () => {
+  it('flags empty expression, duplicate alias and group-by collision', async () => {
+    const { validateAggregateMetrics } =
+      await import('../../src/renderer/components/workflow-forms/shared/metricValidation');
+    const issues = validateAggregateMetrics(
+      [
+        { function: 'sum', expression: '[金额]', alias: '销售额' },
+        { function: 'count', expression: '', alias: '省' },
+        { function: 'avg', expression: '', alias: '销售额' },
+      ],
+      ['省']
+    );
+    expect(issues[0].messages).toEqual([]);
+    expect(issues[1].aliasError).toBe(true);
+    expect(issues[1].expressionError).toBe(false);
+    expect(issues[2].expressionError).toBe(true);
+    expect(issues[2].messages.map((m) => m.key)).toEqual([
+      'metricExpressionEmpty',
+      'metricAliasDuplicate',
+    ]);
+  });
+});

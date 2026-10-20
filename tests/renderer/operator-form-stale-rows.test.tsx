@@ -59,6 +59,8 @@ function typeInto(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
   setter.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
+  // Commit-on-blur inputs (GlassCommitTextInput) write on blur; per-keystroke inputs ignore it.
+  input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
 }
 
 function rowTextInputs(host: HTMLElement): HTMLInputElement[] {
