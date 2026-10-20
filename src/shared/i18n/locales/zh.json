@@ -485,7 +485,7 @@
         "exportCsv": "CSV 文件",
         "exportExcel": "Excel 文件（2013）",
         "exportDone": "已导出：{{path}}",
-        "dataMeta": "共 {{rows}} 行 · 数据更新于 {{time}}",
+        "dataMeta": "数据更新于 {{time}}",
         "tabs": {
           "data": "数据",
           "config": "配置"
