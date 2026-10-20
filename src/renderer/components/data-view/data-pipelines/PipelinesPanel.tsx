@@ -96,7 +96,12 @@ function usePipelineListMeta(pipelines: DataPipeline[]) {
         }));
       });
     }
-    void Promise.resolve(dataClient.listAutomations?.())
+    void Promise.resolve()
+      .then(() =>
+        typeof window.electronAPI?.automation?.list === 'function'
+          ? dataClient.listAutomations()
+          : null
+      )
       .then((result) => {
         if (!active || !result) return;
         const names: Record<string, string> = {};
