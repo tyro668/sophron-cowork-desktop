@@ -18,6 +18,7 @@ import {
   Trash2,
   UploadCloud,
   Table2,
+  ArrowRight,
 } from 'lucide-react';
 import type {
   DataPipeline,
@@ -181,9 +182,7 @@ export function ResultTablesPanel({
         onClick={() => setSelectedResultTableId(resultTable.id)}
         onDoubleClick={() => onEdit(resultTable)}
         className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-          selected
-            ? 'bg-accent-muted ring-1 ring-inset ring-accent/20'
-            : 'hover:bg-surface-hover/35'
+          selected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
         }`}
       >
         <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
@@ -195,7 +194,7 @@ export function ResultTablesPanel({
                 <UploadCloud className="h-4 w-4" />
               </div>
             )}
-            <div className="min-w-0 truncate text-[13px] font-medium text-text-secondary">
+            <div className="min-w-0 truncate text-[13px] font-medium text-text-primary">
               {resultTable.name}
             </div>
           </div>
@@ -236,47 +235,40 @@ export function ResultTablesPanel({
           />
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <DataToolbarButton
-            icon={<Eye className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.preview')}
-            disabled={!selectedResultTable || bulkBusy}
-            onClick={() => {
-              if (selectedResultTable) {
-                onPreview(selectedResultTable);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<PencilLine className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.edit')}
-            disabled={!selectedResultTable || bulkBusy}
-            onClick={() => {
-              if (selectedResultTable) {
-                onEdit(selectedResultTable);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<FolderInput className="h-3.5 w-3.5" />}
-            label={t('data.groups.moveToGroup')}
-            disabled={!selectedResultTable || selectedBusy || bulkBusy}
-            onClick={() => {
-              if (selectedResultTable) {
-                setAssignDialogOpen(true);
-              }
-            }}
-          />
-          <DataToolbarButton
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            label={t('data.rawTables.actions.delete')}
-            disabled={!selectedResultTable || selectedBusy || bulkBusy}
-            danger
-            onClick={() => {
-              if (selectedResultTable) {
-                onDelete(selectedResultTable);
-              }
-            }}
-          />
+          {selectedResultTable && (
+            <>
+              <DataToolbarButton
+                icon={<Eye className="h-3.5 w-3.5" />}
+                label={t('data.rawTables.actions.preview')}
+                disabled={!selectedResultTable || bulkBusy}
+                onClick={() => {
+                  if (selectedResultTable) {
+                    onPreview(selectedResultTable);
+                  }
+                }}
+              />
+              <DataToolbarButton
+                icon={<PencilLine className="h-3.5 w-3.5" />}
+                label={t('data.rawTables.actions.edit')}
+                disabled={!selectedResultTable || bulkBusy}
+                onClick={() => {
+                  if (selectedResultTable) {
+                    onEdit(selectedResultTable);
+                  }
+                }}
+              />
+              <DataToolbarButton
+                icon={<FolderInput className="h-3.5 w-3.5" />}
+                label={t('data.groups.moveToGroup')}
+                disabled={!selectedResultTable || selectedBusy || bulkBusy}
+                onClick={() => {
+                  if (selectedResultTable) {
+                    setAssignDialogOpen(true);
+                  }
+                }}
+              />
+            </>
+          )}
           <DataMoreMenu
             items={[
               {
@@ -320,11 +312,21 @@ export function ResultTablesPanel({
                   ]
                 : []),
               {
+                key: 'delete-selected',
+                label: t('data.rawTables.actions.delete'),
+                icon: <Trash2 className="h-3.5 w-3.5" />,
+                danger: true,
+                separatorBefore: true,
+                disabled: !selectedResultTable || selectedBusy || bulkBusy,
+                onClick: () => {
+                  if (selectedResultTable) onDelete(selectedResultTable);
+                },
+              },
+              {
                 key: 'delete-all',
                 label: t('data.actions.deleteAll'),
                 icon: <Trash2 className="h-3.5 w-3.5" />,
                 danger: true,
-                separatorBefore: true,
                 disabled: totalResultTables <= 0 || bulkBusy,
                 onClick: onDeleteAll,
               },
@@ -642,6 +644,7 @@ export function ResultTableEditor({
   onBack,
   onSave,
   onRunPipeline,
+  onDelete,
 }: {
   resultTable: DataResultTable;
   rawTables: DataRawTable[];
@@ -655,6 +658,7 @@ export function ResultTableEditor({
     sourceRawTableId: string | null
   ) => void | Promise<void>;
   onRunPipeline: (pipeline: DataPipeline) => void | Promise<void>;
+  onDelete?: (resultTable: DataResultTable) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const [localName, setLocalName] = useState(resultTable.name);
@@ -908,29 +912,114 @@ export function ResultTableEditor({
         onValueChange={(value) => setActiveTab(value as 'data' | 'config')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface px-4 py-3">
-          <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-            <RawTableFormLabel>
-              <span className="inline-flex items-center gap-1.5">
-                {t('data.resultTables.editor.rawTable')}
-                <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
-              </span>
-            </RawTableFormLabel>
-            <RawTableSelect
-              value={sourceRawTableId}
-              options={rawTableOptions}
-              disabled={busy || isRawTablesLoading}
-              onChange={setSourceRawTableId}
-            />
-
-            <div className="col-span-full border-t border-border-subtle" />
-
-            <ResultTableAutomations
-              key={resultTable.id}
-              resultTable={resultTable}
-              embedded
-              Row={AutomationConfigGridRow}
-            />
+        <TabsContent
+          value="config"
+          className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 py-4"
+        >
+          <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label={t('data.resultTables.stats.rows')}
+                value={resultTable.rowCount.toLocaleString('en-US')}
+              />
+              <StatCard
+                label={t('data.resultTables.stats.columns')}
+                value={String(resultTable.columnCount)}
+              />
+              <StatCard
+                label={t('data.resultTables.stats.pipeline')}
+                value={relatedPipeline?.name ?? '—'}
+              />
+              <StatCard
+                label={t('data.resultTables.stats.updatedAt')}
+                value={formatDateTime(resultTable.updatedAt)}
+              />
+            </div>
+            <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+              <div className="mb-2 text-[13px] font-semibold text-text-primary">
+                {t('data.resultTables.lineage.title')}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <LineageChip
+                  kind={t('data.resultTables.lineage.raw')}
+                  name={
+                    rawTables.find((item) => item.id === (resultTable.sourceRawTableId ?? ''))
+                      ?.name ?? '—'
+                  }
+                />
+                <ArrowRight className="h-3.5 w-3.5 text-text-muted" />
+                <LineageChip
+                  kind={t('data.resultTables.lineage.pipeline')}
+                  name={relatedPipeline?.name ?? '—'}
+                />
+                <ArrowRight className="h-3.5 w-3.5 text-text-muted" />
+                <LineageChip
+                  kind={t('data.resultTables.lineage.result')}
+                  name={resultTable.name}
+                  active
+                />
+              </div>
+            </section>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                <div className="mb-2 text-[13px] font-semibold text-text-primary">
+                  {t('data.resultTables.sections.basic')}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+                  <RawTableFormLabel>
+                    <span className="inline-flex items-center gap-1.5">
+                      {t('data.resultTables.editor.rawTable')}
+                      <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
+                    </span>
+                  </RawTableFormLabel>
+                  <RawTableSelect
+                    value={sourceRawTableId}
+                    options={rawTableOptions}
+                    disabled={busy || isRawTablesLoading}
+                    onChange={setSourceRawTableId}
+                  />
+                </div>
+              </section>
+              <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                <div className="mb-2 text-[13px] font-semibold text-text-primary">
+                  {t('data.resultTables.sections.automation')}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+                  <ResultTableAutomations
+                    key={resultTable.id}
+                    resultTable={resultTable}
+                    embedded
+                    Row={AutomationConfigGridRow}
+                  />
+                </div>
+              </section>
+            </div>
+            {onDelete && (
+              <section className="rounded-[10px] border border-error/35 bg-surface px-4 py-3">
+                <div className="mb-2 text-[13px] font-semibold text-error">
+                  {t('data.resultTables.danger.title')}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-text-primary">
+                      {t('data.resultTables.danger.deleteTitle')}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {t('data.resultTables.danger.deleteHint')}
+                    </div>
+                  </div>
+                  <Button
+                    variant="danger-outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void onDelete(resultTable)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t('data.resultTables.danger.deleteAction')}
+                  </Button>
+                </div>
+              </section>
+            )}
           </div>
         </TabsContent>
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
@@ -1001,6 +1090,43 @@ function InlineInfoTooltip({ label }: { label: string }) {
       <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
         {label}
       </span>
+    </span>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[10px] border border-border-muted bg-surface px-3.5 py-3">
+      <div className="text-xs text-text-muted">{label}</div>
+      <div
+        className="mt-1 truncate text-[15px] font-semibold tabular-nums text-text-primary"
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function LineageChip({
+  kind,
+  name,
+  active = false,
+}: {
+  kind: string;
+  name: string;
+  active?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-md border px-2 ${
+        active
+          ? 'border-accent/40 bg-accent-muted text-accent'
+          : 'border-border-muted bg-surface-muted text-text-primary'
+      }`}
+    >
+      <span className="text-[11px] text-text-muted">{kind}</span>
+      <span className="truncate font-medium">{name}</span>
     </span>
   );
 }

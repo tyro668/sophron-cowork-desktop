@@ -517,6 +517,28 @@
         "onTableChange": "Run after this table updates",
         "inheritAutomation": "Run with the automation",
         "missing": "This automation no longer exists. Refresh the list."
+      },
+      "stats": {
+        "rows": "Rows",
+        "columns": "Columns",
+        "pipeline": "Source pipeline",
+        "updatedAt": "Last written"
+      },
+      "lineage": {
+        "title": "Lineage",
+        "raw": "Raw",
+        "pipeline": "Pipeline",
+        "result": "Result"
+      },
+      "sections": {
+        "basic": "Basics",
+        "automation": "Automation"
+      },
+      "danger": {
+        "title": "Danger zone",
+        "deleteTitle": "Delete result table",
+        "deleteHint": "Deletes the table and its data. This cannot be undone.",
+        "deleteAction": "Delete result table…"
       }
     },
     "editor": {
