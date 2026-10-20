@@ -80,9 +80,9 @@ describe('Automation workspace', () => {
 
   it('formats missing next-run values and manual triggers explicitly', () => {
     expect(automationSource).toContain("automation.trigger.kind === 'manual'");
-    expect(automationSource).toContain("tr('schedule.noAutoTrigger', '无自动触发')");
+    expect(automationSource).toContain("if (!automation.enabled) return '—';");
     expect(automationSource).toContain(
-      "automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '-'"
+      "automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '—'"
     );
   });
 

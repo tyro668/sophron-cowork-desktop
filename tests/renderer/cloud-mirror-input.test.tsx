@@ -155,7 +155,10 @@ describe('cloud-mirrored input table', () => {
     const { container } = renderPanel();
     expect(container.innerHTML).not.toContain('cloud-remote.csv');
     expect(screen.getByText('Cloud table')).toBeTruthy();
-    expect(screen.getByText('Alpha space / Beta project / Remote sales')).toBeTruthy();
+    // The source location moved into the name tooltip (design 06).
+    expect(
+      container.querySelector('[title="Alpha space / Beta project / Remote sales"]')
+    ).toBeTruthy();
     expect(screen.queryByText(/cloud-remote\.csv/)).toBeNull();
   });
 
@@ -202,7 +205,7 @@ describe('cloud-mirrored input table', () => {
         actionId={null}
       />
     );
-    expect(screen.getByText('Csv')).toBeTruthy();
+    expect(screen.getByText('CSV')).toBeTruthy();
     expect(screen.queryByText('Cloud table')).toBeNull();
     expect(screen.queryByText('Alpha space / Beta project / Remote sales')).toBeNull();
   });
