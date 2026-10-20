@@ -111,6 +111,7 @@ export function LlmPromptComposer({
     >
       <SkillMentionMenu
         open={skillMentions.isMentionMenuOpen}
+        query={skillMentions.mentionQuery}
         skills={skillMentions.filteredSkills}
         highlightedIndex={skillMentions.highlightedIndex}
         onSelect={skillMentions.selectSkill}

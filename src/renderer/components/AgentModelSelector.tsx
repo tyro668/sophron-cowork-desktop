@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Settings2 } from 'lucide-react';
+import { useAppStore } from '../store';
 import {
   BUILTIN_LLM_PROVIDER,
   makeBuiltinLlmConfigSetId,
@@ -186,10 +187,13 @@ export function AgentModelSelector({
     });
   };
 
+  // Unified naming: the model id is the primary label everywhere (trigger and
+  // menu); a custom config-set name only appears as the secondary line.
+  const getPrimaryModelText = (option: AgentModelOption) =>
+    option.source === 'builtin' ? option.name : option.model || option.name;
   const getSecondaryModelText = (option: AgentModelOption) => {
     if (option.source === 'builtin') return '';
-    const serverModel = option.serverModel || option.model;
-    return serverModel && serverModel !== option.name ? serverModel : '';
+    return option.name && option.name !== getPrimaryModelText(option) ? option.name : '';
   };
 
   useEffect(() => {
@@ -232,7 +236,9 @@ export function AgentModelSelector({
             >
               <span className="block min-w-0">
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="block truncate text-[13px] font-medium">{option.name}</span>
+                  <span className="block truncate text-[13px] font-medium">
+                    {getPrimaryModelText(option)}
+                  </span>
                   {costMultiplier ? (
                     <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-80">
                       {costMultiplier}
@@ -276,12 +282,34 @@ export function AgentModelSelector({
       <div className="max-h-56 overflow-y-auto">
         {options.length > 0 ? (
           <>
-            {renderOptionGroup(t('chat.modelGroupBuiltin'), builtinOptions)}
-            {renderOptionGroup(t('chat.modelGroupCustom'), customOptions)}
+            {renderOptionGroup(
+              t('chat.modelGroupCurrent'),
+              options.filter((option) => option.isActive)
+            )}
+            {renderOptionGroup(
+              t('chat.modelGroupBuiltin'),
+              builtinOptions.filter((option) => !option.isActive)
+            )}
+            {renderOptionGroup(
+              t('chat.modelGroupCustom'),
+              customOptions.filter((option) => !option.isActive)
+            )}
           </>
         ) : (
           <div className="px-3 py-2 text-sm text-text-muted">{label}</div>
         )}
+      </div>
+      <div className="border-t border-border-subtle py-1">
+        <GlassMenuItem
+          icon={<Settings2 className="h-3.5 w-3.5" />}
+          onSelect={() => {
+            const store = useAppStore.getState();
+            store.setSettingsTab('api');
+            store.setShowSettings(true);
+          }}
+        >
+          {t('chat.manageModels')}
+        </GlassMenuItem>
       </div>
     </GlassDropdownMenu>
   );
