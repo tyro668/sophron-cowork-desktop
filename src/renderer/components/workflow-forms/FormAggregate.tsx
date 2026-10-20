@@ -12,6 +12,7 @@ import {
   ensureStableRowIds,
   insertRowAfter,
   removeRowAt,
+  patchRowAt,
 } from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { DropdownMenuSeparator } from '../ui';
@@ -136,9 +137,17 @@ export default function FormAggregate({
 
   const updateMetric = useCallback(
     (index: number, partial: Partial<MetricEntry>) => {
-      handleMetricsChange(metrics.map((item, i) => (i === index ? { ...item, ...partial } : item)));
+      updateConfig((cfg) => {
+        const next = patchRowAt(
+          (cfg.metrics as MetricEntry[] | undefined) ?? [],
+          metrics,
+          index,
+          partial
+        );
+        return { ...cfg, metrics: ensureStableRowIds(next, createMetricId) };
+      });
     },
-    [metrics, handleMetricsChange]
+    [metrics, updateConfig]
   );
 
   const {

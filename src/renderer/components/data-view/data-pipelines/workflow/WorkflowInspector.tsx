@@ -518,6 +518,7 @@ export function WorkflowInspector({
               mode={resolvedTab === 'dsl' ? 'dsl' : 'form'}
               node={node}
               workflowNodes={workflowNodes}
+              workflowEdges={workflowEdges}
               sourceNode={
                 operatorFieldSourceNode
                   ? {

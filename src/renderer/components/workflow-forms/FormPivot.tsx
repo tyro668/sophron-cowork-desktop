@@ -12,6 +12,7 @@ import {
   ensureStableRowIds,
   insertRowAfter,
   removeRowAt,
+  patchRowAt,
 } from './shared/rowListOperations';
 import { useWorkflowNodeColumnValues } from '../../hooks/useWorkflowNodeColumnValues';
 import { useDragReorder } from '../../hooks/useDragReorder';
@@ -122,7 +123,10 @@ export default function FormPivot({
   );
 
   function updateMetric(index: number, patch: Partial<PivotMetric>) {
-    handleUsingChange(using.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    updateConfig((cfg) => {
+      const next = patchRowAt((cfg.using as PivotMetric[] | undefined) ?? [], using, index, patch);
+      return { ...cfg, using: ensureStableRowIds(next, createMetricId) };
+    });
   }
 
   function addMetricAfter(index: number) {

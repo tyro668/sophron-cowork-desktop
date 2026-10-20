@@ -6,7 +6,7 @@ import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldE
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
-import { canAppendRow, insertRowAfter } from './shared/rowListOperations';
+import { canAppendRow, insertRowAfter, patchRowAt } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -75,11 +75,17 @@ export default function FormCalculateField({
   }, [calculations, isDragging, resetDrag]);
 
   function updateCalculation(index: number, patch: Partial<CalculationRow>): void {
-    commitCalculations(
-      activeCalculations.map((calculation, currentIndex) =>
-        currentIndex === index ? { ...calculation, ...patch } : calculation
-      )
-    );
+    updateConfig((cfg) => {
+      // Patch the raw persisted rows first (reusing rendered ids), then normalize.
+      const current = (cfg.calculations as CalculationConfigEntry[] | undefined) ?? [];
+      const patched = patchRowAt<CalculationConfigEntry>(current, activeCalculations, index, patch);
+      return {
+        ...cfg,
+        calculations: normalizeCalculationEntries(patched, fieldCompletions).map(
+          persistableCalculation
+        ),
+      };
+    });
   }
 
   function updateCalculationAction(index: number, action: CalculationRow['action']): void {

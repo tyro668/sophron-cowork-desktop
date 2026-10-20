@@ -12,6 +12,7 @@ interface OperatorFormWrapperProps {
   fieldCompletions: string[];
   fieldTypes?: DataColumnTypeInfo[];
   otherNodes: DataWorkflowNode[];
+  workflowEdges?: OperatorFormProps['workflowEdges'];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   upstreamRowCount?: number;
@@ -24,6 +25,7 @@ function LazyOperatorForm({
   fieldCompletions,
   fieldTypes,
   otherNodes,
+  workflowEdges,
   sourceNode,
   rightSourceNode,
   upstreamRowCount,
@@ -70,6 +72,7 @@ function LazyOperatorForm({
         fieldCompletions={fieldCompletions}
         fieldTypes={fieldTypes}
         otherNodes={otherNodes}
+        workflowEdges={workflowEdges}
         sourceNode={sourceNode}
         rightSourceNode={rightSourceNode}
         upstreamRowCount={upstreamRowCount}

@@ -32,3 +32,25 @@ export function createStableRowId(): string {
   }
   return `row_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
+
+/**
+ * Patch one row against the LATEST persisted rows (read inside a functional
+ * config update), not a render-time snapshot. Using the snapshot drops
+ * earlier queued edits (e.g. lost keystrokes). Rows missing an id reuse the id
+ * the form rendered for that index so React keys — and input focus — stay
+ * stable; when nothing is persisted yet, the rendered placeholder rows are used.
+ */
+export function patchRowAt<T extends { id?: string }>(
+  currentRows: readonly T[],
+  renderedRows: readonly T[],
+  index: number,
+  patch: Partial<T>
+): T[] {
+  const base =
+    currentRows.length > 0
+      ? currentRows.map((row, i) =>
+          row.id?.trim() || !renderedRows[i]?.id ? row : { ...row, id: renderedRows[i].id }
+        )
+      : [...renderedRows];
+  return base.map((row, i) => (i === index ? { ...row, ...patch } : row));
+}
