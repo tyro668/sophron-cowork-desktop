@@ -170,7 +170,7 @@ export function RawTableGenerationConsole({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border-muted"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
       style={{ backgroundColor: 'var(--code-preview-background)' }}
     >
       <div

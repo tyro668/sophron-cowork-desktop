@@ -1083,10 +1083,10 @@ export function RawTableEditorWorkbench({
                   })}
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
+                <div className="min-h-0 flex-1 overflow-hidden">
                   {customizeStep === 'rules' ? (
-                    <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col gap-4">
-                      <div className="grid flex-shrink-0 gap-2">
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="grid flex-shrink-0 gap-2 border-b border-border-muted px-4 py-3">
                         <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
                           {t('data.rawTables.editor.rulePrompt')}
                           <span className="group relative inline-flex">
@@ -1169,7 +1169,7 @@ export function RawTableEditorWorkbench({
                   ) : null}
 
                   {customizeStep === 'generate' ? (
-                    <div className="mx-auto flex h-full min-h-0 max-w-[70rem] flex-col">
+                    <div className="flex h-full min-h-0 flex-col">
                       <RawTableGenerationConsole
                         isStreaming={customizeGenerating}
                         log={generationLog}
@@ -1185,7 +1185,7 @@ export function RawTableEditorWorkbench({
 
                   {customizeStep === 'review' ? (
                     normalizerProjectFiles.length === 0 ? (
-                      <div className="flex h-full min-h-0 items-center justify-center rounded-lg border border-dashed border-border-muted">
+                      <div className="flex h-full min-h-0 items-center justify-center bg-surface">
                         <div className="flex flex-col items-center gap-2 px-6 text-center">
                           <FileCode2 className="h-6 w-6 text-text-muted" />
                           <span className="text-[13px] font-medium text-text-secondary">
@@ -1197,8 +1197,8 @@ export function RawTableEditorWorkbench({
                         </div>
                       </div>
                     ) : (
-                      <div className="grid h-full min-h-0 gap-3 overflow-hidden grid-rows-[minmax(0,1fr)_minmax(0,14rem)] lg:grid-cols-[minmax(0,1fr)_15rem] lg:grid-rows-1">
-                        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                      <div className="grid h-full min-h-0 gap-px overflow-hidden bg-border-muted grid-rows-[minmax(0,1fr)_minmax(0,14rem)] lg:grid-cols-[minmax(0,1fr)_15rem] lg:grid-rows-1">
+                        <div className="flex min-h-0 flex-col overflow-hidden bg-surface">
                           <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
                             <div className="flex min-w-0 items-center gap-2">
                               <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
@@ -1251,7 +1251,7 @@ export function RawTableEditorWorkbench({
                           </div>
                           <CodePreview file={selectedNormalizerFile} t={t} />
                         </div>
-                        <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-muted bg-surface">
+                        <div className="flex min-h-0 flex-col overflow-hidden bg-surface">
                           <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-muted px-3">
                             <span className="text-xs font-medium text-text-primary">
                               {t('data.rawTables.editor.projectStructure')}
