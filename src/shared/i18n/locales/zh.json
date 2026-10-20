@@ -517,6 +517,28 @@
         "onTableChange": "本表更新成功后执行",
         "inheritAutomation": "随自动化执行",
         "missing": "自动化已不存在，请刷新列表"
+      },
+      "stats": {
+        "rows": "行数",
+        "columns": "列数",
+        "pipeline": "来源加工",
+        "updatedAt": "最近写入"
+      },
+      "lineage": {
+        "title": "血缘",
+        "raw": "原始表",
+        "pipeline": "加工",
+        "result": "结果表"
+      },
+      "sections": {
+        "basic": "基本信息",
+        "automation": "自动化"
+      },
+      "danger": {
+        "title": "危险操作",
+        "deleteTitle": "删除结果表",
+        "deleteHint": "删除表及其数据，关联的加工输出需要重新登记，无法恢复。",
+        "deleteAction": "删除结果表…"
       }
     },
     "editor": {
