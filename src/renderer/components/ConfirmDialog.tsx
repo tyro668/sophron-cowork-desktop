@@ -85,6 +85,11 @@ export function useConfirmDialog() {
   return context;
 }
 
+/** Like useConfirmDialog, but returns null outside a provider (embedded / test renders). */
+export function useOptionalConfirmDialog() {
+  return useContext(ConfirmDialogContext);
+}
+
 function ConfirmDialogOverlay({
   dialog,
   onClose,

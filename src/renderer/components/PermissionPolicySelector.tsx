@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { useConfirmDialog } from './ConfirmDialog';
+import { useOptionalConfirmDialog } from './ConfirmDialog';
 import {
   normalizePermissionPolicy,
   type PermissionPolicyId,
@@ -35,13 +35,13 @@ export function PermissionPolicySelector({
   const updateSettings = useAppStore((state) => state.updateSettings);
   const activePolicy = normalizePermissionPolicy(settings.permissionPolicy);
   const { t } = useTranslation();
-  const { confirm } = useConfirmDialog();
+  const confirmDialog = useOptionalConfirmDialog();
 
   const handleSelect = async (policy: PermissionPolicyId) => {
     onOpenChange(false);
     if (policy === activePolicy) return;
-    if (policy === 'full_access') {
-      const ok = await confirm({
+    if (policy === 'full_access' && confirmDialog) {
+      const ok = await confirmDialog.confirm({
         title: t('chat.fullAccessConfirmTitle'),
         message: t('chat.fullAccessConfirmMessage'),
         confirmLabel: t('chat.fullAccessConfirmAction'),
