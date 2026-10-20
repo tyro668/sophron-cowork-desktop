@@ -1188,7 +1188,14 @@
           "setOpExceptDistinctTip": "Drop left-table rows found in the right table, deduplicated",
           "setOpByNameTip": "Match columns by name, auto-align mismatched columns",
           "setOpByPositionTip": "Match columns by position, both tables must have same column count",
-          "setOpConnection": "Set operation"
+          "setOpConnection": "Set operation",
+          "inputTables": "Inputs",
+          "leftSide": "Left",
+          "rightSide": "Right",
+          "columnCount": "{{count}} cols",
+          "missingInRight": "Right table lacks {{count}} column(s) ({{cols}}); filled with nulls.",
+          "missingInLeft": "Left table lacks {{count}} column(s) ({{cols}}); filled with nulls.",
+          "positionMismatch": "Positional matching needs equal column counts: left {{left}}, right {{right}}."
         },
         "unnest": {
           "unnestIncompleteField": "Please set the unnest column",

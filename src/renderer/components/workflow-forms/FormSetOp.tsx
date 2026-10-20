@@ -1,9 +1,20 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Table2 } from 'lucide-react';
 
 import type { OperatorFormProps } from './types';
 import { VennDiagramIcon, type VennRegion } from './shared/VennDiagramIcon';
-import { GlassFormLabel } from './shared/GlassFormLabel';
-import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
+import {
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  LabelCell,
+  SegmentCells,
+  WarningRow,
+} from './shared/FormGrid';
+import { SET_OP_GRID_COLUMNS } from './shared/gridColumns';
+import { OPERATOR_ICONS } from '../data-view/data-pipelines/workflow/operator-icons';
+import { dataClient } from '../../features/data/api/data-client';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import {
@@ -24,6 +35,9 @@ export default function FormSetOp({
   node,
   otherNodes,
   sourceNode,
+  rightSourceNode,
+  pipelineId,
+  fieldCompletions,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('setOp');
@@ -79,29 +93,72 @@ export default function FormSetOp({
     return tips[key];
   }, [operation, tr]);
 
-  function opBoxClass() {
-    return 'flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3';
-  }
+  const rightNode = useMemo(() => {
+    if (rightSourceNode) return rightSourceNode;
+    const found = rawRightInput ? otherNodes.find((n) => n.id === rawRightInput) : undefined;
+    return found ? { id: found.id, type: found.type as string, config: found.config } : undefined;
+  }, [rightSourceNode, rawRightInput, otherNodes]);
+
+  const [rightColumns, setRightColumns] = useState<string[] | null>(null);
+  useEffect(() => {
+    setRightColumns(null);
+    if (!rightNode || typeof pipelineId !== 'string' || !dataClient.isAvailable()) return;
+    let alive = true;
+    void dataClient
+      .getWorkflowNodeColumns({
+        pipelineId,
+        nodeId: rightNode.id,
+        nodeType: rightNode.type as never,
+        nodeConfig: rightNode.config,
+      })
+      .then((cols: string[]) => alive && setRightColumns(cols))
+      .catch(() => alive && setRightColumns(null));
+    return () => {
+      alive = false;
+    };
+  }, [rightNode, pipelineId]);
+
+  const columnCheck = useMemo(
+    () =>
+      checkSetOpColumns(
+        fieldCompletions,
+        rightColumns,
+        operation === 'union' ? (match as 'by_name' | 'by_position') : 'by_position'
+      ),
+    [fieldCompletions, rightColumns, operation, match]
+  );
+
+  const LeftIcon = sourceNode
+    ? (OPERATOR_ICONS[sourceNode.type as keyof typeof OPERATOR_ICONS] ?? Table2)
+    : null;
+  const RightIcon = rightNode
+    ? (OPERATOR_ICONS[rightNode.type as keyof typeof OPERATOR_ICONS] ?? Table2)
+    : null;
+  const currentOp = operationOptions.find((o) => o.value === operation) ?? operationOptions[0];
+  const isUnion = operation === 'union';
 
   return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('setOpConnection')}</GlassFormLabel>
-        <GlassSegmentedControl
+    <FormScroll>
+      <FormGrid columns={SET_OP_GRID_COLUMNS}>
+        <LabelCell>{tr('setOpConnection')}</LabelCell>
+        <SegmentCells
           value={operation}
+          ariaLabel={tr('setOpConnection')}
           options={operationOptions.map((item) => ({
             value: item.value,
-            label: item.label,
-            tip: item.tip,
-            icon: (
-              <VennDiagramIcon
-                region={SET_OPERATION_REGIONS[item.value]}
-                className="h-4 w-6 shrink-0"
-                fillOpacity={0.55}
-                outlineOpacity={0.35}
-                outlineWidth={1.4}
-                showOutlines={item.value !== 'union'}
-              />
+            title: item.tip,
+            label: (
+              <>
+                <VennDiagramIcon
+                  region={SET_OPERATION_REGIONS[item.value]}
+                  className="h-4 w-6 shrink-0"
+                  fillOpacity={0.55}
+                  outlineOpacity={0.35}
+                  outlineWidth={1.4}
+                  showOutlines={item.value !== 'union'}
+                />
+                <span>{item.label}</span>
+              </>
             ),
           }))}
           onChange={(value) =>
@@ -111,55 +168,126 @@ export default function FormSetOp({
               ...(value !== 'union' ? { match: undefined } : {}),
             }))
           }
-          ariaLabel={tr('setOpConnection')}
         />
-      </div>
+        <Cell v={['muted']}>
+          <span className="truncate" title={currentOp.tip}>
+            {currentOp.tip}
+          </span>
+        </Cell>
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-        <div className={opBoxClass()}>
-          <span className="truncate text-[13px] text-text-secondary">
+        <LabelCell>{tr('inputTables')}</LabelCell>
+        <Cell span={2} v={['ro']} testId="setop-left-source">
+          {LeftIcon ? <LeftIcon className="opg-ic h-3.5 w-3.5" /> : null}
+          <span className="truncate font-medium">
             {leftSourceLabel || tr('sources.noLeftSource')}
           </span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-        <div className={opBoxClass()}>
-          <span className="truncate text-[13px] text-text-secondary">
+          {sourceNode && fieldCompletions.length > 0 ? (
+            <span className="opg-badge">
+              {tr('columnCount', { count: fieldCompletions.length })}
+            </span>
+          ) : null}
+          <span className="ml-auto text-[12px] text-text-muted">{tr('leftSide')}</span>
+        </Cell>
+        <Cell span={2} v={['ro']} testId="setop-right-source">
+          {RightIcon ? <RightIcon className="opg-ic h-3.5 w-3.5" /> : null}
+          <span className="truncate font-medium">
             {rightSourceLabel || tr('sources.noRightSource')}
           </span>
-        </div>
-      </div>
+          {rightColumns ? (
+            <span className="opg-badge">{tr('columnCount', { count: rightColumns.length })}</span>
+          ) : null}
+          <span className="ml-auto text-[12px] text-text-muted">{tr('rightSide')}</span>
+        </Cell>
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('setOpDedupMode')}</GlassFormLabel>
-        <GlassSegmentedControl
+        <LabelCell>{tr('setOpDedupMode')}</LabelCell>
+        <SegmentCells
           value={mode}
+          ariaLabel={tr('setOpDedupMode')}
           options={[
-            { value: 'all', label: tr('setOpAll'), tip: modeTips.all },
-            { value: 'distinct', label: tr('setOpDistinct'), tip: modeTips.distinct },
+            { value: 'all', label: tr('setOpAll'), title: modeTips.all },
+            { value: 'distinct', label: tr('setOpDistinct'), title: modeTips.distinct },
           ]}
           onChange={(value) => updateConfig((config) => ({ ...config, mode: value }))}
-          ariaLabel={tr('setOpDedupMode')}
         />
-      </div>
+        <Cell span={2} v={['muted']}>
+          <span className="truncate">{mode === 'distinct' ? modeTips.distinct : modeTips.all}</span>
+        </Cell>
 
-      {operation === 'union' && (
-        <div className="flex items-center gap-2">
-          <GlassFormLabel>{tr('setOpMatchMode')}</GlassFormLabel>
-          <GlassSegmentedControl
-            value={match}
-            options={[
-              { value: 'by_name', label: tr('setOpByName'), tip: tr('setOpByNameTip') },
-              { value: 'by_position', label: tr('setOpByPosition'), tip: tr('setOpByPositionTip') },
-            ]}
-            onChange={(value) => updateConfig((config) => ({ ...config, match: value }))}
-            ariaLabel={tr('setOpMatchMode')}
-          />
-        </div>
-      )}
-    </div>
+        {isUnion ? (
+          <>
+            <LabelCell>{tr('setOpMatchMode')}</LabelCell>
+            <SegmentCells
+              value={match}
+              ariaLabel={tr('setOpMatchMode')}
+              options={[
+                { value: 'by_name', label: tr('setOpByName'), title: tr('setOpByNameTip') },
+                {
+                  value: 'by_position',
+                  label: tr('setOpByPosition'),
+                  title: tr('setOpByPositionTip'),
+                },
+              ]}
+              onChange={(value) => updateConfig((config) => ({ ...config, match: value }))}
+            />
+            <Cell span={2} v={['muted']}>
+              <span className="truncate">
+                {match === 'by_position' ? tr('setOpByPositionTip') : tr('setOpByNameTip')}
+              </span>
+            </Cell>
+          </>
+        ) : null}
+
+        {columnCheck.kind === 'positionMismatch' ? (
+          <ErrorRow span={5}>
+            {tr('positionMismatch', { left: columnCheck.left, right: columnCheck.right })}
+          </ErrorRow>
+        ) : null}
+        {columnCheck.kind === 'missing' && columnCheck.missingInRight.length > 0 ? (
+          <WarningRow span={5}>
+            {tr('missingInRight', {
+              count: columnCheck.missingInRight.length,
+              cols: columnCheck.missingInRight.join('、'),
+            })}
+          </WarningRow>
+        ) : null}
+        {columnCheck.kind === 'missing' && columnCheck.missingInLeft.length > 0 ? (
+          <WarningRow span={5}>
+            {tr('missingInLeft', {
+              count: columnCheck.missingInLeft.length,
+              cols: columnCheck.missingInLeft.join('、'),
+            })}
+          </WarningRow>
+        ) : null}
+      </FormGrid>
+    </FormScroll>
   );
+}
+
+export type SetOpColumnCheck =
+  | { kind: 'ok' }
+  | { kind: 'positionMismatch'; left: number; right: number }
+  | { kind: 'missing'; missingInRight: string[]; missingInLeft: string[] };
+
+/**
+ * Compare both inputs' column names. Unknown right columns (not loaded yet /
+ * failed) or an empty left side yield `ok` — we never warn on missing data.
+ */
+export function checkSetOpColumns(
+  left: string[],
+  right: string[] | null,
+  match: 'by_name' | 'by_position'
+): SetOpColumnCheck {
+  if (!right || left.length === 0 || right.length === 0) return { kind: 'ok' };
+  if (match === 'by_position') {
+    return left.length === right.length
+      ? { kind: 'ok' }
+      : { kind: 'positionMismatch', left: left.length, right: right.length };
+  }
+  const r = new Set(right);
+  const l = new Set(left);
+  const missingInRight = left.filter((c) => !r.has(c));
+  const missingInLeft = right.filter((c) => !l.has(c));
+  return missingInRight.length || missingInLeft.length
+    ? { kind: 'missing', missingInRight, missingInLeft }
+    : { kind: 'ok' };
 }
