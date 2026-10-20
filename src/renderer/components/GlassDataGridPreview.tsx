@@ -12,7 +12,8 @@ import DataEditor, {
   type Theme,
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Loader2, RefreshCw, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { DataRawTablePreview } from '../types';
 import {
   isNumericDataFieldType,
@@ -46,6 +47,22 @@ export interface GlassDataGridPreviewProps {
   footerLeading?: ReactNode;
   footerTrailing?: ReactNode;
   onRetry?: () => void;
+  /** Show the column filter bar (filters apply to the loaded page). */
+  enableFilters?: boolean;
+}
+
+type FilterOp = 'eq' | 'neq' | 'contains';
+interface ColumnFilter {
+  column: string;
+  op: FilterOp;
+  value: string;
+}
+
+function matchesFilter(cell: PreviewCellValue, filter: ColumnFilter): boolean {
+  const text = cell === null || cell === undefined ? '' : String(cell);
+  if (filter.op === 'contains') return text.toLowerCase().includes(filter.value.toLowerCase());
+  const equal = text === filter.value;
+  return filter.op === 'eq' ? equal : !equal;
 }
 
 export function GlassDataGridPreview({
@@ -62,7 +79,12 @@ export function GlassDataGridPreview({
   footerLeading,
   footerTrailing,
   onRetry,
+  enableFilters = false,
 }: GlassDataGridPreviewProps) {
+  const { t } = useTranslation();
+  const [filters, setFilters] = useState<ColumnFilter[]>([]);
+  const [filterFormOpen, setFilterFormOpen] = useState(false);
+  const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ column: '', op: 'eq', value: '' });
   const theme = useGlassDataGridTheme();
   const columns = preview?.columns ?? EMPTY_COLUMNS;
   const [sort, setSort] = useState<{ column: string; dir: 'asc' | 'desc' } | null>(null);
@@ -81,11 +103,23 @@ export function GlassDataGridPreview({
     [preview?.columnTypes]
   );
   const rawRows = preview?.rows ?? EMPTY_ROWS;
+  const activeFilters = useMemo(
+    () => filters.filter((filter) => columns.includes(filter.column)),
+    [filters, columns]
+  );
   const rows = useMemo(() => {
-    if (!sort || !columns.includes(sort.column)) return rawRows;
+    const filtered =
+      activeFilters.length === 0
+        ? rawRows
+        : rawRows.filter((row) =>
+            activeFilters.every((filter) => matchesFilter(row[filter.column], filter))
+          );
+    if (!sort || !columns.includes(sort.column)) return filtered;
     const factor = sort.dir === 'asc' ? 1 : -1;
-    return [...rawRows].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
-  }, [rawRows, sort, columns]);
+    return [...filtered].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
+  }, [rawRows, sort, columns, activeFilters]);
+  const opLabel = (op: FilterOp) =>
+    op === 'eq' ? '=' : op === 'neq' ? '≠' : t('data.preview.filterContains');
   const totalRows = preview?.totalRows ?? 0;
   const pageSize = preview?.limit ?? rows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize || 1)));
@@ -114,6 +148,105 @@ export function GlassDataGridPreview({
 
   return (
     <div className={containerClassName}>
+      {enableFilters && hasColumns && (
+        <div
+          className="relative flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
+          style={{ borderColor: 'var(--data-grid-border)' }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setFilterDraft((current) => ({ ...current, column: current.column || columns[0] }));
+              setFilterFormOpen((open) => !open);
+            }}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+              activeFilters.length > 0
+                ? 'border-accent/40 bg-accent-muted text-accent-text'
+                : 'border-border-muted bg-surface text-text-secondary hover:border-accent/40'
+            }`}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            {t('data.preview.filter')}
+            {activeFilters.length > 0 && ` · ${activeFilters.length}`}
+          </button>
+          {activeFilters.map((filter, index) => (
+            <span
+              key={`${filter.column}:${filter.op}:${filter.value}:${index}`}
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
+            >
+              {filter.column} {opLabel(filter.op)} {filter.value || '""'}
+              <button
+                type="button"
+                aria-label={t('data.preview.removeFilter')}
+                onClick={() => setFilters((current) => current.filter((item) => item !== filter))}
+                className="text-text-muted hover:text-text-primary"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {activeFilters.length > 0 && (
+            <span className="ml-auto text-[11.5px] text-text-muted">
+              {t('data.preview.filterScope', { shown: rows.length, total: rawRows.length })}
+            </span>
+          )}
+          {filterFormOpen && (
+            <form
+              className="absolute left-3 top-full z-30 mt-1 flex items-center gap-2 rounded-xl border border-border-subtle bg-surface p-2 shadow-elevated"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!filterDraft.column) return;
+                setFilters((current) => [...current, filterDraft]);
+                setFilterDraft((current) => ({ ...current, value: '' }));
+                setFilterFormOpen(false);
+              }}
+            >
+              <select
+                aria-label={t('data.preview.filterColumn')}
+                value={filterDraft.column}
+                onChange={(event) =>
+                  setFilterDraft((current) => ({ ...current, column: event.target.value }))
+                }
+                className="h-7 max-w-[10rem] rounded-md border border-border-muted bg-surface px-1.5 text-xs"
+              >
+                {columns.map((column) => (
+                  <option key={column} value={column}>
+                    {column}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label={t('data.preview.filterOperator')}
+                value={filterDraft.op}
+                onChange={(event) =>
+                  setFilterDraft((current) => ({ ...current, op: event.target.value as FilterOp }))
+                }
+                className="h-7 rounded-md border border-border-muted bg-surface px-1.5 text-xs"
+              >
+                <option value="eq">=</option>
+                <option value="neq">≠</option>
+                <option value="contains">{t('data.preview.filterContains')}</option>
+              </select>
+              <input
+                autoFocus
+                aria-label={t('data.preview.filterValue')}
+                value={filterDraft.value}
+                onChange={(event) =>
+                  setFilterDraft((current) => ({ ...current, value: event.target.value }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setFilterFormOpen(false);
+                }}
+                placeholder={t('data.preview.filterValue')}
+                className="h-7 w-36 rounded-md border border-border-muted bg-surface px-2 text-xs outline-none focus:border-accent/50"
+              />
+              <Button type="submit" size="sm" variant="primary">
+                {t('data.preview.addFilter')}
+              </Button>
+            </form>
+          )}
+        </div>
+      )}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {isLoading ? (
           showSkeleton ? (
