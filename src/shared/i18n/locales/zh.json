@@ -1702,7 +1702,12 @@
           "strict": "出现新列时报错",
           "ignore": "忽略新列"
         }
-      }
+      },
+      "selectRawTable": "请选择原始表",
+      "inputTableInfo": "{{columns}} 个字段 · {{rows}} 行 · 更新于 {{updated}}",
+      "inputAlias": "引用名",
+      "inputAliasHint": "在 SQL、表连接条件中以 [{{alias}}] 引用",
+      "inputAliasNone": "连接到表连接或 SQL 后自动生成"
     },
     "relative": {
       "today": "今天",

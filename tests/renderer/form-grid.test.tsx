@@ -141,3 +141,33 @@ describe('validateFieldMappings', () => {
     expect(issues[3]?.key).toBe('fieldMappingTargetExists');
   });
 });
+
+describe('WorkflowInputSourceConfig', () => {
+  it('shows table info for name-bound DSL inputs and a select placeholder when tables exist', async () => {
+    const { WorkflowInputSourceConfig } =
+      await import('../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowInputSourceConfig');
+    const rawTable = {
+      id: 'rt1',
+      name: '销售订单',
+      sourceKind: 'excel',
+      rowCount: 2000,
+      columnCount: 14,
+      updatedAt: new Date(2026, 9, 18, 9, 12).getTime(),
+    };
+    const bound = await render(
+      createElement(WorkflowInputSourceConfig, {
+        node: {
+          id: 'i',
+          type: 'input_source',
+          config: { rawTableId: '销售订单', alias: 'orders' },
+        },
+        rawTables: [rawTable],
+        isLoading: false,
+        onNodeChange: () => undefined,
+      } as never)
+    );
+    expect(bound.host.textContent).toContain('orders');
+    expect(bound.host.textContent).toContain('inputTableInfo');
+    await bound.cleanup();
+  });
+});

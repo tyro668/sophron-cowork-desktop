@@ -451,7 +451,7 @@ export function WorkflowInspector({
           className={`min-h-0 flex-1 overflow-hidden ${
             resolvedTab === 'data' ||
             ((resolvedTab === 'config' || resolvedTab === 'dsl') &&
-              (usesOperatorDsl || node.type === 'output'))
+              (usesOperatorDsl || node.type === 'output' || node.type === 'input_source'))
               ? 'p-0'
               : 'p-2.5'
           }`}
