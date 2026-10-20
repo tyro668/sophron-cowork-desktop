@@ -212,13 +212,14 @@ describe('FormDeduplicate — 组件结构检查', () => {
     'utf-8'
   );
 
-  it('左侧标签式表单布局', () => {
-    expect(src).toContain('GlassFormLabel');
-    expect(src).toContain('flex-col');
+  it('左侧标签式表单布局（共享 FormGrid，标签列 104）', () => {
+    expect(src).toContain('<FormGrid');
+    expect(src).toContain('<LabelCell');
+    expect(src).toContain('DEDUPE_GRID_COLUMNS');
   });
 
   it('去重依据使用分段控件（指定字段/整行）', () => {
-    expect(src).toContain('GlassSegmentedControl');
+    expect(src).toContain('SegmentCells');
     expect(src).toContain("'by_columns'");
     expect(src).toContain("'all_columns'");
   });
@@ -266,8 +267,8 @@ describe('FormDeduplicate — 组件结构检查', () => {
     expect(multiSrc).toContain('indeterminate');
   });
 
-  it('重复记录使用 first/last 两个选项', () => {
-    expect(src).toContain('GlassOptionSingleSelect');
+  it('保留哪条使用 第一条/最后一条 两段', () => {
+    expect(src).toContain("tr('dedupKeepFirst')");
     expect(src).toContain("'first'");
     expect(src).toContain("'last'");
   });
