@@ -146,6 +146,7 @@ export function AutomationListPanel({
           {!isLoading && automations.length === 0 ? (
             <EmptyState
               label={tr('schedule.empty', '暂无自动化')}
+              icon={<CalendarClock className="h-6 w-6" />}
               description={
                 searchQuery.trim()
                   ? tr('workspaceEmpty.searchHint', '试试其他关键词，或清除搜索。')
