@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle2, Code2, Copy, Maximize2, X } from 'lucide-react';
-import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
+import type { DataWorkflowEdge, DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
 import type { PrepDiagnostic } from '../../../shared/prep-dsl';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
@@ -13,6 +13,7 @@ interface WorkflowOperatorConfigPanelProps {
   mode: 'form' | 'dsl';
   node: DataWorkflowNode;
   workflowNodes: DataWorkflowNode[];
+  workflowEdges?: DataWorkflowEdge[];
   sourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   rightSourceNode?: { id: string; type: string; config?: Record<string, unknown> };
   fieldCompletions: string[];
@@ -44,6 +45,7 @@ export function WorkflowOperatorConfigPanel({
   mode,
   node,
   workflowNodes,
+  workflowEdges,
   sourceNode,
   rightSourceNode,
   fieldCompletions,
@@ -106,6 +108,7 @@ export function WorkflowOperatorConfigPanel({
             fieldCompletions={fieldCompletions}
             fieldTypes={fieldTypes}
             otherNodes={workflowNodes}
+            workflowEdges={workflowEdges}
             sourceNode={sourceNode}
             rightSourceNode={rightSourceNode}
             upstreamRowCount={upstreamRowCount}

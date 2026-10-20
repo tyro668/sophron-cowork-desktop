@@ -26,6 +26,7 @@ import {
   removeCondition,
   type ConditionEntry,
 } from './join/conditionRows';
+import { resolveJoinReferenceAliases } from './join/joinReferenceAliases';
 
 const OPERATOR_KEYS = [
   { value: '=', key: 'operatorEq' },
@@ -40,6 +41,7 @@ export default function FormJoin({
   pipelineId,
   fieldCompletions,
   otherNodes,
+  workflowEdges,
   sourceNode,
   rightSourceNode,
   onNodeChange,
@@ -81,8 +83,23 @@ export default function FormJoin({
   const leftSourceLabel = resolveNodeLabel(sourceNode);
   const rightSourceLabel = resolveNodeLabel(rightSourceNode);
 
-  const leftAlias = leftSourceLabel || 'left';
-  const rightAlias = rightSourceLabel || 'right_source';
+  // Conditions are keyed by stable reference names (input_source aliases), not
+  // by editable display labels — otherwise saved conditions show as missing
+  // and break whenever an upstream node is renamed.
+  const referenceAliases = useMemo(
+    () =>
+      resolveJoinReferenceAliases({
+        leftSourceId: sourceNode?.id,
+        rightSourceId: rightSourceNode?.id,
+        nodes: [...otherNodes, node],
+        edges: workflowEdges ?? [],
+        configRightAlias: node.config.rightAlias,
+        savedLeftRefs: ui.conditions.map((condition) => condition.left),
+      }),
+    [node, otherNodes, rightSourceNode?.id, sourceNode?.id, ui.conditions, workflowEdges]
+  );
+  const leftAlias = referenceAliases.leftAlias || leftSourceLabel || 'left';
+  const rightAlias = referenceAliases.rightAlias || rightSourceLabel || 'right_source';
 
   // Right table column names (fetched via IPC, same as before)
   const [rightRawColumns, setRightRawColumns] = useState<string[]>([]);

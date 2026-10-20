@@ -4,7 +4,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassFormTextInput } from './shared/GlassFormTextInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { GlassRowList, type GlassRowListColumn, type RowAction } from './shared/GlassRowList';
-import { createStableRowId, ensureStableRowIds } from './shared/rowListOperations';
+import { createStableRowId, ensureStableRowIds, patchRowAt } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useDragReorder } from '../../hooks/useDragReorder';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -72,10 +72,15 @@ export default function FormFieldMapping({
 
   const updateMapping = useCallback(
     (index: number, patch: Partial<FieldMappingEntry>) => {
-      const next = activeMappings.map((m, i) => (i === index ? { ...m, ...patch } : m));
-      commitMappings(next);
+      updateConfig((cfg) => {
+        const current = ((cfg.mappings as Record<string, unknown>[] | undefined) ?? []).map(
+          normalizeFieldMappingEntry
+        );
+        const next = patchRowAt(current, activeMappings, index, patch);
+        return { ...cfg, mappings: ensureStableRowIds(next) };
+      });
     },
-    [activeMappings, commitMappings]
+    [activeMappings, updateConfig]
   );
 
   const addMappingAfter = useCallback(
