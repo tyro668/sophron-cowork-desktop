@@ -1642,6 +1642,19 @@
     "preview": {
       "loadFailed": "读取失败",
       "retry": "重试"
+    },
+    "pipelineList": {
+      "io": "输入 → 输出",
+      "nodes": "节点",
+      "lastRun": "最近运行",
+      "automation": "自动化",
+      "noOutput": "未设置输出",
+      "durationMs": "{{value}} 毫秒",
+      "durationSec": "{{value}} 秒",
+      "run_failed": "失败",
+      "run_running": "运行中",
+      "total": "共 {{count}} 个",
+      "run_completed": "成功"
     }
   },
   "settings": {

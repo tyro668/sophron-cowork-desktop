@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react';
+import { ArrowRight, Clock3 } from 'lucide-react';
+import { dataClient } from '../../../features/data/api/data-client';
+import type { DataPipelineRun } from '../../../../shared/contracts/data';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
@@ -33,6 +36,117 @@ import {
   formatTimestamp,
 } from '../shared';
 import { Button } from '../../ui/button';
+
+type TFn = (key: string, o?: Record<string, unknown>) => string;
+
+interface PipelineListMeta {
+  inputs: string[];
+  outputs: string[];
+  lastRun: DataPipelineRun | null;
+}
+
+type IoNode = { label: string; config?: unknown };
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+function inputLabel(node: IoNode): string {
+  const config = (node.config ?? {}) as { rawTableName?: unknown; rawTableId?: unknown };
+  if (typeof config.rawTableName === 'string' && config.rawTableName) return config.rawTableName;
+  if (
+    typeof config.rawTableId === 'string' &&
+    config.rawTableId &&
+    !UUID_LIKE.test(config.rawTableId)
+  )
+    return config.rawTableId;
+  return node.label;
+}
+function outputLabel(node: IoNode): string {
+  const config = (node.config ?? {}) as { table?: unknown; resultTableName?: unknown };
+  if (typeof config.resultTableName === 'string' && config.resultTableName)
+    return config.resultTableName;
+  return typeof config.table === 'string' && config.table && !config.table.startsWith('output_')
+    ? config.table
+    : node.label;
+}
+
+/** Lazily loads per-row I/O summary + last run for the visible pipelines. */
+function usePipelineListMeta(pipelines: DataPipeline[]) {
+  const [meta, setMeta] = useState<Record<string, PipelineListMeta>>({});
+  const [automationNames, setAutomationNames] = useState<Record<string, string>>({});
+  const key = pipelines.map((p) => `${p.id}:${p.updatedAt}:${p.lastRunAt ?? ''}`).join('|');
+  useEffect(() => {
+    let active = true;
+    if (!dataClient.isAvailable()) return;
+    for (const pipeline of pipelines) {
+      void Promise.all([
+        dataClient.has('getPipelineWorkflow')
+          ? dataClient.getPipelineWorkflow(pipeline.id).catch(() => null)
+          : Promise.resolve(null),
+        dataClient.has('listPipelineRuns')
+          ? dataClient.listPipelineRuns(pipeline.id, 1).catch(() => [])
+          : Promise.resolve([]),
+      ]).then(([workflow, runs]) => {
+        if (!active) return;
+        const nodes = workflow?.nodes ?? [];
+        setMeta((current) => ({
+          ...current,
+          [pipeline.id]: {
+            inputs: nodes.filter((n) => n.type === 'input_source').map(inputLabel),
+            outputs: nodes.filter((n) => n.type === 'output').map(outputLabel),
+            lastRun: runs[0] ?? null,
+          },
+        }));
+      });
+    }
+    void Promise.resolve(dataClient.listAutomations?.())
+      .then((result) => {
+        if (!active || !result) return;
+        const names: Record<string, string> = {};
+        for (const automation of result.automations ?? []) {
+          for (const node of automation.actionGraph?.nodes ?? []) {
+            const pipelineId = (node.config as { pipelineId?: unknown } | undefined)?.pipelineId;
+            if (node.type === 'data.pipeline.run' && typeof pipelineId === 'string') {
+              names[pipelineId] ??= automation.name;
+            }
+          }
+        }
+        setAutomationNames(names);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return { meta, automationNames };
+}
+
+function formatRunDuration(run: DataPipelineRun, t: TFn) {
+  if (!run.finishedAt) return '';
+  const ms = Math.max(0, run.finishedAt - run.startedAt);
+  return ms < 1000
+    ? t('data.pipelineList.durationMs', { value: ms })
+    : t('data.pipelineList.durationSec', { value: (ms / 1000).toFixed(1) });
+}
+
+function LastRunCell({ run, t }: { run: DataPipelineRun | null | undefined; t: TFn }) {
+  if (!run) return <span className="text-text-muted">—</span>;
+  const tone =
+    run.status === 'completed'
+      ? 'bg-success/10 text-success'
+      : run.status === 'failed'
+        ? 'bg-error/10 text-error'
+        : 'bg-accent-muted text-accent-text';
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <span
+        className={`inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium ${tone}`}
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+        {t(`data.pipelineList.run_${run.status}`, { defaultValue: run.status })}
+      </span>
+      <span className="truncate text-xs text-text-muted">{formatRunDuration(run, t)}</span>
+    </span>
+  );
+}
 
 export function PipelinesPanel({
   pipelines,
@@ -217,6 +331,11 @@ export function PipelinesPanel({
             />
           )}
         </div>
+        {!isLoading && totalPipelines > 0 && (
+          <div className="flex h-8 flex-shrink-0 items-center border-t border-border-muted px-3 text-xs text-text-muted">
+            {t('data.pipelineList.total', { count: totalPipelines })}
+          </div>
+        )}
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
@@ -277,6 +396,7 @@ function PipelinesTable({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const sections = buildGroupSections(pipelines, groups, (pipeline) => pipeline.groupId);
   const grouped = hasNamedSections(sections);
+  const { meta, automationNames } = usePipelineListMeta(pipelines);
 
   if (isLoading) {
     return <LoadingState label={t('data.loadingPipelines')} />;
@@ -291,10 +411,12 @@ function PipelinesTable({
       <table className="w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="w-[44%] whitespace-nowrap px-2">{t('data.columns.pipelineName')}</th>
-            <th className="w-[16%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-            <th className="w-[12%] whitespace-nowrap px-2">{t('data.columns.nodes')}</th>
-            <th className="w-[28%] whitespace-nowrap px-2">
+            <th className="w-[26%] whitespace-nowrap px-2">{t('data.columns.pipelineName')}</th>
+            <th className="w-[30%] whitespace-nowrap px-2">{t('data.pipelineList.io')}</th>
+            <th className="w-[7%] whitespace-nowrap px-2">{t('data.pipelineList.nodes')}</th>
+            <th className="w-[14%] whitespace-nowrap px-2">{t('data.pipelineList.lastRun')}</th>
+            <th className="w-[12%] whitespace-nowrap px-2">{t('data.pipelineList.automation')}</th>
+            <th className="w-[11%] whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
                 {t('data.columns.updatedAt')}
                 <ArrowUpDown className="h-3 w-3" />
@@ -306,7 +428,7 @@ function PipelinesTable({
           {sections.map((section) => (
             <GroupSectionRows
               key={section.key}
-              colSpan={4}
+              colSpan={6}
               section={section}
               grouped={grouped}
               collapsed={collapsed.has(section.key)}
@@ -323,6 +445,8 @@ function PipelinesTable({
                   <PipelineRow
                     key={pipeline.id}
                     pipeline={pipeline}
+                    meta={meta[pipeline.id]}
+                    automationName={automationNames[pipeline.id]}
                     selected={selected}
                     onSelect={() => onSelectPipeline(pipeline.id)}
                     onEdit={() => onEdit(pipeline)}
@@ -341,6 +465,8 @@ function PipelinesTable({
 
 function PipelineRow({
   pipeline,
+  meta,
+  automationName,
   selected,
   onSelect,
   onEdit,
@@ -348,10 +474,12 @@ function PipelineRow({
   indented,
 }: {
   pipeline: DataPipeline;
+  meta?: PipelineListMeta;
+  automationName?: string;
   selected: boolean;
   onSelect: () => void;
   onEdit: () => void;
-  t: (key: string) => string;
+  t: TFn;
   indented?: boolean;
 }) {
   return (
@@ -371,17 +499,48 @@ function PipelineRow({
               <Workflow className="h-4 w-4" />
             </div>
           )}
-          <div className="flex min-w-0 items-center">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[13px] font-medium text-text-secondary">
               {pipeline.name}
             </span>
+            {pipeline.status === 'draft' && <StatusBadge status={pipeline.status} />}
           </div>
         </div>
       </td>
       <td className="px-2">
-        <StatusBadge status={pipeline.status} />
+        {meta ? (
+          <span
+            className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-text-secondary"
+            title={`${meta.inputs.join('、')} → ${meta.outputs.join('、')}`}
+          >
+            <span className="min-w-0 max-w-[50%] truncate">
+              {meta.inputs.length > 0 ? meta.inputs.join('、') : '—'}
+            </span>
+            <ArrowRight className="h-3 w-3 flex-shrink-0 text-text-muted" />
+            <span
+              className={`min-w-0 max-w-[50%] truncate ${meta.outputs.length === 0 ? 'text-text-muted' : ''}`}
+            >
+              {meta.outputs.length > 0 ? meta.outputs.join('、') : t('data.pipelineList.noOutput')}
+            </span>
+          </span>
+        ) : (
+          <span className="text-text-muted">…</span>
+        )}
       </td>
       <td className="px-2 text-[13px] font-medium text-text-secondary">{pipeline.nodeCount}</td>
+      <td className="px-2">
+        <LastRunCell run={meta?.lastRun} t={t} />
+      </td>
+      <td className="px-2 text-[12.5px] text-text-secondary">
+        {automationName ? (
+          <span className="flex min-w-0 items-center gap-1" title={automationName}>
+            <Clock3 className="h-3 w-3 flex-shrink-0 text-text-muted" />
+            <span className="truncate">{automationName}</span>
+          </span>
+        ) : (
+          <span className="text-text-muted">—</span>
+        )}
+      </td>
       <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
         {formatTimestamp(pipeline.updatedAt, t)}
       </td>

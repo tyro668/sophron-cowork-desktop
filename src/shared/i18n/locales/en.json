@@ -1642,6 +1642,19 @@
     "preview": {
       "loadFailed": "Failed to load data",
       "retry": "Retry"
+    },
+    "pipelineList": {
+      "io": "Input → Output",
+      "nodes": "Nodes",
+      "lastRun": "Last run",
+      "automation": "Automation",
+      "noOutput": "No output",
+      "durationMs": "{{value}} ms",
+      "durationSec": "{{value}} s",
+      "run_failed": "Failed",
+      "run_running": "Running",
+      "total": "{{count}} total",
+      "run_completed": "Succeeded"
     }
   },
   "settings": {
