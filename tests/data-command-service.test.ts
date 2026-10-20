@@ -1902,9 +1902,9 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "derive [Customer ID Number] = REGEXP_EXTRACT([Customer ID], '[0-9]+')"
+      "derive [Customer ID Number] = regexp_extract([Customer ID], '[0-9]+')"
     );
-    expect(generated.workflowDsl).not.toContain('REGEXP_EXTRACT(`Customer ID`');
+    expect(generated.workflowDsl).not.toContain('regexp_extract(`Customer ID`');
   });
 
   it('does not double-quote native row field refs in generated derive expressions', async () => {
@@ -1945,7 +1945,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "derive [Customer ID Number] = REGEXP_EXTRACT([Customer ID], '[0-9]+')"
+      "derive [Customer ID Number] = regexp_extract([Customer ID], '[0-9]+')"
     );
     expect(generated.workflowDsl).not.toContain('[[Customer ID]]');
   });
@@ -2296,8 +2296,8 @@ function main() {
 
     expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.workflowDsl).toContain('map [Adj Close] to [adj_close]');
-    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = TRY_CAST');
-    expect(generated.workflowDsl).toContain("REPLACE(CAST([adj_close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = try_cast');
+    expect(generated.workflowDsl).toContain("replace(cast([adj_close] AS VARCHAR), '$', '')");
     expect(generated.workflowDsl).toContain('drop [adj_close]');
     expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
     expect(generated.requiredColumns).toEqual([
@@ -2416,7 +2416,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("REPLACE(CAST([Adj Close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain("replace(cast([Adj Close] AS VARCHAR), '$', '')");
     expect(generated.workflowDsl).toContain('drop [记录数]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
   });
@@ -2518,8 +2518,8 @@ function main() {
     });
 
     expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
-    expect(generated.workflowDsl).toContain('derive [Year] = YEAR([Date])');
-    expect(generated.workflowDsl).toContain('derive [Month] = MONTH([Date])');
+    expect(generated.workflowDsl).toContain('derive [Year] = year([Date])');
+    expect(generated.workflowDsl).toContain('derive [Month] = month([Date])');
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'Date', type: 'date' },
       { name: 'Year', type: 'integer' },
@@ -2564,7 +2564,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("REGEXP_EXTRACT(CAST([Date] AS VARCHAR), '^[0-9]{4}')");
+    expect(generated.workflowDsl).toContain("regexp_extract(cast([Date] AS VARCHAR), '^[0-9]{4}')");
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'Date', type: 'date' },
       { name: 'year', type: 'text' },
@@ -2609,7 +2609,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "REGEXP_EXTRACT(CAST([Date] AS VARCHAR), '^[0-9]{4}-([0-9]{2})', 1)"
+      "regexp_extract(cast([Date] AS VARCHAR), '^[0-9]{4}-([0-9]{2})', 1)"
     );
   });
 
@@ -2650,7 +2650,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('derive [__sophron_cast_ticker] = UPPER([ticker])');
+    expect(generated.workflowDsl).toContain('derive [__sophron_cast_ticker] = upper([ticker])');
     expect(generated.workflowDsl).toContain('drop [ticker]');
     expect(generated.workflowDsl).toContain('map [__sophron_cast_ticker] to [ticker]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'ticker', type: 'text' }]);
@@ -3431,7 +3431,7 @@ function main() {
       expectedSignature: expect.stringContaining('derive_window'),
       repairHint: expect.stringContaining('Do not read .data'),
     });
-    expect(generated.workflowDsl).toContain('sum([国家销售额]) OVER ()');
+    expect(generated.workflowDsl).toContain('sum([国家销售额]) over ()');
 
     const run = await service.runGeneratedPipeline({
       pipelineId: generated.pipelineId,

@@ -684,7 +684,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [Profit Margin] = CAST([Profit] / NULLIF([Sales], 0) * 100 AS DECIMAL(18,2))'
+      'derive [Profit Margin] = cast([Profit] / nullif([Sales], 0) * 100 AS decimal(18,2))'
     );
     expect(result.expectedOutputSchema).toContainEqual({
       name: 'Profit Margin',
@@ -712,7 +712,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [Rounded] = CAST([Value] AS DECIMAL(18,2))'
+      'derive [Rounded] = cast([Value] AS decimal(18,2))'
     );
   });
 
@@ -736,7 +736,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [Upper Value] = UPPER(CAST([Value] AS VARCHAR))'
+      'derive [Upper Value] = upper(cast([Value] AS VARCHAR))'
     );
   });
 
@@ -866,7 +866,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [Shipping Days] = DATE_DIFF('day', [Order Date], [Ship Date])"
+    "derive [Shipping Days] = date_diff('day', [Order Date], [Ship Date])"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
   expect(result.expectedOutputSchema).toContainEqual({
@@ -1079,7 +1079,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else CAST(DATE_DIFF('day', [Order Date], [Ship Date]) AS INTEGER) end"
+    "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else cast(date_diff('day', [Order Date], [Ship Date]) AS INTEGER) end"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
 });
@@ -1543,7 +1543,7 @@ function main() {
   const dsl = exportGeneratedWorkflowDsl(result);
 
   expect(dsl).toContain(
-    "derive [__sophron_ai_filter_predicate] = REGEXP_MATCHES([Code], '^[A-Z]+-[0-9]+$')"
+    "derive [__sophron_ai_filter_predicate] = regexp_matches([Code], '^[A-Z]+-[0-9]+$')"
   );
   expect(dsl).toContain('filter [__sophron_ai_filter_predicate] = true');
   expect(dsl).toContain('drop [__sophron_ai_filter_predicate]');
@@ -1581,9 +1581,9 @@ function main() {
   const result = compile(source);
   const canonicalAlias = compile(source.replace('"timestamp"', '"datetime"'));
 
-  expect(exportGeneratedWorkflowDsl(result)).toContain('CAST([Raw] AS DECIMAL(18,2)) * 2');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('cast([Raw] AS decimal(18,2)) * 2');
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [__sophron_ai_filter_predicate] = [Created At] >= CAST('2020-01-01 00:00:00' AS DATETIME)"
+    "derive [__sophron_ai_filter_predicate] = [Created At] >= cast('2020-01-01 00:00:00' AS DATETIME)"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     'filter [__sophron_ai_filter_predicate] = true'
@@ -1621,7 +1621,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [Elapsed Hours] = DATE_DIFF('hour', [Started At], [Finished At])"
+    "derive [Elapsed Hours] = date_diff('hour', [Started At], [Finished At])"
   );
 });
 

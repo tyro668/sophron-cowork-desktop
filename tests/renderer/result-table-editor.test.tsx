@@ -145,7 +145,7 @@ describe('ResultTableEditor', () => {
       fireEvent.pointerMove(exportItem, { pointerType: 'mouse' });
     };
     await openMenu();
-    fireEvent.click(await screen.findByText('Csv file'));
+    fireEvent.click(await screen.findByText('CSV file'));
     await waitFor(() =>
       expect(exportTable).toHaveBeenCalledWith(
         expect.objectContaining({ tableKind: 'result', id: 'ot1', format: 'csv' })
