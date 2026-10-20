@@ -2568,7 +2568,10 @@
     "noMatchingSkills": "No matching enabled skills",
     "removeSkill": "Remove skill {{name}}",
     "connectorCount_one": "{{count}} connector",
-    "connectorCount_other": "{{count}} connectors"
+    "connectorCount_other": "{{count}} connectors",
+    "fullAccessConfirmTitle": "Switch to full access?",
+    "fullAccessConfirmMessage": "The agent will run commands, modify or delete files in the working directory and access the network without asking. The permission chip turns yellow while active; switch back from this menu at any time.",
+    "fullAccessConfirmAction": "Switch to full access"
   },
   "context": {
     "progress": "Progress",
