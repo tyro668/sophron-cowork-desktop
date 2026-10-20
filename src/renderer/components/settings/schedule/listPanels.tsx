@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Automation, AutomationRun } from '../../../types';
 import { formatAppDateTime } from '../../../utils/i18n-format';
+import { Switch } from '../../ui/switch';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import type { AutomationRunLogEntry } from './types';
 import { AUTOMATION_TABLE_PAGE_SIZE } from './types';
@@ -48,6 +49,7 @@ export function AutomationListPanel({
   onRun,
   onEdit,
   onDelete,
+  onToggleEnabled,
   onAssignToGroup,
   onRenameGroup,
   onDeleteGroup,
@@ -69,6 +71,7 @@ export function AutomationListPanel({
   onRun: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleEnabled?: (automation: Automation, enabled: boolean) => void;
   onAssignToGroup: (target: AssignGroupTarget) => void;
   onRenameGroup: (group: DataListGroup, name: string) => void;
   onDeleteGroup: (group: DataListGroup) => void;
@@ -181,6 +184,7 @@ export function AutomationListPanel({
               isLoading={isLoading}
               onSelect={onSelect}
               onEdit={onEdit}
+              onToggleEnabled={onToggleEnabled}
               onGroupPageChange={onGroupPageChange}
               onRenameGroup={setRenameTarget}
               onDeleteGroup={onDeleteGroup}
@@ -373,6 +377,7 @@ function AutomationTable({
   isLoading,
   onSelect,
   onEdit,
+  onToggleEnabled,
   onGroupPageChange,
   onRenameGroup,
   onDeleteGroup,
@@ -386,6 +391,7 @@ function AutomationTable({
   isLoading: boolean;
   onSelect: (automation: Automation) => void;
   onEdit: () => void;
+  onToggleEnabled?: (automation: Automation, enabled: boolean) => void;
   onGroupPageChange: (groupKey: string, page: number) => void;
   onRenameGroup: (group: DataListGroup) => void;
   onDeleteGroup: (group: DataListGroup) => void;
@@ -436,7 +442,19 @@ function AutomationTable({
           </div>
         </td>
         <td className="px-2">
-          <AutomationStatusBadge automation={automation} tr={tr} />
+          <div className="flex items-center gap-2">
+            {onToggleEnabled && (
+              <span onClick={(event) => event.stopPropagation()} className="inline-flex">
+                <Switch
+                  size="sm"
+                  checked={automation.enabled}
+                  aria-label={tr('schedule.toggleEnabled', '启用 / 停用')}
+                  onCheckedChange={(checked) => onToggleEnabled(automation, checked)}
+                />
+              </span>
+            )}
+            <AutomationStatusBadge automation={automation} tr={tr} />
+          </div>
         </td>
         <td className="px-2 text-[13px] font-medium text-text-secondary">
           {automation.actionGraph.nodes.length}
