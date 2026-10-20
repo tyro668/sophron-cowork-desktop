@@ -8,3 +8,4 @@ export const FIELD_SELECT_GRID_COLUMNS = '40px 88px 88px minmax(200px,1fr) 84px'
 export const OUTPUT_GRID_COLUMNS = '104px 120px 120px 120px 120px minmax(200px,1fr)';
 export const INPUT_GRID_COLUMNS = '104px 420px minmax(200px,1fr)';
 export const DEDUPE_GRID_COLUMNS = '104px 120px 120px minmax(200px,1fr) 80px 80px';
+export const EXPECT_GRID_COLUMNS = '104px 120px 120px 120px minmax(200px,1fr) 56px';

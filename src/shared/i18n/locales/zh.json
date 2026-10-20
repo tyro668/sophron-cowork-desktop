@@ -1484,13 +1484,24 @@
           },
           "rows": {
             "operatorLabel": "比较",
-            "valueLabel": "行数阈值"
+            "valueLabel": "行数阈值",
+            "label": "行数条件",
+            "unit": "行",
+            "invalid": "行数阈值需为非负整数。"
           },
           "reject": {
-            "label": "Reject 流名称",
-            "placeholder": "可选：违规行流向此流名"
+            "label": "违规行去向",
+            "placeholder": "可选：违规行写入此名称的输出流"
           },
-          "expectIncompleteField": "请补齐断言配置"
+          "expectIncompleteField": "请补齐断言配置",
+          "ops": {
+            "gt": "大于",
+            "gte": "大于等于",
+            "eq": "等于",
+            "ne": "不等于",
+            "lte": "小于等于",
+            "lt": "小于"
+          }
         }
       },
       "operatorCategories": {
