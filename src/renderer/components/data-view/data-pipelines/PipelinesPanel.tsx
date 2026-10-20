@@ -96,12 +96,9 @@ function usePipelineListMeta(pipelines: DataPipeline[]) {
         }));
       });
     }
+    // .then() turns a synchronous throw (bridge missing) into a rejection.
     void Promise.resolve()
-      .then(() =>
-        typeof window.electronAPI?.automation?.list === 'function'
-          ? dataClient.listAutomations()
-          : null
-      )
+      .then(() => dataClient.listAutomations())
       .then((result) => {
         if (!active || !result) return;
         const names: Record<string, string> = {};
