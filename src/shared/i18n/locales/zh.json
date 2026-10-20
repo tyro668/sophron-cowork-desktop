@@ -1633,6 +1633,10 @@
     "pipelineNameFromTable": "{{name}} 数据加工",
     "pipelines": {
       "selection": "选择数据加工"
+    },
+    "preview": {
+      "loadFailed": "读取失败",
+      "retry": "重试"
     }
   },
   "settings": {

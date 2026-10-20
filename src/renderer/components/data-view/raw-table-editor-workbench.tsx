@@ -1572,10 +1572,13 @@ export function RawTableEditorWorkbench({
               error={previewError}
               currentPage={previewPage}
               onPageChange={(page) => void loadPreviewPage(page)}
+              onRetry={() => void loadPreviewPage(previewPage)}
               labels={{
                 loading: t('data.rawTables.editor.previewLoading'),
                 empty: t('data.rawTables.editor.previewEmpty'),
                 total: (count) => t('data.rawTables.editor.previewTotal', { count }),
+                errorTitle: t('data.preview.loadFailed'),
+                retry: t('data.preview.retry'),
                 pageSize: (count) => t('data.rawTables.editor.previewPageSize', { count }),
               }}
               edgeToEdge
