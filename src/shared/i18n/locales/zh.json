@@ -1650,7 +1650,7 @@
       "undo": "撤销（加工画布）",
       "redo": "重做（加工画布）",
       "deleteNode": "删除选中的节点或连线",
-      "escape": "关闭弹窗或菜单"
+      "escape": "关闭弹窗 · 拒绝权限请求"
     }
   },
   "personalAnalysis": {
@@ -3528,7 +3528,16 @@
       "execute_command": "在工作区中执行 shell 命令",
       "glob": "按模式搜索文件",
       "grep": "搜索文件内容"
-    }
+    },
+    "risk": {
+      "read": "只读",
+      "write": "可能修改",
+      "normal": "需确认"
+    },
+    "scopeLabel": "授权范围",
+    "scopeOnce": "仅本次",
+    "scopeTask": "本任务内允许同类请求",
+    "allowForTask": "本任务内允许"
   },
   "sudo": {
     "title": "需要管理员权限",
