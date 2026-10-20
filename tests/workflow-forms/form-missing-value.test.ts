@@ -218,7 +218,8 @@ describe('FormMissingValue — config ↔ DSL', () => {
         'utf8'
       )
     );
-    expect(source).toContain("actions={['add', 'copy', 'remove']}");
+    expect(source).toContain('<RowActionsCell');
+    expect(source).toContain('onAdd={() => insertRule(i)}');
     expect(source).not.toContain('if (rules.length >= fieldCompletions.length) return;');
     expect(source).not.toContain('canAct=');
   });
@@ -235,7 +236,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
     );
     expect(source).toContain('const copyRule = useCallback(');
     expect(source).toContain('values: source.values ? [...source.values] : undefined');
-    expect(source).toContain('onCopy={(i) => copyRule(i)}');
+    expect(source).toContain('onCopy={() => copyRule(i)}');
   });
 
   it('allows configuring the processing method before selecting a field', async () => {
