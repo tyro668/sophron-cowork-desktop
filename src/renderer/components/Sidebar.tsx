@@ -8,6 +8,7 @@ import {
   Moon,
   Sun,
   Monitor,
+  ChevronDown,
   Settings,
   LogIn,
   LogOut,
@@ -1419,13 +1420,48 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               </button>
             )}
 
-            <button
-              onClick={toggleTheme}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors flex-shrink-0"
-              title={t('sidebar.themeToggle')}
+            <GlassDropdownMenu
+              align="end"
+              side="top"
+              sideOffset={6}
+              trigger={
+                <button
+                  className="inline-flex h-8 flex-shrink-0 items-center gap-1 rounded-lg px-2 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  title={t('sidebar.themeToggle')}
+                >
+                  {settings.theme === 'dark' ? (
+                    <Moon className="h-3.5 w-3.5" />
+                  ) : settings.theme === 'light' ? (
+                    <Sun className="h-3.5 w-3.5" />
+                  ) : (
+                    <Monitor className="h-3.5 w-3.5" />
+                  )}
+                  {settings.theme === 'dark'
+                    ? t('general.themeDark')
+                    : settings.theme === 'light'
+                      ? t('general.themeLight')
+                      : t('general.themeSystem')}
+                  <ChevronDown className="h-3 w-3 text-text-muted" />
+                </button>
+              }
             >
-              {themeIcon}
-            </button>
+              {(
+                [
+                  ['light', t('general.themeLight'), Sun],
+                  ['dark', t('general.themeDark'), Moon],
+                  ['system', t('general.themeSystem'), Monitor],
+                ] as const
+              ).map(([value, label, Icon]) => (
+                <GlassMenuItem
+                  key={value}
+                  icon={<Icon className="h-3.5 w-3.5" />}
+                  selected={settings.theme === value}
+                  onSelect={() => updateSettings({ theme: value })}
+                >
+                  {label}
+                </GlassMenuItem>
+              ))}
+            </GlassDropdownMenu>
             <button
               onClick={() => setShowSettings(true)}
               className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
