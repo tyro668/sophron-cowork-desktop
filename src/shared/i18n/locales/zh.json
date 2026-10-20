@@ -1341,7 +1341,14 @@
           "calcFieldGeneratedFormulaIncomplete": "请先补全上方参数",
           "calcFieldWizardFooterHint": "生成后回到函数列表，可继续编辑",
           "calcFieldInsertAtCursor": "插入到光标处",
-          "calcFieldReplaceFormula": "替换当前公式"
+          "calcFieldReplaceFormula": "替换当前公式",
+          "calcFieldAddRow": "添加计算",
+          "calcFieldRemoveRow": "删除计算",
+          "calcFieldDuplicateTarget": "目标字段「{{field}}」与第 {{row}} 行重复",
+          "calcFieldUpstreamConflict": "新增字段「{{field}}」已存在于上游数据，请改名或选择「替换字段」",
+          "calcFieldFormulaIssues": "公式有 {{count}} 个问题，点击打开编辑器查看",
+          "calcFieldMessageSeparator": "；",
+          "calcFieldMessageEnd": "。"
         },
         "expression": {
           "aggregateExpressionEditor": "公式编辑器",

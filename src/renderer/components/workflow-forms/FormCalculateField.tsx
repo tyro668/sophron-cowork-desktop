@@ -1,16 +1,25 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { Fragment, useCallback, useMemo } from 'react';
 import type { OperatorFormProps } from './types';
-import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { CalculateFieldExpressionInput } from './calculate-field/CalculateFieldExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFormTextInput } from './shared/GlassFormTextInput';
-import { GlassRowList, type GlassRowListColumn } from './shared/GlassRowList';
+import {
+  AddRow,
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  GlassCommitTextInput,
+  GridRow,
+  RowActionsCell,
+  SegmentCells,
+} from './shared/FormGrid';
+import { CALCULATE_FIELD_GRID_COLUMNS } from './shared/gridColumns';
+import { useGridRowDrag } from './shared/useGridRowDrag';
+import { lintExpression } from './shared/expressionLint';
 import { canAppendRow, insertRowAfter, patchRowAt } from './shared/rowListOperations';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
-import { useDragReorder } from '../../hooks/useDragReorder';
 import {
   createCalculationRow,
   normalizeCalculationEntries,
@@ -61,18 +70,9 @@ export default function FormCalculateField({
 
   const {
     activeItems: activeCalculations,
-    handleDragStart,
-    handleDragOver,
-    handleDragEnd,
-    handleKeyboardMove,
-    isDragging,
-    resetDrag,
-    dragIndexRef,
-  } = useDragReorder(calculations, commitCalculations);
-
-  useEffect(() => {
-    if (!isDragging) resetDrag();
-  }, [calculations, isDragging, resetDrag]);
+    rowProps,
+    dragHandle,
+  } = useGridRowDrag(calculations, commitCalculations);
 
   function updateCalculation(index: number, patch: Partial<CalculationRow>): void {
     updateConfig((cfg) => {
@@ -121,110 +121,149 @@ export default function FormCalculateField({
     commitCalculations(activeCalculations.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  const actionOptions = [
-    { value: 'add', label: tr('calcFieldActionAdd') },
-    { value: 'replace', label: tr('calcFieldActionReplace') },
-  ];
-
-  const columns: GlassRowListColumn<CalculationRow>[] = [
-    {
-      flex: 'flex-[1]',
-      header: tr('calcFieldActionHeader'),
-      render: (calculation, index) => (
-        <GlassOptionSingleSelect
-          value={calculation.action ?? 'add'}
-          groups={[{ key: 'action', items: actionOptions }]}
-          onChange={(action) => updateCalculationAction(index, action as CalculationRow['action'])}
-          variant="highlight"
-          className="h-8 w-full text-[12px] [&>span]:text-left"
-        />
-      ),
-    },
-    {
-      flex: 'flex-[1]',
-      header: tr('calcFieldTargetField'),
-      render: (calculation, index) => {
-        const hasAddConflict =
-          calculation.action !== 'replace' &&
-          Boolean(calculation.field) &&
-          sourceFieldNames.has(calculation.field.toLowerCase());
-        return (
-          <div className="flex w-full items-center gap-1">
-            {calculation.action === 'replace' ? (
-              <GlassFieldSingleSelect
-                value={calculation.field}
-                options={fieldCompletions}
-                columnTypes={columnTypes}
-                showType
-                onChange={(field) => updateCalculation(index, { field })}
-                placeholder={tr('calcFieldSelectPlaceholder')}
-                className="h-8 w-full text-[12px]"
-              />
-            ) : (
-              <div className="relative w-full">
-                <GlassFormTextInput
-                  value={calculation.field}
-                  onChange={(field) => updateCalculation(index, { field })}
-                  placeholder={tr('calcFieldTargetPlaceholder')}
-                  className="!h-8 w-full rounded-md px-1.5 pr-6 text-[12px] shadow-none focus:ring-0"
-                />
-                {hasAddConflict && (
-                  <span className="group absolute right-1 top-1/2 inline-flex -translate-y-1/2">
-                    <AlertCircle className="h-4 w-4 text-error" />
-                    <span className="invisible absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px] text-error opacity-0 shadow-elevated transition-opacity group-hover:visible group-hover:opacity-100">
-                      {tr('calcFieldConflictWarning')}
-                    </span>
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      flex: 'flex-[2]',
-      header: tr('calcFieldExpressionLabel'),
-      render: (calculation, index) => (
-        <div className="h-8 overflow-hidden rounded-md border border-border-muted bg-surface">
-          <CalculateFieldExpressionInput
-            subtitle={tr('calcFieldEditorSubtitle', { index: index + 1 })}
-            value={calculation.expression}
-            onChange={(expression) => updateCalculation(index, { expression })}
-            fieldCompletions={fieldCompletions}
-            columnTypes={columnTypes}
-            placeholder={tr('expression.expressionPlaceholder')}
-          />
-        </div>
-      ),
-    },
-  ];
+  const canAdd = canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT);
+  const rowLabels = {
+    add: tr('calcFieldAddRow'),
+    copy: tr('rowList.copyRow'),
+    remove: tr('calcFieldRemoveRow'),
+    drag: tr('rowList.dragToReorder'),
+  };
+  const issues = validateCalculationRows(activeCalculations, fieldCompletions);
 
   return (
-    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto p-3">
-      <GlassRowList
-        headerClassName=""
-        items={activeCalculations}
-        getKey={(calculation) => calculation.id}
-        columns={columns}
-        actions={['add', 'copy', 'remove']}
-        onAdd={addCalculation}
-        onCopy={copyCalculation}
-        onRemove={removeCalculation}
-        canAct={(action) =>
-          (action !== 'add' && action !== 'copy') ||
-          canAppendRow(activeCalculations.length, MAX_CALCULATION_COUNT)
-        }
-        draggable
-        dragHandlePosition="end"
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-        onKeyboardMove={handleKeyboardMove}
-        getRowOpacity={(i) => !!(isDragging && dragIndexRef.current === i)}
-        getDropMarker={(i) => (isDragging && dragIndexRef.current === i ? 'before' : null)}
-        dragTitle={tr('rowList.dragToReorder')}
-      />
-    </div>
+    <FormScroll>
+      <FormGrid columns={CALCULATE_FIELD_GRID_COLUMNS} testId="calculate-field-form-grid">
+        <Cell span={2} v={['th']}>
+          {tr('calcFieldActionHeader')}
+        </Cell>
+        <Cell v={['th']}>{tr('calcFieldTargetField')}</Cell>
+        <Cell v={['th']}>{tr('calcFieldExpressionLabel')}</Cell>
+        <Cell v={['th']} />
+        {activeCalculations.map((calculation, index) => {
+          const issue = issues[index];
+          const messages: string[] = [];
+          if (issue.duplicateOf !== undefined)
+            messages.push(
+              tr('calcFieldDuplicateTarget', {
+                field: calculation.field,
+                row: issue.duplicateOf + 1,
+              })
+            );
+          if (issue.upstreamConflict)
+            messages.push(tr('calcFieldUpstreamConflict', { field: calculation.field }));
+          if (issue.formulaIssues > 0)
+            messages.push(tr('calcFieldFormulaIssues', { count: issue.formulaIssues }));
+          const targetErr = issue.duplicateOf !== undefined || issue.upstreamConflict;
+          return (
+            <Fragment key={calculation.id}>
+              <GridRow {...rowProps(index)} testId={`calculate-field-row-${index}`}>
+                <SegmentCells
+                  value={calculation.action === 'replace' ? 'replace' : 'add'}
+                  options={[
+                    { value: 'add', label: tr('calcFieldActionAdd') },
+                    { value: 'replace', label: tr('calcFieldActionReplace') },
+                  ]}
+                  onChange={(action) => updateCalculationAction(index, action)}
+                  ariaLabel={tr('calcFieldActionHeader')}
+                />
+                {calculation.action === 'replace' ? (
+                  <Cell v={['ctl', targetErr && 'err']}>
+                    <GlassFieldSingleSelect
+                      value={calculation.field}
+                      options={fieldCompletions}
+                      columnTypes={columnTypes}
+                      onChange={(field) => updateCalculation(index, { field })}
+                      placeholder={tr('calcFieldSelectPlaceholder')}
+                      className="w-full"
+                    />
+                  </Cell>
+                ) : (
+                  <Cell v={['ctl', targetErr && 'err']}>
+                    <GlassCommitTextInput
+                      value={calculation.field}
+                      onCommit={(field) => updateCalculation(index, { field: field.trim() })}
+                      placeholder={tr('calcFieldTargetPlaceholder')}
+                      ariaLabel={tr('calcFieldTargetField')}
+                      ariaInvalid={targetErr}
+                    />
+                  </Cell>
+                )}
+                <Cell v={['ctl', issue.formulaIssues > 0 && 'err']}>
+                  <CalculateFieldExpressionInput
+                    subtitle={tr('calcFieldEditorSubtitle', { index: index + 1 })}
+                    value={calculation.expression}
+                    onChange={(expression) => updateCalculation(index, { expression })}
+                    fieldCompletions={fieldCompletions}
+                    columnTypes={columnTypes}
+                    lintFields={[
+                      ...fieldCompletions,
+                      ...activeCalculations
+                        .slice(0, index)
+                        .map((row) => row.field.trim())
+                        .filter(Boolean),
+                    ]}
+                    placeholder={tr('expression.expressionPlaceholder')}
+                  />
+                </Cell>
+                <RowActionsCell
+                  labels={rowLabels}
+                  onAdd={() => addCalculation(index)}
+                  onCopy={() => copyCalculation(index)}
+                  onRemove={() => removeCalculation(index)}
+                  canAdd={canAdd}
+                  dragHandle={dragHandle(index)}
+                />
+              </GridRow>
+              {messages.length > 0 ? (
+                <ErrorRow span={5}>
+                  <b>{tr('rowPrefix', { index: index + 1 })}</b>
+                  {messages.join(tr('calcFieldMessageSeparator')) + tr('calcFieldMessageEnd')}
+                </ErrorRow>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        <AddRow
+          span={5}
+          label={tr('calcFieldAddRow')}
+          onClick={() => addCalculation(activeCalculations.length - 1)}
+          disabled={!canAdd}
+        />
+      </FormGrid>
+    </FormScroll>
   );
+}
+
+export interface CalculationRowIssue {
+  /** Index of the earlier row with the same target field. */
+  duplicateOf?: number;
+  /** A new field ("add") whose name already exists upstream. */
+  upstreamConflict: boolean;
+  /** Live-lint issues in the formula (unknown fields, unbalanced brackets). */
+  formulaIssues: number;
+}
+
+export function validateCalculationRows(
+  rows: Array<Pick<CalculationRow, 'field' | 'expression' | 'action'>>,
+  upstreamFields: string[]
+): CalculationRowIssue[] {
+  const upstream = new Set(upstreamFields.map((f) => f.toLowerCase()));
+  const seen = new Map<string, number>();
+  const known = [...upstreamFields];
+  return rows.map((row, index) => {
+    // Formulas may reference fields created by earlier rows.
+    const knownForRow = [...known];
+    if (row.field.trim()) known.push(row.field.trim());
+    const key = row.field.trim().toLowerCase();
+    let duplicateOf: number | undefined;
+    if (key) {
+      if (seen.has(key)) duplicateOf = seen.get(key);
+      else seen.set(key, index);
+    }
+    return {
+      duplicateOf,
+      upstreamConflict: row.action !== 'replace' && Boolean(key) && upstream.has(key),
+      formulaIssues: row.expression.trim() ? lintExpression(row.expression, knownForRow).length : 0,
+    };
+  });
 }

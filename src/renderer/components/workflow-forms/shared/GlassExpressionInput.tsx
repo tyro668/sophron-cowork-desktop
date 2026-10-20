@@ -606,6 +606,8 @@ export interface GlassExpressionInputProps {
   title?: string;
   /** Muted context shown next to the title, e.g. 「计算字段 · 第 1 行」. */
   subtitle?: string;
+  /** Fields the linter treats as known (defaults to fieldCompletions). */
+  lintFields?: string[];
 }
 
 const EXPR_KEYWORDS = new Set([
@@ -1022,10 +1024,15 @@ export function GlassExpressionInput({
   assistantPanel,
   title,
   subtitle,
+  lintFields,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation('expression');
   const [open, setOpen] = useState(false);
   const label = title ?? tr('expressionEditorTitle');
+  const issueCount = useMemo(
+    () => (value?.trim() ? lintExpression(value, lintFields ?? fieldCompletions).length : 0),
+    [fieldCompletions, lintFields, value]
+  );
 
   return (
     <>
@@ -1035,15 +1042,21 @@ export function GlassExpressionInput({
         aria-haspopup="dialog"
         aria-label={label}
         title={value || undefined}
+        style={{ paddingLeft: 10 }}
         className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 pr-8 text-left font-mono text-[12.5px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
       >
-        <span className="block min-w-0 truncate">
+        <span className={`block min-w-0 shrink truncate${issueCount > 0 ? ' text-error' : ''}`}>
           {value || (
             <span className="font-sans text-text-muted">
               {placeholderProp ?? tr('expressionPlaceholder')}
             </span>
           )}
         </span>
+        {issueCount > 0 && (
+          <span className="ml-1.5 inline-flex h-[18px] shrink-0 items-center rounded-md bg-error/[0.08] px-1.5 font-sans text-[11px] text-error">
+            {tr('expressionIssueCount', { count: issueCount })}
+          </span>
+        )}
         <SquareFunction className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
       </button>
       {open && (
@@ -1058,6 +1071,7 @@ export function GlassExpressionInput({
           assistantPanel={assistantPanel}
           title={label}
           subtitle={subtitle}
+          lintFields={lintFields}
           tr={tr}
         />
       )}
@@ -1076,6 +1090,7 @@ function ExpressionEditorDialog({
   assistantPanel,
   title,
   subtitle,
+  lintFields,
   tr,
 }: GlassExpressionInputProps & {
   onClose: () => void;
@@ -1097,7 +1112,10 @@ function ExpressionEditorDialog({
     () => sortFields(fieldCompletions, fieldQuery),
     [fieldCompletions, fieldQuery]
   );
-  const issues = useMemo(() => lintExpression(draft, fieldCompletions), [draft, fieldCompletions]);
+  const issues = useMemo(
+    () => lintExpression(draft, lintFields ?? fieldCompletions),
+    [draft, fieldCompletions, lintFields]
+  );
   const dirty = draft !== initialDraftRef.current;
   const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
 

@@ -19,3 +19,4 @@ export const SORT_GRID_COLUMNS = 'minmax(220px,1fr) 88px 88px 96px 96px 96px 112
 // overflowing (and clipping the row actions).
 export const LIMIT_GRID_COLUMNS =
   '104px minmax(96px,120px) minmax(96px,120px) minmax(80px,1fr) minmax(64px,88px) minmax(64px,88px) minmax(76px,96px) minmax(76px,96px) minmax(76px,96px) 112px';
+export const CALCULATE_FIELD_GRID_COLUMNS = '88px 88px minmax(180px,1fr) minmax(280px,2fr) 112px';
