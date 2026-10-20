@@ -2526,7 +2526,14 @@
     "nSelected": "已选 {{count}} 个",
     "batchDeleteConfirm": "删除 {{count}} 个对话？此操作无法撤销。",
     "cancel": "取消",
-    "confirmDelete": "删除"
+    "confirmDelete": "删除",
+    "taskMenu": "任务操作",
+    "renameTask": "重命名",
+    "pinTask": "置顶",
+    "unpinTask": "取消置顶",
+    "deleteTask": "删除…",
+    "deleteTaskConfirm": "删除任务「{{title}}」？对话记录将无法恢复。",
+    "pinnedTitle": "置顶"
   },
   "chat": {
     "sendMessage": "发送消息",

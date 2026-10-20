@@ -1198,6 +1198,15 @@ export class SessionManager {
     });
   }
 
+  /** User-initiated rename; stops any pending auto title generation from overwriting it. */
+  renameSession(sessionId: string, title: string): boolean {
+    const trimmed = title.trim().slice(0, 200);
+    if (!trimmed) return false;
+    this.sessionTitleAttempts.add(sessionId);
+    this.titleGenerationTokens.delete(sessionId);
+    return this.updateSessionTitle(sessionId, trimmed);
+  }
+
   private updateSessionTitle(sessionId: string, title: string): boolean {
     const existing = this.db.sessions.get(sessionId);
     if (!existing) {

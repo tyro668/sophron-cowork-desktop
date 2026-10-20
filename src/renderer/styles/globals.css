@@ -1062,6 +1062,17 @@
     color: var(--color-accent-hover) !important;
   }
 
+  .composer-flat-pill.composer-pill-warning {
+    background: rgb(var(--color-warning-rgb) / 0.1) !important;
+    color: var(--color-warning) !important;
+  }
+
+  .composer-flat-pill.composer-pill-warning:hover:not(:disabled),
+  .composer-flat-pill.composer-pill-warning[data-state='open'] {
+    background: rgb(var(--color-warning-rgb) / 0.16) !important;
+    color: var(--color-warning) !important;
+  }
+
   .composer-flat-pill:disabled {
     cursor: not-allowed;
     opacity: 0.46;

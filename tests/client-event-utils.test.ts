@@ -13,6 +13,8 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
     case 'session.getMessages':
     case 'session.getTraceSteps':
       return { type, payload: { sessionId: 'session-1' } };
+    case 'session.rename':
+      return { type, payload: { sessionId: 'session-1', title: 'Renamed' } };
     case 'session.batchDelete':
       return { type, payload: { sessionIds: ['session-1'] } };
     case 'project.rename':
@@ -48,6 +50,7 @@ describe('eventRequiresSessionManager', () => {
       'session.continue',
       'session.stop',
       'session.delete',
+      'session.rename',
       'session.batchDelete',
       'session.list',
       'session.getMessages',

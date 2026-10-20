@@ -2526,7 +2526,14 @@
     "nSelected": "{{count}} selected",
     "batchDeleteConfirm": "Delete {{count}} conversations? This cannot be undone.",
     "cancel": "Cancel",
-    "confirmDelete": "Delete"
+    "confirmDelete": "Delete",
+    "taskMenu": "Task actions",
+    "renameTask": "Rename",
+    "pinTask": "Pin",
+    "unpinTask": "Unpin",
+    "deleteTask": "Delete…",
+    "deleteTaskConfirm": "Delete task \"{{title}}\"? The conversation cannot be recovered.",
+    "pinnedTitle": "Pinned"
   },
   "chat": {
     "sendMessage": "Send message",

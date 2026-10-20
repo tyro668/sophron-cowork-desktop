@@ -29,7 +29,10 @@ import {
   ArrowLeftToLine,
   ArrowRightFromLine,
   X,
+  Pin,
+  PinOff,
 } from 'lucide-react';
+import { useConfirmDialog } from './ConfirmDialog';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { Badge, Button } from './ui';
@@ -42,6 +45,7 @@ import {
 
 const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
 const SIDEBAR_EDGE_DRAG_THRESHOLD = 56;
+const SIDEBAR_PINNED_STORAGE_KEY = 'sophron.sidebar.pinnedSessions.v1';
 
 export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }) {
   const { t } = useTranslation();
@@ -66,6 +70,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);
   const {
     deleteSession,
+    renameSession,
     batchDeleteSessions,
     renameProject,
     deleteProject,
@@ -585,9 +590,175 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     }
   }, []);
 
-  const handleDeleteSession = (e: React.MouseEvent, sessionId: string) => {
-    e.stopPropagation();
-    deleteSession(sessionId);
+  const [pinnedSessionIds, setPinnedSessionIds] = useState<Set<string>>(() => {
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [sessionTitleDraft, setSessionTitleDraft] = useState('');
+  const { confirmDelete } = useConfirmDialog();
+
+  const togglePinSession = useCallback((sessionId: string) => {
+    setPinnedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      try {
+        window.localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
+  }, []);
+
+  const handleStartRenameSession = (sessionId: string, title: string) => {
+    setRenamingSessionId(sessionId);
+    setSessionTitleDraft(title);
+  };
+
+  const handleCommitRenameSession = (sessionId: string) => {
+    if (renamingSessionId !== sessionId) return;
+    const current = sessions.find((item) => item.id === sessionId)?.title ?? '';
+    const next = sessionTitleDraft.trim();
+    setRenamingSessionId(null);
+    if (next && next !== current) {
+      renameSession(sessionId, next);
+    }
+  };
+
+  const handleConfirmDeleteSession = async (sessionId: string, title: string) => {
+    const ok = await confirmDelete({ message: t('sidebar.deleteTaskConfirm', { title }) });
+    if (ok) deleteSession(sessionId);
+  };
+
+  const pinnedSessions = useMemo(
+    () => sessions.filter((session) => pinnedSessionIds.has(session.id)),
+    [sessions, pinnedSessionIds]
+  );
+
+  const renderSessionRow = (session: (typeof sessions)[number]) => {
+    const isActive = activeSessionId === session.id;
+    const isSelected = selectedIds.has(session.id);
+    const isRenaming = renamingSessionId === session.id;
+    const isPinned = pinnedSessionIds.has(session.id);
+    return (
+      <div
+        key={session.id}
+        onClick={() => {
+          if (isRenaming) return;
+          if (isSelectMode) {
+            toggleSelectSession(session.id);
+          } else {
+            handleSessionClick(session.id);
+          }
+        }}
+        onDoubleClick={() => {
+          if (!isSelectMode) handleStartRenameSession(session.id, session.title);
+        }}
+        onMouseEnter={() => setHoveredSession(session.id)}
+        onMouseLeave={() => setHoveredSession(null)}
+        className={`group relative cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors ${
+          isSelectMode && isSelected
+            ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
+            : isActive && !isSelectMode
+              ? 'bg-surface-active'
+              : 'hover:bg-surface-hover'
+        }`}
+      >
+        {isActive && !isSelectMode && (
+          <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />
+        )}
+        <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
+          {isSelectMode && (
+            <div
+              className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
+                isSelected
+                  ? 'border-accent bg-accent text-accent-foreground'
+                  : 'border-border-muted bg-surface group-hover:border-accent/50'
+              }`}
+            >
+              {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            {isRenaming ? (
+              <input
+                autoFocus
+                value={sessionTitleDraft}
+                onChange={(e) => setSessionTitleDraft(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={() => handleCommitRenameSession(session.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCommitRenameSession(session.id);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setRenamingSessionId(null);
+                  }
+                }}
+                className="h-[26px] w-full rounded-md border border-accent bg-surface px-1.5 text-[13px] text-text-primary outline-none ring-2 ring-accent/25"
+              />
+            ) : (
+              <div className="truncate text-[13px] font-medium leading-5 text-text-primary">
+                {session.title}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!isSelectMode && !isRenaming && (
+          <div
+            className="absolute right-1 top-1/2 -translate-y-1/2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GlassDropdownMenu
+              align="end"
+              sideOffset={4}
+              trigger={
+                <button
+                  type="button"
+                  className={`flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary data-[state=open]:bg-surface-active data-[state=open]:opacity-100 ${
+                    hoveredSession === session.id || isActive ? 'opacity-100' : 'opacity-0'
+                  } group-hover:opacity-100`}
+                  title={t('sidebar.taskMenu')}
+                  aria-label={t('sidebar.taskMenu')}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              }
+            >
+              <GlassMenuItem
+                icon={<PencilLine className="h-3.5 w-3.5" />}
+                onSelect={() => handleStartRenameSession(session.id, session.title)}
+              >
+                {t('sidebar.renameTask')}
+              </GlassMenuItem>
+              <GlassMenuItem
+                icon={
+                  isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />
+                }
+                onSelect={() => togglePinSession(session.id)}
+              >
+                {isPinned ? t('sidebar.unpinTask') : t('sidebar.pinTask')}
+              </GlassMenuItem>
+              <GlassMenuItem
+                danger
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                onSelect={() => void handleConfirmDeleteSession(session.id, session.title)}
+              >
+                {t('sidebar.deleteTask')}
+              </GlassMenuItem>
+            </GlassDropdownMenu>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Divider affordance: a click toggles the sidebar; dragging left past the
@@ -970,6 +1141,17 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
+        {pinnedSessions.length > 0 && !isSelectMode && (
+          <div className="mb-4">
+            <div className="mb-1 flex items-center gap-1.5 px-3 text-[12px] font-semibold leading-5 text-text-muted">
+              <Pin className="h-3 w-3" />
+              {t('sidebar.pinnedTitle')}
+            </div>
+            <div className="space-y-0.5 pl-3">
+              {pinnedSessions.map((session) => renderSessionRow(session))}
+            </div>
+          </div>
+        )}
         <div className="mb-2 px-3 text-[12px] font-semibold leading-5 text-text-muted">
           {t('sidebar.projectsTitle')}
         </div>
@@ -1108,65 +1290,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   )}
                   {isProjectExpanded && (
                     <div className="ml-6 space-y-0.5 pl-2">
-                      {group.sessions.map((session) => {
-                        const isActive = activeSessionId === session.id;
-                        const isSelected = selectedIds.has(session.id);
-                        return (
-                          <div
-                            key={session.id}
-                            onClick={() => {
-                              if (isSelectMode) {
-                                toggleSelectSession(session.id);
-                              } else {
-                                handleSessionClick(session.id);
-                              }
-                            }}
-                            onMouseEnter={() => setHoveredSession(session.id)}
-                            onMouseLeave={() => setHoveredSession(null)}
-                            className={`group relative cursor-pointer rounded-xl px-2.5 py-1.5 transition-colors ${
-                              isSelectMode && isSelected
-                                ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
-                                : isActive && !isSelectMode
-                                  ? 'bg-accent-muted'
-                                  : 'hover:bg-surface-hover/60'
-                            }`}
-                          >
-                            {isActive && !isSelectMode && (
-                              <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-accent" />
-                            )}
-                            <div
-                              className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}
-                            >
-                              {isSelectMode && (
-                                <div
-                                  className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
-                                    isSelected
-                                      ? 'border-accent bg-accent text-accent-foreground'
-                                      : 'border-border-muted bg-surface group-hover:border-accent/50'
-                                  }`}
-                                >
-                                  {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
-                                </div>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="text-[13px] font-medium leading-5 text-text-primary truncate">
-                                  {session.title}
-                                </div>
-                              </div>
-                            </div>
-
-                            {!isSelectMode && hoveredSession === session.id && (
-                              <button
-                                onClick={(e) => handleDeleteSession(e, session.id)}
-                                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-error hover:bg-surface-active transition-colors"
-                                title={t('common.delete')}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {group.sessions.map((session) => renderSessionRow(session))}
                     </div>
                   )}
                 </section>

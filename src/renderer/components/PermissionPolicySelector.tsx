@@ -64,7 +64,7 @@ export function PermissionPolicySelector({
       align="start"
       triggerClassName={`${buttonClassName} w-auto ${
         activePolicy === 'full_access'
-          ? '!border-warning/30 !bg-warning/10 !text-warning'
+          ? 'composer-pill-warning !border-warning/30 !bg-warning/10 !text-warning'
           : '!text-text-secondary'
       }`}
     />
