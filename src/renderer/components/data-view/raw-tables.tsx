@@ -392,6 +392,7 @@ export function RawTablesPanel({
           ) : visibleRows.length === 0 ? (
             <EmptyState
               label={emptyLabel}
+              icon={<Table2 className="h-6 w-6" />}
               description={t(
                 searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.rawTablesHint'
               )}

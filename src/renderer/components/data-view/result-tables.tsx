@@ -17,6 +17,7 @@ import {
   Save,
   Trash2,
   UploadCloud,
+  Table2,
 } from 'lucide-react';
 import type {
   DataPipeline,
@@ -339,6 +340,7 @@ export function ResultTablesPanel({
           ) : resultTables.length === 0 ? (
             <EmptyState
               label={t('data.resultTables.empty')}
+              icon={<Table2 className="h-6 w-6" />}
               description={t(
                 searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.resultTablesHint'
               )}

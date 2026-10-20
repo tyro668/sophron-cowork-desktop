@@ -182,6 +182,7 @@ export function PipelinesPanel({
           {!isLoading && pipelines.length === 0 ? (
             <EmptyState
               label={t('data.emptyPipelines')}
+              icon={<Workflow className="h-6 w-6" />}
               description={t(
                 searchQuery.trim() ? 'workspaceEmpty.searchHint' : 'workspaceEmpty.dataHint'
               )}
