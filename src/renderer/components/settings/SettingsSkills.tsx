@@ -15,6 +15,7 @@ import {
   Plus,
   Power,
   PowerOff,
+  AtSign,
   Loader2,
   RefreshCw,
   ShoppingBag,
@@ -558,9 +559,13 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <TabsList className={underlineTabListClass}>
               <TabsTrigger value="installed" className={underlineTabTriggerClass}>
                 {t('skills.workspace.installedTab')}
+                <span className="ml-1.5 text-[11px] text-text-muted">{skills.length}</span>
               </TabsTrigger>
               <TabsTrigger value="builtin" className={underlineTabTriggerClass}>
                 {t('skills.workspace.builtinTab')}
+                <span className="ml-1.5 text-[11px] text-text-muted">
+                  {skills.filter((skill) => skill.type === 'builtin').length}
+                </span>
               </TabsTrigger>
               <TabsTrigger value="market" className={underlineTabTriggerClass}>
                 {t('skills.workspace.marketTab')}
@@ -618,21 +623,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               {activeWorkspaceTab !== 'market' && (
                 <div className="flex flex-shrink-0 items-center gap-2">
                   <DataToolbarButton
-                    icon={
-                      selectedSkill?.enabled ? (
-                        <PowerOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Power className="h-3.5 w-3.5" />
-                      )
-                    }
-                    label={
-                      selectedSkill?.enabled ? t('skills.pluginDisable') : t('skills.pluginEnable')
-                    }
-                    onClick={() => selectedSkill && void handleToggleEnabled(selectedSkill)}
-                    disabled={!selectedSkill || isLoading}
-                  />
-
-                  <DataToolbarButton
                     icon={<FolderOpen className="h-3.5 w-3.5" />}
                     label={t('skills.openSkillPath')}
                     onClick={() => selectedSkill && void handleOpenSkillPath(selectedSkill)}
@@ -646,12 +636,11 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
             >
               <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-0">
-                <div className="grid h-10 flex-shrink-0 grid-cols-[36px_minmax(0,1fr)_76px_86px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted 2xl:grid-cols-[36px_minmax(0,1fr)_84px_92px_104px]">
-                  <span />
+                <div className="grid h-10 flex-shrink-0 grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted">
                   <span>{t('skills.workspace.table.skill')}</span>
                   <span>{t('skills.workspace.table.type')}</span>
                   <span>{t('skills.workspace.table.status')}</span>
-                  <span className="hidden 2xl:block">{t('skills.workspace.table.updatedAt')}</span>
+                  <span>{t('skills.workspace.table.updatedAt')}</span>
                 </div>
 
                 <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
@@ -776,6 +765,18 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       </div>
                     </div>
 
+                    {selectedSkill && (
+                      <div className="mt-4 border-t border-border-muted pt-4">
+                        <h4 className="text-[13px] font-semibold text-text-primary">
+                          {t('skills.workspace.chatDisplay')}
+                        </h4>
+                        <span className="mt-2 inline-flex h-6 items-center gap-1 rounded-md border border-accent/20 bg-accent-muted px-2 text-[12px] text-accent-text">
+                          <SelectedIcon className="h-3 w-3" />
+                          {t('skills.workspace.usedSkillChip', { name: selectedSkill.name })}
+                        </span>
+                      </div>
+                    )}
+
                     <dl className="mt-4 space-y-3 border-t border-border-muted pt-4 text-[12px]">
                       <div>
                         <dt className="font-semibold text-text-primary">
@@ -797,10 +798,58 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                               : t('skills.customSkills')}
                         </dd>
                       </div>
+                      {selectedSkill?.path && (
+                        <div>
+                          <dt className="font-semibold text-text-primary">
+                            {t('skills.workspace.directory')}
+                          </dt>
+                          <dd
+                            className="mt-1 truncate font-mono text-[11.5px] text-text-secondary"
+                            title={selectedSkill.path}
+                          >
+                            {selectedSkill.path}
+                          </dd>
+                        </div>
+                      )}
                     </dl>
 
+                    {selectedSkill && (
+                      <div className="mt-auto flex gap-2 pt-4">
+                        <Button
+                          variant="primary"
+                          className="h-9 flex-1"
+                          disabled={!selectedSkill.enabled}
+                          onClick={() => {
+                            const store = useAppStore.getState();
+                            store.setPendingSkillMention(selectedSkill.name);
+                            store.setMainView('chat');
+                            store.setActiveSession(null);
+                            store.setShowSettings(false);
+                          }}
+                        >
+                          <AtSign className="h-3.5 w-3.5" />
+                          {t('skills.workspace.useInChat')}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          className="h-9"
+                          disabled={isLoading}
+                          onClick={() => void handleToggleEnabled(selectedSkill)}
+                        >
+                          {selectedSkill.enabled ? (
+                            <PowerOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Power className="h-3.5 w-3.5" />
+                          )}
+                          {selectedSkill.enabled
+                            ? t('skills.pluginDisable')
+                            : t('skills.pluginEnable')}
+                        </Button>
+                      </div>
+                    )}
+
                     {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
-                      <div className="mt-auto pt-4">
+                      <div className={selectedSkill ? 'pt-2' : 'mt-auto pt-4'}>
                         <button
                           type="button"
                           onClick={() => void handleSelectedDelete()}
@@ -863,7 +912,7 @@ function SkillTableRow({
           onSelect();
         }
       }}
-      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 2xl:grid-cols-[minmax(0,1fr)_84px_92px_104px] ${
+      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 ${
         selected ? 'bg-accent-muted ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
       }`}
     >
@@ -875,6 +924,11 @@ function SkillTableRow({
           <span className="block truncate text-[13px] font-medium text-text-secondary">
             {item.name}
           </span>
+          {item.description && (
+            <span className="block truncate text-[11.5px] text-text-muted" title={item.description}>
+              {item.description}
+            </span>
+          )}
         </span>
       </span>
       <span className="min-w-0">
@@ -883,7 +937,7 @@ function SkillTableRow({
       <span className="min-w-0">
         <SkillStatusBadge item={item} />
       </span>
-      <span className="hidden truncate text-[12px] font-medium text-text-secondary 2xl:block">
+      <span className="truncate font-mono text-[12px] text-text-secondary">
         {formatSkillDate(item.updatedAt)}
       </span>
     </div>

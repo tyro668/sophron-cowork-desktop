@@ -117,6 +117,7 @@ export function WelcomeView() {
     setPrompt,
     textareaRef,
     isElectron,
+    consumePendingSkill: true,
   });
 
   const handleSelectFolder = async () => {
