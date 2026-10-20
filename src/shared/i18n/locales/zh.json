@@ -363,7 +363,11 @@
         "tabs": {
           "config": "配置",
           "data": "数据"
-        }
+        },
+        "sectionSource": "数据来源",
+        "sectionParsing": "解析设置",
+        "sectionLinkage": "联动",
+        "sectionParsingDetail": "解析详情"
       },
       "status": {
         "available": "可用",

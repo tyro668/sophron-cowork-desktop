@@ -884,121 +884,144 @@ export function RawTableEditorWorkbench({
             value="config"
             className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
           >
-            <div className="grid flex-shrink-0 gap-1 border-b border-border-muted/80 px-4 py-3">
-              <RawTableConfigRow label={t('data.rawTables.editor.sourceType')}>
-                <GlassSelect
-                  value={localSourceKind}
-                  onValueChange={(value) => handleSourceKindChange(value as DataRawTableSourceKind)}
-                  options={[
-                    { value: 'excel', label: t('data.rawTables.editor.excel') },
-                    { value: 'csv', label: t('data.rawTables.editor.csv') },
-                    { value: 'folder', label: t('data.rawTables.editor.folder') },
-                    { value: 'cloud', label: t('data.rawTables.sources.cloud') },
-                  ]}
-                  disabled={isBusy}
-                  triggerIcon={
-                    <span
-                      className={`flex h-5 w-5 items-center justify-center rounded-md ${sourceMeta.className}`}
-                    >
-                      <SourceIcon className="h-3.5 w-3.5" />
-                    </span>
-                  }
-                  triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
-                  contentClassName="w-[var(--radix-select-trigger-width)]"
-                />
-              </RawTableConfigRow>
-
-              <RawTableConfigRow
-                label={
-                  localSourceKind === 'cloud'
-                    ? t('data.rawTables.sources.cloud')
-                    : localSourceKind === 'folder'
-                      ? t('data.rawTables.editor.folderPath')
-                      : t('data.rawTables.editor.file')
-                }
-              >
-                <div className="flex min-w-0 items-stretch">
-                  <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border border-border-muted bg-surface px-2.5 shadow-soft">
-                    <span
-                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
-                    >
-                      <SourceIcon className="h-3.5 w-3.5" />
-                    </span>
-                    <div
-                      className="min-w-0 truncate text-[13px] font-medium text-text-primary"
-                      title={cloudMirror ? formatCloudMirrorLocation(cloudMirror) : localFileSource}
-                    >
-                      {cloudMirror
-                        ? formatCloudMirrorLocation(cloudMirror)
-                        : localFileSource
-                          ? formatDisplayPath(localFileSource)
-                          : t('data.rawTables.editor.noSource')}
-                    </div>
+            <div
+              className={`flex-shrink-0 bg-background-secondary px-6 ${dataProcessing.strategy === 'customize' ? 'border-b border-border-muted/80 py-4' : 'pb-3 pt-4'}`}
+            >
+              <div className="grid gap-3">
+                <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                  <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
+                    {t('data.rawTables.editor.sectionSource')}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() =>
+                  <RawTableConfigRow
+                    label={
                       localSourceKind === 'cloud'
-                        ? setCloudSourceDialogOpen(true)
-                        : chooseSource(localSourceKind)
-                    }
-                    disabled={isBusy || !trimmedName}
-                    className="inline-flex h-8 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
-                  >
-                    {localSourceKind === 'cloud'
-                      ? t(
-                          cloudMirror
-                            ? 'data.rawTables.editor.cloudSource.change'
-                            : 'data.rawTables.editor.cloudSource.choose'
-                        )
-                      : localFileSource
-                        ? localSourceKind === 'folder'
-                          ? t('data.rawTables.editor.changeFolder')
-                          : t('data.rawTables.editor.changeFile')
+                        ? t('data.rawTables.sources.cloud')
                         : localSourceKind === 'folder'
-                          ? t('data.rawTables.editor.chooseFolder')
-                          : t('data.rawTables.editor.chooseFile')}
-                  </button>
-                </div>
-              </RawTableConfigRow>
-
-              <RawTableConfigRow label={t('data.rawTables.editor.processingStrategy')}>
-                <GlassSelect
-                  value={dataProcessing.strategy}
-                  onValueChange={(value) => {
-                    if (value === 'customize') {
-                      updateDataProcessing(
-                        customizeDraftBackupRef.current ?? {
-                          strategy: 'customize',
-                          rulePrompt: '',
-                        }
-                      );
-                      setCustomizeStep('rules');
-                      return;
+                          ? t('data.rawTables.editor.folderPath')
+                          : t('data.rawTables.editor.file')
                     }
-                    updateDataProcessing({ strategy: 'auto' });
-                  }}
-                  options={[
-                    { value: 'auto', label: t('data.rawTables.editor.processingAuto') },
-                    { value: 'customize', label: t('data.rawTables.editor.processingCustomize') },
-                  ]}
-                  disabled={isBusy || !rawTable}
-                  triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
-                  contentClassName="w-[var(--radix-select-trigger-width)]"
-                />
-              </RawTableConfigRow>
+                  >
+                    <div className="flex min-w-0 items-stretch">
+                      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border border-border-muted bg-surface px-2.5 shadow-soft">
+                        <span
+                          className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
+                        >
+                          <SourceIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div
+                          className="min-w-0 truncate text-[13px] font-medium text-text-primary"
+                          title={
+                            cloudMirror ? formatCloudMirrorLocation(cloudMirror) : localFileSource
+                          }
+                        >
+                          {cloudMirror
+                            ? formatCloudMirrorLocation(cloudMirror)
+                            : localFileSource
+                              ? formatDisplayPath(localFileSource)
+                              : t('data.rawTables.editor.noSource')}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          localSourceKind === 'cloud'
+                            ? setCloudSourceDialogOpen(true)
+                            : chooseSource(localSourceKind)
+                        }
+                        disabled={isBusy || !trimmedName}
+                        className="inline-flex h-8 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                      >
+                        {localSourceKind === 'cloud'
+                          ? t(
+                              cloudMirror
+                                ? 'data.rawTables.editor.cloudSource.change'
+                                : 'data.rawTables.editor.cloudSource.choose'
+                            )
+                          : localFileSource
+                            ? localSourceKind === 'folder'
+                              ? t('data.rawTables.editor.changeFolder')
+                              : t('data.rawTables.editor.changeFile')
+                            : localSourceKind === 'folder'
+                              ? t('data.rawTables.editor.chooseFolder')
+                              : t('data.rawTables.editor.chooseFile')}
+                      </button>
+                    </div>
+                  </RawTableConfigRow>
 
-              {rawTable ? (
-                <>
-                  <div className="border-t border-border-subtle pt-2" />
-                  <RawTableAutomations
-                    key={rawTable.id}
-                    rawTable={rawTable}
-                    embedded
-                    Row={RawTableConfigRow}
-                  />
-                </>
-              ) : null}
+                  <RawTableConfigRow label={t('data.rawTables.editor.sourceType')}>
+                    <GlassSelect
+                      value={localSourceKind}
+                      onValueChange={(value) =>
+                        handleSourceKindChange(value as DataRawTableSourceKind)
+                      }
+                      options={[
+                        { value: 'excel', label: t('data.rawTables.editor.excel') },
+                        { value: 'csv', label: t('data.rawTables.editor.csv') },
+                        { value: 'folder', label: t('data.rawTables.editor.folder') },
+                        { value: 'cloud', label: t('data.rawTables.sources.cloud') },
+                      ]}
+                      disabled={isBusy}
+                      triggerIcon={
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-md ${sourceMeta.className}`}
+                        >
+                          <SourceIcon className="h-3.5 w-3.5" />
+                        </span>
+                      }
+                      triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                      contentClassName="w-[var(--radix-select-trigger-width)]"
+                    />
+                  </RawTableConfigRow>
+                </section>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                    <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
+                      {t('data.rawTables.editor.sectionParsing')}
+                    </div>
+                    <RawTableConfigRow label={t('data.rawTables.editor.processingStrategy')}>
+                      <GlassSelect
+                        value={dataProcessing.strategy}
+                        onValueChange={(value) => {
+                          if (value === 'customize') {
+                            updateDataProcessing(
+                              customizeDraftBackupRef.current ?? {
+                                strategy: 'customize',
+                                rulePrompt: '',
+                              }
+                            );
+                            setCustomizeStep('rules');
+                            return;
+                          }
+                          updateDataProcessing({ strategy: 'auto' });
+                        }}
+                        options={[
+                          { value: 'auto', label: t('data.rawTables.editor.processingAuto') },
+                          {
+                            value: 'customize',
+                            label: t('data.rawTables.editor.processingCustomize'),
+                          },
+                        ]}
+                        disabled={isBusy || !rawTable}
+                        triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                        contentClassName="w-[var(--radix-select-trigger-width)]"
+                      />
+                    </RawTableConfigRow>
+                  </section>
+                  {rawTable ? (
+                    <section className="rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                      <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
+                        {t('data.rawTables.editor.sectionLinkage')}
+                      </div>
+                      <RawTableAutomations
+                        key={rawTable.id}
+                        rawTable={rawTable}
+                        embedded
+                        Row={RawTableConfigRow}
+                      />
+                    </section>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             {dataProcessing.strategy === 'customize' ? (
@@ -1326,8 +1349,11 @@ export function RawTableEditorWorkbench({
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                <div className="grid gap-3">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-background-secondary px-6 pb-4">
+                <div className="grid gap-1 rounded-[10px] border border-border-muted bg-surface px-4 py-3">
+                  <div className="mb-0.5 px-1 text-[13px] font-semibold text-text-primary">
+                    {t('data.rawTables.editor.sectionParsingDetail')}
+                  </div>
                   {localSourceKind === 'excel' ? (
                     <>
                       <RawTableConfigRow label={t('data.rawTables.editor.sheetName')}>
@@ -1671,7 +1697,7 @@ export function RawTableConfigRow({
   align?: 'start' | 'center';
 }) {
   return (
-    <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 lg:grid-cols-[10rem_minmax(0,1fr)]">
+    <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
       <div
         className={`text-[13px] font-medium text-text-secondary ${align === 'start' ? 'lg:self-start lg:pt-1.5' : ''}`}
       >
