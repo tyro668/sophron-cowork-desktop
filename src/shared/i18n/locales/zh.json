@@ -1112,7 +1112,8 @@
           "typeConvertAutoParse": "自动解析",
           "typeConvertAutoParseHint": "自动识别常见的日期和日期时间格式",
           "typeConvertFormatExample": "示例：{{example}}",
-          "typeConvertScaleOption": "保留 {{n}} 位"
+          "typeConvertScaleOption": "保留 {{n}} 位",
+          "typeConvertOnFailure": "转换失败时"
         },
         "fieldSelect": {
           "fieldSelectMustSelectField": "请至少选择一个字段",
