@@ -1702,7 +1702,12 @@
           "strict": "new columns raise an error",
           "ignore": "new columns ignored"
         }
-      }
+      },
+      "selectRawTable": "Select a raw table",
+      "inputTableInfo": "{{columns}} fields · {{rows}} rows · updated {{updated}}",
+      "inputAlias": "Reference name",
+      "inputAliasHint": "Referenced as [{{alias}}] in SQL and join conditions",
+      "inputAliasNone": "Generated when connected to a join or SQL node"
     },
     "relative": {
       "today": "Today",
