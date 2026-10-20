@@ -400,3 +400,38 @@
   min-height: 32px;
   height: 32px;
 }
+/* Clear button revealed on hover inside a select cell (sits left of the chevron). */
+.opg-c.opg-clearable {
+  position: relative;
+}
+.opg-c .opg-clear {
+  position: absolute;
+  right: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px !important;
+  height: 22px !important;
+  min-height: 0 !important;
+  flex: none !important;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px !important;
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.opg-c.opg-clearable:hover .opg-clear,
+.opg-c .opg-clear:focus-visible {
+  opacity: 1;
+}
+.opg-c .opg-clear:hover {
+  background: var(--color-surface-hover) !important;
+  color: var(--color-text-primary);
+}
+/* Field picker trigger has no inner padded span: give it the 10px cell inset itself. */
+.opg-c.ctl > button[aria-haspopup='listbox'],
+.opg-c.ctl > div > button[aria-haspopup='listbox'] {
+  padding-left: 10px;
+}

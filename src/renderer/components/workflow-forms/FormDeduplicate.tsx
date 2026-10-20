@@ -1,12 +1,12 @@
 import { useCallback, useMemo } from 'react';
-import { X } from 'lucide-react';
+import { Info, X } from 'lucide-react';
 
 import type { OperatorFormProps } from './types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassSegmentedControl } from './shared/GlassSegmentedControl';
-import { GlassFormLabel } from './shared/GlassFormLabel';
+import { Cell, FormGrid, FormScroll, HintRow, LabelCell, SegmentCells } from './shared/FormGrid';
+import { DEDUPE_GRID_COLUMNS } from './shared/gridColumns';
+import { isTemporalDataFieldType } from '../../../shared/data-field-types';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -75,11 +75,37 @@ export default function FormDeduplicate({
     [updateConfig]
   );
 
+  const keepLabel = keep === 'last' ? tr('dedupKeepLast') : tr('dedupKeepFirst');
+  const hint = (() => {
+    if (strategy === 'all_columns') return tr('dedupHintWholeRow', { keep: keepLabel });
+    const keys = columns.length > 0 ? columns.join('、') : '—';
+    if (!orderField) return tr('dedupHintNoOrder', { keys, keep: keepLabel });
+    // asc+last / desc+first → the largest (latest) value wins.
+    const picksMax = (orderDirection === 'asc') === (keep === 'last');
+    const temporal = isTemporalDataFieldType(columnTypes[orderField]);
+    const extreme = tr(
+      temporal
+        ? picksMax
+          ? 'dedupLatest'
+          : 'dedupEarliest'
+        : picksMax
+          ? 'dedupLargest'
+          : 'dedupSmallest'
+    );
+    return tr('dedupHintOrdered', {
+      keys,
+      field: orderField,
+      direction: orderDirection === 'asc' ? tr('sortKeys.asc') : tr('sortKeys.desc'),
+      keep: keepLabel,
+      extreme,
+    });
+  })();
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('dedupBasis')}</GlassFormLabel>
-        <GlassSegmentedControl
+    <FormScroll>
+      <FormGrid columns={DEDUPE_GRID_COLUMNS} testId="dedupe-form-grid">
+        <LabelCell>{tr('dedupBasis')}</LabelCell>
+        <SegmentCells
           value={strategy}
           options={[
             { value: 'by_columns', label: tr('dedupByFields') },
@@ -88,77 +114,76 @@ export default function FormDeduplicate({
           onChange={setStrategy}
           ariaLabel={tr('dedupBasis')}
         />
-        <div className="min-w-0 flex-1">
-          <GlassOptionMultiSelect
-            options={fieldCompletions}
-            selected={columns}
-            onChange={commitColumns}
-            placeholder={tr('fieldPicker.selectField')}
-            optionTypes={columnTypes}
-            disabled={strategy === 'all_columns'}
-            className="w-full"
-          />
-        </div>
-      </div>
+        {strategy === 'by_columns' ? (
+          <Cell span={3} v={['ctl', 'chips', columns.length === 0 && 'err']}>
+            <GlassOptionMultiSelect
+              options={fieldCompletions}
+              selected={columns}
+              onChange={commitColumns}
+              placeholder={tr('fieldPicker.selectField')}
+              optionTypes={columnTypes}
+              className="w-full"
+            />
+          </Cell>
+        ) : (
+          <Cell span={3} v={['muted']}>
+            {tr('dedupWholeRowTip')}
+          </Cell>
+        )}
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('dedupDuplicates')}</GlassFormLabel>
-        <GlassOptionSingleSelect
+        <LabelCell>{tr('dedupKeepWhich')}</LabelCell>
+        <SegmentCells
           value={keep}
-          groups={[
-            {
-              key: 'keep',
-              items: [
-                { value: 'first', label: tr('dedupKeepOne') },
-                { value: 'last', label: tr('dedupKeepLastOne') },
-              ],
-            },
+          options={[
+            { value: 'first', label: tr('dedupKeepFirst') },
+            { value: 'last', label: tr('dedupKeepLast') },
           ]}
           onChange={(value) => updateConfig((cfg) => ({ ...cfg, keep: value }))}
-          className="h-8 w-[240px] max-w-full"
+          ariaLabel={tr('dedupKeepWhich')}
         />
-      </div>
+        <Cell span={3} v={['blank']} />
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('dedupKeepWhich')}</GlassFormLabel>
-        <GlassFieldSingleSelect
-          value={orderField}
-          options={fieldCompletions}
-          columnTypes={columnTypes}
-          onChange={commitOrderField}
-          placeholder={tr('sortKeys.sortSelectField')}
-          searchPlaceholder={tr('fieldPicker.searchField')}
-          emptyText={tr('fieldPicker.noMatch')}
-          className="h-8 flex-1"
-        />
-        <button
-          type="button"
-          onClick={() => commitOrderField('')}
-          disabled={!orderField}
-          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-text-muted outline-none transition-colors hover:bg-surface-hover hover:text-text-secondary focus-visible:ring-2 focus-visible:ring-accent/30 ${
-            orderField ? '' : 'invisible'
-          }`}
-          title={tr('fieldPicker.clearAll')}
-          aria-label={tr('fieldPicker.clearAll')}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-        <GlassOptionSingleSelect
-          value={orderDirection}
-          groups={[
-            {
-              key: 'direction',
-              items: [
-                { value: 'asc', label: tr('sortKeys.asc') },
-                { value: 'desc', label: tr('sortKeys.desc') },
-              ],
-            },
-          ]}
-          onChange={(value) => commitOrderDirection(value as 'asc' | 'desc')}
-          disabled={!orderField}
-          className="h-8 flex-1"
-        />
-      </div>
-    </div>
+        <LabelCell>{tr('dedupOrderBy')}</LabelCell>
+        <Cell span={orderField ? 3 : 5} v={['ctl']} className="opg-clearable">
+          <GlassFieldSingleSelect
+            value={orderField}
+            options={fieldCompletions}
+            columnTypes={columnTypes}
+            onChange={commitOrderField}
+            placeholder={tr('dedupOrderByPlaceholder')}
+            searchPlaceholder={tr('fieldPicker.searchField')}
+            emptyText={tr('fieldPicker.noMatch')}
+            className="w-full"
+          />
+          {orderField ? (
+            <button
+              type="button"
+              onClick={() => commitOrderField('')}
+              className="opg-clear"
+              title={tr('fieldPicker.clearAll')}
+              aria-label={tr('fieldPicker.clearAll')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </Cell>
+        {orderField ? (
+          <SegmentCells
+            value={orderDirection}
+            options={[
+              { value: 'asc', label: tr('sortKeys.asc') },
+              { value: 'desc', label: tr('sortKeys.desc') },
+            ]}
+            onChange={commitOrderDirection}
+            ariaLabel={tr('dedupOrderBy')}
+          />
+        ) : null}
+
+        <HintRow span={6}>
+          <Info className="opg-ic h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{hint}</span>
+        </HintRow>
+      </FormGrid>
+    </FormScroll>
   );
 }
