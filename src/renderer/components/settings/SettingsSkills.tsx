@@ -725,9 +725,9 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               </div>
 
               {selectedItem && (
-                <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-subtle p-4 xl:flex">
+                <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-subtle xl:flex">
                   <>
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-3 border-b border-border-muted px-4 py-3">
                       <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
                         <SelectedIcon className="h-7 w-7" />
                       </div>
@@ -742,11 +742,11 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       </div>
                     </div>
 
-                    <p className="mt-4 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
+                    <p className="border-b border-border-muted px-4 py-3 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
                       {selectedItem.description || t('skills.installSkillsDesc')}
                     </p>
 
-                    <div className="mt-3 border-t border-border-muted pt-3">
+                    <div className="border-b border-border-muted px-4 py-3">
                       <h4 className="text-[13px] font-semibold text-text-primary">
                         {t('skills.workspace.supportedCapabilities')}
                       </h4>
@@ -766,7 +766,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     </div>
 
                     {selectedSkill && (
-                      <div className="mt-3 border-t border-border-muted pt-3">
+                      <div className="border-b border-border-muted px-4 py-3">
                         <h4 className="text-[13px] font-semibold text-text-primary">
                           {t('skills.workspace.chatDisplay')}
                         </h4>
@@ -777,7 +777,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       </div>
                     )}
 
-                    <dl className="mt-3 space-y-2 border-t border-border-muted pt-3 text-[12px]">
+                    <dl className="space-y-2 border-b border-border-muted px-4 py-3 text-[12px]">
                       <div>
                         <dt className="font-semibold text-text-primary">
                           {t('skills.workspace.table.updatedAt')}
@@ -814,7 +814,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     </dl>
 
                     {selectedSkill && (
-                      <div className="mt-auto flex gap-2 pt-4">
+                      <div className="mt-auto flex gap-2 border-t border-border-muted px-4 py-3">
                         <Button
                           variant="primary"
                           className="h-9 flex-1"
@@ -849,7 +849,13 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     )}
 
                     {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
-                      <div className={selectedSkill ? 'pt-2' : 'mt-auto pt-4'}>
+                      <div
+                        className={
+                          selectedSkill
+                            ? 'px-4 pb-3'
+                            : 'mt-auto border-t border-border-muted px-4 py-3'
+                        }
+                      >
                         <button
                           type="button"
                           onClick={() => void handleSelectedDelete()}
