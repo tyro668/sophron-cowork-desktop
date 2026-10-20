@@ -1631,11 +1631,27 @@
     "scheduleDesc": "按计划自动执行 Prompt",
     "remote": "远程控制",
     "remoteDesc": "通过飞书等渠道远程使用九思助理",
-    "logs": "日志",
+    "logs": "日志与诊断",
     "logsDesc": "查看和导出应用日志",
     "panelDesc": "配置工作区、工具以及账号相关行为。",
     "general": "通用",
-    "generalDesc": "外观、语言等通用偏好"
+    "generalDesc": "外观、语言等通用偏好",
+    "shortcuts": "快捷键",
+    "groups": {
+      "models": "模型与连接",
+      "data": "数据与隐私",
+      "collab": "协作",
+      "app": "应用"
+    },
+    "shortcutList": {
+      "description": "应用内可用的键盘快捷键。",
+      "send": "发送消息",
+      "newline": "输入框内换行",
+      "undo": "撤销（加工画布）",
+      "redo": "重做（加工画布）",
+      "deleteNode": "删除选中的节点或连线",
+      "escape": "关闭弹窗或菜单"
+    }
   },
   "personalAnalysis": {
     "apiOrigin": "服务地址",

@@ -1631,11 +1631,27 @@
     "scheduleDesc": "Run prompts automatically on a plan",
     "remote": "Remote Control",
     "remoteDesc": "Use sophron cowork from Feishu and other channels",
-    "logs": "Logs",
+    "logs": "Logs & diagnostics",
     "logsDesc": "View and export application logs",
     "panelDesc": "Configure your workspace, tools, and account behavior.",
     "general": "General",
-    "generalDesc": "Appearance, language & preferences"
+    "generalDesc": "Appearance, language & preferences",
+    "shortcuts": "Shortcuts",
+    "groups": {
+      "models": "Models & connections",
+      "data": "Data & privacy",
+      "collab": "Collaboration",
+      "app": "App"
+    },
+    "shortcutList": {
+      "description": "Keyboard shortcuts available in the app.",
+      "send": "Send message",
+      "newline": "New line in the composer",
+      "undo": "Undo (pipeline canvas)",
+      "redo": "Redo (pipeline canvas)",
+      "deleteNode": "Delete selected node or edge",
+      "escape": "Close dialog or menu"
+    }
   },
   "personalAnalysis": {
     "apiOrigin": "Host",
