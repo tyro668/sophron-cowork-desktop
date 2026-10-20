@@ -284,3 +284,21 @@
   background: var(--color-accent-muted);
   color: var(--color-accent-text);
 }
+
+/* Scroll host for grid forms: no reserved gutter so the grid is flush to the panel's right edge. */
+.opg-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+}
+
+/* Field type markers inside grid cells: plain muted mono glyph (design `.ty`). */
+.opg .dt-icon {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--opg-mono);
+}

@@ -1,0 +1,43 @@
+import {
+  ArrowUpDown,
+  BarChart3,
+  Calculator,
+  Code2,
+  Columns3,
+  Copy,
+  Database,
+  Droplet,
+  Filter,
+  GitMerge,
+  Repeat2,
+  ShieldCheck,
+  Sigma,
+  Table2,
+  UploadCloud,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
+import type { DataWorkflowOperatorType } from '../../../../types';
+
+/** Leaf module (no form imports): operator type → icon. Safe to import from forms. */
+export const OPERATOR_ICONS: Record<DataWorkflowOperatorType, LucideIcon> = {
+  input_source: Database,
+  filter: Filter,
+  field_select: Columns3,
+  deduplicate: Copy,
+  missing_value: Droplet,
+  type_convert: Repeat2,
+  sort: ArrowUpDown,
+  join: GitMerge,
+  aggregate: Sigma,
+  calculate_field: Calculator,
+  field_mapping: Table2,
+  limit: ArrowUpDown,
+  pivot: BarChart3,
+  unpivot: Columns3,
+  set_op: GitMerge,
+  unnest: Workflow,
+  expect: ShieldCheck,
+  sql_query: Code2,
+  output: UploadCloud,
+};

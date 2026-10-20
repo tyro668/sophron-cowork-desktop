@@ -1,22 +1,5 @@
-import {
-  ArrowUpDown,
-  BarChart3,
-  Calculator,
-  Code2,
-  Columns3,
-  Copy,
-  Database,
-  Droplet,
-  Filter,
-  GitMerge,
-  Repeat2,
-  ShieldCheck,
-  Sigma,
-  Table2,
-  UploadCloud,
-  Workflow,
-  type LucideIcon,
-} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { OPERATOR_ICONS } from './operator-icons';
 import type { DataWorkflowOperatorType } from '../../../../types';
 import { OPERATOR_TYPES, OPERATOR_GROUPS } from '../../../../../shared/operators';
 import type { OperatorFormLoader } from '../../../workflow-forms/types';
@@ -50,7 +33,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   input_source: {
     type: 'input_source',
     labelKey: 'data.workflow.operators.input_source',
-    Icon: Database,
+    Icon: OPERATOR_ICONS.input_source,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     summarize: WORKFLOW_SUMMARIZERS.input_source,
@@ -58,7 +41,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   filter: {
     type: 'filter',
     labelKey: 'data.workflow.operators.filter',
-    Icon: Filter,
+    Icon: OPERATOR_ICONS.filter,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormFilter'),
@@ -67,7 +50,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   field_select: {
     type: 'field_select',
     labelKey: 'data.workflow.operators.field_select',
-    Icon: Columns3,
+    Icon: OPERATOR_ICONS.field_select,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormFieldSelect'),
@@ -76,7 +59,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   deduplicate: {
     type: 'deduplicate',
     labelKey: 'data.workflow.operators.deduplicate',
-    Icon: Copy,
+    Icon: OPERATOR_ICONS.deduplicate,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormDeduplicate'),
@@ -85,7 +68,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   missing_value: {
     type: 'missing_value',
     labelKey: 'data.workflow.operators.missing_value',
-    Icon: Droplet,
+    Icon: OPERATOR_ICONS.missing_value,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormMissingValue'),
@@ -94,7 +77,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   type_convert: {
     type: 'type_convert',
     labelKey: 'data.workflow.operators.type_convert',
-    Icon: Repeat2,
+    Icon: OPERATOR_ICONS.type_convert,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormTypeConvert'),
@@ -103,7 +86,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   sort: {
     type: 'sort',
     labelKey: 'data.workflow.operators.sort',
-    Icon: ArrowUpDown,
+    Icon: OPERATOR_ICONS.sort,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormSort'),
@@ -112,7 +95,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   join: {
     type: 'join',
     labelKey: 'data.workflow.operators.join',
-    Icon: GitMerge,
+    Icon: OPERATOR_ICONS.join,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormJoin'),
@@ -121,7 +104,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   aggregate: {
     type: 'aggregate',
     labelKey: 'data.workflow.operators.aggregate',
-    Icon: Sigma,
+    Icon: OPERATOR_ICONS.aggregate,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormAggregate'),
@@ -130,7 +113,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   calculate_field: {
     type: 'calculate_field',
     labelKey: 'data.workflow.operators.calculate_field',
-    Icon: Calculator,
+    Icon: OPERATOR_ICONS.calculate_field,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormCalculateField'),
@@ -139,7 +122,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   field_mapping: {
     type: 'field_mapping',
     labelKey: 'data.workflow.operators.field_mapping',
-    Icon: Table2,
+    Icon: OPERATOR_ICONS.field_mapping,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormFieldMapping'),
@@ -148,7 +131,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   limit: {
     type: 'limit',
     labelKey: 'data.workflow.operators.limit',
-    Icon: ArrowUpDown,
+    Icon: OPERATOR_ICONS.limit,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormLimit'),
@@ -157,7 +140,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   pivot: {
     type: 'pivot',
     labelKey: 'data.workflow.operators.pivot',
-    Icon: BarChart3,
+    Icon: OPERATOR_ICONS.pivot,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormPivot'),
@@ -166,7 +149,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   unpivot: {
     type: 'unpivot',
     labelKey: 'data.workflow.operators.unpivot',
-    Icon: Columns3,
+    Icon: OPERATOR_ICONS.unpivot,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormUnpivot'),
@@ -175,7 +158,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   set_op: {
     type: 'set_op',
     labelKey: 'data.workflow.operators.set_op',
-    Icon: GitMerge,
+    Icon: OPERATOR_ICONS.set_op,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormSetOp'),
@@ -184,7 +167,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   unnest: {
     type: 'unnest',
     labelKey: 'data.workflow.operators.unnest',
-    Icon: Workflow,
+    Icon: OPERATOR_ICONS.unnest,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormUnnest'),
@@ -193,7 +176,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   expect: {
     type: 'expect',
     labelKey: 'data.workflow.operators.expect',
-    Icon: ShieldCheck,
+    Icon: OPERATOR_ICONS.expect,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormExpect'),
@@ -202,7 +185,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   sql_query: {
     type: 'sql_query',
     labelKey: 'data.workflow.operators.sql_query',
-    Icon: Code2,
+    Icon: OPERATOR_ICONS.sql_query,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormSqlQuery'),
@@ -211,7 +194,7 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
   output: {
     type: 'output',
     labelKey: 'data.workflow.operators.output',
-    Icon: UploadCloud,
+    Icon: OPERATOR_ICONS.output,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     summarize: WORKFLOW_SUMMARIZERS.output,

@@ -376,3 +376,8 @@ export function GlassCommitTextInput({
     />
   );
 }
+
+/** Scroll container for grid forms — flush, no reserved scrollbar gutter. */
+export function FormScroll({ children }: { children?: ReactNode }) {
+  return <div className="opg-scroll">{children}</div>;
+}

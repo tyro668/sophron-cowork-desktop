@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Settings, Table2 } from 'lucide-react';
+import { GitMerge, Settings, Table2 } from 'lucide-react';
+import { OPERATOR_ICONS } from '../data-view/data-pipelines/workflow/operator-icons';
 import type { OperatorFormProps } from './types';
 import { dataClient } from '../../features/data/api/data-client';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
@@ -148,14 +149,46 @@ export default function FormJoin({
 
   const joinTypes = useMemo<Array<{ value: JoinVennType; label: string; tip: string }>>(
     () => [
-      { value: 'inner', label: tr('joinInner'), tip: tr('joinInnerTip') },
-      { value: 'left', label: tr('joinLeft'), tip: tr('joinLeftTip') },
-      { value: 'right', label: tr('joinRight'), tip: tr('joinRightTip') },
-      { value: 'full', label: tr('joinFull'), tip: tr('joinFullTip') },
-      { value: 'cross', label: tr('joinCross'), tip: tr('joinCrossTip') },
-      { value: 'semi', label: tr('joinSemi'), tip: tr('joinSemiTip') },
-      { value: 'anti', label: tr('joinAnti'), tip: tr('joinAntiTip') },
-      { value: 'asof', label: tr('joinAsof'), tip: tr('joinAsofTip') },
+      {
+        value: 'inner',
+        label: `${tr('joinInner')} · ${tr('joinInnerShort')}`,
+        tip: tr('joinInnerDesc'),
+      },
+      {
+        value: 'left',
+        label: `${tr('joinLeft')} · ${tr('joinLeftShort')}`,
+        tip: tr('joinLeftDesc'),
+      },
+      {
+        value: 'right',
+        label: `${tr('joinRight')} · ${tr('joinRightShort')}`,
+        tip: tr('joinRightDesc'),
+      },
+      {
+        value: 'full',
+        label: `${tr('joinFull')} · ${tr('joinFullShort')}`,
+        tip: tr('joinFullDesc'),
+      },
+      {
+        value: 'cross',
+        label: `${tr('joinCross')} · ${tr('joinCrossShort')}`,
+        tip: tr('joinCrossDesc'),
+      },
+      {
+        value: 'semi',
+        label: `${tr('joinSemi')} · ${tr('joinSemiShort')}`,
+        tip: tr('joinSemiDesc'),
+      },
+      {
+        value: 'anti',
+        label: `${tr('joinAnti')} · ${tr('joinAntiShort')}`,
+        tip: tr('joinAntiDesc'),
+      },
+      {
+        value: 'asof',
+        label: `${tr('joinAsof')} · ${tr('joinAsofShort')}`,
+        tip: tr('joinAsofDesc'),
+      },
     ],
     [tr]
   );
@@ -227,8 +260,12 @@ export default function FormJoin({
     updateConfig((cfg) => ({ ...cfg, asof: updateJoinAsof(cfg.asof, { ...patch }) }));
   };
 
-  const LeftIcon = sourceNode ? Table2 : undefined;
-  const RightIcon = rightSourceNode ? Table2 : undefined;
+  const LeftIcon = sourceNode
+    ? (OPERATOR_ICONS[sourceNode.type as keyof typeof OPERATOR_ICONS] ?? Table2)
+    : undefined;
+  const RightIcon = rightSourceNode
+    ? (OPERATOR_ICONS[rightSourceNode.type as keyof typeof OPERATOR_ICONS] ?? Table2)
+    : undefined;
   const currentJoinTip = joinTypes.find((item) => item.value === joinType)?.tip ?? '';
   const rowLabels = {
     add: tr('rowAdd'),
@@ -288,7 +325,7 @@ export default function FormJoin({
       : 1 + conditions.length + errorMessages.length + 1 + (showRightWarning ? 1 : 0);
 
   return (
-    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto">
+    <div className="opg-scroll">
       <FormGrid columns={JOIN_GRID_COLUMNS} testId="join-form-grid">
         <LabelCell>{tr('joinType')}</LabelCell>
         <Cell span={2} v={['ctl']}>
@@ -312,6 +349,7 @@ export default function FormJoin({
               },
             ]}
             onChange={handleJoinTypeChange}
+            triggerIcon={<GitMerge className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
             className="w-full"
             aria-label={tr('joinType')}
           />
