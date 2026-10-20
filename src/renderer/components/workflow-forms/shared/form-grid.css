@@ -1,0 +1,286 @@
+/*
+ * Operator form shared column grid (UI_STYLE_GUIDE §3 紧凑布局 + 竖线对齐).
+ * One grid-template-columns per form; every row (labels, segmented options,
+ * read-only info, table header, data rows, error/hint/add rows) lives in that
+ * grid and merges columns with col-span — so all vertical dividers share x.
+ * Unlayered on purpose: beats Tailwind utility layers on embedded controls.
+ */
+.opg {
+  display: grid;
+  align-content: start;
+  margin-right: -1px;
+  --opg-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+.opg-c {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-width: 0;
+  min-height: 36px;
+  font-size: 12.5px;
+  color: var(--color-text-primary);
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.opg-c .opg-ic {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.opg-c.lab {
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  gap: 2px;
+}
+.opg-c.lab.top {
+  align-items: flex-start;
+  padding-top: 9px;
+}
+.opg-c.lab .req {
+  color: var(--color-error);
+}
+.opg-c.th {
+  min-height: 30px;
+  background: var(--data-grid-header-surface);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+.opg-c.opt {
+  justify-content: center;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+.opg-c.opt:hover {
+  background: var(--color-surface-hover);
+}
+.opg-c.opt.on {
+  background: var(--color-accent-muted);
+  color: var(--color-accent-text);
+  font-weight: 500;
+}
+.opg-c.opt:disabled,
+.opg-c.opt[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.opg-c.ro {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+}
+.opg-c.muted {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.opg-c.mono {
+  font-family: var(--opg-mono);
+  font-size: 12px;
+}
+.opg-c.num {
+  font-variant-numeric: tabular-nums;
+}
+.opg-c.ctr {
+  justify-content: center;
+}
+.opg-c.blank {
+  background: var(--color-surface);
+}
+.opg-c.wrap {
+  white-space: normal;
+}
+.opg-c.hl {
+  color: var(--color-accent-text);
+  font-weight: 500;
+  background: rgba(240, 237, 255, 0.55);
+}
+.opg-c.err {
+  box-shadow: inset 0 0 0 1px rgba(212, 77, 92, 0.7);
+  background: rgba(212, 77, 92, 0.04);
+}
+.opg-c.err .v {
+  color: var(--color-error);
+}
+.opg-c.erow {
+  min-height: 30px;
+  color: var(--color-error);
+  background: rgba(212, 77, 92, 0.06);
+  font-size: 12px;
+  white-space: normal;
+}
+.opg-c.erow b {
+  font-weight: 600;
+}
+.opg-c.erow .opg-ic {
+  color: var(--color-error);
+}
+.opg-c.wrow {
+  min-height: 30px;
+  color: var(--color-warning);
+  background: rgba(180, 123, 22, 0.07);
+  font-size: 12px;
+  white-space: normal;
+}
+.opg-c.hint {
+  min-height: 30px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-size: 12px;
+  white-space: normal;
+}
+.opg-c.add {
+  min-height: 34px;
+  color: var(--color-accent-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.opg-c.add:hover {
+  background: var(--color-surface-hover);
+}
+.opg-c.add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.opg-c.add .opg-ic {
+  color: var(--color-accent-text);
+}
+.opg-c.btns {
+  justify-content: center;
+  font-weight: 500;
+  cursor: pointer;
+}
+.opg-c.btns:hover {
+  background: var(--color-surface-hover);
+}
+.opg-c.btnp {
+  justify-content: center;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+}
+.opg-c.btnp:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.opg-c.acts {
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  align-items: stretch;
+}
+.opg-act {
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transition:
+    color 120ms,
+    background-color 120ms;
+}
+.opg-act:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+}
+.opg-act.danger:hover:not(:disabled) {
+  color: var(--color-error);
+}
+.opg-act:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.opg-act.dim {
+  opacity: 0.35;
+}
+.opg-c.chips {
+  padding: 0 8px;
+  gap: 4px;
+}
+.opg-c.pane {
+  padding: 0;
+  gap: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  white-space: normal;
+}
+/* Embedded controls fill the cell: no own border/radius/background. */
+.opg-c.ctl {
+  padding: 0;
+  align-items: stretch;
+}
+.opg-c.ctl:focus-within {
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.opg-c.ctl.err:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(212, 77, 92, 0.9);
+}
+.opg-c.ctl > *,
+.opg-c.ctl > div > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.opg-c.ctl > button,
+.opg-c.ctl > input,
+.opg-c.ctl > div > button,
+.opg-c.ctl > div > input,
+.opg-c.ctl > div > div > button {
+  width: 100%;
+  height: 100% !important;
+  min-height: 35px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding-left: 10px;
+  padding-right: 10px;
+  font-size: 12.5px;
+}
+.opg-c.ctl.hl > button,
+.opg-c.ctl.hl > div > button {
+  color: var(--color-accent-text);
+  font-weight: 500;
+}
+.opg-c.ctl > div {
+  display: flex;
+  align-items: stretch;
+}
+.opg-ty {
+  width: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-family: var(--opg-mono);
+  text-align: center;
+  flex-shrink: 0;
+}
+.opg-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+}
+.opg-lgc {
+  font-size: 11px;
+  font-weight: 600;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-accent-muted);
+  color: var(--color-accent-text);
+}

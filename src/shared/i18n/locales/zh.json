@@ -795,7 +795,11 @@
           "dataTypeInteger": "整数",
           "dataTypeFloat": "浮点小数",
           "dataTypeDecimal": "定点小数",
-          "dataTypeBoolean": "布尔"
+          "dataTypeBoolean": "布尔",
+          "rowAdd": "在下方添加",
+          "rowCopy": "复制本行",
+          "rowRemove": "删除本行",
+          "rowDrag": "拖动排序"
         },
         "filter": {
           "filterDeleteCondition": "删除此条件",
@@ -890,7 +894,16 @@
           "conflictLeftSuffix": "左后缀",
           "conflictRightSuffix": "右后缀",
           "joinAsofByHeader": "等值匹配字段",
-          "joinFieldSettingsTip": "设置保留字段、重命名与同名字段冲突策略"
+          "joinFieldSettingsTip": "设置保留字段、重命名与同名字段冲突策略",
+          "inputTables": "输入表",
+          "leftSide": "左表",
+          "rightSide": "右表",
+          "headerLeftField": "左表字段",
+          "headerOperator": "运算",
+          "headerRightField": "右表字段",
+          "conditionMissingField": "{{side}}「{{table}}」中没有字段「{{field}}」，请重新选择。",
+          "conditionIncomplete": "请为左右两侧都选择字段。",
+          "conditionPrefix": "条件 {{index}}："
         },
         "aggregate": {
           "aggregateFieldWithGranularity": "{{field}}（{{granularity}}）",
@@ -1378,7 +1391,8 @@
           "selectField": "选择字段",
           "noFields": "暂无可用字段",
           "fieldNotFound": "字段不存在",
-          "fieldPendingInference": "待推导"
+          "fieldPendingInference": "待推导",
+          "fieldNotFoundShort": "上游无此字段"
         },
         "valueInput": {
           "noMatchValue": "无匹配值",

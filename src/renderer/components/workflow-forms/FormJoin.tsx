@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Settings, Table2 } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { dataClient } from '../../features/data/api/data-client';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { GlassFormLabel } from './shared/GlassFormLabel';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassRowList } from './shared/GlassRowList';
 import { canAppendRow, ensureStableRowIds } from './shared/rowListOperations';
 import { MAX_JOIN_CONDITION_COUNT, type JoinCondition } from '@/shared/operator-schemas';
 import {
@@ -17,6 +15,17 @@ import {
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
+import {
+  AddRow,
+  Cell,
+  ErrorRow,
+  FormGrid,
+  HintRow,
+  LabelCell,
+  RowActionsCell,
+  WarningRow,
+} from './shared/FormGrid';
+import { parseFieldRef } from '@/shared/prep-dsl/parser';
 import { JoinVennSVG, type JoinVennType } from './join/JoinVennIcon';
 import { JoinAsofSection, type JoinAsofPatch } from './join/JoinAsofSection';
 import { JoinFieldSettingsDialog } from './join/JoinFieldSettingsDialog';
@@ -35,6 +44,13 @@ const OPERATOR_KEYS = [
   { value: '>', key: 'operatorGt' },
   { value: '>=', key: 'operatorGte' },
 ];
+
+/** Shared column grid: label | A | B(120) | C | D(112). */
+export const JOIN_GRID_COLUMNS = '104px minmax(200px,1fr) 120px minmax(200px,1fr) 112px';
+
+function extractJoinFieldName(value: string): string {
+  return parseFieldRef(value)?.name ?? value;
+}
 
 export default function FormJoin({
   node,
@@ -211,166 +227,242 @@ export default function FormJoin({
     updateConfig((cfg) => ({ ...cfg, asof: updateJoinAsof(cfg.asof, { ...patch }) }));
   };
 
-  return (
-    <div className="scrollbar-hover flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-3">
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('joinType')}</GlassFormLabel>
-        <GlassOptionSingleSelect
-          value={joinType}
-          groups={[
-            {
-              key: 'joinTypes',
-              items: joinTypes.map((jt) => ({
-                value: jt.value,
-                label: jt.label,
-                title: jt.tip,
-                icon: (
-                  <JoinVennSVG
-                    type={jt.value}
-                    selected={joinType === jt.value}
-                    className="h-4 w-6 shrink-0"
-                  />
-                ),
-              })),
-            },
-          ]}
-          onChange={handleJoinTypeChange}
-          className="h-8 w-60"
-          aria-label={tr('joinType')}
-        />
-      </div>
+  const LeftIcon = sourceNode ? Table2 : undefined;
+  const RightIcon = rightSourceNode ? Table2 : undefined;
+  const currentJoinTip = joinTypes.find((item) => item.value === joinType)?.tip ?? '';
+  const rowLabels = {
+    add: tr('rowAdd'),
+    copy: tr('rowCopy'),
+    remove: tr('rowRemove'),
+  };
 
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('sources.leftInput')}</GlassFormLabel>
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3">
-          <span className="truncate text-[13px] text-text-secondary">
+  // Per-condition validation shown as err cells + error rows (no silent "(?)").
+  const conditionIssues = conditions.map((cond) => {
+    const leftMissing =
+      Boolean(cond.left) &&
+      leftFieldCompletions.length > 0 &&
+      !leftFieldCompletions.includes(cond.left);
+    const rightMissing =
+      Boolean(cond.right) &&
+      rightFieldCompletions.length > 0 &&
+      !rightFieldCompletions.includes(cond.right);
+    const incomplete = Boolean(cond.left) !== Boolean(cond.right);
+    return { leftMissing, rightMissing, incomplete };
+  });
+  const errorMessages = conditionIssues.flatMap((issue, index) => {
+    const cond = conditions[index];
+    const prefix = tr('conditionPrefix', { index: index + 1 });
+    const out: Array<{ key: string; prefix: string; text: string }> = [];
+    if (issue.leftMissing) {
+      out.push({
+        key: `${index}-l`,
+        prefix,
+        text: tr('conditionMissingField', {
+          side: tr('leftSide'),
+          table: leftSourceLabel || leftAlias,
+          field: extractJoinFieldName(cond.left),
+        }),
+      });
+    }
+    if (issue.rightMissing) {
+      out.push({
+        key: `${index}-r`,
+        prefix,
+        text: tr('conditionMissingField', {
+          side: tr('rightSide'),
+          table: rightSourceLabel || rightAlias,
+          field: extractJoinFieldName(cond.right),
+        }),
+      });
+    }
+    if (issue.incomplete) {
+      out.push({ key: `${index}-i`, prefix, text: tr('conditionIncomplete') });
+    }
+    return out;
+  });
+  const showRightWarning = Boolean(rightSourceLabel && rightColumnsError);
+  const conditionRowSpan = !needsConditions
+    ? 1
+    : isAsof
+      ? 1 + (showRightWarning ? 1 : 0)
+      : 1 + conditions.length + errorMessages.length + 1 + (showRightWarning ? 1 : 0);
+
+  return (
+    <div className="scrollbar-hover h-full min-h-0 overflow-y-auto">
+      <FormGrid columns={JOIN_GRID_COLUMNS} testId="join-form-grid">
+        <LabelCell>{tr('joinType')}</LabelCell>
+        <Cell span={2} v={['ctl']}>
+          <GlassOptionSingleSelect
+            value={joinType}
+            groups={[
+              {
+                key: 'joinTypes',
+                items: joinTypes.map((jt) => ({
+                  value: jt.value,
+                  label: jt.label,
+                  title: jt.tip,
+                  icon: (
+                    <JoinVennSVG
+                      type={jt.value}
+                      selected={joinType === jt.value}
+                      className="h-4 w-6 shrink-0"
+                    />
+                  ),
+                })),
+              },
+            ]}
+            onChange={handleJoinTypeChange}
+            className="w-full"
+            aria-label={tr('joinType')}
+          />
+        </Cell>
+        <Cell span={2} v={['muted']}>
+          <span className="truncate" title={currentJoinTip}>
+            {currentJoinTip}
+          </span>
+        </Cell>
+
+        <LabelCell>{tr('inputTables')}</LabelCell>
+        <Cell span={2} v={['ro']} testId="join-left-source">
+          {LeftIcon ? <LeftIcon className="opg-ic h-3.5 w-3.5" /> : null}
+          <span className="truncate font-medium">
             {leftSourceLabel || tr('sources.noLeftSource')}
           </span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <GlassFormLabel>{tr('sources.rightInput')}</GlassFormLabel>
-        <div className="flex h-8 min-w-0 flex-1 items-center rounded-md border border-border-muted/70 bg-surface px-3">
-          <span className="truncate text-[13px] text-text-secondary">
+          {sourceNode && leftAlias ? <span className="opg-badge">{leftAlias}</span> : null}
+          <span className="ml-auto text-[12px] text-text-muted">{tr('leftSide')}</span>
+        </Cell>
+        <Cell v={['ro']} testId="join-right-source">
+          {RightIcon ? <RightIcon className="opg-ic h-3.5 w-3.5" /> : null}
+          <span className="truncate font-medium">
             {rightSourceLabel || tr('sources.noRightSource')}
           </span>
-        </div>
-        {!isSemiAnti && (
+          {rightSourceNode && rightAlias ? <span className="opg-badge">{rightAlias}</span> : null}
+          <span className="ml-auto text-[12px] text-text-muted">{tr('rightSide')}</span>
+        </Cell>
+        {!isSemiAnti ? (
           <button
             type="button"
             onClick={() => setKeepDialogOpen(true)}
-            className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border-muted bg-surface px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            className="opg-c btns"
             title={tr('joinFieldSettingsTip')}
           >
-            <Settings className="h-3.5 w-3.5" />
+            <Settings className="opg-ic h-3.5 w-3.5" />
             <span>{tr('joinFieldSettings')}</span>
           </button>
+        ) : (
+          <Cell v={['blank']} />
         )}
-      </div>
 
-      {isSemiAnti && (
-        <div className="pl-[88px] text-[12px] text-text-muted">
-          {tr('semiAntiConfigHint', {
-            model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
-          })}
-        </div>
-      )}
+        {isSemiAnti ? (
+          <HintRow span={5}>
+            {tr('semiAntiConfigHint', {
+              model: joinType === 'semi' ? tr('joinSemi') : tr('joinAnti'),
+            })}
+          </HintRow>
+        ) : null}
 
-      <div className="flex items-start gap-2">
-        <GlassFormLabel>{tr('joinConditionsHeader')}</GlassFormLabel>
-        <div className="min-w-0 flex-1">
-          {rightSourceLabel && rightColumnsError && (
-            <div className="pb-1 text-[12px] text-warning">{tr('rightColumnsFailed')}</div>
-          )}
-
-          {isAsof ? (
-            <JoinAsofSection
-              asof={ui.asof}
-              leftFields={fieldCompletions}
-              rightFields={rightRawColumns}
-              leftColumnTypes={leftColumnTypes}
-              rightColumnTypes={rightColumnTypes}
-              leftAlias={leftAlias}
-              rightAlias={rightAlias}
-              onAsofChange={handleAsofChange}
-            />
-          ) : needsConditions ? (
-            <GlassRowList
-              items={conditions}
-              getKey={(condition, index) => condition.id ?? `condition-${index}`}
-              columns={[
-                {
-                  flex: 'flex-[1]',
-                  header: '',
-                  render: (cond: ConditionEntry, i: number) => (
-                    <GlassFieldSingleSelect
-                      value={cond.left}
-                      options={leftFieldCompletions}
-                      columnTypes={leftColumnTypesQualified}
-                      onChange={(v) =>
-                        handleConditionsChange(
-                          conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
-                        )
-                      }
-                      placeholder={tr('leftField')}
-                      className="h-8 w-full text-[12px]"
-                    />
-                  ),
-                },
-                {
-                  flex: 'flex-[0.6]',
-                  header: '',
-                  render: (cond: ConditionEntry, i: number) => (
-                    <GlassOptionSingleSelect
-                      value={cond.operator}
-                      groups={[{ key: 'op', items: conditionOperatorItems }]}
-                      onChange={(v) =>
-                        handleConditionsChange(
-                          conditions.map((c, j) =>
-                            j === i ? { ...c, operator: v as JoinCondition['operator'] } : c
-                          )
-                        )
-                      }
-                      variant="highlight"
-                      className="h-8 w-full text-[12px] [&>span]:text-center"
-                    />
-                  ),
-                },
-                {
-                  flex: 'flex-[1]',
-                  header: '',
-                  render: (cond: ConditionEntry, i: number) => (
-                    <GlassFieldSingleSelect
-                      value={cond.right}
-                      options={rightFieldCompletions}
-                      columnTypes={rightColumnTypesQualified}
-                      onChange={(v) =>
-                        handleConditionsChange(
-                          conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
-                        )
-                      }
-                      placeholder={tr('rightField')}
-                      className="h-8 w-full text-[12px]"
-                    />
-                  ),
-                },
-              ]}
-              onAdd={handleCondAdd}
-              onRemove={handleCondRemove}
-              addTitle={tr('addCondition')}
-              canAct={(action) =>
-                action !== 'add' || canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)
-              }
-              hideHeader
-            />
-          ) : (
-            <div className="flex h-8 items-center text-[12px] text-text-muted">
-              {tr('noConditionsNeeded')}
+        <LabelCell rowSpan={conditionRowSpan}>{tr('joinConditionsHeader')}</LabelCell>
+        {showRightWarning ? <WarningRow span={4}>{tr('rightColumnsFailed')}</WarningRow> : null}
+        {!needsConditions ? (
+          <Cell span={4} v={['muted']}>
+            {tr('noConditionsNeeded')}
+          </Cell>
+        ) : isAsof ? (
+          <Cell span={4} v={['pane']}>
+            <div className="p-3">
+              <JoinAsofSection
+                asof={ui.asof}
+                leftFields={fieldCompletions}
+                rightFields={rightRawColumns}
+                leftColumnTypes={leftColumnTypes}
+                rightColumnTypes={rightColumnTypes}
+                leftAlias={leftAlias}
+                rightAlias={rightAlias}
+                onAsofChange={handleAsofChange}
+              />
             </div>
-          )}
-        </div>
-      </div>
+          </Cell>
+        ) : (
+          <>
+            <Cell v={['th']}>{tr('headerLeftField')}</Cell>
+            <Cell v={['th']}>{tr('headerOperator')}</Cell>
+            <Cell v={['th']}>{tr('headerRightField')}</Cell>
+            <Cell v={['th']} />
+            {conditions.map((cond, i) => (
+              <Fragment key={cond.id ?? `condition-${i}`}>
+                <Cell v={['ctl', conditionIssues[i]?.leftMissing && 'err']}>
+                  <GlassFieldSingleSelect
+                    value={cond.left}
+                    options={leftFieldCompletions}
+                    columnTypes={leftColumnTypesQualified}
+                    showQualifierBadge
+                    onChange={(v) =>
+                      handleConditionsChange(
+                        conditions.map((c, j) => (j === i ? { ...c, left: v } : c))
+                      )
+                    }
+                    placeholder={tr('leftField')}
+                    className="w-full"
+                  />
+                </Cell>
+                <Cell v={['ctl', 'hl']}>
+                  <GlassOptionSingleSelect
+                    value={cond.operator}
+                    groups={[{ key: 'op', items: conditionOperatorItems }]}
+                    onChange={(v) =>
+                      handleConditionsChange(
+                        conditions.map((c, j) =>
+                          j === i ? { ...c, operator: v as JoinCondition['operator'] } : c
+                        )
+                      )
+                    }
+                    className="w-full"
+                  />
+                </Cell>
+                <Cell v={['ctl', conditionIssues[i]?.rightMissing && 'err']}>
+                  <GlassFieldSingleSelect
+                    value={cond.right}
+                    options={rightFieldCompletions}
+                    columnTypes={rightColumnTypesQualified}
+                    showQualifierBadge
+                    onChange={(v) =>
+                      handleConditionsChange(
+                        conditions.map((c, j) => (j === i ? { ...c, right: v } : c))
+                      )
+                    }
+                    placeholder={tr('rightField')}
+                    className="w-full"
+                  />
+                </Cell>
+                <RowActionsCell
+                  labels={rowLabels}
+                  onAdd={() => handleCondAdd(i)}
+                  onCopy={() => {
+                    if (!canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)) return;
+                    const next = [...conditions];
+                    next.splice(i + 1, 0, { ...cond, id: undefined });
+                    handleConditionsChange(next);
+                  }}
+                  onRemove={() => handleCondRemove(i)}
+                  canAdd={canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)}
+                />
+              </Fragment>
+            ))}
+            {errorMessages.map((message) => (
+              <ErrorRow key={message.key} span={4}>
+                <b>{message.prefix}</b>
+                {message.text}
+              </ErrorRow>
+            ))}
+            <AddRow
+              span={4}
+              label={tr('addCondition')}
+              onClick={() => handleCondAdd(conditions.length - 1)}
+              disabled={!canAppendRow(conditions.length, MAX_JOIN_CONDITION_COUNT)}
+            />
+          </>
+        )}
+      </FormGrid>
 
       {/* Keep field dialog */}
       {keepDialogOpen && (

@@ -795,7 +795,11 @@
           "dataTypeInteger": "Integer",
           "dataTypeFloat": "Float",
           "dataTypeDecimal": "Decimal",
-          "dataTypeBoolean": "Boolean"
+          "dataTypeBoolean": "Boolean",
+          "rowAdd": "Add below",
+          "rowCopy": "Duplicate row",
+          "rowRemove": "Delete row",
+          "rowDrag": "Drag to reorder"
         },
         "filter": {
           "filterDeleteCondition": "Delete this condition",
@@ -890,7 +894,16 @@
           "conflictLeftSuffix": "Left suffix",
           "conflictRightSuffix": "Right suffix",
           "joinAsofByHeader": "Fields to match (equals)",
-          "joinFieldSettingsTip": "Keep and rename fields; resolve name conflicts"
+          "joinFieldSettingsTip": "Keep and rename fields; resolve name conflicts",
+          "inputTables": "Inputs",
+          "leftSide": "Left",
+          "rightSide": "Right",
+          "headerLeftField": "Left field",
+          "headerOperator": "Operator",
+          "headerRightField": "Right field",
+          "conditionMissingField": "{{side}} \"{{table}}\" has no field \"{{field}}\". Please reselect.",
+          "conditionIncomplete": "Choose a field on both sides.",
+          "conditionPrefix": "Condition {{index}}: "
         },
         "aggregate": {
           "aggregateFieldWithGranularity": "{{field}} ({{granularity}})",
@@ -1378,7 +1391,8 @@
           "selectField": "Select field",
           "noFields": "No fields available",
           "fieldNotFound": "Field not found",
-          "fieldPendingInference": "Pending inference"
+          "fieldPendingInference": "Pending inference",
+          "fieldNotFoundShort": "Not in upstream"
         },
         "valueInput": {
           "noMatchValue": "No matching values",

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import './form-grid.css';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { DataTypeIcon } from './DataTypeIcon';
 import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
@@ -24,6 +25,8 @@ interface GlassFieldSingleSelectProps {
   className?: string;
   showType?: boolean;
   displayLabel?: string;
+  /** Render `[source].[field]` as a source badge + field name. */
+  showQualifierBadge?: boolean;
 }
 
 export function GlassFieldSingleSelect({
@@ -38,6 +41,7 @@ export function GlassFieldSingleSelect({
   className,
   showType = true,
   displayLabel,
+  showQualifierBadge = false,
 }: GlassFieldSingleSelectProps) {
   const { t } = useTranslation();
   const dataTypeLabel = useDataFieldTypeLabel();
@@ -81,6 +85,18 @@ export function GlassFieldSingleSelect({
       ? t('data.workflow.formLabels.fieldPicker.fieldPendingInference')
       : t('data.workflow.formLabels.fieldPicker.fieldNotFound')
     : undefined;
+
+  // Qualified refs ([orders].[商品ID]) show the reference name as a badge and
+  // the field as text; a missing value gets a short inline reason, not "(?)".
+  const parsedRef = useMemo(() => (value ? parseFieldRef(value) : null), [value]);
+  const qualifier = showQualifierBadge && parsedRef?.source ? parsedRef.source : '';
+  const fieldName = parsedRef?.name ?? value;
+  const missingIsPending = missingValue && options.length === 0;
+  const missingHint = missingValue
+    ? missingIsPending
+      ? t('data.workflow.formLabels.fieldPicker.fieldPendingInference')
+      : t('data.workflow.formLabels.fieldPicker.fieldNotFoundShort')
+    : '';
 
   const optionTexts = useMemo(() => options.map(extractFieldName), [options]);
 
@@ -213,26 +229,23 @@ export function GlassFieldSingleSelect({
         ].join(' ')}
       >
         {value ? (
-          showType ? (
-            <>
-              <DataTypeIcon type={columnTypes[value]} />
-              <span
-                title={missingTitle}
-                className={`flex-1 min-w-0 truncate text-left ${missingValue ? 'text-error' : ''}`}
-              >
-                {displayLabel || value}
-                {missingValue ? ' (?)' : ''}
-              </span>
-            </>
-          ) : (
+          <>
+            {showType ? <DataTypeIcon type={columnTypes[value]} /> : null}
+            {qualifier ? <span className="opg-badge flex-shrink-0">{qualifier}</span> : null}
             <span
               title={missingTitle}
-              className={`flex-1 min-w-0 truncate text-left ${missingValue ? 'text-error' : ''}`}
+              className={`v min-w-0 truncate text-left ${missingValue && !missingIsPending ? 'text-error' : ''} ${missingHint ? '' : 'flex-1'}`}
             >
-              {displayLabel || value}
-              {missingValue ? ' (?)' : ''}
+              {displayLabel || (qualifier ? fieldName : value)}
             </span>
-          )
+            {missingHint ? (
+              <span
+                className={`flex-1 truncate text-left text-[11px] ${missingIsPending ? 'text-text-muted' : 'text-error'}`}
+              >
+                {missingHint}
+              </span>
+            ) : null}
+          </>
         ) : (
           <span className="flex-1 min-w-0 truncate text-left text-text-muted">{placeholder}</span>
         )}
