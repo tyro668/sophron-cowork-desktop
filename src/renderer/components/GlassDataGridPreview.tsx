@@ -277,7 +277,7 @@ function createGridCell(value: PreviewCellValue, semanticType?: DataFieldType): 
       allowOverlay: false,
       readonly: true,
       data: '',
-      displayData: 'NULL',
+      displayData: '—',
       copyData: '',
       style: 'faded',
       contentAlign: normalizedType && isNumericDataFieldType(normalizedType) ? 'right' : 'left',
@@ -298,6 +298,24 @@ function createGridCell(value: PreviewCellValue, semanticType?: DataFieldType): 
     };
   }
   if (
+    normalizedType === 'decimal' &&
+    typeof value !== 'boolean' &&
+    String(value).trim() !== '' &&
+    Number.isFinite(Number(String(value).trim())) &&
+    Math.abs(Number(String(value).trim())) < 1e15
+  ) {
+    const numericValue = Number(String(value).trim());
+    return {
+      kind: GridCellKind.Number,
+      allowOverlay: false,
+      readonly: true,
+      data: numericValue,
+      displayData: decimalFormatter.format(numericValue),
+      copyData: String(value),
+      contentAlign: 'right',
+    };
+  }
+  if (
     normalizedType !== 'decimal' &&
     ((typeof value === 'number' && Number.isFinite(value)) ||
       (normalizedType &&
@@ -310,7 +328,10 @@ function createGridCell(value: PreviewCellValue, semanticType?: DataFieldType): 
       allowOverlay: false,
       readonly: true,
       data: numericValue,
-      displayData: formatPreviewCell(value),
+      displayData:
+        normalizedType === 'float' || !Number.isInteger(numericValue)
+          ? floatFormatter.format(numericValue)
+          : formatPreviewCell(value),
       copyData: String(value),
       contentAlign: 'right',
     };
@@ -386,6 +407,14 @@ function formatColumnTitle(column: string): string {
 function measureDisplayWidth(value: string): number {
   return Array.from(value).reduce((width, char) => width + (char.charCodeAt(0) > 255 ? 1.7 : 1), 0);
 }
+
+// Amount-style decimals: thousands separators, exactly 2 fraction digits (B07).
+const decimalFormatter = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+// Floats: thousands separators, strip binary floating-point noise.
+const floatFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 
 function formatPreviewCell(value: PreviewCellValue): string {
   if (value === null || value === undefined) return '';

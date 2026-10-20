@@ -71,8 +71,8 @@ export const bottomTabListClass =
 export const bottomTabTriggerClass =
   'relative h-full rounded-none bg-transparent px-4 text-xs font-medium text-text-secondary shadow-none ' +
   'hover:bg-surface-hover/50 hover:text-text-primary ' +
-  'data-[state=active]:bg-accent-muted/60 data-[state=active]:text-accent data-[state=active]:shadow-none ' +
-  'after:absolute after:inset-x-0 after:top-0 after:h-px data-[state=active]:after:bg-accent';
+  'data-[state=active]:bg-accent-muted data-[state=active]:text-accent data-[state=active]:shadow-none ' +
+  'after:absolute after:inset-x-0 after:top-0 after:h-0.5 data-[state=active]:after:bg-accent';
 
 /**
  * Flat full-width header strip for workspace list pages: search/create on the
