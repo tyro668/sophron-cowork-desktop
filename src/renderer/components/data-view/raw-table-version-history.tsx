@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import type { DataRawTableNormalizerArtifactVersion, DataNormalizerProjectFile } from '../../types';
 import { formatDateTime, type TranslateFn } from './shared';
-import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { ChevronDown, FileText, Folder, History, RefreshCw, Trash2 } from 'lucide-react';
+import { ChevronDown, FileText, Folder, History, RefreshCw, Trash2, Upload } from 'lucide-react';
 import {
   buildNormalizerProjectTree,
   getNormalizerVersionDiff,
@@ -32,7 +31,7 @@ export function NormalizerProjectTree({
     );
   }
   return (
-    <div className={spacious ? 'space-y-1' : 'space-y-0.5'}>
+    <div data-testid="normalizer-project-tree">
       {tree.map((node) => (
         <NormalizerProjectTreeNodeView
           key={node.path}
@@ -71,19 +70,22 @@ export function NormalizerProjectTreeNodeView({
         onClick={() => {
           if (isFile) onSelect(node.path);
         }}
-        className={`flex w-full min-w-0 items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs font-medium transition-colors disabled:cursor-default ${
+        aria-current={isSelected ? 'true' : undefined}
+        className={`flex w-full min-w-0 items-center gap-1.5 pr-2 text-left text-[12.5px] transition-colors disabled:cursor-default ${
           isSelected
-            ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
+            ? 'bg-accent-muted font-medium text-accent'
             : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-        } ${spacious ? 'min-h-8' : 'min-h-7'}`}
-        style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
+        } ${spacious ? 'h-8' : 'h-7'}`}
+        style={{ paddingLeft: `${10 + depth * 14}px` }}
       >
         {node.type === 'folder' ? (
           <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
         ) : (
           <span className="h-3.5 w-3.5 flex-shrink-0" />
         )}
-        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+        <Icon
+          className={`h-3.5 w-3.5 flex-shrink-0 ${isSelected ? 'text-accent' : 'text-text-muted'}`}
+        />
         <span className="min-w-0 truncate">{node.name}</span>
       </button>
       {node.children.length > 0 ? (
@@ -129,130 +131,113 @@ export function RawTableVersionHistoryPanel({
   t: TranslateFn;
   versions: DataRawTableNormalizerArtifactVersion[];
 }) {
+  const cols = 'grid-cols-[120px_100px_120px_minmax(0,1fr)_92px_40px]';
+  const th =
+    'flex h-8 items-center border-b border-l border-border-subtle bg-surface-muted px-2.5 text-[11.5px] font-medium text-text-muted first:border-l-0';
+  const td =
+    'flex min-h-9 min-w-0 items-center border-b border-l border-border-subtle first:border-l-0';
   const body =
     versions.length > 0 ? (
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed border-collapse text-left text-xs">
-          <thead>
-            <tr className="h-9 bg-surface-muted/70 text-[11px] font-medium text-text-muted">
-              <th className="w-24 whitespace-nowrap rounded-tl-lg px-3 font-medium">
-                {t('data.rawTables.editor.versionsColumnVersion')}
-              </th>
-              <th className="w-20 whitespace-nowrap px-3 font-medium">
-                {t('data.rawTables.editor.versionsColumnStatus')}
-              </th>
-              <th className="w-36 whitespace-nowrap px-3 font-medium">
-                {t('data.rawTables.editor.versionsColumnUpdatedAt')}
-              </th>
-              <th className="px-3 font-medium">{t('data.rawTables.editor.versionsColumnDiff')}</th>
-              <th className="w-32 whitespace-nowrap rounded-tr-lg px-3 text-right font-medium">
-                {t('data.rawTables.editor.versionsColumnActions')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {versions.map((version) => {
-              const isCurrent = version.id === currentVersionId;
-              const isPublished = version.status === 'published';
-              const diff = getNormalizerVersionDiff(version, currentVersion);
-              return (
-                <tr
-                  key={version.id}
-                  className="border-b border-border-muted/60 align-middle last:border-b-0 hover:bg-surface-hover/60"
+      <div className={`grid ${cols}`} data-testid="normalizer-version-grid">
+        <div className={th}>{t('data.rawTables.editor.versionsColumnVersion')}</div>
+        <div className={th}>{t('data.rawTables.editor.versionsColumnStatus')}</div>
+        <div className={th}>{t('data.rawTables.editor.versionsColumnUpdatedAt')}</div>
+        <div className={th}>{t('data.rawTables.editor.versionsColumnDiff')}</div>
+        <div className={th} aria-label={t('data.rawTables.editor.versionsColumnActions')} />
+        <div className={th} />
+        {versions.map((version) => {
+          const isCurrent = version.id === currentVersionId;
+          const isPublished = version.status === 'published';
+          const diff = getNormalizerVersionDiff(version, currentVersion);
+          return (
+            <div key={version.id} className="contents" data-testid="normalizer-version-row">
+              <div className={`${td} gap-1.5 px-2.5`}>
+                <span className="text-[13px] font-semibold text-text-primary">
+                  {t('data.rawTables.editor.versionNumber', { version: version.version })}
+                </span>
+                {isCurrent ? (
+                  <Badge tone="accent">{t('data.rawTables.editor.currentVersion')}</Badge>
+                ) : null}
+              </div>
+              <div className={`${td} px-2.5`}>
+                <Badge
+                  tone={
+                    isPublished ? 'success' : version.status === 'archived' ? 'default' : 'warning'
+                  }
                 >
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[13px] font-semibold text-text-primary">
-                        {t('data.rawTables.editor.versionNumber', {
-                          version: version.version,
-                        })}
-                      </span>
-                      {isCurrent ? (
-                        <Badge tone="accent" className="bg-transparent">
-                          {t('data.rawTables.editor.currentVersion')}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
-                    <Badge tone={isPublished ? 'success' : 'default'}>
-                      {isPublished
-                        ? t('data.rawTables.editor.publishedVersion')
-                        : version.status === 'archived'
-                          ? t('data.rawTables.editor.versionStatusArchived')
-                          : t('data.rawTables.editor.versionStatusDraft')}
-                    </Badge>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-text-muted">
-                    {formatDateTime(version.updatedAt)}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {diff ? (
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-text-secondary">
-                          {t('data.rawTables.editor.versionDiffLine', {
-                            changed: diff.changed,
-                            added: diff.added,
-                            removed: diff.removed,
-                          })}
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-text-muted">
-                          {diff.ruleSame
-                            ? t('data.rawTables.editor.versionRuleSameText')
-                            : t('data.rawTables.editor.versionRuleChangedText')}
-                        </div>
-                      </div>
+                  {isPublished
+                    ? t('data.rawTables.editor.publishedVersion')
+                    : version.status === 'archived'
+                      ? t('data.rawTables.editor.versionStatusArchived')
+                      : t('data.rawTables.editor.versionStatusDraft')}
+                </Badge>
+              </div>
+              <div
+                className={`${td} whitespace-nowrap px-2.5 text-xs tabular-nums text-text-muted`}
+                title={formatDateTime(version.updatedAt)}
+              >
+                {formatDateTime(version.updatedAt).replace(/^\d{4}-/, '')}
+              </div>
+              <div className={`${td} px-2.5 text-xs text-text-muted`}>
+                <span className="truncate">
+                  {diff
+                    ? `${t('data.rawTables.editor.versionDiffLine', {
+                        changed: diff.changed,
+                        added: diff.added,
+                        removed: diff.removed,
+                      })} · ${
+                        diff.ruleSame
+                          ? t('data.rawTables.editor.versionRuleSameText')
+                          : t('data.rawTables.editor.versionRuleChangedText')
+                      }`
+                    : version.rulePrompt || '-'}
+                </span>
+              </div>
+              <div className={td}>
+                {isPublished ? (
+                  <span className="flex h-full w-full items-center justify-center text-xs text-text-muted">
+                    {t('data.rawTables.editor.publishedVersion')}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={publishingVersionId === version.id}
+                    onClick={() => onPublish(version)}
+                    data-testid="normalizer-version-publish"
+                    className="ui-accent-cell h-full w-full"
+                  >
+                    {publishingVersionId === version.id ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <span className="block truncate text-text-muted">
-                        {version.rulePrompt || '-'}
-                      </span>
+                      <Upload className="h-3.5 w-3.5" />
                     )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={isPublished || publishingVersionId === version.id}
-                        onClick={() => onPublish(version)}
-                        className={`h-7 gap-1 px-3 text-[11px] ${
-                          isPublished
-                            ? ''
-                            : 'border-accent/40 text-accent hover:border-accent/60 hover:bg-accent-muted'
-                        }`}
-                      >
-                        {publishingVersionId === version.id ? (
-                          <RefreshCw className="h-3 w-3 animate-spin" />
-                        ) : null}
-                        {isPublished
-                          ? t('data.rawTables.editor.publishedVersion')
-                          : t('data.rawTables.editor.publishVersionAction')}
-                      </Button>
-                      <button
-                        type="button"
-                        disabled={isPublished || deletingVersionId === version.id}
-                        onClick={() => onDelete(version)}
-                        aria-label={t('data.rawTables.editor.deleteVersionAction')}
-                        title={
-                          isPublished
-                            ? t('data.rawTables.editor.deletePublishedVersionBlocked')
-                            : t('data.rawTables.editor.deleteVersionAction')
-                        }
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted"
-                      >
-                        {deletingVersionId === version.id ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {t('data.rawTables.editor.publishVersionAction')}
+                  </button>
+                )}
+              </div>
+              <div className={td}>
+                <button
+                  type="button"
+                  disabled={isPublished || deletingVersionId === version.id}
+                  onClick={() => onDelete(version)}
+                  aria-label={t('data.rawTables.editor.deleteVersionAction')}
+                  title={
+                    isPublished
+                      ? t('data.rawTables.editor.deletePublishedVersionBlocked')
+                      : t('data.rawTables.editor.deleteVersionAction')
+                  }
+                  className="inline-flex h-full w-full items-center justify-center text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+                >
+                  {deletingVersionId === version.id ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     ) : (
       <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">

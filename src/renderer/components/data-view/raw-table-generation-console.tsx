@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, CircleDashed, Loader2, Sparkles, Terminal, X } from 'lucide-react';
+import { Check, ChevronDown, CircleDashed, Copy, Loader2, X } from 'lucide-react';
 import {
   formatGenerationElapsed,
   type NormalizerGenerationLog,
@@ -107,20 +107,49 @@ function GenerationStepView({ step, t }: { step: NormalizerGenerationStep; t: Tr
   );
 }
 
+function serializeGenerationLog(
+  log: NormalizerGenerationLog | null,
+  errorMessage: string | null | undefined,
+  t: TranslateFn
+): string {
+  const lines: string[] = [];
+  if (log) {
+    for (const item of log.meta) lines.push(`${item.label}: ${item.value}`);
+    for (const step of log.steps) {
+      const mark = step.status === 'active' ? '…' : step.status === 'error' ? '✕' : '✓';
+      lines.push(`${mark} ${t(STEP_TITLE_KEYS[step.phase])}`);
+      for (const note of step.notes) lines.push(`  ${note}`);
+      if (step.stream) lines.push(step.stream);
+    }
+    if (log.outcome) {
+      lines.push(`${log.outcome.status === 'success' ? '✓' : '✕'} ${log.outcome.title}`);
+      lines.push(...log.outcome.details, ...log.outcome.files);
+    }
+  }
+  if (errorMessage && !(log?.outcome?.status === 'error' && log.outcome.title === errorMessage)) {
+    lines.push(`✕ ${errorMessage}`);
+  }
+  return lines.join('\n');
+}
+
 export function RawTableGenerationConsole({
   log,
   isStreaming,
-  onViewCode,
+  errorMessage,
+  modelLabel,
   t,
 }: {
   log: NormalizerGenerationLog | null;
   isStreaming: boolean;
-  onViewCode?: () => void;
+  /** Error raised outside the log (e.g. request failure); rendered as the final log line. */
+  errorMessage?: string | null;
+  modelLabel?: string;
   t: TranslateFn;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
   const [now, setNow] = useState(() => Date.now());
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -138,62 +167,80 @@ export function RawTableGenerationConsole({
     if (container && stickToBottomRef.current) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [log, isStreaming]);
+  }, [log, isStreaming, errorMessage]);
 
   const elapsedMs = log ? (log.finishedAt ?? now) - log.startedAt : 0;
+  const failed = !isStreaming && (log?.outcome?.status === 'error' || !!errorMessage);
+  const extraError =
+    !isStreaming &&
+    errorMessage &&
+    !(log?.outcome?.status === 'error' && log.outcome.title === errorMessage)
+      ? errorMessage
+      : null;
   const statusChip = isStreaming ? (
-    <span className="inline-flex h-5 items-center gap-1.5 rounded-full bg-accent-muted px-2 text-[11px] font-medium text-accent">
+    <span className="inline-flex h-5 items-center gap-1.5 rounded bg-accent-muted px-1.5 text-[11px] font-medium text-accent">
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
       {t('data.rawTables.editor.generationOutputStreaming')}
     </span>
+  ) : failed ? (
+    <span className="inline-flex h-5 items-center gap-1.5 rounded bg-error/10 px-1.5 text-[11px] font-medium text-error">
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {t('data.rawTables.editor.generationOutputFailedTitle')}
+    </span>
   ) : log?.outcome ? (
-    log.outcome.status === 'success' ? (
-      <span className="inline-flex h-5 items-center gap-1.5 rounded-full bg-success/10 px-2 text-[11px] font-medium text-success">
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-        {t('data.rawTables.editor.generationOutputDone')}
-      </span>
-    ) : (
-      <span className="inline-flex h-5 items-center gap-1.5 rounded-full bg-error/10 px-2 text-[11px] font-medium text-error">
-        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-        {t('data.rawTables.editor.generationOutputFailedTitle')}
-      </span>
-    )
+    <span className="inline-flex h-5 items-center gap-1.5 rounded bg-success/10 px-1.5 text-[11px] font-medium text-success">
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {t('data.rawTables.editor.generationOutputDone')}
+    </span>
   ) : (
-    <span
-      className="inline-flex h-5 items-center gap-1.5 rounded-full px-2 text-[11px] font-medium"
-      style={{ color: 'var(--code-preview-muted)' }}
-    >
+    <span className="inline-flex h-5 items-center gap-1.5 rounded bg-surface-muted px-1.5 text-[11px] font-medium text-text-muted">
       <CircleDashed className="h-3 w-3" />
       {t('data.rawTables.editor.generationOutputIdle')}
     </span>
   );
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      style={{ backgroundColor: 'var(--code-preview-background)' }}
-    >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="generation-console">
       <div
-        className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b px-3.5"
-        style={{ borderColor: 'var(--code-preview-gutter-border)' }}
+        className="ui-form-row flex-shrink-0 !grid-cols-[104px_minmax(0,1fr)_120px_92px] !border-b"
+        data-testid="generation-status-row"
       >
-        <div className="inline-flex min-w-0 items-center gap-2">
-          <Terminal className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-          <span
-            className="truncate text-[13px] font-medium"
-            style={{ color: 'var(--code-preview-text)' }}
-          >
-            {t('data.rawTables.editor.generationOutputTitle')}
-          </span>
+        <div className="ui-form-label items-center">
+          {t('data.rawTables.editor.generationStatusLabel')}
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2.5">
+        <div
+          className="flex min-w-0 items-center gap-2.5 px-2.5"
+          data-status={isStreaming ? 'running' : failed ? 'error' : log?.outcome ? 'done' : 'idle'}
+        >
+          {statusChip}
           {log ? (
-            <span className="font-mono text-[11px]" style={{ color: 'var(--code-preview-muted)' }}>
+            <span className="font-mono text-[11.5px] tabular-nums text-text-muted">
               {formatGenerationElapsed(elapsedMs)}
             </span>
           ) : null}
-          {statusChip}
         </div>
+        <div
+          className="flex min-w-0 items-center border-l border-border-subtle px-2.5 text-xs text-text-muted"
+          title={modelLabel}
+        >
+          <span className="truncate">{modelLabel}</span>
+        </div>
+        <button
+          type="button"
+          disabled={!log && !errorMessage}
+          data-testid="generation-copy-log"
+          onClick={() => {
+            void navigator.clipboard?.writeText(serializeGenerationLog(log, errorMessage, t));
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          }}
+          className={`inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50 ${
+            copied ? 'text-success' : 'text-text-secondary hover:text-accent'
+          }`}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? t('data.rawTables.editor.copiedLog') : t('data.rawTables.editor.copyLog')}
+        </button>
       </div>
 
       <div
@@ -203,39 +250,34 @@ export function RawTableGenerationConsole({
           stickToBottomRef.current =
             container.scrollHeight - container.scrollTop - container.clientHeight < 48;
         }}
-        className="min-h-0 flex-1 overflow-auto px-4 py-3"
+        className="min-h-0 flex-1 overflow-auto px-3.5 py-2.5"
+        style={{ backgroundColor: 'var(--code-preview-background)' }}
+        data-testid="generation-log"
       >
-        {!log ? (
-          <div
-            className="flex h-full min-h-24 flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 text-center"
-            style={{
-              borderColor: 'var(--code-preview-gutter-border)',
-              color: 'var(--code-preview-muted)',
-            }}
-          >
-            <Sparkles className="h-4 w-4" />
-            <span className="text-[12px] font-medium">
-              {t('data.rawTables.editor.generatedStatusEmpty')}
-            </span>
+        {!log && !extraError ? (
+          <div className="text-[12px] leading-6" style={{ color: 'var(--code-preview-muted)' }}>
+            {t('data.rawTables.editor.generatedStatusEmpty')}
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
-            <div className="grid gap-0.5">
-              {log.meta.map((item, index) => (
-                <div key={index} className="break-all text-[12px] leading-5">
-                  <span style={{ color: 'var(--code-preview-muted)' }}>{item.label}: </span>
-                  <span style={{ color: 'var(--code-preview-text)' }}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-            {log.steps.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {log && log.meta.length > 0 ? (
+              <div className="flex flex-wrap gap-x-4 text-[12px] leading-6">
+                {log.meta.map((item, index) => (
+                  <span key={index} className="break-all">
+                    <span style={{ color: 'var(--code-preview-muted)' }}>{item.label}：</span>
+                    <span style={{ color: 'var(--code-preview-text)' }}>{item.value}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {log && log.steps.length > 0 ? (
               <div className="flex flex-col gap-0.5">
                 {log.steps.map((step) => (
                   <GenerationStepView key={`${log.startedAt}:${step.phase}`} step={step} t={t} />
                 ))}
               </div>
             ) : null}
-            {log.outcome ? (
+            {log?.outcome ? (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 py-1">
                   {log.outcome.status === 'success' ? (
@@ -288,38 +330,28 @@ export function RawTableGenerationConsole({
                     ) : null}
                   </div>
                 ) : null}
-                {log.outcome.status === 'success' && onViewCode ? (
-                  <button
-                    type="button"
-                    onClick={onViewCode}
-                    className="ml-6 mt-0.5 w-fit text-[12px] font-medium text-accent transition-colors hover:underline"
-                  >
-                    {t('data.rawTables.editor.generationViewCode')}
-                  </button>
-                ) : null}
+              </div>
+            ) : null}
+            {extraError ? (
+              <div className="flex items-start gap-2 py-1" data-testid="generation-error-line">
+                <X className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-error" />
+                <span
+                  className="min-w-0 break-all text-[13px] font-medium"
+                  style={{ color: 'var(--color-error)' }}
+                >
+                  {extraError}
+                </span>
+              </div>
+            ) : null}
+            {isStreaming ? (
+              <div className="text-[12px]" style={{ color: 'var(--code-preview-muted)' }}>
+                {t('data.rawTables.editor.generateProjectDrafting')}
+                <span className="animate-pulse text-accent"> ▍</span>
               </div>
             ) : null}
           </div>
         )}
       </div>
-
-      {isStreaming ? (
-        <div
-          className="flex h-9 flex-shrink-0 items-center justify-between gap-3 border-t px-3.5"
-          style={{ borderColor: 'var(--code-preview-gutter-border)' }}
-        >
-          <span
-            className="inline-flex items-center gap-2 text-[12px] font-medium"
-            style={{ color: 'var(--code-preview-text)' }}
-          >
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
-            {t('data.rawTables.editor.generateProjectDrafting')}
-          </span>
-          <span className="font-mono text-[11px]" style={{ color: 'var(--code-preview-muted)' }}>
-            {formatGenerationElapsed(elapsedMs)}
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }

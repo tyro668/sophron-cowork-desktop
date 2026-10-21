@@ -377,7 +377,21 @@
         "importFailedInline": "无法导入：",
         "columnTypesAuto": "自动推断",
         "columnTypesCount": "{{count}} 个列类型覆盖",
-        "updatedAtMeta": "数据更新于 {{time}}"
+        "updatedAtMeta": "数据更新于 {{time}}",
+        "customizeFlowLabel": "处理流程",
+        "customizeModelLabel": "模型",
+        "customizeRulesHint": "描述越具体，生成的标准化程序越准确；生成不会覆盖已发布版本",
+        "customizeGeneratingHint": "生成中…可切到其他页签，完成后自动进入预览确认",
+        "customizeErrorHint": "错误已写入日志最后一行；修改规则后可重新生成",
+        "customizeDoneHint": "生成完成，可查看代码并预览确认",
+        "regenerateProjectDraft": "重新生成",
+        "generationStatusLabel": "生成状态",
+        "copyLog": "复制日志",
+        "copiedLog": "已复制",
+        "ruleLabel": "规则描述",
+        "examplesLabel": "示例",
+        "copyShort": "复制",
+        "copiedShort": "已复制"
       },
       "status": {
         "available": "可用",
