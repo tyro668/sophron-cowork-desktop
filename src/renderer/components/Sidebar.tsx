@@ -723,7 +723,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }}
         onMouseEnter={() => setHoveredSession(session.id)}
         onMouseLeave={() => setHoveredSession(null)}
-        className={`group relative flex h-[31px] cursor-pointer items-center pl-7 pr-2.5 transition-colors ${
+        className={`group relative mx-2.5 flex h-[31px] cursor-pointer items-center pl-[18px] pr-1.5 transition-colors ${
           isSelectMode && isSelected
             ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
             : isActive && !isSelectMode
@@ -979,7 +979,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     </div>
   );
 
-  const navItemShape = 'h-9 px-3.5';
+  const navItemShape = 'mx-2.5 h-9 px-2.5';
 
   const renderBrand = (compact: boolean, showLogo = true) => (
     <div className="min-w-0 flex items-center gap-3">
@@ -1200,11 +1200,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       )}
 
       <div data-testid="sidebar-top">
-        <div className={'flex h-12 items-stretch'}>
+        <div className={'mx-2.5 mt-2.5 flex h-[34px] items-stretch'}>
           <Button
             variant="primary"
             onClick={handleNewSession}
-            className={'h-full min-w-0 flex-1 justify-start gap-2 rounded-none px-3.5'}
+            className={'h-full min-w-0 flex-1 justify-start gap-2 rounded-none px-2.5'}
             title={`${t('sidebar.newTask')} (${isMac ? '⌘N' : 'Ctrl+N'})`}
           >
             <Plus className="w-4 h-4 flex-shrink-0" />
@@ -1213,22 +1213,22 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           <span
             aria-hidden="true"
             data-testid="new-task-shortcut-cell"
-            className="flex w-[52px] flex-shrink-0 items-center justify-center bg-accent text-[11px] font-semibold text-accent-foreground shadow-[inset_0_0_0_999px_rgba(0,0,0,0.12)]"
+            className="flex w-12 flex-shrink-0 items-center justify-center bg-accent text-[11px] font-semibold text-accent-foreground shadow-[inset_0_0_0_999px_rgba(0,0,0,0.12)]"
           >
             {isMac ? '⌘N' : 'Ctrl+N'}
           </span>
         </div>
 
         {sessions.length > 0 && (
-          <div className={'flex h-10 items-stretch bg-surface-active/60'}>
+          <div className={'mx-2.5 mt-2 flex h-[30px] items-stretch bg-surface-active/60'}>
             <div className="relative flex-1 min-w-0">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
+              <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className={`w-full h-full rounded-none border-0 bg-transparent pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
+                className={`w-full h-full rounded-none border-0 bg-transparent pl-8 pr-2.5 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
               />
             </div>
             <button
@@ -1258,7 +1258,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         <nav className={'flex flex-col pt-1.5'} aria-label={t('mainNav.label')}>
           <button
             onClick={handleDataPage}
-            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
+            className={`group flex items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isDataPageActive
                 ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -1269,7 +1269,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </button>
           <button
             onClick={handleSkillsPage}
-            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
+            className={`group flex items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isSkillsPageActive
                 ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -1280,7 +1280,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </button>
           <button
             onClick={handleAutomationPage}
-            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
+            className={`group flex items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isAutomationPageActive
                 ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'

@@ -58,7 +58,9 @@ describe('Sidebar project UI hierarchy', () => {
 describe('Sidebar option C (no horizontal dividers)', () => {
   const src = fs.readFileSync(sidebarPath, 'utf8');
   it('has no row/section dividers except the one above the bottom bar', () => {
-    expect(src).toContain("const navItemShape = 'h-9 px-3.5';");
+    expect(src).toContain("const navItemShape = 'mx-2.5 h-9 px-2.5';");
+    expect(src).toContain("'mx-2.5 mt-2.5 flex h-[34px] items-stretch'");
+    expect(src).toContain("'mx-2.5 mt-2 flex h-[30px] items-stretch bg-surface-active/60'");
     expect(src).not.toContain("className={'border-b border-border-subtle bg-surface'}");
     expect(src).not.toContain("'flex h-12 items-stretch border-b border-border-subtle'");
     expect(src).toContain('shadow-[inset_2px_0_0_var(--color-accent)]');
