@@ -1939,7 +1939,11 @@
       "filterColumn": "列",
       "filterOperator": "条件",
       "filterValue": "值",
-      "addFilter": "添加"
+      "addFilter": "添加",
+      "filterColumnLabel": "列",
+      "filterOpLabel": "条件",
+      "filterValueLabel": "值",
+      "filterTitle": "添加筛选"
     },
     "pipelineList": {
       "io": "输入 → 输出",

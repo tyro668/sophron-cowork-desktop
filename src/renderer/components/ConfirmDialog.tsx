@@ -146,27 +146,27 @@ function ConfirmDialogOverlay({
                 </div>
               )}
             </section>
-          </div>
 
-          <DialogFooter className="mt-0 grid grid-cols-2 gap-0 border-t border-border-subtle p-0">
-            <Button
-              size="sm"
-              variant="ghost"
-              data-autofocus
-              className="h-10 rounded-none"
-              onClick={() => onClose(false)}
-            >
-              {dialog.cancelLabel ?? t('common.cancel')}
-            </Button>
-            <Button
-              size="sm"
-              variant={isDanger ? 'danger' : 'primary'}
-              className="h-10 rounded-none font-semibold"
-              onClick={() => onClose(true)}
-            >
-              {dialog.confirmLabel ?? t('common.yes')}
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="ui-footer-split">
+              <Button
+                size="sm"
+                variant="ghost"
+                data-autofocus
+
+                onClick={() => onClose(false)}
+              >
+                {dialog.cancelLabel ?? t('common.cancel')}
+              </Button>
+              <Button
+                size="sm"
+                variant={isDanger ? 'ghost' : 'primary'}
+                className={isDanger ? 'font-semibold text-error hover:bg-error/5' : 'font-semibold'}
+                onClick={() => onClose(true)}
+              >
+                {dialog.confirmLabel ?? t('common.yes')}
+              </Button>
+            </DialogFooter>
+          </div>
         </>
       ) : null}
     </Dialog>

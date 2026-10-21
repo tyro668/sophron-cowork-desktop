@@ -356,8 +356,8 @@ export function AssignGroupDialog({
           />
         )}
       </DialogBody>
-      <DialogFooter>
-        <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
+      <DialogFooter className="ui-footer-split">
+        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
           {t('common.cancel')}
         </Button>
         <Button
@@ -431,8 +431,8 @@ export function GroupNameDialog({
           </div>
         </div>
       </div>
-      <DialogFooter>
-        <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
+      <DialogFooter className="ui-footer-split">
+        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
           {t('common.cancel')}
         </Button>
         <Button variant="primary" disabled={!trimmed || busy} onClick={() => onSubmit(trimmed)}>
