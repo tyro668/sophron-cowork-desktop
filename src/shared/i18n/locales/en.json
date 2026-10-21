@@ -3550,7 +3550,19 @@
     "listEnabled": "{{count}} enabled",
     "onFailureLabel": "On failure",
     "onFailureStop": "Stop remaining actions",
-    "onFailureContinue": "Continue (always run next)"
+    "onFailureContinue": "Continue (always run next)",
+    "headerEnabled": "Enabled",
+    "headerDisabled": "Disabled",
+    "nextRunLabel": "Next run",
+    "nextRunAfterSave": "Updated after saving",
+    "actionsCount": "Actions · {{count}}",
+    "manualTriggerHint": "Runs only when started with Run now or triggered manually elsewhere",
+    "noteLabel": "Note",
+    "modelLabel": "Model",
+    "backToListShort": "Back",
+    "intervalLabel": "Interval",
+    "startAtLabel": "Start",
+    "endAtLabelLong": "End"
   },
   "remote": {
     "title": "Remote Control",

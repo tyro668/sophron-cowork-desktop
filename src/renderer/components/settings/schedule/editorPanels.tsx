@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, PencilLine, Play, Plus, Save } from 'lucide-react';
+import { ArrowLeft, Check, PencilLine, Play, Plus } from 'lucide-react';
 import type { Automation, Project } from '../../../types';
 import { GlassDateTimePicker } from '../../GlassDateTimePicker';
 import { GlassSelect } from '../../GlassSelect';
 import { GlassSwitch } from '../../GlassSwitch';
-import { Button } from '../../ui/button';
 import {
   type AutomationDraft,
   type ScheduledAutomationTrigger,
@@ -12,8 +11,13 @@ import {
   getProjectOptionLabel,
 } from './types';
 import { normalizeDraftTrigger } from './model';
-import { FormRow, SegmentedControl } from './editor-controls';
-import { MonthlyDayPicker, TimesEditor, WeekdayPicker } from './schedule-time-pickers';
+import { FormRow } from './editor-controls';
+import {
+  MonthlyDayPicker,
+  TimesEditor,
+  WeekdayPicker,
+  flushPickerTriggerClass,
+} from './schedule-time-pickers';
 
 const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
 
@@ -71,10 +75,11 @@ export function EditorHeader({
       <div className="flex min-w-0 items-stretch">
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+          data-testid="automation-editor-back"
+          className="inline-flex w-[104px] flex-shrink-0 items-center gap-1.5 border-r border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          {tr('schedule.backToList', '返回列表')}
+          {tr('schedule.backToListShort', '返回列表')}
         </button>
         <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
           {isEditingTitle ? (
@@ -94,11 +99,11 @@ export function EditorHeader({
                     setIsEditingTitle(false);
                   }
                 }}
-                className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-text-primary outline-none"
               />
             </span>
           ) : (
-            <h1 className="truncate text-[15px] font-medium text-text-secondary">{draft.name}</h1>
+            <h1 className="truncate text-[14px] font-semibold text-text-primary">{draft.name}</h1>
           )}
           {!isEditingTitle && (
             <button
@@ -113,8 +118,8 @@ export function EditorHeader({
           )}
         </div>
       </div>
-      <div className="flex items-stretch">
-        <div className="flex items-center border-l border-border-subtle px-3">
+      <div className="flex items-stretch" data-testid="automation-editor-actions">
+        <div className="flex w-[108px] items-center justify-center whitespace-nowrap border-l border-border-subtle px-2">
           <HeaderStatusToggle
             enabled={draft.enabled}
             disabled={isSaving}
@@ -123,24 +128,30 @@ export function EditorHeader({
           />
         </div>
         {selectedAutomation && (
-          <Button
-            variant="primary"
+          <button
+            type="button"
             onClick={onRun}
-            className="h-full rounded-none px-4 text-xs shadow-none"
+            data-testid="automation-run-now"
+            className="ui-accent-cell w-[104px] border-l border-border-subtle"
           >
             <Play className="h-3.5 w-3.5" />
             {tr('schedule.runNowDetail', '立即运行')}
-          </Button>
+          </button>
         )}
-        <Button
-          variant={isDirty ? 'primary' : 'secondary'}
+        <button
+          type="button"
           onClick={onSave}
           disabled={isSaving || !isDirty}
-          className="h-full rounded-none border-0 border-l border-border-subtle px-4 text-xs shadow-none"
+          data-testid="automation-save"
+          className={`inline-flex w-20 items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            isDirty
+              ? 'text-accent-text hover:bg-accent-muted/60'
+              : 'text-text-secondary hover:bg-surface-hover'
+          }`}
         >
-          <Save className="h-3.5 w-3.5" />
+          <Check className="h-3.5 w-3.5" />
           {tr('schedule.save', '保存')}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -180,7 +191,9 @@ function HeaderStatusToggle({
         ariaLabel={tr('schedule.taskStatus', '任务状态')}
       />
       <span className="text-[12px] font-medium text-text-secondary">
-        {localEnabled ? tr('schedule.enabled', '启用') : tr('schedule.disabled', '停用')}
+        {localEnabled
+          ? tr('schedule.headerEnabled', '已启用')
+          : tr('schedule.headerDisabled', '已停用')}
       </span>
     </div>
   );
@@ -209,7 +222,7 @@ export function ExecutionProjectPanel({
   };
 
   return (
-    <section className="ui-group bg-surface">
+    <section className="ui-group ui-form-flush bg-surface">
       <h2 className="ui-group-title">{tr('schedule.projectPanelTitle', '执行项目')}</h2>
       <FormRow label={tr('schedule.project', '项目')}>
         <GlassSelect
@@ -223,7 +236,7 @@ export function ExecutionProjectPanel({
           ]}
           onValueChange={updateProject}
           placeholder={tr('schedule.projectPlaceholder', '不指定项目')}
-          triggerClassName="h-8 w-full justify-between"
+          triggerClassName="w-full justify-between"
           contentClassName="w-[var(--radix-select-trigger-width)]"
         />
       </FormRow>
@@ -234,10 +247,16 @@ export function ExecutionProjectPanel({
 export function TriggerConditionPanel({
   draft,
   onDraftChange,
+  nextRunAt,
+  triggerDirty = false,
   tr,
 }: {
   draft: AutomationDraft;
   projects: Project[];
+  /** Saved next run time of the automation (null when manual / none scheduled). */
+  nextRunAt?: number | null;
+  /** The trigger differs from the saved one, so the saved next run is stale. */
+  triggerDirty?: boolean;
   onDraftChange: (draft: AutomationDraft) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -254,28 +273,32 @@ export function TriggerConditionPanel({
   };
 
   return (
-    <section className="ui-group bg-surface">
+    <section className="ui-group ui-form-flush bg-surface" data-testid="automation-trigger-group">
       <h2 className="ui-group-title">{tr('schedule.triggerTitle', '触发条件')}</h2>
       <FormRow label={tr('schedule.triggerMethod', '触发方式')}>
-        <div className="flex flex-wrap items-center gap-3">
-          <SegmentedControl<'manual' | 'scheduled'>
-            value={triggerMethod}
-            options={[
-              { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
-              { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
-            ]}
-            onChange={(value) => {
-              setMode(value === 'manual' ? 'manual' : 'daily');
-            }}
-          />
-          <span className="text-[11.5px] text-text-muted">
-            {tr('schedule.triggerKindsNote', '仅支持手动 / 定时')}
-          </span>
-        </div>
+        <GlassSelect
+          value={triggerMethod}
+          ariaLabel={tr('schedule.triggerMethod', '触发方式')}
+          options={[
+            { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
+            { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
+          ]}
+          onValueChange={(value: string) => {
+            if (value === triggerMethod) return;
+            setMode(value === 'manual' ? 'manual' : 'daily');
+          }}
+          triggerClassName="w-full justify-between"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
       </FormRow>
-
-      <div className="min-h-0 flex-1">
-        {trigger.kind === 'manual' ? null : (
+      {trigger.kind === 'manual' ? (
+        <FormRow label={tr('schedule.noteLabel', '说明')}>
+          <span className="ui-flush-text">
+            {tr('schedule.manualTriggerHint', '仅在点击「立即运行」或由其他入口手动触发时执行')}
+          </span>
+        </FormRow>
+      ) : (
+        <>
           <ScheduledConfigCard
             trigger={
               // Legacy file_change drafts open as a daily schedule on next save.
@@ -288,10 +311,30 @@ export function TriggerConditionPanel({
             onChange={(next) => onDraftChange({ ...draft, triggerMode: next.kind, trigger: next })}
             tr={tr}
           />
-        )}
-      </div>
+          <FormRow label={tr('schedule.nextRunLabel', '下次执行')}>
+            <span className="ui-flush-text" data-testid="automation-next-run">
+              {triggerDirty
+                ? tr('schedule.nextRunAfterSave', '保存后更新')
+                : nextRunAt
+                  ? formatNextRun(nextRunAt)
+                  : '—'}
+            </span>
+          </FormRow>
+        </>
+      )}
     </section>
   );
+}
+
+/** 「10-26 周一 09:00」 — month-day, short weekday, time. */
+export function formatNextRun(timestamp: number, locale?: string): string {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const weekday = date.toLocaleDateString(
+    locale ?? (typeof navigator !== 'undefined' ? navigator.language : 'zh-CN'),
+    { weekday: 'short' }
+  );
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${weekday} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // Display order Monday→Sunday; encoding stays 0=Sunday … 6=Saturday.
@@ -310,22 +353,27 @@ function ScheduledConfigCard({
   tr: (key: string, fallback: string) => string;
 }) {
   return (
-    <div>
-      <div>
+    <>
+      <>
         <FormRow label={tr('schedule.frequency', '执行频率')}>
-          <SegmentedControl<'recurring' | 'interval' | 'once'>
+          <GlassSelect
             value={mode === 'interval' ? 'interval' : mode === 'once' ? 'once' : 'recurring'}
+            ariaLabel={tr('schedule.frequency', '执行频率')}
             options={[
               { value: 'recurring', label: tr('schedule.familyRecurring', '周期') },
               { value: 'interval', label: tr('schedule.familyInterval', '按间隔') },
               { value: 'once', label: tr('schedule.modeOnce', '单次') },
             ]}
-            fill
-            onChange={(family) =>
+            onValueChange={(family: string) => {
+              const current =
+                mode === 'interval' ? 'interval' : mode === 'once' ? 'once' : 'recurring';
+              if (family === current) return;
               onModeChange(
                 family === 'interval' ? 'interval' : family === 'once' ? 'once' : 'daily'
-              )
-            }
+              );
+            }}
+            triggerClassName="w-full justify-between"
+            contentClassName="w-[var(--radix-select-trigger-width)]"
           />
         </FormRow>
         {(mode === 'daily' || mode === 'weekly' || mode === 'monthly') && (
@@ -338,19 +386,21 @@ function ScheduledConfigCard({
                 { value: 'monthly', label: tr('schedule.modeMonthly', '每月') },
               ]}
               onValueChange={(value: string) => onModeChange(value as TriggerMode)}
-              triggerClassName="h-8 w-full justify-between"
+              triggerClassName="w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </FormRow>
         )}
         {trigger.kind === 'once' && (
           <FormRow label={tr('schedule.executionTime', '执行时间')}>
-            <div className="space-y-1.5">
+            <div className="flex flex-1 flex-col">
               <GlassDateTimePicker
                 value={trigger.runAt}
+                triggerClassName={flushPickerTriggerClass}
                 onChange={(runAt) => onChange({ ...trigger, runAt })}
               />
               {trigger.runAt < Date.now() && (
-                <p className="text-[11px] font-medium text-warning">
+                <p className="border-t border-border-subtle px-[10px] py-1.5 text-[11px] font-medium text-warning">
                   {tr(
                     'schedule.pastTimeWarning',
                     '所选时间已过去，保存后不会触发，请选择未来的时间。'
@@ -363,6 +413,7 @@ function ScheduledConfigCard({
         {trigger.kind === 'daily' && (
           <FormRow label={tr('schedule.executionTime', '执行时间')}>
             <TimesEditor
+              flush
               times={trigger.times}
               onChange={(times) => onChange({ ...trigger, times })}
               tr={tr}
@@ -373,6 +424,7 @@ function ScheduledConfigCard({
           <>
             <FormRow label={tr('schedule.weekday', '执行星期')}>
               <WeekdayPicker
+                flush
                 value={trigger.weekdays}
                 onChange={(weekdays) => onChange({ ...trigger, weekdays })}
                 tr={tr}
@@ -380,6 +432,7 @@ function ScheduledConfigCard({
             </FormRow>
             <FormRow label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
+                flush
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
@@ -399,6 +452,7 @@ function ScheduledConfigCard({
             </FormRow>
             <FormRow label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
+                flush
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
@@ -408,8 +462,8 @@ function ScheduledConfigCard({
         )}
         {trigger.kind === 'interval' && (
           <>
-            <FormRow label={tr('schedule.every', '每')}>
-              <div className="grid grid-cols-[1fr_108px] gap-2">
+            <FormRow label={tr('schedule.intervalLabel', '间隔')}>
+              <div className="grid min-h-[35px] flex-1 grid-cols-[minmax(0,4fr)_minmax(0,3fr)]">
                 <input
                   type="number"
                   min={1}
@@ -417,7 +471,8 @@ function ScheduledConfigCard({
                   onChange={(event) =>
                     onChange({ ...trigger, every: Number(event.target.value) || 1 })
                   }
-                  className="input h-9 w-full text-xs"
+                  aria-label={tr('schedule.every', '每')}
+                  className="h-full w-full border-0 border-r border-border-subtle bg-transparent px-[10px] text-[12.5px] tabular-nums outline-none hover:bg-surface-hover focus:bg-surface-hover"
                 />
                 <GlassSelect
                   value={trigger.unit}
@@ -429,13 +484,15 @@ function ScheduledConfigCard({
                   onValueChange={(value: string) =>
                     onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
                   }
-                  triggerClassName="h-8 w-full justify-between"
+                  triggerClassName={`justify-between ${flushPickerTriggerClass}`}
+                  contentClassName="w-[var(--radix-select-trigger-width)]"
                 />
               </div>
             </FormRow>
-            <FormRow label={tr('schedule.startAt', '开始')}>
+            <FormRow label={tr('schedule.startAtLabel', '开始时间')}>
               <GlassDateTimePicker
                 value={trigger.startAt}
+                triggerClassName={flushPickerTriggerClass}
                 onChange={(startAt) =>
                   onChange({
                     ...trigger,
@@ -448,7 +505,7 @@ function ScheduledConfigCard({
                 }
               />
             </FormRow>
-            <FormRow label={tr('schedule.endAtLabel', '结束')}>
+            <FormRow label={tr('schedule.endAtLabelLong', '结束时间')}>
               {trigger.endAt == null ? (
                 <button
                   type="button"
@@ -458,7 +515,7 @@ function ScheduledConfigCard({
                       endAt: trigger.startAt + DEFAULT_INTERVAL_END_OFFSET_MS,
                     })
                   }
-                  className="inline-flex h-9 items-center gap-1 self-start rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+                  className="ui-accent-cell ui-flush-control !justify-start"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {tr('schedule.setEndAt', '设置结束时间')}
@@ -467,15 +524,15 @@ function ScheduledConfigCard({
                 <GlassDateTimePicker
                   value={trigger.endAt}
                   minValue={trigger.startAt + 1}
-                  triggerClassName="w-full"
+                  triggerClassName={flushPickerTriggerClass}
                   onChange={(endAt) => onChange({ ...trigger, endAt })}
                 />
               )}
             </FormRow>
           </>
         )}
-      </div>
-    </div>
+      </>
+    </>
   );
 }
 

@@ -848,9 +848,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] md:overflow-hidden">
-          <div className="min-h-0 border-b border-border-muted md:overflow-y-auto md:border-b-0 md:border-r">
-            <div className="pb-3">
+        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:overflow-hidden">
+          <div className="min-h-0 border-b border-border-subtle md:overflow-y-auto md:border-b-0 md:border-r">
+            <div>
               <ExecutionProjectPanel
                 draft={draft}
                 projects={projects}
@@ -860,6 +860,17 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               <TriggerConditionPanel
                 draft={draft}
                 projects={projects}
+                nextRunAt={selectedAutomation?.nextRunAt ?? null}
+                triggerDirty={
+                  !selectedAutomation ||
+                  (() => {
+                    const saved = automationToDraft(selectedAutomation);
+                    return (
+                      saved.triggerMode !== draft.triggerMode ||
+                      JSON.stringify(saved.trigger) !== JSON.stringify(draft.trigger)
+                    );
+                  })()
+                }
                 onDraftChange={setDraft}
                 tr={tr}
               />
