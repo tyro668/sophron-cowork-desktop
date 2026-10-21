@@ -7,8 +7,68 @@ import {
   hasPersonalAnalysisConnection,
   getPersonalAnalysisErrorMessage,
 } from '../../../../shared/personal-analysis';
-import { Button } from '../../ui/button';
-import { FieldStack, SelectLine } from './editor-controls';
+import { CircleAlert, LogIn, Settings } from 'lucide-react';
+import { FormRow, FlushSelect, RequiredLabel } from './editor-controls';
+
+/** Whether a cloud (personal analysis) connection is available. */
+export function useCloudConnected(): boolean {
+  const appConfig = useAppStore((state) => state.appConfig);
+  const auth = useAppStore((state) => state.desktopAuthStatus);
+  return (
+    hasPersonalAnalysisConnection(appConfig?.personalAnalysis) ||
+    (auth.authenticated && !!auth.apiOrigin)
+  );
+}
+
+/** c13/c14 note row: only rendered while not connected. */
+export function CloudConnectionRow() {
+  const { t } = useTranslation();
+  const connected = useCloudConnected();
+  const setAuth = useAppStore((state) => state.setDesktopAuthStatus);
+  const setSettingsTab = useAppStore((state) => state.setSettingsTab);
+  const setShowSettings = useAppStore((state) => state.setShowSettings);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (connected) return null;
+  return (
+    <FormRow label={t('schedule.cloudSync.cloudLabel')}>
+      <div className="flex min-h-[35px] flex-1 items-stretch" data-testid="cloud-not-connected">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 bg-warning/10 px-[10px] text-[12.5px] font-medium text-warning">
+          <CircleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="truncate">{error || t('schedule.cloudSync.notConnected')}</span>
+        </span>
+        <button
+          type="button"
+          disabled={busy}
+          className="ui-accent-cell min-w-0 flex-1 border-l border-border-subtle"
+          onClick={() => {
+            setBusy(true);
+            setError('');
+            void dataClient
+              .authLogin()
+              .then(setAuth)
+              .catch((err) => setError(getPersonalAnalysisErrorMessage(err, t)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          <LogIn className="h-3.5 w-3.5" />
+          {t('schedule.cloudSync.login')}
+        </button>
+        <button
+          type="button"
+          className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
+          onClick={() => {
+            setSettingsTab('personal-analysis');
+            setShowSettings(true);
+          }}
+        >
+          <Settings className="h-3.5 w-3.5" />
+          {t('schedule.cloudSync.connection')}
+        </button>
+      </div>
+    </FormRow>
+  );
+}
 
 export function withSavedOption(
   options: Array<{ value: string; label: string }>,
@@ -45,17 +105,9 @@ export function CloudResourceSelector({
   );
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loginBusy, setLoginBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const appConfig = useAppStore((state) => state.appConfig);
-  const auth = useAppStore((state) => state.desktopAuthStatus);
-  const setAuth = useAppStore((state) => state.setDesktopAuthStatus);
-  const setSettingsTab = useAppStore((state) => state.setSettingsTab);
-  const setShowSettings = useAppStore((state) => state.setShowSettings);
-  const connected =
-    hasPersonalAnalysisConnection(appConfig?.personalAnalysis) ||
-    (auth.authenticated && !!auth.apiOrigin);
+  const connected = useCloudConnected();
   const clearTarget = { [targetKey]: undefined, [nameKey]: undefined, version: undefined };
   useEffect(() => {
     let active = true;
@@ -132,37 +184,15 @@ export function CloudResourceSelector({
       active = false;
     };
   }, [connected, spaceId, projectId, resource, page, create, t]);
+  const targetLabel = t(
+    resource === 'drive' ? 'schedule.cloudSync.target' : 'schedule.cloudInput.sourceTable'
+  );
   return (
     <>
-      {!connected && (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            loading={loginBusy}
-            onClick={() => {
-              setLoginBusy(true);
-              void dataClient
-                .authLogin()
-                .then(setAuth)
-                .catch((error) => setError(getPersonalAnalysisErrorMessage(error, t)))
-                .finally(() => setLoginBusy(false));
-            }}
-          >
-            {t('schedule.cloudSync.login')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setSettingsTab('personal-analysis');
-              setShowSettings(true);
-            }}
-          >
-            {t('schedule.cloudSync.connection')}
-          </Button>
-        </div>
-      )}
-      <FieldStack label={t('schedule.cloudSync.space')}>
-        <SelectLine
+      <FormRow label={<RequiredLabel>{t('schedule.cloudSync.space')}</RequiredLabel>}>
+        <FlushSelect
+          ariaLabel={t('schedule.cloudSync.space')}
+          disabled={!connected}
           value={spaceId}
           options={withSavedOption(
             spaces.map((space) => ({ value: space.spaceId, label: space.spaceName })),
@@ -180,9 +210,11 @@ export function CloudResourceSelector({
             })
           }
         />
-      </FieldStack>
-      <FieldStack label={t('schedule.cloudSync.project')}>
-        <SelectLine
+      </FormRow>
+      <FormRow label={<RequiredLabel>{t('schedule.cloudSync.project')}</RequiredLabel>}>
+        <FlushSelect
+          ariaLabel={t('schedule.cloudSync.project')}
+          disabled={!connected || !spaceId}
           value={projectId}
           options={withSavedOption(
             projects.map((project) => ({ value: project.projectId, label: project.projectName })),
@@ -198,44 +230,48 @@ export function CloudResourceSelector({
             })
           }
         />
-      </FieldStack>
+      </FormRow>
       {!create && (
-        <FieldStack
-          label={t(
-            resource === 'drive' ? 'schedule.cloudSync.target' : 'schedule.cloudInput.sourceTable'
-          )}
-        >
-          <div className="space-y-2">
-            <SelectLine
-              value={targetId}
-              options={withSavedOption(targets, targetId, String(config[nameKey] ?? ''))}
-              placeholder={t(
-                resource === 'drive'
-                  ? 'schedule.cloudSync.selectTarget'
-                  : 'schedule.cloudInput.selectSource'
-              )}
-              onChange={(value) => {
-                const target = targets.find((item) => item.value === value);
-                onChange({
-                  [targetKey]: value,
-                  [nameKey]: target?.label,
-                  version: target?.version,
-                });
-              }}
-            />
-            {loading && <span className="text-xs text-text-muted">{t('common.loading')}</span>}
-            {hasMore && (
-              <Button size="sm" disabled={loading} onClick={() => setPage((page) => page + 1)}>
-                {t('schedule.cloudSync.loadMore')}
-              </Button>
+        <FormRow label={<RequiredLabel>{targetLabel}</RequiredLabel>}>
+          <FlushSelect
+            ariaLabel={targetLabel}
+            disabled={!connected || !projectId}
+            loading={loading}
+            value={targetId}
+            options={withSavedOption(targets, targetId, String(config[nameKey] ?? ''))}
+            placeholder={t(
+              resource === 'drive'
+                ? 'schedule.cloudSync.selectTarget'
+                : 'schedule.cloudInput.selectSource'
             )}
-          </div>
-        </FieldStack>
+            onChange={(value) => {
+              const target = targets.find((item) => item.value === value);
+              onChange({
+                [targetKey]: value,
+                [nameKey]: target?.label,
+                version: target?.version,
+              });
+            }}
+            footer={
+              hasMore ? (
+                <button
+                  type="button"
+                  disabled={loading}
+                  data-testid="cloud-load-more"
+                  onClick={() => setPage((page) => page + 1)}
+                  className="ui-accent-cell h-8 w-full"
+                >
+                  {t('schedule.cloudSync.loadMore')}
+                </button>
+              ) : undefined
+            }
+          />
+        </FormRow>
       )}
       {error && (
-        <p role="alert" className="text-xs text-error">
+        <div role="alert" className="border-b border-border-subtle px-3 py-2 text-xs text-error">
           {error}
-        </p>
+        </div>
       )}
     </>
   );

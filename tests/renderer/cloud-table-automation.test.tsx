@@ -27,6 +27,41 @@ import type { AutomationActionNode } from '../../src/shared/automation/types';
 // Keep the tests focused on resource selection; native Radix controls are covered
 // by the UI primitives suite and the browser interaction check.
 vi.mock('../../src/renderer/components/settings/schedule/editor-controls', () => ({
+  FormRow: ({ label, children }: { label: React.ReactNode; children: React.ReactNode }) => (
+    <label>
+      {label}
+      {children}
+    </label>
+  ),
+  RequiredLabel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SubGroupRow: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  FlushSelect: ({
+    value,
+    options,
+    placeholder,
+    onChange,
+    disabled,
+    footer,
+  }: {
+    value: string;
+    options: Array<{ value: string; label: string }>;
+    placeholder: string;
+    onChange: (value: string) => void;
+    disabled?: boolean;
+    footer?: React.ReactNode;
+  }) => (
+    <>
+      <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {footer}
+    </>
+  ),
   ConfigRow: ({ label, children }: { label: React.ReactNode; children: React.ReactNode }) => (
     <label>
       {label}

@@ -266,14 +266,10 @@ export function ActionStepCard({
     'flex w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent';
   return (
     <div
-      className="grid grid-cols-[40px_minmax(0,1fr)] border-b border-border-subtle last:border-b-0"
+      className="border-b border-border-subtle last:border-b-0"
       data-testid="automation-action-step"
+      data-step-index={index}
     >
-      <div className="flex flex-col border-r border-border-subtle bg-surface-muted">
-        <div className="flex h-9 items-center justify-center text-[12px] font-semibold text-text-primary">
-          {index + 1}
-        </div>
-      </div>
       <div className="min-w-0">
         <div className="flex h-9 items-stretch border-b border-border-subtle">
           <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[12.5px] font-medium text-text-primary">
@@ -739,7 +735,9 @@ export function ActionConfigEditor({
   return (
     <div
       className={
-        isDataProcessNode(node) || (node.type === 'conversation.run' && !cloudAutomation)
+        isDataProcessNode(node) ||
+        node.type === 'cloud.sync' ||
+        (node.type === 'conversation.run' && !cloudAutomation)
           ? ''
           : 'space-y-4 p-3'
       }
