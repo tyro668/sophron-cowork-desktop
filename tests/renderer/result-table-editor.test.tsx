@@ -88,7 +88,7 @@ async function waitForGrid(previewRawTable: ReturnType<typeof vi.fn>, container:
     expect(previewRawTable).toHaveBeenCalledWith({ id: 'ot1', limit: 100, offset: 0 })
   );
   fireEvent.click(screen.getByRole('tab', { name: 'Data' }));
-  expect(await screen.findByText('2 rows')).toBeTruthy();
+  expect(await screen.findByText(/^2 rows/)).toBeTruthy();
   expect(container.querySelector('.glass-data-grid-preview')).toBeTruthy();
 }
 

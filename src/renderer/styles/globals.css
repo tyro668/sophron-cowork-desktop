@@ -1508,6 +1508,7 @@
   justify-content: stretch;
 }
 .ui-form-flush .ui-form-value > button[role='combobox'],
+.ui-form-flush .ui-flush-split > button[role='combobox'],
 .ui-form-flush .ui-form-value > .ui-flush-control,
 .ui-form-flush .ui-form-value > input {
   flex: 1 1 auto;

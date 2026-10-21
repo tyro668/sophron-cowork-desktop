@@ -1,6 +1,6 @@
 import { InlineBanner } from './ui/inline-banner';
 import { Button } from './ui/button';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import DataEditor, {
   GridCellKind,
   GridColumnIcon,
@@ -12,7 +12,16 @@ import DataEditor, {
   type Theme,
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
-import { ChevronLeft, ChevronRight, Filter, Loader2, RefreshCw, X } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Filter,
+  Loader2,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DataRawTablePreview } from '../types';
 import {
@@ -49,6 +58,9 @@ export interface GlassDataGridPreviewProps {
   onRetry?: () => void;
   /** Show the column filter bar (filters apply to the loaded page). */
   enableFilters?: boolean;
+  /** Toolbar 导出 cell (c06/c11); omitted when export is unavailable. */
+  onExport?: (format: 'csv' | 'xlsx') => void;
+  exportBusy?: boolean;
 }
 
 type FilterOp = 'eq' | 'neq' | 'contains';
@@ -80,8 +92,12 @@ export function GlassDataGridPreview({
   footerTrailing,
   onRetry,
   enableFilters = false,
+  onExport,
+  exportBusy = false,
 }: GlassDataGridPreviewProps) {
   const { t } = useTranslation();
+  const [search, setSearch] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
   const [filters, setFilters] = useState<ColumnFilter[]>([]);
   const [filterFormOpen, setFilterFormOpen] = useState(false);
   const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ column: '', op: 'eq', value: '' });
@@ -109,15 +125,22 @@ export function GlassDataGridPreview({
   );
   const rows = useMemo(() => {
     const filtered =
-      activeFilters.length === 0
+      activeFilters.length === 0 && !search.trim()
         ? rawRows
-        : rawRows.filter((row) =>
-            activeFilters.every((filter) => matchesFilter(row[filter.column], filter))
+        : rawRows.filter(
+            (row) =>
+              activeFilters.every((filter) => matchesFilter(row[filter.column], filter)) &&
+              (!search.trim() ||
+                columns.some((column) =>
+                  String(row[column] ?? '')
+                    .toLowerCase()
+                    .includes(search.trim().toLowerCase())
+                ))
           );
     if (!sort || !columns.includes(sort.column)) return filtered;
     const factor = sort.dir === 'asc' ? 1 : -1;
     return [...filtered].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
-  }, [rawRows, sort, columns, activeFilters]);
+  }, [rawRows, sort, columns, activeFilters, search]);
   const opLabel = (op: FilterOp) =>
     op === 'eq' ? '=' : op === 'neq' ? '≠' : t('data.preview.filterContains');
   const totalRows = preview?.totalRows ?? 0;
@@ -125,15 +148,32 @@ export function GlassDataGridPreview({
   const pageCount = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize || 1)));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
   const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
-  const gridColumns = useMemo(
-    () =>
-      buildGridColumns(columns, rawRows, columnTypeByName).map((column) =>
-        sort && column.id === sort.column
-          ? { ...column, title: `${column.title} ${sort.dir === 'asc' ? '↑' : '↓'}` }
-          : column
-      ),
-    [columns, rawRows, columnTypeByName, sort]
-  );
+  const gridHostRef = useRef<HTMLDivElement | null>(null);
+  const [gridHostWidth, setGridHostWidth] = useState(0);
+  useEffect(() => {
+    const host = gridHostRef.current;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      setGridHostWidth(Math.floor(entries[0]?.contentRect.width ?? 0));
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+  const gridColumns = useMemo(() => {
+    const built = buildGridColumns(columns, rawRows, columnTypeByName).map((column) =>
+      sort && column.id === sort.column
+        ? { ...column, title: `${column.title} ${sort.dir === 'asc' ? '↑' : '↓'}` }
+        : column
+    );
+    // Columns share the spare width (fr-style) so the grid fills the editor.
+    const total = built.reduce((sum, column) => sum + ('width' in column ? column.width : 0), 0);
+    const available = gridHostWidth - 48 - 14;
+    if (total <= 0 || available <= total) return built;
+    const ratio = available / total;
+    return built.map((column) =>
+      'width' in column ? { ...column, width: Math.floor(column.width * ratio) } : column
+    );
+  }, [columns, rawRows, columnTypeByName, sort, gridHostWidth]);
   const hasColumns = columns.length > 0;
   const getCellContent = useMemo(() => {
     return ([col, row]: Item): GridCell => {
@@ -150,8 +190,9 @@ export function GlassDataGridPreview({
     <div className={containerClassName}>
       {enableFilters && hasColumns && (
         <div
-          className="relative flex min-h-9 flex-shrink-0 flex-wrap items-stretch gap-2 border-b pr-3"
+          className="relative flex min-h-9 flex-shrink-0 flex-wrap items-stretch border-b"
           style={{ borderColor: 'var(--data-grid-border)' }}
+          data-testid="grid-toolbar"
         >
           <button
             type="button"
@@ -159,7 +200,7 @@ export function GlassDataGridPreview({
               setFilterDraft((current) => ({ ...current, column: current.column || columns[0] }));
               setFilterFormOpen((open) => !open);
             }}
-            className={`inline-flex min-h-9 items-center gap-1.5 border-r px-3 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-9 w-[138px] flex-shrink-0 items-center gap-1.5 border-r px-3 text-xs font-medium transition-colors ${
               activeFilters.length > 0
                 ? 'bg-accent-muted text-accent-text'
                 : 'text-text-secondary hover:bg-surface-hover'
@@ -170,10 +211,61 @@ export function GlassDataGridPreview({
             {t('data.preview.filter')}
             {activeFilters.length > 0 && ` · ${activeFilters.length}`}
           </button>
+          <label
+            className="flex min-w-0 flex-1 items-center gap-2 px-3 text-text-muted focus-within:bg-surface-hover"
+            style={{ borderColor: 'var(--data-grid-border)' }}
+          >
+            <Search className="h-3.5 w-3.5 flex-shrink-0" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('data.preview.searchLoaded')}
+              aria-label={t('data.preview.searchLoaded')}
+              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-text-primary outline-none placeholder:text-text-muted"
+            />
+          </label>
+          <span
+            className="flex w-[80px] flex-shrink-0 items-center border-l px-3 text-[12px] text-text-muted"
+            style={{ borderColor: 'var(--data-grid-border)' }}
+          >
+            {t('data.preview.columnCount', { count: columns.length })}
+          </span>
+          {onExport ? (
+            <div className="relative flex">
+              <button
+                type="button"
+                disabled={exportBusy}
+                onClick={() => setExportOpen((open) => !open)}
+                className="inline-flex w-[92px] items-center justify-center gap-1.5 border-l text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:opacity-50"
+                style={{ borderColor: 'var(--data-grid-border)' }}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {t('data.preview.export')}
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg border border-border-subtle bg-surface py-1 shadow-elevated">
+                  {(['csv', 'xlsx'] as const).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => {
+                        setExportOpen(false);
+                        onExport(format);
+                      }}
+                      className="flex h-8 w-full items-center px-3 text-[12.5px] text-text-primary hover:bg-surface-hover"
+                    >
+                      {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+          {activeFilters.length > 0 && <div className="basis-full" />}
           {activeFilters.map((filter, index) => (
             <span
               key={`${filter.column}:${filter.op}:${filter.value}:${index}`}
-              className="my-1.5 inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
+              className="my-1.5 ml-2 inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
             >
               {filter.column} {opLabel(filter.op)} {filter.value || '""'}
               <button
@@ -187,7 +279,7 @@ export function GlassDataGridPreview({
             </span>
           ))}
           {activeFilters.length > 0 && (
-            <span className="ml-auto self-center text-[11.5px] text-text-muted">
+            <span className="ml-auto self-center pr-3 text-[11.5px] text-text-muted">
               {t('data.preview.filterScope', { shown: rows.length, total: rawRows.length })}
             </span>
           )}
@@ -298,7 +390,7 @@ export function GlassDataGridPreview({
           )}
         </div>
       )}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div ref={gridHostRef} className="relative min-h-0 flex-1 overflow-hidden">
         {isLoading ? (
           showSkeleton ? (
             <GridSkeleton columns={Math.max(4, Math.min(columns.length || 6, 10))} />
@@ -369,67 +461,77 @@ export function GlassDataGridPreview({
         )}
       </div>
       <div
-        className="flex h-11 flex-shrink-0 items-center justify-between gap-3 border-t px-3 text-xs font-medium"
+        className="flex h-9 flex-shrink-0 items-stretch border-t text-xs font-medium"
+        data-testid="grid-pager"
         style={{
           background: 'var(--data-grid-header-surface)',
           borderColor: 'var(--data-grid-border)',
           color: 'var(--data-grid-text-primary)',
         }}
       >
-        <div className="flex min-w-0 items-center gap-x-3">
+        <div className="flex min-w-0 flex-1 items-center gap-x-3 px-3">
           {footerLeading}
-          {enableFilters && hasColumns && (
-            <span
-              className="truncate font-normal"
-              style={{ color: 'var(--data-grid-text-secondary)' }}
-            >
-              {t('data.preview.loadedScopeNote')}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          <span className="mr-2">
-            {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
-          </span>
           <span
-            className="mr-2 hidden sm:inline"
+            className="truncate font-normal"
             style={{ color: 'var(--data-grid-text-secondary)' }}
           >
-            {labels.pageSize(preview?.limit ?? RAW_TABLE_FALLBACK_PAGE_SIZE)}
+            {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
+            {preview && enableFilters && hasColumns
+              ? ` · ${
+                  rawRows.length >= totalRows
+                    ? t('data.preview.allLoaded')
+                    : t('data.preview.loadedRows', { count: rawRows.length })
+                }`
+              : ''}
           </span>
-          <button
-            type="button"
-            onClick={() => onPageChange?.(safeCurrentPage - 1)}
-            disabled={isLoading || !onPageChange || safeCurrentPage <= 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          {pageNumbers.map((pageNumber) => (
-            <button
-              key={pageNumber}
-              type="button"
-              onClick={() => onPageChange?.(pageNumber)}
-              disabled={isLoading || !onPageChange}
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                pageNumber === safeCurrentPage
-                  ? 'bg-accent text-accent-foreground shadow-soft'
-                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary'
-              }`}
-            >
-              {pageNumber}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => onPageChange?.(safeCurrentPage + 1)}
-            disabled={isLoading || !onPageChange || safeCurrentPage >= pageCount}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          {footerTrailing}
         </div>
+        <span
+          className="hidden w-[120px] items-center border-l px-3 sm:flex"
+          style={{
+            borderColor: 'var(--data-grid-border)',
+            color: 'var(--data-grid-text-secondary)',
+          }}
+        >
+          {labels.pageSize(preview?.limit ?? RAW_TABLE_FALLBACK_PAGE_SIZE)}
+        </span>
+        <button
+          type="button"
+          aria-label={t('common.previous', 'Previous')}
+          onClick={() => onPageChange?.(safeCurrentPage - 1)}
+          disabled={isLoading || !onPageChange || safeCurrentPage <= 1}
+          className="inline-flex w-9 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ borderColor: 'var(--data-grid-border)' }}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {pageNumbers.map((pageNumber) => (
+          <button
+            key={pageNumber}
+            type="button"
+            onClick={() => onPageChange?.(pageNumber)}
+            disabled={isLoading || !onPageChange}
+            aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
+            className={`inline-flex w-9 items-center justify-center border-l text-xs font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              pageNumber === safeCurrentPage
+                ? 'bg-accent-muted text-accent'
+                : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
+            }`}
+            style={{ borderColor: 'var(--data-grid-border)' }}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        <button
+          type="button"
+          aria-label={t('common.next', 'Next')}
+          onClick={() => onPageChange?.(safeCurrentPage + 1)}
+          disabled={isLoading || !onPageChange || safeCurrentPage >= pageCount}
+          className="inline-flex w-9 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ borderColor: 'var(--data-grid-border)' }}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        {footerTrailing}
       </div>
     </div>
   );

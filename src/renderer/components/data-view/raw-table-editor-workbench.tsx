@@ -18,7 +18,6 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
-  Save,
   Sparkles,
   Trash2,
   Upload,
@@ -49,6 +48,7 @@ import { LlmPromptComposer } from '../LlmPromptComposer';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
+import { showToast } from '../../utils/toast';
 import {
   RAW_TABLE_PREVIEW_PAGE_SIZE,
   RawTableCheckbox,
@@ -56,6 +56,7 @@ import {
   RawTableStatusBadge,
   formatCloudMirrorLocation,
   formatDateTime,
+  DataMoreMenu,
   formatDisplayPath,
   getCloudMirror,
   getRawTableSourceMeta,
@@ -65,6 +66,8 @@ import {
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { RawTableRelations } from './raw-table-relations';
+import type { DataPipeline, DataResultTable } from '../../types';
 import { CodePreview, getCodePreviewLanguageLabel } from './raw-table-code-preview';
 import { RawTableGenerationConsole } from './raw-table-generation-console';
 import { NormalizerProjectTree, RawTableVersionHistoryPanel } from './raw-table-version-history';
@@ -111,6 +114,13 @@ export type RawTableEditorProps = {
     name?: string
   ) => void | Promise<void>;
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
+  /** Opens the delete confirmation (never deletes without the dialog). */
+  onDelete?: (rawTable: DataRawTable) => void | Promise<void>;
+  pipelines?: DataPipeline[];
+  resultTables?: DataResultTable[];
+  onOpenPipeline?: (pipeline: DataPipeline) => void;
+  onOpenResultTable?: (resultTable: DataResultTable) => void;
+  onCreatePipeline?: (rawTable: DataRawTable) => void;
 };
 
 export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
@@ -134,6 +144,12 @@ export function RawTableEditorWorkbench({
   onChooseRawTableSource,
   onUpdateRawTableConfig,
   onSyncCloudSource,
+  onDelete,
+  pipelines = [],
+  resultTables = [],
+  onOpenPipeline,
+  onOpenResultTable,
+  onCreatePipeline,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
@@ -163,7 +179,26 @@ export function RawTableEditorWorkbench({
   const [localConfig, setLocalConfig] = useState<DataRawTableConfig>(initialConfig);
 
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>('config');
+  const [exportBusy, setExportBusy] = useState(false);
+  const exportRaw = async (id: string, format: 'csv' | 'xlsx') => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    try {
+      const result = await dataClient.exportTable({ tableKind: 'raw', id, format });
+      if (result.success) {
+        showToast('success', t('data.resultTables.editor.exportDone', { path: result.path }));
+      } else if (result.error && result.error !== 'cancelled') {
+        showToast('error', result.error);
+      }
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportBusy(false);
+    }
+  };
+  const [activeViewTab, setActiveViewTab] = useState<
+    'config' | 'data' | 'relations' | 'automation'
+  >('config');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Import / source-change failure, shown inline under the source row (B11).
@@ -782,7 +817,7 @@ export function RawTableEditorWorkbench({
           <div className="flex min-w-0 items-stretch">
             <button
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+              className="inline-flex w-[104px] flex-shrink-0 items-center justify-center gap-1.5 border-r border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t('data.rawTables.editor.backShort')}
@@ -816,12 +851,12 @@ export function RawTableEditorWorkbench({
                   disabled={isBusy}
                   maxLength={50}
                   aria-label={t('data.rawTables.editor.name')}
-                  className="h-8 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-8 min-w-0 max-w-[22rem] truncate border-0 bg-transparent px-0 text-[14px] font-semibold text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder={t('data.rawTables.editor.title')}
                 />
               ) : (
                 <div
-                  className="flex h-8 min-w-0 max-w-[22rem] items-center truncate text-[15px] font-medium text-text-secondary"
+                  className="flex h-8 min-w-0 max-w-[22rem] items-center truncate text-[14px] font-semibold text-text-primary"
                   title={localName || t('data.rawTables.editor.title')}
                 >
                   {localName || t('data.rawTables.editor.title')}
@@ -840,12 +875,27 @@ export function RawTableEditorWorkbench({
             </div>
           </div>
           <div className="flex items-stretch">
+            {activeViewTab === 'data' ? (
+              <button
+                type="button"
+                onClick={() => void refreshData()}
+                disabled={!canPreview || previewLoading || cloudSyncBusy}
+                data-testid="raw-editor-refresh"
+                className="inline-flex h-full w-[92px] items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${previewLoading || cloudSyncBusy ? 'animate-spin' : ''}`}
+                />
+                {t('data.actions.refresh')}
+              </button>
+            ) : null}
             <button
               type="button"
+              hidden={activeViewTab === 'data'}
               onClick={() => void handlePreviewToggle()}
               disabled={!canPreview && activeViewTab !== 'data'}
               aria-pressed={activeViewTab === 'data'}
-              className={`inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`inline-flex h-full w-[92px] items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 activeViewTab === 'data'
                   ? 'bg-accent-muted text-accent'
                   : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
@@ -863,23 +913,38 @@ export function RawTableEditorWorkbench({
             <button
               type="button"
               onClick={saveRawTable}
+              hidden={activeViewTab === 'data'}
               disabled={!canSave}
-              className={`inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              data-testid="raw-editor-save"
+              className={`inline-flex h-full w-[92px] items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 canSave
-                  ? 'bg-accent text-accent-foreground hover:bg-accent-hover'
+                  ? 'text-accent hover:bg-accent-muted'
                   : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
               }`}
             >
-              <Save className="h-3.5 w-3.5" />
+              <Check className="h-3.5 w-3.5" />
               {isBusy ? t('common.saving') : t('common.save')}
             </button>
+            {rawTable && onDelete ? (
+              <DataMoreMenu
+                items={[
+                  {
+                    key: 'delete',
+                    label: t('data.rawTables.actions.deleteEllipsis'),
+                    icon: <Trash2 className="h-3.5 w-3.5" />,
+                    danger: true,
+                    onClick: () => void onDelete(rawTable),
+                  },
+                ]}
+              />
+            ) : null}
           </div>
         </div>
 
         <Tabs
           value={activeViewTab}
           onValueChange={(value) => {
-            const next = value as 'config' | 'data' | 'automation';
+            const next = value as 'config' | 'data' | 'relations' | 'automation';
             setActiveViewTab(next);
             // previewData may currently hold a customize-draft preview — always
             // reload the raw source preview when entering the data tab.
@@ -895,7 +960,7 @@ export function RawTableEditorWorkbench({
           >
             <div className="flex-shrink-0 bg-surface">
               <div className="grid">
-                <section className="ui-group bg-surface">
+                <section className="ui-group ui-form-flush bg-surface">
                   <div className="ui-group-title">{t('data.rawTables.editor.sectionSource')}</div>
                   <RawTableConfigRow
                     label={
@@ -906,9 +971,9 @@ export function RawTableEditorWorkbench({
                           : t('data.rawTables.editor.file')
                     }
                   >
-                    <div className="flex min-w-0 items-stretch">
+                    <div className="flex min-h-[35px] min-w-0 flex-1 items-stretch">
                       <div
-                        className={`flex h-8 min-w-0 flex-1 items-center gap-2 rounded-l-lg border bg-surface px-2.5 shadow-soft ${sourceError ? 'border-error ring-2 ring-error/15' : 'border-border-muted'}`}
+                        className={`flex min-w-0 flex-1 items-center gap-2 px-[10px] ${sourceError ? 'bg-error/6 ring-1 ring-inset ring-error/40' : ''}`}
                       >
                         <span
                           className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md ${sourceMeta.className}`}
@@ -916,7 +981,7 @@ export function RawTableEditorWorkbench({
                           <SourceIcon className="h-3.5 w-3.5" />
                         </span>
                         <div
-                          className="min-w-0 truncate text-[13px] font-medium text-text-primary"
+                          className="min-w-0 truncate font-mono text-[12px] text-text-primary"
                           title={
                             cloudMirror ? formatCloudMirrorLocation(cloudMirror) : localFileSource
                           }
@@ -936,8 +1001,10 @@ export function RawTableEditorWorkbench({
                             : chooseSource(localSourceKind)
                         }
                         disabled={isBusy || !trimmedName}
-                        className="inline-flex h-8 flex-shrink-0 items-center justify-center rounded-r-lg border border-l-0 border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-55"
+                        data-testid="raw-source-change"
+                        className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
                       >
+                        <RefreshCw className="h-3.5 w-3.5" />
                         {localSourceKind === 'cloud'
                           ? t(
                               cloudMirror
@@ -997,13 +1064,13 @@ export function RawTableEditorWorkbench({
                           <SourceIcon className="h-3.5 w-3.5" />
                         </span>
                       }
-                      triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                      triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
                       contentClassName="w-[var(--radix-select-trigger-width)]"
                     />
                   </RawTableConfigRow>
                 </section>
                 <div className="grid">
-                  <section className="ui-group bg-surface">
+                  <section className="ui-group ui-form-flush bg-surface">
                     <div className="ui-group-title">
                       {t('data.rawTables.editor.sectionParsing')}
                     </div>
@@ -1031,7 +1098,7 @@ export function RawTableEditorWorkbench({
                           },
                         ]}
                         disabled={isBusy || !rawTable}
-                        triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                        triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
                         contentClassName="w-[var(--radix-select-trigger-width)]"
                       />
                     </RawTableConfigRow>
@@ -1366,7 +1433,7 @@ export function RawTableEditorWorkbench({
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
-                <div className="ui-group bg-surface">
+                <div className="ui-group ui-form-flush bg-surface">
                   <div className="ui-group-title">
                     {t('data.rawTables.editor.sectionParsingDetail')}
                   </div>
@@ -1386,7 +1453,7 @@ export function RawTableEditorWorkbench({
                             : ['Sheet1']
                           ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
                           disabled={isBusy || !rawTable}
-                          triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                          triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
                           contentClassName="w-[var(--radix-select-trigger-width)]"
                         />
                       </RawTableConfigRow>
@@ -1410,9 +1477,9 @@ export function RawTableEditorWorkbench({
                         }
                       >
                         <div
-                          className={`grid items-start gap-2 ${
+                          className={`ui-flush-split grid flex-1 ${
                             excelConfig.headerMode === 'manual'
-                              ? 'sm:grid-cols-[minmax(0,1fr)_10rem]'
+                              ? 'grid-cols-[minmax(0,1fr)_10rem]'
                               : ''
                           }`}
                         >
@@ -1432,11 +1499,11 @@ export function RawTableEditorWorkbench({
                               },
                             ]}
                             disabled={isBusy || !rawTable}
-                            triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
+                            triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
                             contentClassName="w-[var(--radix-select-trigger-width)]"
                           />
                           {excelConfig.headerMode === 'manual' ? (
-                            <label className="relative block !h-8">
+                            <label className="relative block border-l border-border-subtle">
                               <input
                                 type="number"
                                 min={1}
@@ -1452,7 +1519,7 @@ export function RawTableEditorWorkbench({
                                   })
                                 }
                                 disabled={isBusy || !rawTable}
-                                className="box-border !h-8 w-full rounded-lg border border-border-muted bg-surface pl-2.5 pr-10 text-[13px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="box-border h-full min-h-[35px] w-full border-0 bg-transparent pl-[10px] pr-10 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
                               />
                               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
                                 {t('data.rawTables.editor.rowUnit')}
@@ -1482,13 +1549,14 @@ export function RawTableEditorWorkbench({
                         ['delimiter', 'data.rawTables.editor.csvDelimiter'],
                       ].map(([key, labelKey]) => (
                         <RawTableConfigRow key={key} label={t(labelKey)}>
-                          <div className="text-[13px] text-text-muted">
+                          <span className="ui-flush-text">
                             {t('data.rawTables.editor.autoDetected')}
-                          </div>
+                          </span>
                         </RawTableConfigRow>
                       ))}
                       <RawTableConfigRow label={t('data.rawTables.editor.csvEncoding')}>
                         <RawTableSelect
+                          flush
                           value={localConfig.sourceKind === 'csv' ? localConfig.encoding : 'auto'}
                           disabled={isBusy || !rawTable}
                           onChange={(value) =>
@@ -1529,6 +1597,7 @@ export function RawTableEditorWorkbench({
                     <div>
                       <RawTableConfigRow label={t('data.rawTables.editor.fileSelectionRange')}>
                         <RawTableSelect
+                          flush
                           value={folderConfig.fileRange}
                           disabled={isBusy || !rawTable}
                           onChange={(value) =>
@@ -1584,6 +1653,12 @@ export function RawTableEditorWorkbench({
           <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
             <GlassDataGridPreview
               enableFilters
+              onExport={
+                rawTable && dataClient.has('exportTable')
+                  ? (format) => void exportRaw(rawTable.id, format)
+                  : undefined
+              }
+              exportBusy={exportBusy}
               preview={previewData}
               isLoading={previewLoading}
               error={previewError}
@@ -1604,18 +1679,20 @@ export function RawTableEditorWorkbench({
             />
           </TabsContent>
           {rawTable ? (
+            <TabsContent value="relations" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+              <RawTableRelations
+                rawTable={rawTable}
+                pipelines={pipelines}
+                resultTables={resultTables}
+                onOpenPipeline={onOpenPipeline}
+                onOpenResultTable={onOpenResultTable}
+                onCreatePipeline={onCreatePipeline}
+              />
+            </TabsContent>
+          ) : null}
+          {rawTable ? (
             <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
-              <div>
-                <section className="ui-group bg-surface">
-                  <div className="ui-group-title">{t('data.rawTables.editor.sectionLinkage')}</div>
-                  <RawTableAutomations
-                    key={rawTable.id}
-                    rawTable={rawTable}
-                    embedded
-                    Row={RawTableConfigRow}
-                  />
-                </section>
-              </div>
+              <RawTableAutomations key={rawTable.id} rawTable={rawTable} embedded grid />
             </TabsContent>
           ) : null}
           <div className={`${bottomTabBarClass} justify-between`}>
@@ -1627,12 +1704,24 @@ export function RawTableEditorWorkbench({
                 {t('data.rawTables.editor.tabs.data')}
               </TabsTrigger>
               {rawTable ? (
+                <TabsTrigger value="relations" className={bottomTabTriggerClass}>
+                  {t('data.rawTables.editor.tabs.relations')}
+                </TabsTrigger>
+              ) : null}
+              {rawTable ? (
                 <TabsTrigger value="automation" className={bottomTabTriggerClass}>
                   {t('data.rawTables.editor.tabs.automation')}
                 </TabsTrigger>
               ) : null}
             </TabsList>
             <div className="flex items-center gap-2 px-4 text-xs text-text-muted">
+              {activeViewTab === 'config' && rawTable && (
+                <span data-testid="raw-editor-updated-meta">
+                  {t('data.rawTables.editor.updatedAtMeta', {
+                    time: formatDateTime(savedCloudSource?.syncedAt ?? rawTable.updatedAt),
+                  })}
+                </span>
+              )}
               {activeViewTab === 'data' && previewData && rawTable && (
                 <span>
                   {t('data.resultTables.editor.dataMeta', {
@@ -1640,20 +1729,6 @@ export function RawTableEditorWorkbench({
                     time: formatDateTime(savedCloudSource?.syncedAt ?? rawTable.updatedAt),
                   })}
                 </span>
-              )}
-              {activeViewTab === 'data' && canPreview && (
-                <button
-                  type="button"
-                  onClick={() => void refreshData()}
-                  disabled={previewLoading || cloudSyncBusy}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-                  aria-label={t('data.actions.refresh')}
-                  title={t('data.actions.refresh')}
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${previewLoading || cloudSyncBusy ? 'animate-spin' : ''}`}
-                  />
-                </button>
               )}
             </div>
           </div>
@@ -1792,28 +1867,33 @@ function ColumnTypeOverridesEditor({
     setPickerOpen(false);
   };
   return (
-    <div className="grid gap-1.5">
+    <div className="flex flex-1 flex-col" data-testid="column-type-overrides">
       {overrides.map((entry, index) => (
-        <div key={index} className="grid grid-cols-[minmax(0,1fr)_9rem_1.75rem] items-center gap-2">
+        <div
+          key={index}
+          className="grid min-h-[35px] grid-cols-[minmax(0,1fr)_9rem_40px] border-b border-border-subtle"
+        >
           <input
             type="text"
             value={entry.name}
             placeholder={t('data.rawTables.editor.columnTypeNamePlaceholder')}
             disabled={disabled}
             onChange={(event) => setOverride(index, { name: event.target.value })}
-            className="box-border !h-8 w-full rounded-lg border border-border-muted bg-surface px-2.5 text-[13px] font-medium leading-5 text-text-primary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-full w-full border-0 bg-transparent px-[10px] text-[12.5px] text-text-primary outline-none placeholder:text-text-muted hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
           />
-          <GlassSelect
-            value={entry.type}
-            onValueChange={(value) => setOverride(index, { type: value as DataFieldType })}
-            options={DATA_FIELD_TYPES.map((type) => ({
-              value: type,
-              label: dataTypeLabel(type),
-            }))}
-            disabled={disabled}
-            triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-primary disabled:opacity-60"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
-          />
+          <div className="flex border-l border-border-subtle">
+            <GlassSelect
+              value={entry.type}
+              onValueChange={(value) => setOverride(index, { type: value as DataFieldType })}
+              options={DATA_FIELD_TYPES.map((type) => ({
+                value: type,
+                label: dataTypeLabel(type),
+              }))}
+              disabled={disabled}
+              triggerClassName="!h-full !min-h-[35px] w-full justify-between !rounded-none !border-0 !bg-transparent !shadow-none !px-[10px] text-text-primary hover:!bg-surface-hover disabled:opacity-60"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+          </div>
           <button
             type="button"
             disabled={disabled}
@@ -1823,30 +1903,35 @@ function ColumnTypeOverridesEditor({
             }}
             aria-label={t('data.rawTables.editor.removeColumnType')}
             title={t('data.rawTables.editor.removeColumnType')}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
       ))}
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange([...overrides, { name: '', type: 'text' }])}
-          className="inline-flex h-7 w-fit items-center gap-1 rounded-md px-2 text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t('data.rawTables.editor.addColumnType')}
-        </button>
+      <div className="flex min-h-[35px] items-stretch">
+        <span className="ui-flush-text">
+          {overrides.length > 0
+            ? t('data.rawTables.editor.columnTypesCount', { count: overrides.length })
+            : t('data.rawTables.editor.columnTypesAuto')}
+        </span>
         <button
           type="button"
           disabled={disabled}
           onClick={() => void openPicker()}
-          className="inline-flex h-7 w-fit items-center gap-1 rounded-md px-2 text-[12px] font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
         >
           <Eye className="h-3.5 w-3.5" />
           {t('data.rawTables.editor.pickColumnsFromFile')}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange([...overrides, { name: '', type: 'text' }])}
+          className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('data.rawTables.editor.addColumnType')}
         </button>
       </div>
       <Dialog

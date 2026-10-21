@@ -368,13 +368,17 @@
         "tabs": {
           "config": "Configuration",
           "data": "Data",
-          "automation": "Automation"
+          "automation": "Automation",
+          "relations": "Relations"
         },
         "sectionSource": "Data source",
         "sectionParsing": "Parsing",
         "sectionLinkage": "Linkage",
         "sectionParsingDetail": "Parsing details",
-        "importFailedInline": "Can't import: "
+        "importFailedInline": "Can't import: ",
+        "columnTypesAuto": "Auto-inferred",
+        "columnTypesCount": "{{count}} column type overrides",
+        "updatedAtMeta": "Data updated {{time}}"
       },
       "status": {
         "available": "Available",
@@ -388,7 +392,9 @@
         "createPipeline": "Create pipeline from this table",
         "createPipelineMenu": "Create data pipeline",
         "createPipelineManual": "Create manually",
-        "createPipelineAi": "Create with AI"
+        "createPipelineAi": "Create with AI",
+        "deleteEllipsis": "Delete raw table…",
+        "changeFile": "Replace file"
       },
       "errors": {
         "csvEncoding": "Could not read the file encoding. Set \"Encoding\" to GBK or UTF-8 in the input table settings and try again."
@@ -400,6 +406,22 @@
         "file": "File",
         "notConfigured": "Not configured",
         "cloud": "Cloud table"
+      },
+      "relations": {
+        "pipelines": "Linked pipelines · {{count}}",
+        "resultTables": "Downstream result tables · {{count}}",
+        "impact": "Impact",
+        "impactLabel": "Replace / delete",
+        "colName": "Name",
+        "colLastRun": "Last run",
+        "colStatus": "Status",
+        "open": "Open",
+        "newPipeline": "New pipeline",
+        "via": "via {{name}}",
+        "noPipelines": "No pipeline uses this table",
+        "noResultTables": "No downstream result tables",
+        "impactText": "{{pipelines}} pipelines and {{tables}} result tables are affected; the delete confirmation lists the same items",
+        "neverRun": "Never run"
       }
     },
     "resultTables": {
@@ -524,7 +546,14 @@
         "triggerCondition": "Trigger policy",
         "onTableChange": "Run after this table updates",
         "inheritAutomation": "Run with the automation",
-        "missing": "This automation no longer exists. Refresh the list."
+        "missing": "This automation no longer exists. Refresh the list.",
+        "sectionTitle": "Linked automations",
+        "addLinkShort": "Add link",
+        "linkedLabel": "Automations",
+        "nameHeader": "Name",
+        "nextRun": "Next run",
+        "nextRunManual": "— (manual)",
+        "nextRunNone": "—"
       },
       "stats": {
         "rows": "Rows",
@@ -1946,7 +1975,12 @@
       "filterColumnLabel": "Column",
       "filterOpLabel": "Condition",
       "filterValueLabel": "Value",
-      "filterTitle": "Add filter"
+      "filterTitle": "Add filter",
+      "searchLoaded": "Search loaded rows…",
+      "columnCount": "{{count}} cols",
+      "export": "Export",
+      "loadedRows": "{{count}} rows loaded (sort / filter apply to loaded rows)",
+      "allLoaded": "All rows loaded"
     },
     "pipelineList": {
       "io": "Input → Output",

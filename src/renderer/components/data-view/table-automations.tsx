@@ -21,17 +21,20 @@ import {
 } from '../../../shared/automation/table-bindings';
 import { RawTableSelect } from './shared';
 import { relinkLinearGraph } from '../settings/schedule/model';
+import { formatNextRun } from '../settings/schedule/editorPanels';
 
 export function ResultTableAutomations({
   resultTable,
   embedded,
   onNavigateAway,
   Row,
+  grid,
 }: {
   resultTable: DataResultTable;
   embedded?: boolean;
   onNavigateAway?: () => void;
   Row?: AutomationConfigRow;
+  grid?: boolean;
 }) {
   return (
     <TableAutomations
@@ -40,6 +43,7 @@ export function ResultTableAutomations({
       embedded={embedded}
       onNavigateAway={onNavigateAway}
       Row={Row}
+      grid={grid}
     />
   );
 }
@@ -48,11 +52,13 @@ export function RawTableAutomations({
   embedded,
   onNavigateAway,
   Row,
+  grid,
 }: {
   rawTable: DataRawTable;
   embedded?: boolean;
   onNavigateAway?: () => void;
   Row?: AutomationConfigRow;
+  grid?: boolean;
 }) {
   return (
     <TableAutomations
@@ -61,6 +67,7 @@ export function RawTableAutomations({
       embedded={embedded}
       onNavigateAway={onNavigateAway}
       Row={Row}
+      grid={grid}
     />
   );
 }
@@ -77,6 +84,7 @@ function TableAutomations({
   embedded,
   onNavigateAway,
   Row,
+  grid,
 }: {
   table: { id: string; name: string };
   kind: 'raw' | 'result';
@@ -84,6 +92,8 @@ function TableAutomations({
   onNavigateAway?: () => void;
   /** Label+content row renderer for embedded mode (matches each form's grid). */
   Row?: AutomationConfigRow;
+  /** c08/c12 flush grid: 104 | 1fr | 40 | 40 | 104 inside its own ui-group. */
+  grid?: boolean;
 }) {
   const { t } = useTranslation();
   const { confirm } = useConfirmDialog();
@@ -425,6 +435,164 @@ function TableAutomations({
       {controlsBlock}
     </div>
   );
+  if (grid) {
+    const cell = 'flex min-h-[35px] items-center border-b border-border-subtle';
+    const iconCell = `${cell} justify-center border-l text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-45`;
+    const nextRunText = (automation: Automation) =>
+      automation.trigger.kind === 'manual'
+        ? t('data.resultTables.automation.nextRunManual')
+        : automation.enabled && automation.nextRunAt
+          ? formatNextRun(automation.nextRunAt)
+          : t('data.resultTables.automation.nextRunNone');
+    return (
+      <section className="ui-group ui-form-flush bg-surface" data-testid="table-automation-grid">
+        <div className="flex border-b border-border-subtle bg-surface-muted">
+          <div className="ui-group-title flex-1 !border-b-0">
+            {t('data.resultTables.automation.sectionTitle')}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="ui-accent-cell w-[104px] border-l border-border-subtle"
+                disabled={busy || loading || available.length === 0}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('data.resultTables.automation.addLinkShort')}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {available.map((automation) => (
+                <DropdownMenuItem
+                  key={automation.id}
+                  disabled={busy || automation.status === 'running'}
+                  onSelect={() => void execute(() => bind(automation.id, policy))}
+                >
+                  {automation.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="ui-form-row">
+          <div className="ui-form-label items-center">
+            {t('data.resultTables.automation.linkedLabel')}
+          </div>
+          <div className="ui-form-value">
+            <span className="ui-flush-text">
+              {t('data.resultTables.automation.linkCount', { count: linked.length })}
+            </span>
+          </div>
+        </div>
+        <div className="ui-form-row">
+          <div className="ui-form-label items-center">
+            {t('data.resultTables.automation.triggerCondition')}
+          </div>
+          <div className="ui-form-value !flex-row items-center px-[10px] py-1.5 [&_label]:text-[12.5px]">
+            {conditions}
+          </div>
+        </div>
+        {linked.length > 0 && (
+          <ul
+            aria-label={t('data.resultTables.automation.info')}
+            className="grid grid-cols-[104px_minmax(0,1fr)_40px_40px_104px]"
+          >
+            <li className="contents" aria-hidden>
+              <span
+                className={`${cell} col-span-2 bg-surface-muted px-[10px] text-[11.5px] font-medium text-text-muted`}
+              >
+                {t('data.resultTables.automation.nameHeader')}
+              </span>
+              <span className={`${cell} col-span-3 bg-surface-muted`} />
+            </li>
+            {linked.map((automation) => (
+              <li key={automation.id} aria-label={automation.name} className="contents">
+                <div className={`${cell} col-span-2 [&>label]:self-stretch`}>
+                  <RawTableSelect
+                    flush
+                    searchPlaceholder={t('schedule.searchPlaceholder')}
+                    value={automation.id}
+                    disabled={busy || loading || automation.status === 'running'}
+                    options={[automation, ...available.filter((a) => a.status !== 'running')].map(
+                      (a) => ({ value: a.id, label: a.name })
+                    )}
+                    onChange={(nextId) => {
+                      if (nextId !== automation.id)
+                        void execute(async () => {
+                          const current = await dataClient.getAutomation(automation.id);
+                          if (!current) throw new Error(t('data.resultTables.automation.missing'));
+                          if (!(await confirmSyncRemoval(current, true))) return;
+                          await dataClient.replaceTableAutomationAssociation(
+                            tableRef,
+                            automation.id,
+                            nextId
+                          );
+                          setAssociationOrder(
+                            linked.map((a) => (a.id === automation.id ? nextId : a.id))
+                          );
+                        });
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className={iconCell}
+                  title={t('data.resultTables.automation.run')}
+                  aria-label={t('data.resultTables.automation.run')}
+                  disabled={busy || automation.status === 'running'}
+                  onClick={() => runAutomation(automation.id)}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className={iconCell}
+                  title={t('data.resultTables.automation.edit')}
+                  aria-label={t('data.resultTables.automation.edit')}
+                  disabled={busy}
+                  onClick={() => navigateAndClose({ automationId: automation.id })}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className={`${iconCell} gap-1.5 text-[12px] font-medium hover:!bg-error/10 hover:!text-error`}
+                  disabled={busy}
+                  onClick={() => void execute(() => unlink(automation.id))}
+                >
+                  <Unlink className="h-3.5 w-3.5" />
+                  {t('data.resultTables.automation.unlink')}
+                </button>
+                <span className={`${cell} ui-form-label`}>
+                  {t('data.resultTables.automation.nextRun')}
+                </span>
+                <span
+                  className={`${cell} col-span-4 px-[10px] text-[12.5px] tabular-nums text-text-muted`}
+                >
+                  {nextRunText(automation)}
+                </span>
+                {automation.lastError && (
+                  <p className={`${cell} col-span-5 px-[10px] text-xs text-error`}>
+                    {t(automation.lastError, { defaultValue: automation.lastError })}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {(loading || error) && (
+          <div className="px-[10px] py-2 text-xs">
+            {loading && <p className="text-text-muted">{t('common.loading')}</p>}
+            {error && (
+              <p role="alert" className="text-error">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
   if (embedded) {
     const title = t('data.resultTables.automation.title');
     return (

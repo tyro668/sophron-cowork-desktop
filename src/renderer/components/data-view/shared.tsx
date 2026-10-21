@@ -411,16 +411,19 @@ export function RawTableSelect({
   options,
   disabled,
   onChange,
+  flush,
 }: {
   value: string;
   options: Array<{ value: string; label: string }>;
   searchPlaceholder?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
+  /** Fill a `.ui-form-flush` value cell (no border / radius). */
+  flush?: boolean;
 }) {
   const { t } = useTranslation();
   return (
-    <label className="block">
+    <label className={flush ? 'ui-flush-split flex flex-1' : 'block'}>
       <GlassSelect
         value={value}
         disabled={disabled}
@@ -429,7 +432,11 @@ export function RawTableSelect({
         searchable
         searchPlaceholder={searchPlaceholder ?? t('data.aiPipelineInputSearch')}
         searchEmptyText={t('common.noResults')}
-        triggerClassName="!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60"
+        triggerClassName={
+          flush
+            ? 'w-full justify-between text-text-primary disabled:opacity-60'
+            : '!h-8 w-full justify-between rounded-lg bg-surface px-2.5 text-[13px] font-medium text-text-secondary disabled:opacity-60'
+        }
         contentClassName="w-[var(--radix-select-trigger-width)]"
       />
     </label>
