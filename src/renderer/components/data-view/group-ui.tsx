@@ -288,10 +288,10 @@ export function AssignGroupDialog({
 
   const optionClass = (value: string) =>
     cn(
-      'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] font-medium transition-colors',
+      'flex h-9 cursor-pointer items-center gap-2.5 border-b border-border-subtle px-3 text-[13px] font-medium transition-colors last:border-b-0',
       selected === value
-        ? 'border-accent/40 bg-accent-muted text-text-primary'
-        : 'border-border-subtle text-text-secondary hover:bg-surface-hover/40'
+        ? 'bg-accent-muted text-text-primary shadow-[inset_3px_0_0_var(--color-accent)]'
+        : 'text-text-secondary hover:bg-surface-hover/40'
     );
 
   return (
@@ -300,52 +300,54 @@ export function AssignGroupDialog({
       onOpenChange={onOpenChange}
       busy={busy}
       ariaLabel={t('data.groups.assignTitle')}
-      className="max-w-sm"
+      className="ui-dialog-pad max-w-sm"
     >
       <DialogHeader>
         <DialogTitle>{t('data.groups.assignTitle')}</DialogTitle>
       </DialogHeader>
-      <DialogBody className="flex flex-col gap-1.5">
-        <label className={optionClass('')}>
-          <input
-            type="radio"
-            name="assign-group"
-            checked={selected === ''}
-            onChange={() => setSelected('')}
-            className="h-3.5 w-3.5 accent-accent"
-          />
-          {t('data.groups.ungrouped')}
-        </label>
-        {groups.map((group) => (
-          <label key={group.id} className={optionClass(group.id)}>
+      <DialogBody className="flex flex-col gap-2.5">
+        <div className="ui-group flex flex-col bg-surface">
+          <label className={optionClass('')}>
             <input
               type="radio"
               name="assign-group"
-              checked={selected === group.id}
-              onChange={() => setSelected(group.id)}
+              checked={selected === ''}
+              onChange={() => setSelected('')}
               className="h-3.5 w-3.5 accent-accent"
             />
-            <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-            <span className="truncate">{group.name}</span>
+            {t('data.groups.ungrouped')}
           </label>
-        ))}
-        <label className={optionClass(NEW_GROUP_VALUE)}>
-          <input
-            type="radio"
-            name="assign-group"
-            checked={isNew}
-            onChange={() => setSelected(NEW_GROUP_VALUE)}
-            className="h-3.5 w-3.5 accent-accent"
-          />
-          {t('data.groups.newGroup')}
-        </label>
+          {groups.map((group) => (
+            <label key={group.id} className={optionClass(group.id)}>
+              <input
+                type="radio"
+                name="assign-group"
+                checked={selected === group.id}
+                onChange={() => setSelected(group.id)}
+                className="h-3.5 w-3.5 accent-accent"
+              />
+              <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+              <span className="truncate">{group.name}</span>
+            </label>
+          ))}
+          <label className={optionClass(NEW_GROUP_VALUE)}>
+            <input
+              type="radio"
+              name="assign-group"
+              checked={isNew}
+              onChange={() => setSelected(NEW_GROUP_VALUE)}
+              className="h-3.5 w-3.5 accent-accent"
+            />
+            {t('data.groups.newGroup')}
+          </label>
+        </div>
         {isNew && (
           <Input
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
             placeholder={t('data.groups.namePlaceholder')}
             data-autofocus
-            className="mt-1 text-[13px]"
+            className="h-8 text-[13px]"
             onKeyDown={(event) => {
               if (event.key === 'Enter' && canSubmit) {
                 onSubmit({ groupId: null, newGroupName: newName.trim() });
@@ -405,23 +407,30 @@ export function GroupNameDialog({
       onOpenChange={onOpenChange}
       busy={busy}
       ariaLabel={t('data.groups.rename')}
-      className="max-w-sm"
+      className="ui-dialog-pad max-w-sm"
     >
       <DialogHeader>
         <DialogTitle>{t('data.groups.rename')}</DialogTitle>
       </DialogHeader>
-      <Input
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        placeholder={t('data.groups.namePlaceholder')}
-        data-autofocus
-        className="text-[13px]"
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && trimmed) {
-            onSubmit(trimmed);
-          }
-        }}
-      />
+      <div className="ui-group bg-surface">
+        <div className="ui-form-row">
+          <span className="ui-form-label items-center">{t('data.groups.nameLabel')}</span>
+          <div className="ui-form-value">
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={t('data.groups.namePlaceholder')}
+              data-autofocus
+              className="h-8 text-[13px]"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && trimmed) {
+                  onSubmit(trimmed);
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
       <DialogFooter>
         <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
           {t('common.cancel')}
