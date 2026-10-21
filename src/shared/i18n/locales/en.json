@@ -2527,7 +2527,8 @@
         "model_cold_start": "The model may still be loading into GPU/CPU memory. Large models (7B+) can take 30–120 seconds on first use. Try again shortly."
       }
     },
-    "manageConfigSets": "Manage other configurations"
+    "manageConfigSets": "Manage other configurations",
+    "configSetLabel": "Profile"
   },
   "window": {
     "minimize": "Minimize",
