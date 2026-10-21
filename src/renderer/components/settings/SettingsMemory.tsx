@@ -298,8 +298,8 @@ export function SettingsMemory() {
   };
 
   return (
-    <div className="flex h-full min-h-[34rem] flex-col gap-3">
-      <section className="glass-card flex items-center justify-between gap-3 rounded-xl px-4 py-3">
+    <div className="flex h-full min-h-[34rem] flex-col gap-2.5">
+      <section className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2.5">
         <h3 className="text-[13px] font-semibold text-text-primary">
           {t('memory.policyTitle', '启用记忆')}
         </h3>
@@ -312,8 +312,8 @@ export function SettingsMemory() {
       </section>
 
       {enabled ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <section className="glass-card grid grid-cols-2 rounded-xl xl:grid-cols-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5">
+          <section className="grid grid-cols-2 overflow-hidden rounded-md border border-border-subtle bg-surface xl:grid-cols-4">
             <MemoryStat
               label={t('memory.longTermMemory', '长期记忆')}
               value={overview?.coreCount ?? 0}
@@ -359,7 +359,7 @@ export function SettingsMemory() {
           </section>
 
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
-            <div className="glass-card flex h-full min-h-0 min-w-0 flex-col rounded-xl p-3">
+            <div className="flex h-full min-h-0 min-w-0 flex-col rounded-md border border-border-subtle bg-surface p-3">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => setActiveTab(v as MemoryTab)}
@@ -460,7 +460,7 @@ export function SettingsMemory() {
           </section>
 
           {duplicateCount > 0 || pendingConfidenceCount > 0 ? (
-            <section className="glass-card flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl px-4 py-2.5">
+            <section className="flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-border-subtle bg-surface px-3 py-2">
               {duplicateCount > 0 ? (
                 <span className="flex items-center gap-2 text-xs text-text-secondary">
                   {t('memory.duplicateMemoryDesc', '检测到 {{count}} 条可能重复的记忆', {
@@ -634,7 +634,7 @@ function MemoryDetailPanel({
 
   if (!record) {
     return (
-      <aside className="glass-card flex h-full min-h-0 items-center justify-center rounded-xl p-4 text-center text-[13px] text-text-muted">
+      <aside className="flex h-full min-h-0 items-center justify-center rounded-md border border-border-subtle bg-surface p-3 text-center text-[13px] text-text-muted">
         {t('memory.noSelection')}
       </aside>
     );
@@ -646,7 +646,7 @@ function MemoryDetailPanel({
   const confidenceReason = getConfidenceReason(record.confidenceSignals, t);
 
   return (
-    <aside className="glass-card flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl p-4">
+    <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface p-3">
       <div className="flex items-start justify-between gap-3">
         <span className="inline-flex h-6 items-center rounded-lg bg-accent-muted px-2.5 text-xs font-medium text-accent">
           {record.kind === 'core'

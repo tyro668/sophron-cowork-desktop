@@ -1494,6 +1494,5 @@
 
 /* Settings content supplies the 12px inset itself. */
 .settings-content .ui-group {
-  margin-left: 0;
-  margin-right: 0;
+  margin: 0 0 var(--space-group);
 }

@@ -662,7 +662,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl border border-border-subtle bg-surface">
+    <div className="w-full overflow-hidden rounded-md border border-border-subtle bg-surface">
       <div className="space-y-3 p-4 sm:p-5">
         <GatewayControlCard
           status={status}
@@ -840,7 +840,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             id="remote-panel-global"
             role="tabpanel"
             aria-labelledby="remote-nav-tab-global"
-            className="overflow-hidden rounded-2xl border border-border-subtle"
+            className="overflow-hidden rounded-md border border-border-subtle"
           >
             <div className="p-4 sm:p-5">
               <AdvancedConfigStep
@@ -851,7 +851,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 onGatewayPortChange={setGatewayPort}
                 onAutoApproveChange={setAutoApproveSafeTools}
               />
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-accent/20 bg-accent-muted p-3 text-xs leading-5 text-text-secondary">
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-accent/20 bg-accent-muted p-3 text-xs leading-5 text-text-secondary">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
                 {t('remote.globalSettingsHint')}
               </div>
@@ -879,7 +879,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
             id="remote-panel-logs"
             role="tabpanel"
             aria-labelledby="remote-nav-tab-logs"
-            className="rounded-2xl border border-border-subtle p-5"
+            className="rounded-md border border-border-subtle p-3"
           >
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-accent-muted p-2.5">
@@ -898,7 +898,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 return (
                   <div
                     key={channel.type}
-                    className="flex items-center justify-between gap-3 rounded-xl bg-surface-hover p-3"
+                    className="flex items-center justify-between gap-3 rounded-md bg-surface-hover p-2.5"
                   >
                     <div className="flex items-center gap-2.5 text-sm text-text-secondary">
                       <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
@@ -914,7 +914,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 );
               })}
             </div>
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed border-border p-4 text-xs text-text-muted">
+            <div className="mt-4 flex items-center gap-2 rounded-md border border-dashed border-border p-4 text-xs text-text-muted">
               <Check className="h-4 w-4" />
               {t('remote.fullLogsPending')}
             </div>

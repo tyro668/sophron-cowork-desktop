@@ -211,7 +211,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
 
         {/* Content */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="settings-content flex-1 overflow-y-auto overflow-x-hidden px-3 pb-3">
+          <div className="settings-content flex-1 overflow-y-auto overflow-x-hidden p-3">
             <div className="max-w-[1120px] h-full w-full min-w-0 mx-auto">
               <div className="h-full">
                 <div className={activeTab === 'api' ? 'h-full' : 'hidden'}>
