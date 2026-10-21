@@ -1,4 +1,9 @@
 import { randomUUID } from 'crypto';
+import {
+  AGENT_RESULT_PREVIEW_MAX_ROWS,
+  formatPreviewCoverage,
+  type PreviewCoverageTarget,
+} from './data-tool-preview-format';
 import { pendingDataPipelineRequest } from '../../shared/data-pipeline-authoring';
 import type { BeforeSessionRunContext } from '../extensions/agent-runtime-extension';
 import type { DataCommandService } from './data-command-service';
@@ -428,7 +433,8 @@ export class DataToolService {
     return toolResult(
       `Previewed ${input.tableKind} table ${input.id}.\n\n${formatPreview(
         result.preview,
-        includeRows
+        includeRows,
+        { tableKind: input.tableKind, id: input.id }
       )}`,
       result
     );
@@ -829,7 +835,13 @@ export class DataToolService {
         `Ran data pipeline: ${formatPipeline(result.pipeline)}`,
         formatRunEvidence(input, result),
         formatRunPipelineSafetyNotes(input),
-        formatPreview(result.preview),
+        formatPreview(
+          result.preview,
+          true,
+          input.mode === 'persisted' && result.resultTableId
+            ? { tableKind: 'result', id: result.resultTableId }
+            : undefined
+        ),
         formatNodeStats(result.nodeStats),
         formatDiagnostics(result.diagnostics),
       ]
@@ -845,7 +857,11 @@ export class DataToolService {
       [
         `Run result for ${formatPipeline(result.pipeline)}`,
         formatOutputEvidence(result.pipeline, result.preview, result.resultTableId),
-        formatPreview(result.preview),
+        formatPreview(
+          result.preview,
+          true,
+          result.resultTableId ? { tableKind: 'result', id: result.resultTableId } : undefined
+        ),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -1120,7 +1136,11 @@ function formatWorkflowNode(node: DataPipelineWorkflow['nodes'][number]): string
 
 /** Full model-readable snapshot. The runner's shared result budget keeps a
  * bounded page and a retrievable reference; never lose fields before that layer. */
-function formatPreview(preview: DataRawTablePreview | undefined, includeRows = true): string {
+function formatPreview(
+  preview: DataRawTablePreview | undefined,
+  includeRows = true,
+  target?: PreviewCoverageTarget
+): string {
   if (!preview) return '';
   const types = preview.columnTypes
     .map((column) => `${column.name}: ${dataFieldTypeLabel(column.type)}`)
@@ -1128,6 +1148,7 @@ function formatPreview(preview: DataRawTablePreview | undefined, includeRows = t
   return [
     `${includeRows ? 'Preview' : 'Table schema'} totalRows=${preview.totalRows} columns=${preview.columns.join(', ') || '(none)'}${types ? ` types=${types}` : ''}`,
     includeRows && preview.rows.length ? JSON.stringify(preview.rows.slice(0, preview.limit)) : '',
+    formatPreviewCoverage(preview, includeRows, target),
   ]
     .filter(Boolean)
     .join('\n');
@@ -1140,7 +1161,10 @@ function formatList<T>(items: T[], format: (item: T) => string): string[] {
 function withAgentResultPreviewLimit<T extends { previewRows?: number }>(input: T): T {
   return {
     ...input,
-    previewRows: Math.min(input.previewRows ?? 5, 5),
+    previewRows: Math.min(
+      input.previewRows ?? AGENT_RESULT_PREVIEW_MAX_ROWS,
+      AGENT_RESULT_PREVIEW_MAX_ROWS
+    ),
   };
 }
 

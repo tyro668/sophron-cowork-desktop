@@ -82,7 +82,7 @@ describe('DataToolService', () => {
     expect(result.details).toMatchObject({ total: 1, rawTables: [{ id: 'rawTable_1' }] });
   });
 
-  it('keeps table inspection schema-only by default and caps agent result previews at five rows', async () => {
+  it('keeps table inspection schema-only by default and caps agent result previews at twenty rows with explicit coverage', async () => {
     const pipeline: DataPipeline = {
       id: 'task_compact',
       groupId: null,
@@ -146,15 +146,22 @@ describe('DataToolService', () => {
       includeRows: true,
     });
     expect(withRows.content[0]?.text).toContain('Alice');
+    expect(withRows.content[0]?.text).toContain('rows 1-2 of 12 shown; 10 row(s) NOT shown');
+    expect(schemaOnly.content[0]?.text).toContain('Row values NOT included');
 
-    await service.runPipeline({ pipelineId: pipeline.id, mode: 'persisted', previewRows: 20 });
-    await service.getRunResult({ pipelineId: pipeline.id, previewRows: 20 });
+    const run = await service.runPipeline({
+      pipelineId: pipeline.id,
+      mode: 'persisted',
+      previewRows: 50,
+    });
+    expect(run.content[0]?.text).toContain('10 row(s) NOT shown');
+    await service.getRunResult({ pipelineId: pipeline.id, previewRows: 50 });
     expect(runPipeline).toHaveBeenCalledWith({
       pipelineId: pipeline.id,
       mode: 'persisted',
-      previewRows: 5,
+      previewRows: 20,
     });
-    expect(getRunResult).toHaveBeenCalledWith({ pipelineId: pipeline.id, previewRows: 5 });
+    expect(getRunResult).toHaveBeenCalledWith({ pipelineId: pipeline.id, previewRows: 20 });
 
     const tools = createDataCustomTools(service);
     const runSchema = tools.find((tool) => tool.name === 'data_run_pipeline')?.parameters as {
@@ -163,7 +170,7 @@ describe('DataToolService', () => {
     const previewSchema = tools.find((tool) => tool.name === 'data_preview_table')?.parameters as {
       properties?: { includeRows?: { default?: boolean } };
     };
-    expect(runSchema.properties?.previewRows).toMatchObject({ maximum: 5, default: 5 });
+    expect(runSchema.properties?.previewRows).toMatchObject({ maximum: 20, default: 20 });
     expect(previewSchema.properties?.includeRows).toMatchObject({ default: false });
   });
 
