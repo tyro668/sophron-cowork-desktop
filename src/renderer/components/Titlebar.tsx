@@ -28,7 +28,9 @@ export function Titlebar() {
   }
 
   return (
-    <div className="titlebar-drag flex h-10 shrink-0 items-center justify-end border-b border-border-subtle bg-[var(--glass-panel)]">
+    <div className="titlebar-drag flex h-10 shrink-0 items-center justify-between border-b border-border-subtle bg-[var(--glass-panel)]">
+      {/* Windows / Linux: the sidebar portals the brand (logo + name + update badge) here */}
+      <div id="titlebar-brand-slot" className="flex min-w-0 items-center pl-3.5" />
       {/* Window Controls (macOS uses native traffic lights over the sidebar) */}
       <div className="flex items-center titlebar-no-drag h-full">
         <button
