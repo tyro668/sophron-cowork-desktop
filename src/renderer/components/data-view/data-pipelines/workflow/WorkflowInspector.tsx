@@ -16,7 +16,7 @@ import {
   type PrepDiagnostic,
 } from '../../../../../shared/prep-dsl';
 import type { DataColumnTypeInfo } from '../../../../../shared/data-field-types';
-import { RAW_TABLE_PREVIEW_PAGE_SIZE } from '../../shared';
+import { RAW_TABLE_PREVIEW_PAGE_SIZE, fixedTabWidthClass } from '../../shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { useWorkflowDataContext } from '../../../../hooks/workflow-data-context';
@@ -430,16 +430,21 @@ export function WorkflowInspector({
               </button>
             </div>
           </div>
-          <div className="flex flex-shrink-0 items-stretch">
-            {/* Flush segmented tabs: same position, compact divider style. */}
-            <TabsList className="flex h-full gap-0 rounded-none border-0 border-l border-border-subtle bg-transparent p-0 text-xs">
+          <div
+            className="flex min-w-0 flex-shrink items-stretch overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
+            data-testid="inspector-tabs"
+          >
+            {/* Flush segmented tabs: fixed shared width; scrolls horizontally if the panel is narrow. */}
+            <TabsList className="flex h-full flex-none gap-0 rounded-none border-0 border-l border-border-subtle bg-transparent p-0 text-xs">
               {inspectorTabs.map((tab) => (
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className="h-full whitespace-nowrap rounded-none border-r border-border-subtle px-3.5 text-[12px] font-medium text-text-secondary shadow-none last:border-r-0 data-[state=active]:bg-accent-muted data-[state=active]:text-accent-text data-[state=active]:shadow-[inset_0_-2px_0_var(--color-accent)]"
+                  title={tab.label}
+                  data-fixed-tab
+                  className={`${fixedTabWidthClass} h-full rounded-none border-r border-border-subtle text-[12px] font-medium text-text-secondary shadow-none last:border-r-0 data-[state=active]:bg-accent-muted data-[state=active]:text-accent-text data-[state=active]:shadow-[inset_0_-2px_0_var(--color-accent)]`}
                 >
-                  {tab.label}
+                  <span className="truncate">{tab.label}</span>
                 </TabsTrigger>
               ))}
             </TabsList>

@@ -31,3 +31,17 @@ describe('automation page tabs', () => {
     expect(src).toContain('<TabBarActionSlot');
   });
 });
+
+describe('operator inspector tabs', () => {
+  it('use the fixed tab width, title + truncate, and scroll when narrow', () => {
+    const src = readFileSync(
+      'src/renderer/components/data-view/data-pipelines/workflow/WorkflowInspector.tsx',
+      'utf8'
+    );
+    expect(src).toContain('${fixedTabWidthClass}');
+    expect(src).toContain('title={tab.label}');
+    expect(src).toContain('<span className="truncate">{tab.label}</span>');
+    expect(src).toContain('overflow-x-auto');
+    expect(src).not.toContain('px-3.5 text-[12px]');
+  });
+});
