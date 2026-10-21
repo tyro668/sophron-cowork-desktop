@@ -31,7 +31,9 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "irreversible": "This cannot be undone",
-    "confirm": "OK"
+    "confirm": "OK",
+    "confirmNameLabel": "Name",
+    "confirmImpactLabel": "Impact"
   },
   "welcome": {
     "title": "Welcome to sophron cowork",
@@ -1958,6 +1960,17 @@
       "run_running": "Running",
       "total": "{{count}} total",
       "run_completed": "Succeeded"
+    },
+    "deleteImpact": {
+      "resultTablePipelines": "Linked pipelines ({{names}}) must re-register an output",
+      "resultTableNone": "No linked pipelines",
+      "rawTablePipelines": "Pipelines using it as input ({{names}}) will stop working",
+      "rawTableNone": "No pipelines use this table",
+      "pipelineResult": "Result table “{{name}}” is kept but no longer updated",
+      "pipelineNone": "No linked result table",
+      "pipelineTitle": "Delete pipeline",
+      "rawTableTitle": "Delete raw table",
+      "resultTableTitle": "Delete result table"
     }
   },
   "settings": {
@@ -2939,7 +2952,8 @@
     "renameTaskTitle": "Rename task",
     "taskNameLabel": "Name",
     "copyTask": "Duplicate task",
-    "copySuffix": " (copy)"
+    "copySuffix": " (copy)",
+    "deleteTaskTitle": "Delete task"
   },
   "chat": {
     "sendMessage": "Send message",
