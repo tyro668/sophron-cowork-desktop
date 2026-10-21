@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
 
@@ -501,5 +500,73 @@ describe('SessionManager.deleteSession cache eviction', () => {
     // Cache should have been evicted — DB should be hit again on next call
     manager.getMessages('s1');
     expect(db.messages.getBySessionId).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('SessionManager.duplicateSession', () => {
+  it('copies the session row and its messages under a new id', () => {
+    const row = {
+      id: 's1',
+      title: '分析数据',
+      agent_session_id: 'agent-1',
+      openai_thread_id: 'thread-1',
+      status: 'running',
+      project_id: 'project-1',
+      cwd: null,
+      mounted_paths: '[]',
+      allowed_tools: '[]',
+      memory_enabled: 1,
+      model: 'm',
+      created_at: 1,
+      updated_at: 2,
+    };
+    const msgs = [
+      {
+        id: 'm1',
+        session_id: 's1',
+        role: 'user',
+        content: '[]',
+        timestamp: 10,
+        token_usage: null,
+        execution_time_ms: null,
+      },
+      {
+        id: 'm2',
+        session_id: 's1',
+        role: 'assistant',
+        content: '[]',
+        timestamp: 20,
+        token_usage: null,
+        execution_time_ms: 5,
+      },
+    ];
+    const db = makeDb();
+    (db.sessions.get as any).mockImplementation((id: string) => (id === 's1' ? row : null));
+    (db.messages.getBySessionId as any).mockImplementation(() => msgs);
+    const manager = new SessionManager(db, vi.fn());
+    const newId = manager.duplicateSession('s1');
+    expect(newId).toBeTruthy();
+    expect(newId).not.toBe('s1');
+    const created = (db.sessions.create as any).mock.calls[0][0];
+    expect(created).toMatchObject({
+      id: newId,
+      title: '分析数据 (副本)',
+      agent_session_id: null,
+      openai_thread_id: null,
+      status: 'idle',
+      project_id: 'project-1',
+    });
+    const copied = (db.messages.create as any).mock.calls.map((c: any[]) => c[0]);
+    expect(copied.map((m: any) => [m.session_id, m.role, m.timestamp])).toEqual([
+      [newId, 'user', 10],
+      [newId, 'assistant', 20],
+    ]);
+    expect(copied.every((m: any) => m.id !== 'm1' && m.id !== 'm2')).toBe(true);
+  });
+
+  it('returns null for a missing session', () => {
+    const db = makeDb();
+    expect(new SessionManager(db, vi.fn()).duplicateSession('nope')).toBeNull();
+    expect(db.sessions.create).not.toHaveBeenCalled();
   });
 });

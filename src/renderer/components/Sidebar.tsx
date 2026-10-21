@@ -33,11 +33,12 @@ import {
   X,
   Pin,
   PinOff,
+  Copy,
 } from 'lucide-react';
 import { useConfirmDialog } from './ConfirmDialog';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
-import { Badge, Button, Dialog, DialogTitle } from './ui';
+import { Badge, Button, Dialog, DialogHeader, DialogTitle, Input } from './ui';
 import { BrandMark } from './BrandMark';
 import {
   buildSessionProjectGroups,
@@ -73,6 +74,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const {
     deleteSession,
     renameSession,
+    duplicateSession,
     batchDeleteSessions,
     renameProject,
     deleteProject,
@@ -634,6 +636,33 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     setSessionTitleDraft(title);
   };
 
+  const [renameDialog, setRenameDialog] = useState<{ id: string; title: string } | null>(null);
+  const openRenameDialog = useCallback((sessionId: string, title: string) => {
+    setRenameDialog({ id: sessionId, title });
+  }, []);
+  const submitRenameDialog = () => {
+    if (!renameDialog) return;
+    const next = renameDialog.title.trim();
+    const current = sessions.find((item) => item.id === renameDialog.id)?.title ?? '';
+    if (next && next !== current) renameSession(renameDialog.id, next);
+    setRenameDialog(null);
+  };
+
+  // F2 renames the active task (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'F2' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"], .cm-editor')) return;
+      const active = sessions.find((item) => item.id === activeSessionId);
+      if (!active) return;
+      event.preventDefault();
+      openRenameDialog(active.id, active.title);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeSessionId, openRenameDialog, sessions]);
+
   const handleCommitRenameSession = (sessionId: string) => {
     if (renamingSessionId !== sessionId) return;
     const current = sessions.find((item) => item.id === sessionId)?.title ?? '';
@@ -748,9 +777,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             >
               <GlassMenuItem
                 icon={<PencilLine className="h-3.5 w-3.5" />}
-                onSelect={() => handleStartRenameSession(session.id, session.title)}
+                onSelect={() => openRenameDialog(session.id, session.title)}
               >
-                {t('sidebar.renameTask')}
+                <span className="flex w-full items-center justify-between gap-4">
+                  {t('sidebar.renameTask')}
+                  <span className="text-[11px] text-text-muted">F2</span>
+                </span>
               </GlassMenuItem>
               <GlassMenuItem
                 icon={
@@ -759,6 +791,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 onSelect={() => togglePinSession(session.id)}
               >
                 {isPinned ? t('sidebar.unpinTask') : t('sidebar.pinTask')}
+              </GlassMenuItem>
+              <GlassMenuItem
+                icon={<Copy className="h-3.5 w-3.5" />}
+                onSelect={() => duplicateSession(session.id, t('sidebar.copySuffix'))}
+              >
+                {t('sidebar.copyTask')}
               </GlassMenuItem>
               <GlassMenuItem
                 danger
@@ -1074,6 +1112,52 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   return (
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
+      <Dialog
+        open={renameDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameDialog(null);
+        }}
+        ariaLabel={t('sidebar.renameTaskTitle')}
+        className="ui-dialog-pad max-w-sm"
+      >
+        <DialogHeader>
+          <DialogTitle>{t('sidebar.renameTaskTitle')}</DialogTitle>
+        </DialogHeader>
+        <div className="ui-group bg-surface">
+          <div className="ui-form-row">
+            <span className="ui-form-label items-center">{t('sidebar.taskNameLabel')}</span>
+            <div className="ui-form-value">
+              <Input
+                data-autofocus
+                aria-label={t('sidebar.taskNameLabel')}
+                value={renameDialog?.title ?? ''}
+                onChange={(event) =>
+                  setRenameDialog((cur) => (cur ? { ...cur, title: event.target.value } : cur))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submitRenameDialog();
+                  }
+                }}
+                className="h-8 text-[13px]"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="ui-footer-split">
+          <Button variant="ghost" onClick={() => setRenameDialog(null)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!renameDialog?.title.trim()}
+            onClick={submitRenameDialog}
+          >
+            {t('common.confirm')}
+          </Button>
+        </div>
+      </Dialog>
       {isMac ? (
         /* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */
         <div className="flex items-start gap-3 border-b border-border-subtle px-3.5 pb-3 titlebar-drag pt-12">

@@ -7,6 +7,7 @@ export function eventRequiresSessionManager(event: ClientEvent): boolean {
     case 'session.stop':
     case 'session.delete':
     case 'session.rename':
+    case 'session.duplicate':
     case 'session.batchDelete':
     case 'session.list':
     case 'session.getMessages':

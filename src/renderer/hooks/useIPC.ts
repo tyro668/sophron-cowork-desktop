@@ -736,6 +736,15 @@ export function useIPC() {
     [send]
   );
 
+  const duplicateSession = useCallback(
+    (sessionId: string, titleSuffix?: string) => {
+      if (isElectron) {
+        send({ type: 'session.duplicate', payload: { sessionId, titleSuffix } });
+      }
+    },
+    [send]
+  );
+
   const batchDeleteSessions = useCallback(
     (sessionIds: string[]) => {
       useAppStore.getState().removeSessions(sessionIds);
@@ -928,6 +937,7 @@ export function useIPC() {
     stopSession,
     deleteSession,
     renameSession,
+    duplicateSession,
     batchDeleteSessions,
     renameProject,
     deleteProject,

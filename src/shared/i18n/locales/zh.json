@@ -30,7 +30,8 @@
     "removeCloudTable": "移除数据表 {{name}}",
     "expand": "展开",
     "collapse": "收起",
-    "irreversible": "删除后无法恢复"
+    "irreversible": "删除后无法恢复",
+    "confirm": "确定"
   },
   "welcome": {
     "title": "欢迎使用九思助理",
@@ -2934,7 +2935,11 @@
     "unpinTask": "取消置顶",
     "deleteTask": "删除…",
     "deleteTaskConfirm": "删除任务「{{title}}」？对话记录将无法恢复。",
-    "pinnedTitle": "置顶"
+    "pinnedTitle": "置顶",
+    "renameTaskTitle": "重命名任务",
+    "taskNameLabel": "名称",
+    "copyTask": "复制任务",
+    "copySuffix": " (副本)"
   },
   "chat": {
     "sendMessage": "发送消息",

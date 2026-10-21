@@ -30,7 +30,8 @@
     "removeCloudTable": "Remove table {{name}}",
     "expand": "Expand",
     "collapse": "Collapse",
-    "irreversible": "This cannot be undone"
+    "irreversible": "This cannot be undone",
+    "confirm": "OK"
   },
   "welcome": {
     "title": "Welcome to sophron cowork",
@@ -2934,7 +2935,11 @@
     "unpinTask": "Unpin",
     "deleteTask": "Delete…",
     "deleteTaskConfirm": "Delete task \"{{title}}\"? The conversation cannot be recovered.",
-    "pinnedTitle": "Pinned"
+    "pinnedTitle": "Pinned",
+    "renameTaskTitle": "Rename task",
+    "taskNameLabel": "Name",
+    "copyTask": "Duplicate task",
+    "copySuffix": " (copy)"
   },
   "chat": {
     "sendMessage": "Send message",

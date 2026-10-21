@@ -129,6 +129,15 @@ export function registerSessionIpc(): void {
       case 'session.rename':
         return sm.renameSession(event.payload.sessionId, event.payload.title);
 
+      case 'session.duplicate': {
+        const newId = sm.duplicateSession(event.payload.sessionId, event.payload.titleSuffix);
+        sendToRenderer({
+          type: 'session.list',
+          payload: { sessions: sm.listSessions(), projects: listProjectsForRenderer() },
+        });
+        return newId;
+      }
+
       case 'session.batchDelete':
         return sm.batchDeleteSessions(event.payload.sessionIds);
 
