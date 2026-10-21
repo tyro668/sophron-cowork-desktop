@@ -41,7 +41,7 @@ import {
 import {
   AutomationPromptPermissionFields,
   ConfigRow,
-  FieldStack,
+  FormRow,
   LocalTableSelect,
   MiniIcon,
   SelectLine,
@@ -100,7 +100,7 @@ export function ActionChainSection({
   const addActionButton = (
     <GlassDropdownMenu
       trigger={
-        <button className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15">
+        <button className="inline-flex h-full items-center justify-center gap-1.5 border-l border-border-subtle px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent-muted">
           <Plus size={13} />
           {tr('schedule.addAction', '添加动作')}
         </button>
@@ -120,7 +120,7 @@ export function ActionChainSection({
   return (
     <section className="flex min-h-0 min-w-0 flex-col">
       <div className={`${flatToolbarRowClass} justify-between`}>
-        <h2 className="min-w-0 text-[13px] font-semibold text-text-secondary">
+        <h2 className="flex min-w-0 items-center px-3 text-[13px] font-semibold text-text-secondary">
           {tr('schedule.actionsTitle', '执行动作')}
         </h2>
         {addActionButton}
@@ -257,8 +257,8 @@ export function ActionStepCard({
 }) {
   const Icon = getActionIcon(node.type, node);
   return (
-    <div className="border-b border-border-muted bg-surface px-4 py-3">
-      <div className="mb-2 flex items-center gap-2.5">
+    <div className="ui-group bg-surface">
+      <div className="flex h-9 items-center gap-2.5 border-b border-border-subtle bg-surface-muted pl-3 pr-1.5">
         <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-text-secondary">
           {index + 1}
         </span>
@@ -414,8 +414,8 @@ export function DataProcessActionEditor({
       }
     : null;
   return (
-    <div className="space-y-3">
-      <FieldStack label={tr('schedule.dataPipelineLabel', '数据加工')}>
+    <div>
+      <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <LocalTableSelect
@@ -436,9 +436,9 @@ export function DataProcessActionEditor({
             {tr('data.aiPipelineGenerate', 'AI 生成数据加工')}
           </Button>
         </div>
-      </FieldStack>
+      </FormRow>
       {selectedPipelineId && (
-        <FieldStack label={tr('schedule.executionMode', '执行方式')}>
+        <FormRow label={tr('schedule.executionMode', '执行方式')}>
           <GlassSelect
             value={String(node.config.outputMode ?? 'persisted')}
             options={[
@@ -451,7 +451,7 @@ export function DataProcessActionEditor({
             triggerClassName="h-9 w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
-        </FieldStack>
+        </FormRow>
       )}
       {node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
         (node.config.output as { location?: string } | undefined)?.location !== 'local' && (
@@ -558,9 +558,9 @@ export function GeneratedPipelineReviewCard({
   }, [loadCurrentWorkflowDsl]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 px-3 py-2">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-text-muted">
+        <span className="text-[12px] font-medium text-text-secondary">
           {tr('schedule.dataPipelineLogic', '任务逻辑')}
         </span>
         {pipelineId && (
@@ -658,7 +658,7 @@ export function ActionConfigEditor({
       : appConfig?.activeConfigSetId;
   const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
   return (
-    <div className="space-y-4">
+    <div className={isDataProcessNode(node) ? '' : 'space-y-4 p-3'}>
       {isDataProcessNode(node) && (
         <DataProcessActionEditor
           node={node}

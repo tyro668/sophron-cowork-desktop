@@ -61,6 +61,26 @@ export function FieldStack({ label, children }: { label: string; children: React
   );
 }
 
+// Grid form row (label column + value cell) used inside `.ui-group` sections.
+export function FormRow({
+  label,
+  children,
+  alignTop = false,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  alignTop?: boolean;
+}) {
+  return (
+    <div className="ui-form-row">
+      <div className={`ui-form-label ${alignTop ? 'items-start pt-2.5' : 'items-center'}`}>
+        {label}
+      </div>
+      <div className="ui-form-value">{children}</div>
+    </div>
+  );
+}
+
 // Grouped configuration card: muted surface, icon + title header, stacked fields.
 export function ConfigSection({
   icon,
