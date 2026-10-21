@@ -45,6 +45,8 @@ import {
   EmptyState,
   LoadingState,
   formatDateTime,
+  fixedTabGroupWidth,
+  fixedTabWidthClass,
 } from './shared';
 import { Button } from '../ui/button';
 import { showToast } from '../../utils/toast';
@@ -1472,7 +1474,11 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
       ) : (
         <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
-            <aside className="flex min-h-0 w-60 flex-shrink-0 flex-col border-r border-border-muted">
+            <aside
+              className="flex min-h-0 flex-shrink-0 flex-col border-r border-border-subtle"
+              style={{ width: fixedTabGroupWidth(4) }}
+              data-testid="cloud-tree"
+            >
               <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2">
                 <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
                   {t('cloudData.spaceProject')}
@@ -2015,7 +2021,9 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                         key={tab}
                         type="button"
                         onClick={() => setListTab(tab)}
-                        className={`relative flex h-full items-center px-4 text-xs font-medium transition-colors ${
+                        title={t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
+                        data-fixed-tab
+                        className={`relative flex h-full items-center border-r border-border-subtle text-xs font-medium transition-colors ${fixedTabWidthClass} ${
                           listTab === tab
                             ? 'bg-accent-muted/60 text-accent'
                             : 'text-text-secondary hover:bg-surface-hover/50 hover:text-text-primary'
@@ -2024,7 +2032,9 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
                         {listTab === tab && (
                           <span className="absolute inset-x-0 top-0 h-px bg-accent" />
                         )}
-                        {t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
+                        <span className="truncate">
+                          {t(tab === 'tables' ? 'cloudData.tablesTab' : 'cloudData.filesTab')}
+                        </span>
                       </button>
                     ))}
                   </div>
