@@ -727,12 +727,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           isSelectMode && isSelected
             ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
             : isActive && !isSelectMode
-              ? 'bg-accent-muted/60'
-              : 'hover:bg-surface-hover/70'
+              ? 'bg-accent-muted/70'
+              : 'hover:bg-surface-hover'
         }`}
       >
         {isActive && !isSelectMode && (
-          <span className={`absolute left-0 w-[3px] bg-accent inset-y-0`} />
+          <span className={`absolute left-0 w-[2px] bg-accent inset-y-0`} />
         )}
         <div className={`flex min-w-0 flex-1 items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
           {isSelectMode && (
@@ -979,7 +979,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     </div>
   );
 
-  const navItemShape = 'h-9 px-4 border-b border-border-subtle last:border-b-0';
+  const navItemShape = 'h-9 px-3.5';
 
   const renderBrand = (compact: boolean, showLogo = true) => (
     <div className="min-w-0 flex items-center gap-3">
@@ -1189,7 +1189,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
            trafficLightPosition), name only — same height as the right-side tab/title bar. */
         <div
           data-testid="mac-sidebar-titlebar-row"
-          className="titlebar-drag flex h-12 shrink-0 select-none items-center border-b border-border-subtle pl-[84px] pr-3.5"
+          className="titlebar-drag flex h-12 shrink-0 select-none items-center pl-[84px] pr-3.5"
         >
           <div className="pointer-events-none min-w-0 [&_button]:pointer-events-auto">
             {renderBrand(true, false)}
@@ -1199,8 +1199,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)
       )}
 
-      <div className={'border-b border-border-subtle'}>
-        <div className={'flex h-12 items-stretch border-b border-border-subtle'}>
+      <div data-testid="sidebar-top">
+        <div className={'flex h-12 items-stretch'}>
           <Button
             variant="primary"
             onClick={handleNewSession}
@@ -1213,14 +1213,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           <span
             aria-hidden="true"
             data-testid="new-task-shortcut-cell"
-            className="flex w-10 flex-shrink-0 items-center justify-center border-l border-white/25 bg-accent text-[11px] font-semibold text-accent-foreground"
+            className="flex w-[52px] flex-shrink-0 items-center justify-center bg-accent text-[11px] font-semibold text-accent-foreground shadow-[inset_0_0_0_999px_rgba(0,0,0,0.12)]"
           >
             {isMac ? '⌘N' : 'Ctrl+N'}
           </span>
         </div>
 
         {sessions.length > 0 && (
-          <div className={'flex h-10 items-stretch border-b border-border-subtle bg-surface'}>
+          <div className={'flex h-10 items-stretch bg-surface-active/60'}>
             <div className="relative flex-1 min-w-0">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
@@ -1239,7 +1239,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   setIsSelectMode(true);
                 }
               }}
-              className={`w-10 border-l border-border-subtle flex items-center justify-center flex-shrink-0 transition-colors ${
+              className={`w-10 flex items-center justify-center flex-shrink-0 transition-colors ${
                 isSelectMode
                   ? 'bg-accent text-accent-foreground'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
@@ -1255,15 +1255,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </div>
         )}
 
-        <nav
-          className={'flex flex-col border-b border-border-subtle bg-surface'}
-          aria-label={t('mainNav.label')}
-        >
+        <nav className={'flex flex-col pt-1.5'} aria-label={t('mainNav.label')}>
           <button
             onClick={handleDataPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isDataPageActive
-                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
+                ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1274,7 +1271,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleSkillsPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isSkillsPageActive
-                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
+                ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1285,7 +1282,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleAutomationPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isAutomationPageActive
-                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
+                ? `bg-accent-muted text-accent shadow-[inset_2px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1299,18 +1296,18 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         {pinnedSessions.length > 0 && !isSelectMode && (
           <div className={''}>
             <div
-              className={`flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted h-7 border-b border-border-subtle px-3.5`}
+              className={`flex items-center gap-1.5 text-[11.5px] font-semibold leading-5 text-text-muted h-7 mt-2 px-3.5`}
             >
               <Pin className="h-3 w-3" />
               {t('sidebar.pinnedTitle')}
             </div>
-            <div className={'border-b border-border-subtle bg-surface py-1'}>
+            <div className={'pb-1'}>
               {pinnedSessions.map((session) => renderSessionRow(session))}
             </div>
           </div>
         )}
         <div
-          className={`text-[12px] font-semibold leading-5 text-text-muted flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5`}
+          className={`text-[11.5px] font-semibold leading-5 text-text-muted flex h-7 mt-2 items-center px-3.5`}
         >
           {t('sidebar.projectsTitle')}
         </div>
@@ -1325,10 +1322,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               const isProjectExpanded = expandedProjectKeys.has(group.key);
               const isSavingProjectName = savingProjectRenameKey === group.key;
               return (
-                <section key={group.key} className={'border-b border-border-subtle bg-surface'}>
-                  <div
-                    className={`bg-surface-muted ${isProjectExpanded && group.sessions.length > 0 ? 'border-b border-border-subtle' : ''}`}
-                  >
+                <section key={group.key} className={'mt-1.5'} data-testid="sidebar-project">
+                  <div className="">
                     {renamingProjectKey === group.key ? (
                       <form
                         className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background p-1 shadow-soft"
@@ -1371,7 +1366,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                       </form>
                     ) : (
                       <div
-                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 h-[30px] pl-2.5 pr-1`}
+                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 h-[26px] pl-2.5 pr-1`}
                       >
                         <button
                           type="button"
@@ -1385,7 +1380,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                           ) : (
                             <Folder className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
                           )}
-                          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-text-secondary">
+                          <span className="min-w-0 flex-1 truncate text-[11.5px] font-normal leading-4 text-text-muted">
                             {group.label}
                           </span>
                         </button>
@@ -1452,7 +1447,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                     </div>
                   )}
                   {isProjectExpanded && (
-                    <div className={'py-1'}>
+                    <div className={'pb-0.5'}>
                       {group.sessions.map((session) => renderSessionRow(session))}
                     </div>
                   )}
@@ -1534,7 +1529,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       ) : (
         <div className="border-t border-border-subtle">
-          <div className={`flex h-12 w-full items-center bg-surface items-stretch pl-3.5`}>
+          <div className={`flex h-12 w-full items-center items-stretch pl-3.5`}>
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}
@@ -1588,7 +1583,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               sideOffset={6}
               trigger={
                 <button
-                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary h-full border-l border-border-subtle px-3 transition-colors hover:bg-surface-hover hover:text-text-primary`}
+                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary h-full px-3 transition-colors hover:bg-surface-hover hover:text-text-primary`}
                   title={t('sidebar.themeToggle')}
                 >
                   {settings.theme === 'dark' ? (
@@ -1626,7 +1621,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             </GlassDropdownMenu>
             <button
               onClick={() => setShowSettings(true)}
-              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary h-full w-10 border-l border-border-subtle`}
+              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary h-full w-10`}
               title={t('sidebar.settings')}
             >
               <Settings className="h-4 w-4" />

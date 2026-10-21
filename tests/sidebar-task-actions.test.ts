@@ -67,7 +67,7 @@ describe('sidebar task rows', () => {
     );
     expect(source).toContain('h-[31px]');
     expect(source).not.toContain('sidebar-task-guide');
-    expect(source).toContain("? 'bg-accent-muted/60'");
+    expect(source).toContain("? 'bg-accent-muted/70'");
     expect(source).toContain("hoveredSession === session.id ? 'opacity-100' : 'opacity-0'");
   });
 });

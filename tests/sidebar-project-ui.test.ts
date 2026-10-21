@@ -19,10 +19,8 @@ describe('Sidebar project UI hierarchy', () => {
     const source = fs.readFileSync(sidebarPath, 'utf8');
 
     expect(source).toContain("t('sidebar.projectsTitle')");
-    expect(source).toContain('text-[12px] font-semibold leading-5 text-text-muted');
-    expect(source).toContain(
-      'flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5'
-    );
+    expect(source).toContain('text-[11.5px] font-semibold leading-5 text-text-muted');
+    expect(source).toContain('flex h-7 mt-2 items-center px-3.5');
     expect(source).not.toContain("isMac ? 'mb-2 px-3'");
     expect(source).not.toContain(
       '<ListChecks className="h-4 w-4 flex-shrink-0" />\n          <span>{t(\'mainNav.tasks\')}</span>'
@@ -54,5 +52,16 @@ describe('Sidebar project UI hierarchy', () => {
     expect(source).not.toContain('group.path ||');
     expect(source).not.toContain("t('sidebar.noWorkspacePath')");
     expect(source).not.toContain("t('sidebar.projectTaskCount'");
+  });
+});
+
+describe('Sidebar option C (no horizontal dividers)', () => {
+  const src = fs.readFileSync(sidebarPath, 'utf8');
+  it('has no row/section dividers except the one above the bottom bar', () => {
+    expect(src).toContain("const navItemShape = 'h-9 px-3.5';");
+    expect(src).not.toContain("className={'border-b border-border-subtle bg-surface'}");
+    expect(src).not.toContain("'flex h-12 items-stretch border-b border-border-subtle'");
+    expect(src).toContain('shadow-[inset_2px_0_0_var(--color-accent)]');
+    expect(src).toContain('<div className="border-t border-border-subtle">');
   });
 });
