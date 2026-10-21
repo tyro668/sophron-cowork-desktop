@@ -26,6 +26,7 @@ import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { RawTableAutomations } from './table-automations';
 import {
+  toolbarPrimaryCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -254,7 +255,7 @@ export function RawTablesPanel({
             <button
               onClick={onCreate}
               disabled={isCreateDisabled || bulkBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className={toolbarPrimaryCellClass}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('data.rawTables.add')}
@@ -385,7 +386,7 @@ export function RawTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
+      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingState label={t('data.rawTables.loading')} />
@@ -413,7 +414,7 @@ export function RawTablesPanel({
             />
           ) : (
             <div className="min-w-full overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left">
+              <table className="data-list-table w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
                     <th className="w-[30%] whitespace-nowrap px-2">

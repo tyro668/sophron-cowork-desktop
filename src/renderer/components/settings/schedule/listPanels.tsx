@@ -9,7 +9,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Search,
   Trash2,
   Hand,
   ChevronRight,
@@ -21,7 +20,13 @@ import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import type { AutomationRunLogEntry } from './types';
 import { AUTOMATION_TABLE_PAGE_SIZE } from './types';
 
-import { EmptyState, flatToolbarRowClass } from '../../data-view/shared';
+import {
+  toolbarPrimaryCellClass,
+  DataTableSearch,
+  DataToolbarButton,
+  EmptyState,
+  flatToolbarRowClass,
+} from '../../data-view/shared';
 import {
   AssignGroupDialog,
   buildGroupSections,
@@ -86,10 +91,7 @@ export function AutomationListPanel({
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || automations.length > 0 || searchQuery.trim()) && (
-            <button
-              onClick={onCreate}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors"
-            >
+            <button onClick={onCreate} className={toolbarPrimaryCellClass}>
               <Plus className="h-3.5 w-3.5" />
               {tr('schedule.newAutomation', '新建自动化')}
             </button>
@@ -148,7 +150,7 @@ export function AutomationListPanel({
           />
         </div>
       </div>
-      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
+      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && automations.length === 0 ? (
             <EmptyState
@@ -238,6 +240,11 @@ export function AutomationRunLogPanel({
   tr: (key: string, fallback: string) => string;
 }) {
   const hasRunning = entries.some(({ run }) => run.status === 'running' || run.status === 'queued');
+  const [runQuery, setRunQuery] = useState('');
+  const normalizedRunQuery = runQuery.trim().toLowerCase();
+  const visibleEntries = normalizedRunQuery
+    ? entries.filter(({ automation }) => automation.name.toLowerCase().includes(normalizedRunQuery))
+    : entries;
   // Poll every 3s only while something is running (design 15).
   useEffect(() => {
     if (!hasRunning) return;
@@ -246,7 +253,14 @@ export function AutomationRunLogPanel({
   }, [hasRunning, onRefresh]);
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
-      <div className={`${flatToolbarRowClass} justify-end`}>
+      <div className={`${flatToolbarRowClass} justify-between`}>
+        <div className="flex min-w-0 flex-1 [&>div]:border-l-0">
+          <DataTableSearch
+            value={runQuery}
+            onChange={setRunQuery}
+            placeholder={tr('schedule.runSearch', '搜索执行记录…')}
+          />
+        </div>
         <DataToolbarButton
           icon={<RefreshCw className="h-3.5 w-3.5" />}
           label={tr('schedule.refresh', '刷新')}
@@ -254,11 +268,11 @@ export function AutomationRunLogPanel({
           onClick={onRefresh}
         />
       </div>
-      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
+      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           <AutomationRunTable
             automations={automations}
-            entries={entries}
+            entries={visibleEntries}
             isLoading={isLoading}
             hasAutomations={automations.length > 0}
             tr={tr}
@@ -310,7 +324,7 @@ function AutomationRunTable({
   }
   return (
     <div className="min-w-0 overflow-hidden">
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="data-list-table w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="w-[22%] whitespace-nowrap px-3 pl-8">
@@ -467,7 +481,7 @@ function AutomationTable({
   }
   return (
     <div className="min-w-0 overflow-x-auto">
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="data-list-table w-full table-fixed border-collapse text-left">
         <colgroup>
           <col />
           <col className="w-36" />
@@ -752,58 +766,6 @@ export function getRunSortTime(run: AutomationRun): number {
   return run.startedAt ?? run.queuedAt ?? run.createdAt;
 }
 
-function DataTableSearch({
-  value,
-  placeholder,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="relative w-full sm:w-[18rem]">
-      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/20"
-      />
-    </div>
-  );
-}
-
-function DataToolbarButton({
-  icon,
-  label,
-  disabled,
-  danger = false,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-        danger
-          ? 'text-error hover:border-error/30 hover:bg-error/10'
-          : 'text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
 interface DataMoreMenuItem {
   key: string;
   label: string;
@@ -831,7 +793,7 @@ function DataMoreMenu({
       trigger={
         <button
           type="button"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+          className="inline-flex h-full w-10 items-center justify-center rounded-none border-0 border-l border-border-subtle bg-transparent text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
           title={tr('data.actions.more', '更多')}
           aria-label={tr('data.actions.more', '更多')}
         >

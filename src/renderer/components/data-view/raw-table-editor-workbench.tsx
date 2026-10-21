@@ -894,7 +894,7 @@ export function RawTableEditorWorkbench({
           >
             <div className="flex-shrink-0 bg-surface">
               <div className="grid">
-                <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+                <section className="ui-group bg-surface px-4 py-2.5">
                   <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionSource')}
                   </div>
@@ -1004,7 +1004,7 @@ export function RawTableEditorWorkbench({
                   </RawTableConfigRow>
                 </section>
                 <div className="grid">
-                  <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+                  <section className="ui-group bg-surface px-4 py-2.5">
                     <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                       {t('data.rawTables.editor.sectionParsing')}
                     </div>
@@ -1367,7 +1367,7 @@ export function RawTableEditorWorkbench({
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
-                <div className="grid gap-1 border-b border-border-muted bg-surface px-4 py-2.5">
+                <div className="grid gap-1 ui-group bg-surface px-4 py-2.5">
                   <div className="mb-0.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionParsingDetail')}
                   </div>
@@ -1607,7 +1607,7 @@ export function RawTableEditorWorkbench({
           {rawTable ? (
             <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
               <div>
-                <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+                <section className="ui-group bg-surface px-4 py-2.5">
                   <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
                     {t('data.rawTables.editor.sectionLinkage')}
                   </div>

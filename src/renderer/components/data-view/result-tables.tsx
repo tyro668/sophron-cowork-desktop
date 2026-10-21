@@ -43,6 +43,7 @@ import {
   type DataListGroup,
 } from './group-ui';
 import {
+  toolbarPrimaryCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -222,7 +223,7 @@ export function ResultTablesPanel({
             <button
               onClick={() => setCreateDialogOpen(true)}
               disabled={isCreateDisabled || bulkBusy}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className={toolbarPrimaryCellClass}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('data.resultTables.add')}
@@ -335,7 +336,7 @@ export function ResultTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
+      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingState label={t('data.resultTables.loading')} />
@@ -367,7 +368,7 @@ export function ResultTablesPanel({
             />
           ) : (
             <div className="min-w-full overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left">
+              <table className="data-list-table w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
                     <th className="w-[36%] whitespace-nowrap px-2">
@@ -841,7 +842,7 @@ export function ResultTableEditor({
               onClick={() => void handleRunRelatedPipeline()}
               disabled={busy || runBusy}
               title={t('data.resultTables.editor.runPipelineTitle', { name: relatedPipeline.name })}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className={toolbarPrimaryCellClass}
             >
               <Play className="h-3.5 w-3.5" />
               {runBusy
@@ -932,7 +933,7 @@ export function ResultTableEditor({
                 value={formatDateTime(resultTable.updatedAt)}
               />
             </div>
-            <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+            <section className="ui-group bg-surface px-4 py-2.5">
               <div className="mb-2 text-[13px] font-semibold text-text-primary">
                 {t('data.resultTables.lineage.title')}
               </div>
@@ -958,7 +959,7 @@ export function ResultTableEditor({
               </div>
             </section>
             <div className="grid">
-              <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+              <section className="ui-group bg-surface px-4 py-2.5">
                 <div className="mb-2 text-[13px] font-semibold text-text-primary">
                   {t('data.resultTables.sections.basic')}
                 </div>
@@ -979,7 +980,7 @@ export function ResultTableEditor({
               </section>
             </div>
             {onDelete && (
-              <section className="border-b border-error/35 bg-surface px-4 py-2.5">
+              <section className="ui-group ui-group-danger bg-surface px-4 py-2.5">
                 <div className="mb-2 text-[13px] font-semibold text-error">
                   {t('data.resultTables.danger.title')}
                 </div>
@@ -1029,7 +1030,7 @@ export function ResultTableEditor({
           />
         </TabsContent>
         <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
-          <section className="border-b border-border-muted bg-surface px-4 py-2.5">
+          <section className="ui-group bg-surface px-4 py-2.5">
             <div className="mb-2 text-[13px] font-semibold text-text-primary">
               {t('data.resultTables.sections.automation')}
             </div>

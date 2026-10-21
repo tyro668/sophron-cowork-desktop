@@ -118,8 +118,8 @@ export function GroupHeaderRow({
   const canNext = page < totalPages;
   return (
     <tr className="border-b border-border-muted/85 bg-surface-muted/50">
-      <td colSpan={colSpan} className="px-4">
-        <div className="flex h-[3.25rem] items-center gap-1.5">
+      <td colSpan={colSpan} className="px-3">
+        <div className="flex h-8 items-center gap-1.5">
           <button
             type="button"
             onClick={onToggle}

@@ -5,10 +5,32 @@
  * grid and merges columns with col-span — so all vertical dividers share x.
  * Unlayered on purpose: beats Tailwind utility layers on embedded controls.
  */
+/*
+ * Balanced compact spacing tokens (UI_STYLE_GUIDE §3). Tight inside a group
+ * (1px dividers, shared grid lines); modest inset to the container edge and a
+ * small gap between distinct groups. Toolbars / tab bars stay flush.
+ */
+:root {
+  --space-inset: 12px;
+  --space-inset-lg: 16px;
+  --space-group: 10px;
+  --radius-group: 6px;
+}
+.opg-frame {
+  margin: var(--space-inset);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-group);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.opg-frame + .opg-frame {
+  margin-top: 0;
+}
 .opg {
   display: grid;
   align-content: start;
   margin-right: -1px;
+  margin-bottom: -1px;
   --opg-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 .opg-c {

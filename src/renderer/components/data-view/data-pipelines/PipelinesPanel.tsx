@@ -25,6 +25,7 @@ import {
   type DataListGroup,
 } from '../group-ui';
 import {
+  toolbarPrimaryCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -218,7 +219,7 @@ export function PipelinesPanel({
             <button
               onClick={onCreate}
               disabled={isCreateDisabled || bulkBusy}
-              className="inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className={toolbarPrimaryCellClass}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('data.newPipeline')}
@@ -293,7 +294,7 @@ export function PipelinesPanel({
           />
         </div>
       </div>
-      <div className="glass-table flex min-h-0 flex-1 flex-col rounded-none border-0">
+      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && pipelines.length === 0 ? (
             <EmptyState
@@ -410,7 +411,7 @@ function PipelinesTable({
 
   return (
     <div className="min-w-full overflow-x-auto">
-      <table className="w-full table-fixed border-collapse text-left">
+      <table className="data-list-table w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="w-[26%] whitespace-nowrap px-2">{t('data.columns.pipelineName')}</th>
