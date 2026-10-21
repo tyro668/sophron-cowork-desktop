@@ -23,9 +23,9 @@ function maskKey(value: string) {
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid min-w-0 gap-1.5 sm:grid-cols-[88px_minmax(0,1fr)] sm:items-center sm:gap-3">
-      <span className="text-[13px] font-medium text-text-secondary">{label}</span>
-      <div className="min-w-0">{children}</div>
+    <div className="ui-form-row">
+      <span className="ui-form-label items-center">{label}</span>
+      <div className="ui-form-value">{children}</div>
     </div>
   );
 }
@@ -130,13 +130,13 @@ export function SettingsPersonalAnalysis() {
   };
 
   return (
-    <section className="ui-group bg-surface p-3">
-      <div className="flex items-center gap-3">
+    <section className="ui-group bg-surface">
+      <div className="flex items-center gap-3 border-b border-border-subtle px-3 py-2">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
           <Cloud className="h-4 w-4" />
         </div>
         <span
-          className={`ml-auto flex h-6 flex-shrink-0 items-center rounded-full px-2 text-[12px] font-medium ${
+          className={`ml-auto flex h-6 flex-shrink-0 items-center rounded-md px-2 text-[12px] font-medium ${
             isConnected ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
           }`}
         >
@@ -144,7 +144,7 @@ export function SettingsPersonalAnalysis() {
         </span>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div>
         <FieldRow label={t('personalAnalysis.apiOrigin')}>
           {isEditing ? (
             <Input
@@ -153,7 +153,7 @@ export function SettingsPersonalAnalysis() {
               value={form.apiOrigin}
               onChange={(event) => updateField('apiOrigin', event.target.value)}
               placeholder={t('personalAnalysis.apiOriginPlaceholder')}
-              className="h-9 bg-surface px-3 text-[13px] shadow-soft"
+              className="h-8 bg-surface px-2.5 text-[13px]"
             />
           ) : (
             <span className="block truncate text-[13px] text-text-primary">
@@ -169,7 +169,7 @@ export function SettingsPersonalAnalysis() {
               value={form.apiKey}
               onChange={(event) => updateField('apiKey', event.target.value)}
               placeholder={t('personalAnalysis.apiKeyPlaceholder')}
-              className="h-9 bg-surface px-3 text-[13px] shadow-soft"
+              className="h-8 bg-surface px-2.5 text-[13px]"
             />
           ) : (
             <span className="block font-mono text-[13px] text-text-primary">
@@ -179,7 +179,7 @@ export function SettingsPersonalAnalysis() {
         </FieldRow>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle bg-surface-muted px-3 py-2">
         <Button
           variant="secondary"
           onClick={() => void handleTest()}

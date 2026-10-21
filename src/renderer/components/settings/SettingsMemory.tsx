@@ -359,13 +359,13 @@ export function SettingsMemory() {
           </section>
 
           <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
-            <div className="flex h-full min-h-0 min-w-0 flex-col rounded-md border border-border-subtle bg-surface p-3">
+            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => setActiveTab(v as MemoryTab)}
                 className="contents"
               >
-                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border-subtle">
+                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border-subtle px-3 pt-1.5">
                   <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
                     <TabsTrigger value="all" className={underlineTabTriggerClass}>
                       {t('memory.allTab', '全部')}
@@ -389,8 +389,8 @@ export function SettingsMemory() {
                 </div>
 
                 <TabsContent value={activeTab} forceMount className="contents">
-                  <label className="relative mt-2.5 block">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+                  <label className="relative block border-b border-border-subtle px-3 py-2">
+                    <Search className="pointer-events-none absolute left-5.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
@@ -399,7 +399,7 @@ export function SettingsMemory() {
                     />
                   </label>
 
-                  <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                     {visibleRecords.length ? (
                       visibleRecords.map((record) => (
                         <MemoryListItem
@@ -413,13 +413,13 @@ export function SettingsMemory() {
                         />
                       ))
                     ) : (
-                      <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border-muted bg-surface text-sm text-text-muted">
+                      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-text-muted">
                         {t('memory.noResults')}
                       </div>
                     )}
                   </div>
 
-                  <div className="mt-2 flex min-h-7 items-center justify-between gap-2 text-xs font-medium text-text-secondary">
+                  <div className="flex min-h-9 items-center justify-between gap-2 border-t border-border-subtle px-3 text-xs font-medium text-text-secondary">
                     <span>
                       {t('memory.totalMemories', '共 {{count}} 条记忆', {
                         count: filteredRecords.length,
@@ -568,10 +568,10 @@ function MemoryListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`group rounded-lg border px-3 py-2 text-left transition-colors ${
+      className={`group relative border-b border-border-subtle px-3 py-2 text-left transition-colors ${
         selected
-          ? 'border-accent/55 bg-accent-muted ring-1 ring-inset ring-accent/20'
-          : 'border-border-muted bg-surface hover:border-accent/25 hover:bg-surface-hover/50'
+          ? 'bg-accent-muted shadow-[inset_3px_0_0_var(--color-accent)]'
+          : 'bg-surface hover:bg-surface-hover/50'
       }`}
     >
       <div className="flex items-center justify-between gap-3">
