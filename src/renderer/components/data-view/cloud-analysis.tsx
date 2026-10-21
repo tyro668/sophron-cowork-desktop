@@ -1470,7 +1470,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
           </div>
         </div>
       ) : (
-        <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
+        <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
             <aside className="flex min-h-0 w-60 flex-shrink-0 flex-col border-r border-border-muted">
               <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2">

@@ -3514,7 +3514,9 @@
     "partProject": "project",
     "partEnabled": "enabled state",
     "partActions": "actions",
-    "partActionsUnit": ""
+    "partActionsUnit": "",
+    "listTotal": "{{count}} total",
+    "listEnabled": "{{count}} enabled"
   },
   "remote": {
     "title": "Remote Control",
