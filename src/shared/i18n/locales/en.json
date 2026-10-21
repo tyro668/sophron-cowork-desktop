@@ -3524,7 +3524,10 @@
     "partActions": "actions",
     "partActionsUnit": "",
     "listTotal": "{{count}} total",
-    "listEnabled": "{{count}} enabled"
+    "listEnabled": "{{count}} enabled",
+    "onFailureLabel": "On failure",
+    "onFailureStop": "Stop remaining actions",
+    "onFailureContinue": "Continue (always run next)"
   },
   "remote": {
     "title": "Remote Control",
