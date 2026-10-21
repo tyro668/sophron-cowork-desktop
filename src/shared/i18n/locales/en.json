@@ -2641,7 +2641,9 @@
     "syncDetailLima": "Copying project files to isolated Lima environment",
     "syncDetailSkills": "Copying built-in skills to sandbox",
     "syncDetailFallback": "Falling back to direct access mode (less secure)",
-    "syncDetailCompleted": "Synced {{count}} files"
+    "syncDetailCompleted": "Synced {{count}} files",
+    "available": "Available",
+    "unavailable": "Unavailable"
   },
   "mcp": {
     "noConnectors": "No connectors configured",
@@ -2685,7 +2687,8 @@
     "commandRequired": "Command is required",
     "urlRequired": "URL is required",
     "toolCount": "{{count}} tools",
-    "callCount": "{{count}} calls"
+    "callCount": "{{count}} calls",
+    "status": "Status"
   },
   "credentials": {
     "envVars": "Environment Variables",

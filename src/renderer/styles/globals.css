@@ -1472,6 +1472,9 @@
   min-height: 40px;
   border-bottom: 1px solid var(--color-border-subtle);
 }
+.ui-form-row.ui-form-row-wide {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
 .ui-form-row:last-child {
   border-bottom: 0;
 }

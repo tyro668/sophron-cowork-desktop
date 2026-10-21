@@ -34,23 +34,22 @@ export function SettingsShortcuts() {
       </div>
       <div className="ui-group bg-surface">
         {SHORTCUTS.map((item) => (
-          <div
-            key={item.labelKey}
-            className="flex h-10 items-center justify-between border-b border-border-subtle px-3 last:border-b-0"
-          >
-            <span className="text-[13px] text-text-primary">{t(item.labelKey)}</span>
-            <span className="flex items-center gap-2 text-xs text-text-muted">
-              {item.keys.map((combo, index) => (
-                <span key={combo.join('+')} className="flex items-center gap-1">
-                  {index > 0 && <span className="mr-1">/</span>}
-                  {combo.map((key, keyIndex) => (
-                    <span key={key} className="flex items-center gap-1">
-                      {keyIndex > 0 && <span>+</span>}
-                      <Kbd>{key}</Kbd>
-                    </span>
-                  ))}
-                </span>
-              ))}
+          <div key={item.labelKey} className="ui-form-row ui-form-row-wide">
+            <span className="ui-form-label items-center">{t(item.labelKey)}</span>
+            <span className="ui-form-value">
+              <span className="flex items-center gap-2 text-xs text-text-muted">
+                {item.keys.map((combo, index) => (
+                  <span key={combo.join('+')} className="flex items-center gap-1">
+                    {index > 0 && <span className="mr-1">/</span>}
+                    {combo.map((key, keyIndex) => (
+                      <span key={key} className="flex items-center gap-1">
+                        {keyIndex > 0 && <span>+</span>}
+                        <Kbd>{key}</Kbd>
+                      </span>
+                    ))}
+                  </span>
+                ))}
+              </span>
             </span>
           </div>
         ))}

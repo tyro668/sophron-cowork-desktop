@@ -27,7 +27,7 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
         </p>
       )}
       {pairedUsers.length === 0 ? (
-        <div className="flex min-h-36 flex-col items-center justify-center rounded-xl border border-dashed border-border p-6 text-center">
+        <div className="ui-group flex min-h-36 flex-col items-center justify-center p-6 text-center">
           <UserRoundCheck className="h-7 w-7 text-text-muted" />
           <p className="mt-3 text-sm font-medium text-text-secondary">
             {t('remote.noAuthorizedUsers')}
@@ -35,11 +35,11 @@ export function AuthorizedUsersSection({ pairedUsers, onRevoke }: Props) {
           <p className="mt-1 text-xs text-text-muted">{t('remote.noAuthorizedUsersDesc')}</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="ui-group bg-surface">
           {pairedUsers.map((user) => (
             <div
               key={`${user.channelType}-${user.userId}`}
-              className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface p-3 shadow-soft"
+              className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5 last:border-b-0"
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-accent-muted flex items-center justify-center">

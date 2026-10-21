@@ -222,7 +222,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       {!showAddForm && !editingServer && (
         <div className="space-y-3">
           {servers.length === 0 ? (
-            <div className="rounded-lg border border-border-subtle bg-background text-center py-8 text-text-muted">
+            <div className="ui-group bg-surface text-center py-8 text-text-muted">
               <Plug className="w-10 h-10 mx-auto mb-3 opacity-50" />
               <p>{t('mcp.noConnectors')}</p>
               <p className="text-sm mt-1">{t('mcp.addConnector')}</p>
@@ -329,12 +329,14 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
       {/* Preset Servers */}
       {!showAddForm && !editingServer && !configuringPreset && Object.keys(presets).length > 0 && (
-        <div className="space-y-3">
+        <div className="ui-group bg-surface">
           <button
             onClick={() => setShowPresets(!showPresets)}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-surface-muted hover:bg-surface transition-colors"
+            className="ui-group-title w-full justify-between hover:bg-surface-hover"
           >
-            <h3 className="text-sm font-medium text-text-primary">{t('mcp.quickAddPresets')}</h3>
+            <h3 className="text-[12px] font-semibold text-text-primary">
+              {t('mcp.quickAddPresets')}
+            </h3>
             <div className="flex items-center gap-1.5 text-text-muted">
               <span className="text-xs">{showPresets ? t('mcp.hide') : t('mcp.show')}</span>
               <ChevronDown
@@ -343,7 +345,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
             </div>
           </button>
           {showPresets && (
-            <div className="grid grid-cols-1 gap-2">
+            <div>
               {Object.entries(presets).map(([key, preset]) => {
                 const isAdded = servers.some(
                   (s) => s.name === preset.name && s.command === preset.command
@@ -352,10 +354,8 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                 return (
                   <div
                     key={key}
-                    className={`p-3 rounded-lg border flex items-center gap-3 ${
-                      isAdded
-                        ? 'border-border bg-surface-muted opacity-60'
-                        : 'border-border bg-surface'
+                    className={`flex items-center gap-3 border-b border-border-subtle px-3 py-2 last:border-b-0 ${
+                      isAdded ? 'bg-surface-muted opacity-60' : ''
                     }`}
                   >
                     <div className="flex-1 min-w-0">
@@ -403,9 +403,9 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
         <Button
           variant="secondary"
           onClick={() => setShowAddForm(true)}
-          className="h-auto w-full gap-2 border-2 border-dashed border-border px-4 py-3 hover:border-accent hover:bg-accent-muted hover:text-accent"
+          className="h-9 w-full gap-2 rounded-md border border-dashed border-border px-4 hover:border-accent hover:bg-accent-muted hover:text-accent"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           {t('mcp.addCustomConnector')}
         </Button>
       )}
@@ -443,8 +443,8 @@ function ServerCard({
   const [showTools, setShowTools] = useState(false);
 
   return (
-    <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <div className="p-4">
+    <div className="ui-group bg-surface">
+      <div className="p-3">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -697,227 +697,232 @@ function ServerForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="ui-group space-y-3 bg-surface p-3">
-      <h3 className="font-medium text-text-primary">
+    <form onSubmit={handleSubmit} className="ui-group bg-surface">
+      <h3 className="ui-group-title">
         {server ? t('mcp.editConnector') : t('mcp.addConnectorTitle')}
       </h3>
 
-      <div>
-        <label className="block text-sm font-medium text-text-primary mb-2">{t('mcp.name')}</label>
-        <Input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t('mcp.namePlaceholder')}
-          className="h-auto px-4 py-2"
-          required
-        />
+      <div className="ui-form-row">
+        <label className="ui-form-label items-center">{t('mcp.name')}</label>
+        <div className="ui-form-value py-1.5">
+          <Input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('mcp.namePlaceholder')}
+            className="h-8 px-2.5"
+            required
+          />
+        </div>
       </div>
 
-      <div>
-        <span id="mcp-type-label" className="block text-sm font-medium text-text-primary mb-2">
+      <div className="ui-form-row">
+        <span id="mcp-type-label" className="ui-form-label items-center">
           {t('mcp.type')}
         </span>
-        <div role="radiogroup" aria-labelledby="mcp-type-label" className="grid grid-cols-3 gap-2">
-          {(
-            [
-              ['stdio', 'mcp.typeStdioLocal'],
-              ['sse', 'mcp.typeSseRemote'],
-              ['streamable-http', 'mcp.typeStreamableHttp'],
-            ] as const
-          ).map(([value, labelKey]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={type === value}
-              onClick={() => setType(value)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                type === value
-                  ? 'bg-accent text-accent-foreground'
-                  : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
-              }`}
-            >
-              {t(labelKey)}
-            </button>
-          ))}
+        <div className="ui-form-value py-1.5">
+          <div
+            role="radiogroup"
+            aria-labelledby="mcp-type-label"
+            className="grid grid-cols-3 gap-1.5"
+          >
+            {(
+              [
+                ['stdio', 'mcp.typeStdioLocal'],
+                ['sse', 'mcp.typeSseRemote'],
+                ['streamable-http', 'mcp.typeStreamableHttp'],
+              ] as const
+            ).map(([value, labelKey]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={type === value}
+                onClick={() => setType(value)}
+                className={`h-8 px-3 rounded-md text-[13px] font-medium transition-all ${
+                  type === value
+                    ? 'bg-accent text-accent-foreground'
+                    : 'bg-surface-muted text-text-secondary hover:bg-surface-active'
+                }`}
+              >
+                {t(labelKey)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {type === 'stdio' ? (
         <>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              {t('mcp.command')}
-            </label>
-            <Input
-              type="text"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              placeholder={t('mcp.commandPlaceholder')}
-              className="h-auto px-4 py-2 font-mono text-sm"
-              required
-            />
+          <div className="ui-form-row">
+            <label className="ui-form-label items-center">{t('mcp.command')}</label>
+            <div className="ui-form-value py-1.5">
+              <Input
+                type="text"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder={t('mcp.commandPlaceholder')}
+                className="h-8 px-2.5 font-mono text-[13px]"
+                required
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              {t('mcp.arguments')}
-            </label>
-            <Input
-              type="text"
-              value={args}
-              onChange={(e) => setArgs(e.target.value)}
-              placeholder={t('mcp.argumentsPlaceholder')}
-              className="h-auto px-4 py-2 font-mono text-sm"
-            />
-            <p className="text-xs text-text-muted mt-1">{t('mcp.spaceSeparated')}</p>
+          <div className="ui-form-row">
+            <label className="ui-form-label items-center">{t('mcp.arguments')}</label>
+            <div className="ui-form-value py-1.5">
+              <Input
+                type="text"
+                value={args}
+                onChange={(e) => setArgs(e.target.value)}
+                placeholder={t('mcp.argumentsPlaceholder')}
+                className="h-8 px-2.5 font-mono text-[13px]"
+              />
+              <p className="text-xs text-text-muted mt-1">{t('mcp.spaceSeparated')}</p>
+            </div>
           </div>
 
           {/* Environment Variables Section */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-text-primary">
-                {t('credentials.envVars')}
-              </label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowEnvSection(!showEnvSection)}
-                className="h-auto px-1 py-0.5 text-xs text-accent hover:text-accent-hover"
-              >
-                {showEnvSection ? t('mcp.hide') : t('mcp.show')}
-              </Button>
-            </div>
-            {showEnvSection && (
-              <div className="space-y-2 p-3 rounded-lg bg-surface-muted border border-border">
-                {Object.entries(envVars).map(([key, value]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <span
-                      className="text-xs font-mono text-text-secondary w-32 truncate"
-                      title={key}
-                    >
-                      {key}
-                    </span>
-                    <Input
-                      type="password"
-                      value={value}
-                      onChange={(e) => handleEnvChange(key, e.target.value)}
-                      placeholder={`${t('mcp.envValuePlaceholder')}: ${key}`}
-                      className="h-auto flex-1 px-3 py-1.5 font-mono text-sm"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveEnvVar(key)}
-                      className="h-8 w-8 text-text-muted hover:bg-error/10 hover:text-error"
-                      title={t('mcp.removeVar')}
-                      aria-label={t('mcp.removeVar')}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                ))}
-                {Object.keys(envVars).length === 0 && !isAddingEnvVar && (
-                  <p className="text-xs text-text-muted text-center py-2">
-                    {t('credentials.noEnvVars')}
-                  </p>
-                )}
-                {isAddingEnvVar && (
-                  <div className="space-y-2 p-2 rounded bg-background border border-accent/30">
-                    <Input
-                      type="text"
-                      value={newEnvKey}
-                      onChange={(e) => setNewEnvKey(e.target.value)}
-                      placeholder="NOTION_TOKEN"
-                      className="h-auto border-border px-3 py-1.5 font-mono text-sm"
-                      autoFocus
-                    />
-                    <Input
-                      type="password"
-                      value={newEnvValue}
-                      onChange={(e) => setNewEnvValue(e.target.value)}
-                      placeholder={t('mcp.envValuePlaceholder')}
-                      className="h-auto border-border px-3 py-1.5 font-mono text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={handleSaveNewEnvVar}
-                        disabled={!newEnvKey.trim()}
-                        className="h-auto flex-1 px-3 py-1 text-xs"
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('credentials.envVars')}</div>
+            <div className="ui-form-value space-y-2 py-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-text-muted">{t('credentials.usedForTokens')}</label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEnvSection(!showEnvSection)}
+                  className="h-auto px-1 py-0.5 text-xs text-accent hover:text-accent-hover"
+                >
+                  {showEnvSection ? t('mcp.hide') : t('mcp.show')}
+                </Button>
+              </div>
+              {showEnvSection && (
+                <div className="space-y-2 rounded-md border border-border-subtle bg-surface-muted p-2">
+                  {Object.entries(envVars).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span
+                        className="text-xs font-mono text-text-secondary w-32 truncate"
+                        title={key}
                       >
-                        {t('common.save')}
-                      </Button>
+                        {key}
+                      </span>
+                      <Input
+                        type="password"
+                        value={value}
+                        onChange={(e) => handleEnvChange(key, e.target.value)}
+                        placeholder={`${t('mcp.envValuePlaceholder')}: ${key}`}
+                        className="h-auto flex-1 px-3 py-1.5 font-mono text-sm"
+                      />
                       <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleCancelNewEnvVar}
-                        className="h-auto flex-1 border-transparent bg-surface-muted px-3 py-1 text-xs hover:bg-surface-active"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveEnvVar(key)}
+                        className="h-8 w-8 text-text-muted hover:bg-error/10 hover:text-error"
+                        title={t('mcp.removeVar')}
+                        aria-label={t('mcp.removeVar')}
                       >
-                        {t('common.cancel')}
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
-                  </div>
-                )}
-                {!isAddingEnvVar && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleAddEnvVar}
-                    className="mt-2 h-auto w-full gap-1 border-dashed border-border px-3 py-1.5 text-xs hover:border-accent hover:bg-accent-muted hover:text-accent"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    {t('credentials.envVars')}
-                  </Button>
-                )}
-              </div>
-            )}
-            <p className="text-xs text-text-muted">{t('credentials.usedForTokens')}</p>
+                  ))}
+                  {Object.keys(envVars).length === 0 && !isAddingEnvVar && (
+                    <p className="text-xs text-text-muted text-center py-2">
+                      {t('credentials.noEnvVars')}
+                    </p>
+                  )}
+                  {isAddingEnvVar && (
+                    <div className="space-y-2 p-2 rounded bg-background border border-accent/30">
+                      <Input
+                        type="text"
+                        value={newEnvKey}
+                        onChange={(e) => setNewEnvKey(e.target.value)}
+                        placeholder="NOTION_TOKEN"
+                        className="h-auto border-border px-3 py-1.5 font-mono text-sm"
+                        autoFocus
+                      />
+                      <Input
+                        type="password"
+                        value={newEnvValue}
+                        onChange={(e) => setNewEnvValue(e.target.value)}
+                        placeholder={t('mcp.envValuePlaceholder')}
+                        className="h-auto border-border px-3 py-1.5 font-mono text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveNewEnvVar}
+                          disabled={!newEnvKey.trim()}
+                          className="h-auto flex-1 px-3 py-1 text-xs"
+                        >
+                          {t('common.save')}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleCancelNewEnvVar}
+                          className="h-auto flex-1 border-transparent bg-surface-muted px-3 py-1 text-xs hover:bg-surface-active"
+                        >
+                          {t('common.cancel')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {!isAddingEnvVar && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleAddEnvVar}
+                      className="mt-2 h-auto w-full gap-1 border-dashed border-border px-3 py-1.5 text-xs hover:border-accent hover:bg-accent-muted hover:text-accent"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {t('credentials.envVars')}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </>
       ) : (
-        <div>
-          <label className="block text-sm font-medium text-text-primary mb-2">{t('mcp.url')}</label>
-          <Input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/mcp"
-            className="h-auto px-4 py-2 font-mono text-sm"
-            required
-          />
+        <div className="ui-form-row">
+          <label className="ui-form-label items-center">{t('mcp.url')}</label>
+          <div className="ui-form-value py-1.5">
+            <Input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/mcp"
+              className="h-8 px-2.5 font-mono text-[13px]"
+              required
+            />
+          </div>
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="enabled"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-        />
-        <label htmlFor="enabled" className="text-sm text-text-primary">
-          {t('mcp.enableConnector')}
-        </label>
+      <div className="ui-form-row">
+        <div className="ui-form-label items-center">{t('mcp.status')}</div>
+        <div className="ui-form-value">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="enabled"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+            />
+            <label htmlFor="enabled" className="text-sm text-text-primary">
+              {t('mcp.enableConnector')}
+            </label>
+          </div>
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        <Button
-          type="submit"
-          variant="primary"
-          loading={isLoading}
-          className="h-auto flex-1 gap-2 px-4 py-2"
-        >
+      <div className="flex justify-end gap-2 border-t border-border-subtle bg-surface-muted px-3 py-2">
+        <Button type="submit" variant="primary" loading={isLoading} className="h-8 gap-2 px-4">
           {isLoading ? t('common.saving') : t('common.save')}
         </Button>
-        <Button
-          variant="secondary"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="h-auto border-transparent bg-surface-muted px-4 py-2 hover:bg-surface-active"
-        >
+        <Button variant="secondary" onClick={onCancel} disabled={isLoading} className="h-8 px-4">
           {t('common.cancel')}
         </Button>
       </div>

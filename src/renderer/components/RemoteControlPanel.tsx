@@ -663,7 +663,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="w-full overflow-hidden rounded-md border border-border-subtle bg-surface">
-      <div className="space-y-3 p-4 sm:p-5">
+      <div className="space-y-3 p-3">
         <GatewayControlCard
           status={status}
           isTogglingGateway={isTogglingGateway}
@@ -686,14 +686,14 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       />
 
       {!serviceRunning && (
-        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover/50 px-4 py-2.5 text-xs text-text-secondary sm:px-5">
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover/50 px-3 py-2 text-xs text-text-secondary">
           <Info className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           {t('remote.startToConfigure')}
         </div>
       )}
 
       <div
-        className={`p-4 sm:p-5 ${!serviceRunning ? 'opacity-60' : ''}`}
+        className={`p-3 ${!serviceRunning ? 'opacity-60' : ''}`}
         aria-disabled={!serviceRunning || undefined}
         {...(!serviceRunning ? { inert: '' } : {})}
       >

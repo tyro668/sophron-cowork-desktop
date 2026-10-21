@@ -14,16 +14,16 @@ interface Props {
 export function ChannelList({ channels, onSelect, onManage }: Props) {
   const { t } = useTranslation();
   return (
-    <section aria-label={t('remote.channelListTitle')} className="space-y-2">
+    <section aria-label={t('remote.channelListTitle')} className="ui-group bg-surface">
       {channels.map((channel) => {
         const state = getChannelState(channel);
         const configured = channel.configured;
         return (
           <div
             key={channel.type}
-            className="flex items-center gap-3 rounded-xl border border-border-muted px-4 py-3"
+            className="flex items-center gap-3 border-b border-border-subtle px-3 py-2.5 last:border-b-0"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-active">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-surface-active">
               <ChannelBrandIcon type={channel.type} />
             </span>
             <div className="min-w-0 flex-1">

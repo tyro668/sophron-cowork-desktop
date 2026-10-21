@@ -2641,7 +2641,9 @@
     "syncDetailLima": "正在将项目文件复制到隔离的 Lima 环境",
     "syncDetailSkills": "正在将内置技能复制到沙盒",
     "syncDetailFallback": "正在回退到直接访问模式（安全性较低）",
-    "syncDetailCompleted": "已同步 {{count}} 个文件"
+    "syncDetailCompleted": "已同步 {{count}} 个文件",
+    "available": "可用",
+    "unavailable": "不可用"
   },
   "mcp": {
     "noConnectors": "未配置连接器",
@@ -2685,7 +2687,8 @@
     "commandRequired": "命令不能为空",
     "urlRequired": "URL 不能为空",
     "toolCount": "{{count}} 个工具",
-    "callCount": "{{count}} 次调用"
+    "callCount": "{{count}} 次调用",
+    "status": "状态"
   },
   "credentials": {
     "envVars": "环境变量",
