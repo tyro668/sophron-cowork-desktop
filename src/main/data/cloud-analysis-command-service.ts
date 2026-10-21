@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { detectDriveFileHeader } from './drive-preview-header';
 import {
   cloudInputSyncSchema,
   cloudOutputSyncSchema,
@@ -585,20 +586,18 @@ export class CloudAnalysisCommandService {
   }
 }
 
-function driveFilePreviewToDataPreview(result: {
+export function driveFilePreviewToDataPreview(result: {
   file: { sheets?: Array<{ name: string; rowCount: number; columnCount: number }> };
   sheetName: string;
   rows: unknown[][];
 }): DataRawTablePreview {
   const sheet =
     result.file.sheets?.find((item) => item.name === result.sheetName) ?? result.file.sheets?.[0];
-  const headerRow = Array.isArray(result.rows[0]) ? result.rows[0] : [];
-  const columnCount = sheet?.columnCount ?? headerRow.length;
-  const columns = Array.from(
-    { length: columnCount },
-    (_, index) => String(headerRow[index] ?? '').trim() || `col_${index + 1}`
+  const { columns, dataStart } = detectDriveFileHeader(
+    result.rows,
+    sheet?.columnCount ?? (Array.isArray(result.rows[0]) ? result.rows[0].length : 0)
   );
-  const dataRows = result.rows.slice(1);
+  const dataRows = result.rows.slice(dataStart);
   return {
     columns,
     columnTypes: columns.map((name) => ({ name, type: 'text', storageType: 'VARCHAR' })),
