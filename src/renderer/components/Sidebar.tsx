@@ -1621,6 +1621,17 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               <div className="ui-form-label items-center">{t('sidebar.loginMethodLabel')}</div>
               <div className="ui-form-value text-[13px]">{t('sidebar.loginMethodBrowser')}</div>
             </div>
+            {desktopAuthStatus?.apiOrigin && (
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">{t('sidebar.loginAddressLabel')}</div>
+                <div
+                  className="ui-form-value truncate font-mono text-[12px] text-text-secondary"
+                  title={desktopAuthStatus.apiOrigin}
+                >
+                  <span className="truncate">{desktopAuthStatus.apiOrigin}</span>
+                </div>
+              </div>
+            )}
             <div className="ui-form-row">
               <div className="ui-form-label items-center">{t('sidebar.loginStatusLabel')}</div>
               <div className="ui-form-value">
