@@ -635,7 +635,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <div
               className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
             >
-              <div className="glass-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-none border-0">
+              <div className="ui-group ui-group-fill flex min-h-0 min-w-0 flex-col bg-surface">
                 <div className="grid h-10 flex-shrink-0 grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted">
                   <span>{t('skills.workspace.table.skill')}</span>
                   <span>{t('skills.workspace.table.type')}</span>
@@ -682,7 +682,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   )}
                 </div>
 
-                <div className="flex min-h-14 flex-shrink-0 items-center justify-between gap-2 border-t border-border-muted px-4 py-1 text-xs font-medium text-text-secondary">
+                <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-t border-border-subtle bg-surface-muted pl-3 pr-1.5 text-xs font-medium text-text-secondary">
                   <span className="min-w-0 truncate">
                     {t('skills.workspace.totalCount', {
                       count: tableItems.length,
@@ -690,7 +690,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     })}
                   </span>
                   <div className="flex flex-shrink-0 items-center gap-2">
-                    <span className="inline-flex h-8 items-center rounded-lg border border-border-muted bg-surface px-3">
+                    <span className="inline-flex h-7 items-center rounded-md border border-border-muted bg-surface px-2.5">
                       {t('data.rowsPerPage', { count: SKILL_TABLE_PAGE_SIZE })}
                     </span>
                     {pageCount > 1 && (
@@ -698,12 +698,12 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                         type="button"
                         onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                         disabled={safeCurrentPage <= 1}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </button>
                     )}
-                    <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-accent/25 bg-accent-muted px-2 text-accent">
+                    <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-accent/25 bg-accent-muted px-2 text-accent">
                       {safeCurrentPage}
                     </span>
                     {(pageCount > 1 || hasNextPage) && (
@@ -711,7 +711,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                         type="button"
                         onClick={() => void handleNextPage()}
                         disabled={!hasNextPage || isPluginLoadingMore}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border-muted bg-surface text-text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         {isPluginLoadingMore ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -727,97 +727,110 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               {selectedItem && (
                 <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-subtle xl:flex">
                   <>
-                    <div className="flex items-start gap-3 border-b border-border-muted px-4 py-3">
-                      <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-accent-muted text-accent">
-                        <SelectedIcon className="h-7 w-7" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-[16px] font-semibold text-text-primary">
-                          {selectedItem.name}
-                        </h3>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+                      <section className="ui-group bg-surface">
+                        <div className="flex min-h-10 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
+                          <SelectedIcon className="h-4 w-4 flex-shrink-0 text-text-muted" />
+                          <h3 className="min-w-0 truncate text-[14px] font-semibold text-text-primary">
+                            {selectedItem.name}
+                          </h3>
                           <SkillTypeBadge item={selectedItem} />
                           <SkillStatusBadge item={selectedItem} />
                         </div>
-                      </div>
-                    </div>
-
-                    <p className="border-b border-border-muted px-4 py-3 line-clamp-4 break-words text-[13px] leading-5 text-text-secondary">
-                      {selectedItem.description || t('skills.installSkillsDesc')}
-                    </p>
-
-                    <div className="border-b border-border-muted px-4 py-3">
-                      <h4 className="text-[13px] font-semibold text-text-primary">
-                        {t('skills.workspace.supportedCapabilities')}
-                      </h4>
-                      <div className="mt-3 space-y-2">
-                        {selectedItem.tags.map((tag) => (
-                          <div
-                            key={`${selectedItem.id}:${tag}`}
-                            className="flex min-w-0 items-center gap-2 text-[12px] font-medium text-text-secondary"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-                            <span className="min-w-0 flex-1 truncate" title={tag}>
-                              {tag}
-                            </span>
+                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                          <span className="ui-form-label items-start pt-2.5">
+                            {t('skills.workspace.descriptionLabel')}
+                          </span>
+                          <div className="ui-form-value">
+                            <p className="line-clamp-4 break-words py-1 text-[12.5px] leading-5 text-text-secondary">
+                              {selectedItem.description || t('skills.installSkillsDesc')}
+                            </p>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      </section>
+
+                      {selectedItem.tags.length > 0 && (
+                        <section className="ui-group bg-surface">
+                          <h4 className="ui-group-title">
+                            {t('skills.workspace.supportedCapabilities')}
+                          </h4>
+                          {selectedItem.tags.map((tag) => (
+                            <div
+                              key={`${selectedItem.id}:${tag}`}
+                              className="flex h-9 min-w-0 items-center gap-2 border-b border-border-subtle px-3 text-[12.5px] text-text-secondary last:border-b-0"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+                              <span className="min-w-0 flex-1 truncate" title={tag}>
+                                {tag}
+                              </span>
+                            </div>
+                          ))}
+                        </section>
+                      )}
+
+                      <section className="ui-group bg-surface">
+                        <h4 className="ui-group-title">{t('skills.workspace.detailsTitle')}</h4>
+                        {selectedSkill && (
+                          <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                            <span className="ui-form-label items-center">
+                              {t('skills.workspace.chatDisplay')}
+                            </span>
+                            <div className="ui-form-value">
+                              <span className="inline-flex h-6 items-center gap-1 self-start rounded-md border border-accent/20 bg-accent-muted px-2 text-[12px] text-accent-text">
+                                <SelectedIcon className="h-3 w-3" />
+                                {t('skills.workspace.usedSkillChip', { name: selectedSkill.name })}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                          <span className="ui-form-label items-center">
+                            {t('skills.workspace.source')}
+                          </span>
+                          <div className="ui-form-value text-[12.5px] text-text-secondary">
+                            {selectedItem.kind === 'plugin'
+                              ? t('skills.skillHubSource')
+                              : selectedItem.type === 'builtin'
+                                ? t('skills.workspace.systemBuiltin')
+                                : t('skills.customSkills')}
+                          </div>
+                        </div>
+                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                          <span className="ui-form-label items-center">
+                            {t('skills.workspace.table.updatedAt')}
+                          </span>
+                          <div className="ui-form-value font-mono text-[12px] text-text-secondary">
+                            {formatSkillDate(selectedItem.updatedAt)}
+                          </div>
+                        </div>
+                        {selectedSkill?.path && (
+                          <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                            <span className="ui-form-label items-center">
+                              {t('skills.workspace.directory')}
+                            </span>
+                            <div
+                              className="ui-form-value truncate font-mono text-[11.5px] text-text-secondary"
+                              title={selectedSkill.path}
+                            >
+                              <span className="truncate">{selectedSkill.path}</span>
+                            </div>
+                          </div>
+                        )}
+                      </section>
+
+                      <section className="ui-group bg-surface">
+                        <h4 className="ui-group-title">{t('skills.workspace.recentCallsTitle')}</h4>
+                        <p className="px-3 py-2 text-[12px] text-text-muted">
+                          {t('skills.workspace.recentCallsUnavailable')}
+                        </p>
+                      </section>
                     </div>
 
                     {selectedSkill && (
-                      <div className="border-b border-border-muted px-4 py-3">
-                        <h4 className="text-[13px] font-semibold text-text-primary">
-                          {t('skills.workspace.chatDisplay')}
-                        </h4>
-                        <span className="mt-2 inline-flex h-6 items-center gap-1 rounded-md border border-accent/20 bg-accent-muted px-2 text-[12px] text-accent-text">
-                          <SelectedIcon className="h-3 w-3" />
-                          {t('skills.workspace.usedSkillChip', { name: selectedSkill.name })}
-                        </span>
-                      </div>
-                    )}
-
-                    <dl className="space-y-2 border-b border-border-muted px-4 py-3 text-[12px]">
-                      <div>
-                        <dt className="font-semibold text-text-primary">
-                          {t('skills.workspace.table.updatedAt')}
-                        </dt>
-                        <dd className="mt-1 text-text-secondary">
-                          {formatSkillDate(selectedItem.updatedAt)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="font-semibold text-text-primary">
-                          {t('skills.workspace.source')}
-                        </dt>
-                        <dd className="mt-1 text-text-secondary">
-                          {selectedItem.kind === 'plugin'
-                            ? t('skills.skillHubSource')
-                            : selectedItem.type === 'builtin'
-                              ? t('skills.workspace.systemBuiltin')
-                              : t('skills.customSkills')}
-                        </dd>
-                      </div>
-                      {selectedSkill?.path && (
-                        <div>
-                          <dt className="font-semibold text-text-primary">
-                            {t('skills.workspace.directory')}
-                          </dt>
-                          <dd
-                            className="mt-1 truncate font-mono text-[11.5px] text-text-secondary"
-                            title={selectedSkill.path}
-                          >
-                            {selectedSkill.path}
-                          </dd>
-                        </div>
-                      )}
-                    </dl>
-
-                    {selectedSkill && (
-                      <div className="mt-auto flex gap-2 border-t border-border-muted px-4 py-3">
+                      <div className="grid h-11 flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-t border-border-subtle">
                         <Button
                           variant="primary"
-                          className="h-9 flex-1"
+                          className="h-full rounded-none"
                           disabled={!selectedSkill.enabled}
                           onClick={() => {
                             const store = useAppStore.getState();
@@ -831,8 +844,8 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                           {t('skills.workspace.useInChat')}
                         </Button>
                         <Button
-                          variant="secondary"
-                          className="h-9"
+                          variant="ghost"
+                          className="h-full rounded-none border-l border-border-subtle"
                           disabled={isLoading}
                           onClick={() => void handleToggleEnabled(selectedSkill)}
                         >
@@ -852,8 +865,8 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       <div
                         className={
                           selectedSkill
-                            ? 'px-4 pb-3'
-                            : 'mt-auto border-t border-border-muted px-4 py-3'
+                            ? 'border-t border-border-subtle'
+                            : 'border-t border-border-subtle'
                         }
                       >
                         <button
@@ -866,10 +879,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                             pluginActionKey !== null ||
                             isLoading
                           }
-                          className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                          className={`inline-flex h-10 w-full items-center justify-center gap-2 px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
                             selectedPlugin
-                              ? 'border-accent/20 bg-accent-muted text-accent hover:bg-accent-muted'
-                              : 'border-error/20 bg-error/5 text-error hover:bg-error/10'
+                              ? 'bg-accent-muted text-accent hover:bg-accent-muted'
+                              : 'text-error hover:bg-error/10'
                           }`}
                         >
                           {selectedPlugin ? (
