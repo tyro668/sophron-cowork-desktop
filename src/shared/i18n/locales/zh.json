@@ -566,7 +566,11 @@
         "raw": "原始表",
         "pipeline": "加工",
         "result": "结果表",
-        "flowLabel": "数据流"
+        "flowLabel": "数据流",
+        "openPipeline": "打开加工",
+        "downstreamLabel": "下游",
+        "downstreamText": "被 {{count}} 个自动化读取（{{names}}）",
+        "downstreamNone": "暂无自动化读取本表"
       },
       "sections": {
         "basic": "基本信息",
@@ -577,6 +581,9 @@
         "deleteTitle": "删除结果表",
         "deleteHint": "删除表及其数据，关联的加工输出需要重新登记，无法恢复。",
         "deleteAction": "删除结果表…"
+      },
+      "basic": {
+        "nameLabel": "名称"
       }
     },
     "editor": {

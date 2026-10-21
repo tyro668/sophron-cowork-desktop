@@ -566,7 +566,11 @@
         "raw": "Raw",
         "pipeline": "Pipeline",
         "result": "Result",
-        "flowLabel": "Flow"
+        "flowLabel": "Flow",
+        "openPipeline": "Open pipeline",
+        "downstreamLabel": "Downstream",
+        "downstreamText": "Read by {{count}} automations ({{names}})",
+        "downstreamNone": "No automation reads this table"
       },
       "sections": {
         "basic": "Basics",
@@ -577,6 +581,9 @@
         "deleteTitle": "Delete result table",
         "deleteHint": "Deletes the table and its data. This cannot be undone.",
         "deleteAction": "Delete result table…"
+      },
+      "basic": {
+        "nameLabel": "Name"
       }
     },
     "editor": {

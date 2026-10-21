@@ -13,11 +13,13 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Save,
   Trash2,
   UploadCloud,
   Table2,
   ArrowRight,
+  Check,
+  ExternalLink,
+  Workflow,
 } from 'lucide-react';
 import type {
   DataPipeline,
@@ -72,6 +74,11 @@ import {
   Input,
 } from '../ui';
 import { ResultTableAutomations } from './table-automations';
+import { resultTableDeleteImpact } from '../../features/data/utils/delete-impact';
+import {
+  getAutomationTableBindings,
+  tableBindingKey,
+} from '../../../shared/automation/table-bindings';
 
 /** Shared export flow for result tables (save dialog, success toast, silent cancel). */
 function useResultTableExport() {
@@ -641,6 +648,7 @@ export function ResultTableEditor({
   onSave,
   onRunPipeline,
   onDelete,
+  onOpenPipeline,
 }: {
   resultTable: DataResultTable;
   rawTables: DataRawTable[];
@@ -655,8 +663,32 @@ export function ResultTableEditor({
   ) => void | Promise<void>;
   onRunPipeline: (pipeline: DataPipeline) => void | Promise<void>;
   onDelete?: (resultTable: DataResultTable) => void | Promise<void>;
+  onOpenPipeline?: (pipeline: DataPipeline) => void;
 }) {
   const { t } = useTranslation();
+  const [readers, setReaders] = useState<string[]>([]);
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve()
+      .then(() => dataClient.listAutomations())
+      .then((result) => {
+        if (!active) return;
+        const ref = { kind: 'result' as const, tableId: resultTable.id };
+        setReaders(
+          (result?.automations ?? [])
+            .filter((automation) =>
+              getAutomationTableBindings(automation).some(
+                (binding) => tableBindingKey(binding) === tableBindingKey(ref)
+              )
+            )
+            .map((automation) => automation.name)
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [resultTable.id]);
   const [localName, setLocalName] = useState(resultTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
   const [sourceRawTableId, setSourceRawTableId] = useState(resultTable.sourceRawTableId ?? '');
@@ -784,7 +816,7 @@ export function ResultTableEditor({
         <div className="flex min-w-0 items-stretch">
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+            className="inline-flex w-[104px] flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.resultTables.editor.back')}
@@ -809,12 +841,12 @@ export function ResultTableEditor({
                 disabled={busy}
                 maxLength={50}
                 aria-label={t('data.resultTables.editor.name')}
-                className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[15px] font-medium text-text-secondary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-8 min-w-0 max-w-[18rem] truncate border-0 bg-transparent px-0 text-[14px] font-semibold text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60"
                 placeholder={t('data.resultTables.editor.title')}
               />
             ) : (
               <div
-                className="flex h-8 min-w-0 max-w-[18rem] items-center truncate text-[15px] font-medium text-text-secondary"
+                className="flex h-8 min-w-0 max-w-[18rem] items-center truncate text-[14px] font-semibold text-text-primary"
                 title={localName || t('data.resultTables.editor.title')}
               >
                 {localName || t('data.resultTables.editor.title')}
@@ -839,7 +871,7 @@ export function ResultTableEditor({
               onClick={() => void handleRunRelatedPipeline()}
               disabled={busy || runBusy}
               title={t('data.resultTables.editor.runPipelineTitle', { name: relatedPipeline.name })}
-              className="inline-flex h-full items-center justify-center gap-1.5 jade-primary-button border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-full w-[92px] items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Play className="h-3.5 w-3.5" />
               {runBusy
@@ -852,7 +884,7 @@ export function ResultTableEditor({
             onClick={() => void handlePreviewToggle()}
             disabled={busy && activeTab !== 'data'}
             aria-pressed={activeTab === 'data'}
-            className={`inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`inline-flex h-full w-[92px] items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               activeTab === 'data'
                 ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
@@ -871,9 +903,12 @@ export function ResultTableEditor({
             type="button"
             onClick={() => void handleSave()}
             disabled={!canSave}
-            className="inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="result-editor-save"
+            className={`inline-flex h-full w-[92px] items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50 ${
+              canSave ? 'text-accent' : 'text-text-secondary hover:text-accent'
+            }`}
           >
-            <Save className="h-3.5 w-3.5" />
+            <Check className="h-3.5 w-3.5" />
             {busy ? t('common.saving') : t('common.save')}
           </button>
           <DataMoreMenu
@@ -924,83 +959,134 @@ export function ResultTableEditor({
               <StatCard
                 label={t('data.resultTables.stats.pipeline')}
                 value={relatedPipeline?.name ?? '—'}
+                link={Boolean(relatedPipeline)}
               />
               <StatCard
                 label={t('data.resultTables.stats.updatedAt')}
                 value={formatDateTime(resultTable.updatedAt)}
+                plain
               />
             </div>
-            <section className="ui-group bg-surface">
+            <section className="ui-group ui-form-flush bg-surface">
+              <div className="ui-group-title">{t('data.resultTables.sections.basic')}</div>
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">
+                  {t('data.resultTables.basic.nameLabel')}
+                </div>
+                <div className="ui-form-value">
+                  <input
+                    value={localName}
+                    onChange={(event) => setLocalName(event.target.value)}
+                    disabled={busy}
+                    maxLength={50}
+                    aria-label={t('data.resultTables.editor.name')}
+                    data-testid="result-basic-name"
+                    className="outline-none hover:bg-surface-hover focus:bg-surface-hover disabled:opacity-60"
+                  />
+                </div>
+              </div>
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">
+                  <span className="inline-flex items-center gap-1.5">
+                    {t('data.resultTables.editor.rawTable')}
+                    <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
+                  </span>
+                </div>
+                <div className="ui-form-value">
+                  <RawTableSelect
+                    flush
+                    value={sourceRawTableId}
+                    options={rawTableOptions}
+                    disabled={busy || isRawTablesLoading}
+                    onChange={setSourceRawTableId}
+                  />
+                </div>
+              </div>
+            </section>
+            <section className="ui-group ui-form-flush bg-surface">
               <div className="ui-group-title">{t('data.resultTables.lineage.title')}</div>
               <div className="ui-form-row">
                 <div className="ui-form-label items-center">
                   {t('data.resultTables.lineage.flowLabel')}
                 </div>
-                <div className="flex min-h-10 flex-wrap items-center gap-2 px-2 py-1.5 text-[13px]">
-                  <LineageChip
-                    kind={t('data.resultTables.lineage.raw')}
-                    name={
-                      rawTables.find((item) => item.id === (resultTable.sourceRawTableId ?? ''))
-                        ?.name ?? '—'
-                    }
-                  />
-                  <ArrowRight className="h-3.5 w-3.5 text-text-muted" />
-                  <LineageChip
-                    kind={t('data.resultTables.lineage.pipeline')}
-                    name={relatedPipeline?.name ?? '—'}
-                  />
-                  <ArrowRight className="h-3.5 w-3.5 text-text-muted" />
-                  <LineageChip
-                    kind={t('data.resultTables.lineage.result')}
-                    name={resultTable.name}
-                    active
-                  />
+                <div className="ui-form-value !flex-row">
+                  <div className="flex min-h-[35px] min-w-0 flex-1 flex-wrap items-center gap-1.5 px-[10px] py-1 text-[12.5px]">
+                    <LineageChip
+                      kind={t('data.resultTables.lineage.raw')}
+                      name={
+                        rawTables.find(
+                          (item) =>
+                            item.id ===
+                            (resultTable.sourceRawTableId ??
+                              relatedPipeline?.sourceRawTableId ??
+                              '')
+                        )?.name ?? '—'
+                      }
+                    />
+                    <ArrowRight className="h-3 w-3 text-text-muted" />
+                    <LineageChip
+                      kind={t('data.resultTables.lineage.pipeline')}
+                      name={relatedPipeline?.name ?? '—'}
+                    />
+                    <ArrowRight className="h-3 w-3 text-text-muted" />
+                    <LineageChip
+                      kind={t('data.resultTables.lineage.result')}
+                      name={resultTable.name}
+                      active
+                    />
+                  </div>
+                  {relatedPipeline && onOpenPipeline ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenPipeline(relatedPipeline)}
+                      className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      {t('data.resultTables.lineage.openPipeline')}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">
+                  {t('data.resultTables.lineage.downstreamLabel')}
+                </div>
+                <div className="ui-form-value">
+                  <span className="ui-flush-text">
+                    {readers.length > 0
+                      ? t('data.resultTables.lineage.downstreamText', {
+                          count: readers.length,
+                          names: readers.join('、'),
+                        })
+                      : t('data.resultTables.lineage.downstreamNone')}
+                  </span>
                 </div>
               </div>
             </section>
-            <div className="grid">
-              <section className="ui-group bg-surface">
-                <div className="ui-group-title">{t('data.resultTables.sections.basic')}</div>
-                <div className="ui-form-row">
-                  <div className="ui-form-label items-center">
-                    <span className="inline-flex items-center gap-1.5">
-                      {t('data.resultTables.editor.rawTable')}
-                      <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
-                    </span>
-                  </div>
-                  <div className="ui-form-value">
-                    <RawTableSelect
-                      value={sourceRawTableId}
-                      options={rawTableOptions}
-                      disabled={busy || isRawTablesLoading}
-                      onChange={setSourceRawTableId}
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
             {onDelete && (
-              <section className="ui-group ui-group-danger bg-surface">
-                <div className="ui-group-title !text-error">
-                  {t('data.resultTables.danger.title')}
-                </div>
+              <section
+                className="ui-group ui-form-flush bg-surface"
+                data-testid="result-danger-zone"
+              >
+                <div className="ui-group-title">{t('data.resultTables.danger.title')}</div>
                 <div className="ui-form-row">
                   <div className="ui-form-label items-center">
                     {t('data.resultTables.danger.deleteTitle')}
                   </div>
-                  <div className="flex min-w-0 items-center justify-between gap-3 px-2 py-1.5">
-                    <div className="min-w-0 text-xs text-text-muted">
-                      {t('data.resultTables.danger.deleteHint')}
-                    </div>
-                    <Button
-                      variant="danger-outline"
-                      size="sm"
+                  <div className="ui-form-value !flex-row">
+                    <span className="flex min-w-0 flex-1 items-center px-[10px] py-2 text-[12.5px] text-text-muted">
+                      {t('data.resultTables.danger.deleteHint')}{' '}
+                      {resultTableDeleteImpact(resultTable, t)}
+                    </span>
+                    <button
+                      type="button"
                       disabled={busy}
                       onClick={() => void onDelete(resultTable)}
+                      className="inline-flex w-[140px] flex-shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       {t('data.resultTables.danger.deleteAction')}
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </section>
@@ -1010,6 +1096,8 @@ export function ResultTableEditor({
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
           <GlassDataGridPreview
             enableFilters
+            onExport={canExport ? (format) => void handleExport(format) : undefined}
+            exportBusy={exportDisabled}
             preview={preview}
             isLoading={previewLoading}
             error={previewError}
@@ -1089,16 +1177,33 @@ function InlineInfoTooltip({ label }: { label: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  link,
+  plain,
+}: {
+  label: string;
+  value: string;
+  link?: boolean;
+  plain?: boolean;
+}) {
   return (
     <div className="bg-surface">
       <div className="flex h-[30px] items-center border-b border-border-subtle bg-surface-muted px-3 text-xs text-text-secondary">
         {label}
       </div>
       <div
-        className="flex h-10 items-center truncate px-3 text-[15px] font-semibold tabular-nums text-text-primary"
+        className={`flex h-10 items-center gap-1.5 truncate px-3 tabular-nums ${
+          link
+            ? 'text-[12.5px] font-medium text-accent'
+            : plain
+              ? 'text-[12.5px] text-text-primary'
+              : 'text-[15px] font-semibold text-text-primary'
+        }`}
         title={value}
       >
+        {link ? <Workflow className="h-3.5 w-3.5 flex-shrink-0" /> : null}
         {value}
       </div>
     </div>
@@ -1115,15 +1220,15 @@ function LineageChip({
   active?: boolean;
 }) {
   return (
-    <span
-      className={`inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-md border px-2 ${
-        active
-          ? 'border-accent/40 bg-accent-muted text-accent'
-          : 'border-border-muted bg-surface-muted text-text-primary'
-      }`}
-    >
-      <span className="text-[11px] text-text-muted">{kind}</span>
-      <span className="truncate font-medium">{name}</span>
+    <span className="inline-flex max-w-[16rem] items-center gap-1.5">
+      <span
+        className={`rounded px-1.5 py-px text-[11px] ${
+          active ? 'bg-accent-muted text-accent' : 'bg-surface-muted text-text-secondary'
+        }`}
+      >
+        {kind}
+      </span>
+      <span className="truncate text-text-primary">{name}</span>
     </span>
   );
 }
