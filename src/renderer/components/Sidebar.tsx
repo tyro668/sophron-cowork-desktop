@@ -673,7 +673,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }}
         onMouseEnter={() => setHoveredSession(session.id)}
         onMouseLeave={() => setHoveredSession(null)}
-        className={`group relative cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors ${
+        className={`group relative cursor-pointer transition-colors ${
+          isMac
+            ? 'rounded-lg px-2.5 py-1.5'
+            : 'border-b border-border-subtle py-1.5 pl-7 pr-2.5 last:border-b-0'
+        } ${
           isSelectMode && isSelected
             ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
             : isActive && !isSelectMode
@@ -682,7 +686,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }`}
       >
         {isActive && !isSelectMode && (
-          <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-accent" />
+          <span
+            className={`absolute left-0 w-[3px] bg-accent ${isMac ? 'top-1.5 bottom-1.5 rounded-r-full' : 'inset-y-0'}`}
+          />
         )}
         <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
           {isSelectMode && (
@@ -1189,7 +1195,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </nav>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className={`flex-1 overflow-y-auto ${isMac ? 'px-3 py-4' : 'pb-2.5 pt-1'}`}>
         {pinnedSessions.length > 0 && !isSelectMode && (
           <div className="mb-4">
             <div className="mb-1 flex items-center gap-1.5 px-3 text-[12px] font-semibold leading-5 text-text-muted">
@@ -1201,7 +1207,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             </div>
           </div>
         )}
-        <div className="mb-2 px-3 text-[12px] font-semibold leading-5 text-text-muted">
+        <div
+          className={`text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-2 px-3' : 'mb-1 px-3.5'}`}
+        >
           {t('sidebar.projectsTitle')}
         </div>
         {groupedSessions.length === 0 ? (
@@ -1210,13 +1218,26 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('sidebar.noTasksHint')}</p>
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className={isMac ? 'space-y-1' : 'space-y-2.5'}>
             {groupedSessions.map((group) => {
               const isProjectExpanded = expandedProjectKeys.has(group.key);
               const isSavingProjectName = savingProjectRenameKey === group.key;
               return (
-                <section key={group.key} className="space-y-1">
-                  <div className="px-1.5">
+                <section
+                  key={group.key}
+                  className={
+                    isMac
+                      ? 'space-y-1'
+                      : 'mx-3 overflow-hidden rounded-md border border-border-subtle bg-surface'
+                  }
+                >
+                  <div
+                    className={
+                      isMac
+                        ? 'px-1.5'
+                        : `bg-surface-muted ${isProjectExpanded && group.sessions.length > 0 ? 'border-b border-border-subtle' : ''}`
+                    }
+                  >
                     {renamingProjectKey === group.key ? (
                       <form
                         className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-background p-1 shadow-soft"
@@ -1258,7 +1279,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                         </button>
                       </form>
                     ) : (
-                      <div className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-surface-hover/50">
+                      <div
+                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 ${isMac ? 'rounded-lg px-1.5 py-1' : 'h-[30px] pl-1.5 pr-1'}`}
+                      >
                         <button
                           type="button"
                           onClick={() => handleToggleProject(group)}
@@ -1338,7 +1361,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                     </div>
                   )}
                   {isProjectExpanded && (
-                    <div className="ml-6 space-y-0.5 pl-2">
+                    <div className={isMac ? 'ml-6 space-y-0.5 pl-2' : ''}>
                       {group.sessions.map((session) => renderSessionRow(session))}
                     </div>
                   )}
