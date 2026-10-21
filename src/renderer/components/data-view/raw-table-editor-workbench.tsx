@@ -54,7 +54,6 @@ import {
   RawTableCheckbox,
   RawTableSelect,
   RawTableStatusBadge,
-  editorHeaderRowClass,
   formatCloudMirrorLocation,
   formatDateTime,
   formatDisplayPath,
@@ -777,16 +776,18 @@ export function RawTableEditorWorkbench({
   return (
     <>
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className={`${editorHeaderRowClass} justify-between`}>
-          <div className="flex min-w-0 items-center gap-4">
+        <div
+          className={`flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle`}
+        >
+          <div className="flex min-w-0 items-stretch">
             <button
               onClick={onBack}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+              className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               {t('data.rawTables.editor.backShort')}
             </button>
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
               <RawTableStatusBadge
                 label={
                   isConfigured
@@ -838,16 +839,16 @@ export function RawTableEditorWorkbench({
               </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-stretch">
             <button
               type="button"
               onClick={() => void handlePreviewToggle()}
               disabled={!canPreview && activeViewTab !== 'data'}
               aria-pressed={activeViewTab === 'data'}
-              className={`inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 activeViewTab === 'data'
-                  ? 'border border-accent/40 bg-accent-muted text-accent'
-                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
+                  ? 'bg-accent-muted text-accent'
+                  : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
               }`}
             >
               {activeViewTab === 'data' ? (
@@ -863,10 +864,10 @@ export function RawTableEditorWorkbench({
               type="button"
               onClick={saveRawTable}
               disabled={!canSave}
-              className={`inline-flex h-8 w-fit items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              className={`inline-flex h-full w-fit items-center justify-center gap-1.5 border-l border-border-subtle px-3.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 canSave
                   ? 'bg-accent text-accent-foreground hover:bg-accent-hover'
-                  : 'border border-border-muted bg-surface text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
+                  : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
               }`}
             >
               <Save className="h-3.5 w-3.5" />
@@ -1474,14 +1475,14 @@ export function RawTableEditorWorkbench({
                   ) : null}
 
                   {localSourceKind === 'csv' ? (
-                    <div className="grid gap-3">
+                    <div>
                       {[
                         ['header', 'data.rawTables.editor.csvHeader'],
                         ['dataRegion', 'data.rawTables.editor.csvDataRegion'],
                         ['delimiter', 'data.rawTables.editor.csvDelimiter'],
                       ].map(([key, labelKey]) => (
                         <RawTableConfigRow key={key} label={t(labelKey)}>
-                          <div className="text-[13px] font-medium text-text-primary">
+                          <div className="text-[13px] text-text-muted">
                             {t('data.rawTables.editor.autoDetected')}
                           </div>
                         </RawTableConfigRow>
@@ -1525,7 +1526,7 @@ export function RawTableEditorWorkbench({
                   ) : null}
 
                   {localSourceKind === 'folder' ? (
-                    <div className="grid gap-3">
+                    <div>
                       <RawTableConfigRow label={t('data.rawTables.editor.fileSelectionRange')}>
                         <RawTableSelect
                           value={folderConfig.fileRange}
@@ -1546,7 +1547,7 @@ export function RawTableEditorWorkbench({
                           ]}
                         />
                       </RawTableConfigRow>
-                      <div className="flex flex-wrap gap-3 px-1">
+                      <div className="flex flex-wrap gap-3 border-b border-border-subtle px-3 py-2.5">
                         <RawTableCheckbox
                           checked={folderConfig.skipEmptyFiles}
                           disabled={isBusy || !rawTable}

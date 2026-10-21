@@ -532,7 +532,8 @@
         "title": "血缘",
         "raw": "原始表",
         "pipeline": "加工",
-        "result": "结果表"
+        "result": "结果表",
+        "flowLabel": "数据流"
       },
       "sections": {
         "basic": "基本信息",
