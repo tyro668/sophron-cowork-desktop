@@ -3536,7 +3536,9 @@
       "outputSection": "Output settings",
       "targetSection": "Target file",
       "menuTitle": "Cloud sync",
-      "menuDescription": "Sync data between the cloud space and local tables"
+      "menuDescription": "Sync data between the cloud space and local tables",
+      "notConnected": "Not signed in to cloud",
+      "cloudLabel": "Cloud"
     },
     "cloudInput": {
       "title": "Sync cloud table to raw table",

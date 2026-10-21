@@ -27,7 +27,9 @@ describe('automation editor follows config design c01–c04', () => {
   });
 
   it('renders actions as grid rows with connector rows, not cards', () => {
-    expect(actions).toContain('grid-cols-[40px_minmax(0,1fr)]');
+    // No sequence-number column; steps reorder with 上移 / 下移.
+    expect(actions).not.toContain('grid-cols-[40px_minmax(0,1fr)]');
+    expect(actions).not.toContain('{index + 1}');
     expect(actions).toContain('data-testid="automation-action-connector"');
     expect(actions).not.toMatch(/<div className="ui-group bg-surface">/);
   });

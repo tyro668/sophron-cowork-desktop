@@ -1,6 +1,6 @@
 import * as Select from '@radix-ui/react-select';
 import { useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Search } from 'lucide-react';
 import { cn, selectContentClass, selectItemClass, selectTriggerClass } from './ui';
 
 const EMPTY_SELECT_VALUE = '__sophron_glass_select_empty_value__';
@@ -30,6 +30,10 @@ interface GlassSelectProps {
   searchable?: boolean;
   searchPlaceholder?: string;
   searchEmptyText?: string;
+  /** Spinner in place of the chevron while options load. */
+  loading?: boolean;
+  /** Fixed content below the option list (e.g. 「加载更多」). */
+  footer?: ReactNode;
 }
 
 export function GlassSelect({
@@ -50,6 +54,8 @@ export function GlassSelect({
   searchable = false,
   searchPlaceholder,
   searchEmptyText,
+  loading = false,
+  footer,
 }: GlassSelectProps) {
   const [search, setSearch] = useState('');
   const normalizedValue = value === undefined ? undefined : normalizeSelectValue(value);
@@ -85,7 +91,14 @@ export function GlassSelect({
         {triggerIcon}
         <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
         <Select.Icon asChild>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          {loading ? (
+            <Loader2
+              className="h-3.5 w-3.5 shrink-0 animate-spin text-text-muted"
+              data-testid="glass-select-loading"
+            />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          )}
         </Select.Icon>
       </Select.Trigger>
       <Select.Portal>
@@ -98,7 +111,7 @@ export function GlassSelect({
           className={cn(
             selectContentClass,
             'min-w-[var(--radix-select-trigger-width)] max-h-64',
-            searchable && 'flex flex-col',
+            (searchable || footer) && 'flex flex-col',
             contentClassName
           )}
         >
@@ -127,7 +140,9 @@ export function GlassSelect({
               />
             </div>
           )}
-          <Select.Viewport className={cn('p-1', searchable && 'min-h-0 flex-1 overflow-y-auto')}>
+          <Select.Viewport
+            className={cn('p-1', (searchable || footer) && 'min-h-0 flex-1 overflow-y-auto')}
+          >
             {searchable && visibleOptions.length === 0 && (
               <div className="px-2.5 py-3 text-center text-[12px] text-text-muted">
                 {searchEmptyText}
@@ -149,6 +164,9 @@ export function GlassSelect({
               </Select.Item>
             ))}
           </Select.Viewport>
+          {footer ? (
+            <div className="flex-shrink-0 border-t border-border-subtle">{footer}</div>
+          ) : null}
         </Select.Content>
       </Select.Portal>
     </Select.Root>

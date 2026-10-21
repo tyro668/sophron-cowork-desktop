@@ -126,6 +126,67 @@ export function SelectLine({
   );
 }
 
+/** Dropdown that fills a `.ui-form-flush` value cell (no border / radius). */
+export function FlushSelect({
+  value,
+  options,
+  placeholder,
+  onChange,
+  ariaLabel,
+  disabled,
+  loading,
+  footer,
+  triggerIcon,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  onChange: (value: string) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+  loading?: boolean;
+  footer?: ReactNode;
+  triggerIcon?: ReactNode;
+}) {
+  return (
+    <GlassSelect
+      value={value}
+      options={[{ value: '', label: placeholder }, ...options]}
+      onValueChange={onChange}
+      placeholder={placeholder}
+      ariaLabel={ariaLabel}
+      disabled={disabled}
+      loading={loading}
+      footer={footer}
+      triggerIcon={triggerIcon}
+      triggerClassName="w-full justify-between disabled:opacity-60"
+      contentClassName="w-[var(--radix-select-trigger-width)]"
+    />
+  );
+}
+
+/** Label with the required marker used by c13/c14. */
+export function RequiredLabel({ children }: { children: ReactNode }) {
+  return (
+    <span>
+      {children}
+      <span className="ml-0.5 text-error">*</span>
+    </span>
+  );
+}
+
+/** 30px sub-group header row inside an action (c13/c14). */
+export function SubGroupRow({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="flex h-[30px] items-center border-b border-border-subtle bg-surface-muted px-3 text-[11.5px] font-medium text-text-muted"
+      data-testid="action-subgroup-row"
+    >
+      {children}
+    </div>
+  );
+}
+
 // A searchable dropdown for long local lists (data pipelines, input/output tables);
 // the filter input lives at the top of the dropdown itself.
 export function LocalTableSelect({
