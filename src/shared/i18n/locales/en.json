@@ -377,7 +377,21 @@
         "importFailedInline": "Can't import: ",
         "columnTypesAuto": "Auto-inferred",
         "columnTypesCount": "{{count}} column type overrides",
-        "updatedAtMeta": "Data updated {{time}}"
+        "updatedAtMeta": "Data updated {{time}}",
+        "customizeFlowLabel": "Workflow",
+        "customizeModelLabel": "Model",
+        "customizeRulesHint": "The more specific the rules, the more accurate the normalizer; generating never overwrites the published version",
+        "customizeGeneratingHint": "Generating… you can switch tabs; review opens automatically when done",
+        "customizeErrorHint": "The error is on the last log line; adjust the rules and regenerate",
+        "customizeDoneHint": "Generation finished — view the code to review",
+        "regenerateProjectDraft": "Regenerate",
+        "generationStatusLabel": "Status",
+        "copyLog": "Copy log",
+        "copiedLog": "Copied",
+        "ruleLabel": "Rules",
+        "examplesLabel": "Examples",
+        "copyShort": "Copy",
+        "copiedShort": "Copied"
       },
       "status": {
         "available": "Available",

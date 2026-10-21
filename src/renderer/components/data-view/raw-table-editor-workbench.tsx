@@ -18,6 +18,7 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   Trash2,
   Upload,
@@ -43,7 +44,7 @@ import type {
 } from '../../types';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
-import { getAgentModelLabel } from '../AgentModelSelector';
+import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { LlmPromptComposer } from '../LlmPromptComposer';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
@@ -205,6 +206,7 @@ export function RawTableEditorWorkbench({
   >([]);
   const [normalizerVersionsLoading, setNormalizerVersionsLoading] = useState(false);
   const [customizeGenerationError, setCustomizeGenerationError] = useState<string | null>(null);
+  const [customizeModelMenuOpen, setCustomizeModelMenuOpen] = useState(false);
   const [customizeStep, setCustomizeStep] = useState<RawTableCustomizeStep>(() =>
     initialCustomizeStepFor(initialConfig)
   );
@@ -1094,99 +1096,122 @@ export function RawTableEditorWorkbench({
             </div>
 
             {dataProcessing.strategy === 'customize' ? (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <div className="flex h-10 flex-shrink-0 items-center gap-1 border-b border-border-muted/80 px-4">
-                  {customizeSteps.map((step, index) => {
-                    const isActive = customizeStep === step.value;
-                    const isDone = index < customizeStepIndex;
-                    const clickable = step.reachable || isActive;
-                    return (
-                      <Fragment key={step.value}>
-                        {index > 0 ? (
-                          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-text-muted/50" />
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={!clickable}
-                          onClick={() => setCustomizeStep(step.value)}
-                          className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors ${
-                            isActive
-                              ? 'text-accent'
-                              : clickable
-                                ? 'text-text-secondary hover:bg-accent-muted hover:text-accent'
-                                : 'cursor-not-allowed text-text-muted/60'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-4.5 w-4.5 items-center justify-center rounded-full text-[10px] font-semibold ${
-                              isActive
-                                ? 'bg-accent text-accent-foreground'
-                                : isDone
-                                  ? 'bg-accent-muted text-accent'
-                                  : 'bg-surface-active text-text-muted'
-                            }`}
-                          >
-                            {index + 1}
-                          </span>
-                          {step.label}
-                        </button>
-                      </Fragment>
-                    );
-                  })}
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  {customizeStep === 'rules' ? (
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="grid flex-shrink-0 gap-2 border-b border-border-muted px-4 py-3">
-                        <span className="inline-flex items-center gap-2 text-[13px] font-medium text-text-secondary">
-                          {t('data.rawTables.editor.rulePrompt')}
-                          <span className="group relative inline-flex">
+              <div
+                className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                data-testid="raw-customize-flow"
+              >
+                <section
+                  className="ui-group ui-form-flush flex-shrink-0 bg-surface"
+                  data-testid="raw-customize-steps"
+                >
+                  <RawTableConfigRow label={t('data.rawTables.editor.customizeFlowLabel')}>
+                    <div className="flex min-h-[35px] items-center px-2.5">
+                      {customizeSteps.map((step, index) => {
+                        const isActive = customizeStep === step.value;
+                        const isDone = index < customizeStepIndex;
+                        const clickable = step.reachable || isActive;
+                        return (
+                          <Fragment key={step.value}>
+                            {index > 0 ? (
+                              <ChevronRight
+                                aria-hidden
+                                className="mx-2.5 h-3.5 w-3.5 flex-shrink-0 text-text-muted"
+                              />
+                            ) : null}
                             <button
                               type="button"
-                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
-                              aria-label={t('data.rawTables.editor.rulePromptHint')}
+                              disabled={!clickable}
+                              aria-current={isActive ? 'step' : undefined}
+                              data-step={step.value}
+                              onClick={() => setCustomizeStep(step.value)}
+                              className={`inline-flex h-7 items-center gap-1.5 text-[12.5px] transition-colors ${
+                                isActive
+                                  ? 'font-semibold text-accent'
+                                  : clickable
+                                    ? 'font-normal text-text-primary hover:text-accent'
+                                    : 'cursor-not-allowed font-normal text-text-muted'
+                              }`}
                             >
-                              <Info className="h-3.5 w-3.5" />
+                              {isDone ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <span className="font-semibold tabular-nums">{index + 1}</span>
+                              )}
+                              {step.label}
                             </button>
-                            <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
-                              {t('data.rawTables.editor.rulePromptHint')}
-                            </span>
+                          </Fragment>
+                        );
+                      })}
+                    </div>
+                  </RawTableConfigRow>
+                </section>
+
+                <section
+                  className="ui-group ui-form-flush flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
+                  data-testid="raw-customize-pane"
+                >
+                  {customizeStep === 'rules' ? (
+                    <>
+                      <div className="ui-form-row min-h-0 flex-1">
+                        <div
+                          className="ui-form-label items-start pt-2.5"
+                          title={t('data.rawTables.editor.rulePromptHint')}
+                        >
+                          {t('data.rawTables.editor.ruleLabel')}
+                          <span className="ml-0.5 text-error">*</span>
+                        </div>
+                        <div className="ui-form-value relative min-h-0">
+                          <LlmPromptComposer
+                            value={dataProcessing.rulePrompt}
+                            onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
+                            selectedSkillNames={customizeSelectedSkillNames}
+                            onSelectedSkillNamesChange={(selectedSkillNames) =>
+                              patchCustomizeDataProcessing({ selectedSkillNames })
+                            }
+                            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
+                              patchCustomizeDataProcessing({
+                                rulePrompt: value,
+                                selectedSkillNames,
+                              })
+                            }
+                            appConfig={appConfig}
+                            placeholder={t('data.rawTables.editor.rulePromptPlaceholder')}
+                            disabled={isBusy || !rawTable}
+                            maxLength={4000}
+                            className="ui-composer-flush min-h-0 flex-1 pb-6"
+                            textareaClassName="h-full"
+                            skillMenuPlacement="bottom"
+                          />
+                          <span
+                            className="pointer-events-none absolute bottom-2 right-2.5 text-[11px] tabular-nums text-text-muted"
+                            data-testid="raw-customize-prompt-count"
+                          >
+                            {dataProcessing.rulePrompt.length} / 4000
                           </span>
-                        </span>
-                        <LlmPromptComposer
-                          value={dataProcessing.rulePrompt}
-                          onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
-                          selectedSkillNames={customizeSelectedSkillNames}
-                          onSelectedSkillNamesChange={(selectedSkillNames) =>
-                            patchCustomizeDataProcessing({ selectedSkillNames })
-                          }
-                          onSkillSelectionCommit={({ value, selectedSkillNames }) =>
-                            patchCustomizeDataProcessing({
-                              rulePrompt: value,
-                              selectedSkillNames,
-                            })
-                          }
+                        </div>
+                      </div>
+                      <RawTableConfigRow label={t('data.rawTables.editor.customizeModelLabel')}>
+                        <AgentModelSelector
+                          open={customizeModelMenuOpen}
+                          onOpenChange={setCustomizeModelMenuOpen}
                           appConfig={appConfig}
-                          selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
-                          modelFallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
-                          placeholder={t('data.rawTables.editor.rulePromptPlaceholder')}
+                          selectedConfigSetId={
+                            selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
+                          }
+                          fallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
                           disabled={isBusy || !rawTable}
-                          maxLength={4000}
-                          className="min-h-[128px]"
-                          textareaClassName="min-h-[64px]"
-                          skillMenuPlacement="bottom"
-                          onModelSelect={({ configSetId, model }) =>
+                          align="start"
+                          triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"
+                          onSelect={(configSetId) =>
                             patchCustomizeDataProcessing({
                               modelConfigSetId: configSetId,
-                              model,
+                              model: getAgentModelLabel(appConfig, '', configSetId),
                             })
                           }
                         />
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[12px] font-medium text-text-muted">
-                            {t('data.rawTables.editor.rulePromptExamples')}
-                          </span>
+                      </RawTableConfigRow>
+                      <RawTableConfigRow label={t('data.rawTables.editor.examplesLabel')}>
+                        <div className="flex min-h-[35px] flex-wrap items-center gap-1.5 px-2.5 py-1.5">
                           {(
                             [
                               'exampleMergeHeaders',
@@ -1209,35 +1234,34 @@ export function RawTableEditorWorkbench({
                                       : example,
                                   })
                                 }
-                                className="inline-flex h-6 items-center rounded-full border border-border-muted bg-surface px-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex h-6 items-center gap-1 rounded border border-accent/25 bg-surface px-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
                               >
+                                <Plus className="h-3 w-3" />
                                 {example}
                               </button>
                             );
                           })}
                         </div>
-                      </div>
-                    </div>
+                      </RawTableConfigRow>
+                    </>
                   ) : null}
 
                   {customizeStep === 'generate' ? (
-                    <div className="flex h-full min-h-0 flex-col">
-                      <RawTableGenerationConsole
-                        isStreaming={customizeGenerating}
-                        log={generationLog}
-                        onViewCode={
-                          normalizerProjectFiles.length > 0
-                            ? () => setCustomizeStep('review')
-                            : undefined
-                        }
-                        t={t}
-                      />
-                    </div>
+                    <RawTableGenerationConsole
+                      isStreaming={customizeGenerating}
+                      log={generationLog}
+                      modelLabel={getAgentModelLabel(
+                        appConfig,
+                        t('chat.noModel', { defaultValue: '未配置模型' }),
+                        selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
+                      )}
+                      t={t}
+                    />
                   ) : null}
 
                   {customizeStep === 'review' ? (
                     normalizerProjectFiles.length === 0 ? (
-                      <div className="flex h-full min-h-0 items-center justify-center bg-surface">
+                      <div className="flex min-h-0 flex-1 items-center justify-center bg-surface">
                         <div className="flex flex-col items-center gap-2 px-6 text-center">
                           <FileCode2 className="h-6 w-6 text-text-muted" />
                           <span className="text-[13px] font-medium text-text-secondary">
@@ -1249,109 +1273,227 @@ export function RawTableEditorWorkbench({
                         </div>
                       </div>
                     ) : (
-                      <div className="grid h-full min-h-0 gap-px overflow-hidden bg-border-muted grid-rows-[minmax(0,1fr)_minmax(0,14rem)] lg:grid-cols-[minmax(0,1fr)_15rem] lg:grid-rows-1">
-                        <div className="flex min-h-0 flex-col overflow-hidden bg-surface">
-                          <div className="flex h-10 flex-shrink-0 items-center justify-between gap-3 border-b border-border-muted px-3">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-                              <span
-                                className="min-w-0 truncate font-mono text-xs font-medium text-text-primary"
-                                title={selectedNormalizerFile?.path}
-                              >
-                                {selectedNormalizerFile?.path}
-                              </span>
-                              {selectedNormalizerFile ? (
-                                <span className="flex-shrink-0 whitespace-nowrap text-[11px] font-medium text-text-muted">
-                                  {t('data.rawTables.editor.codeFileMeta', {
-                                    lines: selectedNormalizerFile.content.split('\n').length,
-                                    language: getCodePreviewLanguageLabel(
-                                      selectedNormalizerFile.path
-                                    ),
-                                  })}
-                                </span>
-                              ) : null}
-                            </div>
-                            <button
-                              type="button"
-                              disabled={!selectedNormalizerFile}
-                              onClick={() => {
-                                if (selectedNormalizerFile) {
-                                  void navigator.clipboard?.writeText(
-                                    selectedNormalizerFile.content
-                                  );
-                                  setCodeCopied(true);
-                                  window.setTimeout(() => setCodeCopied(false), 1500);
-                                }
-                              }}
-                              className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                                codeCopied
-                                  ? 'text-success'
-                                  : 'text-text-muted hover:bg-accent-muted hover:text-text-primary'
-                              }`}
-                              title={
-                                codeCopied
-                                  ? t('data.rawTables.editor.copiedCode')
-                                  : t('data.rawTables.editor.copyCode')
-                              }
-                            >
-                              {codeCopied ? (
-                                <Check className="h-3.5 w-3.5" />
-                              ) : (
-                                <Copy className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          </div>
+                      <div
+                        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_92px_240px_40px] grid-rows-[36px_minmax(0,1fr)]"
+                        data-testid="raw-customize-review"
+                      >
+                        <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
+                          <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                          <span
+                            className="min-w-0 truncate font-mono text-xs font-medium text-text-primary"
+                            title={selectedNormalizerFile?.path}
+                          >
+                            {selectedNormalizerFile?.path ??
+                              t('data.rawTables.editor.noProjectFiles')}
+                          </span>
+                          {selectedNormalizerFile ? (
+                            <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
+                              {t('data.rawTables.editor.codeFileMeta', {
+                                lines: selectedNormalizerFile.content.split('\n').length,
+                                language: getCodePreviewLanguageLabel(selectedNormalizerFile.path),
+                              })}
+                            </span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!selectedNormalizerFile}
+                          data-testid="raw-customize-copy-code"
+                          onClick={() => {
+                            if (selectedNormalizerFile) {
+                              void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                              setCodeCopied(true);
+                              window.setTimeout(() => setCodeCopied(false), 1500);
+                            }
+                          }}
+                          className={`inline-flex items-center justify-center gap-1.5 border-b border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-40 ${
+                            codeCopied ? 'text-success' : 'text-text-secondary hover:text-accent'
+                          }`}
+                          title={
+                            codeCopied
+                              ? t('data.rawTables.editor.copiedCode')
+                              : t('data.rawTables.editor.copyCode')
+                          }
+                        >
+                          {codeCopied ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                          {codeCopied
+                            ? t('data.rawTables.editor.copiedShort')
+                            : t('data.rawTables.editor.copyShort')}
+                        </button>
+                        <div className="flex items-center border-b border-l border-border-subtle px-2.5 text-xs font-semibold text-text-primary">
+                          {t('data.rawTables.editor.projectStructure')}
+                        </div>
+                        <div className="flex items-center justify-center border-b border-border-subtle text-xs tabular-nums text-text-muted">
+                          {normalizerProjectFiles.length}
+                        </div>
+                        <div className="col-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
                           <CodePreview file={selectedNormalizerFile} t={t} />
                         </div>
-                        <div className="flex min-h-0 flex-col overflow-hidden bg-surface">
-                          <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-muted px-3">
-                            <span className="text-xs font-medium text-text-primary">
-                              {t('data.rawTables.editor.projectStructure')}
-                            </span>
-                            <span className="rounded-full bg-surface-active px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
-                              {normalizerProjectFiles.length}
-                            </span>
-                          </div>
-                          <div className="min-h-0 flex-1 overflow-auto p-2">
-                            <NormalizerProjectTree
-                              files={normalizerProjectFiles}
-                              selectedPath={
-                                selectedNormalizerFile?.path ?? selectedNormalizerFilePath
-                              }
-                              onSelect={setSelectedNormalizerFilePath}
-                              t={t}
-                            />
-                          </div>
+                        <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
+                          <NormalizerProjectTree
+                            files={normalizerProjectFiles}
+                            selectedPath={
+                              selectedNormalizerFile?.path ?? selectedNormalizerFilePath
+                            }
+                            onSelect={setSelectedNormalizerFilePath}
+                            t={t}
+                          />
                         </div>
                       </div>
                     )
                   ) : null}
-                </div>
+                </section>
 
-                {customizeGenerationError ? (
-                  <div className="mx-4 flex-shrink-0 rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-[12px] font-medium text-error">
-                    {customizeGenerationError}
-                  </div>
-                ) : null}
-
-                <div className="flex min-h-12 flex-shrink-0 items-center gap-2 border-t border-border-muted/80 px-4 py-2">
-                  {customizeStep !== 'rules' && !customizeGenerating ? (
+                {(() => {
+                  const backCell = (
                     <button
                       type="button"
+                      disabled={customizeGenerating}
                       onClick={() => setCustomizeStep('rules')}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary"
+                      data-testid="raw-customize-back"
+                      className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <ArrowLeft className="h-3.5 w-3.5" />
                       {t('data.rawTables.editor.customizeStepBack')}
                     </button>
-                  ) : null}
-                  <div className="ml-auto flex items-center gap-2">
-                    {customizeStep === 'review' ? (
+                  );
+                  // Non-generation errors (save / publish / delete / version list) show in the
+                  // action row's note cell; generation errors live in the log only.
+                  const noticeError =
+                    customizeGenerationError &&
+                    !(
+                      generationLog?.outcome?.status === 'error' &&
+                      customizeGenerationError.includes(generationLog.outcome.title)
+                    )
+                      ? customizeGenerationError
+                      : null;
+                  const noteCell = (text: ReactNode, first = false) =>
+                    noticeError ? (
+                      <div
+                        role="alert"
+                        data-testid="raw-customize-notice"
+                        title={noticeError}
+                        className={`flex min-w-0 items-center gap-1.5 px-2.5 text-xs font-medium text-error ${first ? '' : 'border-l border-border-subtle'}`}
+                      >
+                        <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">{noticeError}</span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`flex min-w-0 items-center px-2.5 text-xs text-text-muted ${first ? '' : 'border-l border-border-subtle'}`}
+                      >
+                        <span className="truncate">{text}</span>
+                      </div>
+                    );
+                  const toolCell =
+                    'inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50';
+                  const generateFailed =
+                    !customizeGenerating && generationLog?.outcome?.status === 'error';
+                  let cols = '';
+                  let cells: ReactNode = null;
+                  if (customizeStep === 'rules') {
+                    cols = 'minmax(0,1fr) 160px';
+                    cells = (
                       <>
+                        {noteCell(t('data.rawTables.editor.customizeRulesHint'), true)}
+                        <button
+                          type="button"
+                          disabled={!canGenerateCustomizeDraft}
+                          onClick={() => void generateCustomizeDraft()}
+                          data-testid="raw-customize-generate"
+                          className="ui-accent-cell border-l border-border-subtle"
+                          title={t('data.rawTables.editor.generateProjectDisabled')}
+                        >
+                          {customizeGenerating ? (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5" />
+                          )}
+                          {customizeGenerating
+                            ? t('data.rawTables.editor.generateProjectDrafting')
+                            : t('data.rawTables.editor.generateProjectDraft')}
+                        </button>
+                      </>
+                    );
+                  } else if (customizeStep === 'generate') {
+                    cols = '104px minmax(0,1fr) 120px';
+                    cells = (
+                      <>
+                        {backCell}
+                        {noteCell(
+                          customizeGenerating
+                            ? t('data.rawTables.editor.customizeGeneratingHint')
+                            : generateFailed
+                              ? t('data.rawTables.editor.customizeErrorHint')
+                              : generationLog?.outcome
+                                ? t('data.rawTables.editor.customizeDoneHint')
+                                : t('data.rawTables.editor.generatedStatusEmpty')
+                        )}
+                        {generateFailed ? (
+                          <button
+                            type="button"
+                            disabled={!canGenerateCustomizeDraft}
+                            onClick={() => void generateCustomizeDraft()}
+                            data-testid="raw-customize-regenerate"
+                            className="ui-accent-cell border-l border-border-subtle"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            {t('data.rawTables.editor.regenerateProjectDraft')}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={customizeGenerating || normalizerProjectFiles.length === 0}
+                            onClick={() => setCustomizeStep('review')}
+                            data-testid="raw-customize-view-code"
+                            className="ui-accent-cell border-l border-border-subtle"
+                          >
+                            <FileCode2 className="h-3.5 w-3.5" />
+                            {t('data.rawTables.editor.generationViewCode')}
+                          </button>
+                        )}
+                      </>
+                    );
+                  } else {
+                    const isPublished = dataProcessing.artifactVersionStatus === 'published';
+                    const summaryStatus = currentNormalizerVersion
+                      ? currentNormalizerVersion.status === 'published'
+                        ? t('data.rawTables.editor.publishedVersion')
+                        : currentNormalizerVersion.status === 'archived'
+                          ? t('data.rawTables.editor.versionStatusArchived')
+                          : t('data.rawTables.editor.versionStatusDraft')
+                      : '';
+                    cols = '104px minmax(0,1fr) 104px 140px 104px';
+                    cells = (
+                      <>
+                        {backCell}
+                        {noteCell(
+                          currentNormalizerVersion ? (
+                            <span data-testid="raw-customize-version-summary">
+                              {[
+                                t('data.rawTables.editor.versionNumber', {
+                                  version: currentNormalizerVersion.version,
+                                }),
+                                summaryStatus,
+                                formatDateTime(currentNormalizerVersion.updatedAt).replace(
+                                  /^\d{4}-/,
+                                  ''
+                                ),
+                              ].join(' · ')}
+                            </span>
+                          ) : (
+                            ''
+                          )
+                        )}
                         <button
                           type="button"
                           onClick={() => setVersionsDialogOpen(true)}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+                          data-testid="raw-customize-versions"
+                          className={`${toolCell} ${versionsDialogOpen ? 'bg-accent-muted text-accent' : ''}`}
                         >
                           <History className="h-3.5 w-3.5" />
                           {t('data.rawTables.editor.versionHistory')}
@@ -1360,7 +1502,8 @@ export function RawTableEditorWorkbench({
                           type="button"
                           disabled={!customizeArtifactVersionId || previewLoading || !rawTable}
                           onClick={() => void previewCustomizeDraft()}
-                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                          data-testid="raw-customize-preview"
+                          className={toolCell}
                         >
                           {previewLoading ? (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1369,8 +1512,11 @@ export function RawTableEditorWorkbench({
                           )}
                           {t('data.rawTables.editor.previewNormalizedDraft')}
                         </button>
-                        {dataProcessing.artifactVersionStatus === 'published' ? (
-                          <span className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3 text-xs font-medium text-success">
+                        {isPublished ? (
+                          <span
+                            data-testid="raw-customize-published"
+                            className="inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-success"
+                          >
                             <Check className="h-3.5 w-3.5" />
                             {t('data.rawTables.editor.publishedVersion')}
                           </span>
@@ -1383,7 +1529,8 @@ export function RawTableEditorWorkbench({
                                 void publishSpecificNormalizerVersion(currentNormalizerVersion);
                               }
                             }}
-                            className="inline-flex h-8 min-w-[7rem] items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
+                            data-testid="raw-customize-publish"
+                            className="ui-accent-cell border-l border-border-subtle"
                           >
                             {customizeVersionActionId ? (
                               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1396,26 +1543,18 @@ export function RawTableEditorWorkbench({
                           </button>
                         )}
                       </>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={!canGenerateCustomizeDraft}
-                        onClick={() => void generateCustomizeDraft()}
-                        className="inline-flex h-8 min-w-[8rem] items-center justify-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:opacity-70"
-                        title={t('data.rawTables.editor.generateProjectDisabled')}
-                      >
-                        {customizeGenerating ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3.5 w-3.5" />
-                        )}
-                        {customizeGenerating
-                          ? t('data.rawTables.editor.generateProjectDrafting')
-                          : t('data.rawTables.editor.generateProjectDraft')}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                    );
+                  }
+                  return (
+                    <div
+                      className="grid h-9 flex-shrink-0 border-t border-border-subtle bg-surface"
+                      style={{ gridTemplateColumns: cols }}
+                      data-testid="raw-customize-actions"
+                    >
+                      {cells}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
@@ -1716,31 +1855,42 @@ export function RawTableEditorWorkbench({
         open={versionsDialogOpen}
         onOpenChange={setVersionsDialogOpen}
         ariaLabel={t('data.rawTables.editor.versionHistory')}
-        className="w-full max-w-4xl p-5"
+        className="w-full max-w-[760px] overflow-hidden !p-0"
       >
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-baseline gap-2">
-            <div className="text-[14px] font-semibold text-text-primary">
+        <div
+          className="grid h-10 grid-cols-[minmax(0,1fr)_92px_40px] border-b border-border-subtle"
+          data-testid="normalizer-versions-header"
+        >
+          <div className="flex min-w-0 items-baseline gap-2 self-center px-3">
+            <span className="text-[14px] font-semibold text-text-primary">
               {t('data.rawTables.editor.versionHistory')}
-            </div>
+            </span>
             {normalizerVersions.length > 0 ? (
               <span className="text-xs text-text-muted">
-                {t('data.rawTables.editor.versionsCount', {
-                  count: normalizerVersions.length,
-                })}
+                {t('data.rawTables.editor.versionsCount', { count: normalizerVersions.length })}
               </span>
             ) : null}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
+            disabled={normalizerVersionsLoading}
+            onClick={() => void refreshNormalizerVersions(customizeArtifactId)}
+            className="inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${normalizerVersionsLoading ? 'animate-spin' : ''}`}
+            />
+            {t('common.refresh')}
+          </button>
+          <button
+            type="button"
             onClick={() => setVersionsDialogOpen(false)}
-            className="text-text-muted hover:bg-accent-muted hover:text-accent"
+            className="inline-flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
             title={t('common.close')}
             aria-label={t('common.close')}
           >
             <X className="h-4 w-4" />
-          </Button>
+          </button>
         </div>
         <RawTableVersionHistoryPanel
           currentVersion={currentNormalizerVersion}

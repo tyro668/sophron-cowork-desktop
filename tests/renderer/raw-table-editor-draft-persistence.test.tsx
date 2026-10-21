@@ -195,7 +195,7 @@ describe('RawTableEditorWorkbench custom draft persistence', () => {
 
     // A persisted artifact lands on the review step — go back to step 1 to
     // edit the rule prompt.
-    fireEvent.click(screen.getByRole('button', { name: '1 Describe rules' }));
+    fireEvent.click(screen.getByRole('button', { name: /Describe rules/ }));
 
     // Make the config dirty so Save is enabled.
     fireEvent.change(promptTextarea(), {
