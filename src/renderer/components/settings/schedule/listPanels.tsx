@@ -159,7 +159,7 @@ export function AutomationListPanel({
           />
         </div>
       </div>
-      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
+      <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && automations.length === 0 ? (
             <EmptyState
@@ -204,7 +204,19 @@ export function AutomationListPanel({
             />
           )}
         </div>
-        <div className="h-0" />
+        {!isLoading && automations.length > 0 && (
+          <div className="flex h-8 flex-shrink-0 items-center border-t border-border-muted px-3 text-xs text-text-muted">
+            {tr('schedule.listTotal', '共 {{count}} 个').replace(
+              '{{count}}',
+              String(automations.length)
+            )}
+            {' · '}
+            {tr('schedule.listEnabled', '{{count}} 个启用').replace(
+              '{{count}}',
+              String(automations.filter((item) => item.enabled).length)
+            )}
+          </div>
+        )}
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
@@ -342,7 +354,7 @@ export function AutomationRunLogPanel({
           onClick={onRefresh}
         />
       </div>
-      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
+      <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           <AutomationRunTable
             automations={automations}

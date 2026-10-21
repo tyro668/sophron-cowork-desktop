@@ -685,7 +685,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
             <div
               className={`grid min-h-0 min-w-0 flex-1 overflow-hidden ${selectedItem ? 'xl:grid-cols-[minmax(0,1fr)_320px]' : ''}`}
             >
-              <div className="ui-group ui-group-fill flex min-h-0 min-w-0 flex-col bg-surface">
+              <div className="flex min-h-0 min-w-0 flex-col bg-surface">
                 <div className="grid h-10 flex-shrink-0 grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted bg-[var(--data-grid-header-surface)] px-3 text-xs font-medium text-text-muted">
                   <span>{t('skills.workspace.table.skill')}</span>
                   <span>{t('skills.workspace.table.type')}</span>
@@ -1028,20 +1028,20 @@ function SkillTableRow({
           onSelect();
         }
       }}
-      className={`grid h-[3.25rem] w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 ${
-        selected ? 'bg-accent-muted ring-1 ring-inset ring-accent/20' : 'hover:bg-surface-hover/35'
+      className={`grid h-9 w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 ${
+        selected
+          ? 'bg-accent-muted shadow-[inset_3px_0_0_var(--color-accent)]'
+          : 'hover:bg-surface-hover/35'
       }`}
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-[13px] font-medium text-text-secondary">
+        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="flex-shrink-0 truncate text-[13px] font-medium text-text-primary">
             {item.name}
           </span>
           {item.description && (
-            <span className="block truncate text-[11.5px] text-text-muted" title={item.description}>
+            <span className="min-w-0 truncate text-[12px] text-text-muted" title={item.description}>
               {item.description}
             </span>
           )}

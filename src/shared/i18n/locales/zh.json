@@ -3514,7 +3514,9 @@
     "partProject": "执行项目",
     "partEnabled": "启用状态",
     "partActions": "动作",
-    "partActionsUnit": "项"
+    "partActionsUnit": "项",
+    "listTotal": "共 {{count}} 个",
+    "listEnabled": "{{count}} 个启用"
   },
   "remote": {
     "title": "远程控制",
