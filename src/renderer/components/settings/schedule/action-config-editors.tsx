@@ -44,6 +44,7 @@ import {
   FormRow,
   LocalTableSelect,
   MiniIcon,
+  SegmentedControl,
   SelectLine,
 } from './editor-controls';
 import { DataPipelineAiGenerateDialog } from '../../data-view/data-pipelines/DataPipelineAiGenerateDialog';
@@ -191,10 +192,7 @@ function ActionDependencyConnector({
 }) {
   const always = previous.failurePolicy?.onFailure === 'continue';
   const setAlways = (value: boolean) =>
-    onChange({
-      ...previous,
-      failurePolicy: value ? { onFailure: 'continue', emitErrorArtifact: false } : undefined,
-    });
+    onChange(withActionOnFailure(previous, value ? 'continue' : 'stop'));
   return (
     <div className="relative flex h-8 items-center border-b border-border-muted bg-background-secondary pl-4">
       <GlassDropdownMenu
@@ -315,8 +313,33 @@ export function ActionStepCard({
         onChange={onChange}
         tr={tr}
       />
+      <FormRow label={tr('schedule.onFailureLabel', '失败时')}>
+        <SegmentedControl
+          value={node.failurePolicy?.onFailure === 'continue' ? 'continue' : 'stop'}
+          options={[
+            { value: 'stop', label: tr('schedule.onFailureStop', '停止后续动作') },
+            { value: 'continue', label: tr('schedule.onFailureContinue', '继续（总是执行）') },
+          ]}
+          onChange={(value) => onChange(withActionOnFailure(node, value))}
+        />
+      </FormRow>
     </div>
   );
+}
+
+/**
+ * Single source of truth for an action's failure behaviour. The "总是执行" connector
+ * between steps and the per-action 「失败时」 row both edit this one field.
+ */
+export function withActionOnFailure(
+  node: AutomationActionNode,
+  onFailure: 'stop' | 'continue'
+): AutomationActionNode {
+  return {
+    ...node,
+    failurePolicy:
+      onFailure === 'continue' ? { onFailure: 'continue', emitErrorArtifact: false } : undefined,
+  };
 }
 
 export function DataProcessActionEditor({

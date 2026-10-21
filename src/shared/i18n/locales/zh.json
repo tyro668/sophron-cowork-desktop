@@ -3524,7 +3524,10 @@
     "partActions": "动作",
     "partActionsUnit": "项",
     "listTotal": "共 {{count}} 个",
-    "listEnabled": "{{count}} 个启用"
+    "listEnabled": "{{count}} 个启用",
+    "onFailureLabel": "失败时",
+    "onFailureStop": "停止后续动作",
+    "onFailureContinue": "继续（总是执行）"
   },
   "remote": {
     "title": "远程控制",
