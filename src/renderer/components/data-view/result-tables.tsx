@@ -48,7 +48,6 @@ import {
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
-  RawTableFormLabel,
   RawTableSelect,
   RawTableStatusBadge,
   LoadingState,
@@ -629,10 +628,10 @@ function ResultTableCreateDialog({
 
 function AutomationConfigGridRow({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <>
-      <RawTableFormLabel className="lg:self-start lg:pt-1.5">{label}</RawTableFormLabel>
-      <div className="min-w-0">{children}</div>
-    </>
+    <div className="ui-form-row">
+      <div className="ui-form-label items-center">{label}</div>
+      <div className="ui-form-value">{children}</div>
+    </div>
   );
 }
 
@@ -842,7 +841,7 @@ export function ResultTableEditor({
               onClick={() => void handleRunRelatedPipeline()}
               disabled={busy || runBusy}
               title={t('data.resultTables.editor.runPipelineTitle', { name: relatedPipeline.name })}
-              className={toolbarPrimaryCellClass}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg jade-primary-button px-3 text-xs font-medium shadow-soft transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Play className="h-3.5 w-3.5" />
               {runBusy
@@ -933,11 +932,9 @@ export function ResultTableEditor({
                 value={formatDateTime(resultTable.updatedAt)}
               />
             </div>
-            <section className="ui-group bg-surface px-4 py-2.5">
-              <div className="mb-2 text-[13px] font-semibold text-text-primary">
-                {t('data.resultTables.lineage.title')}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+            <section className="ui-group bg-surface">
+              <div className="ui-group-title">{t('data.resultTables.lineage.title')}</div>
+              <div className="flex min-h-10 flex-wrap items-center gap-2 px-3 py-1.5 text-[13px]">
                 <LineageChip
                   kind={t('data.resultTables.lineage.raw')}
                   name={
@@ -959,32 +956,32 @@ export function ResultTableEditor({
               </div>
             </section>
             <div className="grid">
-              <section className="ui-group bg-surface px-4 py-2.5">
-                <div className="mb-2 text-[13px] font-semibold text-text-primary">
-                  {t('data.resultTables.sections.basic')}
-                </div>
-                <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
-                  <RawTableFormLabel>
+              <section className="ui-group bg-surface">
+                <div className="ui-group-title">{t('data.resultTables.sections.basic')}</div>
+                <div className="ui-form-row">
+                  <div className="ui-form-label items-center">
                     <span className="inline-flex items-center gap-1.5">
                       {t('data.resultTables.editor.rawTable')}
                       <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
                     </span>
-                  </RawTableFormLabel>
-                  <RawTableSelect
-                    value={sourceRawTableId}
-                    options={rawTableOptions}
-                    disabled={busy || isRawTablesLoading}
-                    onChange={setSourceRawTableId}
-                  />
+                  </div>
+                  <div className="ui-form-value">
+                    <RawTableSelect
+                      value={sourceRawTableId}
+                      options={rawTableOptions}
+                      disabled={busy || isRawTablesLoading}
+                      onChange={setSourceRawTableId}
+                    />
+                  </div>
                 </div>
               </section>
             </div>
             {onDelete && (
-              <section className="ui-group ui-group-danger bg-surface px-4 py-2.5">
-                <div className="mb-2 text-[13px] font-semibold text-error">
+              <section className="ui-group ui-group-danger bg-surface">
+                <div className="ui-group-title !text-error">
                   {t('data.resultTables.danger.title')}
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
                   <div className="min-w-0">
                     <div className="text-[13px] font-medium text-text-primary">
                       {t('data.resultTables.danger.deleteTitle')}
@@ -1030,11 +1027,9 @@ export function ResultTableEditor({
           />
         </TabsContent>
         <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
-          <section className="ui-group bg-surface px-4 py-2.5">
-            <div className="mb-2 text-[13px] font-semibold text-text-primary">
-              {t('data.resultTables.sections.automation')}
-            </div>
-            <div className="grid gap-3 lg:grid-cols-[8rem_minmax(0,1fr)] lg:items-center">
+          <section className="ui-group bg-surface">
+            <div className="ui-group-title">{t('data.resultTables.sections.automation')}</div>
+            <div>
               <ResultTableAutomations
                 key={resultTable.id}
                 resultTable={resultTable}
