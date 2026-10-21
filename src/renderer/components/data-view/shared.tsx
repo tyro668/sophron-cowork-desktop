@@ -1,5 +1,6 @@
 import { formatAppDateTime, formatClockTime } from '../../utils/i18n-format';
-import { Fragment, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
@@ -623,3 +624,31 @@ export function formatCloudMirrorLocation(mirror: CloudMirrorInfo): string {
   ].filter((part): part is string => Boolean(part));
   return parts.join(' / ');
 }
+
+/**
+ * List pages put their "+ 新建…" action at the far right of the top tab bar.
+ * The page renders <TabBarActionSlot /> inside the tab bar and wraps its content in
+ * the provider; panels render <TabBarAction> which portals into the slot (or renders
+ * inline when no slot is present, e.g. isolated tests).
+ */
+const TabBarActionContext = createContext<HTMLElement | null>(null);
+
+export function useTabBarActionSlot() {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  return { slot, slotRef: setSlot, Provider: TabBarActionContext.Provider };
+}
+
+export function TabBarActionSlot({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
+  return (
+    <div ref={slotRef} data-testid="tab-bar-action-slot" className="ml-auto flex items-stretch" />
+  );
+}
+
+export function TabBarAction({ children }: { children: ReactNode }) {
+  const slot = useContext(TabBarActionContext);
+  return slot ? createPortal(children, slot) : <>{children}</>;
+}
+
+/** Compact flush "+ 新建…" cell at the right end of the tab bar: accent text, hover tint. */
+export const tabBarNewCellClass =
+  'inline-flex h-full flex-shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle px-4 text-xs font-medium text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:opacity-50';

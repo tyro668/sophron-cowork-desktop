@@ -45,7 +45,9 @@ import {
 } from './schedule/model';
 import { AutomationListPanel, AutomationRunLogPanel, getRunSortTime } from './schedule/listPanels';
 import {
+  TabBarActionSlot,
   underlineTabBarClass,
+  useTabBarActionSlot,
   underlineTabListClass,
   underlineTabTriggerClass,
 } from '../data-view/shared';
@@ -87,6 +89,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [tableReturnTarget, setTableReturnTarget] = useState<DataResourceTarget | null>(null);
   const [activeListTab, setActiveListTab] = useState<ListTab>('automations');
+  const tabBarAction = useTabBarActionSlot();
   const [automationRunLogs, setAutomationRunLogs] = useState<AutomationRunLogEntry[]>([]);
   const [draft, setDraft] = useState<AutomationDraft>(() =>
     createEmptyDraft(tr('schedule.newAutomation', '新建自动化'))
@@ -910,60 +913,63 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
       <section className="flex min-h-0 flex-1 flex-col">
-        <Tabs
-          value={activeListTab}
-          onValueChange={(v) => setActiveListTab(v as ListTab)}
-          className="contents"
-        >
-          <div className={underlineTabBarClass}>
-            <TabsList className={underlineTabListClass}>
-              <TabsTrigger value="automations" className={underlineTabTriggerClass}>
-                {tr('schedule.tabs.automations', '自动化')}
-              </TabsTrigger>
-              <TabsTrigger value="runs" className={underlineTabTriggerClass}>
-                {tr('schedule.tabs.runs', '执行日志')}
-              </TabsTrigger>
-            </TabsList>
-          </div>
-          <TabsContent value="automations" className="contents">
-            <AutomationListPanel
-              automations={automations}
-              groups={automationGroups}
-              groupCounts={automationGroupCounts}
-              groupPages={automationGroupPages}
-              selectedId={selectedId}
-              selectedAutomation={selectedAutomation}
-              searchQuery={search}
-              isLoading={isLoading}
-              onCreate={createNew}
-              onSearchChange={setSearch}
-              onRefresh={() => void load()}
-              onGroupPageChange={setAutomationGroupPage}
-              onRun={() => void runNow()}
-              onEdit={openSelectedDetail}
-              onDelete={() => void remove()}
-              onToggleEnabled={(automation, enabled) => void toggleEnabled(automation, enabled)}
-              onAssignToGroup={(target) => void assignToGroup(target)}
-              onRenameGroup={(group, name) => void renameGroup(group, name)}
-              onDeleteGroup={(group) => void deleteGroup(group)}
-              onSelect={(automation) => {
-                suppressSelectedAutomationSyncRef.current = false;
-                setSelectedId(automation.id);
-                setDraft(automationToDraft(automation));
-              }}
-              tr={tr}
-            />
-          </TabsContent>
-          <TabsContent value="runs" className="contents">
-            <AutomationRunLogPanel
-              automations={automations}
-              entries={automationRunLogs}
-              isLoading={isRunsLoading}
-              onRefresh={() => void loadRuns()}
-              tr={tr}
-            />
-          </TabsContent>
-        </Tabs>
+        <tabBarAction.Provider value={tabBarAction.slot}>
+          <Tabs
+            value={activeListTab}
+            onValueChange={(v) => setActiveListTab(v as ListTab)}
+            className="contents"
+          >
+            <div className={underlineTabBarClass}>
+              <TabsList className={underlineTabListClass}>
+                <TabsTrigger value="automations" className={underlineTabTriggerClass}>
+                  {tr('schedule.tabs.automations', '自动化')}
+                </TabsTrigger>
+                <TabsTrigger value="runs" className={underlineTabTriggerClass}>
+                  {tr('schedule.tabs.runs', '执行日志')}
+                </TabsTrigger>
+              </TabsList>
+              <TabBarActionSlot slotRef={tabBarAction.slotRef} />
+            </div>
+            <TabsContent value="automations" className="contents">
+              <AutomationListPanel
+                automations={automations}
+                groups={automationGroups}
+                groupCounts={automationGroupCounts}
+                groupPages={automationGroupPages}
+                selectedId={selectedId}
+                selectedAutomation={selectedAutomation}
+                searchQuery={search}
+                isLoading={isLoading}
+                onCreate={createNew}
+                onSearchChange={setSearch}
+                onRefresh={() => void load()}
+                onGroupPageChange={setAutomationGroupPage}
+                onRun={() => void runNow()}
+                onEdit={openSelectedDetail}
+                onDelete={() => void remove()}
+                onToggleEnabled={(automation, enabled) => void toggleEnabled(automation, enabled)}
+                onAssignToGroup={(target) => void assignToGroup(target)}
+                onRenameGroup={(group, name) => void renameGroup(group, name)}
+                onDeleteGroup={(group) => void deleteGroup(group)}
+                onSelect={(automation) => {
+                  suppressSelectedAutomationSyncRef.current = false;
+                  setSelectedId(automation.id);
+                  setDraft(automationToDraft(automation));
+                }}
+                tr={tr}
+              />
+            </TabsContent>
+            <TabsContent value="runs" className="contents">
+              <AutomationRunLogPanel
+                automations={automations}
+                entries={automationRunLogs}
+                isLoading={isRunsLoading}
+                onRefresh={() => void loadRuns()}
+                tr={tr}
+              />
+            </TabsContent>
+          </Tabs>
+        </tabBarAction.Provider>
       </section>
     </div>
   );

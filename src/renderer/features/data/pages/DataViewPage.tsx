@@ -18,7 +18,9 @@ import {
 } from '../../../components/data-view/raw-tables';
 import { ResultTableEditor, ResultTablesPanel } from '../../../components/data-view/result-tables';
 import {
+  TabBarActionSlot,
   underlineTabBarClass,
+  useTabBarActionSlot,
   underlineTabListClass,
   underlineTabTriggerClass,
 } from '../../../components/data-view/shared';
@@ -38,6 +40,7 @@ import type { DataTab } from '../model/types';
 
 export function DataViewPage() {
   const { t } = useTranslation();
+  const tabBarAction = useTabBarActionSlot();
   const { confirmDelete } = useConfirmDialog();
   const isDataApiAvailable = dataClient.isAvailable();
 
@@ -248,123 +251,126 @@ export function DataViewPage() {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <section className="flex min-h-0 flex-1 flex-col">
-              <Tabs
-                value={activeTab}
-                onValueChange={(v) => handleTabChange(v as DataTab)}
-                className="contents"
-              >
-                <div className={underlineTabBarClass}>
-                  <TabsList className={underlineTabListClass}>
-                    {(
-                      [
-                        ['pipelines', 'data.tabs.pipelines'],
-                        ['raw_tables', 'data.tabs.rawTables'],
-                        ['result_tables', 'data.tabs.resultTables'],
-                        ['cloud_analysis', 'data.tabs.cloudAnalysis'],
-                      ] as const
-                    ).map(([value, key]) => (
-                      <TabsTrigger key={value} value={value} className={underlineTabTriggerClass}>
-                        {t(key)}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </div>
+              <tabBarAction.Provider value={tabBarAction.slot}>
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => handleTabChange(v as DataTab)}
+                  className="contents"
+                >
+                  <div className={underlineTabBarClass}>
+                    <TabsList className={underlineTabListClass}>
+                      {(
+                        [
+                          ['pipelines', 'data.tabs.pipelines'],
+                          ['raw_tables', 'data.tabs.rawTables'],
+                          ['result_tables', 'data.tabs.resultTables'],
+                          ['cloud_analysis', 'data.tabs.cloudAnalysis'],
+                        ] as const
+                      ).map(([value, key]) => (
+                        <TabsTrigger key={value} value={value} className={underlineTabTriggerClass}>
+                          {t(key)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    <TabBarActionSlot slotRef={tabBarAction.slotRef} />
+                  </div>
 
-                <TabsContent value="pipelines" className="contents">
-                  <PipelinesPanel
-                    pipelines={dashboard.dashboard.pipelines}
-                    totalPipelines={dashboard.dashboard.totalPipelines}
-                    groups={pipelineGroups}
-                    groupCounts={dashboard.dashboard.pipelineGroupCounts}
-                    groupPages={dashboard.pipelineGroupPages}
-                    searchQuery={searchQuery}
-                    actionId={actionId}
-                    isLoading={isPipelinesLoading}
-                    isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
-                    onCreate={actions.handleCreatePipeline}
-                    onSearchChange={handleSearchChange}
-                    onRefresh={() =>
-                      dashboard.loadDashboard({ preserveError: true, tab: 'pipelines' })
-                    }
-                    onGroupPageChange={dashboard.setPipelineGroupPage}
-                    onRun={actions.handleRunPipeline}
-                    onEdit={actions.handleEditPipeline}
-                    onDelete={actions.handleDeletePipeline}
-                    onDeleteAll={actions.handleDeleteAllPipelines}
-                    onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('pipeline', ids, target)
-                    }
-                    onRenameGroup={(group, name) =>
-                      actions.handleRenameGroup('pipeline', group, name)
-                    }
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('pipeline', group)}
-                  />
-                </TabsContent>
-                <TabsContent value="raw_tables" className="min-h-0 flex-1 bg-transparent">
-                  <RawTablesPanel
-                    rawTables={rawTables.rawTables}
-                    drafts={drafts.drafts}
-                    groups={inputGroups}
-                    groupCounts={rawTables.rawTableGroupCounts}
-                    groupPages={rawTables.rawTableGroupPages}
-                    totalRawTables={rawTables.totalRawTables}
-                    searchQuery={searchQuery}
-                    isLoading={isRawTablesLoading}
-                    onSearchChange={handleSearchChange}
-                    onCreate={actions.handleCreateRawTableDraft}
-                    onRefresh={() => rawTables.loadRawTables({ preserveError: true })}
-                    onPreviewRawTable={preview.previewRawTable}
-                    onDelete={actions.handleDeleteRawTable}
-                    onDeleteAll={actions.handleDeleteAllRawTables}
-                    onDeleteDraft={actions.handleDeleteRawTableDraft}
-                    onEditDraft={editors.setEditingRawTableDraftId}
-                    onEditRawTable={actions.handleEditRawTable}
-                    onCreatePipelineFromTable={actions.handleCreatePipelineFromTable}
-                    onAiGeneratePipelineFromTable={generatePipelineFromTable}
-                    onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('raw', ids, target)
-                    }
-                    onRenameGroup={(group, name) => actions.handleRenameGroup('raw', group, name)}
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('raw', group)}
-                    onGroupPageChange={rawTables.setRawTableGroupPage}
-                    isCreateDisabled={!isDataApiAvailable}
-                    actionId={actionId}
-                  />
-                </TabsContent>
-                <TabsContent value="result_tables" className="min-h-0 flex-1 bg-transparent">
-                  <ResultTablesPanel
-                    resultTables={dashboard.dashboard.resultTables}
-                    totalResultTables={dashboard.dashboard.totalResultTables}
-                    groups={outputGroups}
-                    groupCounts={dashboard.dashboard.outputGroupCounts}
-                    groupPages={dashboard.outputGroupPages}
-                    searchQuery={searchQuery}
-                    isLoading={isResultTablesLoading}
-                    actionId={actionId}
-                    isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
-                    onCreate={actions.handleCreateResultTable}
-                    onSearchChange={handleSearchChange}
-                    onRefresh={() =>
-                      dashboard.loadDashboard({ preserveError: true, tab: 'result_tables' })
-                    }
-                    onGroupPageChange={dashboard.setOutputGroupPage}
-                    onPreview={preview.previewResultTable}
-                    onEdit={(resultTable) => editors.setEditingResultTableId(resultTable.id)}
-                    onDelete={actions.handleDeleteResultTable}
-                    onDeleteAll={actions.handleDeleteAllResultTables}
-                    onAssignToGroup={(ids, target) =>
-                      actions.handleAssignToGroup('result', ids, target)
-                    }
-                    onRenameGroup={(group, name) =>
-                      actions.handleRenameGroup('result', group, name)
-                    }
-                    onDeleteGroup={(group) => actions.handleDeleteGroup('result', group)}
-                  />
-                </TabsContent>
-                <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
-                  <CloudAnalysisPanel />
-                </TabsContent>
-              </Tabs>
+                  <TabsContent value="pipelines" className="contents">
+                    <PipelinesPanel
+                      pipelines={dashboard.dashboard.pipelines}
+                      totalPipelines={dashboard.dashboard.totalPipelines}
+                      groups={pipelineGroups}
+                      groupCounts={dashboard.dashboard.pipelineGroupCounts}
+                      groupPages={dashboard.pipelineGroupPages}
+                      searchQuery={searchQuery}
+                      actionId={actionId}
+                      isLoading={isPipelinesLoading}
+                      isCreateDisabled={!isDataApiAvailable || actionId === 'create'}
+                      onCreate={actions.handleCreatePipeline}
+                      onSearchChange={handleSearchChange}
+                      onRefresh={() =>
+                        dashboard.loadDashboard({ preserveError: true, tab: 'pipelines' })
+                      }
+                      onGroupPageChange={dashboard.setPipelineGroupPage}
+                      onRun={actions.handleRunPipeline}
+                      onEdit={actions.handleEditPipeline}
+                      onDelete={actions.handleDeletePipeline}
+                      onDeleteAll={actions.handleDeleteAllPipelines}
+                      onAssignToGroup={(ids, target) =>
+                        actions.handleAssignToGroup('pipeline', ids, target)
+                      }
+                      onRenameGroup={(group, name) =>
+                        actions.handleRenameGroup('pipeline', group, name)
+                      }
+                      onDeleteGroup={(group) => actions.handleDeleteGroup('pipeline', group)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="raw_tables" className="min-h-0 flex-1 bg-transparent">
+                    <RawTablesPanel
+                      rawTables={rawTables.rawTables}
+                      drafts={drafts.drafts}
+                      groups={inputGroups}
+                      groupCounts={rawTables.rawTableGroupCounts}
+                      groupPages={rawTables.rawTableGroupPages}
+                      totalRawTables={rawTables.totalRawTables}
+                      searchQuery={searchQuery}
+                      isLoading={isRawTablesLoading}
+                      onSearchChange={handleSearchChange}
+                      onCreate={actions.handleCreateRawTableDraft}
+                      onRefresh={() => rawTables.loadRawTables({ preserveError: true })}
+                      onPreviewRawTable={preview.previewRawTable}
+                      onDelete={actions.handleDeleteRawTable}
+                      onDeleteAll={actions.handleDeleteAllRawTables}
+                      onDeleteDraft={actions.handleDeleteRawTableDraft}
+                      onEditDraft={editors.setEditingRawTableDraftId}
+                      onEditRawTable={actions.handleEditRawTable}
+                      onCreatePipelineFromTable={actions.handleCreatePipelineFromTable}
+                      onAiGeneratePipelineFromTable={generatePipelineFromTable}
+                      onAssignToGroup={(ids, target) =>
+                        actions.handleAssignToGroup('raw', ids, target)
+                      }
+                      onRenameGroup={(group, name) => actions.handleRenameGroup('raw', group, name)}
+                      onDeleteGroup={(group) => actions.handleDeleteGroup('raw', group)}
+                      onGroupPageChange={rawTables.setRawTableGroupPage}
+                      isCreateDisabled={!isDataApiAvailable}
+                      actionId={actionId}
+                    />
+                  </TabsContent>
+                  <TabsContent value="result_tables" className="min-h-0 flex-1 bg-transparent">
+                    <ResultTablesPanel
+                      resultTables={dashboard.dashboard.resultTables}
+                      totalResultTables={dashboard.dashboard.totalResultTables}
+                      groups={outputGroups}
+                      groupCounts={dashboard.dashboard.outputGroupCounts}
+                      groupPages={dashboard.outputGroupPages}
+                      searchQuery={searchQuery}
+                      isLoading={isResultTablesLoading}
+                      actionId={actionId}
+                      isCreateDisabled={!isDataApiAvailable || actionId === 'create-output'}
+                      onCreate={actions.handleCreateResultTable}
+                      onSearchChange={handleSearchChange}
+                      onRefresh={() =>
+                        dashboard.loadDashboard({ preserveError: true, tab: 'result_tables' })
+                      }
+                      onGroupPageChange={dashboard.setOutputGroupPage}
+                      onPreview={preview.previewResultTable}
+                      onEdit={(resultTable) => editors.setEditingResultTableId(resultTable.id)}
+                      onDelete={actions.handleDeleteResultTable}
+                      onDeleteAll={actions.handleDeleteAllResultTables}
+                      onAssignToGroup={(ids, target) =>
+                        actions.handleAssignToGroup('result', ids, target)
+                      }
+                      onRenameGroup={(group, name) =>
+                        actions.handleRenameGroup('result', group, name)
+                      }
+                      onDeleteGroup={(group) => actions.handleDeleteGroup('result', group)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
+                    <CloudAnalysisPanel />
+                  </TabsContent>
+                </Tabs>
+              </tabBarAction.Provider>
             </section>
             {preview.storedPreviewOpen && (
               <RawTablePreviewDialog

@@ -43,7 +43,8 @@ import {
   type DataListGroup,
 } from './group-ui';
 import {
-  toolbarPrimaryCellClass,
+  TabBarAction,
+  tabBarNewCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -218,14 +219,16 @@ export function ResultTablesPanel({
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || resultTables.length > 0 || searchQuery.trim()) && (
-            <button
-              onClick={() => setCreateDialogOpen(true)}
-              disabled={isCreateDisabled || bulkBusy}
-              className={toolbarPrimaryCellClass}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('data.resultTables.add')}
-            </button>
+            <TabBarAction>
+              <button
+                onClick={() => setCreateDialogOpen(true)}
+                disabled={isCreateDisabled || bulkBusy}
+                className={tabBarNewCellClass}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('data.resultTables.add')}
+              </button>
+            </TabBarAction>
           )}
           <DataTableSearch
             value={searchQuery}

@@ -30,7 +30,8 @@ const RUN_RANGE_MS: Record<Exclude<RunRangeFilter, 'all'>, number> = {
 };
 
 import {
-  toolbarPrimaryCellClass,
+  TabBarAction,
+  tabBarNewCellClass,
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
@@ -100,10 +101,12 @@ export function AutomationListPanel({
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || automations.length > 0 || searchQuery.trim()) && (
-            <button onClick={onCreate} className={toolbarPrimaryCellClass}>
-              <Plus className="h-3.5 w-3.5" />
-              {tr('schedule.newAutomation', '新建自动化')}
-            </button>
+            <TabBarAction>
+              <button onClick={onCreate} className={tabBarNewCellClass}>
+                <Plus className="h-3.5 w-3.5" />
+                {tr('schedule.newAutomation', '新建自动化')}
+              </button>
+            </TabBarAction>
           )}
           <DataTableSearch
             value={searchQuery}
