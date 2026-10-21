@@ -15,6 +15,8 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
       return { type, payload: { sessionId: 'session-1' } };
     case 'session.rename':
       return { type, payload: { sessionId: 'session-1', title: 'Renamed' } };
+    case 'session.duplicate':
+      return { type, payload: { sessionId: 'session-1' } };
     case 'session.batchDelete':
       return { type, payload: { sessionIds: ['session-1'] } };
     case 'project.rename':
@@ -51,6 +53,7 @@ describe('eventRequiresSessionManager', () => {
       'session.stop',
       'session.delete',
       'session.rename',
+      'session.duplicate',
       'session.batchDelete',
       'session.list',
       'session.getMessages',

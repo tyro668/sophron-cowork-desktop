@@ -6,6 +6,7 @@ export const ALLOWED_CLIENT_EVENT_TYPES = [
   'session.stop',
   'session.delete',
   'session.rename',
+  'session.duplicate',
   'session.batchDelete',
   'session.list',
   'session.getMessages',

@@ -1207,6 +1207,33 @@ export class SessionManager {
     return this.updateSessionTitle(sessionId, trimmed);
   }
 
+  /**
+   * Copy a task: new session row (fresh agent/thread ids, idle) plus copies of all
+   * persisted messages in their original order. Returns the new session id.
+   */
+  duplicateSession(sessionId: string, titleSuffix = ' (副本)'): string | null {
+    const source = this.db.sessions.get(sessionId);
+    if (!source) return null;
+    const id = uuidv4();
+    const now = Date.now();
+    this.db.sessions.create({
+      ...source,
+      id,
+      title: `${source.title}${titleSuffix}`.slice(0, 200),
+      agent_session_id: null,
+      openai_thread_id: null,
+      status: 'idle',
+      created_at: now,
+      updated_at: now,
+    });
+    for (const message of this.db.messages.getBySessionId(sessionId)) {
+      this.db.messages.create({ ...message, id: uuidv4(), session_id: id });
+    }
+    // The copy has a user-chosen title; never auto-retitle it.
+    this.sessionTitleAttempts.add(id);
+    return id;
+  }
+
   private updateSessionTitle(sessionId: string, title: string): boolean {
     const existing = this.db.sessions.get(sessionId);
     if (!existing) {
