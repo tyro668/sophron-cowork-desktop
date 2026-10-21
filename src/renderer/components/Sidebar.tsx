@@ -675,11 +675,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }}
         onMouseEnter={() => setHoveredSession(session.id)}
         onMouseLeave={() => setHoveredSession(null)}
-        className={`group relative cursor-pointer transition-colors ${
-          isMac
-            ? 'rounded-lg px-2.5 py-1.5'
-            : 'border-b border-border-subtle py-1.5 pl-7 pr-2.5 last:border-b-0'
-        } ${
+        className={`group relative cursor-pointer transition-colors ${'border-b border-border-subtle py-1.5 pl-7 pr-2.5 last:border-b-0'} ${
           isSelectMode && isSelected
             ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
             : isActive && !isSelectMode
@@ -688,9 +684,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }`}
       >
         {isActive && !isSelectMode && (
-          <span
-            className={`absolute left-0 w-[3px] bg-accent ${isMac ? 'top-1.5 bottom-1.5 rounded-r-full' : 'inset-y-0'}`}
-          />
+          <span className={`absolute left-0 w-[3px] bg-accent inset-y-0`} />
         )}
         <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
           {isSelectMode && (
@@ -928,9 +922,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     </div>
   );
 
-  const navItemShape = isMac
-    ? 'rounded-xl px-3 py-2'
-    : 'h-9 px-4 border-b border-border-subtle last:border-b-0';
+  const navItemShape = 'h-9 px-4 border-b border-border-subtle last:border-b-0';
 
   const renderBrand = (compact: boolean) => (
     <div className="min-w-0 flex items-center gap-3">
@@ -1084,27 +1076,19 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
       {isMac ? (
         /* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */
-        <div className="flex items-start gap-3 px-3.5 pb-3 titlebar-drag pt-12">
+        <div className="flex items-start gap-3 border-b border-border-subtle px-3.5 pb-3 titlebar-drag pt-12">
           {renderBrand(false)}
         </div>
       ) : (
         titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)
       )}
 
-      <div
-        className={
-          isMac ? 'px-3.5 pb-3.5 border-b border-border-subtle' : 'border-b border-border-subtle'
-        }
-      >
-        <div className={isMac ? '' : 'flex h-12 items-stretch border-b border-border-subtle'}>
+      <div className={'border-b border-border-subtle'}>
+        <div className={'flex h-12 items-stretch border-b border-border-subtle'}>
           <Button
             variant="primary"
             onClick={handleNewSession}
-            className={
-              isMac
-                ? 'h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft'
-                : 'h-full w-full justify-start gap-2 rounded-none px-3.5'
-            }
+            className={'h-full w-full justify-start gap-2 rounded-none px-3.5'}
           >
             <Plus className="w-4 h-4 flex-shrink-0" />
             <span className="text-[13px]">{t('sidebar.newTask')}</span>
@@ -1112,13 +1096,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
 
         {sessions.length > 0 && (
-          <div
-            className={
-              isMac
-                ? 'mt-2 flex items-center gap-2'
-                : 'flex h-10 items-stretch border-b border-border-subtle bg-surface'
-            }
-          >
+          <div className={'flex h-10 items-stretch border-b border-border-subtle bg-surface'}>
             <div className="relative flex-1 min-w-0">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
@@ -1126,7 +1104,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className={`w-full ${isMac ? 'h-9 rounded-xl shadow-soft border border-border-muted bg-background' : 'h-full rounded-none border-0 bg-transparent'} pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
+                className={`w-full h-full rounded-none border-0 bg-transparent pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
               />
             </div>
             <button
@@ -1137,7 +1115,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   setIsSelectMode(true);
                 }
               }}
-              className={`${isMac ? 'w-8 h-8 rounded-xl' : 'w-10 border-l border-border-subtle'} flex items-center justify-center flex-shrink-0 transition-colors ${
+              className={`w-10 border-l border-border-subtle flex items-center justify-center flex-shrink-0 transition-colors ${
                 isSelectMode
                   ? 'bg-accent text-accent-foreground'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
@@ -1154,16 +1132,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         )}
 
         <nav
-          className={
-            isMac ? 'mt-4 space-y-1' : 'flex flex-col border-b border-border-subtle bg-surface'
-          }
+          className={'flex flex-col border-b border-border-subtle bg-surface'}
           aria-label={t('mainNav.label')}
         >
           <button
             onClick={handleDataPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isDataPageActive
-                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
+                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1174,7 +1150,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleSkillsPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isSkillsPageActive
-                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
+                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1185,7 +1161,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             onClick={handleAutomationPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isAutomationPageActive
-                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
+                ? `bg-accent-muted text-accent shadow-[inset_3px_0_0_var(--color-accent)]`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1195,24 +1171,22 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </nav>
       </div>
 
-      <div className={`flex-1 overflow-y-auto ${isMac ? 'px-3 py-4' : ''}`}>
+      <div className={`flex-1 overflow-y-auto `}>
         {pinnedSessions.length > 0 && !isSelectMode && (
-          <div className={isMac ? 'mb-4' : ''}>
+          <div className={''}>
             <div
-              className={`flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-1 px-3' : 'h-7 border-b border-border-subtle px-3.5'}`}
+              className={`flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted h-7 border-b border-border-subtle px-3.5`}
             >
               <Pin className="h-3 w-3" />
               {t('sidebar.pinnedTitle')}
             </div>
-            <div
-              className={isMac ? 'space-y-0.5 pl-3' : 'border-b border-border-subtle bg-surface'}
-            >
+            <div className={'border-b border-border-subtle bg-surface'}>
               {pinnedSessions.map((session) => renderSessionRow(session))}
             </div>
           </div>
         )}
         <div
-          className={`text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-2 px-3' : 'flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5'}`}
+          className={`text-[12px] font-semibold leading-5 text-text-muted flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5`}
         >
           {t('sidebar.projectsTitle')}
         </div>
@@ -1222,21 +1196,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('sidebar.noTasksHint')}</p>
           </div>
         ) : (
-          <div className={isMac ? 'space-y-1' : ''}>
+          <div className={''}>
             {groupedSessions.map((group) => {
               const isProjectExpanded = expandedProjectKeys.has(group.key);
               const isSavingProjectName = savingProjectRenameKey === group.key;
               return (
-                <section
-                  key={group.key}
-                  className={isMac ? 'space-y-1' : 'border-b border-border-subtle bg-surface'}
-                >
+                <section key={group.key} className={'border-b border-border-subtle bg-surface'}>
                   <div
-                    className={
-                      isMac
-                        ? 'px-1.5'
-                        : `bg-surface-muted ${isProjectExpanded && group.sessions.length > 0 ? 'border-b border-border-subtle' : ''}`
-                    }
+                    className={`bg-surface-muted ${isProjectExpanded && group.sessions.length > 0 ? 'border-b border-border-subtle' : ''}`}
                   >
                     {renamingProjectKey === group.key ? (
                       <form
@@ -1280,7 +1247,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                       </form>
                     ) : (
                       <div
-                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 ${isMac ? 'rounded-lg px-1.5 py-1' : 'h-[30px] pl-2.5 pr-1'}`}
+                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 h-[30px] pl-2.5 pr-1`}
                       >
                         <button
                           type="button"
@@ -1361,7 +1328,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                     </div>
                   )}
                   {isProjectExpanded && (
-                    <div className={isMac ? 'ml-6 space-y-0.5 pl-2' : ''}>
+                    <div className={''}>
                       {group.sessions.map((session) => renderSessionRow(session))}
                     </div>
                   )}
@@ -1443,9 +1410,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       ) : (
         <div className="border-t border-border-subtle">
-          <div
-            className={`flex h-12 w-full items-center bg-surface ${isMac ? 'gap-2 px-4' : 'items-stretch pl-3.5'}`}
-          >
+          <div className={`flex h-12 w-full items-center bg-surface items-stretch pl-3.5`}>
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}
@@ -1499,7 +1464,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               sideOffset={6}
               trigger={
                 <button
-                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary ${isMac ? 'h-8 rounded-lg' : 'h-full border-l border-border-subtle px-3'} transition-colors hover:bg-surface-hover hover:text-text-primary`}
+                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary h-full border-l border-border-subtle px-3 transition-colors hover:bg-surface-hover hover:text-text-primary`}
                   title={t('sidebar.themeToggle')}
                 >
                   {settings.theme === 'dark' ? (
@@ -1537,7 +1502,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             </GlassDropdownMenu>
             <button
               onClick={() => setShowSettings(true)}
-              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary ${isMac ? 'h-9 w-9 rounded-xl' : 'h-full w-10 border-l border-border-subtle'}`}
+              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary h-full w-10 border-l border-border-subtle`}
               title={t('sidebar.settings')}
             >
               <Settings className="h-4 w-4" />
