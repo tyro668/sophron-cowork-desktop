@@ -236,20 +236,6 @@ export function DataViewPage() {
             onUpdateRawTableConfig={actions.handleUpdateRawTableConfig}
             onSyncCloudSource={actions.handleRefreshCloudRawTable}
             onDelete={actions.handleDeleteRawTable}
-            pipelines={dashboard.dashboard.pipelines}
-            resultTables={dashboard.dashboard.resultTables}
-            onOpenPipeline={(pipeline) => {
-              editors.setEditingRawTableId(null);
-              actions.handleEditPipeline(pipeline);
-            }}
-            onOpenResultTable={(resultTable) => {
-              editors.setEditingRawTableId(null);
-              editors.setEditingResultTableId(resultTable.id);
-            }}
-            onCreatePipeline={(rawTable) => {
-              editors.setEditingRawTableId(null);
-              void actions.handleCreatePipelineFromTable(rawTable);
-            }}
           />
         ) : editors.editingResultTable ? (
           <ResultTableEditor

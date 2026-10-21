@@ -66,8 +66,6 @@ import {
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { RawTableRelations } from './raw-table-relations';
-import type { DataPipeline, DataResultTable } from '../../types';
 import { CodePreview, getCodePreviewLanguageLabel } from './raw-table-code-preview';
 import { RawTableGenerationConsole } from './raw-table-generation-console';
 import { NormalizerProjectTree, RawTableVersionHistoryPanel } from './raw-table-version-history';
@@ -116,11 +114,6 @@ export type RawTableEditorProps = {
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
   /** Opens the delete confirmation (never deletes without the dialog). */
   onDelete?: (rawTable: DataRawTable) => void | Promise<void>;
-  pipelines?: DataPipeline[];
-  resultTables?: DataResultTable[];
-  onOpenPipeline?: (pipeline: DataPipeline) => void;
-  onOpenResultTable?: (resultTable: DataResultTable) => void;
-  onCreatePipeline?: (rawTable: DataRawTable) => void;
 };
 
 export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
@@ -145,11 +138,6 @@ export function RawTableEditorWorkbench({
   onUpdateRawTableConfig,
   onSyncCloudSource,
   onDelete,
-  pipelines = [],
-  resultTables = [],
-  onOpenPipeline,
-  onOpenResultTable,
-  onCreatePipeline,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
@@ -196,9 +184,7 @@ export function RawTableEditorWorkbench({
       setExportBusy(false);
     }
   };
-  const [activeViewTab, setActiveViewTab] = useState<
-    'config' | 'data' | 'relations' | 'automation'
-  >('config');
+  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>('config');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Import / source-change failure, shown inline under the source row (B11).
@@ -944,7 +930,7 @@ export function RawTableEditorWorkbench({
         <Tabs
           value={activeViewTab}
           onValueChange={(value) => {
-            const next = value as 'config' | 'data' | 'relations' | 'automation';
+            const next = value as 'config' | 'data' | 'automation';
             setActiveViewTab(next);
             // previewData may currently hold a customize-draft preview — always
             // reload the raw source preview when entering the data tab.
@@ -1679,18 +1665,6 @@ export function RawTableEditorWorkbench({
             />
           </TabsContent>
           {rawTable ? (
-            <TabsContent value="relations" className="min-h-0 flex-1 overflow-y-auto bg-surface">
-              <RawTableRelations
-                rawTable={rawTable}
-                pipelines={pipelines}
-                resultTables={resultTables}
-                onOpenPipeline={onOpenPipeline}
-                onOpenResultTable={onOpenResultTable}
-                onCreatePipeline={onCreatePipeline}
-              />
-            </TabsContent>
-          ) : null}
-          {rawTable ? (
             <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
               <RawTableAutomations key={rawTable.id} rawTable={rawTable} embedded grid />
             </TabsContent>
@@ -1703,11 +1677,6 @@ export function RawTableEditorWorkbench({
               <TabsTrigger value="data" className={bottomTabTriggerClass} disabled={!canPreview}>
                 {t('data.rawTables.editor.tabs.data')}
               </TabsTrigger>
-              {rawTable ? (
-                <TabsTrigger value="relations" className={bottomTabTriggerClass}>
-                  {t('data.rawTables.editor.tabs.relations')}
-                </TabsTrigger>
-              ) : null}
               {rawTable ? (
                 <TabsTrigger value="automation" className={bottomTabTriggerClass}>
                   {t('data.rawTables.editor.tabs.automation')}
