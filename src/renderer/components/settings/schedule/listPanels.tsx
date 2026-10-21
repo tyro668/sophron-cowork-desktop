@@ -1,6 +1,7 @@
 import { getAutomationTableBindings } from '../../../../shared/automation/table-bindings';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
+  ChevronDown,
   ArrowUpDown,
   CalendarClock,
   FolderInput,
@@ -19,6 +20,14 @@ import { Switch } from '../../ui/switch';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import type { AutomationRunLogEntry } from './types';
 import { AUTOMATION_TABLE_PAGE_SIZE } from './types';
+
+type RunStatusFilter = 'all' | 'succeeded' | 'failed' | 'running';
+type RunRangeFilter = 'all' | '1d' | '7d' | '30d';
+const RUN_RANGE_MS: Record<Exclude<RunRangeFilter, 'all'>, number> = {
+  '1d': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+};
 
 import {
   toolbarPrimaryCellClass,
@@ -242,9 +251,62 @@ export function AutomationRunLogPanel({
   const hasRunning = entries.some(({ run }) => run.status === 'running' || run.status === 'queued');
   const [runQuery, setRunQuery] = useState('');
   const normalizedRunQuery = runQuery.trim().toLowerCase();
-  const visibleEntries = normalizedRunQuery
-    ? entries.filter(({ automation }) => automation.name.toLowerCase().includes(normalizedRunQuery))
-    : entries;
+  const [runStatusFilter, setRunStatusFilter] = useState<RunStatusFilter>('all');
+  const [runRangeFilter, setRunRangeFilter] = useState<RunRangeFilter>('all');
+  const rangeStart = runRangeFilter === 'all' ? 0 : Date.now() - RUN_RANGE_MS[runRangeFilter];
+  // Client-side filters over the loaded run log only.
+  const visibleEntries = entries.filter(({ automation, run }) => {
+    if (normalizedRunQuery && !automation.name.toLowerCase().includes(normalizedRunQuery)) {
+      return false;
+    }
+    if (runStatusFilter !== 'all') {
+      const status =
+        run.status === 'queued' ? 'running' : run.status === 'succeeded' ? 'succeeded' : run.status;
+      if (status !== runStatusFilter) return false;
+    }
+    if (rangeStart > 0) {
+      const at = run.startedAt ?? run.queuedAt ?? run.createdAt;
+      if (!at || at < rangeStart) return false;
+    }
+    return true;
+  });
+  const statusOptions: Array<[RunStatusFilter, string]> = [
+    ['all', tr('schedule.runFilterAllStatus', '全部状态')],
+    ['succeeded', tr('schedule.runFilterSucceeded', '成功')],
+    ['failed', tr('schedule.runFilterFailed', '失败')],
+    ['running', tr('schedule.runFilterRunning', '运行中')],
+  ];
+  const rangeOptions: Array<[RunRangeFilter, string]> = [
+    ['all', tr('schedule.runFilterAllTime', '全部时间')],
+    ['1d', tr('schedule.runFilter1d', '最近 24 小时')],
+    ['7d', tr('schedule.runFilter7d', '最近 7 天')],
+    ['30d', tr('schedule.runFilter30d', '最近 30 天')],
+  ];
+  const filterCell = (
+    label: string,
+    options: Array<[string, string]>,
+    value: string,
+    onChange: (value: string) => void
+  ) => (
+    <GlassDropdownMenu
+      align="end"
+      trigger={
+        <button
+          type="button"
+          className="inline-flex h-full min-w-[104px] items-center justify-between gap-2 border-l border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+        >
+          {label}
+          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
+        </button>
+      }
+    >
+      {options.map(([key, text]) => (
+        <GlassMenuItem key={key} selected={value === key} onSelect={() => onChange(key)}>
+          {text}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
+  );
   // Poll every 3s only while something is running (design 15).
   useEffect(() => {
     if (!hasRunning) return;
@@ -261,6 +323,18 @@ export function AutomationRunLogPanel({
             placeholder={tr('schedule.runSearch', '搜索执行记录…')}
           />
         </div>
+        {filterCell(
+          statusOptions.find(([key]) => key === runStatusFilter)?.[1] ?? '',
+          statusOptions,
+          runStatusFilter,
+          (value) => setRunStatusFilter(value as RunStatusFilter)
+        )}
+        {filterCell(
+          rangeOptions.find(([key]) => key === runRangeFilter)?.[1] ?? '',
+          rangeOptions,
+          runRangeFilter,
+          (value) => setRunRangeFilter(value as RunRangeFilter)
+        )}
         <DataToolbarButton
           icon={<RefreshCw className="h-3.5 w-3.5" />}
           label={tr('schedule.refresh', '刷新')}
