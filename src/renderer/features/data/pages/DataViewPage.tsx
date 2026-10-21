@@ -262,6 +262,10 @@ export function DataViewPage() {
             onSave={actions.handleUpdateResultTable}
             onRunPipeline={actions.handleRunPipeline}
             onDelete={actions.handleDeleteResultTable}
+            onOpenPipeline={(pipeline) => {
+              editors.setEditingResultTableId(null);
+              actions.handleEditPipeline(pipeline);
+            }}
           />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
