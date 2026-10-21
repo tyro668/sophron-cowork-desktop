@@ -28,3 +28,34 @@ describe('Sidebar login dialog', () => {
     expect(source).toContain('{desktopAuthStatus.apiOrigin}');
   });
 });
+
+describe('new task shortcut', () => {
+  const ev = (o: Partial<KeyboardEvent>) =>
+    ({
+      key: 'n',
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      repeat: false,
+      ...o,
+    }) as KeyboardEvent;
+  it('uses Cmd on mac and Ctrl elsewhere', async () => {
+    const { isNewTaskShortcut } = await import('../src/renderer/components/Sidebar');
+    expect(isNewTaskShortcut(ev({ metaKey: true }), true)).toBe(true);
+    expect(isNewTaskShortcut(ev({ ctrlKey: true }), true)).toBe(false);
+    expect(isNewTaskShortcut(ev({ ctrlKey: true, key: 'N' }), false)).toBe(true);
+    expect(isNewTaskShortcut(ev({ metaKey: true }), false)).toBe(false);
+    expect(isNewTaskShortcut(ev({ ctrlKey: true, shiftKey: true }), false)).toBe(false);
+    expect(isNewTaskShortcut(ev({ ctrlKey: true, repeat: true }), false)).toBe(false);
+  });
+  it('renders the hint cell and lists the shortcut in settings', () => {
+    expect(source).toContain("{isMac ? '⌘N' : 'Ctrl+N'}");
+    expect(source).toContain('data-testid="new-task-shortcut-cell"');
+    const settings = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/renderer/components/settings/SettingsShortcuts.tsx'),
+      'utf8'
+    );
+    expect(settings).toContain("labelKey: 'settings.shortcutList.newTask'");
+  });
+});

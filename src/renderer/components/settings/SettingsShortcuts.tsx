@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next';
 
+const MOD_KEY =
+  typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin' ? '⌘' : 'Ctrl';
+
 const SHORTCUTS: Array<{ keys: string[][]; labelKey: string }> = [
+  { keys: [[MOD_KEY, 'N']], labelKey: 'settings.shortcutList.newTask' },
   { keys: [['Enter']], labelKey: 'settings.shortcutList.send' },
   { keys: [['Ctrl', 'Enter']], labelKey: 'settings.shortcutList.newline' },
   { keys: [['Ctrl', 'Z']], labelKey: 'settings.shortcutList.undo' },

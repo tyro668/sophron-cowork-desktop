@@ -2010,7 +2010,8 @@
       "undo": "Undo (pipeline canvas)",
       "redo": "Redo (pipeline canvas)",
       "deleteNode": "Delete selected nodes (pipeline canvas)",
-      "escape": "Close dialog · deny permission request"
+      "escape": "Close dialog · deny permission request",
+      "newTask": "New task"
     }
   },
   "personalAnalysis": {
