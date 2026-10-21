@@ -1492,6 +1492,14 @@
   padding: 4px 8px;
 }
 
+/* Data list tables sit flush against the content edges: no inset, no radius, 1px rules only. */
+.glass-table.ui-table-flush {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Settings content supplies the 12px inset itself. */
 .settings-content .ui-group {
   margin: 0 0 var(--space-group);

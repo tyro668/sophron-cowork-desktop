@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Clock3 } from 'lucide-react';
+import { Clock3 } from 'lucide-react';
 import { dataClient } from '../../../features/data/api/data-client';
 import type { DataPipelineRun } from '../../../../shared/contracts/data';
 import { useTranslation } from 'react-i18next';
@@ -294,7 +294,7 @@ export function PipelinesPanel({
           />
         </div>
       </div>
-      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
+      <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && pipelines.length === 0 ? (
             <EmptyState
@@ -414,12 +414,11 @@ function PipelinesTable({
       <table className="data-list-table w-full table-fixed border-collapse text-left">
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="w-[26%] whitespace-nowrap px-2">{t('data.columns.pipelineName')}</th>
-            <th className="w-[30%] whitespace-nowrap px-2">{t('data.pipelineList.io')}</th>
-            <th className="w-[7%] whitespace-nowrap px-2">{t('data.pipelineList.nodes')}</th>
-            <th className="w-[14%] whitespace-nowrap px-2">{t('data.pipelineList.lastRun')}</th>
-            <th className="w-[12%] whitespace-nowrap px-2">{t('data.pipelineList.automation')}</th>
-            <th className="w-[11%] whitespace-nowrap px-2">
+            <th className="w-[36%] whitespace-nowrap px-2">{t('data.columns.pipelineName')}</th>
+            <th className="w-[8%] whitespace-nowrap px-2">{t('data.pipelineList.nodes')}</th>
+            <th className="w-[18%] whitespace-nowrap px-2">{t('data.pipelineList.lastRun')}</th>
+            <th className="w-[20%] whitespace-nowrap px-2">{t('data.pipelineList.automation')}</th>
+            <th className="w-[18%] whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
                 {t('data.columns.updatedAt')}
                 <ArrowUpDown className="h-3 w-3" />
@@ -431,7 +430,7 @@ function PipelinesTable({
           {sections.map((section) => (
             <GroupSectionRows
               key={section.key}
-              colSpan={6}
+              colSpan={5}
               section={section}
               grouped={grouped}
               collapsed={collapsed.has(section.key)}
@@ -509,26 +508,6 @@ function PipelineRow({
             {pipeline.status === 'draft' && <StatusBadge status={pipeline.status} />}
           </div>
         </div>
-      </td>
-      <td className="px-2">
-        {meta ? (
-          <span
-            className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-text-secondary"
-            title={`${meta.inputs.join('、')} → ${meta.outputs.join('、')}`}
-          >
-            <span className="min-w-0 max-w-[50%] truncate">
-              {meta.inputs.length > 0 ? meta.inputs.join('、') : '—'}
-            </span>
-            <ArrowRight className="h-3 w-3 flex-shrink-0 text-text-muted" />
-            <span
-              className={`min-w-0 max-w-[50%] truncate ${meta.outputs.length === 0 ? 'text-text-muted' : ''}`}
-            >
-              {meta.outputs.length > 0 ? meta.outputs.join('、') : t('data.pipelineList.noOutput')}
-            </span>
-          </span>
-        ) : (
-          <span className="text-text-muted">…</span>
-        )}
       </td>
       <td className="px-2 text-[13px] font-medium text-text-secondary">{pipeline.nodeCount}</td>
       <td className="px-2">
