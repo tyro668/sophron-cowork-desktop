@@ -65,8 +65,10 @@ export function RawTableCloudSourceDialog({
           </div>
         </section>
       </DialogBody>
-      <DialogFooter>
-        <Button onClick={onClose}>{t('common.cancel')}</Button>
+      <DialogFooter className="ui-footer-split">
+        <Button variant="ghost" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
         <Button
           variant="primary"
           disabled={!source.spaceId || !source.projectId || !source.tableId}

@@ -193,7 +193,7 @@ export function GlassDataGridPreview({
           )}
           {filterFormOpen && (
             <form
-              className="absolute left-3 top-full z-30 mt-1 flex items-center gap-2 rounded-xl border border-border-subtle bg-surface p-2 shadow-elevated"
+              className="absolute left-3 top-full z-30 mt-1 w-72 overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-elevated"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!filterDraft.column) return;
@@ -202,48 +202,98 @@ export function GlassDataGridPreview({
                 setFilterFormOpen(false);
               }}
             >
-              <select
-                aria-label={t('data.preview.filterColumn')}
-                value={filterDraft.column}
-                onChange={(event) =>
-                  setFilterDraft((current) => ({ ...current, column: event.target.value }))
-                }
-                className="h-7 max-w-[10rem] rounded-md border border-border-muted bg-surface px-1.5 text-xs"
-              >
-                {columns.map((column) => (
-                  <option key={column} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label={t('data.preview.filterOperator')}
-                value={filterDraft.op}
-                onChange={(event) =>
-                  setFilterDraft((current) => ({ ...current, op: event.target.value as FilterOp }))
-                }
-                className="h-7 rounded-md border border-border-muted bg-surface px-1.5 text-xs"
-              >
-                <option value="eq">=</option>
-                <option value="neq">≠</option>
-                <option value="contains">{t('data.preview.filterContains')}</option>
-              </select>
-              <input
-                autoFocus
-                aria-label={t('data.preview.filterValue')}
-                value={filterDraft.value}
-                onChange={(event) =>
-                  setFilterDraft((current) => ({ ...current, value: event.target.value }))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setFilterFormOpen(false);
-                }}
-                placeholder={t('data.preview.filterValue')}
-                className="h-7 w-36 rounded-md border border-border-muted bg-surface px-2 text-xs outline-none focus:border-accent/50"
-              />
-              <Button type="submit" size="sm" variant="primary">
-                {t('data.preview.addFilter')}
-              </Button>
+              <div className="flex h-9 items-center border-b border-border-subtle px-3 text-[13px] font-semibold text-text-primary">
+                {t('data.preview.filterTitle')}
+              </div>
+              <div className="p-2.5">
+                <div className="ui-group bg-surface" style={{ margin: 0 }}>
+                  <div
+                    className="ui-form-row"
+                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
+                  >
+                    <span className="ui-form-label items-center">
+                      {t('data.preview.filterColumnLabel', '列')}
+                    </span>
+                    <div className="ui-form-value">
+                      <select
+                        aria-label={t('data.preview.filterColumn')}
+                        value={filterDraft.column}
+                        onChange={(event) =>
+                          setFilterDraft((current) => ({ ...current, column: event.target.value }))
+                        }
+                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-1.5 text-xs"
+                      >
+                        {columns.map((column) => (
+                          <option key={column} value={column}>
+                            {column}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div
+                    className="ui-form-row"
+                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
+                  >
+                    <span className="ui-form-label items-center">
+                      {t('data.preview.filterOpLabel', '条件')}
+                    </span>
+                    <div className="ui-form-value">
+                      <select
+                        aria-label={t('data.preview.filterOperator')}
+                        value={filterDraft.op}
+                        onChange={(event) =>
+                          setFilterDraft((current) => ({
+                            ...current,
+                            op: event.target.value as FilterOp,
+                          }))
+                        }
+                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-1.5 text-xs"
+                      >
+                        <option value="eq">=</option>
+                        <option value="neq">≠</option>
+                        <option value="contains">{t('data.preview.filterContains')}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div
+                    className="ui-form-row"
+                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
+                  >
+                    <span className="ui-form-label items-center">
+                      {t('data.preview.filterValueLabel', '值')}
+                    </span>
+                    <div className="ui-form-value">
+                      <input
+                        autoFocus
+                        aria-label={t('data.preview.filterValue')}
+                        value={filterDraft.value}
+                        onChange={(event) =>
+                          setFilterDraft((current) => ({ ...current, value: event.target.value }))
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setFilterFormOpen(false);
+                        }}
+                        placeholder={t('data.preview.filterValue')}
+                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-2 text-xs outline-none focus:border-accent/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="ui-footer-split">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setFilterFormOpen(false)}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                  <Button type="submit" size="sm" variant="primary">
+                    {t('data.preview.addFilter')}
+                  </Button>
+                </div>
+              </div>
             </form>
           )}
         </div>

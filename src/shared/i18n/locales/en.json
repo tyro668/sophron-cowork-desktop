@@ -1939,7 +1939,11 @@
       "filterColumn": "Column",
       "filterOperator": "Operator",
       "filterValue": "Value",
-      "addFilter": "Add"
+      "addFilter": "Add",
+      "filterColumnLabel": "Column",
+      "filterOpLabel": "Condition",
+      "filterValueLabel": "Value",
+      "filterTitle": "Add filter"
     },
     "pipelineList": {
       "io": "Input → Output",

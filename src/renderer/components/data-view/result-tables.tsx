@@ -518,7 +518,7 @@ function ResultTableCreateDialog({
 
   const purposeOptionClass = (value: 'pipeline' | 'copy') =>
     cn(
-      'flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition-colors',
+      'flex cursor-pointer items-start gap-2.5 rounded-md border px-2.5 py-1.5 text-[13px] transition-colors',
       purpose === value
         ? 'border-accent/40 bg-accent-muted text-text-primary'
         : 'border-border-subtle text-text-secondary hover:bg-surface-hover/40'
@@ -535,86 +535,90 @@ function ResultTableCreateDialog({
       onOpenChange={onOpenChange}
       busy={busy}
       ariaLabel={t('data.resultTables.create.title')}
-      className="max-w-md"
+      className="ui-dialog-pad max-w-md"
     >
       <DialogHeader>
         <DialogTitle>{t('data.resultTables.create.title')}</DialogTitle>
       </DialogHeader>
-      <DialogBody className="flex flex-col gap-3">
-        <div className="grid gap-1">
-          <span className="text-xs font-medium text-text-secondary">
-            {t('data.resultTables.create.name')}
-          </span>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={t('data.resultTables.create.namePlaceholder')}
-            data-autofocus
-            className="text-[13px]"
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') submit();
-            }}
-          />
+      <DialogBody className="ui-group bg-surface">
+        <div className="ui-form-row">
+          <span className="ui-form-label items-center">{t('data.resultTables.create.name')}</span>
+          <div className="ui-form-value">
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={t('data.resultTables.create.namePlaceholder')}
+              data-autofocus
+              className="h-8 text-[13px]"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submit();
+              }}
+            />
+          </div>
         </div>
-        <div className="grid gap-1.5">
-          <span className="text-xs font-medium text-text-secondary">
-            {t('data.resultTables.create.purpose')}
+        <div className="ui-form-row">
+          <span className="ui-form-label items-start">
+            <span className="mt-2">{t('data.resultTables.create.purpose')}</span>
           </span>
-          <label className={purposeOptionClass('pipeline')}>
-            <input
-              type="radio"
-              name="result-table-purpose"
-              checked={purpose === 'pipeline'}
-              onChange={() => setPurpose('pipeline')}
-              className="mt-0.5 h-3.5 w-3.5 accent-accent"
-            />
-            <span className="grid gap-0.5">
-              <span className="font-medium">{t('data.resultTables.create.purposePipeline')}</span>
-              <span className="text-xs text-text-muted">
-                {t('data.resultTables.create.purposePipelineDesc')}
+          <div className="ui-form-value gap-1.5">
+            <label className={purposeOptionClass('pipeline')}>
+              <input
+                type="radio"
+                name="result-table-purpose"
+                checked={purpose === 'pipeline'}
+                onChange={() => setPurpose('pipeline')}
+                className="mt-0.5 h-3.5 w-3.5 accent-accent"
+              />
+              <span className="grid gap-0.5">
+                <span className="font-medium">{t('data.resultTables.create.purposePipeline')}</span>
+                <span className="text-xs text-text-muted">
+                  {t('data.resultTables.create.purposePipelineDesc')}
+                </span>
               </span>
-            </span>
-          </label>
-          <label className={purposeOptionClass('copy')}>
-            <input
-              type="radio"
-              name="result-table-purpose"
-              checked={purpose === 'copy'}
-              onChange={() => setPurpose('copy')}
-              className="mt-0.5 h-3.5 w-3.5 accent-accent"
-            />
-            <span className="grid gap-0.5">
-              <span className="font-medium">{t('data.resultTables.create.purposeCopy')}</span>
-              <span className="text-xs text-text-muted">
-                {t('data.resultTables.create.purposeCopyDesc')}
+            </label>
+            <label className={purposeOptionClass('copy')}>
+              <input
+                type="radio"
+                name="result-table-purpose"
+                checked={purpose === 'copy'}
+                onChange={() => setPurpose('copy')}
+                className="mt-0.5 h-3.5 w-3.5 accent-accent"
+              />
+              <span className="grid gap-0.5">
+                <span className="font-medium">{t('data.resultTables.create.purposeCopy')}</span>
+                <span className="text-xs text-text-muted">
+                  {t('data.resultTables.create.purposeCopyDesc')}
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
         </div>
         {purpose === 'copy' && (
-          <div className="grid gap-1">
-            <span className="text-xs font-medium text-text-secondary">
+          <div className="ui-form-row">
+            <span className="ui-form-label items-center">
               {t('data.resultTables.create.source')}
             </span>
-            <RawTableSelect
-              value={sourceRawTableId}
-              options={[
-                {
-                  value: '',
-                  label: sourcesLoading
-                    ? t('data.resultTables.editor.loadingRawTables')
-                    : t('data.resultTables.create.selectSource'),
-                },
-                ...sourceOptions,
-              ]}
-              disabled={busy || sourcesLoading}
-              onChange={setSourceRawTableId}
-            />
+            <div className="ui-form-value">
+              <RawTableSelect
+                value={sourceRawTableId}
+                options={[
+                  {
+                    value: '',
+                    label: sourcesLoading
+                      ? t('data.resultTables.editor.loadingRawTables')
+                      : t('data.resultTables.create.selectSource'),
+                  },
+                  ...sourceOptions,
+                ]}
+                disabled={busy || sourcesLoading}
+                onChange={setSourceRawTableId}
+              />
+            </div>
           </div>
         )}
       </DialogBody>
-      <DialogFooter>
-        <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
+      <DialogFooter className="ui-footer-split">
+        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
           {t('common.cancel')}
         </Button>
         <Button variant="primary" disabled={!canSubmit} onClick={submit}>
