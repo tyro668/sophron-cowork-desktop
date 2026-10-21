@@ -1,4 +1,5 @@
 import { markPersonalAnalysisKeyDisconnected } from '../features/data/cloud-connection-state';
+import { setSkillUsageSink } from '../skills/skill-usage';
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
 import { join } from 'path';
@@ -131,6 +132,7 @@ export async function bootstrap(): Promise<void> {
   // Initialize database
   const db = initDatabase();
   appContext.appDatabase = db;
+  setSkillUsageSink(db.skillInvocations ?? null);
   appContext.recordDataPipelineLlmUsage = createDataPipelineLlmUsageRecorder(db);
   const initializedDataPipelineStore = createDataPipelineStore(
     join(app.getPath('userData'), 'data', 'workspace.duckdb'),

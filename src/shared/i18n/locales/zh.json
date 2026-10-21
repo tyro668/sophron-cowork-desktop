@@ -2803,7 +2803,9 @@
       "chatDisplay": "在对话中显示为",
       "usedSkillChip": "已使用技能 · {{name}}",
       "directory": "目录",
-      "useInChat": "在对话中使用"
+      "useInChat": "在对话中使用",
+      "recentCallsLabel": "调用次数",
+      "recentCallsCount": "{{count}} 次"
     },
     "noCustomSkills": "未安装自定义技能",
     "installSkillsDesc": "安装技能以扩展本地数据处理能力",

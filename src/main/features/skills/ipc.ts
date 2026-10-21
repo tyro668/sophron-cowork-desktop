@@ -1,4 +1,5 @@
 import { shell } from 'electron';
+import { countSkillInvocationsSince } from '../../skills/skill-usage';
 import { appContext } from '../../app/context';
 import { sendToRenderer } from '../../app/events';
 import { configStore } from '../../config/config-store';
@@ -17,6 +18,11 @@ export function registerSkillsIpc(): void {
       logError('[Skills] Error getting skills:', error);
       throw error;
     }
+  });
+
+  handleIpc('skills.getUsageCounts', async (_event, days?: number) => {
+    const windowDays = typeof days === 'number' && days > 0 ? Math.min(days, 365) : 7;
+    return countSkillInvocationsSince(Date.now() - windowDays * 24 * 60 * 60 * 1000);
   });
 
   handleIpc('skills.install', async (_event, skillPath: string) => {
