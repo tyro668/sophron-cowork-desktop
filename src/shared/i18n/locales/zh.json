@@ -368,13 +368,17 @@
         "tabs": {
           "config": "配置",
           "data": "数据",
-          "automation": "自动化"
+          "automation": "自动化",
+          "relations": "关联设置"
         },
         "sectionSource": "数据来源",
         "sectionParsing": "解析设置",
         "sectionLinkage": "联动",
         "sectionParsingDetail": "解析详情",
-        "importFailedInline": "无法导入："
+        "importFailedInline": "无法导入：",
+        "columnTypesAuto": "自动推断",
+        "columnTypesCount": "{{count}} 个列类型覆盖",
+        "updatedAtMeta": "数据更新于 {{time}}"
       },
       "status": {
         "available": "可用",
@@ -388,7 +392,9 @@
         "createPipeline": "基于此表创建数据加工",
         "createPipelineMenu": "创建数据加工",
         "createPipelineManual": "手动创建",
-        "createPipelineAi": "AI 创建"
+        "createPipelineAi": "AI 创建",
+        "deleteEllipsis": "删除原始表…",
+        "changeFile": "更换文件"
       },
       "errors": {
         "csvEncoding": "文件编码无法识别，请在原始表配置中将「编码」改为 GBK 或 UTF-8 后重试。"
@@ -400,6 +406,22 @@
         "file": "文件",
         "notConfigured": "未配置",
         "cloud": "云端表"
+      },
+      "relations": {
+        "pipelines": "关联数据加工 · {{count}}",
+        "resultTables": "下游结果表 · {{count}}",
+        "impact": "影响说明",
+        "impactLabel": "更换文件 / 删除",
+        "colName": "名称",
+        "colLastRun": "最近运行",
+        "colStatus": "状态",
+        "open": "打开",
+        "newPipeline": "新建数据加工",
+        "via": "经 {{name}}",
+        "noPipelines": "暂无数据加工使用本表",
+        "noResultTables": "暂无下游结果表",
+        "impactText": "{{pipelines}} 个数据加工、{{tables}} 张结果表会受影响；删除前确认对话框会列出同样的清单",
+        "neverRun": "未运行"
       }
     },
     "resultTables": {
@@ -524,7 +546,14 @@
         "triggerCondition": "触发策略",
         "onTableChange": "本表更新成功后执行",
         "inheritAutomation": "随自动化执行",
-        "missing": "自动化已不存在，请刷新列表"
+        "missing": "自动化已不存在，请刷新列表",
+        "sectionTitle": "联动自动化",
+        "addLinkShort": "添加关联",
+        "linkedLabel": "关联自动化",
+        "nameHeader": "名称",
+        "nextRun": "下次执行",
+        "nextRunManual": "—（手动）",
+        "nextRunNone": "—"
       },
       "stats": {
         "rows": "行数",
@@ -1946,7 +1975,12 @@
       "filterColumnLabel": "列",
       "filterOpLabel": "条件",
       "filterValueLabel": "值",
-      "filterTitle": "添加筛选"
+      "filterTitle": "添加筛选",
+      "searchLoaded": "在已加载行中搜索…",
+      "columnCount": "列 {{count}}",
+      "export": "导出",
+      "loadedRows": "已加载 {{count}} 行（排序 / 筛选仅作用于已加载行）",
+      "allLoaded": "已全部加载"
     },
     "pipelineList": {
       "io": "输入 → 输出",

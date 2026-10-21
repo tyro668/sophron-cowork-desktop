@@ -15,12 +15,7 @@ import {
   Trash2,
   Workflow,
 } from 'lucide-react';
-import type {
-  DataRawTable,
-  DataGroup,
-  DataRawTableConfig,
-  DataRawTableSourceKind,
-} from '../../types';
+import type { DataRawTable, DataGroup } from '../../types';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
@@ -54,7 +49,7 @@ import {
   type AssignGroupTarget,
   type DataListGroup,
 } from './group-ui';
-import { RawTableEditorWorkbench } from './raw-table-editor-workbench';
+import { RawTableEditorWorkbench, type RawTableEditorProps } from './raw-table-editor-workbench';
 
 export function RawTablesPanel({
   rawTables,
@@ -515,57 +510,8 @@ export function RawTablesPanel({
   );
 }
 
-export function RawTableEditor({
-  draft,
-  rawTable,
-  isBusy,
-  onBack,
-  onRenameDraft,
-  onRenameRawTable,
-  onChooseDraftSource,
-  onChooseRawTableSource,
-  onUpdateRawTableConfig,
-  onSyncCloudSource,
-}: {
-  draft?: RawTableDraft;
-  rawTable?: DataRawTable;
-  isBusy: boolean;
-  onBack: () => void;
-  onRenameDraft?: (id: string, name: string) => void;
-  onRenameRawTable?: (rawTable: DataRawTable, name: string) => void | Promise<void>;
-  onChooseDraftSource?: (
-    draft: RawTableDraft,
-    sourceKind: DataRawTableSourceKind,
-    config: DataRawTableConfig,
-    name?: string
-  ) => void | Promise<void | string | null>;
-  onChooseRawTableSource?: (
-    rawTable: DataRawTable,
-    sourceKind: DataRawTableSourceKind,
-    config: DataRawTableConfig,
-    name?: string
-  ) => void | Promise<void | string | null>;
-  onUpdateRawTableConfig?: (
-    rawTable: DataRawTable,
-    config: DataRawTableConfig,
-    name?: string
-  ) => void | Promise<void>;
-  onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
-}) {
-  return (
-    <RawTableEditorWorkbench
-      draft={draft}
-      rawTable={rawTable}
-      isBusy={isBusy}
-      onBack={onBack}
-      onRenameDraft={onRenameDraft}
-      onRenameRawTable={onRenameRawTable}
-      onChooseDraftSource={onChooseDraftSource}
-      onChooseRawTableSource={onChooseRawTableSource}
-      onUpdateRawTableConfig={onUpdateRawTableConfig}
-      onSyncCloudSource={onSyncCloudSource}
-    />
-  );
+export function RawTableEditor(props: RawTableEditorProps) {
+  return <RawTableEditorWorkbench {...props} />;
 }
 
 export { RawTablePreviewDialog } from './raw-table-preview-dialog';

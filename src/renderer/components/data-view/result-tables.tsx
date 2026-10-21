@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -632,15 +631,6 @@ function ResultTableCreateDialog({
   );
 }
 
-function AutomationConfigGridRow({ label, children }: { label: ReactNode; children: ReactNode }) {
-  return (
-    <div className="ui-form-row">
-      <div className="ui-form-label items-center">{label}</div>
-      <div className="ui-form-value">{children}</div>
-    </div>
-  );
-}
-
 export function ResultTableEditor({
   resultTable,
   rawTables,
@@ -1040,17 +1030,7 @@ export function ResultTableEditor({
           />
         </TabsContent>
         <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
-          <section className="ui-group bg-surface">
-            <div className="ui-group-title">{t('data.resultTables.sections.automation')}</div>
-            <div>
-              <ResultTableAutomations
-                key={resultTable.id}
-                resultTable={resultTable}
-                embedded
-                Row={AutomationConfigGridRow}
-              />
-            </div>
-          </section>
+          <ResultTableAutomations key={resultTable.id} resultTable={resultTable} embedded grid />
         </TabsContent>
         <div className={`${bottomTabBarClass} justify-between`}>
           <TabsList className={bottomTabListClass}>
