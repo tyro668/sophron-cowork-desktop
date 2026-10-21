@@ -17,6 +17,10 @@ type ConfirmTone = 'default' | 'danger';
 export interface ConfirmDialogOptions {
   title?: ReactNode;
   message: ReactNode;
+  /** Optional 名称 row; when set the dialog renders label rows instead of the bare message. */
+  name?: ReactNode;
+  /** Optional 影响 row describing what else is affected. */
+  impact?: ReactNode;
   confirmLabel?: ReactNode;
   cancelLabel?: ReactNode;
   tone?: ConfirmTone;
@@ -133,12 +137,38 @@ function ConfirmDialogOverlay({
           </div>
           <div className="ui-dialog-pad p-3">
             <section className="ui-group bg-surface">
-              <DialogDescription
-                id={descriptionId}
-                className="px-3 py-2.5 text-[13px] leading-5 text-text-secondary"
-              >
-                {dialog.message}
-              </DialogDescription>
+              {dialog.name != null ? (
+                <>
+                  <DialogDescription id={descriptionId} className="sr-only">
+                    {dialog.message}
+                  </DialogDescription>
+                  <div className="ui-form-row">
+                    <span className="ui-form-label items-center">
+                      {t('common.confirmNameLabel', '名称')}
+                    </span>
+                    <div className="ui-form-value break-all text-[13px] text-text-primary">
+                      {dialog.name}
+                    </div>
+                  </div>
+                  {dialog.impact != null && (
+                    <div className="ui-form-row">
+                      <span className="ui-form-label items-center">
+                        {t('common.confirmImpactLabel', '影响')}
+                      </span>
+                      <div className="ui-form-value text-[12.5px] text-text-muted">
+                        {dialog.impact}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <DialogDescription
+                  id={descriptionId}
+                  className="px-3 py-2.5 text-[13px] leading-5 text-text-secondary"
+                >
+                  {dialog.message}
+                </DialogDescription>
+              )}
               {isDanger && (
                 <div className="flex items-center gap-1.5 border-t border-border-subtle bg-error/5 px-3 py-1.5 text-xs text-error">
                   <AlertTriangle className="h-3.5 w-3.5" />

@@ -31,7 +31,9 @@
     "expand": "展开",
     "collapse": "收起",
     "irreversible": "删除后无法恢复",
-    "confirm": "确定"
+    "confirm": "确定",
+    "confirmNameLabel": "名称",
+    "confirmImpactLabel": "影响"
   },
   "welcome": {
     "title": "欢迎使用九思助理",
@@ -1958,6 +1960,17 @@
       "run_running": "运行中",
       "total": "共 {{count}} 个",
       "run_completed": "成功"
+    },
+    "deleteImpact": {
+      "resultTablePipelines": "关联加工「{{names}}」的输出需要重新登记",
+      "resultTableNone": "没有关联的数据加工",
+      "rawTablePipelines": "以此为输入的加工「{{names}}」将无法运行",
+      "rawTableNone": "没有数据加工使用此表",
+      "pipelineResult": "结果表「{{name}}」会保留，但不再更新",
+      "pipelineNone": "没有关联的结果表",
+      "pipelineTitle": "删除数据加工",
+      "rawTableTitle": "删除原始表",
+      "resultTableTitle": "删除结果表"
     }
   },
   "settings": {
@@ -2939,7 +2952,8 @@
     "renameTaskTitle": "重命名任务",
     "taskNameLabel": "名称",
     "copyTask": "复制任务",
-    "copySuffix": " (副本)"
+    "copySuffix": " (副本)",
+    "deleteTaskTitle": "删除任务"
   },
   "chat": {
     "sendMessage": "发送消息",

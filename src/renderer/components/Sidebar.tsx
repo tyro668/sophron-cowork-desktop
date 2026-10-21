@@ -674,7 +674,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   };
 
   const handleConfirmDeleteSession = async (sessionId: string, title: string) => {
-    const ok = await confirmDelete({ message: t('sidebar.deleteTaskConfirm', { title }) });
+    const ok = await confirmDelete({
+      message: t('sidebar.deleteTaskConfirm', { title }),
+      title: t('sidebar.deleteTaskTitle'),
+      name: title,
+    });
     if (ok) deleteSession(sessionId);
   };
 

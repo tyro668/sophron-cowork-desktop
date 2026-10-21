@@ -3,6 +3,11 @@
  * backend lives here, expressed against the domain hooks' state + actions.
  * IPC goes through `dataClient` — no `window.electronAPI` in this file.
  */
+import {
+  pipelineDeleteImpact,
+  rawTableDeleteImpact,
+  resultTableDeleteImpact,
+} from '../utils/delete-impact';
 import { formatDataErrorMessage } from '../model/errors';
 import { useCallback } from 'react';
 import type { TFunction } from 'i18next';
@@ -445,6 +450,9 @@ export function useDataActions(deps: DataActionsDeps) {
       if (!dataClient.isAvailable()) return;
       const confirmed = await confirmDelete({
         message: t('data.deletePipelineConfirm', { name: pipeline.name }),
+        title: t('data.deleteImpact.pipelineTitle'),
+        name: pipeline.name,
+        impact: pipelineDeleteImpact(pipeline, t),
       });
       if (!confirmed) return;
       ui.setActionId(pipeline.id);
@@ -514,6 +522,9 @@ export function useDataActions(deps: DataActionsDeps) {
       if (!dataClient.has('deleteRawTable')) return;
       const confirmed = await confirmDelete({
         message: t('data.rawTables.deleteConfirm', { name: rawTable.name }),
+        title: t('data.deleteImpact.rawTableTitle'),
+        name: rawTable.name,
+        impact: rawTableDeleteImpact(rawTable.id, dashboard.dashboard?.pipelines ?? [], t),
       });
       if (!confirmed) return;
       ui.setActionId(rawTable.id);
@@ -532,7 +543,7 @@ export function useDataActions(deps: DataActionsDeps) {
         ui.setActionId(null);
       }
     },
-    [confirmDelete, rawTables, loadRawTables, t, ui]
+    [confirmDelete, dashboard.dashboard?.pipelines, rawTables, loadRawTables, t, ui]
   );
 
   const handleDeleteAllRawTables = useCallback(async () => {
@@ -657,6 +668,9 @@ export function useDataActions(deps: DataActionsDeps) {
       if (!dataClient.has('deleteRawTable')) return;
       const confirmed = await confirmDelete({
         message: t('data.resultTables.deleteConfirm', { name: resultTable.name }),
+        title: t('data.deleteImpact.resultTableTitle'),
+        name: resultTable.name,
+        impact: resultTableDeleteImpact(resultTable, t),
       });
       if (!confirmed) return;
       ui.setActionId(resultTable.id);
@@ -786,6 +800,7 @@ export function useDataActions(deps: DataActionsDeps) {
       if (!dataClient.has('deleteGroup')) return;
       const confirmed = await confirmDelete({
         message: t('data.groups.deleteConfirm', { name: group.name }),
+        name: group.name,
       });
       if (!confirmed) return;
       ui.setActionId(`delete-group-${group.id}`);
