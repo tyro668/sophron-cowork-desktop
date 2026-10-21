@@ -620,6 +620,7 @@
       "runStatRejected": "rejected {{count}}",
       "runStatRight": "right {{count}}",
       "addRule": "Add rule",
+      "searchOperators": "Search operators…",
       "addOperatorToCanvas": "Double-click to insert downstream of the selected node, or drag onto the canvas as a standalone node",
       "ruleColumn": "Column",
       "ruleRatio": "Missing ratio",

@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import type { DataWorkflowOperatorType, OperatorCategory } from '../../../../../shared/operators';
 import { Button } from '../../../ui/button';
 import { OPERATOR_CATALOG_GROUPS } from './operator-catalog';
@@ -13,15 +13,35 @@ export function WorkflowOperatorPalette({
 }) {
   const { t } = useTranslation();
   const id = useId();
+  const [query, setQuery] = useState('');
+  const normalizedQuery = query.trim().toLowerCase();
   const [collapsed, setCollapsed] = useState<Partial<Record<OperatorCategory, boolean>>>({
     advanced_compute: true,
   });
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+      <label className="flex h-10 flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-3">
+        <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" aria-hidden />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t('data.workflow.searchOperators')}
+          aria-label={t('data.workflow.searchOperators')}
+          className="min-w-0 flex-1 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted"
+        />
+      </label>
       <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3">
-        {OPERATOR_CATALOG_GROUPS.map(({ category, operators }) => {
-          const expanded = !collapsed[category];
+        {OPERATOR_CATALOG_GROUPS.map(({ category, operators: allOperators }) => {
+          const operators = normalizedQuery
+            ? allOperators.filter(
+                ({ type, labelKey }) =>
+                  t(labelKey).toLowerCase().includes(normalizedQuery) ||
+                  type.toLowerCase().includes(normalizedQuery)
+              )
+            : allOperators;
+          if (normalizedQuery && operators.length === 0) return null;
+          const expanded = normalizedQuery ? true : !collapsed[category];
           const headingId = `${id}-${category}-heading`;
           const contentId = `${id}-${category}-content`;
           const Chevron = expanded ? ChevronDown : ChevronRight;
