@@ -1,3 +1,4 @@
+import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../prep-dsl/syntax/fields';
 import { planJoinProjectionColumns } from '../prep-dsl/join-projection';
 import { parseConditionTree, type FilterConditionNode } from '../filter-condition';
@@ -508,7 +509,7 @@ function validateNode(
     }
     case 'set_op': {
       validateSetOpNode(node, config, left, right ?? UNKNOWN, diagnostics);
-      return left;
+      return setOpOutputSchema(config, left, right ?? UNKNOWN);
     }
     case 'expect': {
       const kind = typeof config.kind === 'string' ? config.kind : 'expression';
@@ -540,6 +541,37 @@ function validateNode(
     default:
       return left;
   }
+}
+
+/**
+ * UNION … BY NAME (the default union match) outputs the left columns followed by
+ * right-only columns; by-position / intersect / except keep the left names.
+ */
+export function setOpOutputSchema(
+  config: Record<string, unknown>,
+  left: PlanSchema,
+  right: PlanSchema
+): PlanSchema {
+  const operation = typeof config.operation === 'string' ? config.operation : DEFAULT_OPERATION;
+  const match = typeof config.match === 'string' ? config.match : DEFAULT_MATCH;
+  if (operation !== 'union' || match !== 'by_name') return left;
+  if (!left.known || !right.known) {
+    return {
+      known: false,
+      columns: [
+        ...left.columns,
+        ...right.columns.filter((c) => !left.columns.some((l) => l.name === c.name)),
+      ],
+    };
+  }
+  const columns = left.columns.map((column) => {
+    const other = right.columns.find((entry) => entry.name === column.name);
+    return column.type || !other?.type ? column : { ...column, type: other.type };
+  });
+  for (const column of right.columns) {
+    if (!columns.some((entry) => entry.name === column.name)) columns.push(column);
+  }
+  return { known: true, columns };
 }
 
 function validateJoinNode(

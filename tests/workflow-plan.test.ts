@@ -403,6 +403,61 @@ describe('validateWorkflowPlanSchemas', () => {
     expect(diagnostics.some((item) => item.code === 'setOpColumnMissing')).toBe(true);
   });
 
+  it('propagates right-only columns through union by name to downstream operators', () => {
+    const { plan } = buildWorkflowPlan({
+      nodes: [
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('u', 'set_op', { operation: 'union', match: 'by_name', rightInput: 'b' }),
+        node('s', 'sort', { keys: [{ field: '区域', direction: 'asc' }] }),
+        node('out', 'output'),
+      ],
+      edges: [
+        edge('e1', 'a', 'u', 'left'),
+        edge('e2', 'b', 'u', 'right'),
+        edge('e3', 'u', 's'),
+        edge('e4', 's', 'out'),
+      ],
+    });
+    const diagnostics = validateWorkflowPlanSchemas(plan, (n) =>
+      n.id === 'a'
+        ? COLUMNS
+        : [
+            { name: 'id', type: 'integer' },
+            { name: '区域', type: 'text' },
+          ]
+    );
+    expect(
+      diagnostics.some((item) => item.code === 'planFieldNotFound' && item.params?.field === '区域')
+    ).toBe(false);
+  });
+
+  it('keeps left columns only for union by position', () => {
+    const { plan } = buildWorkflowPlan({
+      nodes: [
+        node('a', 'input_source', { source: 'pipeline' }),
+        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('u', 'set_op', { operation: 'union', match: 'by_position', rightInput: 'b' }),
+        node('s', 'sort', { keys: [{ field: 'other', direction: 'asc' }] }),
+        node('out', 'output'),
+      ],
+      edges: [
+        edge('e1', 'a', 'u', 'left'),
+        edge('e2', 'b', 'u', 'right'),
+        edge('e3', 'u', 's'),
+        edge('e4', 's', 'out'),
+      ],
+    });
+    const diagnostics = validateWorkflowPlanSchemas(plan, (n) =>
+      n.id === 'a' ? COLUMNS : [...COLUMNS.slice(0, 3), { name: 'other', type: 'text' }]
+    );
+    expect(
+      diagnostics.some(
+        (item) => item.code === 'planFieldNotFound' && item.params?.field === 'other'
+      )
+    ).toBe(true);
+  });
+
   it('errors when set_op by_position column counts differ', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [

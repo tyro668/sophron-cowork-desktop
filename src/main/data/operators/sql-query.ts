@@ -10,7 +10,12 @@ export function buildSqlQuery(sql: string, inputQuery: string): string {
 export async function describeSqlQuery(connection: DuckDBConnection, query: string) {
   const statements = await connection.extractStatements(query);
   if (statements.count !== 1) throw new Error('SQL operator accepts only one query');
-  const prepared = await statements.prepare(0);
+  let prepared: Awaited<ReturnType<typeof statements.prepare>>;
+  try {
+    prepared = await statements.prepare(0);
+  } catch (error) {
+    throw withSqlInputHint(error);
+  }
   try {
     if (prepared.statementType !== StatementType.SELECT || prepared.parameterCount !== 0) {
       throw new Error('SQL operator requires a query without unbound parameters');
@@ -26,4 +31,26 @@ export async function describeSqlQuery(connection: DuckDBConnection, query: stri
   } finally {
     prepared.destroySync();
   }
+}
+
+const UNKNOWN_RELATION =
+  /Table with name "?([^"\s]+)"? does not exist|Referenced table "?([^"\s]+)"? not found/i;
+
+/**
+ * The SQL operator sees exactly one upstream relation named `input`. Agents often
+ * reference input aliases (e.g. `erp`, `bank`) directly; explain how to combine sources.
+ */
+export function withSqlInputHint(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = UNKNOWN_RELATION.exec(message);
+  const name = match?.[1] ?? match?.[2];
+  if (!name || name.toLowerCase() === 'input') {
+    return error instanceof Error ? error : new Error(message);
+  }
+  return new Error(
+    `${message}\nHint: the SQL operator reads exactly one upstream relation, named "input" ` +
+      `("${name}" is not visible). To combine several sources, connect a join or set_op (union) ` +
+      'node upstream and query its output as "input"; columns from both sides keep their names ' +
+      '(conflicting names get the join conflict suffix).'
+  );
 }

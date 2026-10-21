@@ -1934,7 +1934,7 @@
       "selectRawTable": "请选择原始表",
       "inputTableInfo": "{{columns}} 个字段 · {{rows}} 行 · 更新于 {{updated}}",
       "inputAlias": "引用名",
-      "inputAliasHint": "在 SQL、表连接条件中以 [{{alias}}] 引用",
+      "inputAliasHint": "在表连接条件中以 [{{alias}}] 引用；SQL 节点只能读取上游的 input",
       "inputAliasNone": "连接到表连接或 SQL 后自动生成",
       "aiInputLabel": "输入表",
       "aiOutputLabel": "输出表",
