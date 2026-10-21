@@ -368,8 +368,7 @@
         "tabs": {
           "config": "配置",
           "data": "数据",
-          "automation": "自动化",
-          "relations": "关联设置"
+          "automation": "自动化"
         },
         "sectionSource": "数据来源",
         "sectionParsing": "解析设置",
@@ -406,22 +405,6 @@
         "file": "文件",
         "notConfigured": "未配置",
         "cloud": "云端表"
-      },
-      "relations": {
-        "pipelines": "关联数据加工 · {{count}}",
-        "resultTables": "下游结果表 · {{count}}",
-        "impact": "影响说明",
-        "impactLabel": "更换文件 / 删除",
-        "colName": "名称",
-        "colLastRun": "最近运行",
-        "colStatus": "状态",
-        "open": "打开",
-        "newPipeline": "新建数据加工",
-        "via": "经 {{name}}",
-        "noPipelines": "暂无数据加工使用本表",
-        "noResultTables": "暂无下游结果表",
-        "impactText": "{{pipelines}} 个数据加工、{{tables}} 张结果表会受影响；删除前确认对话框会列出同样的清单",
-        "neverRun": "未运行"
       }
     },
     "resultTables": {

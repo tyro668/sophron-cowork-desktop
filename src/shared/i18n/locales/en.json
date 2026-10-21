@@ -368,8 +368,7 @@
         "tabs": {
           "config": "Configuration",
           "data": "Data",
-          "automation": "Automation",
-          "relations": "Relations"
+          "automation": "Automation"
         },
         "sectionSource": "Data source",
         "sectionParsing": "Parsing",
@@ -406,22 +405,6 @@
         "file": "File",
         "notConfigured": "Not configured",
         "cloud": "Cloud table"
-      },
-      "relations": {
-        "pipelines": "Linked pipelines · {{count}}",
-        "resultTables": "Downstream result tables · {{count}}",
-        "impact": "Impact",
-        "impactLabel": "Replace / delete",
-        "colName": "Name",
-        "colLastRun": "Last run",
-        "colStatus": "Status",
-        "open": "Open",
-        "newPipeline": "New pipeline",
-        "via": "via {{name}}",
-        "noPipelines": "No pipeline uses this table",
-        "noResultTables": "No downstream result tables",
-        "impactText": "{{pipelines}} pipelines and {{tables}} result tables are affected; the delete confirmation lists the same items",
-        "neverRun": "Never run"
       }
     },
     "resultTables": {

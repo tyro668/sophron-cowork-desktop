@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 const workbench = read('src/renderer/components/data-view/raw-table-editor-workbench.tsx');
-const relations = read('src/renderer/components/data-view/raw-table-relations.tsx');
 const automations = read('src/renderer/components/data-view/table-automations.tsx');
 const grid = read('src/renderer/components/GlassDataGridPreview.tsx');
 
@@ -18,12 +17,11 @@ describe('raw table editor matches config design c05–c08', () => {
     expect(workbench).toContain('data-testid="raw-source-change"');
     expect(workbench).not.toContain('!h-8 w-full justify-between rounded-lg bg-surface px-2.5');
   });
-  it('adds a read-only 关联设置 tab between 数据 and 自动化', () => {
-    const rel = workbench.indexOf('<TabsTrigger value="relations"');
-    expect(rel).toBeGreaterThan(workbench.indexOf('<TabsTrigger value="data"'));
-    expect(rel).toBeLessThan(workbench.indexOf('<TabsTrigger value="automation"'));
-    expect(relations).toContain('grid-cols-[104px_minmax(0,1fr)_140px_120px_124px]');
-    expect(relations).toContain('pipeline.sourceRawTableId === rawTable.id');
+  it('has only 配置 / 数据 / 自动化 tabs (no 关联设置)', () => {
+    expect(workbench).not.toContain('value="relations"');
+    expect(workbench.indexOf('<TabsTrigger value="data"')).toBeLessThan(
+      workbench.indexOf('<TabsTrigger value="automation"')
+    );
   });
   it('automation tab uses the 104 | 1fr | 40 | 40 | 104 grid', () => {
     expect(automations).toContain('grid-cols-[104px_minmax(0,1fr)_40px_40px_104px]');
