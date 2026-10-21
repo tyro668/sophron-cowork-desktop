@@ -3074,7 +3074,8 @@
       "actions": "动作",
       "nextRun": "下次执行",
       "strategy": "执行策略",
-      "updatedAt": "更新时间"
+      "updatedAt": "更新时间",
+      "trigger": "触发 / 说明"
     },
     "status": {
       "enabled": "已启用",

@@ -522,11 +522,6 @@ function AutomationTable({
               >
                 {automation.name}
               </span>
-              {automation.description && (
-                <span className="truncate text-[11px] text-text-muted">
-                  {automation.description}
-                </span>
-              )}
             </div>
           </div>
         </td>
@@ -544,6 +539,15 @@ function AutomationTable({
             )}
             <AutomationStatusBadge automation={automation} tr={tr} />
           </div>
+        </td>
+        <td
+          className="truncate px-2 text-[12.5px] text-text-secondary"
+          title={automation.description || undefined}
+        >
+          {automation.description ||
+            (automation.trigger.kind === 'manual'
+              ? tr('schedule.runReason.manual', '手动')
+              : tr('schedule.runReason.timer', '定时'))}
         </td>
         <td className="px-2 text-[13px] font-medium text-text-secondary">
           {automation.actionGraph.nodes.length}
@@ -571,6 +575,7 @@ function AutomationTable({
         <colgroup>
           <col />
           <col className="w-36" />
+          <col />
           <col className="w-24" />
           <col className="w-64" />
           <col className="w-52" />
@@ -579,6 +584,9 @@ function AutomationTable({
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.name', '名称')}</th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.status', '状态')}</th>
+            <th className="whitespace-nowrap px-2">
+              {tr('schedule.columns.trigger', '触发 / 说明')}
+            </th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.actions', '动作')}</th>
             <th className="whitespace-nowrap px-2">{tr('schedule.columns.nextRun', '下次执行')}</th>
             <th className="whitespace-nowrap px-2">
@@ -593,7 +601,7 @@ function AutomationTable({
           {sections.map((section) => (
             <GroupSectionRows
               key={section.key}
-              colSpan={5}
+              colSpan={6}
               section={section}
               grouped={grouped}
               collapsed={collapsed.has(section.key)}
