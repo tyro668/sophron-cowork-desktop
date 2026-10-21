@@ -386,7 +386,7 @@ export function RawTablesPanel({
         </div>
       </div>
 
-      <div className="glass-table ui-group ui-group-fill flex min-h-0 flex-1 flex-col">
+      <div className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingState label={t('data.rawTables.loading')} />
