@@ -21,3 +21,10 @@ describe('Sidebar task actions', () => {
     expect(source).toContain('handleStartRenameSession(session.id, session.title)');
   });
 });
+
+describe('Sidebar login dialog', () => {
+  it('shows the read-only sign-in server from the auth status', () => {
+    expect(source).toContain("t('sidebar.loginAddressLabel')");
+    expect(source).toContain('{desktopAuthStatus.apiOrigin}');
+  });
+});

@@ -2955,7 +2955,8 @@
     "taskNameLabel": "名称",
     "copyTask": "复制任务",
     "copySuffix": " (副本)",
-    "deleteTaskTitle": "删除任务"
+    "deleteTaskTitle": "删除任务",
+    "loginAddressLabel": "登录地址"
   },
   "chat": {
     "sendMessage": "发送消息",

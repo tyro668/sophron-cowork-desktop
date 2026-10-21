@@ -2955,7 +2955,8 @@
     "taskNameLabel": "Name",
     "copyTask": "Duplicate task",
     "copySuffix": " (copy)",
-    "deleteTaskTitle": "Delete task"
+    "deleteTaskTitle": "Delete task",
+    "loginAddressLabel": "Sign-in server"
   },
   "chat": {
     "sendMessage": "Send message",
