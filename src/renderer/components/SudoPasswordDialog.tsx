@@ -78,35 +78,40 @@ export function SudoPasswordDialog({ request }: SudoPasswordDialogProps) {
         </div>
       </div>
 
-      {/* Command display */}
-      <div className="mt-4 p-4 bg-surface-muted rounded-xl">
-        <pre className="text-xs code-block max-h-32 overflow-auto whitespace-pre-wrap break-all">
-          {request.command}
-        </pre>
-      </div>
-
-      {/* Password input */}
-      <div className="mt-4">
-        <label className="block text-sm font-medium text-text-primary mb-1">
-          {t('sudo.passwordLabel')}
-        </label>
-        <Input
-          ref={inputRef}
-          type="password"
-          data-autofocus
-          onChange={(e) => {
-            passwordRef.current = e.target.value;
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={t('sudo.passwordPlaceholder')}
-          className="h-auto px-3 py-2"
-          autoComplete="new-password"
-        />
-      </div>
-
-      {/* Warning */}
-      <div className="mt-3 p-3 bg-warning/10 border border-warning/20 rounded-xl">
-        <p className="text-xs text-warning">{t('sudo.warning')}</p>
+      <div className="ui-dialog-pad mt-4">
+        <section className="ui-group bg-surface">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('sudo.commandLabel')}</div>
+            <div className="ui-form-value py-2">
+              <pre className="text-xs code-block max-h-32 overflow-auto whitespace-pre-wrap break-all">
+                {request.command}
+              </pre>
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <label htmlFor="sudo-password" className="ui-form-label items-center">
+              {t('sudo.passwordLabel')}
+            </label>
+            <div className="ui-form-value">
+              <Input
+                id="sudo-password"
+                ref={inputRef}
+                type="password"
+                data-autofocus
+                onChange={(e) => {
+                  passwordRef.current = e.target.value;
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder={t('sudo.passwordPlaceholder')}
+                className="h-8 px-2.5"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <div className="border-t border-border-subtle bg-warning/10 px-3 py-2">
+            <p className="text-xs text-warning">{t('sudo.warning')}</p>
+          </div>
+        </section>
       </div>
 
       {/* Actions */}

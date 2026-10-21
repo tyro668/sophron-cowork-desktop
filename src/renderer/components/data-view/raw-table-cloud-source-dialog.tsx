@@ -28,28 +28,42 @@ export function RawTableCloudSourceDialog({
       ariaLabel={t('data.rawTables.editor.cloudSource.choose')}
     >
       <DialogTitle>{t('data.rawTables.editor.cloudSource.choose')}</DialogTitle>
-      <DialogBody className="space-y-3">
-        <GlassSelect
-          ariaLabel={t('schedule.cloudInput.sourceKind')}
-          value={tableKind}
-          options={[
-            { value: 'analysis', label: t('cloudData.kindAnalysis') },
-            { value: 'base', label: t('cloudData.kindBase') },
-          ]}
-          onValueChange={(value) =>
-            setSource((current) => ({
-              ...current,
-              tableKind: value as 'analysis' | 'base',
-              tableId: '',
-              tableName: undefined,
-            }))
-          }
-        />
-        <CloudResourceSelector
-          config={{ ...source }}
-          resource={tableKind}
-          onChange={(patch) => setSource((current) => ({ ...current, ...patch }))}
-        />
+      <DialogBody className="ui-dialog-pad">
+        <section className="ui-group">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('schedule.cloudInput.sourceKind')}</div>
+            <div className="ui-form-value">
+              <GlassSelect
+                ariaLabel={t('schedule.cloudInput.sourceKind')}
+                value={tableKind}
+                options={[
+                  { value: 'analysis', label: t('cloudData.kindAnalysis') },
+                  { value: 'base', label: t('cloudData.kindBase') },
+                ]}
+                onValueChange={(value) =>
+                  setSource((current) => ({
+                    ...current,
+                    tableKind: value as 'analysis' | 'base',
+                    tableId: '',
+                    tableName: undefined,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">
+              {t('data.rawTables.editor.cloudSource.tableLabel')}
+            </div>
+            <div className="ui-form-value py-2">
+              <CloudResourceSelector
+                config={{ ...source }}
+                resource={tableKind}
+                onChange={(patch) => setSource((current) => ({ ...current, ...patch }))}
+              />
+            </div>
+          </div>
+        </section>
       </DialogBody>
       <DialogFooter>
         <Button onClick={onClose}>{t('common.cancel')}</Button>

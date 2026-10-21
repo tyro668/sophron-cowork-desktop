@@ -358,7 +358,8 @@
         "cloudSource": {
           "choose": "Choose cloud table",
           "change": "Change cloud table",
-          "bind": "Link table"
+          "bind": "Link table",
+          "tableLabel": "Cloud table"
         },
         "tabs": {
           "config": "Configuration",
@@ -1896,7 +1897,10 @@
       "inputTableInfo": "{{columns}} fields · {{rows}} rows · updated {{updated}}",
       "inputAlias": "Reference name",
       "inputAliasHint": "Referenced as [{{alias}}] in SQL and join conditions",
-      "inputAliasNone": "Generated when connected to a join or SQL node"
+      "inputAliasNone": "Generated when connected to a join or SQL node",
+      "aiInputLabel": "Input table",
+      "aiOutputLabel": "Output table",
+      "aiRequirementLabel": "Requirement"
     },
     "relative": {
       "today": "Today",
@@ -3965,7 +3969,8 @@
     "passwordPlaceholder": "Enter your password",
     "cancel": "Cancel",
     "execute": "Execute",
-    "warning": "Your password will only be used for this command and will not be stored."
+    "warning": "Your password will only be used for this command and will not be stored.",
+    "commandLabel": "Command"
   },
   "errorBoundary": {
     "title": "Something went wrong",
