@@ -3534,7 +3534,9 @@
       "menuTitle": "Cloud sync",
       "menuDescription": "Sync data between the cloud space and local tables",
       "notConnected": "Not signed in to cloud",
-      "cloudLabel": "Cloud"
+      "cloudLabel": "Cloud",
+      "retry": "Retry",
+      "loadingTargets": "Loading…"
     },
     "cloudInput": {
       "title": "Sync cloud table to raw table",

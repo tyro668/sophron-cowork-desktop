@@ -3534,7 +3534,9 @@
       "menuTitle": "云空间同步",
       "menuDescription": "在云空间与本地数据表之间同步数据",
       "notConnected": "未登录云空间",
-      "cloudLabel": "云空间"
+      "cloudLabel": "云空间",
+      "retry": "重试",
+      "loadingTargets": "加载中…"
     },
     "cloudInput": {
       "title": "云端表同步到原始表",
