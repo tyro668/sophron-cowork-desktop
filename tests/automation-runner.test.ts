@@ -4,7 +4,7 @@ import {
   AutomationActionRegistry,
   objectSchema,
 } from '../src/main/automation/automation-action-registry';
-import { AutomationRunner } from '../src/main/automation/automation-runner';
+import { AutomationRunner, summarizeStepOutput } from '../src/main/automation/automation-runner';
 import type { AutomationStore } from '../src/main/automation/automation-store';
 
 function createAutomation(overrides: Partial<Automation> = {}): Automation {
@@ -240,5 +240,22 @@ describe('AutomationRunner', () => {
 
     expect(second).toHaveBeenCalled();
     expect(run.status).toBe('succeeded');
+    const steps = run.executionSummary?.steps ?? [];
+    expect(steps.map((step) => [step.nodeId, step.status])).toEqual([
+      ['first', 'failed'],
+      ['second', 'succeeded'],
+    ]);
+    expect(steps[0]).toMatchObject({ error: 'boom', startedAt: 2_000, durationMs: 0 });
+    expect(steps[1].output).toBe('{"ok":true}');
+  });
+});
+
+describe('summarizeStepOutput', () => {
+  it('prefers known summary fields and truncates long text', () => {
+    expect(summarizeStepOutput({ tableName: 't', rowCount: 3, other: 1 })).toBe(
+      'tableName: t · rowCount: 3'
+    );
+    expect(summarizeStepOutput('x'.repeat(500))!.length).toBe(200);
+    expect(summarizeStepOutput(undefined)).toBeUndefined();
   });
 });

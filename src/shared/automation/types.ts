@@ -240,11 +240,26 @@ export interface Automation {
   updatedAt: number;
 }
 
+/** Per-action timing/output recorded by the runner (persisted inside executionSummary). */
+export interface AutomationRunStep {
+  nodeId: string;
+  type: string;
+  status: 'succeeded' | 'failed' | 'skipped';
+  startedAt: number | null;
+  finishedAt: number | null;
+  durationMs: number | null;
+  /** Short human-readable summary of the action output (truncated). */
+  output?: string;
+  error?: string;
+}
+
 export interface AutomationRun {
   executionSummary?: {
     tables: AutomationTableRef[];
     executedNodeIds: string[];
     skippedNodeIds: string[];
+    /** Absent on runs recorded before per-step tracking existed. */
+    steps?: AutomationRunStep[];
   };
   id: string;
   automationId: string;
