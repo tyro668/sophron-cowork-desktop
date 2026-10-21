@@ -1,7 +1,9 @@
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import {
+  ChevronDown,
   BarChart3,
   ChevronLeft,
   ChevronRight,
@@ -141,6 +143,8 @@ export function getInstalledSkillLookupKeys(skill: Skill): string[] {
 }
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
+  const [skillStatusFilter, setSkillStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
+  const [skillSort, setSkillSort] = useState<'default' | 'name' | 'updated'>('default');
   const { t, i18n } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
   const tRef = useRef(t);
@@ -413,7 +417,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
   const language = i18n.resolvedLanguage || i18n.language;
 
-  const tableItems = useMemo<SkillTableItem[]>(() => {
+  const baseTableItems = useMemo<SkillTableItem[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     const seenSlugs = new Set<string>();
     const skillRows = skills
@@ -497,9 +501,23 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     t,
   ]);
 
+  const tableItems = useMemo(() => {
+    const filtered =
+      skillStatusFilter === 'all'
+        ? baseTableItems
+        : baseTableItems.filter((item) =>
+            skillStatusFilter === 'enabled' ? item.enabled : !item.enabled
+          );
+    if (activeWorkspaceTab === 'market' && skillSort === 'default') return filtered;
+    if (skillSort === 'default') return filtered;
+    return [...filtered].sort((a, b) =>
+      skillSort === 'name' ? a.name.localeCompare(b.name) : b.updatedAt - a.updatedAt
+    );
+  }, [activeWorkspaceTab, baseTableItems, skillSort, skillStatusFilter]);
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeWorkspaceTab, searchQuery]);
+  }, [activeWorkspaceTab, searchQuery, skillStatusFilter, skillSort]);
 
   const pageCount = Math.max(1, Math.ceil(tableItems.length / SKILL_TABLE_PAGE_SIZE));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
@@ -582,6 +600,38 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   placeholder={t('skills.workspace.searchPlaceholder')}
                 />
               </div>
+              <SkillFilterCell
+                value={skillStatusFilter}
+                options={[
+                  ['all', t('skills.workspace.filterAllStatus')],
+                  [
+                    'enabled',
+                    t(
+                      activeWorkspaceTab === 'market'
+                        ? 'skills.pluginInstalled'
+                        : 'skills.workspace.filterEnabled'
+                    ),
+                  ],
+                  [
+                    'disabled',
+                    t(
+                      activeWorkspaceTab === 'market'
+                        ? 'skills.workspace.filterInstallable'
+                        : 'skills.workspace.filterDisabled'
+                    ),
+                  ],
+                ]}
+                onChange={(value) => setSkillStatusFilter(value as typeof skillStatusFilter)}
+              />
+              <SkillFilterCell
+                value={skillSort}
+                options={[
+                  ['default', t('skills.workspace.sortDefault')],
+                  ['name', t('skills.workspace.sortName')],
+                  ['updated', t('skills.workspace.sortUpdated')],
+                ]}
+                onChange={(value) => setSkillSort(value as typeof skillSort)}
+              />
 
               {activeWorkspaceTab === 'market' && (
                 <div className="flex flex-shrink-0 items-center gap-2">
@@ -737,7 +787,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                           <SkillTypeBadge item={selectedItem} />
                           <SkillStatusBadge item={selectedItem} />
                         </div>
-                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                        <div
+                          className="ui-form-row"
+                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
+                        >
                           <span className="ui-form-label items-start pt-2.5">
                             {t('skills.workspace.descriptionLabel')}
                           </span>
@@ -771,7 +824,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                       <section className="ui-group bg-surface">
                         <h4 className="ui-group-title">{t('skills.workspace.detailsTitle')}</h4>
                         {selectedSkill && (
-                          <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                          <div
+                            className="ui-form-row"
+                            style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
+                          >
                             <span className="ui-form-label items-center">
                               {t('skills.workspace.chatDisplay')}
                             </span>
@@ -783,7 +839,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                             </div>
                           </div>
                         )}
-                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                        <div
+                          className="ui-form-row"
+                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
+                        >
                           <span className="ui-form-label items-center">
                             {t('skills.workspace.source')}
                           </span>
@@ -795,7 +854,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                                 : t('skills.customSkills')}
                           </div>
                         </div>
-                        <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                        <div
+                          className="ui-form-row"
+                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
+                        >
                           <span className="ui-form-label items-center">
                             {t('skills.workspace.table.updatedAt')}
                           </span>
@@ -804,7 +866,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                           </div>
                         </div>
                         {selectedSkill?.path && (
-                          <div className="ui-form-row grid-cols-[88px_minmax(0,1fr)]">
+                          <div
+                            className="ui-form-row"
+                            style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
+                          >
                             <span className="ui-form-label items-center">
                               {t('skills.workspace.directory')}
                             </span>
@@ -906,6 +971,38 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         </Tabs>
       </section>
     </div>
+  );
+}
+
+function SkillFilterCell({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<[string, string]>;
+  onChange: (value: string) => void;
+}) {
+  const label = options.find(([key]) => key === value)?.[1] ?? '';
+  return (
+    <GlassDropdownMenu
+      align="end"
+      trigger={
+        <button
+          type="button"
+          className="inline-flex h-full min-w-[104px] flex-shrink-0 items-center justify-between gap-2 border-l border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover"
+        >
+          {label}
+          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
+        </button>
+      }
+    >
+      {options.map(([key, text]) => (
+        <GlassMenuItem key={key} selected={value === key} onSelect={() => onChange(key)}>
+          {text}
+        </GlassMenuItem>
+      ))}
+    </GlassDropdownMenu>
   );
 }
 
