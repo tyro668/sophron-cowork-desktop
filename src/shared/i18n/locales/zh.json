@@ -2010,7 +2010,8 @@
       "undo": "撤销（加工画布）",
       "redo": "重做（加工画布）",
       "deleteNode": "删除选中的节点（加工画布）",
-      "escape": "关闭弹窗 · 拒绝权限请求"
+      "escape": "关闭弹窗 · 拒绝权限请求",
+      "newTask": "新建任务"
     }
   },
   "personalAnalysis": {

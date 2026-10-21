@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useDesktopAuthConnection } from '../hooks/useDesktopAuthConnection';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
@@ -648,6 +648,21 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     setRenameDialog(null);
   };
 
+  // Cmd/Ctrl+N starts a new task (same as the button). Works from text inputs too, since
+  // N has no editing meaning there; ignored with Shift/Alt and while a modal dialog is open.
+  const newSessionRef = useRef<() => void>(() => {});
+  newSessionRef.current = handleNewSession;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isNewTaskShortcut(event, isMac)) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      event.preventDefault();
+      newSessionRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isMac]);
+
   // F2 renames the active task (ignored while typing in a field).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1176,11 +1191,19 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           <Button
             variant="primary"
             onClick={handleNewSession}
-            className={'h-full w-full justify-start gap-2 rounded-none px-3.5'}
+            className={'h-full min-w-0 flex-1 justify-start gap-2 rounded-none px-3.5'}
+            title={`${t('sidebar.newTask')} (${isMac ? '⌘N' : 'Ctrl+N'})`}
           >
             <Plus className="w-4 h-4 flex-shrink-0" />
             <span className="text-[13px]">{t('sidebar.newTask')}</span>
           </Button>
+          <span
+            aria-hidden="true"
+            data-testid="new-task-shortcut-cell"
+            className="flex w-10 flex-shrink-0 items-center justify-center border-l border-white/25 bg-accent text-[11px] font-semibold text-accent-foreground"
+          >
+            {isMac ? '⌘N' : 'Ctrl+N'}
+          </span>
         </div>
 
         {sessions.length > 0 && (
@@ -1698,4 +1721,14 @@ function writeStoredProjectExpansion(projectExpansion: Record<string, boolean>) 
   } catch {
     // Ignore storage failures so sidebar navigation remains usable.
   }
+}
+
+/** Cmd+N on macOS, Ctrl+N elsewhere; no Shift/Alt and no auto-repeat. */
+export function isNewTaskShortcut(
+  event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'repeat'>,
+  isMac: boolean
+): boolean {
+  if (event.key.toLowerCase() !== 'n' || event.shiftKey || event.altKey || event.repeat)
+    return false;
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 }
