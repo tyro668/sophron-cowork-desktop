@@ -7,6 +7,7 @@ import type {
   AutomationActionNode,
   AutomationArtifact,
   AutomationRun,
+  AutomationRunStep,
   AutomationTriggerReason,
 } from '../../shared/automation/types';
 import type { AutomationStore } from './automation-store';
@@ -164,10 +165,12 @@ export class AutomationRunner {
     const logs: AutomationRunLogEvent[] = [];
     const outputs = new Map<string, unknown>();
     const skippedNodeIds: string[] = [];
+    const steps: AutomationRunStep[] = [];
     const executionSummary = () => ({
       tables: context?.tables ?? [],
       executedNodeIds: [...outputs.keys()],
       skippedNodeIds,
+      steps,
     });
 
     try {
@@ -182,6 +185,14 @@ export class AutomationRunner {
           )
         ) {
           skippedNodeIds.push(node.id);
+          steps.push({
+            nodeId: node.id,
+            type: node.type,
+            status: 'skipped',
+            startedAt: null,
+            finishedAt: null,
+            durationMs: null,
+          });
           continue;
         }
         const definition = this.registry.get(node.type);
@@ -189,6 +200,7 @@ export class AutomationRunner {
           throw new Error(`Automation action is not registered: ${node.type}`);
         }
         let result: unknown;
+        const stepStartedAt = this.now();
         try {
           await definition.validate?.(node.config);
           result = await definition.execute(
@@ -219,6 +231,16 @@ export class AutomationRunner {
             node
           );
         } catch (error) {
+          const stepFinishedAt = this.now();
+          steps.push({
+            nodeId: node.id,
+            type: node.type,
+            status: 'failed',
+            startedAt: stepStartedAt,
+            finishedAt: stepFinishedAt,
+            durationMs: stepFinishedAt - stepStartedAt,
+            error: truncateText(error instanceof Error ? error.message : String(error)),
+          });
           // Per-action "always run next" (failurePolicy.onFailure = 'continue'):
           // record the failure and move on instead of aborting the run.
           if (node.failurePolicy?.onFailure !== 'continue') throw error;
@@ -232,6 +254,16 @@ export class AutomationRunner {
           continue;
         }
         outputs.set(node.id, result);
+        const stepFinishedAt = this.now();
+        steps.push({
+          nodeId: node.id,
+          type: node.type,
+          status: 'succeeded',
+          startedAt: stepStartedAt,
+          finishedAt: stepFinishedAt,
+          durationMs: stepFinishedAt - stepStartedAt,
+          output: summarizeStepOutput(result),
+        });
       }
 
       const deliveryStatus =
@@ -354,4 +386,37 @@ function topoSortNodes(
 
 function findSessionArtifactId(artifacts: AutomationArtifact[]): string | null {
   return artifacts.find((artifact) => artifact.kind === 'session')?.dataRef?.id ?? null;
+}
+
+const STEP_TEXT_LIMIT = 200;
+
+function truncateText(text: string, limit = STEP_TEXT_LIMIT): string {
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+/** Compact, size-bounded summary of an action result for the run log. */
+export function summarizeStepOutput(result: unknown): string | undefined {
+  if (result === undefined || result === null) return undefined;
+  if (typeof result === 'string') return truncateText(result);
+  if (typeof result !== 'object') return truncateText(String(result));
+  const record = result as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of [
+    'summary',
+    'message',
+    'tableName',
+    'resultTableName',
+    'rowCount',
+    'rows',
+    'sessionId',
+  ]) {
+    const value = record[key];
+    if (typeof value === 'string' || typeof value === 'number') parts.push(`${key}: ${value}`);
+  }
+  if (parts.length > 0) return truncateText(parts.join(' · '));
+  try {
+    return truncateText(JSON.stringify(result));
+  } catch {
+    return undefined;
+  }
 }

@@ -738,6 +738,7 @@ function RunLogRow({
   const nodes = graph?.nodes ?? [];
   const failed = run.status === 'failed';
   const lastExecutedId = [...nodes].reverse().find((node) => executed.has(node.id))?.id;
+  const stepById = new Map((run.executionSummary?.steps ?? []).map((step) => [step.nodeId, step]));
   return (
     <>
       <tr
@@ -795,15 +796,18 @@ function RunLogRow({
       )}
       {expanded &&
         nodes.map((node, index) => {
-          const state = executed.has(node.id)
-            ? failed && node.id === lastExecutedId
-              ? 'failed'
-              : 'succeeded'
-            : skipped.has(node.id)
-              ? 'skipped'
-              : run.status === 'running'
-                ? 'running'
-                : 'skipped';
+          const step = stepById.get(node.id);
+          const state = step
+            ? step.status
+            : executed.has(node.id)
+              ? failed && node.id === lastExecutedId
+                ? 'failed'
+                : 'succeeded'
+              : skipped.has(node.id)
+                ? 'skipped'
+                : run.status === 'running'
+                  ? 'running'
+                  : 'skipped';
           return (
             <tr
               key={node.id}
@@ -830,11 +834,20 @@ function RunLogRow({
                 </span>
               </td>
               <td className="px-2 text-text-muted" />
+              <td className="whitespace-nowrap px-2 tabular-nums text-text-muted">
+                {step?.startedAt ? formatAppDateTime(step.startedAt) : '—'}
+              </td>
+              <td className="whitespace-nowrap px-2 tabular-nums text-text-muted">
+                {step ? formatDurationMs(step.durationMs) : '—'}
+              </td>
               <td className="px-2 text-text-muted">—</td>
               <td className="px-2 text-text-muted">—</td>
-              <td className="px-2 text-text-muted">—</td>
-              <td className="px-2 text-text-muted">—</td>
-              <td className="truncate px-2 text-text-muted">{node.type}</td>
+              <td
+                className={`truncate px-2 ${step?.error ? 'text-error' : 'text-text-muted'}`}
+                title={step?.error ?? step?.output ?? node.type}
+              >
+                {step?.error ?? step?.output ?? node.type}
+              </td>
             </tr>
           );
         })}
