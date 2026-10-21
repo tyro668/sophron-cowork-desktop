@@ -37,7 +37,7 @@ import {
 import { useConfirmDialog } from './ConfirmDialog';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
-import { Badge, Button } from './ui';
+import { Badge, Button, Dialog, DialogTitle } from './ui';
 import { BrandMark } from './BrandMark';
 import {
   buildSessionProjectGroups,
@@ -100,6 +100,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const [failedAuthAvatarUrls, setFailedAuthAvatarUrls] = useState<Set<string>>(() => new Set());
   const isAuthBusy = authBusyMode !== null;
   const isLoginBusy = authBusyMode === 'login';
+  const [loginDialogHidden, setLoginDialogHidden] = useState(false);
   const isLogoutBusy = authBusyMode === 'logout';
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
@@ -205,6 +206,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     if (isAuthBusy) return;
 
     setAuthBusyMode('login');
+    setLoginDialogHidden(false);
     try {
       const status = await window.electronAPI.auth.login();
       setDesktopAuthStatus(status);
@@ -1548,6 +1550,54 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </div>
         </div>
       )}
+      <Dialog
+        open={isLoginBusy && !loginDialogHidden}
+        onOpenChange={(open) => {
+          if (!open) setLoginDialogHidden(true);
+        }}
+        closeOnOverlayClick
+        ariaLabelledBy="login-waiting-title"
+        className="max-w-[400px] gap-0 overflow-hidden p-0"
+      >
+        <div className="flex h-11 items-center border-b border-border-subtle px-3">
+          <DialogTitle id="login-waiting-title" className="text-[14px]">
+            {t('sidebar.login')}
+          </DialogTitle>
+        </div>
+        <div className="pb-3">
+          <section className="ui-group bg-surface">
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{t('sidebar.loginMethodLabel')}</div>
+              <div className="ui-form-value text-[13px]">{t('sidebar.loginMethodBrowser')}</div>
+            </div>
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{t('sidebar.loginStatusLabel')}</div>
+              <div className="ui-form-value">
+                <span className="flex items-center gap-2 text-[13px] text-text-secondary">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                  {t('sidebar.loginWaitingBrowser')}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div className="grid h-11 grid-cols-2 border-t border-border-subtle text-[13px] font-medium">
+          <button
+            type="button"
+            onClick={() => setLoginDialogHidden(true)}
+            className="border-r border-border-subtle text-text-secondary transition-colors hover:bg-surface-hover"
+          >
+            {t('sidebar.loginHideDialog')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCancelLoginClick()}
+            className="text-error transition-colors hover:bg-error/10"
+          >
+            {t('sidebar.cancelLogin')}
+          </button>
+        </div>
+      </Dialog>
       {edgeHandle}
     </aside>
   );

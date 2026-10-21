@@ -147,7 +147,7 @@ export function Dialog({
         aria-describedby={ariaDescribedBy}
         tabIndex={-1}
         className={cn(
-          'mx-4 flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col gap-3 rounded-2xl border border-border-subtle bg-surface p-5 text-text-primary shadow-elevated outline-none',
+          'mx-4 flex max-h-[calc(100vh-3rem)] w-full max-w-md flex-col gap-2.5 rounded-lg border border-border-subtle bg-surface p-3 text-text-primary shadow-elevated outline-none',
           className
         )}
       >
