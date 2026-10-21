@@ -3074,7 +3074,8 @@
       "actions": "Actions",
       "nextRun": "Next run",
       "strategy": "Rule",
-      "updatedAt": "Updated"
+      "updatedAt": "Updated",
+      "trigger": "Trigger / notes"
     },
     "status": {
       "enabled": "Enabled",
