@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useDesktopAuthConnection } from '../hooks/useDesktopAuthConnection';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -104,6 +105,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
   const isMac = rendererPlatform === 'darwin';
+  const [titlebarBrandSlot, setTitlebarBrandSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (isMac) return;
+    setTitlebarBrandSlot(document.getElementById('titlebar-brand-slot'));
+  }, [isMac]);
+
   const persistedProjectNames = useMemo(() => {
     return buildProjectNameLookup(projects, rendererPlatform);
   }, [projects, rendererPlatform]);
@@ -910,11 +917,45 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     </div>
   );
 
+  const navItemShape = isMac
+    ? 'rounded-xl px-3 py-2'
+    : 'h-9 px-4 border-b border-border-subtle last:border-b-0';
+
+  const renderBrand = (compact: boolean) => (
+    <div className="min-w-0 flex items-center gap-3">
+      <BrandMark
+        variant={settings.logoVariant}
+        label={t('common.appLogoAlt')}
+        className={compact ? 'h-5 w-5 transition-colors' : 'h-10 w-10 transition-colors'}
+      />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h1
+            className={`min-w-0 truncate leading-none font-semibold tracking-normal text-text-primary ${compact ? 'text-[13px]' : 'text-[1.08rem]'}`}
+          >
+            {t('common.appName')}
+          </h1>
+          {hasAvailableUpdate && (
+            <button
+              type="button"
+              onClick={() => void handleUpdateBadgeClick()}
+              className="titlebar-no-drag h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent-muted px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
+              title={updateBadgeTitle}
+            >
+              {t('general.updateAvailableBadge')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   if (sidebarCollapsed) {
     return (
       <aside className="relative flex h-full w-[4.25rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
         {/* macOS traffic lights overlay the top of the rail — keep the strip clear + draggable */}
         {isMac && <div className="titlebar-drag h-8 shrink-0" />}
+        {!isMac && titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)}
         <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
           <Button
             variant="primary"
@@ -1030,48 +1071,43 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   return (
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
-      {/* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */}
-      <div
-        className={`flex items-start gap-3 px-3.5 pb-3 ${isMac ? 'titlebar-drag pt-12' : 'pt-4'}`}
-      >
-        <div className="min-w-0 flex items-center gap-3">
-          <BrandMark
-            variant={settings.logoVariant}
-            label={t('common.appLogoAlt')}
-            className="h-10 w-10 transition-colors"
-          />
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <h1 className="min-w-0 truncate text-[1.08rem] leading-none font-semibold tracking-normal text-text-primary">
-                {t('common.appName')}
-              </h1>
-              {hasAvailableUpdate && (
-                <button
-                  type="button"
-                  onClick={() => void handleUpdateBadgeClick()}
-                  className="titlebar-no-drag h-5 flex-shrink-0 rounded-full border border-accent/25 bg-accent-muted px-1.5 text-[10px] font-medium leading-none text-accent transition-colors hover:bg-accent hover:text-accent-foreground"
-                  title={updateBadgeTitle}
-                >
-                  {t('general.updateAvailableBadge')}
-                </button>
-              )}
-            </div>
-          </div>
+      {isMac ? (
+        /* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */
+        <div className="flex items-start gap-3 px-3.5 pb-3 titlebar-drag pt-12">
+          {renderBrand(false)}
         </div>
-      </div>
+      ) : (
+        titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)
+      )}
 
-      <div className="px-3.5 pb-3.5 border-b border-border-subtle">
-        <Button
-          variant="primary"
-          onClick={handleNewSession}
-          className="h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft"
-        >
-          <Plus className="w-4 h-4 flex-shrink-0" />
-          <span className="text-[13px]">{t('sidebar.newTask')}</span>
-        </Button>
+      <div
+        className={
+          isMac ? 'px-3.5 pb-3.5 border-b border-border-subtle' : 'border-b border-border-subtle'
+        }
+      >
+        <div className={isMac ? '' : 'flex h-12 items-center border-b border-border-subtle px-3'}>
+          <Button
+            variant="primary"
+            onClick={handleNewSession}
+            className={
+              isMac
+                ? 'h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft'
+                : 'h-8 w-full justify-start gap-2 rounded-lg px-3'
+            }
+          >
+            <Plus className="w-4 h-4 flex-shrink-0" />
+            <span className="text-[13px]">{t('sidebar.newTask')}</span>
+          </Button>
+        </div>
 
         {sessions.length > 0 && (
-          <div className="mt-2 flex items-center gap-2">
+          <div
+            className={
+              isMac
+                ? 'mt-2 flex items-center gap-2'
+                : 'flex h-10 items-center gap-2 border-b border-border-subtle px-3'
+            }
+          >
             <div className="relative flex-1 min-w-0">
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
               <input
@@ -1079,7 +1115,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className="w-full h-9 rounded-xl border border-border-muted bg-background pl-9 pr-3 text-[13px] text-text-primary shadow-soft placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors"
+                className={`w-full ${isMac ? 'h-9 rounded-xl shadow-soft' : 'h-8 rounded-lg'} border border-border-muted bg-background pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
               />
             </div>
             <button
@@ -1106,12 +1142,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </div>
         )}
 
-        <nav className="mt-4 space-y-1" aria-label={t('mainNav.label')}>
+        <nav className={isMac ? 'mt-4 space-y-1' : 'flex flex-col'} aria-label={t('mainNav.label')}>
           <button
             onClick={handleDataPage}
-            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isDataPageActive
-                ? 'bg-accent-muted text-accent'
+                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1120,9 +1156,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </button>
           <button
             onClick={handleSkillsPage}
-            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isSkillsPageActive
-                ? 'bg-accent-muted text-accent'
+                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
@@ -1131,9 +1167,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </button>
           <button
             onClick={handleAutomationPage}
-            className={`group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+            className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${
               isAutomationPageActive
-                ? 'bg-accent-muted text-accent'
+                ? `bg-accent-muted text-accent ${isMac ? '' : 'shadow-[inset_3px_0_0_var(--color-accent)]'}`
                 : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
