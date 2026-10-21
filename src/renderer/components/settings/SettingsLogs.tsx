@@ -157,107 +157,109 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
       <SettingsContentSection
         title={t('logs.logFiles')}
         description={t('logs.inventoryDescription')}
+        flush
       >
-        <div className="grid grid-cols-2 gap-3">
-          <div className="glass-card rounded-lg p-4">
-            <div className="text-[20px] font-medium text-text-primary">{logFiles.length}</div>
-            <div className="text-sm text-text-muted">{t('logs.logFiles')}</div>
-          </div>
-          <div className="glass-card rounded-lg p-4">
-            <div className="text-[20px] font-medium text-text-primary">
-              {formatFileSize(totalSize)}
-            </div>
-            <div className="text-sm text-text-muted">{t('logs.totalSize')}</div>
+        <div className="ui-form-row">
+          <span className="ui-form-label items-center">{t('logs.logFiles')}</span>
+          <div className="ui-form-value text-[13px] font-medium tabular-nums text-text-primary">
+            {logFiles.length}
           </div>
         </div>
+        <div className="ui-form-row">
+          <span className="ui-form-label items-center">{t('logs.totalSize')}</span>
+          <div className="ui-form-value text-[13px] font-medium tabular-nums text-text-primary">
+            {formatFileSize(totalSize)}
+          </div>
+        </div>
+        {logsDirectory && (
+          <div className="ui-form-row">
+            <span className="ui-form-label items-center">{t('logs.logsDirectory')}</span>
+            <div className="ui-form-value">
+              <div className="flex items-center gap-2">
+                <button
+                  className="min-w-0 truncate font-mono text-xs text-text-secondary text-left hover:text-accent hover:underline cursor-pointer bg-transparent border-none p-0"
+                  onClick={() => window.electronAPI.logs.open()}
+                  title={t('logs.openFolder')}
+                >
+                  {logsDirectory}
+                </button>
+                <button
+                  className="shrink-0 p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+                  onClick={() => navigator.clipboard.writeText(logsDirectory)}
+                  title={t('common.copy')}
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </SettingsContentSection>
 
       {/* Log Files List */}
-      <SettingsContentSection title={t('logs.logFiles')} description={t('logs.recentDescription')}>
+      <SettingsContentSection
+        title={t('logs.logFiles')}
+        description={t('logs.recentDescription')}
+        flush
+      >
         {logFiles.length === 0 ? (
           <div className="text-center py-8 text-text-muted">
             <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-50" />
             <p>{t('logs.noLogFiles')}</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {logFiles.map((file) => (
-              <div key={file.path} className="glass-card rounded-lg p-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-mono text-sm text-text-primary truncate">{file.name}</div>
-                    <div className="text-xs text-text-muted mt-1">
-                      {formatFileSize(file.size)} • {formatDate(file.mtime)}
-                    </div>
-                  </div>
-                </div>
+              <div
+                key={file.path}
+                className="flex h-9 items-center justify-between gap-3 border-b border-border-subtle px-3 last:border-b-0"
+              >
+                <span className="min-w-0 truncate font-mono text-[12px] text-text-primary">
+                  {file.name}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-text-muted">
+                  {formatFileSize(file.size)} · {formatDate(file.mtime)}
+                </span>
               </div>
             ))}
           </div>
         )}
       </SettingsContentSection>
 
-      {/* Directory Path */}
-      {logsDirectory && (
-        <SettingsContentSection
-          title={t('logs.logsDirectory')}
-          description={t('logs.directoryDescription')}
-        >
-          <div className="glass-card rounded-lg p-3">
-            <div className="text-xs text-text-muted mb-1">{t('logs.logsDirectory')}</div>
-            <div className="flex items-start gap-2">
-              <button
-                className="font-mono text-xs text-text-secondary break-all text-left hover:text-accent hover:underline cursor-pointer bg-transparent border-none p-0"
-                onClick={() => window.electronAPI.logs.open()}
-                title={t('logs.openFolder')}
-              >
-                {logsDirectory}
-              </button>
-              <button
-                className="shrink-0 p-1 rounded hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-                onClick={() => navigator.clipboard.writeText(logsDirectory)}
-                title={t('common.copy')}
-              >
-                <Copy className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        </SettingsContentSection>
-      )}
-
       {/* Action Buttons */}
       <SettingsContentSection
         title={t('logs.actionsTitle')}
         description={t('logs.actionsDescription')}
+        flush
       >
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3">
           <button
             onClick={handleExport}
             disabled={isLoading}
-            className="py-3 px-4 rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
+            className="flex h-10 items-center justify-center gap-2 bg-accent text-accent-foreground text-[13px] font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Save className="w-4 h-4" />
             )}
-            <span className="text-sm">{t('logs.exportZip')}</span>
+            {t('logs.exportZip')}
           </button>
           <button
             onClick={handleOpen}
             disabled={isLoading}
-            className="glass-card flex items-center justify-center gap-2 rounded-lg px-4 py-3 font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+            className="flex h-10 items-center justify-center gap-2 border-l border-border-subtle text-[13px] font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Globe className="w-4 h-4" />
-            <span className="text-sm">{t('logs.openFolder')}</span>
+            {t('logs.openFolder')}
           </button>
           <button
             onClick={handleClear}
             disabled={isLoading || logFiles.length === 0}
-            className="py-3 px-4 rounded-lg bg-error/10 text-error font-medium hover:bg-error/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors active:scale-[0.98] flex items-center justify-center gap-2"
+            className="flex h-10 items-center justify-center gap-2 border-l border-border-subtle text-[13px] font-medium text-error hover:bg-error/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Trash2 className="w-4 h-4" />
-            <span className="text-sm">{t('logs.clearAll')}</span>
+            {t('logs.clearAll')}
           </button>
         </div>
       </SettingsContentSection>

@@ -81,11 +81,25 @@ export function SettingsContentSection({
   title,
   description,
   children,
+  flush = false,
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
+  /** Children are full-width grid rows (ui-form-row) instead of padded content. */
+  flush?: boolean;
 }) {
+  if (flush) {
+    return (
+      <section className="ui-group bg-surface">
+        <div className="space-y-0.5 border-b border-border-subtle bg-surface-muted px-3 py-1.5">
+          <h4 className="text-[12px] font-semibold text-text-primary">{title}</h4>
+          {description && <p className="text-xs leading-5 text-text-muted">{description}</p>}
+        </div>
+        {children}
+      </section>
+    );
+  }
   return (
     <section className="ui-group space-y-3 bg-surface pb-3">
       <div className="space-y-0.5 border-b border-border-subtle bg-surface-muted px-3 py-1.5">

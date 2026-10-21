@@ -2527,7 +2527,8 @@
         "model_cold_start": "模型可能仍在加载到 GPU/CPU 内存中。大型模型（7B+）首次使用可能需要 30–120 秒，请稍后重试。"
       }
     },
-    "manageConfigSets": "管理其他方案"
+    "manageConfigSets": "管理其他方案",
+    "configSetLabel": "方案"
   },
   "window": {
     "minimize": "最小化",
