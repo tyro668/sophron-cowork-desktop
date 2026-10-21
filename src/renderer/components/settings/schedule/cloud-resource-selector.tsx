@@ -7,7 +7,7 @@ import {
   hasPersonalAnalysisConnection,
   getPersonalAnalysisErrorMessage,
 } from '../../../../shared/personal-analysis';
-import { CircleAlert, LogIn, Settings } from 'lucide-react';
+import { CircleAlert, LogIn, RotateCcw, Settings } from 'lucide-react';
 import { FormRow, FlushSelect, RequiredLabel } from './editor-controls';
 
 /** Whether a cloud (personal analysis) connection is available. */
@@ -21,7 +21,8 @@ export function useCloudConnected(): boolean {
 }
 
 /** c13/c14 note row: only rendered while not connected. */
-export function CloudConnectionRow() {
+/** c13/c14 note row; `compact` (c22): amber note with one inline 登录云空间 action. */
+export function CloudConnectionRow({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const connected = useCloudConnected();
   const setAuth = useAppStore((state) => state.setDesktopAuthStatus);
@@ -40,7 +41,12 @@ export function CloudConnectionRow() {
         <button
           type="button"
           disabled={busy}
-          className="ui-accent-cell min-w-0 flex-1 border-l border-border-subtle"
+          data-testid="cloud-login"
+          className={
+            compact
+              ? 'ui-accent-cell flex-shrink-0 bg-warning/10'
+              : 'ui-accent-cell min-w-0 flex-1 border-l border-border-subtle'
+          }
           onClick={() => {
             setBusy(true);
             setError('');
@@ -54,17 +60,19 @@ export function CloudConnectionRow() {
           <LogIn className="h-3.5 w-3.5" />
           {t('schedule.cloudSync.login')}
         </button>
-        <button
-          type="button"
-          className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
-          onClick={() => {
-            setSettingsTab('personal-analysis');
-            setShowSettings(true);
-          }}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          {t('schedule.cloudSync.connection')}
-        </button>
+        {compact ? null : (
+          <button
+            type="button"
+            className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
+            onClick={() => {
+              setSettingsTab('personal-analysis');
+              setShowSettings(true);
+            }}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            {t('schedule.cloudSync.connection')}
+          </button>
+        )}
       </div>
     </FormRow>
   );
@@ -107,6 +115,7 @@ export function CloudResourceSelector({
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const connected = useCloudConnected();
   const clearTarget = { [targetKey]: undefined, [nameKey]: undefined, version: undefined };
   useEffect(() => {
@@ -124,7 +133,7 @@ export function CloudResourceSelector({
     return () => {
       active = false;
     };
-  }, [connected, t]);
+  }, [connected, reloadKey, t]);
   useEffect(() => {
     let active = true;
     setProjects([]);
@@ -140,7 +149,7 @@ export function CloudResourceSelector({
     return () => {
       active = false;
     };
-  }, [connected, spaceId, t]);
+  }, [connected, spaceId, reloadKey, t]);
   useEffect(() => {
     setPage(1);
     setTargets([]);
@@ -183,7 +192,7 @@ export function CloudResourceSelector({
     return () => {
       active = false;
     };
-  }, [connected, spaceId, projectId, resource, page, create, t]);
+  }, [connected, spaceId, projectId, resource, page, create, reloadKey, t]);
   const targetLabel = t(
     resource === 'drive' ? 'schedule.cloudSync.target' : 'schedule.cloudInput.sourceTable'
   );
@@ -239,11 +248,15 @@ export function CloudResourceSelector({
             loading={loading}
             value={targetId}
             options={withSavedOption(targets, targetId, String(config[nameKey] ?? ''))}
-            placeholder={t(
-              resource === 'drive'
-                ? 'schedule.cloudSync.selectTarget'
-                : 'schedule.cloudInput.selectSource'
-            )}
+            placeholder={
+              loading && !targetId
+                ? t('schedule.cloudSync.loadingTargets')
+                : t(
+                    resource === 'drive'
+                      ? 'schedule.cloudSync.selectTarget'
+                      : 'schedule.cloudInput.selectSource'
+                  )
+            }
             onChange={(value) => {
               const target = targets.find((item) => item.value === value);
               onChange({
@@ -269,9 +282,33 @@ export function CloudResourceSelector({
         </FormRow>
       )}
       {error && (
-        <div role="alert" className="border-b border-border-subtle px-3 py-2 text-xs text-error">
-          {error}
-        </div>
+        <FormRow label="">
+          <div
+            className="flex min-h-[35px] flex-1 items-stretch"
+            role="alert"
+            data-testid="cloud-error-row"
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 bg-error/10 px-[10px] text-[12.5px] font-medium text-error">
+              <CircleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate" title={error}>
+                {error}
+              </span>
+            </span>
+            <button
+              type="button"
+              data-testid="cloud-retry"
+              aria-label={t('schedule.cloudSync.retry')}
+              title={t('schedule.cloudSync.retry')}
+              onClick={() => {
+                setError('');
+                setReloadKey((key) => key + 1);
+              }}
+              className="ui-accent-cell w-10 flex-shrink-0 !px-0 border-l border-border-subtle"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </FormRow>
       )}
     </>
   );
