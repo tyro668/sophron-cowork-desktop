@@ -45,10 +45,10 @@ export function makeLocalId(prefix: string): string {
  * text + bottom-accent-line look on top of the semantic `Tabs` primitives.
  */
 export const underlineTabTriggerClass =
-  'relative h-11 rounded-none bg-transparent px-2.5 text-[13px] text-text-secondary shadow-none ' +
-  'hover:text-text-primary data-[state=active]:bg-transparent data-[state=active]:text-accent ' +
-  'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-px ' +
-  'after:w-full after:rounded-full data-[state=active]:after:bg-accent';
+  'relative h-full rounded-none border-r border-border-subtle bg-transparent px-4 text-[13px] font-medium text-text-secondary shadow-none ' +
+  'hover:bg-surface-hover/60 hover:text-text-primary data-[state=active]:bg-accent-muted data-[state=active]:text-accent ' +
+  'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-0.5 ' +
+  'after:w-full data-[state=active]:after:bg-accent';
 
 /**
  * Shared underline-tab bar chrome for the main workspace pages (data, skills,
@@ -56,9 +56,9 @@ export const underlineTabTriggerClass =
  * trigger underline sits on. Keeps tab height/spacing identical across pages.
  */
 export const underlineTabBarClass =
-  'flex h-12 flex-shrink-0 items-end border-b border-border-subtle px-3';
+  'flex h-12 flex-shrink-0 items-stretch border-b border-border-subtle px-0';
 export const underlineTabListClass =
-  'inline-flex items-end gap-5 rounded-none border-0 bg-transparent p-0';
+  'inline-flex h-full items-stretch gap-0 rounded-none border-0 bg-transparent p-0';
 
 /**
  * Bottom tab bar (cloud list panels style): the strip sits at the panel's
@@ -80,7 +80,12 @@ export const bottomTabTriggerClass =
  * the bar sits flush against the tab underline and the table below it.
  */
 export const flatToolbarRowClass =
-  'flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2.5 border-b border-border-subtle px-3 py-1.5';
+  'flex h-10 flex-shrink-0 items-stretch gap-0 border-b border-border-subtle p-0 ' +
+  '[&>div]:flex-nowrap [&>div]:items-stretch [&>div]:gap-0';
+
+/** Primary create button rendered as a flush toolbar cell (no radius / gap). */
+export const toolbarPrimaryCellClass =
+  'inline-flex h-full flex-shrink-0 items-center justify-center gap-1.5 rounded-none jade-primary-button px-4 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60';
 
 /**
  * Editor header strip (pipeline/raw-table/result-table editors): sits where the
@@ -111,7 +116,7 @@ export function DataToolbarButton({
       size="md"
       onClick={onClick}
       disabled={disabled}
-      className={`px-2.5 text-xs shadow-soft disabled:opacity-45 ${
+      className={`h-full rounded-none border-0 border-l border-border-subtle bg-transparent px-3 text-xs shadow-none disabled:opacity-45 ${
         active
           ? 'border-accent/40 bg-accent-muted text-accent'
           : 'text-text-secondary ' +
@@ -139,14 +144,14 @@ export function DataTableSearch({
   onChange: (value: string) => void;
 }) {
   return (
-    <div className="relative w-full sm:w-[18rem]">
+    <div className="relative min-w-[12rem] flex-1 border-l border-border-subtle">
       <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
       <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft"
+        className="h-full rounded-none border-0 bg-transparent pl-8 pr-3 text-xs font-medium text-text-secondary shadow-none focus:ring-0 focus-visible:ring-0"
       />
     </div>
   );
@@ -180,7 +185,7 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
         <Button
           variant="secondary"
           size="icon"
-          className="text-text-secondary shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+          className="h-full w-10 rounded-none border-0 border-l border-border-subtle bg-transparent text-text-secondary shadow-none hover:bg-accent-muted hover:text-accent"
           title={t('data.actions.more')}
           aria-label={t('data.actions.more')}
         >

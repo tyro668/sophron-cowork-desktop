@@ -1414,3 +1414,42 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Unified compact list tables (data lists, automation list / run log): 1px column dividers, 36px rows */
+.data-list-table th:not(:last-child),
+.data-list-table td:not(:last-child) {
+  border-right: 1px solid var(--color-border-subtle);
+}
+.data-list-table thead tr {
+  height: 32px;
+}
+.data-list-table tbody tr {
+  height: 36px;
+}
+
+/* Balanced compact spacing: a "group" is a 1px-bordered, 6px-radius block inset
+   from its container (tokens live in workflow-forms/shared/form-grid.css). */
+:root {
+  --space-inset: 12px;
+  --space-inset-lg: 16px;
+  --space-group: 10px;
+  --radius-group: 6px;
+}
+.ui-group {
+  margin: var(--space-group) var(--space-inset) 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-group);
+  overflow: hidden;
+}
+.ui-group:first-child {
+  margin-top: var(--space-inset);
+}
+.ui-group:last-child {
+  margin-bottom: var(--space-inset);
+}
+.ui-group.ui-group-fill {
+  margin: var(--space-inset);
+}
+.ui-group.ui-group-danger {
+  border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+}

@@ -106,10 +106,13 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
   const isMac = rendererPlatform === 'darwin';
   const [titlebarBrandSlot, setTitlebarBrandSlot] = useState<HTMLElement | null>(null);
+  // Re-resolve every render: the titlebar slot can remount (e.g. HMR / route
+  // changes) and a stale detached node would make the brand disappear.
   useEffect(() => {
     if (isMac) return;
-    setTitlebarBrandSlot(document.getElementById('titlebar-brand-slot'));
-  }, [isMac]);
+    const slot = document.getElementById('titlebar-brand-slot');
+    if (slot !== titlebarBrandSlot) setTitlebarBrandSlot(slot);
+  });
 
   const persistedProjectNames = useMemo(() => {
     return buildProjectNameLookup(projects, rendererPlatform);
@@ -1142,7 +1145,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           </div>
         )}
 
-        <nav className={isMac ? 'mt-4 space-y-1' : 'flex flex-col'} aria-label={t('mainNav.label')}>
+        <nav
+          className={
+            isMac
+              ? 'mt-4 space-y-1'
+              : 'mx-3 my-2.5 flex flex-col overflow-hidden rounded-md border border-border-subtle bg-surface'
+          }
+          aria-label={t('mainNav.label')}
+        >
           <button
             onClick={handleDataPage}
             className={`group flex w-full items-center gap-2 text-left text-[13px] font-medium transition-colors ${navItemShape} ${

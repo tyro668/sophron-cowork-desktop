@@ -20,13 +20,15 @@ export function FormGrid({
   testId?: string;
 }) {
   return (
-    <div
-      className={`opg ${className}`}
-      style={{ gridTemplateColumns: columns, ...style }}
-      data-testid={testId}
-      data-opg-columns={columns}
-    >
-      {children}
+    <div className="opg-frame">
+      <div
+        className={`opg ${className}`}
+        style={{ gridTemplateColumns: columns, ...style }}
+        data-testid={testId}
+        data-opg-columns={columns}
+      >
+        {children}
+      </div>
     </div>
   );
 }
