@@ -532,7 +532,8 @@
         "title": "Lineage",
         "raw": "Raw",
         "pipeline": "Pipeline",
-        "result": "Result"
+        "result": "Result",
+        "flowLabel": "Flow"
       },
       "sections": {
         "basic": "Basics",

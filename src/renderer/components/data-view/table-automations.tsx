@@ -252,7 +252,7 @@ function TableAutomations({
     <div
       role="group"
       aria-label={t('data.resultTables.automation.info')}
-      className="min-w-0 space-y-3"
+      className="min-w-0 space-y-1"
     >
       {linked.length > 0 && (
         <ul
@@ -264,7 +264,7 @@ function TableAutomations({
               <li
                 key={automation.id}
                 aria-label={automation.name}
-                className="min-w-0 space-y-2 py-3 first:pt-0"
+                className="min-w-0 space-y-2 py-1.5 first:pt-0"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="min-w-0 flex-1">
@@ -339,8 +339,8 @@ function TableAutomations({
         <DropdownMenuTrigger asChild>
           <Button
             size="md"
-            variant="secondary"
-            className="w-full justify-center border-dashed"
+            variant="ghost"
+            className="h-8 justify-start px-1 text-accent hover:bg-accent-muted hover:text-accent"
             disabled={busy || loading || available.length === 0}
           >
             <Plus className="h-3.5 w-3.5" />
