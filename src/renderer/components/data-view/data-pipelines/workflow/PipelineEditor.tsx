@@ -1589,6 +1589,7 @@ export function PipelineEditor({
                 </div>
               )}
               <WorkflowCanvas
+                fitKey={pipeline.id}
                 nodes={nodes}
                 edges={edges}
                 invalidNodeIds={invalidNodeIds}
