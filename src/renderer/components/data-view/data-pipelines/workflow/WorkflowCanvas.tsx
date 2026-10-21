@@ -26,6 +26,7 @@ import {
   type HandleType,
   type NodeChange,
   type OnConnectStartParams,
+  useNodesInitialized,
   useReactFlow,
   useStore,
 } from '@xyflow/react';
@@ -63,6 +64,14 @@ const WORKFLOW_EDGE_TYPES = {
 // on every render defeats the memoization of GraphView/NodeRenderer/NodeWrapper,
 // which makes every node re-render on each drag frame.
 const WORKFLOW_DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
+/**
+ * Fit options shared by the initial open fit, the toolbar fit button and the
+ * tidy refit. maxZoom keeps small 3–5 node chains from looking oversized;
+ * minZoom keeps large pipelines readable (they may then need panning).
+ */
+export const WORKFLOW_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9, minZoom: 0.4 } as const;
+export const WORKFLOW_MIN_ZOOM = 0.25;
+export const WORKFLOW_MAX_ZOOM = 2;
 const WORKFLOW_PRO_OPTIONS = { hideAttribution: true };
 const WORKFLOW_MINIMAP_STYLE = { width: 100, height: 75 };
 const WORKFLOW_DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
@@ -80,6 +89,7 @@ export function WorkflowCanvas({
   selectedNodeIds,
   primaryNodeId,
   layoutEpoch,
+  fitKey,
   onSelectionChange,
   onDuplicateNode,
   onToggleNodeDisabled,
@@ -99,6 +109,8 @@ export function WorkflowCanvas({
   primaryNodeId: string | null;
   /** Bumped by the tidy action — refits the viewport onto the new layout. */
   layoutEpoch?: number;
+  /** Identity of the open pipeline; a new value triggers an initial fit-to-view. */
+  fitKey?: string;
   onSelectionChange: (ids: string[], primaryId: string | null) => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
@@ -125,6 +137,7 @@ export function WorkflowCanvas({
         selectedNodeIds={selectedNodeIds}
         primaryNodeId={primaryNodeId}
         layoutEpoch={layoutEpoch}
+        fitKey={fitKey}
         onSelectionChange={onSelectionChange}
         onDuplicateNode={onDuplicateNode}
         onToggleNodeDisabled={onToggleNodeDisabled}
@@ -147,6 +160,7 @@ function WorkflowCanvasContent({
   selectedNodeIds,
   primaryNodeId,
   layoutEpoch,
+  fitKey,
   onSelectionChange,
   onDuplicateNode,
   onToggleNodeDisabled,
@@ -164,6 +178,7 @@ function WorkflowCanvasContent({
   selectedNodeIds: readonly string[];
   primaryNodeId: string | null;
   layoutEpoch?: number;
+  fitKey?: string;
   onSelectionChange: (ids: string[], primaryId: string | null) => void;
   onDuplicateNode: () => void;
   onToggleNodeDisabled: () => void;
@@ -266,16 +281,45 @@ function WorkflowCanvasContent({
     setFlowEdges(mappedFlowEdges);
   }, [mappedFlowEdges]);
 
+  const nodesInitialized = useNodesInitialized();
+  const fitCanvas = useCallback(
+    (duration = 0) => void fitView({ ...WORKFLOW_FIT_VIEW_OPTIONS, duration }),
+    [fitView]
+  );
+  // Initial fit: the workflow loads async and the pane settles its size after
+  // the palette / inspector grid lays out, so fit once nodes are initialized
+  // and the pane has a size — and keep refitting on pane resizes until the
+  // user pans/zooms by hand.
+  const autoFitRef = useRef({ key: fitKey, active: true });
+  if (autoFitRef.current.key !== fitKey) autoFitRef.current = { key: fitKey, active: true };
+  const nodeCount = flowNodes.length;
+  useEffect(() => {
+    if (!autoFitRef.current.active) return;
+    if (nodeCount === 0 || !nodesInitialized || paneWidth <= 0 || paneHeight <= 0) return;
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        if (autoFitRef.current.active) fitCanvas();
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+    };
+  }, [fitKey, nodeCount, nodesInitialized, paneWidth, paneHeight, fitCanvas]);
+  const handleMoveStart = useCallback((event: MouseEvent | TouchEvent | null) => {
+    // event is null for programmatic moves (fitView); non-null = user pan/zoom.
+    if (event) autoFitRef.current.active = false;
+  }, []);
+
   // Tidy action bumped the epoch → recenter the viewport onto the new layout.
   const layoutEpochRef = useRef(layoutEpoch ?? 0);
   useEffect(() => {
     if (layoutEpoch === undefined || layoutEpoch === layoutEpochRef.current) return;
     layoutEpochRef.current = layoutEpoch;
-    const timer = window.setTimeout(() => {
-      void fitView({ padding: 0.15, duration: 250, maxZoom: 1 });
-    }, 0);
+    const timer = window.setTimeout(() => fitCanvas(250), 0);
     return () => window.clearTimeout(timer);
-  }, [layoutEpoch, fitView]);
+  }, [layoutEpoch, fitCanvas]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<WorkflowFlowNode>[]) => {
@@ -513,7 +557,7 @@ function WorkflowCanvasContent({
         </button>
         <button
           type="button"
-          onClick={() => void fitView({ padding: 0.2 })}
+          onClick={() => fitCanvas(200)}
           className="inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
           title={t('data.workflow.fitView')}
           aria-label={t('data.workflow.fitView')}
@@ -551,6 +595,9 @@ function WorkflowCanvasContent({
           // key delete would only ghost-remove nodes from local state.
           deleteKeyCode={null}
           defaultViewport={WORKFLOW_DEFAULT_VIEWPORT}
+          minZoom={WORKFLOW_MIN_ZOOM}
+          maxZoom={WORKFLOW_MAX_ZOOM}
+          onMoveStart={handleMoveStart}
           nodesDraggable
           edgesReconnectable
           proOptions={WORKFLOW_PRO_OPTIONS}
