@@ -41,23 +41,21 @@ function SettingsCard({
   children: ReactNode;
 }) {
   return (
-    <section className="min-w-0 rounded-xl border border-border-muted bg-background p-4 shadow-soft sm:p-5 lg:h-full">
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-          {icon}
-        </div>
-        <h2 className="min-w-0 text-[15px] font-semibold text-text-primary">{title}</h2>
-      </div>
-      <div className="space-y-4">{children}</div>
+    <section className="ui-group min-w-0 bg-surface">
+      <h2 className="ui-group-title gap-2">
+        <span className="flex shrink-0 text-text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
+        {title}
+      </h2>
+      <div>{children}</div>
     </section>
   );
 }
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid min-w-0 gap-2 sm:grid-cols-[112px_minmax(0,1fr)] sm:items-center">
-      <span className="text-[13px] font-medium text-text-secondary">{label}</span>
-      <div className="min-w-0">{children}</div>
+    <div className="ui-form-row min-w-0">
+      <span className="ui-form-label items-center">{label}</span>
+      <div className="ui-form-value min-w-0">{children}</div>
     </div>
   );
 }
@@ -152,7 +150,7 @@ export function SettingsAPI() {
   const connectionFailed = Boolean(diagnosticResult && !diagnosticResult.overallOk);
 
   return (
-    <div className="flex min-h-full flex-col gap-4 pb-2">
+    <div className="flex min-h-full flex-col">
       <ApiConfigSetManager
         configSets={configSets}
         activeConfigSetId={activeConfigSetId}
@@ -173,7 +171,7 @@ export function SettingsAPI() {
         onDiscardAndContinuePendingAction={discardAndContinuePendingConfigSetAction}
       />
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+      <div>
         <SettingsCard icon={<Wifi className="h-4.5 w-4.5" />} title={t('api.serviceAuth')}>
           <FieldRow label={t('api.provider')}>
             <GlassSelect
@@ -192,7 +190,7 @@ export function SettingsAPI() {
                   label: presets[item]?.name || item,
                 })),
               ]}
-              triggerClassName="h-11 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
+              triggerClassName="h-8 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
               contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </FieldRow>
@@ -228,13 +226,13 @@ export function SettingsAPI() {
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
                   placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-                  className="h-11 pr-11 shadow-soft"
+                  className="h-8 pr-10"
                   aria-label={t('api.apiKey')}
                 />
                 <button
                   type="button"
                   onClick={() => setShowApiKey((visible) => !visible)}
-                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-text-muted transition-colors hover:text-text-primary"
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-text-muted transition-colors hover:text-text-primary"
                   aria-label={showApiKey ? t('api.hideApiKey') : t('api.showApiKey')}
                 >
                   {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -254,7 +252,7 @@ export function SettingsAPI() {
                   value={baseUrl}
                   onChange={(event) => setBaseUrl(event.target.value)}
                   placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
-                  className="h-11 min-w-0 flex-1 shadow-soft"
+                  className="h-8 min-w-0 flex-1"
                   aria-label={t('api.baseUrl')}
                 />
                 {isOllamaMode && (
@@ -262,7 +260,7 @@ export function SettingsAPI() {
                     variant="secondary"
                     onClick={() => void discoverLocalOllama()}
                     disabled={isDiscoveringLocalOllama}
-                    className="h-11 shrink-0"
+                    className="h-8 shrink-0"
                     title={t('api.discoverLocalOllama')}
                   >
                     {isDiscoveringLocalOllama ? (
@@ -302,7 +300,7 @@ export function SettingsAPI() {
                         value={customModel}
                         onChange={(event) => setCustomModel(event.target.value)}
                         placeholder={modelInputPlaceholder}
-                        className="h-11 shadow-soft"
+                        className="h-8"
                       />
                     ) : (
                       <GlassSelect
@@ -324,7 +322,7 @@ export function SettingsAPI() {
                         }
                         placeholder={t('api.noModelsAvailable')}
                         disabled={!modelOptions.length}
-                        triggerClassName="h-11 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
+                        triggerClassName="h-8 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
                         contentClassName="w-[var(--radix-select-trigger-width)]"
                       />
                     )}
@@ -333,7 +331,7 @@ export function SettingsAPI() {
                     <Button
                       variant={useCustomModel ? 'primary' : 'secondary'}
                       onClick={toggleCustomModel}
-                      className="h-11 shrink-0"
+                      className="h-8 shrink-0"
                     >
                       <Edit3 className="h-4 w-4" />
                       <span className="hidden lg:inline">
@@ -346,7 +344,7 @@ export function SettingsAPI() {
                       variant="secondary"
                       onClick={() => void refreshModelOptions()}
                       disabled={isRefreshingModels}
-                      className="h-11 shrink-0"
+                      className="h-8 shrink-0"
                       title={t('api.refreshModels')}
                     >
                       <RefreshCw
@@ -366,7 +364,7 @@ export function SettingsAPI() {
                   placeholder={t('api.contextWindowPlaceholder')}
                   min={1024}
                   step={1024}
-                  className="h-11 shadow-soft"
+                  className="h-8"
                 />
               </FieldRow>
 
@@ -379,7 +377,7 @@ export function SettingsAPI() {
                   placeholder={t('api.maxOutputTokensPlaceholder')}
                   min={256}
                   step={256}
-                  className="h-11 shadow-soft"
+                  className="h-8"
                 />
               </FieldRow>
 
@@ -424,7 +422,7 @@ export function SettingsAPI() {
       </div>
 
       {(diagnosticResult || isDiagnosing) && (
-        <section className="rounded-xl border border-border-muted bg-background p-4 shadow-soft">
+        <section className="ui-group bg-surface p-3">
           <ApiDiagnosticsPanel
             result={diagnosticResult}
             isRunning={isDiagnosing}
@@ -436,12 +434,12 @@ export function SettingsAPI() {
         </section>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-1 mt-auto flex flex-wrap items-center gap-3 border-t border-border-muted bg-background px-1 py-3">
+      <div className="sticky bottom-0 z-10 mt-auto flex flex-wrap items-center gap-3 border-t border-border-subtle bg-background px-3 py-2">
         <Button
           variant="secondary"
           onClick={() => void handleDiagnose()}
           disabled={isDiagnosing || providerUnset || (requiresApiKey && !apiKey.trim())}
-          className="h-10"
+          className="h-8"
         >
           {isDiagnosing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -455,7 +453,7 @@ export function SettingsAPI() {
             variant="secondary"
             onClick={() => void handleDeepDiagnose()}
             disabled={isDiagnosing || (requiresApiKey && !apiKey.trim())}
-            className="h-10"
+            className="h-8"
           >
             <Cpu className="h-4 w-4" />
             {t('api.diagnostic.runDeepDiagnostics')}
@@ -486,7 +484,7 @@ export function SettingsAPI() {
           onClick={() => void handleSave()}
           disabled={!canSave}
           loading={isSaving}
-          className="h-10 shrink-0 px-5"
+          className="h-8 shrink-0 px-4"
         >
           {isSaving ? null : <Save className="h-4 w-4" />}
           {isSaving ? t('common.saving') : t('api.saveSettings')}

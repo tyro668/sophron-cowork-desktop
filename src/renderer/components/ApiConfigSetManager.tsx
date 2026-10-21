@@ -98,24 +98,18 @@ export function ApiConfigSetManager({
   };
 
   return (
-    <section className="rounded-xl border border-border-muted bg-background p-4 shadow-soft">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-          <Layers3 className="h-4.5 w-4.5" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-[15px] font-semibold text-text-primary">{t('api.configSet')}</h2>
-            {hasUnsavedChanges && (
-              <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
-                {t('api.unsavedBadge')}
-              </span>
-            )}
-          </div>
-        </div>
+    <section className="ui-group bg-surface">
+      <div className="ui-group-title gap-2">
+        <Layers3 className="h-3.5 w-3.5 text-text-muted" />
+        <h2>{t('api.configSet')}</h2>
+        {hasUnsavedChanges && (
+          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
+            {t('api.unsavedBadge')}
+          </span>
+        )}
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,176px),1fr))] gap-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,176px),1fr))] gap-2 p-3">
         {configSets.map((set) => {
           const isSelected = set.id === selectedConfigSetId;
           const isDefault = set.id === activeConfigSetId;

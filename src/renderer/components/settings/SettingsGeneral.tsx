@@ -79,7 +79,7 @@ export function SettingsGeneral() {
   ];
 
   return (
-    <div className="border-t border-border-muted">
+    <div>
       <SettingsCard title={t('general.appearance')}>
         <SettingsRow label={t('general.theme')}>
           <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
@@ -228,8 +228,8 @@ export function SettingsGeneral() {
 
 function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-2 border-b border-border-muted bg-surface px-4 py-2.5">
-      <h4 className="text-[13px] font-semibold text-text-primary">{title}</h4>
+    <section className="ui-group bg-surface">
+      <h4 className="ui-group-title">{title}</h4>
       {children}
     </section>
   );
@@ -237,9 +237,11 @@ function SettingsCard({ title, children }: { title: string; children: ReactNode 
 
 function SettingsRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-8 items-center gap-2">
-      <span className="w-20 flex-shrink-0 text-[12.5px] text-text-secondary">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center">{children}</div>
+    <div className="ui-form-row">
+      <span className="ui-form-label items-center">{label}</span>
+      <div className="ui-form-value">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">{children}</div>
+      </div>
     </div>
   );
 }

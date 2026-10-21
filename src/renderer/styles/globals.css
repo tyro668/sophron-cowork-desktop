@@ -1491,3 +1491,9 @@
   justify-content: center;
   padding: 4px 8px;
 }
+
+/* Settings content supplies the 12px inset itself. */
+.settings-content .ui-group {
+  margin-left: 0;
+  margin-right: 0;
+}

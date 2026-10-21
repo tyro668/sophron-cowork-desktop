@@ -138,7 +138,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
   return (
     <div className="space-y-4">
       {/* Developer Logs Toggle */}
-      <section className="glass-card rounded-xl px-4 py-4">
+      <section className="ui-group bg-surface p-3">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <h4 className="text-sm font-semibold text-text-primary">{t('logs.enableDevLogs')}</h4>

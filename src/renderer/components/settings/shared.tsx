@@ -87,12 +87,12 @@ export function SettingsContentSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass-card mb-3 space-y-3 rounded-xl px-4 py-3">
-      <div className="space-y-1">
-        <h4 className="text-[13px] font-medium text-text-primary">{title}</h4>
+    <section className="ui-group space-y-3 bg-surface pb-3">
+      <div className="space-y-0.5 border-b border-border-subtle bg-surface-muted px-3 py-1.5">
+        <h4 className="text-[12px] font-semibold text-text-primary">{title}</h4>
         {description && <p className="text-xs leading-5 text-text-muted">{description}</p>}
       </div>
-      <div className="space-y-3">{children}</div>
+      <div className="space-y-3 px-3">{children}</div>
     </section>
   );
 }
