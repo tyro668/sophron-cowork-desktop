@@ -207,7 +207,7 @@ export function ConfigModal({
       </div>
 
       {/* Content */}
-      <div className="p-5 space-y-4 flex-1 overflow-y-auto bg-surface">
+      <div className="ui-dialog-pad flex flex-col gap-2.5 p-5 flex-1 overflow-y-auto bg-surface">
         {/* Config Set Switcher */}
         <ApiConfigSetManager
           configSets={configSets}
@@ -229,182 +229,210 @@ export function ConfigModal({
           onDiscardAndContinuePendingAction={discardAndContinuePendingConfigSetAction}
         />
 
-        {/* Provider Selection */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
-            <Server className="w-4 h-4" />
-            {t('api.provider')}
-          </label>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))] gap-2">
-            {providerOptions.map((p) => (
-              <button
-                key={p}
-                onClick={() => changeProvider(p)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  provider === p
-                    ? 'bg-accent text-accent-foreground'
-                    : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
-                }`}
-              >
-                {presets?.[p]?.name || PROVIDER_LABELS[p] || p}
-              </button>
-            ))}
+        <section className="ui-group">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">
+              <span className="flex items-center gap-1.5">
+                <Server className="h-3.5 w-3.5" />
+                {t('api.provider')}
+              </span>
+            </div>
+            <div className="ui-form-value py-2">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))] gap-1.5">
+                {providerOptions.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => changeProvider(p)}
+                    className={`h-8 px-3 rounded-md text-[13px] font-medium transition-all ${
+                      provider === p
+                        ? 'bg-accent text-accent-foreground'
+                        : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
+                    }`}
+                  >
+                    {presets?.[p]?.name || PROVIDER_LABELS[p] || p}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
 
-        {!isSophronMode && !isCodexMode && (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
-              <Key className="w-4 h-4" />
-              {t('api.apiKey')}
-            </label>
-            <Input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-              className="h-auto px-3 py-2 shadow-soft"
-            />
+          {!isSophronMode && !isCodexMode && (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">
+                <span className="flex items-center gap-1.5">
+                  <Key className="h-3.5 w-3.5" />
+                  {t('api.apiKey')}
+                </span>
+              </div>
+              <div className="ui-form-value">
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
+                  className="h-8 px-2.5"
+                />
+              </div>
+            </div>
+          )}
+
+          {provider === 'custom' && (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">
+                <span className="flex items-center gap-1.5">
+                  <Server className="h-3.5 w-3.5" />
+                  {t('api.protocol')}
+                </span>
+              </div>
+              <div className="ui-form-value py-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { id: 'anthropic', label: 'Anthropic' },
+                      { id: 'openai', label: 'OpenAI' },
+                      { id: 'gemini', label: 'Gemini' },
+                    ] as const
+                  ).map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => changeProtocol(mode.id)}
+                      className={`h-8 px-3 rounded-md text-[13px] font-medium transition-all ${
+                        customProtocol === mode.id
+                          ? 'bg-accent text-accent-foreground'
+                          : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showsBaseUrl && (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">
+                <span className="flex items-center gap-1.5">
+                  <Server className="h-3.5 w-3.5" />
+                  {t('api.baseUrl')}
+                </span>
+              </div>
+              <div className="ui-form-value">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder={baseUrlPlaceholder}
+                    className="h-8 flex-1 px-2.5"
+                  />
+                  {isOllamaMode && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        void discoverLocalOllama();
+                      }}
+                      disabled={isDiscoveringLocalOllama}
+                      className="h-auto gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs text-text-primary hover:bg-accent-muted"
+                    >
+                      <Plug className="w-3 h-3" />
+                      {isDiscoveringLocalOllama
+                        ? t('api.discoveringLocalOllama')
+                        : t('api.discoverLocalOllama')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">
+              <span className="flex items-center gap-1.5">
+                <Cpu className="h-3.5 w-3.5" />
+                {t('api.model')}
+              </span>
+            </div>
+            <div className="ui-form-value">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  {useCustomModel ? (
+                    <Input
+                      type="text"
+                      value={customModel}
+                      onChange={(e) => setCustomModel(e.target.value)}
+                      placeholder={modelInputPlaceholder}
+                      className="h-8 px-2.5"
+                    />
+                  ) : (
+                    <GlassSelect
+                      value={modelOptions.length ? model : ''}
+                      onValueChange={setModel}
+                      options={
+                        modelOptions.length
+                          ? modelOptions.map((m) => ({ value: m.id, label: m.name }))
+                          : [
+                              {
+                                value: 'no-models',
+                                label: t('api.noModelsAvailable'),
+                                disabled: true,
+                              },
+                            ]
+                      }
+                      placeholder={t('api.noModelsAvailable')}
+                      disabled={!modelOptions.length}
+                      triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-3 text-text-primary"
+                      contentClassName="w-[var(--radix-select-trigger-width)]"
+                    />
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {(isOllamaMode || isSophronMode || isCodexMode) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        void refreshModelOptions();
+                      }}
+                      className="h-auto gap-1 rounded-md bg-surface-hover px-2 py-1 text-xs hover:bg-surface-active"
+                      disabled={isRefreshingModels}
+                    >
+                      <RefreshCw
+                        className={`w-3 h-3 ${isRefreshingModels ? 'animate-spin' : ''}`}
+                      />
+                      {isRefreshingModels ? t('api.refreshingModels') : t('api.refreshModels')}
+                    </Button>
+                  )}
+                  {shouldShowOllamaManualModelToggle && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleCustomModel}
+                      className={`h-auto gap-1 rounded-md px-2 py-1 text-xs ${
+                        useCustomModel
+                          ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20 hover:bg-accent-muted'
+                          : 'bg-surface-hover hover:bg-surface-active'
+                      }`}
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      {isOllamaMode
+                        ? useCustomModel
+                          ? t('api.useDetectedModels')
+                          : t('api.manualModel')
+                        : useCustomModel
+                          ? t('api.usePreset')
+                          : t('api.custom')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        )}
+        </section>
 
         {isCodexMode && <p className="text-xs text-text-muted">{t('api.codexAuthDescription')}</p>}
-
-        {/* Custom Protocol */}
-        {provider === 'custom' && (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
-              <Server className="w-4 h-4" />
-              {t('api.protocol')}
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { id: 'anthropic', label: 'Anthropic' },
-                  { id: 'openai', label: 'OpenAI' },
-                  { id: 'gemini', label: 'Gemini' },
-                ] as const
-              ).map((mode) => (
-                <button
-                  key={mode.id}
-                  onClick={() => changeProtocol(mode.id)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    customProtocol === mode.id
-                      ? 'bg-accent text-accent-foreground'
-                      : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Base URL */}
-        {showsBaseUrl && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
-                <Server className="w-4 h-4" />
-                {t('api.baseUrl')}
-              </label>
-              {isOllamaMode && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void discoverLocalOllama();
-                  }}
-                  disabled={isDiscoveringLocalOllama}
-                  className="h-auto gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs text-text-primary hover:bg-accent-muted"
-                >
-                  <Plug className="w-3 h-3" />
-                  {isDiscoveringLocalOllama
-                    ? t('api.discoveringLocalOllama')
-                    : t('api.discoverLocalOllama')}
-                </Button>
-              )}
-            </div>
-            <Input
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={baseUrlPlaceholder}
-              className="h-auto px-3 py-2 shadow-soft"
-            />
-          </div>
-        )}
-
-        {/* Model Selection */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
-              <Cpu className="w-4 h-4" />
-              {t('api.model')}
-            </label>
-            <div className="flex items-center gap-2">
-              {(isOllamaMode || isSophronMode || isCodexMode) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    void refreshModelOptions();
-                  }}
-                  className="h-auto gap-1 rounded-md bg-surface-hover px-2 py-1 text-xs hover:bg-surface-active"
-                  disabled={isRefreshingModels}
-                >
-                  <RefreshCw className={`w-3 h-3 ${isRefreshingModels ? 'animate-spin' : ''}`} />
-                  {isRefreshingModels ? t('api.refreshingModels') : t('api.refreshModels')}
-                </Button>
-              )}
-              {shouldShowOllamaManualModelToggle && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleCustomModel}
-                  className={`h-auto gap-1 rounded-md px-2 py-1 text-xs ${
-                    useCustomModel
-                      ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20 hover:bg-accent-muted'
-                      : 'bg-surface-hover hover:bg-surface-active'
-                  }`}
-                >
-                  <Edit3 className="w-3 h-3" />
-                  {isOllamaMode
-                    ? useCustomModel
-                      ? t('api.useDetectedModels')
-                      : t('api.manualModel')
-                    : useCustomModel
-                      ? t('api.usePreset')
-                      : t('api.custom')}
-                </Button>
-              )}
-            </div>
-          </div>
-          {useCustomModel ? (
-            <Input
-              type="text"
-              value={customModel}
-              onChange={(e) => setCustomModel(e.target.value)}
-              placeholder={modelInputPlaceholder}
-              className="h-auto px-3 py-2 shadow-soft"
-            />
-          ) : (
-            <GlassSelect
-              value={modelOptions.length ? model : ''}
-              onValueChange={setModel}
-              options={
-                modelOptions.length
-                  ? modelOptions.map((m) => ({ value: m.id, label: m.name }))
-                  : [{ value: 'no-models', label: t('api.noModelsAvailable'), disabled: true }]
-              }
-              placeholder={t('api.noModelsAvailable')}
-              disabled={!modelOptions.length}
-              triggerClassName="h-9 w-full justify-between rounded-lg bg-surface px-3 text-text-primary"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-          )}
-        </div>
 
         {provider === 'custom' && (
           <CommonProviderSetupsCard

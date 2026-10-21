@@ -136,48 +136,78 @@ export function DataPipelineAiGenerateDialog({
         <Sparkles className="h-4 w-4 text-accent" />
         {title}
       </DialogTitle>
-      <DialogBody className="mt-3 flex flex-col gap-3">
-        {fixedSource || pipelineId ? (
-          <div className="flex items-center gap-2 text-[12px] text-text-muted">
-            <Database className="h-3.5 w-3.5" />
-            {source
-              ? t('data.workflow.aiInputBound', { name: source.tableName || source.tableId })
-              : t('data.workflow.aiInputMissing')}
+      <DialogBody className="ui-dialog-pad mt-3 flex flex-col gap-2.5">
+        <section className="ui-group">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('data.workflow.aiInputLabel')}</div>
+            <div className="ui-form-value">
+              {fixedSource || pipelineId ? (
+                <div className="flex items-center gap-2 text-[12px] text-text-muted">
+                  <Database className="h-3.5 w-3.5" />
+                  {source
+                    ? t('data.workflow.aiInputBound', { name: source.tableName || source.tableId })
+                    : t('data.workflow.aiInputMissing')}
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  <GlassSelect
+                    value={chosenInputId}
+                    disabled={busy || inputs.loading}
+                    onValueChange={setChosenInputId}
+                    options={inputs.tables.map((table) => ({ value: table.id, label: table.name }))}
+                    ariaLabel={t('data.aiPipelineRawTable')}
+                    placeholder={t(inputs.loading ? 'common.loading' : 'data.aiPipelineRawTable')}
+                    searchable
+                    searchPlaceholder={t('data.aiPipelineInputSearch')}
+                    searchEmptyText={t('common.noResults')}
+                    triggerClassName="h-8 w-full justify-between"
+                    contentClassName="w-[var(--radix-select-trigger-width)]"
+                  />
+                  {inputs.error && (
+                    <p role="alert" className="text-xs text-error">
+                      {inputs.error}
+                    </p>
+                  )}
+                  {!inputs.loading && !inputs.error && inputs.tables.length === 0 && (
+                    <p className="text-xs text-text-muted">{t('data.aiPipelineNoInputs')}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="grid gap-2">
-            <GlassSelect
-              value={chosenInputId}
-              disabled={busy || inputs.loading}
-              onValueChange={setChosenInputId}
-              options={inputs.tables.map((table) => ({ value: table.id, label: table.name }))}
-              ariaLabel={t('data.aiPipelineRawTable')}
-              placeholder={t(inputs.loading ? 'common.loading' : 'data.aiPipelineRawTable')}
-              searchable
-              searchPlaceholder={t('data.aiPipelineInputSearch')}
-              searchEmptyText={t('common.noResults')}
-              triggerClassName="h-9 w-full justify-between"
-              contentClassName="w-[var(--radix-select-trigger-width)]"
-            />
-            {inputs.error && (
-              <p role="alert" className="text-xs text-error">
-                {inputs.error}
-              </p>
-            )}
-            {!inputs.loading && !inputs.error && inputs.tables.length === 0 && (
-              <p className="text-xs text-text-muted">{t('data.aiPipelineNoInputs')}</p>
-            )}
+          {!pipelineId && initialOutput?.writeMode !== 'replace' && (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{t('data.workflow.aiOutputLabel')}</div>
+              <div className="ui-form-value">
+                <Input
+                  aria-label={t('data.aiPipelineOutputName')}
+                  placeholder={t('data.aiPipelineOutputName')}
+                  value={outputName}
+                  disabled={busy}
+                  onChange={(event) => setOutputName(event.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">
+              {t('data.workflow.aiRequirementLabel')}
+            </div>
+            <div className="ui-form-value py-2">
+              <LlmPromptComposer
+                value={requirement}
+                onChange={setRequirement}
+                placeholder={t('data.workflow.aiRequirementPlaceholder')}
+                disabled={busy || !source}
+                maxLength={4000}
+                className="min-h-[96px]"
+                textareaClassName="min-h-[56px]"
+                onSubmit={() => void send()}
+                submitDisabled={!canSend}
+              />
+            </div>
           </div>
-        )}
-        {!pipelineId && initialOutput?.writeMode !== 'replace' && (
-          <Input
-            aria-label={t('data.aiPipelineOutputName')}
-            placeholder={t('data.aiPipelineOutputName')}
-            value={outputName}
-            disabled={busy}
-            onChange={(event) => setOutputName(event.target.value)}
-          />
-        )}
+        </section>
         {anchorNode ? (
           <div className="rounded-lg border border-accent/30 bg-accent-muted px-3 py-2 text-[12px] text-text-secondary">
             {t('data.workflow.aiAnchorHint', { name: anchorNode.label })}
@@ -189,17 +219,6 @@ export function DataPipelineAiGenerateDialog({
             </div>
           )
         )}
-        <LlmPromptComposer
-          value={requirement}
-          onChange={setRequirement}
-          placeholder={t('data.workflow.aiRequirementPlaceholder')}
-          disabled={busy || !source}
-          maxLength={4000}
-          className="min-h-[96px]"
-          textareaClassName="min-h-[56px]"
-          onSubmit={() => void send()}
-          submitDisabled={!canSend}
-        />
         {error && (
           <p role="alert" className="text-xs text-error">
             {error}

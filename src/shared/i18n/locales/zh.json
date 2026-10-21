@@ -358,7 +358,8 @@
         "cloudSource": {
           "choose": "选择云端表",
           "change": "更换云端表",
-          "bind": "关联表"
+          "bind": "关联表",
+          "tableLabel": "云端表"
         },
         "tabs": {
           "config": "配置",
@@ -1896,7 +1897,10 @@
       "inputTableInfo": "{{columns}} 个字段 · {{rows}} 行 · 更新于 {{updated}}",
       "inputAlias": "引用名",
       "inputAliasHint": "在 SQL、表连接条件中以 [{{alias}}] 引用",
-      "inputAliasNone": "连接到表连接或 SQL 后自动生成"
+      "inputAliasNone": "连接到表连接或 SQL 后自动生成",
+      "aiInputLabel": "输入表",
+      "aiOutputLabel": "输出表",
+      "aiRequirementLabel": "需求"
     },
     "relative": {
       "today": "今天",
@@ -3965,7 +3969,8 @@
     "passwordPlaceholder": "请输入密码",
     "cancel": "取消",
     "execute": "确认执行",
-    "warning": "密码仅用于本次命令执行，不会被保存。"
+    "warning": "密码仅用于本次命令执行，不会被保存。",
+    "commandLabel": "命令"
   },
   "errorBoundary": {
     "title": "出现了一个错误",
