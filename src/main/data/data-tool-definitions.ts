@@ -482,6 +482,19 @@ export function createDataCustomTools(
         }),
     },
     {
+      name: 'data_create_pipeline',
+      ...DATA_TOOL_COPY.data_create_pipeline,
+      parameters: Type.Object(
+        {
+          name: Type.String({ minLength: 1, maxLength: 200 }),
+          sourceRawTableId: Type.Optional(Type.String({ minLength: 1 })),
+          resultTableId: Type.Optional(Type.String({ minLength: 1 })),
+        },
+        { additionalProperties: false }
+      ),
+      execute: async (_toolCallId, params) => dataToolService.createPipeline(params as never),
+    },
+    {
       name: 'data_update_pipeline',
       ...DATA_TOOL_COPY.data_update_pipeline,
       parameters: Type.Object({

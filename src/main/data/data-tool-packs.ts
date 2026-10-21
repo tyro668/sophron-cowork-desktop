@@ -69,6 +69,7 @@ export const DATA_TOOL_PACKS = {
     description:
       'Expert workflow editing: pipeline update, capability manifest, constrained plan/DSL apply, per-operator config, DSL export/reference',
     tools: [
+      'data_create_pipeline',
       'data_update_pipeline',
       'data_get_workflow_capability_manifest',
       'data_apply_workflow_plan',
