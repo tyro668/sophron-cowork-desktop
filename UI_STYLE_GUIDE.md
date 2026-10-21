@@ -55,6 +55,7 @@
 - **组间**：不同分组 / 分区之间留 `--space-group`（10px，允许 8–12px）。
 - **分组外框**：分组可使用 `1px` 边框 + `--radius-group`（6px）圆角；共享类 `.ui-group`（globals.css），算子表单由 `.opg-frame` 包裹。
 - **贴边例外**：工具栏、页签栏（顶部分段页签、底部 配置 / 数据 / 自动化 页签）、标题栏保持贴边，不加内边距。
+- **列表页「+ 新建…」**：数据（数据加工 / 原始表 / 结果表）与自动化列表的新建按钮放在顶部页签栏最右侧，为贴边单元：与页签栏同高、左侧 1px 分隔、accent 文字与图标、页签栏背景、悬停 `accent-muted/60` 浅底，不用整块紫色实底；文案随当前页签变化。下方工具栏搜索框从左边缘开始。实现：页面放 `TabBarActionSlot`，面板用 `TabBarAction` + `tabBarNewCellClass`。
 - Token 定义：`src/renderer/components/workflow-forms/shared/form-grid.css` 与 `src/renderer/styles/globals.css` 的 `:root`（`--space-inset` / `--space-inset-lg` / `--space-group` / `--radius-group`）。
 
 - **导航列表贴边（例外）**：左侧栏（导航、置顶、项目 / 任务列表、底栏）与设置导航不使用内缩分组：贴满容器边缘、组间无间距、无圆角框，导航行与项目头之间用 1px 分隔线；项目头为贴边浅底行（下方 1px 分隔），项目组之间 1px 分隔。**任务行之间不画分隔线**：任务行高 31px，列表上下各留 4px，任务仅靠缩进表明归属（不画竖向引导线），悬停 `surface-hover/70` 浅底，当前任务左侧 3px accent 竖条 + `accent-muted/60` 浅底，⋯ 菜单仅悬停显示；置顶区同样式，全平台一致。表单、编辑器、对话框等内容区继续使用均衡分组样式。

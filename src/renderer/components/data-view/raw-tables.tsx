@@ -26,7 +26,8 @@ import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { RawTableAutomations } from './table-automations';
 import {
-  toolbarPrimaryCellClass,
+  TabBarAction,
+  tabBarNewCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -252,14 +253,16 @@ export function RawTablesPanel({
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-[16rem] flex-1 flex-wrap items-center gap-2">
           {(isLoading || visibleRows.length > 0 || searchQuery.trim()) && (
-            <button
-              onClick={onCreate}
-              disabled={isCreateDisabled || bulkBusy}
-              className={toolbarPrimaryCellClass}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('data.rawTables.add')}
-            </button>
+            <TabBarAction>
+              <button
+                onClick={onCreate}
+                disabled={isCreateDisabled || bulkBusy}
+                className={tabBarNewCellClass}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('data.rawTables.add')}
+              </button>
+            </TabBarAction>
           )}
           <DataTableSearch
             value={searchQuery}

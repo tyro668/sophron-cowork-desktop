@@ -25,7 +25,8 @@ import {
   type DataListGroup,
 } from '../group-ui';
 import {
-  toolbarPrimaryCellClass,
+  TabBarAction,
+  tabBarNewCellClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -216,14 +217,16 @@ export function PipelinesPanel({
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || pipelines.length > 0 || searchQuery.trim()) && (
-            <button
-              onClick={onCreate}
-              disabled={isCreateDisabled || bulkBusy}
-              className={toolbarPrimaryCellClass}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('data.newPipeline')}
-            </button>
+            <TabBarAction>
+              <button
+                onClick={onCreate}
+                disabled={isCreateDisabled || bulkBusy}
+                className={tabBarNewCellClass}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t('data.newPipeline')}
+              </button>
+            </TabBarAction>
           )}
           <DataTableSearch
             value={searchQuery}
