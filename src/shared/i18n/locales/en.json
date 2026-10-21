@@ -1908,6 +1908,7 @@
       "move": "Move",
       "ungrouped": "Ungrouped",
       "newGroup": "New group",
+      "nameLabel": "Name",
       "namePlaceholder": "Group name",
       "rename": "Rename group",
       "delete": "Dissolve group",

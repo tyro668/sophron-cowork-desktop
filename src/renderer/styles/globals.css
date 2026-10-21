@@ -1496,3 +1496,8 @@
 .settings-content .ui-group {
   margin: 0 0 var(--space-group);
 }
+
+/* Padded dialogs supply the inset; their groups sit flush in the body. */
+.ui-dialog-pad .ui-group {
+  margin: 0;
+}

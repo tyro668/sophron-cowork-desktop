@@ -1908,6 +1908,7 @@
       "move": "移动",
       "ungrouped": "未分组",
       "newGroup": "新建分组",
+      "nameLabel": "名称",
       "namePlaceholder": "分组名称",
       "rename": "重命名分组",
       "delete": "解散分组",
