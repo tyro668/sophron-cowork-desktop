@@ -692,59 +692,62 @@ function RunLogRow({
           {formatExecutionSummary(run, tr)}
         </td>
       </tr>
-      {expanded && (
-        <tr
-          className={`border-b border-border-muted/85 ${failed ? 'bg-error/[0.04]' : 'bg-surface-muted'}`}
-        >
-          <td colSpan={8} className="px-8 py-3">
-            {nodes.length === 0 ? (
-              <div className="text-xs text-text-muted">
-                {tr('schedule.runNoActions', '没有可显示的动作明细')}
-              </div>
-            ) : (
-              <ol className="space-y-1.5">
-                {nodes.map((node, index) => {
-                  const state = executed.has(node.id)
-                    ? failed && node.id === lastExecutedId
-                      ? 'failed'
-                      : 'succeeded'
-                    : skipped.has(node.id)
-                      ? 'skipped'
-                      : run.status === 'running'
-                        ? 'running'
-                        : 'skipped';
-                  return (
-                    <li key={node.id} className="flex items-center gap-2.5 text-[13px]">
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-accent-muted text-[11px] font-semibold text-accent">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-text-primary">
-                        {node.label ||
-                          tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type)}
-                      </span>
-                      <span
-                        className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
-                          state === 'succeeded'
-                            ? 'bg-success/10 text-success'
-                            : state === 'failed'
-                              ? 'bg-error/10 text-error'
-                              : state === 'running'
-                                ? 'bg-accent-muted text-accent'
-                                : 'bg-surface-active text-text-muted'
-                        }`}
-                      >
-                        {tr(`schedule.actionRunState.${state}`, state)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-            {run.error && (
-              <div className="mt-2 whitespace-pre-wrap break-words text-xs text-error">
-                {run.error}
-              </div>
-            )}
+      {expanded && nodes.length === 0 && (
+        <tr className="h-9 border-b border-border-muted/85 bg-surface-muted">
+          <td colSpan={8} className="px-8 text-xs text-text-muted">
+            {tr('schedule.runNoActions', '没有可显示的动作明细')}
+          </td>
+        </tr>
+      )}
+      {expanded &&
+        nodes.map((node, index) => {
+          const state = executed.has(node.id)
+            ? failed && node.id === lastExecutedId
+              ? 'failed'
+              : 'succeeded'
+            : skipped.has(node.id)
+              ? 'skipped'
+              : run.status === 'running'
+                ? 'running'
+                : 'skipped';
+          return (
+            <tr
+              key={node.id}
+              className={`h-9 border-b border-border-muted/85 text-[12.5px] ${failed ? 'bg-error/[0.04]' : 'bg-surface-muted'}`}
+            >
+              <td className="truncate pl-8 pr-3 text-text-secondary">
+                <span className="mr-2 tabular-nums text-text-muted">{index + 1}</span>
+                {node.label ||
+                  tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type)}
+              </td>
+              <td className="px-3">
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                    state === 'succeeded'
+                      ? 'bg-success/10 text-success'
+                      : state === 'failed'
+                        ? 'bg-error/10 text-error'
+                        : state === 'running'
+                          ? 'bg-accent-muted text-accent'
+                          : 'bg-surface-active text-text-muted'
+                  }`}
+                >
+                  {tr(`schedule.actionRunState.${state}`, state)}
+                </span>
+              </td>
+              <td className="px-2 text-text-muted" />
+              <td className="px-2 text-text-muted">—</td>
+              <td className="px-2 text-text-muted">—</td>
+              <td className="px-2 text-text-muted">—</td>
+              <td className="px-2 text-text-muted">—</td>
+              <td className="truncate px-2 text-text-muted">{node.type}</td>
+            </tr>
+          );
+        })}
+      {expanded && run.error && (
+        <tr className="border-b border-border-muted/85 bg-error/[0.04]">
+          <td colSpan={8} className="whitespace-pre-wrap break-words px-8 py-2 text-xs text-error">
+            {run.error}
           </td>
         </tr>
       )}
