@@ -1938,7 +1938,12 @@
       "inputAliasNone": "连接到表连接或 SQL 后自动生成",
       "aiInputLabel": "输入表",
       "aiOutputLabel": "输出表",
-      "aiRequirementLabel": "需求"
+      "aiRequirementLabel": "需求",
+      "zoomOut": "缩小",
+      "zoomIn": "放大",
+      "fitView": "适应画布",
+      "toggleMinimap": "小地图",
+      "runningShort": "运行中…"
     },
     "relative": {
       "today": "今天",

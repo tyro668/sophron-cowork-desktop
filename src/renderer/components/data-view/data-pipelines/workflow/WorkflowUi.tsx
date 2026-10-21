@@ -301,6 +301,8 @@ export function WorkflowNodeDataPreview({
   onPageChange,
   footerLeading,
   footerTrailing,
+  pageSizeOptions,
+  onPageSizeChange,
 }: {
   preview: DataRawTablePreview | null;
   isLoading: boolean;
@@ -309,10 +311,15 @@ export function WorkflowNodeDataPreview({
   onPageChange: (page: number) => void;
   footerLeading?: ReactNode;
   footerTrailing?: ReactNode;
+  pageSizeOptions?: readonly number[];
+  onPageSizeChange?: (size: number) => void;
 }) {
   const { t } = useTranslation();
   return (
     <GlassDataGridPreview
+      pageSizeOptions={pageSizeOptions}
+      onPageSizeChange={onPageSizeChange}
+      footerClassName="h-12"
       preview={preview}
       isLoading={isLoading}
       error={error}

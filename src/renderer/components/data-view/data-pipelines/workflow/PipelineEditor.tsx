@@ -17,6 +17,7 @@ import {
   X,
   Undo2,
   Redo2,
+  LoaderCircle,
 } from 'lucide-react';
 import type {
   DataPipeline,
@@ -432,6 +433,8 @@ export function PipelineEditor({
     );
   }, [selectedNode, selectedUpstreamSignature, loadedWorkflowInput]);
   const isBusy = saving || renamingPipeline || actionId === pipeline.id;
+  const [runKind, setRunKind] = useState<'trial' | 'run' | null>(null);
+  const runningKind = actionId === pipeline.id ? (runKind ?? 'trial') : null;
 
   useEffect(() => {
     if (!isWorkflowDirty) return undefined;
@@ -1100,10 +1103,15 @@ export function PipelineEditor({
       setLocalError(planError);
       return;
     }
-    await onRun(pipeline, {
-      workflow: workflowSaveInput,
-      outputMode: 'temporary',
-    });
+    setRunKind('trial');
+    try {
+      await onRun(pipeline, {
+        workflow: workflowSaveInput,
+        outputMode: 'temporary',
+      });
+    } finally {
+      setRunKind(null);
+    }
     setNodeDataRefreshVersion((current) => current + 1);
   }, [onRun, pipeline, validateWorkflowBeforeRun, workflowSaveInput, flagPlanDiagnostics]);
 
@@ -1234,10 +1242,15 @@ export function PipelineEditor({
     const saved = await saveWorkflow();
     if (!saved) return;
     const savedInput = toWorkflowSaveInput(saved);
-    await onRun(pipeline, {
-      workflow: savedInput,
-      outputMode: 'persisted',
-    });
+    setRunKind('run');
+    try {
+      await onRun(pipeline, {
+        workflow: savedInput,
+        outputMode: 'persisted',
+      });
+    } finally {
+      setRunKind(null);
+    }
     setNodeDataRefreshVersion((current) => current + 1);
   }, [onRun, saveWorkflow, pipeline, validateWorkflowBeforeRun]);
 
@@ -1378,7 +1391,8 @@ export function PipelineEditor({
         <div className="flex min-w-0 items-stretch">
           <button
             onClick={() => void handleBack()}
-            className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+            className="inline-flex w-[232px] flex-shrink-0 items-center gap-1.5 border-r border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+            data-testid="pipeline-back-cell"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.editor.back')}
@@ -1480,19 +1494,33 @@ export function PipelineEditor({
             variant="secondary"
             onClick={() => void handleTrialRun()}
             disabled={isBusy || !workflow}
-            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
+            data-testid="pipeline-trial-run"
+            className={`h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none ${
+              runningKind === 'trial' ? 'bg-accent-muted/60 text-accent disabled:opacity-100' : ''
+            }`}
           >
-            <Play className="h-3.5 w-3.5" />
-            {t('data.editor.trialRun')}
+            {runningKind === 'trial' ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {runningKind === 'trial' ? t('data.workflow.runningShort') : t('data.editor.trialRun')}
           </Button>
           <Button
-            variant="primary"
+            variant="ghost"
             onClick={() => void handleSaveAndRun()}
             disabled={isBusy || !workflow}
-            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
+            data-testid="pipeline-save-and-run"
+            className={`h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs font-semibold text-accent shadow-none hover:bg-accent-muted/60 hover:text-accent ${
+              runningKind === 'run' ? 'bg-accent-muted/60 disabled:opacity-100' : ''
+            }`}
           >
-            <Play className="h-3.5 w-3.5" />
-            {t('data.editor.saveAndRun')}
+            {runningKind === 'run' ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {runningKind === 'run' ? t('data.workflow.runningShort') : t('data.editor.saveAndRun')}
           </Button>
           <GlassDropdownMenu
             open={workflowMenuOpen}
@@ -1532,7 +1560,7 @@ export function PipelineEditor({
           {t('common.loading')}
         </div>
       ) : (
-        <div className="grid flex-1 min-h-0 grid-cols-[13rem_minmax(0,1fr)] items-stretch">
+        <div className="grid flex-1 min-h-0 grid-cols-[232px_minmax(0,1fr)] items-stretch">
           <WorkflowOperatorPalette onAddOperator={addOperatorAfterSelected} />
           <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_400px]">
             {/* grid + stretch keeps WorkflowCanvas at the full row height so the

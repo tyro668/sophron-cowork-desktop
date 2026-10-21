@@ -1938,7 +1938,12 @@
       "inputAliasNone": "Generated when connected to a join or SQL node",
       "aiInputLabel": "Input table",
       "aiOutputLabel": "Output table",
-      "aiRequirementLabel": "Requirement"
+      "aiRequirementLabel": "Requirement",
+      "zoomOut": "Zoom out",
+      "zoomIn": "Zoom in",
+      "fitView": "Fit view",
+      "toggleMinimap": "Minimap",
+      "runningShort": "Running…"
     },
     "relative": {
       "today": "Today",

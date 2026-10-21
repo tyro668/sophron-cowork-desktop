@@ -20,7 +20,7 @@ export function WorkflowOperatorPalette({
   });
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border-subtle bg-background-secondary">
+    <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border-subtle bg-surface">
       <label className="flex h-10 flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-surface px-3">
         <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" aria-hidden />
         <input
@@ -31,7 +31,7 @@ export function WorkflowOperatorPalette({
           className="min-w-0 flex-1 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted"
         />
       </label>
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2" data-testid="operator-palette-list">
         {OPERATOR_CATALOG_GROUPS.map(({ category, operators: allOperators }) => {
           const operators = normalizedQuery
             ? allOperators.filter(
@@ -46,17 +46,13 @@ export function WorkflowOperatorPalette({
           const contentId = `${id}-${category}-content`;
           const Chevron = expanded ? ChevronDown : ChevronRight;
           return (
-            <section
-              key={category}
-              aria-labelledby={headingId}
-              className="overflow-hidden rounded-md border border-border-subtle bg-surface"
-            >
+            <section key={category} aria-labelledby={headingId} className="mt-2">
               <h3>
                 <Button
                   id={headingId}
                   variant="ghost"
                   size="sm"
-                  className={`h-8 w-full justify-start rounded-none bg-surface-muted px-2.5 text-xs font-semibold ${expanded ? 'border-b border-border-subtle' : ''}`}
+                  className="mx-2.5 h-[30px] w-[calc(100%-20px)] justify-start gap-1.5 rounded-none bg-transparent px-2 text-[11.5px] font-semibold text-text-secondary shadow-none hover:bg-transparent hover:text-text-primary"
                   aria-expanded={expanded}
                   aria-controls={contentId}
                   onClick={() => setCollapsed((current) => ({ ...current, [category]: expanded }))}
@@ -81,10 +77,10 @@ export function WorkflowOperatorPalette({
                     }}
                     title={t('data.workflow.addOperatorToCanvas')}
                     aria-label={`${t(labelKey)} — ${t('data.workflow.addOperatorToCanvas')}`}
-                    className="h-9 w-full cursor-grab justify-start gap-2 rounded-none border-0 border-b border-border-subtle px-2.5 text-xs text-text-secondary shadow-none last:border-b-0 hover:bg-accent-muted hover:text-accent active:cursor-grabbing"
+                    className="relative mx-2.5 h-8 w-[calc(100%-20px)] cursor-grab justify-start gap-2 rounded-none border-0 bg-transparent pl-[18px] pr-2 text-xs text-text-secondary shadow-none before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent before:opacity-0 hover:bg-accent-muted hover:text-accent hover:before:opacity-100 focus-visible:bg-accent-muted focus-visible:before:opacity-100 active:cursor-grabbing"
                   >
                     <span
-                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${colorClassName}`}
+                      className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] ${colorClassName}`}
                     >
                       <Icon className="h-3.5 w-3.5" aria-hidden />
                     </span>
@@ -92,7 +88,7 @@ export function WorkflowOperatorPalette({
                   </Button>
                 ))}
                 {operators.length === 0 && (
-                  <p className="px-2 pb-2 text-xs leading-5 text-text-muted">
+                  <p className="mx-2.5 px-[18px] py-1 text-xs leading-5 text-text-muted">
                     {t('data.workflow.emptyOperatorCategory')}
                   </p>
                 )}
