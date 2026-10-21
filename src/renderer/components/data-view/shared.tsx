@@ -52,6 +52,16 @@ export const underlineTabTriggerClass =
   'after:w-full data-[state=active]:after:bg-accent';
 
 /**
+ * Fixed tab width shared by the data page top tabs, the raw/result editor
+ * bottom tabs and the cloud space bottom tabs. Widths include the 1px divider,
+ * so N tabs span exactly N × FIXED_TAB_WIDTH (the cloud tree = 4 tabs).
+ */
+export const FIXED_TAB_WIDTH = 112;
+export const fixedTabWidthClass = 'w-[112px] min-w-0 flex-none justify-center px-2';
+export const fixedTabGroupWidth = (count: number) => count * FIXED_TAB_WIDTH;
+export const fixedUnderlineTabTriggerClass = `${underlineTabTriggerClass} ${fixedTabWidthClass}`;
+
+/**
  * Shared underline-tab bar chrome for the main workspace pages (data, skills,
  * automation): a fixed-height row with a baseline border that the active
  * trigger underline sits on. Keeps tab height/spacing identical across pages.
@@ -70,7 +80,7 @@ export const bottomTabBarClass =
 export const bottomTabListClass =
   'flex h-full items-stretch gap-0 rounded-none border-0 bg-transparent p-0';
 export const bottomTabTriggerClass =
-  'relative h-full rounded-none bg-transparent px-4 text-xs font-medium text-text-secondary shadow-none ' +
+  'relative h-full w-[112px] min-w-0 flex-none justify-center rounded-none border-r border-border-subtle bg-transparent px-2 text-xs font-medium text-text-secondary shadow-none ' +
   'hover:bg-surface-hover/50 hover:text-text-primary ' +
   'data-[state=active]:bg-accent-muted data-[state=active]:text-accent data-[state=active]:shadow-none ' +
   'after:absolute after:inset-x-0 after:top-0 after:h-0.5 data-[state=active]:after:bg-accent';

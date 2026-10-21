@@ -22,7 +22,7 @@ import {
   underlineTabBarClass,
   useTabBarActionSlot,
   underlineTabListClass,
-  underlineTabTriggerClass,
+  fixedUnderlineTabTriggerClass,
 } from '../../../components/data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
@@ -272,8 +272,14 @@ export function DataViewPage() {
                           ['cloud_analysis', 'data.tabs.cloudAnalysis'],
                         ] as const
                       ).map(([value, key]) => (
-                        <TabsTrigger key={value} value={value} className={underlineTabTriggerClass}>
-                          {t(key)}
+                        <TabsTrigger
+                          key={value}
+                          value={value}
+                          className={fixedUnderlineTabTriggerClass}
+                          title={t(key)}
+                          data-fixed-tab
+                        >
+                          <span className="truncate">{t(key)}</span>
                         </TabsTrigger>
                       ))}
                     </TabsList>
