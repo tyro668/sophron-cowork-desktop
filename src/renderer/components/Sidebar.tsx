@@ -723,18 +723,23 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         }}
         onMouseEnter={() => setHoveredSession(session.id)}
         onMouseLeave={() => setHoveredSession(null)}
-        className={`group relative cursor-pointer transition-colors ${'border-b border-border-subtle py-1.5 pl-7 pr-2.5 last:border-b-0'} ${
+        className={`group relative flex h-[31px] cursor-pointer items-center pl-7 pr-2.5 transition-colors ${
           isSelectMode && isSelected
             ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
             : isActive && !isSelectMode
-              ? 'bg-surface-active'
-              : 'hover:bg-surface-hover'
+              ? 'bg-accent-muted/60'
+              : 'hover:bg-surface-hover/70'
         }`}
       >
+        {/* Indent guide: ties tasks to their project header. */}
+        <span
+          aria-hidden="true"
+          className="sidebar-task-guide absolute inset-y-0 left-[20px] w-px bg-border-subtle"
+        />
         {isActive && !isSelectMode && (
           <span className={`absolute left-0 w-[3px] bg-accent inset-y-0`} />
         )}
-        <div className={`flex items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
+        <div className={`flex min-w-0 flex-1 items-center gap-2 ${!isSelectMode ? 'pr-6' : ''}`}>
           {isSelectMode && (
             <div
               className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
@@ -785,7 +790,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 <button
                   type="button"
                   className={`flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary data-[state=open]:bg-surface-active data-[state=open]:opacity-100 ${
-                    hoveredSession === session.id || isActive ? 'opacity-100' : 'opacity-0'
+                    hoveredSession === session.id ? 'opacity-100' : 'opacity-0'
                   } group-hover:opacity-100`}
                   title={t('sidebar.taskMenu')}
                   aria-label={t('sidebar.taskMenu')}
@@ -1291,7 +1296,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               <Pin className="h-3 w-3" />
               {t('sidebar.pinnedTitle')}
             </div>
-            <div className={'border-b border-border-subtle bg-surface'}>
+            <div className={'border-b border-border-subtle bg-surface py-1'}>
               {pinnedSessions.map((session) => renderSessionRow(session))}
             </div>
           </div>
@@ -1439,7 +1444,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                     </div>
                   )}
                   {isProjectExpanded && (
-                    <div className={''}>
+                    <div className={'py-1'}>
                       {group.sessions.map((session) => renderSessionRow(session))}
                     </div>
                   )}

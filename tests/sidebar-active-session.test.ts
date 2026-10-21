@@ -5,10 +5,10 @@ import path from 'node:path';
 const sidebarPath = path.resolve(process.cwd(), 'src/renderer/components/Sidebar.tsx');
 
 describe('Sidebar active session styling', () => {
-  it('uses a 3px accent leading line and surface-active background for the active conversation', () => {
+  it('uses a 3px accent leading line and a light accent tint for the active conversation', () => {
     const source = fs.readFileSync(sidebarPath, 'utf8');
 
-    expect(source).toContain("'bg-surface-active'");
+    expect(source).toContain("'bg-accent-muted/60'");
     expect(source).toContain('absolute left-0 w-[3px] bg-accent');
     expect(source).toContain('absolute left-0 w-[3px] bg-accent inset-y-0');
     expect(source).not.toContain('top-1.5 bottom-1.5 rounded-r-full');
