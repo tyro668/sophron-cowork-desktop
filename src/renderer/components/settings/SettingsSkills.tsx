@@ -738,7 +738,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   )}
                 </div>
 
-                <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-t border-border-subtle bg-surface-muted pl-3 pr-1.5 text-xs font-medium text-text-secondary">
+                <div className="flex h-[49px] flex-shrink-0 items-center justify-between gap-2 border-t border-border-subtle bg-surface-muted pl-3 pr-1.5 text-xs font-medium text-text-secondary">
                   <span className="min-w-0 truncate">
                     {t('skills.workspace.totalCount', {
                       count: tableItems.length,
@@ -907,7 +907,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                     </div>
 
                     {selectedSkill && (
-                      <div className="grid h-11 flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-t border-border-subtle">
+                      <div className="grid h-[49px] flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-t border-border-subtle">
                         <Button
                           variant="primary"
                           className="h-full rounded-none"
@@ -959,7 +959,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                             pluginActionKey !== null ||
                             isLoading
                           }
-                          className={`inline-flex h-10 w-full items-center justify-center gap-2 px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                          className={`inline-flex h-12 w-full items-center justify-center gap-2 px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
                             selectedPlugin
                               ? 'bg-accent-muted text-accent hover:bg-accent-muted'
                               : 'text-error hover:bg-error/10'
