@@ -11,7 +11,6 @@ import { useTranslation } from 'react-i18next';
 import {
   Background,
   ConnectionMode,
-  Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
@@ -31,7 +30,7 @@ import {
   useStore,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Ban, Copy, Trash2 } from 'lucide-react';
+import { Ban, Copy, Map as MapIcon, Minus, Plus, Scan, Trash2 } from 'lucide-react';
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
@@ -182,7 +181,8 @@ function WorkflowCanvasContent({
   onViewportSizeChange?: (size: { width: number; height: number }) => void;
 }) {
   const { t } = useTranslation();
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
+  const [showMinimap, setShowMinimap] = useState(true);
   const paneWidth = useStore((state) => state.width);
   const paneHeight = useStore((state) => state.height);
   const onViewportSizeChangeRef = useRef(onViewportSizeChange);
@@ -449,46 +449,87 @@ function WorkflowCanvasContent({
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden">
-      <div className="glass-panel-header flex h-12 shrink-0 items-center gap-3 px-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="truncate text-[13px] font-medium text-text-secondary">
-            {selectedNodes.length === 0
-              ? t('data.workflow.noOperatorSelected')
-              : selectedNodes.length === 1
-                ? t('data.workflow.selectedOperator', {
-                    count: 1,
-                    name: (primaryNode ?? selectedNodes[0]).label,
-                  })
-                : t('data.workflow.selectedOperators', { count: selectedNodes.length })}
-          </span>
-
-          <div className="hidden h-5 w-px flex-shrink-0 bg-border-muted md:block" />
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            <DataToolbarButton
-              icon={<Copy className="h-3.5 w-3.5" />}
-              label={t('data.workflow.copySelected')}
-              disabled={!primaryNode}
-              onClick={onDuplicateNode}
-            />
-            <DataToolbarButton
-              icon={<Ban className="h-3.5 w-3.5" />}
-              label={
-                allSelectedDisabled
-                  ? t('data.workflow.enableSelected')
-                  : t('data.workflow.disableSelected')
-              }
-              disabled={selectedNodes.length === 0}
-              onClick={onToggleNodeDisabled}
-            />
-            <DataToolbarButton
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              label={t('data.workflow.deleteSelected')}
-              disabled={selectedNodes.length === 0}
-              danger
-              onClick={onDeleteNode}
-            />
-          </div>
+      <div
+        className="flex h-10 shrink-0 items-stretch border-b border-border-subtle bg-surface"
+        data-testid="workflow-canvas-toolbar"
+      >
+        <span
+          className={`flex min-w-[150px] items-center truncate px-3 text-xs font-medium ${
+            selectedNodes.length === 0 ? 'text-text-muted' : 'text-text-secondary'
+          }`}
+        >
+          {selectedNodes.length === 0
+            ? t('data.workflow.noOperatorSelected')
+            : selectedNodes.length === 1
+              ? t('data.workflow.selectedOperator', {
+                  count: 1,
+                  name: (primaryNode ?? selectedNodes[0]).label,
+                })
+              : t('data.workflow.selectedOperators', { count: selectedNodes.length })}
+        </span>
+        <div className="flex min-w-0 items-stretch overflow-hidden">
+          <DataToolbarButton
+            icon={<Copy className="h-3.5 w-3.5" />}
+            label={t('data.workflow.copySelected')}
+            disabled={!primaryNode}
+            onClick={onDuplicateNode}
+          />
+          <DataToolbarButton
+            icon={<Ban className="h-3.5 w-3.5" />}
+            label={
+              allSelectedDisabled
+                ? t('data.workflow.enableSelected')
+                : t('data.workflow.disableSelected')
+            }
+            disabled={selectedNodes.length === 0}
+            onClick={onToggleNodeDisabled}
+          />
+          <DataToolbarButton
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            label={t('data.workflow.deleteSelected')}
+            disabled={selectedNodes.length === 0}
+            danger
+            onClick={onDeleteNode}
+          />
         </div>
+        <div className="flex-1 border-l border-border-subtle" />
+        <button
+          type="button"
+          onClick={() => void zoomOut()}
+          className="inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+          title={t('data.workflow.zoomOut')}
+          aria-label={t('data.workflow.zoomOut')}
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void zoomIn()}
+          className="inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+          title={t('data.workflow.zoomIn')}
+          aria-label={t('data.workflow.zoomIn')}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void fitView({ padding: 0.2 })}
+          className="inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+          title={t('data.workflow.fitView')}
+          aria-label={t('data.workflow.fitView')}
+        >
+          <Scan className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowMinimap((v) => !v)}
+          aria-pressed={showMinimap}
+          className={`inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent ${showMinimap ? 'bg-accent-muted/60 text-accent' : ''}`}
+          title={t('data.workflow.toggleMinimap')}
+          aria-label={t('data.workflow.toggleMinimap')}
+        >
+          <MapIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="relative min-h-0 flex-1" onDragOver={handleDragOver} onDrop={handleDrop}>
         <ReactFlow
@@ -522,14 +563,15 @@ function WorkflowCanvasContent({
           className="workflow-react-flow bg-transparent"
         >
           <Background color="var(--workflow-canvas-dot)" gap={18} size={1.3} />
-          <Controls showInteractive={false} />
-          <MiniMap
-            pannable
-            zoomable
-            style={WORKFLOW_MINIMAP_STYLE}
-            nodeColor={getWorkflowMinimapNodeColor}
-            maskColor="var(--workflow-minimap-mask)"
-          />
+          {showMinimap && (
+            <MiniMap
+              pannable
+              zoomable
+              style={WORKFLOW_MINIMAP_STYLE}
+              nodeColor={getWorkflowMinimapNodeColor}
+              maskColor="var(--workflow-minimap-mask)"
+            />
+          )}
           <ViewportPortal>
             <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
           </ViewportPortal>

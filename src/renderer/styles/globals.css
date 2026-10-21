@@ -1124,16 +1124,11 @@
     cursor: grabbing;
   }
 
-  .workflow-react-flow .react-flow__controls,
   .workflow-react-flow .react-flow__minimap {
-    border: 1px solid var(--color-border-muted);
-    border-radius: 8px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0;
     overflow: hidden;
-    box-shadow: var(--shadow-soft);
-  }
-
-  .workflow-react-flow .react-flow__controls-button {
-    border-bottom-color: var(--color-border-muted);
+    box-shadow: none;
   }
 }
 

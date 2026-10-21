@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, PencilLine, Play } from 'lucide-react';
+import { ChevronDown, CircleAlert, MousePointerClick, PencilLine, Play } from 'lucide-react';
 import type {
   DataRawTable,
   DataRawTablePreview,
@@ -30,6 +30,8 @@ import { WorkflowNodeDataPreview, WorkflowSummaryPanel } from './WorkflowUi';
 import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import { getWorkflowFieldSourceCandidates } from './workflow-field-candidates';
 import type { WorkflowInspectorTab } from './workflow-model';
+
+const NODE_PREVIEW_PAGE_SIZES = [50, RAW_TABLE_PREVIEW_PAGE_SIZE, 200] as const;
 
 export function WorkflowInspector({
   pipelineId,
@@ -94,6 +96,9 @@ export function WorkflowInspector({
   const [nodePreviewLoading, setNodePreviewLoading] = useState(false);
   const [nodePreviewError, setNodePreviewError] = useState<string | null>(null);
   const [nodePreviewPage, setNodePreviewPage] = useState(1);
+  const [nodePreviewPageSize, setNodePreviewPageSize] = useState<number>(
+    RAW_TABLE_PREVIEW_PAGE_SIZE
+  );
   const [nodePreviewFetchedAt, setNodePreviewFetchedAt] = useState<number | null>(null);
   const nodeTitleInputRef = useRef<HTMLInputElement | null>(null);
   const nodePreviewRequestSeq = useRef(0);
@@ -240,8 +245,8 @@ export function WorkflowInspector({
         nodeType: node.type,
         nodeConfig: node.config,
         workflow: workflowData.workflow,
-        limit: RAW_TABLE_PREVIEW_PAGE_SIZE,
-        offset: (nodePreviewPage - 1) * RAW_TABLE_PREVIEW_PAGE_SIZE,
+        limit: nodePreviewPageSize,
+        offset: (nodePreviewPage - 1) * nodePreviewPageSize,
       })
       .then((preview) => {
         if (requestSeq === nodePreviewRequestSeq.current) {
@@ -260,7 +265,15 @@ export function WorkflowInspector({
           setNodePreviewLoading(false);
         }
       });
-  }, [activeTab, node, nodeDataRefreshVersion, nodePreviewPage, t, workflowData]);
+  }, [
+    activeTab,
+    node,
+    nodeDataRefreshVersion,
+    nodePreviewPage,
+    nodePreviewPageSize,
+    t,
+    workflowData,
+  ]);
 
   useEffect(() => {
     if (!isEditingNodeTitle) return;
@@ -360,8 +373,12 @@ export function WorkflowInspector({
 
   if (!node) {
     return (
-      <aside className="min-h-0 overflow-y-auto border-t border-border-subtle bg-surface p-3 text-xs text-text-muted">
-        {t('data.workflow.noNodeSelected')}
+      <aside
+        data-testid="inspector-empty"
+        className="flex min-h-0 flex-col items-center justify-center gap-2 overflow-y-auto border-t border-border-subtle bg-surface p-3 text-xs text-text-muted"
+      >
+        <MousePointerClick className="h-5 w-5" aria-hidden />
+        <span>{t('data.workflow.noNodeSelected')}</span>
       </aside>
     );
   }
@@ -471,7 +488,7 @@ export function WorkflowInspector({
               onSelectNode={onSelectNode}
             />
           ) : resolvedTab === 'data' ? (
-            <div className="flex h-full min-h-0 flex-col gap-2">
+            <div className="flex h-full min-h-0 flex-col">
               {firstZeroOutputNode && nodePreviewData && nodePreviewData.totalRows === 0 ? (
                 <div className="mx-2 mt-2 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
                   {firstZeroOutputNode.id === node?.id
@@ -488,6 +505,11 @@ export function WorkflowInspector({
                   error={nodePreviewError}
                   currentPage={nodePreviewPage}
                   onPageChange={setNodePreviewPage}
+                  pageSizeOptions={NODE_PREVIEW_PAGE_SIZES}
+                  onPageSizeChange={(size) => {
+                    setNodePreviewPageSize(size);
+                    setNodePreviewPage(1);
+                  }}
                   footerLeading={
                     <>
                       <button
@@ -495,9 +517,10 @@ export function WorkflowInspector({
                         onClick={onPreviewToHere}
                         disabled={!onPreviewToHere || isPreviewRunning}
                         title={t('data.workflow.previewToThisStepHint')}
-                        className="inline-flex h-7 flex-shrink-0 items-center gap-1.5 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+                        data-testid="preview-to-here"
+                        className="-ml-3 inline-flex h-full flex-shrink-0 items-center gap-1.5 border-r border-border-subtle px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-60"
                       >
-                        <Play className="h-3 w-3" />
+                        <Play className="h-3.5 w-3.5" />
                         {isPreviewRunning
                           ? t('common.loading')
                           : t('data.workflow.previewToThisStep')}
@@ -515,7 +538,11 @@ export function WorkflowInspector({
                         </span>
                       ) : null}
                       {nodePreviewStale ? (
-                        <span className="flex-shrink-0 rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                        <span
+                          data-testid="node-data-stale"
+                          className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded-[4px] bg-warning/10 px-[7px] text-[11px] font-medium text-warning"
+                        >
+                          <CircleAlert className="h-3 w-3" />
                           {t('data.workflow.nodeDataStale')}
                         </span>
                       ) : null}

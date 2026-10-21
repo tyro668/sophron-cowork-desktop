@@ -1,3 +1,4 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { InlineBanner } from './ui/inline-banner';
 import { Button } from './ui/button';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -55,6 +56,11 @@ export interface GlassDataGridPreviewProps {
   edgeToEdge?: boolean;
   footerLeading?: ReactNode;
   footerTrailing?: ReactNode;
+  /** Optional page-size dropdown (flush cell). When omitted the size is shown as text. */
+  pageSizeOptions?: readonly number[];
+  onPageSizeChange?: (size: number) => void;
+  /** Pager height; defaults to 36px (h-9). */
+  footerClassName?: string;
   onRetry?: () => void;
   /** Show the column filter bar (filters apply to the loaded page). */
   enableFilters?: boolean;
@@ -90,6 +96,9 @@ export function GlassDataGridPreview({
   edgeToEdge = false,
   footerLeading,
   footerTrailing,
+  pageSizeOptions,
+  onPageSizeChange,
+  footerClassName,
   onRetry,
   enableFilters = false,
   onExport,
@@ -461,7 +470,7 @@ export function GlassDataGridPreview({
         )}
       </div>
       <div
-        className="flex h-9 flex-shrink-0 items-stretch border-t text-xs font-medium"
+        className={`flex ${footerClassName ?? 'h-9'} flex-shrink-0 items-stretch border-t text-xs font-medium`}
         data-testid="grid-pager"
         style={{
           background: 'var(--data-grid-header-surface)',
@@ -485,21 +494,44 @@ export function GlassDataGridPreview({
               : ''}
           </span>
         </div>
-        <span
-          className="hidden w-[120px] items-center border-l px-3 sm:flex"
-          style={{
-            borderColor: 'var(--data-grid-border)',
-            color: 'var(--data-grid-text-secondary)',
-          }}
-        >
-          {labels.pageSize(preview?.limit ?? RAW_TABLE_FALLBACK_PAGE_SIZE)}
-        </span>
+        {pageSizeOptions && onPageSizeChange ? (
+          <Select
+            value={String(preview?.limit ?? pageSizeOptions[0])}
+            onValueChange={(v) => onPageSizeChange(Number(v))}
+            disabled={isLoading}
+          >
+            <SelectTrigger
+              data-testid="grid-page-size"
+              className="h-full w-[120px] flex-shrink-0 rounded-none border-0 border-l bg-transparent px-3 text-xs font-medium focus-visible:ring-0"
+              style={{ borderColor: 'var(--data-grid-border)' }}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {pageSizeOptions.map((size) => (
+                <SelectItem key={size} value={String(size)} className="text-xs">
+                  {labels.pageSize(size)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span
+            className="hidden w-[120px] items-center border-l px-3 sm:flex"
+            style={{
+              borderColor: 'var(--data-grid-border)',
+              color: 'var(--data-grid-text-secondary)',
+            }}
+          >
+            {labels.pageSize(preview?.limit ?? RAW_TABLE_FALLBACK_PAGE_SIZE)}
+          </span>
+        )}
         <button
           type="button"
           aria-label={t('common.previous', 'Previous')}
           onClick={() => onPageChange?.(safeCurrentPage - 1)}
           disabled={isLoading || !onPageChange || safeCurrentPage <= 1}
-          className="inline-flex w-9 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex w-10 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           style={{ borderColor: 'var(--data-grid-border)' }}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -511,7 +543,7 @@ export function GlassDataGridPreview({
             onClick={() => onPageChange?.(pageNumber)}
             disabled={isLoading || !onPageChange}
             aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
-            className={`inline-flex w-9 items-center justify-center border-l text-xs font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`inline-flex w-10 items-center justify-center border-l text-xs font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               pageNumber === safeCurrentPage
                 ? 'bg-accent-muted text-accent'
                 : 'text-text-secondary hover:bg-accent-muted hover:text-accent'
@@ -526,7 +558,7 @@ export function GlassDataGridPreview({
           aria-label={t('common.next', 'Next')}
           onClick={() => onPageChange?.(safeCurrentPage + 1)}
           disabled={isLoading || !onPageChange || safeCurrentPage >= pageCount}
-          className="inline-flex w-9 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex w-10 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           style={{ borderColor: 'var(--data-grid-border)' }}
         >
           <ChevronRight className="h-4 w-4" />
