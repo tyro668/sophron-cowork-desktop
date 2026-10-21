@@ -12,9 +12,8 @@ import {
   getProjectOptionLabel,
 } from './types';
 import { normalizeDraftTrigger } from './model';
-import { FieldStack, SegmentedControl } from './editor-controls';
+import { FormRow, SegmentedControl } from './editor-controls';
 import { MonthlyDayPicker, TimesEditor, WeekdayPicker } from './schedule-time-pickers';
-import { flatToolbarRowClass } from '../../data-view/shared';
 
 const DEFAULT_INTERVAL_END_OFFSET_MS = 24 * 60 * 60 * 1000;
 
@@ -68,8 +67,8 @@ export function EditorHeader({
   };
 
   return (
-    <div className={`${flatToolbarRowClass} justify-between`}>
-      <div className="flex min-w-0 items-center gap-4">
+    <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           onClick={onBack}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
@@ -204,11 +203,9 @@ export function ExecutionProjectPanel({
   };
 
   return (
-    <section className="px-4 py-4">
-      <h2 className="mb-3 text-[13px] font-semibold text-text-secondary">
-        {tr('schedule.projectPanelTitle', '执行项目')}
-      </h2>
-      <div>
+    <section className="ui-group bg-surface">
+      <h2 className="ui-group-title">{tr('schedule.projectPanelTitle', '执行项目')}</h2>
+      <FormRow label={tr('schedule.project', '项目')}>
         <GlassSelect
           value={draft.projectId}
           options={[
@@ -220,10 +217,10 @@ export function ExecutionProjectPanel({
           ]}
           onValueChange={updateProject}
           placeholder={tr('schedule.projectPlaceholder', '不指定项目')}
-          triggerClassName="h-9 w-full justify-between"
+          triggerClassName="h-8 w-full justify-between"
           contentClassName="w-[var(--radix-select-trigger-width)]"
         />
-      </div>
+      </FormRow>
     </section>
   );
 }
@@ -251,28 +248,27 @@ export function TriggerConditionPanel({
   };
 
   return (
-    <section className="px-4 py-4">
-      <h2 className="mb-3 text-[13px] font-semibold text-text-secondary">
-        {tr('schedule.triggerTitle', '触发条件')}
-      </h2>
-      <div>
-        <FieldStack label={tr('schedule.triggerMethod', '触发方式')}>
-          <GlassSelect
+    <section className="ui-group bg-surface">
+      <h2 className="ui-group-title">{tr('schedule.triggerTitle', '触发条件')}</h2>
+      <FormRow label={tr('schedule.triggerMethod', '触发方式')}>
+        <div className="flex flex-wrap items-center gap-3">
+          <SegmentedControl<'manual' | 'scheduled'>
             value={triggerMethod}
             options={[
               { value: 'manual', label: tr('schedule.triggerManual', '手动触发') },
               { value: 'scheduled', label: tr('schedule.triggerScheduled', '定时触发') },
             ]}
-            onValueChange={(value) => {
+            onChange={(value) => {
               setMode(value === 'manual' ? 'manual' : 'daily');
             }}
-            triggerClassName="h-9 w-full justify-between"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
           />
-        </FieldStack>
-      </div>
+          <span className="text-[11.5px] text-text-muted">
+            {tr('schedule.triggerKindsNote', '仅支持手动 / 定时')}
+          </span>
+        </div>
+      </FormRow>
 
-      <div className="mt-4 min-h-0 flex-1">
+      <div className="min-h-0 flex-1">
         {trigger.kind === 'manual' ? null : (
           <ScheduledConfigCard
             trigger={
@@ -308,9 +304,9 @@ function ScheduledConfigCard({
   tr: (key: string, fallback: string) => string;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="space-y-3.5">
-        <FieldStack label={tr('schedule.frequency', '执行频率')}>
+    <div>
+      <div>
+        <FormRow label={tr('schedule.frequency', '执行频率')}>
           <SegmentedControl<'recurring' | 'interval' | 'once'>
             value={mode === 'interval' ? 'interval' : mode === 'once' ? 'once' : 'recurring'}
             options={[
@@ -325,9 +321,9 @@ function ScheduledConfigCard({
               )
             }
           />
-        </FieldStack>
+        </FormRow>
         {(mode === 'daily' || mode === 'weekly' || mode === 'monthly') && (
-          <FieldStack label={tr('schedule.repeat', '重复')}>
+          <FormRow label={tr('schedule.repeat', '重复')}>
             <GlassSelect
               value={mode}
               options={[
@@ -336,12 +332,12 @@ function ScheduledConfigCard({
                 { value: 'monthly', label: tr('schedule.modeMonthly', '每月') },
               ]}
               onValueChange={(value: string) => onModeChange(value as TriggerMode)}
-              triggerClassName="h-9 w-full justify-between"
+              triggerClassName="h-8 w-full justify-between"
             />
-          </FieldStack>
+          </FormRow>
         )}
         {trigger.kind === 'once' && (
-          <FieldStack label={tr('schedule.executionTime', '执行时间')}>
+          <FormRow label={tr('schedule.executionTime', '执行时间')}>
             <div className="space-y-1.5">
               <GlassDateTimePicker
                 value={trigger.runAt}
@@ -356,57 +352,57 @@ function ScheduledConfigCard({
                 </p>
               )}
             </div>
-          </FieldStack>
+          </FormRow>
         )}
         {trigger.kind === 'daily' && (
-          <FieldStack label={tr('schedule.executionTime', '执行时间')}>
+          <FormRow label={tr('schedule.executionTime', '执行时间')}>
             <TimesEditor
               times={trigger.times}
               onChange={(times) => onChange({ ...trigger, times })}
               tr={tr}
             />
-          </FieldStack>
+          </FormRow>
         )}
         {trigger.kind === 'weekly' && (
           <>
-            <FieldStack label={tr('schedule.weekday', '执行星期')}>
+            <FormRow label={tr('schedule.weekday', '执行星期')}>
               <WeekdayPicker
                 value={trigger.weekdays}
                 onChange={(weekdays) => onChange({ ...trigger, weekdays })}
                 tr={tr}
               />
-            </FieldStack>
-            <FieldStack label={tr('schedule.executionTime', '执行时间')}>
+            </FormRow>
+            <FormRow label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
               />
-            </FieldStack>
+            </FormRow>
           </>
         )}
         {trigger.kind === 'monthly' && (
           <>
-            <FieldStack label={tr('schedule.monthDay', '执行日期')}>
+            <FormRow label={tr('schedule.monthDay', '执行日期')}>
               <MonthlyDayPicker
                 daysOfMonth={trigger.daysOfMonth}
                 includeLastDay={trigger.includeLastDay}
                 onChange={(next) => onChange({ ...trigger, ...next })}
                 tr={tr}
               />
-            </FieldStack>
-            <FieldStack label={tr('schedule.executionTime', '执行时间')}>
+            </FormRow>
+            <FormRow label={tr('schedule.executionTime', '执行时间')}>
               <TimesEditor
                 times={trigger.times}
                 onChange={(times) => onChange({ ...trigger, times })}
                 tr={tr}
               />
-            </FieldStack>
+            </FormRow>
           </>
         )}
         {trigger.kind === 'interval' && (
           <>
-            <FieldStack label={tr('schedule.every', '每')}>
+            <FormRow label={tr('schedule.every', '每')}>
               <div className="grid grid-cols-[1fr_108px] gap-2">
                 <input
                   type="number"
@@ -427,11 +423,11 @@ function ScheduledConfigCard({
                   onValueChange={(value: string) =>
                     onChange({ ...trigger, unit: value as 'minute' | 'hour' | 'day' })
                   }
-                  triggerClassName="h-9 w-full justify-between"
+                  triggerClassName="h-8 w-full justify-between"
                 />
               </div>
-            </FieldStack>
-            <FieldStack label={tr('schedule.startAt', '开始')}>
+            </FormRow>
+            <FormRow label={tr('schedule.startAt', '开始')}>
               <GlassDateTimePicker
                 value={trigger.startAt}
                 onChange={(startAt) =>
@@ -445,8 +441,8 @@ function ScheduledConfigCard({
                   })
                 }
               />
-            </FieldStack>
-            <FieldStack label={tr('schedule.endAtLabel', '结束')}>
+            </FormRow>
+            <FormRow label={tr('schedule.endAtLabel', '结束')}>
               {trigger.endAt == null ? (
                 <button
                   type="button"
@@ -469,7 +465,7 @@ function ScheduledConfigCard({
                   onChange={(endAt) => onChange({ ...trigger, endAt })}
                 />
               )}
-            </FieldStack>
+            </FormRow>
           </>
         )}
       </div>

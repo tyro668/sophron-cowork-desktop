@@ -150,7 +150,7 @@ export function GlassDataGridPreview({
     <div className={containerClassName}>
       {enableFilters && hasColumns && (
         <div
-          className="relative flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 border-b px-3 py-1.5"
+          className="relative flex min-h-9 flex-shrink-0 flex-wrap items-stretch gap-2 border-b pr-3"
           style={{ borderColor: 'var(--data-grid-border)' }}
         >
           <button
@@ -159,11 +159,12 @@ export function GlassDataGridPreview({
               setFilterDraft((current) => ({ ...current, column: current.column || columns[0] }));
               setFilterFormOpen((open) => !open);
             }}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-9 items-center gap-1.5 border-r px-3 text-xs font-medium transition-colors ${
               activeFilters.length > 0
-                ? 'border-accent/40 bg-accent-muted text-accent-text'
-                : 'border-border-muted bg-surface text-text-secondary hover:border-accent/40'
+                ? 'bg-accent-muted text-accent-text'
+                : 'text-text-secondary hover:bg-surface-hover'
             }`}
+            style={{ borderColor: 'var(--data-grid-border)' }}
           >
             <Filter className="h-3.5 w-3.5" />
             {t('data.preview.filter')}
@@ -172,7 +173,7 @@ export function GlassDataGridPreview({
           {activeFilters.map((filter, index) => (
             <span
               key={`${filter.column}:${filter.op}:${filter.value}:${index}`}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
+              className="my-1.5 inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
             >
               {filter.column} {opLabel(filter.op)} {filter.value || '""'}
               <button
@@ -186,7 +187,7 @@ export function GlassDataGridPreview({
             </span>
           ))}
           {activeFilters.length > 0 && (
-            <span className="ml-auto text-[11.5px] text-text-muted">
+            <span className="ml-auto self-center text-[11.5px] text-text-muted">
               {t('data.preview.filterScope', { shown: rows.length, total: rawRows.length })}
             </span>
           )}
@@ -325,7 +326,17 @@ export function GlassDataGridPreview({
           color: 'var(--data-grid-text-primary)',
         }}
       >
-        <div className="flex min-w-0 items-center gap-x-3">{footerLeading}</div>
+        <div className="flex min-w-0 items-center gap-x-3">
+          {footerLeading}
+          {enableFilters && hasColumns && (
+            <span
+              className="truncate font-normal"
+              style={{ color: 'var(--data-grid-text-secondary)' }}
+            >
+              {t('data.preview.loadedScopeNote')}
+            </span>
+          )}
+        </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           <span className="mr-2">
             {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}

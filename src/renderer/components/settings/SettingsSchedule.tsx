@@ -847,7 +847,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] md:overflow-hidden">
           <div className="min-h-0 border-b border-border-muted md:overflow-y-auto md:border-b-0 md:border-r">
-            <div className="divide-y divide-border-muted">
+            <div className="pb-3">
               <ExecutionProjectPanel
                 draft={draft}
                 projects={projects}
