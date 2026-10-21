@@ -1199,12 +1199,20 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
       <div className={`flex-1 overflow-y-auto ${isMac ? 'px-3 py-4' : 'pb-2.5 pt-1'}`}>
         {pinnedSessions.length > 0 && !isSelectMode && (
-          <div className="mb-4">
-            <div className="mb-1 flex items-center gap-1.5 px-3 text-[12px] font-semibold leading-5 text-text-muted">
+          <div className={isMac ? 'mb-4' : 'mb-2.5'}>
+            <div
+              className={`mb-1 flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'px-3' : 'px-3.5'}`}
+            >
               <Pin className="h-3 w-3" />
               {t('sidebar.pinnedTitle')}
             </div>
-            <div className="space-y-0.5 pl-3">
+            <div
+              className={
+                isMac
+                  ? 'space-y-0.5 pl-3'
+                  : 'mx-3 overflow-hidden rounded-md border border-border-subtle bg-surface'
+              }
+            >
               {pinnedSessions.map((session) => renderSessionRow(session))}
             </div>
           </div>
