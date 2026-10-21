@@ -29,7 +29,8 @@
     "removeAttachment": "删除附件 {{name}}",
     "removeCloudTable": "移除数据表 {{name}}",
     "expand": "展开",
-    "collapse": "收起"
+    "collapse": "收起",
+    "irreversible": "删除后无法恢复"
   },
   "welcome": {
     "title": "欢迎使用九思助理",

@@ -111,48 +111,57 @@ function ConfirmDialogOverlay({
       }}
       closeOnOverlayClick
       overlayClassName="px-4"
-      className="max-w-[24rem] rounded-xl p-4"
+      className="max-w-[24rem] gap-0 overflow-hidden rounded-xl p-0"
       ariaLabelledBy={dialog ? titleId : undefined}
       ariaDescribedBy={dialog ? descriptionId : undefined}
     >
       {dialog ? (
         <>
-          <div className="flex items-start gap-3">
-            <div
-              className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
-                isDanger ? 'bg-error/10 text-error' : 'bg-accent-muted text-accent'
-              }`}
+          <div className="flex h-11 items-center justify-between gap-2 border-b border-border-subtle px-3">
+            <DialogTitle id={titleId} className="flex items-center gap-2 text-[14px] leading-6">
+              <Icon className={`h-4 w-4 ${isDanger ? 'text-error' : 'text-accent'}`} />
+              {dialog.title ?? t('common.confirmTitle', '确认操作？')}
+            </DialogTitle>
+            <button
+              type="button"
+              onClick={() => onClose(false)}
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+              aria-label={t('common.close')}
             >
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-2">
-                <DialogTitle id={titleId} className="leading-6">
-                  {dialog.title ?? t('common.confirmTitle', '确认操作？')}
-                </DialogTitle>
-                <button
-                  type="button"
-                  onClick={() => onClose(false)}
-                  className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-                  aria-label={t('common.close')}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <DialogDescription id={descriptionId} className="mt-1.5 leading-5">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="ui-dialog-pad p-3">
+            <section className="ui-group bg-surface">
+              <DialogDescription
+                id={descriptionId}
+                className="px-3 py-2.5 text-[13px] leading-5 text-text-secondary"
+              >
                 {dialog.message}
               </DialogDescription>
-            </div>
+              {isDanger && (
+                <div className="flex items-center gap-1.5 border-t border-border-subtle bg-error/5 px-3 py-1.5 text-xs text-error">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {t('common.irreversible', '删除后无法恢复')}
+                </div>
+              )}
+            </section>
           </div>
 
-          <DialogFooter className="mt-4 pt-0">
-            <Button size="sm" data-autofocus onClick={() => onClose(false)}>
+          <DialogFooter className="mt-0 grid grid-cols-2 gap-0 border-t border-border-subtle p-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              data-autofocus
+              className="h-10 rounded-none"
+              onClick={() => onClose(false)}
+            >
               {dialog.cancelLabel ?? t('common.cancel')}
             </Button>
             <Button
               size="sm"
               variant={isDanger ? 'danger' : 'primary'}
-              className="font-semibold"
+              className="h-10 rounded-none font-semibold"
               onClick={() => onClose(true)}
             >
               {dialog.confirmLabel ?? t('common.yes')}
