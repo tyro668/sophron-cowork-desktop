@@ -144,5 +144,5 @@ export function GlassMenuSub({
 
 /** Thin divider between menu sections (e.g. before destructive actions). */
 export function GlassMenuSeparator({ className }: { className?: string }) {
-  return <DropdownMenu.Separator className={cn('my-1 h-px bg-border-muted', className)} />;
+  return <DropdownMenu.Separator className={cn('h-px bg-border-subtle', className)} />;
 }

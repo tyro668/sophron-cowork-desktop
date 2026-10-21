@@ -8,11 +8,11 @@ import { cn } from './cn';
  * Radix parts with richer item content. Solid surfaces, no blur.
  */
 export const menuContentClass =
-  'z-[10000] min-w-[10rem] overflow-hidden rounded-lg border border-border-subtle bg-surface p-1 text-text-primary shadow-elevated';
+  'z-[10000] min-w-[10rem] overflow-hidden rounded-lg border border-border-subtle bg-surface p-0 text-text-primary shadow-elevated';
 
 export function menuItemClass(options?: { danger?: boolean }): string {
   return cn(
-    'relative flex cursor-default select-none items-center rounded-md px-2 py-1.5 text-[13px] outline-none transition-colors',
+    'relative flex cursor-default select-none items-center rounded-none border-b border-border-subtle px-3 py-1.5 text-[13px] outline-none transition-colors last:border-b-0',
     'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
     options?.danger
       ? 'text-error data-[highlighted]:bg-error/10 data-[highlighted]:text-error'

@@ -1094,14 +1094,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
           isMac ? 'px-3.5 pb-3.5 border-b border-border-subtle' : 'border-b border-border-subtle'
         }
       >
-        <div className={isMac ? '' : 'flex h-12 items-center border-b border-border-subtle px-3'}>
+        <div className={isMac ? '' : 'flex h-12 items-stretch border-b border-border-subtle'}>
           <Button
             variant="primary"
             onClick={handleNewSession}
             className={
               isMac
                 ? 'h-9 w-full justify-start gap-2 rounded-xl px-3 shadow-soft'
-                : 'h-8 w-full justify-start gap-2 rounded-lg px-3'
+                : 'h-full w-full justify-start gap-2 rounded-none px-3.5'
             }
           >
             <Plus className="w-4 h-4 flex-shrink-0" />
@@ -1114,7 +1114,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             className={
               isMac
                 ? 'mt-2 flex items-center gap-2'
-                : 'flex h-10 items-center gap-2 border-b border-border-subtle px-3'
+                : 'flex h-10 items-stretch border-b border-border-subtle bg-surface'
             }
           >
             <div className="relative flex-1 min-w-0">
@@ -1124,7 +1124,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('sidebar.search')}
-                className={`w-full ${isMac ? 'h-9 rounded-xl shadow-soft' : 'h-8 rounded-lg'} border border-border-muted bg-background pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
+                className={`w-full ${isMac ? 'h-9 rounded-xl shadow-soft border border-border-muted bg-background' : 'h-full rounded-none border-0 bg-transparent'} pl-9 pr-3 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-surface-hover focus:ring-2 focus:ring-accent/20 transition-colors`}
               />
             </div>
             <button
@@ -1135,7 +1135,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                   setIsSelectMode(true);
                 }
               }}
-              className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
+              className={`${isMac ? 'w-8 h-8 rounded-xl' : 'w-10 border-l border-border-subtle'} flex items-center justify-center flex-shrink-0 transition-colors ${
                 isSelectMode
                   ? 'bg-accent text-accent-foreground'
                   : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
@@ -1443,7 +1443,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       ) : (
         <div className="border-t border-border-subtle">
-          <div className="flex h-12 w-full items-center gap-2 bg-surface px-4">
+          <div
+            className={`flex h-12 w-full items-center bg-surface ${isMac ? 'gap-2 px-4' : 'items-stretch pl-3.5'}`}
+          >
             {desktopAuthStatus.authenticated ? (
               <GlassDropdownMenu
                 open={authMenuOpen}
@@ -1497,7 +1499,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               sideOffset={6}
               trigger={
                 <button
-                  className="inline-flex h-8 flex-shrink-0 items-center gap-1 rounded-lg px-2 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary ${isMac ? 'h-8 rounded-lg' : 'h-full border-l border-border-subtle px-3'} transition-colors hover:bg-surface-hover hover:text-text-primary`}
                   title={t('sidebar.themeToggle')}
                 >
                   {settings.theme === 'dark' ? (
@@ -1535,7 +1537,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             </GlassDropdownMenu>
             <button
               onClick={() => setShowSettings(true)}
-              className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary ${isMac ? 'h-9 w-9 rounded-xl' : 'h-full w-10 border-l border-border-subtle'}`}
               title={t('sidebar.settings')}
             >
               <Settings className="h-4 w-4" />
