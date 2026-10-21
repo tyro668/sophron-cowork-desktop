@@ -337,7 +337,7 @@ export function SettingsSandbox() {
   return (
     <div className="space-y-4">
       {/* Sandbox overview */}
-      <div className="p-4 rounded-lg bg-surface border border-border space-y-4">
+      <div className="ui-group space-y-3 bg-surface p-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-surface-muted text-text-muted">
@@ -386,7 +386,7 @@ export function SettingsSandbox() {
 
       {/* Status Details */}
       {sandboxEnabled && (
-        <div className="p-4 rounded-lg bg-surface border border-border space-y-4 animate-in fade-in duration-200">
+        <div className="ui-group space-y-3 bg-surface p-3 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-text-primary">
               {t('sandbox.environmentStatus')}

@@ -697,10 +697,7 @@ function ServerForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="rounded-lg border border-border glass-card p-4 space-y-4"
-    >
+    <form onSubmit={handleSubmit} className="ui-group space-y-3 bg-surface p-3">
       <h3 className="font-medium text-text-primary">
         {server ? t('mcp.editConnector') : t('mcp.addConnectorTitle')}
       </h3>

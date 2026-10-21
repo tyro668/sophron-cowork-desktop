@@ -32,11 +32,11 @@ export function SettingsShortcuts() {
         <h2 className="text-[15px] font-semibold text-text-primary">{t('settings.shortcuts')}</h2>
         <p className="mt-1 text-[13px] text-text-muted">{t('settings.shortcutList.description')}</p>
       </div>
-      <div className="overflow-hidden rounded-[10px] border border-border-muted bg-surface">
+      <div className="ui-group bg-surface">
         {SHORTCUTS.map((item) => (
           <div
             key={item.labelKey}
-            className="flex h-12 items-center justify-between border-b border-border-subtle px-4 last:border-b-0"
+            className="flex h-10 items-center justify-between border-b border-border-subtle px-3 last:border-b-0"
           >
             <span className="text-[13px] text-text-primary">{t(item.labelKey)}</span>
             <span className="flex items-center gap-2 text-xs text-text-muted">
