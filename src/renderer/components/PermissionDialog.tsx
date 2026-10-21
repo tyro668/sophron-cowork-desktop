@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { isReadOnlyShellCommand } from '../../shared/read-only-command';
-import { Button } from './ui/button';
 import { Dialog, DialogTitle } from './ui/dialog';
 
 interface PermissionDialogProps {
@@ -53,7 +52,6 @@ function formatInputPreview(input: Record<string, unknown>): { text: string; isC
 export function PermissionDialog({ permission }: PermissionDialogProps) {
   const { t } = useTranslation();
   const { respondToPermission } = useIPC();
-  const [rememberTool, setRememberTool] = useState(false);
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
 
   const preview = formatInputPreview(permission.input);
@@ -65,7 +63,6 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
     ? t('permission.commandPreview')
     : t('permission.inputPreview');
 
-  const allowResult = rememberTool ? 'allow_always' : 'allow';
   const deny = () => respondToPermission(permission.toolUseId, 'deny');
   const risk: 'read' | 'write' | 'normal' = isReadOnlyCommand
     ? 'read'
@@ -90,17 +87,17 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
       closeOnOverlayClick={false}
       ariaLabelledBy="permission-dialog-title"
       overlayClassName="animate-fade-in bg-black/25 p-5"
-      className="max-h-[calc(100vh-40px)] max-w-[720px] animate-slide-up gap-0 overflow-y-auto px-5 pb-5 pt-4"
+      className="max-h-[calc(100vh-40px)] max-w-[720px] animate-slide-up gap-0 overflow-hidden p-0"
     >
-      <div className="flex items-center gap-3 border-b border-border-subtle pb-4">
+      <div className="flex h-12 flex-shrink-0 items-center gap-3 border-b border-border-subtle px-3">
         <span
-          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] ${riskTile}`}
+          className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md ${riskTile}`}
         >
-          <RiskIcon className="h-5 w-5" strokeWidth={1.9} />
+          <RiskIcon className="h-4 w-4" strokeWidth={1.9} />
         </span>
         <DialogTitle
           id="permission-dialog-title"
-          className="min-w-0 flex-1 text-[15px] font-semibold leading-tight text-text-primary"
+          className="min-w-0 flex-1 text-[14px] font-semibold leading-tight text-text-primary"
         >
           {t('permission.permissionRequired')}
         </DialogTitle>
@@ -115,118 +112,103 @@ export function PermissionDialog({ permission }: PermissionDialogProps) {
         </Badge>
       </div>
 
-      <div className="pt-4">
-        <div className="flex items-center gap-4">
-          <span className="text-[13px] font-medium text-text-primary">
-            {t('permission.toolLabel')}
-          </span>
-          <span className="rounded-lg border border-accent/20 bg-accent-muted px-3 py-1 font-mono text-[12px] font-medium text-accent shadow-soft">
-            {permission.toolName}
-          </span>
-        </div>
-
-        <div className="mt-4">
-          <div className="mb-2 text-[13px] font-medium text-text-primary">{previewLabel}</div>
-          <div className="relative rounded-xl border border-border-subtle bg-surface px-4 py-3 shadow-soft">
-            <div
-              className={`flex min-w-0 gap-3 pr-10 font-mono text-[13px] leading-6 ${
-                isPreviewExpanded ? 'items-start' : 'items-center'
-              }`}
-            >
-              {preview.isCommand && (
-                <span className="flex-shrink-0 font-medium text-accent">$</span>
-              )}
-              <span
-                className={`min-w-0 text-text-primary ${
-                  isPreviewExpanded
-                    ? 'max-h-36 overflow-auto whitespace-pre-wrap break-words'
-                    : 'truncate whitespace-nowrap'
-                }`}
-              >
-                {isPreviewExpanded ? preview.text : singleLinePreview}
+      <div className="min-h-0 overflow-y-auto pb-3">
+        <section className="ui-group bg-surface">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('permission.toolLabel')}</div>
+            <div className="ui-form-value">
+              <span className="self-start rounded-md bg-accent-muted px-2 py-0.5 font-mono text-[12px] font-medium text-accent">
+                {permission.toolName}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsPreviewExpanded((expanded) => !expanded)}
-              className={`absolute right-4 flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 ${
-                isPreviewExpanded ? 'top-2.5' : 'top-1/2 -translate-y-1/2'
-              }`}
-              aria-label={
-                isPreviewExpanded ? t('permission.collapsePreview') : t('permission.expandPreview')
-              }
-              title={
-                isPreviewExpanded ? t('permission.collapsePreview') : t('permission.expandPreview')
-              }
-            >
-              {isPreviewExpanded ? (
-                <ChevronUp className="h-4 w-4" strokeWidth={2} />
-              ) : (
-                <ChevronDown className="h-4 w-4" strokeWidth={2} />
-              )}
-            </button>
           </div>
-        </div>
-
-        {isReadOnlyCommand && (
-          <div className="mt-4 rounded-xl border border-border-subtle bg-surface-muted px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Info className="h-5 w-5 flex-shrink-0 text-text-muted" strokeWidth={1.9} />
-              <p className="text-[13px] leading-5 text-text-secondary">
+          <div className="ui-form-row">
+            <div className="ui-form-label items-start pt-2.5">{previewLabel}</div>
+            <div className="ui-form-value relative bg-[var(--code-preview-background)]">
+              <div
+                className={`flex min-w-0 gap-2 pr-9 font-mono text-[12.5px] leading-6 ${
+                  isPreviewExpanded ? 'items-start' : 'items-center'
+                }`}
+              >
+                {preview.isCommand && (
+                  <span className="flex-shrink-0 font-medium text-accent">$</span>
+                )}
+                <span
+                  className={`min-w-0 text-text-primary ${
+                    isPreviewExpanded
+                      ? 'max-h-36 overflow-auto whitespace-pre-wrap break-words'
+                      : 'truncate whitespace-nowrap'
+                  }`}
+                >
+                  {isPreviewExpanded ? preview.text : singleLinePreview}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewExpanded((expanded) => !expanded)}
+                className={`absolute right-1.5 flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/30 ${
+                  isPreviewExpanded ? 'top-1.5' : 'top-1/2 -translate-y-1/2'
+                }`}
+                aria-label={
+                  isPreviewExpanded
+                    ? t('permission.collapsePreview')
+                    : t('permission.expandPreview')
+                }
+                title={
+                  isPreviewExpanded
+                    ? t('permission.collapsePreview')
+                    : t('permission.expandPreview')
+                }
+              >
+                {isPreviewExpanded ? (
+                  <ChevronUp className="h-4 w-4" strokeWidth={2} />
+                ) : (
+                  <ChevronDown className="h-4 w-4" strokeWidth={2} />
+                )}
+              </button>
+            </div>
+          </div>
+          {isReadOnlyCommand && (
+            <div className="flex items-center gap-2 border-t border-border-subtle bg-surface-muted px-3 py-2">
+              <Info className="h-4 w-4 flex-shrink-0 text-text-muted" strokeWidth={1.9} />
+              <p className="text-[12.5px] leading-5 text-text-secondary">
                 {t('permission.readOnlyNotice')}
               </p>
             </div>
-          </div>
-        )}
-
-        {isHighRisk && (
-          <div className="mt-4 rounded-xl border border-warning/20 bg-warning/10 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 flex-shrink-0 text-warning" strokeWidth={1.9} />
-              <p className="text-[13px] leading-5 text-text-secondary">{t('permission.warning')}</p>
+          )}
+          {isHighRisk && (
+            <div className="flex items-center gap-2 border-t border-border-subtle bg-warning/10 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-warning" strokeWidth={1.9} />
+              <p className="text-[12.5px] leading-5 text-text-secondary">
+                {t('permission.warning')}
+              </p>
             </div>
-          </div>
-        )}
+          )}
+        </section>
+      </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-4">
-          <div
-            role="radiogroup"
-            aria-label={t('permission.scopeLabel')}
-            className="flex min-h-9 flex-1 flex-wrap items-center gap-4 text-[13px] text-text-secondary"
-          >
-            {[
-              { value: false, label: t('permission.scopeOnce') },
-              { value: true, label: t('permission.scopeTask') },
-            ].map((option) => (
-              <label key={String(option.value)} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="permission-scope"
-                  checked={rememberTool === option.value}
-                  onChange={() => setRememberTool(option.value)}
-                  className="h-4 w-4 flex-shrink-0 accent-accent"
-                />
-                <span>{option.label}</span>
-              </label>
-            ))}
-          </div>
-          <div className="ml-auto flex flex-shrink-0 items-center gap-3">
-            <Button
-              variant="secondary"
-              onClick={deny}
-              className="h-9 min-w-[96px] rounded-lg text-[13px]"
-            >
-              {t('permission.deny')}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => respondToPermission(permission.toolUseId, allowResult)}
-              className="h-9 min-w-[96px] rounded-lg text-[13px]"
-            >
-              {rememberTool ? t('permission.allowForTask') : t('permission.allow')}
-            </Button>
-          </div>
-        </div>
+      <div className="grid h-11 flex-shrink-0 grid-cols-3 border-t border-border-subtle text-[13px] font-medium">
+        <button
+          type="button"
+          onClick={deny}
+          className="border-r border-border-subtle text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+        >
+          {t('permission.deny')}
+        </button>
+        <button
+          type="button"
+          onClick={() => respondToPermission(permission.toolUseId, 'allow')}
+          className="border-r border-border-subtle text-text-primary transition-colors hover:bg-surface-hover"
+        >
+          {t('permission.scopeOnce')}
+        </button>
+        <button
+          type="button"
+          onClick={() => respondToPermission(permission.toolUseId, 'allow_always')}
+          className="jade-primary-button rounded-none"
+        >
+          {t('permission.allowForTask')}
+        </button>
       </div>
     </Dialog>
   );
