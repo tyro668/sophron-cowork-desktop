@@ -12,7 +12,7 @@ export const EXPECT_GRID_COLUMNS = '104px 120px 120px 120px minmax(200px,1fr) 56
 export const MISSING_VALUE_GRID_COLUMNS =
   '104px 120px 120px minmax(180px,1fr) minmax(200px,1.2fr) 112px';
 export const TYPE_CONVERT_GRID_COLUMNS =
-  'minmax(180px,1fr) 150px minmax(180px,1fr) 84px 84px 84px 112px';
+  'minmax(160px,1fr) 140px minmax(160px,1fr) 84px 84px 84px 112px';
 export const SORT_GRID_COLUMNS = 'minmax(220px,1fr) 88px 88px 96px 96px 96px 112px';
 // Design is drawn at 1000px (fixed tracks sum to 1000); the inspector panel is
 // usually narrower, so fixed tracks may shrink toward their minimums instead of
