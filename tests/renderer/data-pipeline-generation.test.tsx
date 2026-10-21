@@ -232,8 +232,9 @@ describe('automation pipeline references', () => {
         }}
       />
     );
-    expect(screen.queryByText('处理方式')).toBeNull();
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'existing' } });
+    // 处理方式 is a full-width dropdown (复用数据加工 / AI 生成加工); the pipeline select follows it.
+    expect(screen.getByText('处理方式')).toBeTruthy();
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'existing' } });
     expect(changed).toHaveBeenCalledWith({
       id: 'action',
       type: 'data.pipeline.run',
@@ -263,6 +264,7 @@ describe('automation pipeline references', () => {
         }}
       />
     );
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'ai' } });
     fireEvent.click(screen.getByText('AI 生成数据加工'));
     const request = await sendToChat();
     expect(changed).toHaveBeenLastCalledWith(
@@ -305,9 +307,11 @@ describe('automation pipeline references', () => {
         }}
       />
     );
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'ai' } });
     fireEvent.click(screen.getByText('AI 生成数据加工'));
     const request = await sendToChat();
-    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'existing' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'pipeline' } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'existing' } });
     complete(request.id);
     expect(generated).not.toHaveBeenCalled();
     expect(changed.mock.calls.at(-1)?.[0].config.pipelineId).toBe('existing');
@@ -326,6 +330,7 @@ describe('automation pipeline references', () => {
         }}
       />
     );
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'ai' } });
     fireEvent.click(screen.getByText('AI 生成数据加工'));
     fireEvent.change(screen.getByLabelText('requirement'), { target: { value: 'Filter sales' } });
     fireEvent.click(screen.getByText('发送'));

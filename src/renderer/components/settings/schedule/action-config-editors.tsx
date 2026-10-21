@@ -3,7 +3,6 @@ import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDown,
   ChevronDown,
   ChevronUp,
   ChevronRight,
@@ -43,13 +42,10 @@ import {
   ConfigRow,
   FormRow,
   LocalTableSelect,
-  MiniIcon,
-  SegmentedControl,
   SelectLine,
 } from './editor-controls';
 import { DataPipelineAiGenerateDialog } from '../../data-view/data-pipelines/DataPipelineAiGenerateDialog';
 import { dataClient } from '../../../features/data/api/data-client';
-import { flatToolbarRowClass } from '../../data-view/shared';
 import { ArrowLeftRight, CalendarClock, CloudUpload, CloudDownload } from 'lucide-react';
 
 export function ActionChainSection({
@@ -101,7 +97,11 @@ export function ActionChainSection({
   const addActionButton = (
     <GlassDropdownMenu
       trigger={
-        <button className="inline-flex h-full items-center justify-center gap-1.5 border-l border-border-subtle px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent-muted">
+        <button
+          type="button"
+          data-testid="automation-add-action"
+          className="ui-accent-cell h-full w-[120px] flex-shrink-0 border-l border-border-subtle"
+        >
           <Plus size={13} />
           {tr('schedule.addAction', '添加动作')}
         </button>
@@ -119,16 +119,22 @@ export function ActionChainSection({
     </GlassDropdownMenu>
   );
   return (
-    <section className="flex min-h-0 min-w-0 flex-col">
-      <div className={`${flatToolbarRowClass} justify-between`}>
-        <h2 className="flex min-w-0 items-center px-3 text-[13px] font-semibold text-text-secondary">
-          {tr('schedule.actionsTitle', '执行动作')}
-        </h2>
-        {addActionButton}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="min-h-0 min-w-0 overflow-y-auto">
+      <section
+        className="ui-group ui-form-flush flex min-w-0 flex-col bg-surface"
+        data-testid="automation-actions-group"
+      >
+        <div className="flex h-[30px] flex-shrink-0 items-stretch border-b border-border-subtle bg-surface-muted">
+          <h2 className="flex min-w-0 flex-1 items-center px-3 text-[12px] font-semibold text-text-primary">
+            {tr('schedule.actionsCount', '执行动作 · {{count}}').replace(
+              '{{count}}',
+              String(nodes.length)
+            )}
+          </h2>
+          {addActionButton}
+        </div>
         {nodes.length === 0 ? (
-          <div className="flex h-full min-h-24 items-center justify-center px-4 text-xs text-text-muted">
+          <div className="flex min-h-24 items-center justify-center px-4 text-xs text-text-muted">
             {tr('schedule.noActions', '还没有动作，点击右上角「添加动作」。')}
           </div>
         ) : (
@@ -175,8 +181,8 @@ export function ActionChainSection({
             </Fragment>
           ))
         )}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -194,18 +200,20 @@ function ActionDependencyConnector({
   const setAlways = (value: boolean) =>
     onChange(withActionOnFailure(previous, value ? 'continue' : 'stop'));
   return (
-    <div className="relative flex h-8 items-center border-b border-border-muted bg-background-secondary pl-4">
+    <div
+      className="flex h-[30px] items-center justify-center border-b border-border-subtle bg-surface"
+      data-testid="automation-action-connector"
+    >
       <GlassDropdownMenu
         trigger={
           <button
             type="button"
-            className="relative z-[1] inline-flex h-6 items-center gap-1 rounded-full border border-border-muted bg-surface px-2.5 text-[11.5px] text-text-secondary shadow-soft hover:border-accent/40"
+            className="inline-flex h-full items-center gap-1 px-3 text-[12px] text-text-muted transition-colors hover:text-text-secondary"
           >
-            <ArrowDown size={12} />
             {always
               ? tr('schedule.dependencyAlways', '总是执行')
               : tr('schedule.dependencyOnSuccess', '上一步成功后执行')}
-            <ChevronDown size={12} className="text-text-muted" />
+            <ChevronDown size={12} />
           </button>
         }
       >
@@ -254,75 +262,95 @@ export function ActionStepCard({
   tr: (key: string, fallback: string) => string;
 }) {
   const Icon = getActionIcon(node.type, node);
+  const cellButton =
+    'flex w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent';
   return (
-    <div className="ui-group bg-surface">
-      <div className="flex h-9 items-center gap-2.5 border-b border-border-subtle bg-surface-muted pl-3 pr-1.5">
-        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-surface-muted text-[11px] font-semibold text-text-secondary">
+    <div
+      className="grid grid-cols-[40px_minmax(0,1fr)] border-b border-border-subtle last:border-b-0"
+      data-testid="automation-action-step"
+    >
+      <div className="flex flex-col border-r border-border-subtle bg-surface-muted">
+        <div className="flex h-9 items-center justify-center text-[12px] font-semibold text-text-primary">
           {index + 1}
-        </span>
-        <Icon className="h-4 w-4 flex-shrink-0 text-text-muted" />
-        <div className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text-primary">
-          {getNodeLabel(node, tr)}
-          {modified && (
-            <span className="ml-2 rounded-md bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">
-              {tr('schedule.actionModified', '已修改')}
-            </span>
-          )}
         </div>
-        {onMove && (
-          <>
-            <MiniIcon
-              disabled={isFirst}
-              title={tr('schedule.moveUp', '上移')}
-              onClick={(event) => {
-                event.stopPropagation();
-                onMove(-1);
-              }}
-            >
-              <ChevronUp size={13} />
-            </MiniIcon>
-            <MiniIcon
-              disabled={isLast}
-              title={tr('schedule.moveDown', '下移')}
-              onClick={(event) => {
-                event.stopPropagation();
-                onMove(1);
-              }}
-            >
-              <ChevronDown size={13} />
-            </MiniIcon>
-          </>
-        )}
-        <MiniIcon
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove();
-          }}
-        >
-          <Trash2 size={13} />
-        </MiniIcon>
       </div>
-      <ActionConfigEditor
-        node={node}
-        dataPipelines={dataPipelines}
-        rawTables={rawTables}
-        resultTables={resultTables}
-        appConfig={appConfig}
-        onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
-        workingDirectory={workingDirectory}
-        onChange={onChange}
-        tr={tr}
-      />
-      <FormRow label={tr('schedule.onFailureLabel', '失败时')}>
-        <SegmentedControl
-          value={node.failurePolicy?.onFailure === 'continue' ? 'continue' : 'stop'}
-          options={[
-            { value: 'stop', label: tr('schedule.onFailureStop', '停止后续动作') },
-            { value: 'continue', label: tr('schedule.onFailureContinue', '继续（总是执行）') },
-          ]}
-          onChange={(value) => onChange(withActionOnFailure(node, value))}
+      <div className="min-w-0">
+        <div className="flex h-9 items-stretch border-b border-border-subtle">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[12.5px] font-medium text-text-primary">
+            <Icon className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+            <span className="truncate">{getNodeLabel(node, tr)}</span>
+            {modified && (
+              <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">
+                {tr('schedule.actionModified', '已修改')}
+              </span>
+            )}
+          </div>
+          {onMove && (
+            <>
+              <button
+                type="button"
+                disabled={isFirst}
+                title={tr('schedule.moveUp', '上移')}
+                aria-label={tr('schedule.moveUp', '上移')}
+                className={cellButton}
+                onClick={() => onMove(-1)}
+              >
+                <ChevronUp size={13} />
+              </button>
+              <button
+                type="button"
+                disabled={isLast}
+                title={tr('schedule.moveDown', '下移')}
+                aria-label={tr('schedule.moveDown', '下移')}
+                className={cellButton}
+                onClick={() => onMove(1)}
+              >
+                <ChevronDown size={13} />
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            title={tr('common.delete', '删除')}
+            aria-label={tr('common.delete', '删除')}
+            className={cellButton}
+            onClick={onRemove}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+        <ActionConfigEditor
+          node={node}
+          dataPipelines={dataPipelines}
+          rawTables={rawTables}
+          resultTables={resultTables}
+          appConfig={appConfig}
+          onGeneratedPipelineSuccess={onGeneratedPipelineSuccess}
+          workingDirectory={workingDirectory}
+          onChange={onChange}
+          tr={tr}
         />
-      </FormRow>
+        <div className="border-t border-border-subtle">
+          <FormRow label={tr('schedule.onFailureLabel', '失败时')}>
+            <GlassSelect
+              value={node.failurePolicy?.onFailure === 'continue' ? 'continue' : 'stop'}
+              ariaLabel={tr('schedule.onFailureLabel', '失败时')}
+              options={[
+                { value: 'stop', label: tr('schedule.onFailureStop', '停止后续动作') },
+                {
+                  value: 'continue',
+                  label: tr('schedule.onFailureContinue', '继续（总是执行）'),
+                },
+              ]}
+              onValueChange={(value: string) =>
+                onChange(withActionOnFailure(node, value === 'continue' ? 'continue' : 'stop'))
+              }
+              triggerClassName="w-full justify-between"
+              contentClassName="w-[var(--radix-select-trigger-width)]"
+            />
+          </FormRow>
+        </div>
+      </div>
     </div>
   );
 }
@@ -360,6 +388,7 @@ export function DataProcessActionEditor({
   tr: (key: string, fallback: string) => string;
 }) {
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [processModeOverride, setProcessModeOverride] = useState<'pipeline' | 'ai' | null>(null);
   const generationSessionId = String(node.config.generationSessionId ?? '');
   const generationRequestId = String(node.config.generationRequestId ?? '');
   useDataPipelineAuthoringCompletion(
@@ -394,6 +423,7 @@ export function DataProcessActionEditor({
             outputMode: node.config.outputMode ?? 'persisted',
           },
         });
+      setProcessModeOverride('pipeline');
       onGeneratedPipelineSuccess(completion.result.workflowDslAvailable);
     }
   );
@@ -436,31 +466,48 @@ export function DataProcessActionEditor({
           .filter((column) => column.name),
       }
     : null;
+  const processMode = processModeOverride ?? 'pipeline';
   return (
     <div>
-      <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <LocalTableSelect
-              value={selectedPipelineId}
-              tables={pipelineOptions}
-              placeholder={tr('schedule.dataPipelinePlaceholder', '选择数据加工')}
-              searchPlaceholder={tr('schedule.dataPipelineSearchPlaceholder', '搜索数据加工')}
-              onChange={(value) => selectPipeline(value)}
-            />
-          </div>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="shrink-0"
+      <FormRow label={tr('schedule.dataProcessModeLabel', '处理方式')}>
+        <GlassSelect
+          value={processMode}
+          ariaLabel={tr('schedule.dataProcessModeLabel', '处理方式')}
+          options={[
+            { value: 'pipeline', label: tr('schedule.dataProcessModePipeline', '复用数据加工') },
+            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 生成加工') },
+          ]}
+          onValueChange={(value: string) =>
+            setProcessModeOverride(value === 'ai' ? 'ai' : 'pipeline')
+          }
+          triggerClassName="w-full justify-between"
+          contentClassName="w-[var(--radix-select-trigger-width)]"
+        />
+      </FormRow>
+      {processMode === 'ai' ? (
+        <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
+          <button
+            type="button"
+            data-testid="automation-ai-generate"
+            className="ui-accent-cell ui-flush-control !justify-start"
             onClick={() => setGenerateOpen(true)}
           >
             <Sparkles className="h-3.5 w-3.5" />
             {tr('data.aiPipelineGenerate', 'AI 生成数据加工')}
-          </Button>
-        </div>
-      </FormRow>
-      {selectedPipelineId && (
+          </button>
+        </FormRow>
+      ) : (
+        <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
+          <LocalTableSelect
+            value={selectedPipelineId}
+            tables={pipelineOptions}
+            placeholder={tr('schedule.dataPipelinePlaceholder', '选择数据加工')}
+            searchPlaceholder={tr('schedule.dataPipelineSearchPlaceholder', '搜索数据加工')}
+            onChange={(value) => selectPipeline(value)}
+          />
+        </FormRow>
+      )}
+      {selectedPipelineId && processMode === 'pipeline' && (
         <FormRow label={tr('schedule.executionMode', '执行方式')}>
           <GlassSelect
             value={String(node.config.outputMode ?? 'persisted')}
@@ -471,7 +518,7 @@ export function DataProcessActionEditor({
             onValueChange={(outputMode) =>
               onChange({ ...node, config: { ...node.config, outputMode } })
             }
-            triggerClassName="h-9 w-full justify-between"
+            triggerClassName="w-full justify-between"
             contentClassName="w-[var(--radix-select-trigger-width)]"
           />
         </FormRow>
@@ -507,7 +554,9 @@ export function DataProcessActionEditor({
             </Button>
           </div>
         )}
-      {selectedPipelineId && <GeneratedPipelineReviewCard node={node} tr={tr} />}
+      {selectedPipelineId && processMode === 'pipeline' && (
+        <GeneratedPipelineReviewCard node={node} tr={tr} />
+      )}
       <DataPipelineAiGenerateDialog
         open={generateOpen}
         workingDirectory={workingDirectory}
@@ -581,15 +630,12 @@ export function GeneratedPipelineReviewCard({
   }, [loadCurrentWorkflowDsl]);
 
   return (
-    <div className="space-y-2 px-3 py-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] font-medium text-text-secondary">
-          {tr('schedule.dataPipelineLogic', '任务逻辑')}
-        </span>
-        {pipelineId && (
+    <div className="border-t border-border-subtle">
+      <FormRow label={tr('schedule.dataPipelineLogic', '任务逻辑')}>
+        {pipelineId ? (
           <button
             type="button"
-            className="flex items-center gap-1 text-[12px] font-medium text-accent"
+            className="ui-flush-control flex items-center gap-1.5 text-left text-[12.5px] font-medium text-accent-text"
             onClick={() => {
               const next = !workflowOpen;
               setWorkflowOpen(next);
@@ -597,43 +643,53 @@ export function GeneratedPipelineReviewCard({
             }}
           >
             <ChevronRight
-              className={`h-3 w-3 transition-transform ${workflowOpen ? 'rotate-90' : ''}`}
+              className={`h-3.5 w-3.5 transition-transform ${workflowOpen ? 'rotate-90' : ''}`}
             />
             {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
           </button>
-        )}
-      </div>
-      {requiredColumns.length > 0 && (
-        <div className="text-[12px] leading-5 text-text-muted">
-          {tr('schedule.requiredColumnsValue', '所需字段：{{columns}}').replace(
-            '{{columns}}',
-            requiredColumns.join(', ')
-          )}
-        </div>
-      )}
-      {workflowOpen &&
-        pipelineId &&
-        (isLoadingWorkflowDsl ? (
-          <div
-            className="flex items-center gap-2 text-[12px] text-text-muted"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
-          </div>
-        ) : workflowDslLoadFailed ? (
-          <div
-            className="rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
-            role="alert"
-          >
-            {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
-          </div>
         ) : (
-          <pre className="max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
-            {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据加工没有可展示的处理逻辑')}
-          </pre>
-        ))}
+          <span className="ui-flush-text">—</span>
+        )}
+      </FormRow>
+      <div
+        className={
+          requiredColumns.length > 0 || workflowOpen
+            ? 'space-y-2 border-t border-border-subtle px-3 py-2'
+            : 'hidden'
+        }
+      >
+        {requiredColumns.length > 0 && (
+          <div className="text-[12px] leading-5 text-text-muted">
+            {tr('schedule.requiredColumnsValue', '所需字段：{{columns}}').replace(
+              '{{columns}}',
+              requiredColumns.join(', ')
+            )}
+          </div>
+        )}
+        {workflowOpen &&
+          pipelineId &&
+          (isLoadingWorkflowDsl ? (
+            <div
+              className="flex items-center gap-2 text-[12px] text-text-muted"
+              role="status"
+              aria-live="polite"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
+            </div>
+          ) : workflowDslLoadFailed ? (
+            <div
+              className="rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
+              role="alert"
+            >
+              {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
+            </div>
+          ) : (
+            <pre className="max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
+              {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据加工没有可展示的处理逻辑')}
+            </pre>
+          ))}
+      </div>
     </div>
   );
 }
@@ -681,7 +737,13 @@ export function ActionConfigEditor({
       : appConfig?.activeConfigSetId;
   const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
   return (
-    <div className={isDataProcessNode(node) ? '' : 'space-y-4 p-3'}>
+    <div
+      className={
+        isDataProcessNode(node) || (node.type === 'conversation.run' && !cloudAutomation)
+          ? ''
+          : 'space-y-4 p-3'
+      }
+    >
       {isDataProcessNode(node) && (
         <DataProcessActionEditor
           node={node}

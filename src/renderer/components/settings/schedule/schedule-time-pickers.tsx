@@ -16,12 +16,19 @@ export const WEEKDAY_SHORT_FALLBACK: Record<number, string> = {
 };
 export const MONTH_DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
 
+/** Trigger classes for a picker that fills a flush form cell (no own frame). */
+export const flushPickerTriggerClass =
+  '!h-full !min-h-[35px] !w-full !rounded-none !border-0 !bg-transparent !px-[10px] !shadow-none hover:!bg-surface-hover';
+
 export function WeekdayPicker({
   value,
   onChange,
+  flush = false,
   tr,
 }: {
   value: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  /** Seven flush cells filling the value cell (shared 1px grid lines). */
+  flush?: boolean;
   onChange: (value: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -37,6 +44,32 @@ export function WeekdayPicker({
     }
     onChange(WEEKDAY_ORDER.filter((day) => next.has(day)));
   };
+  if (flush) {
+    return (
+      <div className="grid min-h-[35px] flex-1 grid-cols-7" data-testid="weekday-picker-flush">
+        {WEEKDAY_ORDER.map((day, index) => {
+          const active = selected.has(day);
+          return (
+            <button
+              key={day}
+              type="button"
+              aria-pressed={active}
+              onClick={() => toggle(day)}
+              className={`inline-flex items-center justify-center text-[12.5px] transition-colors ${
+                index > 0 ? 'border-l border-border-subtle' : ''
+              } ${
+                active
+                  ? 'bg-accent-muted font-medium text-accent-text'
+                  : 'text-text-secondary hover:bg-surface-hover'
+              }`}
+            >
+              {tr(`schedule.weekdayShort${day}`, WEEKDAY_SHORT_FALLBACK[day])}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-1.5">
       {WEEKDAY_ORDER.map((day) => {
@@ -211,9 +244,12 @@ export function MonthlyDayPicker({
 export function TimesEditor({
   times,
   onChange,
+  flush = false,
   tr,
 }: {
   times: string[];
+  /** Fill the value cell: time picker fills, 删除 / 添加时间 are flush side cells. */
+  flush?: boolean;
   onChange: (times: string[]) => void;
   tr: (key: string, fallback: string) => string;
 }) {
@@ -224,6 +260,51 @@ export function TimesEditor({
   const removeAt = (index: number) => {
     onChange(safeTimes.filter((_, position) => position !== index));
   };
+  if (flush) {
+    return (
+      <div className="flex flex-1 flex-col" data-testid="times-editor-flush">
+        {safeTimes.map((time, index) => (
+          <div
+            key={index}
+            className={`flex min-h-[35px] items-stretch ${
+              index > 0 ? 'border-t border-border-subtle' : ''
+            }`}
+          >
+            <div className="flex min-w-0 flex-1">
+              <GlassTimePicker
+                value={time}
+                onChange={(next) => updateAt(index, next)}
+                triggerClassName={flushPickerTriggerClass}
+              />
+            </div>
+            {safeTimes.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeAt(index)}
+                title={tr('schedule.removeTime', '删除')}
+                aria-label={tr('schedule.removeTime', '删除')}
+                className="flex w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-error"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {index === safeTimes.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => onChange([...safeTimes, DEFAULT_TIME])}
+                className="ui-accent-cell w-[28.5714%] flex-shrink-0 border-l border-border-subtle"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {tr('schedule.addTime', '添加时间')}
+              </button>
+            ) : (
+              <span className="w-[28.5714%] flex-shrink-0 border-l border-border-subtle" />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="space-y-1.5">
       {safeTimes.map((time, index) => (

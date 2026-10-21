@@ -3550,7 +3550,19 @@
     "listEnabled": "{{count}} 个启用",
     "onFailureLabel": "失败时",
     "onFailureStop": "停止后续动作",
-    "onFailureContinue": "继续（总是执行）"
+    "onFailureContinue": "继续（总是执行）",
+    "headerEnabled": "已启用",
+    "headerDisabled": "已停用",
+    "nextRunLabel": "下次执行",
+    "nextRunAfterSave": "保存后更新",
+    "actionsCount": "执行动作 · {{count}}",
+    "manualTriggerHint": "仅在点击「立即运行」或由其他入口手动触发时执行",
+    "noteLabel": "说明",
+    "modelLabel": "模型",
+    "backToListShort": "返回列表",
+    "intervalLabel": "间隔",
+    "startAtLabel": "开始时间",
+    "endAtLabelLong": "结束时间"
   },
   "remote": {
     "title": "远程控制",

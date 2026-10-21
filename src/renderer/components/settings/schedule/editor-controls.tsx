@@ -1,8 +1,9 @@
-import type { MouseEvent, ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AppConfig } from '../../../types';
 import { GlassSelect } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
+import { AgentModelSelector, getAgentModelLabel } from '../../AgentModelSelector';
 
 export function SegmentedControl<T extends string>({
   value,
@@ -219,9 +220,10 @@ export function AutomationPromptPermissionFields({
   label?: string;
   tr: (key: string, fallback: string) => string;
 }) {
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   return (
     <>
-      <FieldStack label={label ?? tr('schedule.conversationPrompt', '指令内容')}>
+      <FormRow label={label ?? tr('schedule.conversationPrompt', '指令内容')} alignTop>
         <LlmPromptComposer
           value={value}
           onChange={onChange}
@@ -229,13 +231,28 @@ export function AutomationPromptPermissionFields({
           onSelectedSkillNamesChange={onSelectedSkillNamesChange}
           onSkillSelectionCommit={onSkillSelectionCommit}
           appConfig={appConfig}
-          selectedModelConfigSetId={selectedModelConfigSetId}
-          modelDisabled={!appConfig?.model?.trim()}
-          modelFallbackLabel={tr('chat.noModel', '未配置模型')}
           placeholder={placeholder}
-          onModelSelect={onModelSelect}
+          className="ui-composer-flush"
         />
-      </FieldStack>
+      </FormRow>
+      <FormRow label={tr('schedule.modelLabel', '模型')}>
+        <AgentModelSelector
+          open={modelMenuOpen}
+          onOpenChange={setModelMenuOpen}
+          appConfig={appConfig}
+          selectedConfigSetId={selectedModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''}
+          fallbackLabel={tr('chat.noModel', '未配置模型')}
+          disabled={!appConfig?.model?.trim()}
+          align="start"
+          triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"
+          onSelect={(configSetId) =>
+            onModelSelect({
+              configSetId,
+              model: getAgentModelLabel(appConfig, '', configSetId),
+            })
+          }
+        />
+      </FormRow>
     </>
   );
 }

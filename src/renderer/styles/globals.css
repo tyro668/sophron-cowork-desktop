@@ -1495,6 +1495,77 @@
   padding: 4px 8px;
 }
 
+/* Flush form cells (config design c01–c12): value controls fill the entire value cell —
+   no inner padding, border or radius; the cell's 1px grid lines are the only frame. */
+.ui-form-flush .ui-form-row {
+  min-height: 36px;
+}
+.ui-form-flush .ui-form-label {
+  padding: 0 10px;
+}
+.ui-form-flush .ui-form-value {
+  padding: 0;
+  justify-content: stretch;
+}
+.ui-form-flush .ui-form-value > button[role='combobox'],
+.ui-form-flush .ui-form-value > .ui-flush-control,
+.ui-form-flush .ui-form-value > input {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 35px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.ui-form-flush .ui-form-value > button[role='combobox']:hover,
+.ui-form-flush .ui-form-value > .ui-flush-control:hover {
+  background: var(--color-surface-hover);
+}
+.ui-form-flush .ui-flush-text {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-height: 35px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+/* Prompt composer embedded in a flush form cell: no card frame of its own. */
+.ui-form-flush .ui-form-value > .chat-composer-panel.ui-composer-flush {
+  min-height: 72px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 8px 10px;
+}
+.ui-form-flush .ui-form-value > .chat-composer-panel.ui-composer-flush textarea {
+  min-height: 40px;
+  font-size: 12.5px;
+}
+/* Accent-text action cell (「+ 新建…」/「+ 添加…」/「立即运行」): flush, restrained, no solid fill. */
+.ui-accent-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent-text, var(--color-accent));
+  transition: background-color 150ms ease;
+}
+.ui-accent-cell:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent-muted) 60%, transparent);
+}
+.ui-accent-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Data list tables sit flush against the content edges: no inset, no radius, 1px rules only. */
 .glass-table.ui-table-flush {
   margin: 0;
