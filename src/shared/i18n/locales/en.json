@@ -1996,7 +1996,6 @@
       "durationSec": "{{value}} s",
       "run_failed": "Failed",
       "run_running": "Running",
-      "total": "{{count}} total",
       "run_completed": "Succeeded"
     },
     "deleteImpact": {
@@ -3586,8 +3585,6 @@
     "partEnabled": "enabled state",
     "partActions": "actions",
     "partActionsUnit": "",
-    "listTotal": "{{count}} total",
-    "listEnabled": "{{count}} enabled",
     "onFailureLabel": "On failure",
     "onFailureStop": "Stop remaining actions",
     "onFailureContinue": "Continue (always run next)",

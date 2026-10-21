@@ -337,11 +337,6 @@ export function PipelinesPanel({
             />
           )}
         </div>
-        {!isLoading && totalPipelines > 0 && (
-          <div className="flex h-8 flex-shrink-0 items-center border-t border-border-muted px-3 text-xs text-text-muted">
-            {t('data.pipelineList.total', { count: totalPipelines })}
-          </div>
-        )}
       </div>
       <AssignGroupDialog
         open={assignDialogOpen}
