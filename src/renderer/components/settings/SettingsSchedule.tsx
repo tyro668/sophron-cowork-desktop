@@ -49,7 +49,7 @@ import {
   underlineTabBarClass,
   useTabBarActionSlot,
   underlineTabListClass,
-  underlineTabTriggerClass,
+  fixedUnderlineTabTriggerClass,
 } from '../data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
@@ -932,11 +932,21 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           >
             <div className={underlineTabBarClass}>
               <TabsList className={underlineTabListClass}>
-                <TabsTrigger value="automations" className={underlineTabTriggerClass}>
-                  {tr('schedule.tabs.automations', '自动化')}
+                <TabsTrigger
+                  value="automations"
+                  className={fixedUnderlineTabTriggerClass}
+                  title={tr('schedule.tabs.automations', '自动化')}
+                  data-fixed-tab
+                >
+                  <span className="truncate">{tr('schedule.tabs.automations', '自动化')}</span>
                 </TabsTrigger>
-                <TabsTrigger value="runs" className={underlineTabTriggerClass}>
-                  {tr('schedule.tabs.runs', '执行日志')}
+                <TabsTrigger
+                  value="runs"
+                  className={fixedUnderlineTabTriggerClass}
+                  title={tr('schedule.tabs.runs', '执行日志')}
+                  data-fixed-tab
+                >
+                  <span className="truncate">{tr('schedule.tabs.runs', '执行日志')}</span>
                 </TabsTrigger>
               </TabsList>
               <TabBarActionSlot slotRef={tabBarAction.slotRef} />

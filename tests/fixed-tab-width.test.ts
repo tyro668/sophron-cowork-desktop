@@ -22,3 +22,12 @@ describe('fixed equal tab width', () => {
     expect(cloud).toContain('${fixedTabWidthClass}');
   });
 });
+
+describe('automation page tabs', () => {
+  it('use the fixed tab width and the shared tab-bar action slot', () => {
+    const src = readFileSync('src/renderer/components/settings/SettingsSchedule.tsx', 'utf8');
+    expect(src).toContain('className={fixedUnderlineTabTriggerClass}');
+    expect(src).not.toContain('className={underlineTabTriggerClass}');
+    expect(src).toContain('<TabBarActionSlot');
+  });
+});
