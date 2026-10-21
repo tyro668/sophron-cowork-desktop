@@ -10,7 +10,7 @@ const remotePanelPath = path.resolve(
 describe('RemoteControlPanel layout', () => {
   it('uses a flat shell instead of dashboard-heavy panels', () => {
     const source = fs.readFileSync(remotePanelPath, 'utf8');
-    expect(source).toContain('rounded-2xl');
+    expect(source).toContain('rounded-md');
     expect(source).toContain('border-border-subtle');
   });
 
