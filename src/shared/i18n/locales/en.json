@@ -29,7 +29,8 @@
     "removeAttachment": "Remove attachment {{name}}",
     "removeCloudTable": "Remove table {{name}}",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "irreversible": "This cannot be undone"
   },
   "welcome": {
     "title": "Welcome to sophron cowork",
