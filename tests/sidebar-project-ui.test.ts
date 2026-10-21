@@ -20,7 +20,9 @@ describe('Sidebar project UI hierarchy', () => {
 
     expect(source).toContain("t('sidebar.projectsTitle')");
     expect(source).toContain('text-[12px] font-semibold leading-5 text-text-muted');
-    expect(source).toContain("isMac ? 'mb-2 px-3' : 'mb-1 px-3.5'");
+    expect(source).toContain(
+      "isMac ? 'mb-2 px-3' : 'flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5'"
+    );
     expect(source).not.toContain(
       '<ListChecks className="h-4 w-4 flex-shrink-0" />\n          <span>{t(\'mainNav.tasks\')}</span>'
     );
@@ -29,7 +31,7 @@ describe('Sidebar project UI hierarchy', () => {
   it('keeps project rows compact', () => {
     const source = fs.readFileSync(sidebarPath, 'utf8');
 
-    expect(source).toContain("isMac ? 'space-y-1' : 'space-y-2.5'");
+    expect(source).toContain("isMac ? 'space-y-1' : ''");
     expect(source).not.toContain('<div className="space-y-3">');
   });
 

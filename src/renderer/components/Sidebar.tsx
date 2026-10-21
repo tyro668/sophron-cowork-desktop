@@ -1155,9 +1155,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
         <nav
           className={
-            isMac
-              ? 'mt-4 space-y-1'
-              : 'mx-3 my-2.5 flex flex-col overflow-hidden rounded-md border border-border-subtle bg-surface'
+            isMac ? 'mt-4 space-y-1' : 'flex flex-col border-b border-border-subtle bg-surface'
           }
           aria-label={t('mainNav.label')}
         >
@@ -1197,28 +1195,24 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </nav>
       </div>
 
-      <div className={`flex-1 overflow-y-auto ${isMac ? 'px-3 py-4' : 'pb-2.5 pt-1'}`}>
+      <div className={`flex-1 overflow-y-auto ${isMac ? 'px-3 py-4' : ''}`}>
         {pinnedSessions.length > 0 && !isSelectMode && (
-          <div className={isMac ? 'mb-4' : 'mb-2.5'}>
+          <div className={isMac ? 'mb-4' : ''}>
             <div
-              className={`mb-1 flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'px-3' : 'px-3.5'}`}
+              className={`flex items-center gap-1.5 text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-1 px-3' : 'h-7 border-b border-border-subtle px-3.5'}`}
             >
               <Pin className="h-3 w-3" />
               {t('sidebar.pinnedTitle')}
             </div>
             <div
-              className={
-                isMac
-                  ? 'space-y-0.5 pl-3'
-                  : 'mx-3 overflow-hidden rounded-md border border-border-subtle bg-surface'
-              }
+              className={isMac ? 'space-y-0.5 pl-3' : 'border-b border-border-subtle bg-surface'}
             >
               {pinnedSessions.map((session) => renderSessionRow(session))}
             </div>
           </div>
         )}
         <div
-          className={`text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-2 px-3' : 'mb-1 px-3.5'}`}
+          className={`text-[12px] font-semibold leading-5 text-text-muted ${isMac ? 'mb-2 px-3' : 'flex h-7 items-center border-b border-border-subtle bg-background-secondary px-3.5'}`}
         >
           {t('sidebar.projectsTitle')}
         </div>
@@ -1228,18 +1222,14 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('sidebar.noTasksHint')}</p>
           </div>
         ) : (
-          <div className={isMac ? 'space-y-1' : 'space-y-2.5'}>
+          <div className={isMac ? 'space-y-1' : ''}>
             {groupedSessions.map((group) => {
               const isProjectExpanded = expandedProjectKeys.has(group.key);
               const isSavingProjectName = savingProjectRenameKey === group.key;
               return (
                 <section
                   key={group.key}
-                  className={
-                    isMac
-                      ? 'space-y-1'
-                      : 'mx-3 overflow-hidden rounded-md border border-border-subtle bg-surface'
-                  }
+                  className={isMac ? 'space-y-1' : 'border-b border-border-subtle bg-surface'}
                 >
                   <div
                     className={
@@ -1290,7 +1280,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                       </form>
                     ) : (
                       <div
-                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 ${isMac ? 'rounded-lg px-1.5 py-1' : 'h-[30px] pl-1.5 pr-1'}`}
+                        className={`flex items-center gap-1.5 transition-colors hover:bg-surface-hover/50 ${isMac ? 'rounded-lg px-1.5 py-1' : 'h-[30px] pl-2.5 pr-1'}`}
                       >
                         <button
                           type="button"
