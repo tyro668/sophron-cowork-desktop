@@ -41,7 +41,7 @@ import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
 import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
-import { RESULT_TABLE_INPUT_CHOICES_LIMIT, editorHeaderRowClass, makeLocalId } from '../../shared';
+import { RESULT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
 import { getNextWorkflowNodePosition } from './canvas-utils';
 import { getOperatorCatalog, isWorkflowOperatorType } from './operator-catalog';
@@ -1374,16 +1374,16 @@ export function PipelineEditor({
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
-      <div className={`${editorHeaderRowClass} justify-between`}>
-        <div className="flex min-w-0 items-center gap-4">
+      <div className="flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle">
+        <div className="flex min-w-0 items-stretch">
           <button
             onClick={() => void handleBack()}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+            className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             {t('data.editor.back')}
           </button>
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
             {isEditingPipelineTitle ? (
               <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-surface px-2.5 shadow-soft ring-2 ring-accent/15">
                 <input
@@ -1423,14 +1423,14 @@ export function PipelineEditor({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-lg border border-border-muted bg-surface p-0.5">
+        <div className="flex items-stretch">
+          <div className="flex items-stretch">
             <Button
               variant="ghost"
               size="icon"
               onClick={undo}
               disabled={isBusy || !canUndo}
-              className="h-7 w-7"
+              className="h-full w-10 rounded-none border-l border-border-subtle"
               title={t('data.workflow.undo')}
               aria-label={t('data.workflow.undo')}
             >
@@ -1441,7 +1441,7 @@ export function PipelineEditor({
               size="icon"
               onClick={redo}
               disabled={isBusy || !canRedo}
-              className="h-7 w-7"
+              className="h-full w-10 rounded-none border-l border-border-subtle"
               title={t('data.workflow.redo')}
               aria-label={t('data.workflow.redo')}
             >
@@ -1452,7 +1452,7 @@ export function PipelineEditor({
             variant="secondary"
             onClick={() => setAiDialogOpen(true)}
             disabled={isBusy || !workflow}
-            className="px-3 text-xs shadow-soft"
+            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
           >
             <Sparkles className="h-3.5 w-3.5" />
             {t('data.workflow.aiGenerate')}
@@ -1461,7 +1461,7 @@ export function PipelineEditor({
             variant="secondary"
             onClick={tidyCanvas}
             disabled={isBusy || nodes.length === 0}
-            className="px-3 text-xs shadow-soft"
+            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
             title={t('data.workflow.tidyLayoutHint')}
           >
             <Waypoints className="h-3.5 w-3.5" />
@@ -1471,7 +1471,7 @@ export function PipelineEditor({
             variant="secondary"
             onClick={() => void saveWorkflow()}
             disabled={isBusy || !workflow || !isWorkflowDirty}
-            className="px-3 text-xs shadow-soft"
+            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
           >
             <Save className="h-3.5 w-3.5" />
             {saving ? t('common.saving') : t('common.save')}
@@ -1480,7 +1480,7 @@ export function PipelineEditor({
             variant="secondary"
             onClick={() => void handleTrialRun()}
             disabled={isBusy || !workflow}
-            className="px-3 text-xs shadow-soft"
+            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.trialRun')}
@@ -1489,7 +1489,7 @@ export function PipelineEditor({
             variant="primary"
             onClick={() => void handleSaveAndRun()}
             disabled={isBusy || !workflow}
-            className="px-3 text-xs shadow-soft"
+            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
           >
             <Play className="h-3.5 w-3.5" />
             {t('data.editor.saveAndRun')}
@@ -1503,7 +1503,7 @@ export function PipelineEditor({
               <button
                 type="button"
                 disabled={isBusy || !workflow}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border-muted bg-surface text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+                className="inline-flex h-full w-10 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
                 title={t('data.actions.more')}
               >
                 <MoreHorizontal className="h-4 w-4" />
