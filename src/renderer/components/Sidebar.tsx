@@ -1031,7 +1031,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   return (
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
       {/* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */}
-      <div className="titlebar-drag flex items-start gap-3 px-3.5 pb-3 pt-12">
+      <div
+        className={`flex items-start gap-3 px-3.5 pb-3 ${isMac ? 'titlebar-drag pt-12' : 'pt-4'}`}
+      >
         <div className="min-w-0 flex items-center gap-3">
           <BrandMark
             variant={settings.logoVariant}
