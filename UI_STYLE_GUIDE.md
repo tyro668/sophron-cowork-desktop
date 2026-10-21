@@ -55,6 +55,7 @@
 - **组间**：不同分组 / 分区之间留 `--space-group`（10px，允许 8–12px）。
 - **分组外框**：分组可使用 `1px` 边框 + `--radius-group`（6px）圆角；共享类 `.ui-group`（globals.css），算子表单由 `.opg-frame` 包裹。
 - **贴边例外**：工具栏、页签栏（顶部分段页签、底部 配置 / 数据 / 自动化 页签）、标题栏保持贴边，不加内边距。
+- **macOS 侧栏顶部**：不显示 logo；红绿灯右侧（左内边距 84px）同一行只放「九思助理」名称（13px 半粗，不可交互），整行 48px 为拖拽区、底部 1px 分隔，与右侧顶部页签栏 / 任务标题栏等高对齐，「新建任务」行紧接其下；红绿灯 `trafficLightPosition {x:16,y:17}` 垂直居中。折叠栏同样保留 48px 拖拽行。Windows / Linux 不变。
 - **列表页「+ 新建…」**：数据（数据加工 / 原始表 / 结果表）与自动化列表的新建按钮放在顶部页签栏最右侧，为贴边单元：与页签栏同高、左侧 1px 分隔、accent 文字与图标、页签栏背景、悬停 `accent-muted/60` 浅底，不用整块紫色实底；文案随当前页签变化。下方工具栏搜索框从左边缘开始。实现：页面放 `TabBarActionSlot`，面板用 `TabBarAction` + `tabBarNewCellClass`。
 - Token 定义：`src/renderer/components/workflow-forms/shared/form-grid.css` 与 `src/renderer/styles/globals.css` 的 `:root`（`--space-inset` / `--space-inset-lg` / `--space-group` / `--radius-group`）。
 

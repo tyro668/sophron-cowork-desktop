@@ -83,7 +83,8 @@ export function createWindow() {
   if (isMac) {
     // macOS: Use hiddenInset for native traffic light buttons
     windowOptions.titleBarStyle = 'hiddenInset';
-    windowOptions.trafficLightPosition = { x: 16, y: 12 };
+    // Center the ~14px traffic-light cluster in the 48px sidebar top row: (48 - 14) / 2 = 17.
+    windowOptions.trafficLightPosition = { x: 16, y: 17 };
   } else if (isWindows) {
     // Windows: Use frameless window with custom titlebar
     // Note: frame: false removes native frame, allowing custom titlebar

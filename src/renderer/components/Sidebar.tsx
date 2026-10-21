@@ -981,13 +981,15 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   const navItemShape = 'h-9 px-4 border-b border-border-subtle last:border-b-0';
 
-  const renderBrand = (compact: boolean) => (
+  const renderBrand = (compact: boolean, showLogo = true) => (
     <div className="min-w-0 flex items-center gap-3">
-      <BrandMark
-        variant={settings.logoVariant}
-        label={t('common.appLogoAlt')}
-        className={compact ? 'h-5 w-5 transition-colors' : 'h-10 w-10 transition-colors'}
-      />
+      {showLogo && (
+        <BrandMark
+          variant={settings.logoVariant}
+          label={t('common.appLogoAlt')}
+          className={compact ? 'h-5 w-5 transition-colors' : 'h-10 w-10 transition-colors'}
+        />
+      )}
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <h1
@@ -1014,7 +1016,12 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     return (
       <aside className="relative flex h-full w-[4.25rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
         {/* macOS traffic lights overlay the top of the rail — keep the strip clear + draggable */}
-        {isMac && <div className="titlebar-drag h-8 shrink-0" />}
+        {isMac && (
+          <div
+            data-testid="mac-sidebar-titlebar-row"
+            className="titlebar-drag h-12 shrink-0 border-b border-border-subtle"
+          />
+        )}
         {!isMac && titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)}
         <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
           <Button
@@ -1178,9 +1185,15 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         </div>
       </Dialog>
       {isMac ? (
-        /* Leave room above the left-aligned brand for macOS traffic lights and window dragging. */
-        <div className="flex items-start gap-3 border-b border-border-subtle px-3.5 pb-3 titlebar-drag pt-12">
-          {renderBrand(false)}
+        /* macOS: one 48px drag row shared with the traffic lights (centered via
+           trafficLightPosition), name only — same height as the right-side tab/title bar. */
+        <div
+          data-testid="mac-sidebar-titlebar-row"
+          className="titlebar-drag flex h-12 shrink-0 select-none items-center border-b border-border-subtle pl-[84px] pr-3.5"
+        >
+          <div className="pointer-events-none min-w-0 [&_button]:pointer-events-auto">
+            {renderBrand(true, false)}
+          </div>
         </div>
       ) : (
         titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)
