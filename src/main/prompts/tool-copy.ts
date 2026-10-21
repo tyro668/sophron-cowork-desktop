@@ -92,7 +92,7 @@ export const DATA_TOOL_COPY = {
   data_preview_table: {
     label: 'Preview data table',
     description:
-      'Inspect a table schema, or bounded row values when the user explicitly asks to see data. Do not call this before data_analyze_pipeline_requirement merely to discover columns; the analyzer resolves the input schema internally. Rows are omitted unless includeRows=true.',
+      'Inspect a table schema, or bounded row values (includeRows=true, limit<=100, offset for paging). Read the rows with includeRows=true before describing or summarizing a result table; the output states which rows were shown and how to fetch the rest. Do not call this before data_analyze_pipeline_requirement merely to discover columns; the analyzer resolves the input schema internally. Rows are omitted unless includeRows=true.',
   },
   data_list_pipelines: {
     label: 'List data pipelines',
@@ -224,7 +224,7 @@ export const TOOL_SCHEMA_COPY = {
     inputConfig: 'Raw table configuration. Use the data page config shape when known.',
     resourceQuery: 'Search by resource name.',
     resultPreviewRows:
-      'Number of result rows returned to the conversation. Defaults to 5 and is capped at 5; use data_preview_table only when the user explicitly requests more row values.',
+      'Number of result rows returned to the conversation (default and max 20). If the result has more rows, read them with data_preview_table(includeRows=true, offset) before describing them.',
     apiOrigin: 'Cloud space API origin. If omitted, the saved Cloud Space setting is used.',
     apiKey:
       'Cloud space API key used to exchange an access token. If omitted, the saved Cloud Space setting is used.',
@@ -246,7 +246,7 @@ export const TOOL_SCHEMA_COPY = {
     authorizedFolderPath: 'Authorized local folder path.',
     sourceRawTableId: 'Optional raw table id to initialize the result table.',
     includeRows:
-      'Set true only when the user explicitly asks to inspect row values. Defaults to schema-only output.',
+      'Set true whenever you need row values: when the user asks to see data, and before you describe, list, count or summarize rows of a table. Defaults to schema-only output (no row values).',
     requirementRawTableId: 'Existing raw table id returned by data_list_raw_tables.',
     processRequirement: 'The user requirement exactly as agreed so far.',
     analysisId: 'Opaque id returned by data_analyze_pipeline_requirement.',

@@ -31,7 +31,8 @@ describe('data tool prompt', () => {
     expect(prompt).toContain('outputMode="create" with resultTableName');
     expect(prompt).toContain('Never pass a nested output object or JSON string');
     expect(prompt).toContain('Do not call data_preview_table first just to discover columns');
-    expect(prompt).toContain('includeRows=true only when the user explicitly asks');
+    expect(prompt).toContain('includeRows=true when the user asks to inspect row values');
+    expect(prompt).toContain('Never invent, fill in or extrapolate rows');
     expect(prompt).toContain('return at most 5 rows');
     expect(prompt).toContain('mode=persisted');
     expect(prompt).toContain('preserve those links in your user-facing response');

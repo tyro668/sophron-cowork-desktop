@@ -31,12 +31,13 @@ const ListSchema = Type.Object({
   offset: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
+import { AGENT_RESULT_PREVIEW_MAX_ROWS } from './data-tool-preview-format';
 const PreviewRowsSchema = Type.Optional(Type.Integer({ minimum: 1, maximum: 100 }));
 const AgentResultPreviewRowsSchema = Type.Optional(
   Type.Integer({
     minimum: 1,
-    maximum: 5,
-    default: 5,
+    maximum: AGENT_RESULT_PREVIEW_MAX_ROWS,
+    default: AGENT_RESULT_PREVIEW_MAX_ROWS,
     description: TOOL_SCHEMA_COPY.data.resultPreviewRows,
   })
 );
