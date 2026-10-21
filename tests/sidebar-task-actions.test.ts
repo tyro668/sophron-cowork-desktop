@@ -61,12 +61,12 @@ describe('new task shortcut', () => {
 });
 
 describe('sidebar task rows', () => {
-  it('has no per-row dividers, an indent guide, hover-only menu and tinted active row', () => {
+  it('has no per-row dividers, no indent guide, hover-only menu and tinted active row', () => {
     expect(source).not.toContain(
       'border-b border-border-subtle py-1.5 pl-7 pr-2.5 last:border-b-0'
     );
     expect(source).toContain('h-[31px]');
-    expect(source).toContain('sidebar-task-guide');
+    expect(source).not.toContain('sidebar-task-guide');
     expect(source).toContain("? 'bg-accent-muted/60'");
     expect(source).toContain("hoveredSession === session.id ? 'opacity-100' : 'opacity-0'");
   });

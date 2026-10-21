@@ -731,11 +731,6 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
               : 'hover:bg-surface-hover/70'
         }`}
       >
-        {/* Indent guide: ties tasks to their project header. */}
-        <span
-          aria-hidden="true"
-          className="sidebar-task-guide absolute inset-y-0 left-[20px] w-px bg-border-subtle"
-        />
         {isActive && !isSelectMode && (
           <span className={`absolute left-0 w-[3px] bg-accent inset-y-0`} />
         )}
