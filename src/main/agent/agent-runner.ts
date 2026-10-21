@@ -17,6 +17,11 @@
  *
  * Dependencies: session-manager, mcp-manager, config-store, skills-manager
  */
+import {
+  beginSkillUsageRun,
+  recordSkillInvocation,
+  skillNameFromToolInput,
+} from '../skills/skill-usage';
 import { bindAgentRunCancellation } from './agent-run-cancellation';
 import {
   createAgentSession,
@@ -322,6 +327,8 @@ export class AgentRunner {
     installAgentPermissionGate(piSession.agent, async (ctx, signal) => {
       const toolName: string = ctx.toolCall?.name ?? '';
       const input = (ctx.args ?? {}) as Record<string, unknown>;
+      const loadedSkill = skillNameFromToolInput(toolName, input);
+      if (loadedSkill) recordSkillInvocation(loadedSkill, sessionId, 'loaded');
 
       const reviewContext = this.activePermissionContexts.get(sessionId);
       const mcpTool = this.mcpManager?.getTool(toolName);
@@ -1062,6 +1069,8 @@ export class AgentRunner {
       const selectedSkillNameSet = new Set(
         selectedSkillNames.map((name) => name.toLocaleLowerCase())
       );
+      beginSkillUsageRun(session.id);
+      for (const name of selectedSkillNames) recordSkillInvocation(name, session.id, 'selected');
       const skillPaths = await this.skills.resolveSkillPaths(session.id);
       const skillsSignature = JSON.stringify({
         paths: skillPaths,

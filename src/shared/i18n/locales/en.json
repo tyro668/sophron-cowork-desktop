@@ -2803,7 +2803,9 @@
       "chatDisplay": "Shown in chat as",
       "usedSkillChip": "Used skill · {{name}}",
       "directory": "Directory",
-      "useInChat": "Use in chat"
+      "useInChat": "Use in chat",
+      "recentCallsLabel": "Calls",
+      "recentCallsCount": "{{count}} calls"
     },
     "noCustomSkills": "No custom skills installed",
     "installSkillsDesc": "Install skills to extend local data capabilities",

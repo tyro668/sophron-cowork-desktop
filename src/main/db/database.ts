@@ -47,6 +47,17 @@ export interface DatabaseInstance {
     deleteBySessionId: (sessionId: string) => void;
   };
 
+  /** Skill usage log for the 近 7 天调用 counter (optional for lightweight test doubles). */
+  skillInvocations?: {
+    record: (entry: {
+      skillName: string;
+      sessionId: string | null;
+      source: string;
+      invokedAt: number;
+    }) => void;
+    countSince: (sinceMs: number) => Record<string, number>;
+  };
+
   traceSteps: {
     create: (step: TraceStepRow) => void;
     update: (id: string, updates: Partial<TraceStepRow>) => boolean;
@@ -767,6 +778,22 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
         );
     },
   },
+  {
+    version: 8,
+    name: 'skill_invocations',
+    up: (database) => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS skill_invocations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          skill_name TEXT NOT NULL,
+          session_id TEXT,
+          source TEXT NOT NULL,
+          invoked_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_skill_invocations_time ON skill_invocations(invoked_at);
+      `);
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =
@@ -1052,8 +1079,50 @@ export function initDatabase(): DatabaseInstance {
     DELETE FROM scheduled_tasks WHERE id = ?
   `);
 
+  const skillInvocationsReady =
+    (
+      rawDb
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='skill_invocations'")
+        .get() as { name?: string } | undefined
+    )?.name === 'skill_invocations';
+  const insertSkillInvocation = skillInvocationsReady
+    ? rawDb.prepare(
+        'INSERT INTO skill_invocations (skill_name, session_id, source, invoked_at) VALUES (?, ?, ?, ?)'
+      )
+    : null;
+  const countSkillInvocations = skillInvocationsReady
+    ? rawDb.prepare(
+        'SELECT skill_name AS name, COUNT(*) AS count FROM skill_invocations WHERE invoked_at >= ? GROUP BY skill_name'
+      )
+    : null;
+
   db = {
     raw: rawDb,
+
+    skillInvocations: {
+      record: (entry) => {
+        try {
+          insertSkillInvocation?.run(
+            entry.skillName,
+            entry.sessionId,
+            entry.source,
+            entry.invokedAt
+          );
+        } catch {
+          // Read-only (newer schema) or locked DB: usage stats are best-effort.
+        }
+      },
+      countSince: (sinceMs) => {
+        const out: Record<string, number> = {};
+        for (const row of (countSkillInvocations?.all(sinceMs) ?? []) as Array<{
+          name: string;
+          count: number;
+        }>) {
+          out[row.name] = row.count;
+        }
+        return out;
+      },
+    },
 
     projects: {
       create: (project: ProjectRow) => {

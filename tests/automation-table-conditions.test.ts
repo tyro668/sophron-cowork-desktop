@@ -230,7 +230,7 @@ describe('independent table association conditions', () => {
     expect(f.store.get(a.id)?.tableBindings).toEqual([]);
     expect(
       f.raw.prepare('SELECT count(*) AS n FROM app_schema_migrations WHERE version >= 5').get()
-    ).toEqual({ n: 3 });
+    ).toEqual({ n: 4 });
   });
   it('validates canonical bindings before persisting a partial update', () => {
     const f = fixture();

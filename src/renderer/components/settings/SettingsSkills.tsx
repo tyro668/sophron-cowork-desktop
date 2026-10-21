@@ -218,10 +218,16 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     }
   }, [success, t]);
 
+  const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
   const loadSkills = useCallback(async (silent = false) => {
     try {
       const skillsResult = await window.electronAPI.skills.getAll();
       setSkills(skillsResult || []);
+      try {
+        setUsageCounts((await window.electronAPI.skills.getUsageCounts?.(7)) ?? {});
+      } catch {
+        setUsageCounts({});
+      }
       if (!silent) {
         setError(null);
       }
@@ -885,9 +891,18 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
                       <section className="ui-group bg-surface">
                         <h4 className="ui-group-title">{t('skills.workspace.recentCallsTitle')}</h4>
-                        <p className="px-3 py-2 text-[12px] text-text-muted">
-                          {t('skills.workspace.recentCallsUnavailable')}
-                        </p>
+                        <div className="ui-form-row">
+                          <span className="ui-form-label items-center">
+                            {t('skills.workspace.recentCallsLabel')}
+                          </span>
+                          <div className="ui-form-value text-[13px] tabular-nums text-text-primary">
+                            {selectedSkill
+                              ? t('skills.workspace.recentCallsCount', {
+                                  count: skillUsageCount(usageCounts, selectedSkill),
+                                })
+                              : '—'}
+                          </div>
+                        </div>
                       </section>
                     </div>
 
@@ -1168,4 +1183,21 @@ function getPluginTags(
 function formatSkillDate(value?: number): string {
   if (!value) return '—';
   return formatAppDateTime(value);
+}
+
+/** Usage is logged by skill name or skill directory name; match either, case-insensitively. */
+export function skillUsageCount(
+  counts: Record<string, number>,
+  skill: { name: string; path?: string }
+): number {
+  const keys = new Set(
+    [skill.name, skill.path?.replace(/\\/g, '/').split('/').filter(Boolean).pop()]
+      .filter((key): key is string => Boolean(key))
+      .map((key) => key.toLocaleLowerCase())
+  );
+  let total = 0;
+  for (const [name, count] of Object.entries(counts)) {
+    if (keys.has(name.toLocaleLowerCase())) total += count;
+  }
+  return total;
 }

@@ -423,6 +423,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'mcp.getPresets': [],
   // skills
   'skills.getAll': [],
+  'skills.getUsageCounts': [numOpt],
   'skills.install': [str],
   'skills.installFromSkillHub': [str],
   'skills.delete': [str],

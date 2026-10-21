@@ -320,6 +320,7 @@ export interface ElectronApi {
   };
   skills: {
     getAll: () => Promise<Skill[]>;
+    getUsageCounts: (days?: number) => Promise<Record<string, number>>;
     install: (skillPath: string) => Promise<{ success: boolean; skill: Skill }>;
     installFromSkillHub: (slug: string) => Promise<{ success: boolean; skill: Skill }>;
     delete: (skillId: string) => Promise<{ success: boolean }>;

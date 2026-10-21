@@ -5,6 +5,8 @@ import type { ElectronApi } from '../../shared/contracts/electron-api';
 export function createSkillsApi(): ElectronApi['skills'] {
   return {
     getAll: (): Promise<Skill[]> => ipcRenderer.invoke('skills.getAll'),
+    getUsageCounts: (days?: number): Promise<Record<string, number>> =>
+      ipcRenderer.invoke('skills.getUsageCounts', days),
     install: (skillPath: string): Promise<{ success: boolean; skill: Skill }> =>
       ipcRenderer.invoke('skills.install', skillPath),
     installFromSkillHub: (slug: string): Promise<{ success: boolean; skill: Skill }> =>
