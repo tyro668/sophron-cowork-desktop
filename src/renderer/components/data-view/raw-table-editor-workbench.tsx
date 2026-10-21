@@ -894,10 +894,8 @@ export function RawTableEditorWorkbench({
           >
             <div className="flex-shrink-0 bg-surface">
               <div className="grid">
-                <section className="ui-group bg-surface px-4 py-2.5">
-                  <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
-                    {t('data.rawTables.editor.sectionSource')}
-                  </div>
+                <section className="ui-group bg-surface">
+                  <div className="ui-group-title">{t('data.rawTables.editor.sectionSource')}</div>
                   <RawTableConfigRow
                     label={
                       localSourceKind === 'cloud'
@@ -1004,8 +1002,8 @@ export function RawTableEditorWorkbench({
                   </RawTableConfigRow>
                 </section>
                 <div className="grid">
-                  <section className="ui-group bg-surface px-4 py-2.5">
-                    <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
+                  <section className="ui-group bg-surface">
+                    <div className="ui-group-title">
                       {t('data.rawTables.editor.sectionParsing')}
                     </div>
                     <RawTableConfigRow label={t('data.rawTables.editor.processingStrategy')}>
@@ -1367,8 +1365,8 @@ export function RawTableEditorWorkbench({
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
-                <div className="grid gap-1 ui-group bg-surface px-4 py-2.5">
-                  <div className="mb-0.5 px-1 text-[13px] font-semibold text-text-primary">
+                <div className="ui-group bg-surface">
+                  <div className="ui-group-title">
                     {t('data.rawTables.editor.sectionParsingDetail')}
                   </div>
                   {localSourceKind === 'excel' ? (
@@ -1607,10 +1605,8 @@ export function RawTableEditorWorkbench({
           {rawTable ? (
             <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
               <div>
-                <section className="ui-group bg-surface px-4 py-2.5">
-                  <div className="mb-1.5 px-1 text-[13px] font-semibold text-text-primary">
-                    {t('data.rawTables.editor.sectionLinkage')}
-                  </div>
+                <section className="ui-group bg-surface">
+                  <div className="ui-group-title">{t('data.rawTables.editor.sectionLinkage')}</div>
                   <RawTableAutomations
                     key={rawTable.id}
                     rawTable={rawTable}
@@ -1740,13 +1736,11 @@ export function RawTableConfigRow({
   align?: 'start' | 'center';
 }) {
   return (
-    <div className="grid min-h-9 items-center gap-3 px-1 py-0.5 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
-      <div
-        className={`text-[13px] font-medium text-text-secondary ${align === 'start' ? 'lg:self-start lg:pt-1.5' : ''}`}
-      >
+    <div className="ui-form-row">
+      <div className={`ui-form-label ${align === 'start' ? 'items-start pt-2.5' : 'items-center'}`}>
         {label}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="ui-form-value">{children}</div>
     </div>
   );
 }
