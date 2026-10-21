@@ -67,16 +67,16 @@ export function EditorHeader({
   };
 
   return (
-    <div className="flex h-12 flex-shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle">
+      <div className="flex min-w-0 items-stretch">
         <button
           onClick={onBack}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
+          className="inline-flex items-center gap-1.5 border-r border-border-subtle px-3.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           {tr('schedule.backToList', '返回列表')}
         </button>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
           {isEditingTitle ? (
             <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-surface px-2.5 shadow-soft ring-2 ring-accent/15">
               <input
@@ -98,13 +98,13 @@ export function EditorHeader({
               />
             </span>
           ) : (
-            <h1 className="truncate text-[16px] font-semibold text-text-secondary">{draft.name}</h1>
+            <h1 className="truncate text-[15px] font-medium text-text-secondary">{draft.name}</h1>
           )}
           {!isEditingTitle && (
             <button
               onClick={() => setIsEditingTitle(true)}
               disabled={isSaving}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
               title={tr('common.edit', '编辑')}
             >
               <PencilLine className="h-3.5 w-3.5" />
@@ -113,15 +113,21 @@ export function EditorHeader({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-3">
-        <HeaderStatusToggle
-          enabled={draft.enabled}
-          disabled={isSaving}
-          onEnabledChange={onEnabledChange}
-          tr={tr}
-        />
+      <div className="flex items-stretch">
+        <div className="flex items-center border-l border-border-subtle px-3">
+          <HeaderStatusToggle
+            enabled={draft.enabled}
+            disabled={isSaving}
+            onEnabledChange={onEnabledChange}
+            tr={tr}
+          />
+        </div>
         {selectedAutomation && (
-          <Button variant="primary" onClick={onRun} className="h-9 px-3 text-xs shadow-soft">
+          <Button
+            variant="primary"
+            onClick={onRun}
+            className="h-full rounded-none px-4 text-xs shadow-none"
+          >
             <Play className="h-3.5 w-3.5" />
             {tr('schedule.runNowDetail', '立即运行')}
           </Button>
@@ -130,7 +136,7 @@ export function EditorHeader({
           variant={isDirty ? 'primary' : 'secondary'}
           onClick={onSave}
           disabled={isSaving || !isDirty}
-          className="h-9 px-3 text-xs shadow-soft"
+          className="h-full rounded-none border-0 border-l border-border-subtle px-4 text-xs shadow-none"
         >
           <Save className="h-3.5 w-3.5" />
           {tr('schedule.save', '保存')}

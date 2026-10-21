@@ -228,7 +228,9 @@ export function TimesEditor({
     <div className="space-y-1.5">
       {safeTimes.map((time, index) => (
         <div key={index} className="flex items-center gap-1.5">
-          <GlassTimePicker value={time} onChange={(next) => updateAt(index, next)} />
+          <div className="min-w-0 flex-1">
+            <GlassTimePicker value={time} onChange={(next) => updateAt(index, next)} />
+          </div>
           {safeTimes.length > 1 && (
             <button
               type="button"
@@ -240,16 +242,18 @@ export function TimesEditor({
               <span className="sr-only">{tr('schedule.removeTime', '删除')}</span>
             </button>
           )}
+          {index === safeTimes.length - 1 && (
+            <button
+              type="button"
+              onClick={() => onChange([...safeTimes, DEFAULT_TIME])}
+              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[12px] font-medium text-accent transition-colors hover:bg-accent-muted"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {tr('schedule.addTime', '添加时间')}
+            </button>
+          )}
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => onChange([...safeTimes, DEFAULT_TIME])}
-        className="inline-flex h-8 items-center gap-1 rounded-lg border border-dashed border-border-muted px-2.5 text-[12px] font-medium text-text-secondary transition-colors hover:border-accent/30 hover:bg-accent-muted hover:text-accent"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {tr('schedule.addTime', '添加时间')}
-      </button>
     </div>
   );
 }
