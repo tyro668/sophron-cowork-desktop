@@ -54,6 +54,7 @@ const LOCAL_DATA_TOOLS = new Set([
   'data_create_result_table',
   'data_update_result_table',
   'data_generate_pipeline_from_requirement',
+  'data_create_pipeline',
   'data_update_pipeline',
   'data_apply_workflow_plan',
   'data_apply_workflow_dsl',

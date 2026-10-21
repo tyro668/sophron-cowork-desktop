@@ -9,7 +9,10 @@ export class DataCommandResources {
   async requirePipeline(id: string): Promise<DataPipeline> {
     const pipeline = await this.store.getPipelineRecord(id);
     if (!pipeline)
-      throw new DataCommandError('RESOURCE_NOT_FOUND', `Data pipeline not found: ${id}`);
+      throw new DataCommandError(
+        'RESOURCE_NOT_FOUND',
+        `Data pipeline not found: ${id}. To build a new pipeline, create it first with data_create_pipeline and pass the returned id.`
+      );
     return pipeline;
   }
 

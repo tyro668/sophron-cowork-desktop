@@ -112,6 +112,7 @@ import { createCapabilitiesSearchTool } from './agent-capabilities-tool';
 import type { ToolActivationResult } from '../extensions/agent-runtime-extension';
 import { AgentRequestContext } from './agent-request-context';
 import { installAgentPermissionGate } from './agent-permission-hook';
+import { checkAppDataAccess, resolveAppUserDataDir } from './app-data-guard';
 import { ModelResultStore, RESULT_READ_TOOL } from './model-result-store';
 
 function installBaseTools(session: PiAgentSession, tools: Array<{ name: string }>): void {
@@ -331,6 +332,33 @@ export class AgentRunner {
       if (loadedSkill) recordSkillInvocation(loadedSkill, sessionId, 'loaded');
 
       const reviewContext = this.activePermissionContexts.get(sessionId);
+      const userDataDir = resolveAppUserDataDir();
+      const guardReason = userDataDir
+        ? checkAppDataAccess(toolName, input, { userDataDir, cwd: reviewContext?.cwd })
+        : null;
+      if (guardReason) {
+        log(`[AgentRunner] Tool '${toolName}' blocked: targets app internal data store`);
+        const now = Date.now();
+        const parentId: string = ctx.toolCall?.id ?? uuidv4();
+        this.sendTraceStep(sessionId, {
+          id: `${parentId}-permission-${uuidv4().slice(0, 8)}`,
+          turnId: this.activeTurnIds.get(sessionId),
+          parentId,
+          type: 'permission',
+          status: 'error',
+          title: `Permission denied: ${getDisplayName(toolName)}`,
+          toolName,
+          toolInput: sanitizeTraceInput(input),
+          permission: { decision: 'rule_deny', source: 'rule' },
+          error: buildTraceError(guardReason, 'permission'),
+          outcome: 'permission_denied',
+          isError: true,
+          timestamp: now,
+          endedAt: now,
+          duration: 0,
+        });
+        return { block: true, reason: guardReason };
+      }
       const mcpTool = this.mcpManager?.getTool(toolName);
       const permissionSignal = signal ?? this.activeControllers.get(sessionId)?.signal;
       let evaluation = evaluatePermission(

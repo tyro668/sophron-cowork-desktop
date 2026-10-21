@@ -108,6 +108,11 @@ export const DATA_TOOL_COPY = {
     description:
       'Generate, compile, temporarily execute, validate, and save a reusable native-node data pipeline from a supported analysis receipt. Call only after showing the analysis to the user and receiving explicit confirmation in a new user message. Pass outputMode, resultTableName, and resultTableId as flat fields; never serialize nested JSON into a string. Never provide or generate workflow DSL.',
   },
+  data_create_pipeline: {
+    label: 'Create data pipeline',
+    description:
+      'Create an empty (draft) data pipeline with a unique name, optionally bound to a source raw table and/or result table. Use this for multi-input or explicitly constructed pipelines, then fill it with data_apply_workflow_plan({pipelineId, ...}). This is the only supported way to create a pipeline; never write to the app database directly.',
+  },
   data_update_pipeline: {
     label: 'Update data pipeline',
     description: 'Rename an existing data pipeline.',
