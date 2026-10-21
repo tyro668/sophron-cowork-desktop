@@ -57,6 +57,8 @@
 - **贴边例外**：工具栏、页签栏（顶部分段页签、底部 配置 / 数据 / 自动化 页签）、标题栏保持贴边，不加内边距。
 - Token 定义：`src/renderer/components/workflow-forms/shared/form-grid.css` 与 `src/renderer/styles/globals.css` 的 `:root`（`--space-inset` / `--space-inset-lg` / `--space-group` / `--radius-group`）。
 
+- **导航列表贴边（例外）**：左侧栏（导航、置顶、项目 / 任务列表、底栏）与设置导航不使用内缩分组：贴满容器边缘、组间无间距、无圆角框，仅用 1px 分隔线区分行；项目头为贴边分隔行，任务紧随其下；当前项保留左侧 3px accent 竖条。表单、编辑器、对话框等内容区继续使用均衡分组样式。
+
 ### 算子配置表单栅格
 
 - 每个算子表单只用一个共享 CSS grid（`shared/FormGrid.tsx` + `form-grid.css`，类名 `.opg` / `.opg-c`）。表头、数据行、添加行、错误条都放在同一个 grid 里，保证纵向分隔线上下对齐。

@@ -170,20 +170,18 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
           className={`${compactSidebar ? 'w-14' : 'w-52 lg:w-56'} flex flex-shrink-0 flex-col border-r border-border-subtle bg-background-secondary`}
         >
           <div
-            className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'space-y-1 p-1.5' : 'p-3'}`}
+            className={`min-h-0 flex-1 overflow-y-auto ${compactSidebar ? 'space-y-1 p-1.5' : ''}`}
           >
             {tabGroups.map((group) => (
-              <div key={group.id} className={compactSidebar ? 'space-y-1' : 'pb-2.5'}>
+              <div key={group.id} className={compactSidebar ? 'space-y-1' : ''}>
                 {!compactSidebar && (
-                  <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  <div className="flex h-7 items-center border-b border-border-subtle px-3 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                     {group.label}
                   </div>
                 )}
                 <div
                   className={
-                    compactSidebar
-                      ? 'space-y-1'
-                      : 'overflow-hidden rounded-md border border-border-subtle bg-surface'
+                    compactSidebar ? 'space-y-1' : 'border-b border-border-subtle bg-surface'
                   }
                 >
                   {tabs
