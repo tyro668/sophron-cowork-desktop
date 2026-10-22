@@ -21,7 +21,7 @@ import type {
   DataPipeline,
   DataDashboard,
 } from '../../../types';
-import { exportPrepWorkflowDsl } from '../../../../shared/prep-dsl';
+import { exportWorkflowJflow } from '../../../../shared/jflow';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { GlassSelect } from '../../GlassSelect';
 import {
@@ -606,7 +606,7 @@ export function GeneratedPipelineReviewCard({
     try {
       const workflow = await dataClient.getPipelineWorkflow(pipelineId);
       if (requestId !== workflowRequestSeq.current) return;
-      setWorkflowDsl(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+      setWorkflowDsl(exportWorkflowJflow(workflow.nodes, workflow.edges).text);
     } catch {
       if (requestId !== workflowRequestSeq.current) return;
       setWorkflowDsl('');

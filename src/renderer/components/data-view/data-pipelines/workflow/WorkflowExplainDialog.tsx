@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Ban, Copy, X } from 'lucide-react';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../types';
-import { exportPrepWorkflowDsl } from '../../../../../shared/prep-dsl';
+import { exportWorkflowJflow } from '../../../../../shared/jflow';
 import { Dialog, DialogBody, DialogHeader, DialogTitle } from '../../../ui/dialog';
 import { Button } from '../../../ui/button';
 import { getOperatorCatalog } from './operator-catalog';
@@ -64,7 +64,7 @@ export function WorkflowExplainDialog({
   const dslText = useMemo(() => {
     if (!open || nodes.length === 0) return '';
     try {
-      return exportPrepWorkflowDsl(nodes, edges);
+      return exportWorkflowJflow(nodes, edges).text;
     } catch {
       // Partially configured graphs can be inexpressible — the step list
       // still explains the flow, the DSL block just stays hidden.

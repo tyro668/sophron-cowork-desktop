@@ -37,10 +37,11 @@ import type {
   WorkflowNodeRunStat,
 } from '../../../../types';
 import {
-  compilePrepWorkflowToFlow,
-  exportPrepWorkflowDsl,
-  parsePrepDsl,
-} from '../../../../../shared/prep-dsl';
+  compileWorkflowJflow,
+  exportWorkflowJflow,
+  type JflowCatalog,
+  type JflowDiagnostic,
+} from '../../../../../shared/jflow';
 import { dataFieldTypeFromDuckDbType } from '../../../../../shared/data-field-types';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
@@ -61,7 +62,6 @@ import { WorkflowDslDialog, WorkflowNodeDataPreview, WorkflowOperatorPalette } f
 import { Button } from '../../../ui/button';
 import { Dialog } from '../../../ui/dialog';
 import { InlineBanner } from '../../../ui/inline-banner';
-import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
 import {
   connectWorkflowNodes as connectWorkflowGraphNodes,
   reconnectWorkflowEdge as reconnectWorkflowGraphEdge,
@@ -137,6 +137,9 @@ export function PipelineEditor({
   const [dslMode, setDslMode] = useState<'import' | 'export' | null>(null);
   const [dslText, setDslText] = useState('');
   const [dslError, setDslError] = useState<string | null>(null);
+  const [jflowColumns, setJflowColumns] = useState<
+    Record<string, Array<{ name: string; type?: string }>>
+  >({});
   const [pipelineTitle, setPipelineTitle] = useState(pipeline.name);
   const [isEditingPipelineTitle, setIsEditingPipelineTitle] = useState(
     () => autoEditTitle === true
@@ -1317,12 +1320,68 @@ export function PipelineEditor({
     [onRun, selectSingleNode, t, pipeline, workflow, flagIncompleteNodes, flagPlanDiagnostics]
   );
 
+  const jflowCatalog = useMemo<JflowCatalog>(
+    () => ({
+      tables: [
+        ...rawTableChoices.map((table) => ({
+          id: table.id,
+          name: table.name,
+          kind: 'raw' as const,
+          columns: jflowColumns[table.id] ?? null,
+        })),
+        ...resultTableChoices.map((table) => ({
+          id: table.id,
+          name: table.name,
+          kind: 'result' as const,
+        })),
+      ],
+    }),
+    [rawTableChoices, resultTableChoices, jflowColumns]
+  );
+
+  const loadJflowColumns = useCallback(() => {
+    if (!workflow || !dataClient.has('getWorkflowNodeColumnTypes')) return;
+    for (const node of workflow.nodes) {
+      const rawTableId =
+        node.type === 'input' ? (node.config as { rawTableId?: unknown }).rawTableId : null;
+      if (typeof rawTableId !== 'string' || jflowColumns[rawTableId]) continue;
+      void dataClient
+        .getWorkflowNodeColumnTypes({
+          pipelineId: pipeline.id,
+          nodeId: node.id,
+          nodeType: node.type,
+          nodeConfig: node.config,
+          workflow: workflowDataContext.workflow,
+        })
+        .then((columns) =>
+          setJflowColumns((prev) => ({
+            ...prev,
+            [rawTableId]: columns.map((c) => ({ name: c.name, type: c.storageType })),
+          }))
+        )
+        .catch(() => undefined);
+    }
+  }, [jflowColumns, pipeline.id, workflow, workflowDataContext.workflow]);
+
+  const formatJflowDiagnostics = useCallback(
+    (items: JflowDiagnostic[]) =>
+      items
+        .map(
+          (item) =>
+            (item.stepId ? `[${item.stepId}] ` : '') +
+            `${item.code}: ${item.message}${item.hint ? `（${item.hint}）` : ''}`
+        )
+        .join('\n'),
+    []
+  );
+
   const openImportDsl = useCallback(() => {
     setLocalError(null);
     setDslError(null);
     setDslText('');
     setDslMode('import');
-  }, []);
+    loadJflowColumns();
+  }, [loadJflowColumns]);
 
   const openExportDsl = useCallback(() => {
     if (!workflow) return;
@@ -1334,12 +1393,19 @@ export function PipelineEditor({
     setLocalError(null);
     setDslError(null);
     try {
-      setDslText(exportPrepWorkflowDsl(workflow.nodes, workflow.edges));
+      const exported = exportWorkflowJflow(workflow.nodes, workflow.edges, {
+        pipelineName: pipelineTitle,
+      });
+      setDslText(exported.text);
+      setDslError(
+        exported.diagnostics.length ? formatJflowDiagnostics(exported.diagnostics) : null
+      );
       setDslMode('export');
+      loadJflowColumns();
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : String(err));
     }
-  }, [t, workflow, flagIncompleteNodes]);
+  }, [t, workflow, flagIncompleteNodes, pipelineTitle, formatJflowDiagnostics, loadJflowColumns]);
 
   const closeDslDialog = useCallback(() => {
     setDslMode(null);
@@ -1360,54 +1426,53 @@ export function PipelineEditor({
   const applyDslImport = useCallback(() => {
     if (!workflow) return;
     setDslError(null);
-    const parsed = parsePrepDsl(dslText);
-    const diagnostics = [...parsed.diagnostics];
-    if (parsed.ast) {
-      const compiled = compilePrepWorkflowToFlow(parsed.ast);
-      diagnostics.push(...compiled.diagnostics);
-      const errors = diagnostics.filter((item) => item.severity === 'error');
-      if (errors.length > 0) {
-        setDslError(errors.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n'));
-        return;
-      }
-      const now = Date.now();
-      const nextNodes: DataWorkflowNode[] = compiled.nodes
-        .filter((node) => isWorkflowOperatorType(node.type))
-        .map((node) => ({
-          id: node.id,
-          pipelineId: pipeline.id,
-          type: node.type as DataWorkflowOperatorType,
-          label: t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
-          x: node.x,
-          y: node.y,
-          config: node.config ?? {},
-          createdAt: now,
-          updatedAt: now,
-        }));
-      const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
-        id: edge.id,
-        pipelineId: pipeline.id,
-        sourceNodeId: edge.sourceNodeId,
-        targetNodeId: edge.targetNodeId,
-        sourceHandle: edge.sourceHandle ?? 'output',
-        targetHandle: edge.targetHandle ?? 'input',
-        createdAt: now,
-      }));
-      setWorkflow({
-        ...workflow,
-        nodes: nextNodes,
-        edges: nextEdges,
-      });
-      selectSingleNode(nextNodes[0]?.id ?? null);
-      closeDslDialog();
-      setLocalError(null);
+    const compiled = compileWorkflowJflow(dslText, jflowCatalog, pipeline.id);
+    const errors = compiled.diagnostics.filter((item) => item.severity === 'error');
+    if (errors.length > 0 || compiled.nodes.length === 0) {
+      setDslError(formatJflowDiagnostics(errors) || t('data.workflow.dslInvalid'));
       return;
     }
-    setDslError(
-      diagnostics.map((item) => formatPrepDiagnosticForUi(item, t)).join('\n') ||
-        t('data.workflow.dslInvalid')
-    );
-  }, [closeDslDialog, dslText, selectSingleNode, t, pipeline.id, workflow]);
+    const now = Date.now();
+    const nextNodes: DataWorkflowNode[] = compiled.nodes
+      .filter((node) => isWorkflowOperatorType(node.type))
+      .map((node) => ({
+        id: node.id,
+        pipelineId: pipeline.id,
+        type: node.type as DataWorkflowOperatorType,
+        label: node.label || t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
+        x: node.x,
+        y: node.y,
+        config: node.config ?? {},
+        createdAt: now,
+        updatedAt: now,
+      }));
+    const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
+      id: edge.id,
+      pipelineId: pipeline.id,
+      sourceNodeId: edge.sourceNodeId,
+      targetNodeId: edge.targetNodeId,
+      sourceHandle: edge.sourceHandle ?? 'output',
+      targetHandle: edge.targetHandle ?? 'input',
+      createdAt: now,
+    }));
+    setWorkflow({
+      ...workflow,
+      nodes: nextNodes,
+      edges: nextEdges,
+    });
+    selectSingleNode(nextNodes[0]?.id ?? null);
+    closeDslDialog();
+    setLocalError(null);
+  }, [
+    closeDslDialog,
+    dslText,
+    selectSingleNode,
+    t,
+    pipeline.id,
+    workflow,
+    jflowCatalog,
+    formatJflowDiagnostics,
+  ]);
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
@@ -1709,6 +1774,7 @@ export function PipelineEditor({
       )}
       {dslMode && (
         <WorkflowDslDialog
+          catalog={jflowCatalog}
           mode={dslMode}
           value={dslText}
           error={dslError}
