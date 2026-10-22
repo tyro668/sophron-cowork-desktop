@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { compileWorkflowJflow, exportJflowStep, parseJflowStep } from '../../src/shared/jflow';
+import {
+  compileWorkflowJflow,
+  exportJflowStep,
+  jflowStepRightAlias,
+  parseJflowStep,
+} from '../../src/shared/jflow';
 
 const COLS = [
   { name: '门店', type: 'VARCHAR' },
@@ -102,5 +107,24 @@ describe('per-node jflow steps — two inputs, composites, grouped pivot', () =>
       members,
     });
     expect(reshaped.diagnostics.some((d) => d.code === 'E_STEP_COMPOSITE')).toBe(true);
+  });
+});
+
+describe('right-input naming', () => {
+  it('falls back to `right` when the configured alias is not an identifier', () => {
+    const node = {
+      type: 'set_op',
+      config: {
+        operation: 'union',
+        quantifier: 'all',
+        match: 'by_name',
+        rightAlias: '银行流水(仅收入)',
+      },
+    };
+    const rightAlias = jflowStepRightAlias(node);
+    expect(rightAlias).toBe('right');
+    const text = exportJflowStep(node, { rightAlias }).text;
+    expect(text).toBe('union right');
+    expect(parseJflowStep(text, { expectedType: 'set_op', rightAlias }).diagnostics).toEqual([]);
   });
 });

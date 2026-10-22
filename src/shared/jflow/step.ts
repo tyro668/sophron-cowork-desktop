@@ -45,7 +45,9 @@ export function jflowStepRightAlias(node: JflowStepNode): string {
     (typeof config.rightAlias === 'string' && config.rightAlias) ||
     (typeof config.rightInput === 'string' && config.rightInput) ||
     '';
-  return alias || 'right';
+  // Labels such as `银行流水标准化(仅收入)` are not identifiers; the step text
+  // then names the right input `right`.
+  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(alias) ? alias : 'right';
 }
 
 export interface JflowStepNode {
