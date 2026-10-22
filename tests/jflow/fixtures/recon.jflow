@@ -1,0 +1,56 @@
+pipeline 场景_银企对账加工
+
+source erp  = @id('local:raw/4f8611cd-8a7c-43e1-ae36-b202b18f3851', '场景_ERP收款9月')
+source bank = @id('local:raw/191d29e1-d59b-4514-b740-c6b16ca12f0c', '场景_银行流水9月')
+
+let e = erp
+  | select [收款单号] = cast([收款单号] as text), [业务日期] = cast([单据日期] as date),
+           [客户] = cast([客户名称] as text), [金额] = cast([应收金额] as decimal(18,2))
+let b = bank
+  | where cast([收入金额] as decimal(18,2)) > 0
+  | select [流水号] = cast([流水号] as text), [业务日期] = cast([交易日期] as date),
+           [客户] = cast([对方户名] as text), [金额] = cast([收入金额] as decimal(18,2)),
+           [摘要单号] = regexp_extract(coalesce([摘要], ''), '(AR[0-9]+)', 1)
+
+## 一级：摘要带单号
+let m1 = e
+  | join inner b on [b].[摘要单号] = [left].[收款单号]
+      keep: [left].*, [银行日期] = [b].[业务日期], [银行金额] = [b].[金额], [b].[流水号]
+  | derive [日差] = abs(date_diff('day', [业务日期], [银行日期]))
+  | take 1 per: [收款单号] sort: [日差], [流水号]
+  | drop [日差]
+
+## 二级：客户+金额+5天内；排除一级已用（NOT IN 语义）
+let m2 = e
+  | join inner b on [b].[摘要单号] = '' and [b].[客户] = [left].[客户] and [b].[金额] = [left].[金额]
+                and abs(date_diff('day', [left].[业务日期], [b].[业务日期])) <= 5
+      keep: [left].*, [银行日期] = [b].[业务日期], [银行金额] = [b].[金额], [b].[流水号]
+  | derive [日差] = abs(date_diff('day', [业务日期], [银行日期]))
+  | take 1 per: [收款单号] sort: [日差], [流水号]
+  | join anti m1 on [收款单号] null_aware: true
+  | join anti m1 on [流水号] null_aware: true
+  | drop [日差]
+
+let mt = e
+  | join left (union m1, m2) as mm on [收款单号]
+      keep: [left].*, [mm].[银行日期], [mm].[银行金额], [mm].[流水号]
+
+union
+    (mt | where [流水号] is null
+        | select [差异类型] = 'ERP有银行无', [收款单号], [客户], [ERP金额] = [金额],
+                 [ERP日期] = [业务日期], [说明] = 'ERP已记应收，银行无对应收入'),
+    (mt | where [流水号] is not null and [银行金额] <> [金额]
+        | select [差异类型] = '金额不一致', [收款单号], [客户], [ERP金额] = [金额], [银行金额],
+                 [ERP日期] = [业务日期], [银行日期], [银行流水号] = [流水号],
+                 [说明] = 'ERP与银行金额相差 ' || cast([银行金额] - [金额] as text) || ' 元'),
+    (mt | where [流水号] is not null and abs(date_diff('day', [业务日期], [银行日期])) > 3
+        | select [差异类型] = '日期差>3天', [收款单号], [客户], [ERP金额] = [金额], [银行金额],
+                 [ERP日期] = [业务日期], [银行日期], [银行流水号] = [流水号],
+                 [说明] = '到账日期相差 ' || cast(abs(date_diff('day', [业务日期], [银行日期])) as text) || ' 天'),
+    (b  | join anti (mt | where [流水号] is not null) as used on [流水号] null_aware: true
+        | select [差异类型] = '银行有ERP无', [客户], [银行金额] = [金额],
+                 [银行日期] = [业务日期], [银行流水号] = [流水号], [说明] = '银行流水无对应ERP收款单')
+  by: name
+  | select [差异类型], [收款单号], [客户], [ERP金额], [银行金额], [ERP日期], [银行日期], [银行流水号], [说明]
+  | sort [差异类型], [收款单号], [银行流水号]
+  | write @id('local:result/d023585a-5384-4230-8795-28dc6d8de5cc', '场景_对账差异') mode: replace schema: extend

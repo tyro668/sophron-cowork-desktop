@@ -1,0 +1,16 @@
+pipeline 场景_缺货预警加工
+
+source stock = @id('local:raw/218070e7-64e7-4950-ab13-c39e99b954c9', '场景_门店库存日报')
+source std   = @id('local:raw/57304148-4c83-4157-bd96-f337e9a72c2f', '场景_安全库存标准')
+
+stock
+  | join left std on [门店], [SKU]
+      keep: [left].[日期], [left].[门店], [left].[SKU], [left].[商品名称], [left].[期初库存],
+            [left].[入库], [left].[出库], [left].[期末库存], [std].[安全库存]
+  ## 最新快照（窗口基于本步完整输入）
+  | where [日期] = max([日期]) over()
+  | where [安全库存] is not null and [期末库存] < [安全库存]
+  | derive [缺口] = [安全库存] - [期末库存]
+  | select [门店], [SKU], [商品名称], [日期], [期初库存], [入库], [出库], [期末库存], [安全库存], [缺口]
+  | sort -[缺口], [门店], [SKU]
+  | write @id('local:result/9e84fc61-a186-44d2-a949-e778b7daf649', '场景_缺货预警') mode: replace schema: extend

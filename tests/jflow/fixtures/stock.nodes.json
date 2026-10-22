@@ -1,0 +1,238 @@
+[
+  {
+    "id": "src_stock",
+    "type": "input",
+    "config": {
+      "alias": "stock",
+      "source": "rawTable",
+      "rawTableId": "218070e7-64e7-4950-ab13-c39e99b954c9",
+      "ref": {
+        "uri": "local:raw/218070e7-64e7-4950-ab13-c39e99b954c9",
+        "name": "场景_门店库存日报"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "src_std",
+    "type": "input",
+    "config": {
+      "alias": "std",
+      "source": "rawTable",
+      "rawTableId": "57304148-4c83-4157-bd96-f337e9a72c2f",
+      "ref": {
+        "uri": "local:raw/57304148-4c83-4157-bd96-f337e9a72c2f",
+        "name": "场景_安全库存标准"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "n1",
+    "type": "join",
+    "config": {
+      "joinType": "left",
+      "rightAlias": "std",
+      "conditions": [
+        {
+          "left": "门店",
+          "operator": "=",
+          "right": "门店"
+        },
+        {
+          "left": "SKU",
+          "operator": "=",
+          "right": "SKU"
+        }
+      ],
+      "keep": [
+        {
+          "side": "left",
+          "source": "日期",
+          "alias": "日期"
+        },
+        {
+          "side": "left",
+          "source": "门店",
+          "alias": "门店"
+        },
+        {
+          "side": "left",
+          "source": "SKU",
+          "alias": "SKU"
+        },
+        {
+          "side": "left",
+          "source": "商品名称",
+          "alias": "商品名称"
+        },
+        {
+          "side": "left",
+          "source": "期初库存",
+          "alias": "期初库存"
+        },
+        {
+          "side": "left",
+          "source": "入库",
+          "alias": "入库"
+        },
+        {
+          "side": "left",
+          "source": "出库",
+          "alias": "出库"
+        },
+        {
+          "side": "left",
+          "source": "期末库存",
+          "alias": "期末库存"
+        },
+        {
+          "side": "right",
+          "source": "安全库存",
+          "alias": "安全库存"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "src_stock",
+      "right": "src_std"
+    }
+  },
+  {
+    "id": "n2~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "__w",
+          "action": "add",
+          "expression": "[日期] = max([日期]) over()"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1"
+    },
+    "layout": {
+      "composite": "n2",
+      "role": "window-col"
+    }
+  },
+  {
+    "id": "n2~2",
+    "type": "filter",
+    "config": {
+      "condition": "[__w]"
+    },
+    "inputs": {
+      "input": "n2~1"
+    },
+    "layout": {
+      "composite": "n2",
+      "role": "filter"
+    }
+  },
+  {
+    "id": "n2",
+    "type": "select",
+    "config": {
+      "fields": ["__w"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n2~2"
+    },
+    "layout": {
+      "composite": "n2",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n3",
+    "type": "filter",
+    "config": {
+      "condition": "[安全库存] is not null and [期末库存] < [安全库存]"
+    },
+    "inputs": {
+      "input": "n2"
+    }
+  },
+  {
+    "id": "n4",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "缺口",
+          "action": "add",
+          "expression": "[安全库存] - [期末库存]"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n3"
+    }
+  },
+  {
+    "id": "n5",
+    "type": "select",
+    "config": {
+      "fields": [
+        "门店",
+        "SKU",
+        "商品名称",
+        "日期",
+        "期初库存",
+        "入库",
+        "出库",
+        "期末库存",
+        "安全库存",
+        "缺口"
+      ],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n4"
+    }
+  },
+  {
+    "id": "n6",
+    "type": "sort",
+    "config": {
+      "orderBy": [
+        {
+          "field": "缺口",
+          "direction": "desc"
+        },
+        {
+          "field": "门店",
+          "direction": "asc"
+        },
+        {
+          "field": "SKU",
+          "direction": "asc"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n5"
+    }
+  },
+  {
+    "id": "n7",
+    "type": "output",
+    "config": {
+      "destination": "duckdb_table",
+      "mode": "replace",
+      "outputStrategy": "existing",
+      "outputResultTableId": "9e84fc61-a186-44d2-a949-e778b7daf649",
+      "resultTableId": "9e84fc61-a186-44d2-a949-e778b7daf649",
+      "table": "output_9e84fc61_a186_44d2_a949_e778b7daf649",
+      "resultTableName": "场景_缺货预警",
+      "schemaPolicy": "extend"
+    },
+    "inputs": {
+      "input": "n6"
+    }
+  }
+]

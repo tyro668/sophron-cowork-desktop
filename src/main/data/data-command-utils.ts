@@ -247,7 +247,7 @@ export function hashWorkflowGraph(workflow: WorkflowSaveShape): string {
     .map((node) => ({
       id: stripWorkflowStorageNamespace(node.id),
       type: node.type,
-      config: stripWorkflowCompatibilityMetadata(node.config ?? {}),
+      config: stripWorkflowCompatibilityMetadata(stripDerivedBinding(node.type, node.config ?? {})),
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const edges = workflow.edges
@@ -260,6 +260,21 @@ export function hashWorkflowGraph(workflow: WorkflowSaveShape): string {
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   return hashText(stableWorkflowJson({ nodes, edges }));
+}
+
+/**
+ * Output `intent` / `ref` are derived from the result-table binding on save (v24), so a graph
+ * hashes the same before and after it is bound.
+ */
+function stripDerivedBinding(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> {
+  if (type !== 'output') return config;
+  const rest = { ...config };
+  delete rest.intent;
+  delete rest.ref;
+  return rest;
 }
 
 function stripWorkflowStorageNamespace(id: string): string {
