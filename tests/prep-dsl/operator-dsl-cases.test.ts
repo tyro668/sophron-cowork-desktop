@@ -53,8 +53,8 @@ const currentOperatorCases: Array<{
   {
     name: 'filter rows',
     type: 'filter',
-    dsl: 'filter [status] in ("PAID", "SHIPPED") and [revenue] > 0',
-    expectedConfig: { condition: '[status] in ("PAID", "SHIPPED") and [revenue] > 0' },
+    dsl: `filter [status] in ('PAID', 'SHIPPED') and [revenue] > 0`,
+    expectedConfig: { condition: `[status] in ('PAID', 'SHIPPED') and [revenue] > 0` },
   },
   {
     name: 'deduplicate rows',
@@ -83,14 +83,14 @@ const currentOperatorCases: Array<{
   {
     name: 'nullify and fill missing values',
     type: 'missing_value',
-    dsl: 'missing value [region] nullify values ("", "N/A"), [score] fill median',
+    dsl: `missing value [region] nullify values ('', 'N/A'), [score] fill median`,
     expectedConfig: { strategy: 'by_column' },
   },
   {
     name: 'convert types',
     type: 'type_convert',
-    dsl: 'cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error fail',
-    expectedDsl: 'cast [order_date] as date format "%Y-%m-%d", [revenue] as float on_error fail',
+    dsl: `cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error fail`,
+    expectedDsl: `cast [order_date] as date format '%Y-%m-%d', [revenue] as float on_error fail`,
     expectedConfig: {
       conversions: [
         { field: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
@@ -161,10 +161,10 @@ const currentOperatorCases: Array<{
   {
     name: 'aggregate with multiple metrics using backslash-escaped single quote',
     type: 'aggregate',
-    dsl: "aggregate all metrics string_agg([name], 'it\\'s') as [names], count(*) as [rows]",
+    dsl: "aggregate all metrics string_agg([name], 'it''s') as [names], count(*) as [rows]",
     expectedConfig: {
       metrics: [
-        { function: 'string_agg', expression: "[name], 'it\\'s'", alias: 'names' },
+        { function: 'string_agg', expression: "[name], 'it''s'", alias: 'names' },
         { function: 'count', expression: '*', alias: 'rows' },
       ],
     },
@@ -227,7 +227,7 @@ const currentOperatorCases: Array<{
   {
     name: 'pivot rows',
     type: 'pivot',
-    dsl: 'pivot on [month] in ("Jan", "Feb") using sum([revenue]) as [revenue_sum] group by [region]',
+    dsl: `pivot on [month] in ('Jan', 'Feb') using sum([revenue]) as [revenue_sum] group by [region]`,
     expectedConfig: {
       on: [{ field: 'month', values: ['Jan', 'Feb'] }],
       groupBy: ['region'],
@@ -280,7 +280,7 @@ const currentOperatorCases: Array<{
   {
     name: 'output table merge by business keys',
     type: 'output',
-    dsl: 'output table "clean_orders" mode merge by [order_id], [sku] schema strict',
+    dsl: `output table "clean_orders" mode merge by [order_id], [sku] schema strict`,
     expectedConfig: {
       destination: 'duckdb_table',
       table: 'clean_orders',
@@ -454,10 +454,10 @@ describe('operator DSL executable cases', () => {
   });
 
   it.each([
-    'pivot on [sfc] in ("null",) using count(*)',
-    'pivot on [sfc] in ("a", "b",) using count(*)',
-    'pivot on [sfc] in (, "a") using count(*)',
-    'pivot on [sfc] in ("a", 2024,) using count(*)',
+    `pivot on [sfc] in ('null',) using count(*)`,
+    `pivot on [sfc] in ('a', 'b',) using count(*)`,
+    `pivot on [sfc] in (, 'a') using count(*)`,
+    `pivot on [sfc] in ('a', 2024,) using count(*)`,
   ])('rejects a pivot value list with a stray comma: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'pivot');
 
@@ -467,10 +467,10 @@ describe('operator DSL executable cases', () => {
   });
 
   it.each([
-    'pivot on [sfc], [category] in ("食品", "电子产品"), using count(*)',
-    'pivot on [category] in ("食品"), using count(*)',
-    'pivot on [category] in ("食品"), group by [region]',
-    'pivot on [category] in ("食品"),',
+    `pivot on [sfc], [category] in ('食品', '电子产品'), using count(*)`,
+    `pivot on [category] in ('食品'), using count(*)`,
+    `pivot on [category] in ('食品'), group by [region]`,
+    `pivot on [category] in ('食品'),`,
   ])('rejects a trailing comma after the pivot axis list: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'pivot');
 
@@ -480,7 +480,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('rejects a pivot value list with values missing a separating comma', () => {
-    const parsed = parsePrepOperatorDsl('pivot on [sfc] in ("a" "b") using count(*)', 'pivot');
+    const parsed = parsePrepOperatorDsl(`pivot on [sfc] in ('a' 'b') using count(*)`, 'pivot');
 
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'invalidPivotValueList' })])
@@ -526,7 +526,7 @@ describe('operator DSL executable cases', () => {
 
   it('parses multiple pivot axes with per-field value lists', () => {
     const parsed = parsePrepOperatorDsl(
-      'pivot on [year] in (2024), [quarter] in ("Q1") using count(*)',
+      `pivot on [year] in (2024), [quarter] in ('Q1') using count(*)`,
       'pivot'
     );
 
@@ -539,7 +539,7 @@ describe('operator DSL executable cases', () => {
 
   it('parses a dynamic axis (no values) followed by a fixed axis', () => {
     const parsed = parsePrepOperatorDsl(
-      'pivot on [a] in ("x"), [b] using count(*) group by [region]',
+      `pivot on [a] in ('x'), [b] using count(*) group by [region]`,
       'pivot'
     );
 
@@ -553,7 +553,7 @@ describe('operator DSL executable cases', () => {
 
   it('parses a dynamic axis first followed by a fixed axis', () => {
     const parsed = parsePrepOperatorDsl(
-      'pivot on [sfc], [category] in ("食品", "电子产品") using count(*)',
+      `pivot on [sfc], [category] in ('食品', '电子产品') using count(*)`,
       'pivot'
     );
 
@@ -674,7 +674,7 @@ describe('operator DSL executable cases', () => {
           { field: '', method: 'literal_fill', value: '' },
         ],
       },
-      expected: 'missing value [a] fill "x"',
+      expected: `missing value [a] fill 'x'`,
     },
   ])('filters incomplete $type rows while keeping complete ones', ({ type, config, expected }) => {
     const dsl = exportPrepOperatorDsl({ id: `${type}-filtered`, type, config });
@@ -810,7 +810,7 @@ describe('operator DSL executable cases', () => {
         using: [{ function: 'count', expression: '*' }],
       },
     });
-    expect(dsl).toBe('pivot on [y] in ("a", "b") using count(*) as [count]');
+    expect(dsl).toBe(`pivot on [y] in ('a', 'b') using count(*) as [count]`);
 
     const reparsed = parsePrepOperatorDsl(dsl, 'pivot');
     expect(errorsOf(reparsed.diagnostics)).toHaveLength(0);
@@ -1114,7 +1114,7 @@ describe('operator DSL executable cases', () => {
     },
     {
       type: 'pivot' as const,
-      dsl: "pivot on [region] using string_agg([name], 'it\\'s') as [names], count(*) as [n]",
+      dsl: "pivot on [region] using string_agg([name], 'it''s') as [names], count(*) as [n]",
       functionName: 'string_agg',
     },
   ])('reports unsupported $type function $functionName during import', ({ type, dsl }) => {
@@ -1140,8 +1140,8 @@ describe('operator DSL executable cases', () => {
       },
     },
     {
-      dsl: 'explode json [`with index`] path "$.keep parent names"',
-      expectedDsl: 'explode json [with index] path "$.keep parent names"',
+      dsl: "explode json [`with index`] path '$.keep parent names'",
+      expectedDsl: `explode json [with index] path '$.keep parent names'`,
       expectedConfig: {
         sourceKind: 'json',
         field: 'with index',
@@ -1171,12 +1171,12 @@ describe('operator DSL executable cases', () => {
       from orders
         | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
         | map [dt] to [order_date], [rev] to [revenue]
-        | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
-        | missing value [region] nullify values ("", "N/A")
-        | missing value [region] fill "UNKNOWN"
+        | cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error null, [profit] as float on_error null
+        | missing value [region] nullify values ('', 'N/A')
+        | missing value [region] fill 'UNKNOWN'
         | deduplicate by [order_id] keep last order by [updated_at] desc
         | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
-        | filter [status] = "PAID" and [revenue] > 0
+        | filter [status] = 'PAID' and [revenue] > 0
         | join left customers
             on [orders].[customer_id] = [customers].[customer_id]
             keep left *, [customers].[name] as [customer_name]
@@ -1311,7 +1311,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('preserves a comma inside a quoted IN value through the DSL codec', () => {
-    const dsl = 'filter [city] in ("New York, NY", "Paris")';
+    const dsl = `filter [city] in ('New York, NY', 'Paris')`;
     const parsed = parsePrepOperatorDsl(dsl, 'filter');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     expect(parsed.operator).not.toBeNull();
@@ -1340,9 +1340,9 @@ describe('operator DSL executable cases', () => {
 
   it('accepts valid IN / NOT IN lists through the DSL codec', () => {
     for (const dsl of [
-      'filter [code] in ("a", "b")',
+      `filter [code] in ('a', 'b')`,
       'filter [code] not in (1, 2, 3)',
-      'filter [code] in ("New York, NY", "Paris")',
+      `filter [code] in ('New York, NY', 'Paris')`,
     ]) {
       const parsed = parsePrepOperatorDsl(dsl, 'filter');
       expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
@@ -1351,7 +1351,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('rejects IN with trailing content after the closing parenthesis', () => {
-    const parsed = parsePrepOperatorDsl('filter [code] in ("a") trailing', 'filter');
+    const parsed = parsePrepOperatorDsl(`filter [code] in ('a') trailing`, 'filter');
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'invalidFilterCondition' })])
     );
@@ -1390,12 +1390,12 @@ describe('operator DSL executable cases', () => {
   });
 
   it.each([
-    'filter [name] like ("a", "b")',
-    'filter [name] not like ("a", "b")',
-    'filter [name] matches ("a", "b")',
-    'filter [name] not matches ("a", "b")',
-    'filter [name] begin ("a")',
-    'filter [name] end ("b")',
+    `filter [name] like ('a', 'b')`,
+    `filter [name] not like ('a', 'b')`,
+    `filter [name] matches ('a', 'b')`,
+    `filter [name] not matches ('a', 'b')`,
+    `filter [name] begin ('a')`,
+    `filter [name] end ('b')`,
   ])('rejects list right-hand value for string operators: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'filter');
     expect(errorsOf(parsed.diagnostics)).toEqual(
@@ -1405,12 +1405,12 @@ describe('operator DSL executable cases', () => {
 
   it('accepts single-value string operators through the DSL codec', () => {
     for (const dsl of [
-      'filter [name] like "a%"',
-      'filter [name] not like "a%"',
-      'filter [name] matches "^a"',
-      'filter [name] not matches "^a"',
-      'filter [name] begin "a"',
-      'filter [name] end "b"',
+      `filter [name] like 'a%'`,
+      `filter [name] not like 'a%'`,
+      `filter [name] matches '^a'`,
+      `filter [name] not matches '^a'`,
+      `filter [name] begin 'a'`,
+      `filter [name] end 'b'`,
     ]) {
       const parsed = parsePrepOperatorDsl(dsl, 'filter');
       expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
@@ -1427,7 +1427,7 @@ describe('operator DSL executable cases', () => {
       'filter [a] < 0.5',
       'filter [a] >= 10',
       'filter [a] <= 100',
-      'filter [a] = "x"',
+      `filter [a] = 'x'`,
       'filter [a] = null',
       'filter [a] = true',
       'filter [a] = 2024-01-01',
@@ -1447,7 +1447,7 @@ describe('operator DSL executable cases', () => {
     'filter [amount] * 2',
     'filter [amount] / 2',
     'filter [amount] % 2',
-    'filter [amount] || "x"',
+    `filter [amount] || 'x'`,
     'filter [amount] * 2 > 5',
   ])('rejects a non-comparison operator as the top-level operator: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'filter');
@@ -1491,11 +1491,11 @@ describe('operator DSL executable cases', () => {
 
   it('accepts quoted strings and the bare booleans/null as the right-hand value', () => {
     for (const dsl of [
-      'filter [a] = "Beijing"',
+      `filter [a] = 'Beijing'`,
       'filter [a] = true',
       'filter [a] = false',
       'filter [a] = null',
-      'filter [a] in ("Beijing", "Berlin")',
+      `filter [a] in ('Beijing', 'Berlin')`,
     ]) {
       const parsed = parsePrepOperatorDsl(dsl, 'filter');
       expect(
@@ -1679,7 +1679,7 @@ describe('operator DSL executable cases', () => {
 
   it('rejects incremental reads for input tables and omits legacy settings on export', () => {
     const parsed = parsePrepOperatorDsl(
-      'input source rawTable "orders_input" incremental by [updated_at] as orders',
+      `input source rawTable 'orders_input' incremental by [updated_at] as orders`,
       'input_source'
     );
     expect(

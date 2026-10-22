@@ -325,6 +325,10 @@ class Parser {
       }
       case 'StringLiteral':
         this.pos++;
+        // SQL semantics: "name" is an identifier (same as [name]), 'text' is a string.
+        if (token.value.startsWith('"')) {
+          return { k: 'field', name: token.value.slice(1, -1).replace(/""/g, '"') };
+        }
         return { k: 'str', value: unquoteString(token.value) };
       case 'Number':
         this.pos++;

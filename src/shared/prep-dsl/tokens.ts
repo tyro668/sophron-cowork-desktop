@@ -16,7 +16,8 @@ export const Comment = createToken({
 
 export const StringLiteral = createToken({
   name: 'StringLiteral',
-  pattern: /"(?:[^"\\]|\\.)*"/,
+  // "name" = identifier (table / source / output names); 'text' = text value (SQL style).
+  pattern: /"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'/,
 });
 
 export const NumberLiteral = createToken({
@@ -45,7 +46,7 @@ export const Star = createToken({ name: 'Star', pattern: /\*/ });
 export const BacktickName = createToken({ name: 'BacktickName', pattern: /`(?:[^`\\]|\\.)*`/ });
 export const Identifier = createToken({
   name: 'Identifier',
-  pattern: /[^\s#[\](),.|=!<>+\-/*%"]+/,
+  pattern: /[^\s#[\](),.|=!<>+\-/*%"']+/,
 });
 
 export const prepDslTokens = [

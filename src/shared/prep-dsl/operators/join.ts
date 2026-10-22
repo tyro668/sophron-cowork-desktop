@@ -7,7 +7,7 @@ import {
 import type { PrepAsofJoinConfig, PrepFieldRef, PrepJoinCondition } from '../ast';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, toFieldName, toQualifiedName } from '../syntax/fields';
-import { quoteString, unquoteString } from '../syntax/literals';
+import { quoteSqlString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorCommand, type OperatorDslCodec } from './codec';
 import { isCompleteJoinCondition } from '../../operator-completeness';
@@ -169,8 +169,7 @@ function parseRegularJoin(
       case 'expect':
         expectation =
           (cursor.expectOneOf(JOIN_EXPECTATIONS, 'invalidJoinExpectation') as
-            | (typeof JOIN_EXPECTATIONS)[number]
-            | null) ?? undefined;
+            (typeof JOIN_EXPECTATIONS)[number] | null) ?? undefined;
         break;
     }
   }
@@ -232,8 +231,7 @@ function parseAsofJoin(
         if (!on) on = emptyAsofConfig();
         on.direction =
           (cursor.expectOneOf(ASOF_DIRECTIONS, 'invalidAsofDirection') as
-            | (typeof ASOF_DIRECTIONS)[number]
-            | null) ?? undefined;
+            (typeof ASOF_DIRECTIONS)[number] | null) ?? undefined;
         break;
       case 'tolerance': {
         if (!on) on = emptyAsofConfig();
@@ -263,8 +261,7 @@ function parseAsofJoin(
       case 'expect':
         expectation =
           (cursor.expectOneOf(JOIN_EXPECTATIONS, 'invalidJoinExpectation') as
-            | (typeof JOIN_EXPECTATIONS)[number]
-            | null) ?? undefined;
+            (typeof JOIN_EXPECTATIONS)[number] | null) ?? undefined;
         break;
     }
   }
@@ -437,8 +434,8 @@ function consumeJoinText(
   cursor: PrepTokenCursor,
   clauseOrder: ReadonlyMap<string, number>
 ): string | null {
-  const stringToken = cursor.matchType('StringLiteral');
-  if (stringToken) return unquoteString(stringToken.image);
+  if (cursor.peek()?.tokenType.name === 'StringLiteral')
+    return cursor.expectTextLiteral('invalidJoinText');
   if (isClauseStart(cursor, clauseOrder)) return null;
   return cursor.expectIdentifier('invalidJoinText');
 }
@@ -522,7 +519,7 @@ function formatConflict(value: unknown): string | null {
   const conflict = objectValue(value);
   if (!conflict) return null;
   if (conflict.strategy === 'right_prefix' && typeof conflict.rightPrefix === 'string') {
-    return `right_prefix ${quoteString(conflict.rightPrefix)}`;
+    return `right_prefix ${quoteSqlString(conflict.rightPrefix)}`;
   }
   if (conflict.strategy !== 'suffix') return null;
   const leftSuffix = String(conflict.leftSuffix ?? '_left');

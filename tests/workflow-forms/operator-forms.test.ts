@@ -35,7 +35,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   });
 
   it('filter with complex expression', () => {
-    const result = ok({ condition: '[revenue] > 0 and [region] != "TEST"' }, 'filter');
+    const result = ok({ condition: `[revenue] > 0 and [region] != 'TEST'` }, 'filter');
     expect(result.config.condition).toContain('and');
   });
 

@@ -443,7 +443,7 @@ describe('metadata migrations', () => {
     // Ledger records every migration in order.
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -462,6 +462,8 @@ describe('metadata migrations', () => {
       'cloud_raw_table_source',
       'strip_cached_operator_dsl',
       'prep_dsl_v3_config_naming',
+      'expression_sql_quote_semantics',
+      'expression_sql_quote_semantics_verify',
     ]);
 
     // v12: group table + member columns exist.

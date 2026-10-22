@@ -16,7 +16,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('compares with string, number, boolean, null literals', () => {
-      expect(compileFilterConditionExpression('[a] = "hello"')).toBe(`"a" = 'hello'`);
+      expect(compileFilterConditionExpression(`[a] = 'hello'`)).toBe(`"a" = 'hello'`);
       expect(compileFilterConditionExpression('[a] = 42')).toBe('"a" = 42');
       expect(compileFilterConditionExpression('[a] = true')).toBe('"a" = TRUE');
       expect(compileFilterConditionExpression('[a] = false')).toBe('"a" = FALSE');
@@ -70,34 +70,34 @@ describe('filter SQL compiler', () => {
 
   describe('special operators: matches, begin, end', () => {
     it('compiles matches to regexp_matches', () => {
-      expect(compileFilterConditionExpression('[name] matches "^John"')).toBe(
+      expect(compileFilterConditionExpression(`[name] matches '^John'`)).toBe(
         'regexp_matches(CAST("name" AS VARCHAR), CAST(\'^John\' AS VARCHAR))'
       );
     });
 
     it('compiles not matches', () => {
-      expect(compileFilterConditionExpression('[name] not matches "\\d+"')).toBe(
+      expect(compileFilterConditionExpression(`[name] not matches '\\d+'`)).toBe(
         'NOT regexp_matches(CAST("name" AS VARCHAR), CAST(\'\\d+\' AS VARCHAR))'
       );
     });
 
     it('compiles begin to starts_with', () => {
-      expect(compileFilterConditionExpression('[name] begin "Prefix"')).toBe(
+      expect(compileFilterConditionExpression(`[name] begin 'Prefix'`)).toBe(
         'starts_with(CAST("name" AS VARCHAR), CAST(\'Prefix\' AS VARCHAR))'
       );
     });
 
     it('compiles end to ends_with', () => {
-      expect(compileFilterConditionExpression('[name] end "Suffix"')).toBe(
+      expect(compileFilterConditionExpression(`[name] end 'Suffix'`)).toBe(
         'ends_with(CAST("name" AS VARCHAR), CAST(\'Suffix\' AS VARCHAR))'
       );
     });
 
     it('compiles NOT begin and NOT end', () => {
-      expect(compileFilterConditionExpression('[name] not begin "X"')).toBe(
+      expect(compileFilterConditionExpression(`[name] not begin 'X'`)).toBe(
         'NOT starts_with(CAST("name" AS VARCHAR), CAST(\'X\' AS VARCHAR))'
       );
-      expect(compileFilterConditionExpression('[name] not end "Y"')).toBe(
+      expect(compileFilterConditionExpression(`[name] not end 'Y'`)).toBe(
         'NOT ends_with(CAST("name" AS VARCHAR), CAST(\'Y\' AS VARCHAR))'
       );
     });
@@ -110,7 +110,7 @@ describe('filter SQL compiler', () => {
 
     it('combines with AND/OR', () => {
       expect(
-        compileFilterConditionExpression('[a] matches "x" AND [b] begin "y" OR [c] end "z"')
+        compileFilterConditionExpression(`[a] matches 'x' AND [b] begin 'y' OR [c] end 'z'`)
       ).toBe(
         'regexp_matches(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))' +
           ' AND starts_with(CAST("b" AS VARCHAR), CAST(\'y\' AS VARCHAR))' +
@@ -119,20 +119,20 @@ describe('filter SQL compiler', () => {
     });
 
     it('handles NOT before parenthesized special expression', () => {
-      expect(compileFilterConditionExpression('NOT ([a] matches "x" OR [b] begin "y")')).toBe(
+      expect(compileFilterConditionExpression(`NOT ([a] matches 'x' OR [b] begin 'y')`)).toBe(
         'NOT (regexp_matches(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))' +
           ' OR starts_with(CAST("b" AS VARCHAR), CAST(\'y\' AS VARCHAR)))'
       );
     });
 
     it('case-insensitive keywords', () => {
-      expect(compileFilterConditionExpression('[a] MATCHES "x"')).toBe(
+      expect(compileFilterConditionExpression(`[a] MATCHES 'x'`)).toBe(
         'regexp_matches(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))'
       );
-      expect(compileFilterConditionExpression('[a] BeGiN "x"')).toBe(
+      expect(compileFilterConditionExpression(`[a] BeGiN 'x'`)).toBe(
         'starts_with(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))'
       );
-      expect(compileFilterConditionExpression('[a] EnD "x"')).toBe(
+      expect(compileFilterConditionExpression(`[a] EnD 'x'`)).toBe(
         'ends_with(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))'
       );
     });
@@ -140,7 +140,7 @@ describe('filter SQL compiler', () => {
 
   describe('IN operator', () => {
     it('compiles IN with string list', () => {
-      expect(compileFilterConditionExpression('[status] in ("A", "B", "C")')).toBe(
+      expect(compileFilterConditionExpression(`[status] in ('A', 'B', 'C')`)).toBe(
         `"status" IN ('A', 'B', 'C')`
       );
     });
@@ -150,7 +150,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('compiles IN with mixed types', () => {
-      expect(compileFilterConditionExpression('[x] in (1, "two", null, true)')).toBe(
+      expect(compileFilterConditionExpression(`[x] in (1, 'two', null, true)`)).toBe(
         `"x" IN (1, 'two', NULL, TRUE)`
       );
     });
@@ -165,7 +165,7 @@ describe('filter SQL compiler', () => {
 
     it('compiles IN combined with other conditions', () => {
       expect(
-        compileFilterConditionExpression('[status] in ("PAID", "SHIPPED") and [revenue] > 0')
+        compileFilterConditionExpression(`[status] in ('PAID', 'SHIPPED') and [revenue] > 0`)
       ).toBe(`"status" IN ('PAID', 'SHIPPED') AND "revenue" > 0`);
     });
   });
@@ -217,7 +217,7 @@ describe('filter SQL compiler', () => {
 
     it('groups with special operators inside', () => {
       expect(
-        compileFilterConditionExpression('([a] matches "x" OR [b] begin "y") AND [c] > 5')
+        compileFilterConditionExpression(`([a] matches 'x' OR [b] begin 'y') AND [c] > 5`)
       ).toBe(
         '(regexp_matches(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))' +
           ' OR starts_with(CAST("b" AS VARCHAR), CAST(\'y\' AS VARCHAR)))' +
@@ -229,20 +229,20 @@ describe('filter SQL compiler', () => {
   describe('SQL keyword passthrough (Ident)', () => {
     it('passes BETWEEN ... AND ...', () => {
       expect(compileFilterConditionExpression('[x] BETWEEN 1 AND 10')).toBe('"x" BETWEEN 1 AND 10');
-      expect(compileFilterConditionExpression('[x] BETWEEN "a" AND "z"')).toBe(
+      expect(compileFilterConditionExpression(`[x] BETWEEN 'a' AND 'z'`)).toBe(
         `"x" BETWEEN 'a' AND 'z'`
       );
     });
 
     it('passes LIKE', () => {
-      expect(compileFilterConditionExpression('[name] LIKE "%test%"')).toBe(`"name" LIKE '%test%'`);
-      expect(compileFilterConditionExpression('[name] LIKE "prefix_%"')).toBe(
+      expect(compileFilterConditionExpression(`[name] LIKE '%test%'`)).toBe(`"name" LIKE '%test%'`);
+      expect(compileFilterConditionExpression(`[name] LIKE 'prefix_%'`)).toBe(
         `"name" LIKE 'prefix_%'`
       );
     });
 
     it('passes NOT LIKE', () => {
-      expect(compileFilterConditionExpression('[name] NOT LIKE "%test%"')).toBe(
+      expect(compileFilterConditionExpression(`[name] NOT LIKE '%test%'`)).toBe(
         `"name" NOT LIKE '%test%'`
       );
     });
@@ -274,9 +274,9 @@ describe('filter SQL compiler', () => {
     });
 
     it('keeps a quoted "null" string as a string, not SQL NULL', () => {
-      expect(compileFilterConditionExpression('[code] = "null"')).toBe(`"code" = 'null'`);
-      expect(compileFilterConditionExpression('[code] != "null"')).toBe(`"code" != 'null'`);
-      expect(compileFilterConditionExpression('[code] in ("null", "normal")')).toBe(
+      expect(compileFilterConditionExpression(`[code] = 'null'`)).toBe(`"code" = 'null'`);
+      expect(compileFilterConditionExpression(`[code] != 'null'`)).toBe(`"code" != 'null'`);
+      expect(compileFilterConditionExpression(`[code] in ('null', 'normal')`)).toBe(
         `"code" IN ('null', 'normal')`
       );
     });
@@ -284,18 +284,16 @@ describe('filter SQL compiler', () => {
 
   describe('string escaping', () => {
     it('escapes single quotes in string literals', () => {
-      expect(compileFilterConditionExpression('[a] = "it\'s"')).toBe(`"a" = 'it''s'`);
+      expect(compileFilterConditionExpression(`[a] = 'it''s'`)).toBe(`"a" = 'it''s'`);
     });
 
     it('preserves backslash sequences in strings', () => {
       // DSL strings unescape like the formatter escapes them (quoteDslString doubles \\).
-      expect(compileFilterConditionExpression('[a] = "C:\\\\path"')).toBe(`"a" = 'C:\\path'`);
+      expect(compileFilterConditionExpression(`[a] = 'C:\\\\path'`)).toBe(`"a" = 'C:\\path'`);
     });
 
     it('handles escaped quotes inside DSL strings', () => {
-      expect(compileFilterConditionExpression('[a] = "say \\"hello\\""')).toBe(
-        `"a" = 'say "hello"'`
-      );
+      expect(compileFilterConditionExpression(`[a] = 'say "hello"'`)).toBe(`"a" = 'say "hello"'`);
     });
   });
 
@@ -359,7 +357,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('handles NOT with special operator after AND', () => {
-      expect(compileFilterConditionExpression('[a] matches "x" AND NOT [b] begin "y"')).toBe(
+      expect(compileFilterConditionExpression(`[a] matches 'x' AND NOT [b] begin 'y'`)).toBe(
         'regexp_matches(CAST("a" AS VARCHAR), CAST(\'x\' AS VARCHAR))' +
           ' AND NOT starts_with(CAST("b" AS VARCHAR), CAST(\'y\' AS VARCHAR))'
       );
@@ -372,7 +370,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('handles NOT with compound AND/OR', () => {
-      expect(compileFilterConditionExpression('NOT [a] > 1 OR [b] begin "x" AND NOT [c] < 5')).toBe(
+      expect(compileFilterConditionExpression(`NOT [a] > 1 OR [b] begin 'x' AND NOT [c] < 5`)).toBe(
         'NOT "a" > 1 OR starts_with(CAST("b" AS VARCHAR), CAST(\'x\' AS VARCHAR))' +
           ' AND NOT "c" < 5'
       );
@@ -421,7 +419,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('passes NOT ILIKE (non-standard operator via Ident)', () => {
-      expect(compileFilterConditionExpression('[a] NOT ILIKE "test"')).toBe(`"a" NOT ILIKE 'test'`);
+      expect(compileFilterConditionExpression(`[a] NOT ILIKE 'test'`)).toBe(`"a" NOT ILIKE 'test'`);
     });
 
     it('passes IS NULL with AND', () => {
@@ -445,21 +443,21 @@ describe('filter SQL compiler', () => {
 
   describe('strings containing keyword text', () => {
     it('handles "not" inside a string literal', () => {
-      expect(compileFilterConditionExpression('[a] matches "not test"')).toBe(
+      expect(compileFilterConditionExpression(`[a] matches 'not test'`)).toBe(
         'regexp_matches(CAST("a" AS VARCHAR), CAST(\'not test\' AS VARCHAR))'
       );
     });
 
     it('handles "and" inside a string literal', () => {
-      expect(compileFilterConditionExpression('[a] = "and"')).toBe(`"a" = 'and'`);
+      expect(compileFilterConditionExpression(`[a] = 'and'`)).toBe(`"a" = 'and'`);
     });
 
     it('handles "or" inside a string literal', () => {
-      expect(compileFilterConditionExpression('[a] = "or"')).toBe(`"a" = 'or'`);
+      expect(compileFilterConditionExpression(`[a] = 'or'`)).toBe(`"a" = 'or'`);
     });
 
     it('handles "in" inside a string literal', () => {
-      expect(compileFilterConditionExpression('[a] = "in"')).toBe(`"a" = 'in'`);
+      expect(compileFilterConditionExpression(`[a] = 'in'`)).toBe(`"a" = 'in'`);
     });
   });
 
@@ -489,7 +487,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('treats leading zeros in strings correctly', () => {
-      expect(compileFilterConditionExpression('[a] = "0123"')).toBe(`"a" = '0123'`);
+      expect(compileFilterConditionExpression(`[a] = '0123'`)).toBe(`"a" = '0123'`);
     });
   });
 

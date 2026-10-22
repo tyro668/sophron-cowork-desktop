@@ -24,19 +24,19 @@ const aliases = [
     `accumulate(${period}_to_date(sum([Amount]), [Date]))`,
   ]),
   [
-    'accumulate(rolling(sum([Amount]), [Date], 7, "day"))',
-    'accumulate(rolling_time(sum([Amount]), [Date], 7, "day"))',
+    `accumulate(rolling(sum([Amount]), [Date], 7, 'day'))`,
+    `accumulate(rolling_time(sum([Amount]), [Date], 7, 'day'))`,
   ],
   ...['value', 'difference', 'percentchange'].flatMap((result) => {
     const canonicalResult = result === 'percentchange' ? 'change_rate' : result;
     return [
       [
-        `compare(previous([Amount], [Date], "${result}"))`,
-        `compare(previous_record([Amount], [Date], "${canonicalResult}"))`,
+        `compare(previous([Amount], [Date], '${result}'))`,
+        `compare(previous_record([Amount], [Date], '${canonicalResult}'))`,
       ],
       [
-        `compare(sameperiodlastyear([Amount], [Date], "month", "${result}"))`,
-        `compare(same_period_last_year([Amount], [Date], "month", "${canonicalResult}"))`,
+        `compare(sameperiodlastyear([Amount], [Date], 'month', '${result}'))`,
+        `compare(same_period_last_year([Amount], [Date], 'month', '${canonicalResult}'))`,
       ],
     ];
   }),
@@ -96,12 +96,12 @@ describe('canonical calculation names and compatibility', () => {
   });
 
   it.each([
-    'compare(previous([Amount], [Date], "invalid"))',
+    `compare(previous([Amount], [Date], 'invalid'))`,
     'accumulate(yeartodate(sum([Amount]), [Date], 13))',
     'reference(nth([Amount], 0)) over(order by [Date])',
     'group(first([Amount]))',
     'reference(percentoftotal([Amount])) over(order by [Date])',
-    'accumulate(rolling(sum([Amount]), [Date], 7, "hour"))',
+    `accumulate(rolling(sum([Amount]), [Date], 7, 'hour'))`,
   ])('does not let legacy aliases bypass validation: %s', (expression) => {
     expect(() => normalizeCalculationDomainExpression(expression)).toThrow();
     const parsed = parsePrepOperatorDsl(`derive [result] = ${expression}`, 'calculate_field');

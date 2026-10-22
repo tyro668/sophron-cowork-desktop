@@ -7,8 +7,8 @@ function unquoteValue(value: string): string {
   const first = trimmed[0];
   const last = trimmed[trimmed.length - 1];
   if (first !== last) return trimmed;
-  if (first === '"' || first === "'") {
-    return trimmed.slice(1, -1);
+  if (first === "'") {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
   }
   return trimmed;
 }
@@ -53,7 +53,7 @@ export function joinInValues(values: string[]): string {
   return values
     .map((v) => {
       const t = v.trim();
-      if (t === '') return '""';
+      if (t === '') return "''";
       if (/[,"']/.test(t)) return quoteDslString(unquoteValue(t));
       return t;
     })
@@ -62,7 +62,7 @@ export function joinInValues(values: string[]): string {
 
 export function formatFilterConditionValue(value: string, colType: string | undefined): string {
   const trimmed = value.trim();
-  if (!trimmed) return '""';
+  if (!trimmed) return "''";
   if (isDslFieldReference(trimmed)) return trimmed;
 
   const unquoted = unwrapQuotedValue(trimmed);
@@ -97,18 +97,9 @@ function isDslFieldReference(value: string): boolean {
 }
 
 export function unwrapQuotedValue(value: string): string {
-  if (value.length < 2) return value;
-  const first = value[0];
-  const last = value[value.length - 1];
-  if (first !== last || (first !== '"' && first !== "'")) return value;
-  if (first === '"') {
-    try {
-      return JSON.parse(value) as string;
-    } catch {
-      return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
-  }
-  return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  // SQL semantics: only '…' is a text literal ('' escapes a quote); "…" is an identifier.
+  if (value.length < 2 || value[0] !== "'" || value[value.length - 1] !== "'") return value;
+  return value.slice(1, -1).replace(/''/g, "'");
 }
 
 function isNumberLiteral(value: string): boolean {
@@ -116,5 +107,5 @@ function isNumberLiteral(value: string): boolean {
 }
 
 function quoteDslString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `'${value.replace(/'/g, "''")}'`;
 }

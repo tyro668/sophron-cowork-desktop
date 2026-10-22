@@ -37,9 +37,9 @@ export function requiredField(functionId: string, value: string, position: numbe
 }
 
 export function requiredString(functionId: string, value: string, position: number): string {
-  if (!(value.startsWith('"') && value.endsWith('"'))) {
+  if (!(value.startsWith("'") && value.endsWith("'"))) {
     throw new Error(
-      `Calculation function '${functionId}' argument ${position} must be a double-quoted string`
+      `Calculation function '${functionId}' argument ${position} must be a single-quoted string`
     );
   }
   return String(parseLiteral(value));

@@ -41,8 +41,8 @@ describe('DuckDB data pipeline store', () => {
       input source pipeline as source
 
       from source
-        | derive [status] = case when [id] = 1 then "" when [id] = 2 then "empty" when [id] = 3 then "empty_0" else "paid" end
-        | derive [segment] = case when [id] = 1 or [id] = 3 then "east" else "west" end
+        | derive [status] = case when [id] = 1 then '' when [id] = 2 then 'empty' when [id] = 3 then 'empty_0' else 'paid' end
+        | derive [segment] = case when [id] = 1 or [id] = 3 then 'east' else 'west' end
         | select [status], [segment], [amount]
         | pivot on [status], [segment] using sum([amount])
         | output table "pivot_empty_output" mode replace
@@ -432,8 +432,8 @@ describe('DuckDB data pipeline store', () => {
 
       from typed
         | cast [text_col] as text,
-               [date_col] as date format "%Y-%m-%d",
-               [datetime_col] as datetime format "%Y-%m-%d %H:%M:%S",
+               [date_col] as date format '%Y-%m-%d',
+               [datetime_col] as datetime format '%Y-%m-%d %H:%M:%S',
                [integer_col] as integer,
                [float_col] as float,
                [decimal_col] as decimal,
@@ -1681,7 +1681,7 @@ describe('DuckDB data pipeline store', () => {
       input source pipeline as orders
 
       from orders
-        | filter [订单ID]="A1000001"
+        | filter [订单ID]='A1000001'
         | output table "filtered_cn_orders" mode replace
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
@@ -1739,7 +1739,7 @@ describe('DuckDB data pipeline store', () => {
       input source pipeline as cities
 
       from cities
-        | filter ([City] matches ".*en$" or [City] begin "Al") and [Category] not matches "Office.*"
+        | filter ([City] matches '.*en$' or [City] begin 'Al') and [Category] not matches 'Office.*'
         | output table "filtered_cities_regex" mode replace
     `);
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
@@ -1790,7 +1790,7 @@ describe('DuckDB data pipeline store', () => {
       input source pipeline as cities
 
       from cities
-        | filter [City] like "%ach%" and [Category] not like "Office%" and [City] end "en"
+        | filter [City] like '%ach%' and [Category] not like 'Office%' and [City] end 'en'
         | output table "filtered_cities_like" mode replace
     `);
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);

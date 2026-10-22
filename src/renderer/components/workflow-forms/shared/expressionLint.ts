@@ -47,6 +47,13 @@ export function lintExpression(text: string, fields: readonly string[]): Express
         else if (text[j] === ch) break;
         else j++;
       }
+      if (ch === '"') {
+        // SQL semantics: "name" is a field identifier, same as [name].
+        const name = text.slice(i + 1, j).replace(/""/g, '"');
+        if (known.size > 0 && name.trim() !== '' && !known.has(name)) {
+          issues.push({ kind: 'unknownField', from: i, to: j + 1, detail: name });
+        }
+      }
       i = j + 1;
       continue;
     }

@@ -486,7 +486,7 @@ describe('calculation function registry', () => {
         parameters: { dateField: 'date', granularity: 'month' },
       })
     ).toBe(
-      'compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])'
+      `compare(same_period_last_year([sales], [date], 'month', 'value')) over(partition by [region])`
     );
     expect(
       buildCalculationFunctionDslExpression({
@@ -501,10 +501,10 @@ describe('calculation function registry', () => {
   it('normalizes domain DSL spacing', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'compare( same_period_last_year( [sales] , [date] , "month" , "value" ) ) over( partition by [region] )'
+        `compare( same_period_last_year( [sales] , [date] , 'month' , 'value' ) ) over( partition by [region] )`
       )
     ).toBe(
-      'compare(same_period_last_year([sales], [date], "month", "value")) over(partition by [region])'
+      `compare(same_period_last_year([sales], [date], 'month', 'value')) over(partition by [region])`
     );
   });
 
@@ -675,7 +675,7 @@ describe('calculation function registry', () => {
         extraParameter: ', ',
         partitionBy: ['region'],
       })
-    ).toBe('group(string_agg([name], ", ")) over(partition by [region])');
+    ).toBe(`group(string_agg([name], ', ')) over(partition by [region])`);
     expect(
       ['var', 'bool_and', 'bool_or', 'count_distinct'].map((functionId) =>
         buildCalculationFunctionDslExpression({
@@ -763,14 +763,14 @@ describe('calculation function registry', () => {
         extraParameter: ', ',
         partitionBy: ['region'],
       })
-    ).toBe('group(string_agg([name], ", ")) over(partition by [region])');
+    ).toBe(`group(string_agg([name], ', ')) over(partition by [region])`);
     expect(
       buildCalculationFunctionDslExpression({
         functionId: 'string_agg',
         value: 'name',
         extraParameter: ' ',
       })
-    ).toBe('group(string_agg([name], " "))');
+    ).toBe(`group(string_agg([name], ' '))`);
   });
 
   it('rejects explicit window frames on offset and parses them directly without silent drop', () => {
@@ -819,10 +819,10 @@ describe('calculation function registry', () => {
   it('parses frame directly from the token cursor without regex fallback', () => {
     expect(
       normalizeCalculationDomainExpression(
-        'moving(avg([sales])) over(order by [date] range between interval 7 "day" preceding and current row)'
+        `moving(avg([sales])) over(order by [date] range between interval 7 'day' preceding and current row)`
       )
     ).toBe(
-      'moving(avg([sales])) over(order by [date] range between interval 7 "day" preceding and current row)'
+      `moving(avg([sales])) over(order by [date] range between interval 7 'day' preceding and current row)`
     );
   });
 

@@ -1,4 +1,4 @@
-import { quoteString } from '../../prep-dsl/syntax/literals';
+import { quoteSqlString as quoteString } from '../../prep-dsl/syntax/literals';
 import { buildExtraParameter, formatCalculationField } from '../expression-format';
 import {
   integerParameter,

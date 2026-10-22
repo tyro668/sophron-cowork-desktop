@@ -1,7 +1,6 @@
 import { DATA_FIELD_TYPES, isDataFieldType } from '../../data-field-types';
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, toFieldName } from '../syntax/fields';
-import { unquoteString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { DATE_FORMAT_VALUES, SCALE_MIN, SCALE_MAX } from '../../operator-schemas/type-convert';
@@ -43,12 +42,12 @@ export const typeConvertCodec: OperatorDslCodec = {
             break;
           }
           hasFormat = true;
-          const literal = cursor.expectStringLiteral('invalidCastFormat');
-          if (!literal) {
+          const literal = cursor.expectTextLiteral('invalidCastFormat');
+          if (literal === null) {
             invalid = true;
             break;
           }
-          format = unquoteString(literal);
+          format = literal;
           if (
             format &&
             !DATE_FORMAT_VALUES.includes(format as (typeof DATE_FORMAT_VALUES)[number])
@@ -150,5 +149,5 @@ export const typeConvertCodec: OperatorDslCodec = {
 };
 
 function quoteString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return `'${value.replace(/'/g, "''")}'`;
 }

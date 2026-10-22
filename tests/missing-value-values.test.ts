@@ -25,11 +25,11 @@ describe('missing-value graphical input parsing', () => {
 
   it('parses typed lists and preserves an explicitly quoted empty string', () => {
     expect(parseMissingValueListInput('0, 1.5', 'float')).toEqual([0, 1.5]);
-    expect(parseMissingValueListInput('"", "N/A"', 'text')).toEqual(['', 'N/A']);
+    expect(parseMissingValueListInput("'', 'N/A'", 'text')).toEqual(['', 'N/A']);
   });
 
   it('formats values without losing their literal types', () => {
-    expect(formatMissingValueListInput([0, true, '', 'N/A'])).toBe('0, true, "", "N/A"');
+    expect(formatMissingValueListInput([0, true, '', 'N/A'])).toBe("0, true, '', 'N/A'");
   });
 
   it('validates numeric, boolean, and empty list input before execution', () => {

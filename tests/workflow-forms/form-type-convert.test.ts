@@ -82,7 +82,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     const r = ok({
       conversions: [{ field: 'date_str', type: 'date', format: '%m/%d/%y' }],
     });
-    expect(r.dsl).toContain('format "%m/%d/%y"');
+    expect(r.dsl).toContain("format '%m/%d/%y'");
     expect(r.config.conversions![0].format).toBe('%m/%d/%y');
   });
 
@@ -90,7 +90,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     const r = ok({
       conversions: [{ field: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
     });
-    expect(r.dsl).toContain('format "%Y-%m-%d %H:%M:%S"');
+    expect(r.dsl).toContain("format '%Y-%m-%d %H:%M:%S'");
     expect(r.config.conversions![0].format).toBe('%Y-%m-%d %H:%M:%S');
   });
 
