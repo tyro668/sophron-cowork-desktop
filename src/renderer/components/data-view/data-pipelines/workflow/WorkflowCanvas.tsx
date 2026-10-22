@@ -71,6 +71,10 @@ const WORKFLOW_DEFAULT_VIEWPORT = { x: 0, y: 0, zoom: 1 };
  */
 export const WORKFLOW_FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 0.9, minZoom: 0.4 } as const;
 export const WORKFLOW_MIN_ZOOM = 0.25;
+export interface WorkflowRevealRequest {
+  nodeId: string;
+  epoch: number;
+}
 export const WORKFLOW_MAX_ZOOM = 2;
 const WORKFLOW_PRO_OPTIONS = { hideAttribution: true };
 const WORKFLOW_MINIMAP_STYLE = { width: 100, height: 75 };
@@ -89,6 +93,7 @@ export function WorkflowCanvas({
   selectedNodeIds,
   primaryNodeId,
   layoutEpoch,
+  revealRequest,
   fitKey,
   onSelectionChange,
   onDuplicateNode,
@@ -109,6 +114,8 @@ export function WorkflowCanvas({
   primaryNodeId: string | null;
   /** Bumped by the tidy action — refits the viewport onto the new layout. */
   layoutEpoch?: number;
+  /** Bring a freshly inserted node into view without changing the zoom. */
+  revealRequest?: WorkflowRevealRequest;
   /** Identity of the open pipeline; a new value triggers an initial fit-to-view. */
   fitKey?: string;
   onSelectionChange: (ids: string[], primaryId: string | null) => void;
@@ -137,6 +144,7 @@ export function WorkflowCanvas({
         selectedNodeIds={selectedNodeIds}
         primaryNodeId={primaryNodeId}
         layoutEpoch={layoutEpoch}
+        revealRequest={revealRequest}
         fitKey={fitKey}
         onSelectionChange={onSelectionChange}
         onDuplicateNode={onDuplicateNode}
@@ -160,6 +168,7 @@ function WorkflowCanvasContent({
   selectedNodeIds,
   primaryNodeId,
   layoutEpoch,
+  revealRequest,
   fitKey,
   onSelectionChange,
   onDuplicateNode,
@@ -178,6 +187,8 @@ function WorkflowCanvasContent({
   selectedNodeIds: readonly string[];
   primaryNodeId: string | null;
   layoutEpoch?: number;
+  /** Bring a freshly inserted node into view without changing the zoom. */
+  revealRequest?: WorkflowRevealRequest;
   fitKey?: string;
   onSelectionChange: (ids: string[], primaryId: string | null) => void;
   onDuplicateNode: () => void;
@@ -196,7 +207,15 @@ function WorkflowCanvasContent({
   onViewportSizeChange?: (size: { width: number; height: number }) => void;
 }) {
   const { t } = useTranslation();
-  const { screenToFlowPosition, fitView, zoomIn, zoomOut } = useReactFlow();
+  const {
+    screenToFlowPosition,
+    fitView,
+    zoomIn,
+    zoomOut,
+    getViewport,
+    setViewport,
+    getInternalNode,
+  } = useReactFlow();
   const [showMinimap, setShowMinimap] = useState(true);
   const paneWidth = useStore((state) => state.width);
   const paneHeight = useStore((state) => state.height);
@@ -291,6 +310,8 @@ function WorkflowCanvasContent({
   // and the pane has a size — and keep refitting on pane resizes until the
   // user pans/zooms by hand.
   const autoFitRef = useRef({ key: fitKey, active: true });
+  // Zoom chosen by the opening fit — insertions never zoom out below it.
+  const openFitZoomRef = useRef<number | null>(null);
   if (autoFitRef.current.key !== fitKey) autoFitRef.current = { key: fitKey, active: true };
   const nodeCount = flowNodes.length;
   useEffect(() => {
@@ -299,14 +320,17 @@ function WorkflowCanvasContent({
     let raf2 = 0;
     const raf1 = window.requestAnimationFrame(() => {
       raf2 = window.requestAnimationFrame(() => {
-        if (autoFitRef.current.active) fitCanvas();
+        if (!autoFitRef.current.active) return;
+        void fitView({ ...WORKFLOW_FIT_VIEW_OPTIONS, duration: 0 }).then(() => {
+          openFitZoomRef.current = getViewport().zoom;
+        });
       });
     });
     return () => {
       window.cancelAnimationFrame(raf1);
       window.cancelAnimationFrame(raf2);
     };
-  }, [fitKey, nodeCount, nodesInitialized, paneWidth, paneHeight, fitCanvas]);
+  }, [fitKey, nodeCount, nodesInitialized, paneWidth, paneHeight, fitView, getViewport]);
   const handleMoveStart = useCallback((event: MouseEvent | TouchEvent | null) => {
     // event is null for programmatic moves (fitView); non-null = user pan/zoom.
     if (event) autoFitRef.current.active = false;
@@ -320,6 +344,48 @@ function WorkflowCanvasContent({
     const timer = window.setTimeout(() => fitCanvas(250), 0);
     return () => window.clearTimeout(timer);
   }, [layoutEpoch, fitCanvas]);
+
+  // Node insertion: keep the user's zoom (never below the opening fit) and only
+  // pan when the new node is not fully inside the viewport.
+  const revealEpochRef = useRef(revealRequest?.epoch ?? 0);
+  useEffect(() => {
+    if (!revealRequest || revealRequest.epoch === revealEpochRef.current) return;
+    revealEpochRef.current = revealRequest.epoch;
+    autoFitRef.current.active = false;
+    let raf = 0;
+    const timer = window.setTimeout(() => {
+      raf = window.requestAnimationFrame(() => {
+        const node = getInternalNode(revealRequest.nodeId);
+        if (!node || paneWidth <= 0 || paneHeight <= 0) return;
+        const viewport = getViewport();
+        const zoom = Math.max(viewport.zoom, openFitZoomRef.current ?? viewport.zoom);
+        const { x, y } = node.internals.positionAbsolute;
+        const width = node.measured.width ?? node.width ?? 0;
+        const height = node.measured.height ?? node.height ?? 0;
+        const left = x * zoom + viewport.x;
+        const top = y * zoom + viewport.y;
+        const margin = 24;
+        const inside =
+          left >= margin &&
+          top >= margin &&
+          left + width * zoom <= paneWidth - margin &&
+          top + height * zoom <= paneHeight - margin;
+        if (inside && zoom === viewport.zoom) return;
+        const next = inside
+          ? { x: viewport.x, y: viewport.y, zoom }
+          : {
+              x: paneWidth / 2 - (x + width / 2) * zoom,
+              y: paneHeight / 2 - (y + height / 2) * zoom,
+              zoom,
+            };
+        void setViewport(next, { duration: 250 });
+      });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [revealRequest, getInternalNode, getViewport, setViewport, paneWidth, paneHeight]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<WorkflowFlowNode>[]) => {

@@ -55,7 +55,7 @@ import { stringValue } from './workflow-summary';
 import { WorkflowAiGenerateDialog } from './WorkflowAiGenerateDialog';
 import { WorkflowExplainDialog } from './WorkflowExplainDialog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
-import { WorkflowCanvas } from './WorkflowCanvas';
+import { WorkflowCanvas, type WorkflowRevealRequest } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
 import { WorkflowDslDialog, WorkflowNodeDataPreview, WorkflowOperatorPalette } from './WorkflowUi';
 import { Button } from '../../../ui/button';
@@ -145,6 +145,7 @@ export function PipelineEditor({
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [explainDialogOpen, setExplainDialogOpen] = useState(false);
   const [layoutEpoch, setLayoutEpoch] = useState(0);
+  const [revealRequest, setRevealRequest] = useState<WorkflowRevealRequest | undefined>();
   const [nodeDataRefreshVersion, setNodeDataRefreshVersion] = useState(0);
   const [rawTableChoices, setRawTableChoices] = useState<DataRawTable[]>([]);
   const [rawTableChoicesLoading, setRawTableChoicesLoading] = useState(false);
@@ -706,7 +707,7 @@ export function PipelineEditor({
           ),
         };
       });
-      setLayoutEpoch((current) => current + 1);
+      setRevealRequest((current) => ({ nodeId: id, epoch: (current?.epoch ?? 0) + 1 }));
     },
     [selectedNode, selectSingleNode, t, pipeline.id]
   );
@@ -1619,6 +1620,7 @@ export function PipelineEditor({
                 selectedNodeIds={selectionTargets.map((node) => node.id)}
                 primaryNodeId={selectedNode?.id ?? null}
                 layoutEpoch={layoutEpoch}
+                revealRequest={revealRequest}
                 onViewportSizeChange={(size) => {
                   canvasViewportSizeRef.current = size;
                 }}
