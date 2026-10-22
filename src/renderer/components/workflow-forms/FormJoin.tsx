@@ -7,12 +7,7 @@ import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { canAppendRow, ensureStableRowIds } from './shared/rowListOperations';
 import { MAX_JOIN_CONDITION_COUNT, type JoinCondition } from '@/shared/operator-schemas';
-import {
-  JOIN_CONFLICT_DEFAULTS,
-  qualifyJoinField,
-  readJoinUiConfig,
-  updateJoinAsof,
-} from '@/shared/operator-config';
+import { qualifyJoinField, readJoinUiConfig, updateJoinAsof } from '@/shared/operator-config';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
@@ -66,16 +61,8 @@ export default function FormJoin({
   const tr = useFormTranslation('join');
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  // Initialize default conflict config (only for non-semi/anti joins)
-  useEffect(() => {
-    const { joinType: currentJoinType } = readJoinUiConfig(node.config);
-    if (currentJoinType !== 'semi' && currentJoinType !== 'anti' && !node.config.conflict) {
-      updateConfig((cfg) => ({
-        ...cfg,
-        conflict: { ...JOIN_CONFLICT_DEFAULTS },
-      }));
-    }
-  }, [node.config, updateConfig]);
+  // Opening the form never writes config: new joins get their conflict default
+  // from the operator's creationDefaults, existing ones keep their semantics.
 
   const ui = useMemo(() => readJoinUiConfig(node.config), [node.config]);
   const { joinType, keep: keepItems } = ui;
@@ -225,10 +212,7 @@ export default function FormJoin({
       conditions: value === 'cross' ? undefined : cfg.conditions,
       asof: value === 'asof' ? (cfg.asof ?? {}) : undefined,
       keep: value === 'semi' || value === 'anti' ? undefined : cfg.keep,
-      conflict:
-        value === 'semi' || value === 'anti'
-          ? undefined
-          : (cfg.conflict ?? { ...JOIN_CONFLICT_DEFAULTS }),
+      conflict: value === 'semi' || value === 'anti' ? undefined : cfg.conflict,
     }));
   }
 

@@ -203,7 +203,8 @@ export function readJoinUiConfig(config: Record<string, unknown> | undefined): J
   const cfg = config ?? {};
   const joinType = asString(cfg.joinType, 'left');
   const conflictRaw = asRecord(cfg.conflict);
-  const strategy = asString(conflictRaw.strategy, JOIN_CONFLICT_DEFAULTS.strategy);
+  // Absent conflict config compiles as right_prefix; display what will run.
+  const strategy = asString(conflictRaw.strategy, 'right_prefix');
   const rightPrefixRaw = asString(conflictRaw.rightPrefix);
   const conflict: JoinConflictUi = {
     strategy,

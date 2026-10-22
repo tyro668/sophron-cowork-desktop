@@ -78,10 +78,14 @@ export default function FormLimit({
   const configuredSort = orderBy.filter((key) => key.field);
   const hasSort = configuredSort.length > 0;
 
-  const countError = validateLimitCount(localLimit, unit);
+  const [limitTouched, setLimitTouched] = useState(false);
+  // Deferred validation: only after the user committed a value (blur/Enter).
+  const countError =
+    limitTouched || localLimit.trim() !== '' ? validateLimitCount(localLimit, unit) : null;
   const seedInvalid = !validateLimitSeed(localSeed);
 
   function commitLimit(raw: string) {
+    setLimitTouched(true);
     setLocalLimit(raw);
     const v = raw.trim();
     const n = /^\d+$/.test(v) && Number(v) > 0 ? parsePositiveInteger(v) : undefined;
@@ -186,7 +190,7 @@ export default function FormLimit({
             value={localLimit}
             onDraftChange={setLocalLimit}
             onCommit={commitLimit}
-            placeholder="10"
+            placeholder={tr('limitCountPlaceholder')}
             ariaLabel={tr('limitCount')}
             ariaInvalid={Boolean(countError)}
           />

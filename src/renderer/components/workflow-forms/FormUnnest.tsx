@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import {
@@ -34,7 +35,9 @@ export default function FormUnnest({
   const preserveOrder = !!node.config.preserveOrder;
   const isListMode = sourceKind === 'list';
   const hasIndexColumn = typeof withIndex === 'string';
-  const aliasMissing = isListMode && alias.trim().length === 0;
+  const [aliasTouched, setAliasTouched] = useState(false);
+  // Deferred: nag about the alias only once a source field is chosen or the alias was edited.
+  const aliasMissing = isListMode && alias.trim().length === 0 && (aliasTouched || Boolean(field));
   const indexMissing = isListMode && hasIndexColumn && withIndex.trim().length === 0;
 
   return (
@@ -60,7 +63,16 @@ export default function FormUnnest({
             value={field}
             options={fieldCompletions}
             columnTypes={columnTypes}
-            onChange={(v) => updateConfig((cfg) => ({ ...cfg, column: v }))}
+            onChange={(v) =>
+              updateConfig((cfg) => {
+                // Auto-fill the alias while it is empty or still the previous auto value.
+                const prev = typeof cfg.column === 'string' ? cfg.column : '';
+                const current = typeof cfg.alias === 'string' ? cfg.alias : '';
+                const suffix = tr('unnestAutoAliasSuffix');
+                const auto = !current || current === `${prev}_${suffix}`;
+                return { ...cfg, column: v, alias: auto && v ? `${v}_${suffix}` : cfg.alias };
+              })
+            }
             placeholder={tr('unnestSelectField')}
             searchPlaceholder={tr('fieldPicker.searchField')}
             emptyText={tr('fieldPicker.noMatch')}
@@ -76,7 +88,10 @@ export default function FormUnnest({
                 value={alias}
                 // Clearing must clear the config too — previously the old alias
                 // was silently kept while the input looked empty.
-                onCommit={(v) => updateConfig((cfg) => ({ ...cfg, alias: v.trim() || undefined }))}
+                onCommit={(v) => {
+                  setAliasTouched(true);
+                  updateConfig((cfg) => ({ ...cfg, alias: v.trim() || undefined }));
+                }}
                 placeholder={tr('unnestAliasPlaceholder')}
                 ariaLabel={tr('unnestAlias')}
                 ariaInvalid={aliasMissing}

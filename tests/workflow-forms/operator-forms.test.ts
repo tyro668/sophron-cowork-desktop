@@ -514,7 +514,8 @@ describe('readJoinUiConfig', () => {
     const ui = readJoinUiConfig({});
     expect(ui.joinType).toBe('left');
     expect(ui.conditions).toEqual([]);
-    expect(ui.conflict.strategy).toBe('suffix');
+    // Absent conflict config compiles as right_prefix, so that is what the form shows.
+    expect(ui.conflict.strategy).toBe('right_prefix');
     expect(ui.asof.operator).toBe('>=');
     expect(ui.asof.by).toEqual([]);
   });

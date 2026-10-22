@@ -1,10 +1,18 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Info, X } from 'lucide-react';
 
 import type { OperatorFormProps } from './types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
-import { Cell, FormGrid, FormScroll, HintRow, LabelCell, SegmentCells } from './shared/FormGrid';
+import {
+  Cell,
+  ErrorRow,
+  FormGrid,
+  FormScroll,
+  HintRow,
+  LabelCell,
+  SegmentCells,
+} from './shared/FormGrid';
 import { DEDUPE_GRID_COLUMNS } from './shared/gridColumns';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
@@ -42,8 +50,11 @@ export default function FormDeduplicate({
     [updateConfig]
   );
 
+  // Errors appear only after the user has interacted with the field.
+  const [columnsTouched, setColumnsTouched] = useState(false);
   const commitColumns = useCallback(
     (next: string[]) => {
+      setColumnsTouched(true);
       updateConfig((cfg) => ({
         ...cfg,
         strategy: 'by_columns',
@@ -75,10 +86,12 @@ export default function FormDeduplicate({
     [updateConfig]
   );
 
+  const columnsMissing = strategy === 'by_columns' && columns.length === 0 && columnsTouched;
   const keepLabel = keep === 'last' ? tr('dedupKeepLast') : tr('dedupKeepFirst');
   const hint = (() => {
     if (strategy === 'all_columns') return tr('dedupHintWholeRow', { keep: keepLabel });
-    const keys = columns.length > 0 ? columns.join('、') : '—';
+    if (columns.length === 0) return tr('dedupHintPickFields', { keep: keepLabel });
+    const keys = columns.join('、');
     if (!orderField) return tr('dedupHintNoOrder', { keys, keep: keepLabel });
     // asc+last / desc+first → the largest (latest) value wins.
     const picksMax = (orderDirection === 'asc') === (keep === 'last');
@@ -115,7 +128,7 @@ export default function FormDeduplicate({
           ariaLabel={tr('dedupBasis')}
         />
         {strategy === 'by_columns' ? (
-          <Cell span={3} v={['ctl', 'chips', columns.length === 0 && 'err']}>
+          <Cell span={3} v={['ctl', 'chips', columnsMissing && 'err']}>
             <GlassOptionMultiSelect
               options={fieldCompletions}
               selected={columns}
@@ -130,6 +143,12 @@ export default function FormDeduplicate({
             {tr('dedupWholeRowTip')}
           </Cell>
         )}
+        {columnsMissing ? (
+          <>
+            <Cell v={['lab']} />
+            <ErrorRow span={5}>{tr('dedupColumnsRequired')}</ErrorRow>
+          </>
+        ) : null}
 
         <LabelCell>{tr('dedupKeepWhich')}</LabelCell>
         <SegmentCells
