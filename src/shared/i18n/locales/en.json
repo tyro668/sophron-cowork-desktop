@@ -1504,6 +1504,8 @@
           "expressionLintUnknownField": "Field \"{{name}}\" is not in the upstream data",
           "expressionLintUnclosed": "Unclosed bracket, missing \"{{closer}}\"",
           "expressionLintUnexpectedClose": "Unexpected \"{{char}}\" without a matching opening bracket",
+          "expressionResultType": "Result: {{type}}",
+          "expressionDetailAliases": "Aliases",
           "expressionIssueCount": "{{count}} issue(s)",
           "expressionShortcutHint": "Ctrl + Enter to confirm · Esc to cancel",
           "expressionConfirmBlocked": "Fix the formula issues first",

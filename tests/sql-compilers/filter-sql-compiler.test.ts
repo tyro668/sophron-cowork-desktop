@@ -288,7 +288,8 @@ describe('filter SQL compiler', () => {
     });
 
     it('preserves backslash sequences in strings', () => {
-      expect(compileFilterConditionExpression('[a] = "C:\\\\path"')).toBe(`"a" = 'C:\\\\path'`);
+      // DSL strings unescape like the formatter escapes them (quoteDslString doubles \\).
+      expect(compileFilterConditionExpression('[a] = "C:\\\\path"')).toBe(`"a" = 'C:\\path'`);
     });
 
     it('handles escaped quotes inside DSL strings', () => {
@@ -472,7 +473,7 @@ describe('filter SQL compiler', () => {
     });
 
     it('handles unary NOT inside term', () => {
-      expect(compileFilterConditionExpression('[a] = NOT 5')).toBe('"a" = NOT 5');
+      expect(compileFilterConditionExpression('[a] = NOT 5')).toBe('"a" = (NOT 5)');
     });
   });
 
@@ -586,7 +587,13 @@ describe('filter SQL compiler', () => {
         path.resolve(process.cwd(), 'src/main/data/operators/filter.ts'),
         'utf8'
       );
-      expect(filterSource).toContain('regexp_matches(');
+      // Conditions compile through the shared typed expression layer.
+      expect(filterSource).toContain("from '../../../shared/expression'");
+      const layerSource = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/shared/expression/to-sql.ts'),
+        'utf8'
+      );
+      expect(layerSource).toContain('regexp_matches');
     });
   });
 });

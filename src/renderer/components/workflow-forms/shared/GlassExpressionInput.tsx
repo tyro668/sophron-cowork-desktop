@@ -28,6 +28,7 @@ import './form-grid.css';
 import { closerFor, lintExpression, type ExpressionIssue } from './expressionLint';
 import { isCalculationSceneDslId } from '../../../../shared/calculate-field/function-registry';
 import { Dialog } from '../../ui/dialog';
+import { analyzeExpression, lookupExpressionFunction } from '../../../../shared/expression';
 
 export interface ExpressionAssistantPanelContext {
   currentExpression: string;
@@ -650,6 +651,19 @@ const EXPR_KEYWORDS = new Set([
   'ties',
 ]);
 
+/** ExprType → helper vocabulary key used by the type chips. */
+const EXPR_TYPE_HELP: Record<string, string> = {
+  text: 'string',
+  integer: 'int',
+  float: 'number',
+  decimal: 'number',
+  boolean: 'boolean',
+  date: 'date',
+  datetime: 'date_time',
+  null: 'any',
+  unknown: 'any',
+};
+
 const FUNCTION_CALL_TAG = tags.function(tags.name);
 
 export const exprLanguage = StreamLanguage.define({
@@ -844,8 +858,26 @@ function FunctionDetailPanel({
       </div>
     </Fragment>
   );
+  const aliases = lookupExpressionFunction(token.label)?.aliases ?? [];
   return (
     <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] content-start overflow-y-auto">
+      {aliases.length > 0 &&
+        row(
+          tr('expressionDetailAliases'),
+          <span className="flex flex-wrap gap-1.5 font-mono text-text-primary">
+            {aliases.map((a) => (
+              <button
+                key={a}
+                type="button"
+                className="hover:text-accent"
+                onClick={() => onInsert(`${a}()`, a.length + 1)}
+              >
+                {a}()
+              </button>
+            ))}
+          </span>,
+          'aliases'
+        )}
       {row(
         tr('expressionDetailPurpose'),
         <span className="text-text-primary">
@@ -1115,6 +1147,11 @@ function ExpressionEditorDialog({
   const issues = useMemo(
     () => lintExpression(draft, lintFields ?? fieldCompletions),
     [draft, fieldCompletions, lintFields]
+  );
+  // Typed expression layer: result type (or first grammar error) for the status bar.
+  const analysis = useMemo(
+    () => (draft.trim() ? analyzeExpression(draft, columnTypes ?? {}) : null),
+    [draft, columnTypes]
   );
   const dirty = draft !== initialDraftRef.current;
   const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
@@ -1435,6 +1472,25 @@ function ExpressionEditorDialog({
                     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-error/[0.08] px-2 py-0.5 text-[12.5px] text-error">
                       <span className="h-1.5 w-1.5 rounded-full bg-error" />
                       {tr('expressionIssueCount', { count: issues.length })}
+                    </span>
+                  )}
+                  {issues.length === 0 && analysis?.ok && analysis.type && (
+                    <span
+                      data-testid="expression-result-type"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent-muted px-2 py-0.5 text-[12.5px] text-accent"
+                    >
+                      {tr('expressionResultType', {
+                        type: helpTerm(tr, 'types', EXPR_TYPE_HELP[analysis.type] ?? 'any'),
+                      })}
+                    </span>
+                  )}
+                  {issues.length === 0 && analysis && !analysis.ok && (
+                    <span
+                      data-testid="expression-grammar-error"
+                      title={analysis.error?.message}
+                      className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-error/[0.08] px-2 py-0.5 text-[12.5px] text-error"
+                    >
+                      {analysis.error?.message}
                     </span>
                   )}
                   <span className="truncate">{tr('expressionShortcutHint')}</span>

@@ -64,7 +64,7 @@ describe('compileScalarExpression', () => {
   it('does not rewrite conditional keywords inside string literals', () => {
     expect(
       compileScalarExpression("if [status] = 'if' then 'then' else CONCAT('else', 'end') end")
-    ).toBe(`CASE WHEN "status" = 'if' THEN 'then' ELSE CONCAT('else', 'end') END`);
+    ).toBe(`CASE WHEN "status" = 'if' THEN 'then' ELSE concat('else', 'end') END`);
   });
 
   it('nested if/then/else', () => {
@@ -81,7 +81,7 @@ describe('compileScalarExpression', () => {
 
   it('case/when then/else/end uppercased by DSL transform', () => {
     expect(compileScalarExpression("case [status] when 'PAID' then 1 else 0 end")).toBe(
-      `case "status" when 'PAID' THEN 1 ELSE 0 END`
+      `CASE "status" WHEN 'PAID' THEN 1 ELSE 0 END`
     );
   });
 
@@ -150,7 +150,8 @@ describe('compileScalarExpression', () => {
   });
 
   it('qualified field ref with dot', () => {
-    expect(compileScalarExpression('[t].[f]')).toBe('"t"."f"');
+    // Qualified refs only make sense in join conditions; derive has no table alias.
+    expect(() => compileScalarExpression('[t].[f]')).toThrow(/Qualified field/);
   });
 
   it('empty string literal', () => {
@@ -193,20 +194,20 @@ describe('compileScalarExpression', () => {
 
   it('if with complex and condition', () => {
     expect(compileScalarExpression('if [a] > 0 and [b] > 0 then [c] else [d] end')).toBe(
-      'CASE WHEN "a" > 0 and "b" > 0 THEN "c" ELSE "d" END'
+      'CASE WHEN "a" > 0 AND "b" > 0 THEN "c" ELSE "d" END'
     );
   });
 
   it('if with or condition', () => {
     expect(compileScalarExpression('if [a] > 0 or [b] = 0 then [c] end')).toBe(
-      'CASE WHEN "a" > 0 or "b" = 0 THEN "c" END'
+      'CASE WHEN "a" > 0 OR "b" = 0 THEN "c" END'
     );
   });
 
   it('nested case inside if', () => {
     expect(
       compileScalarExpression("if [a] > 0 then case [b] when 'x' then 1 else 2 end else 0 end")
-    ).toBe(`CASE WHEN "a" > 0 THEN case "b" when 'x' THEN 1 ELSE 2 END ELSE 0 END`);
+    ).toBe(`CASE WHEN "a" > 0 THEN CASE "b" WHEN 'x' THEN 1 ELSE 2 END ELSE 0 END`);
   });
 
   it('date function', () => {
@@ -222,11 +223,11 @@ describe('compileScalarExpression', () => {
   });
 
   it('boolean literals in expression', () => {
-    expect(compileScalarExpression('[active] = true')).toBe('"active" = true');
+    expect(compileScalarExpression('[active] = true')).toBe('"active" = TRUE');
   });
 
   it('null literal', () => {
-    expect(compileScalarExpression('is_null([a])')).toBe('is_null("a")');
+    expect(compileScalarExpression('[a] is null')).toBe('"a" IS NULL');
   });
 
   it('expression with decimal', () => {
@@ -250,11 +251,11 @@ describe('compileScalarExpression', () => {
   });
 
   it('IS NULL pattern stays intact', () => {
-    expect(compileScalarExpression('[a] is null')).toBe('"a" is null');
+    expect(compileScalarExpression('[a] is null')).toBe('"a" IS NULL');
   });
 
   it('IS NOT NULL pattern', () => {
-    expect(compileScalarExpression('[a] is not null')).toBe('"a" is not null');
+    expect(compileScalarExpression('[a] is not null')).toBe('"a" IS NOT NULL');
   });
 
   it('empty string input', () => {
@@ -262,7 +263,7 @@ describe('compileScalarExpression', () => {
   });
 
   it('whitespace-only input', () => {
-    expect(compileScalarExpression('   ')).toBe('   ');
+    expect(compileScalarExpression('   ')).toBe('');
   });
 });
 
@@ -550,7 +551,7 @@ describe('compileCalculateFieldSql', () => {
       ],
     });
     expect(sql).toBe(
-      'CREATE TEMP TABLE out AS SELECT *, row_number() OVER (PARTITION BY "region" ORDER BY "amount" desc) AS "rn" FROM inp'
+      'CREATE TEMP TABLE out AS SELECT *, row_number() OVER (PARTITION BY "region" ORDER BY "amount" DESC) AS "rn" FROM inp'
     );
   });
 
@@ -617,7 +618,7 @@ describe('compileCalculateFieldSql', () => {
       ],
     });
     expect(sql).toContain('count(DISTINCT "customer_id")');
-    expect(sql).toContain('over(partition by "region")');
+    expect(sql).toContain('OVER (PARTITION BY "region")');
   });
 
   it('output and input with underscore names', () => {
@@ -1152,30 +1153,30 @@ describe('DuckDB integration — cross-row window functions', () => {
   }
 
   // ── Partitioned aggregates ──
-  it('sum([amount]) OVER (PARTITION BY region)', async () => {
-    const rows = await runW('sum([amount]) OVER (PARTITION BY region)');
+  it('sum([amount]) OVER (PARTITION BY [region])', async () => {
+    const rows = await runW('sum([amount]) OVER (PARTITION BY [region])');
     // East: 100+50=150, West: 200
     expect(rows[0].r).toBe(150); // Alice (East)
     expect(rows[1].r).toBe(200); // Bob (West)
     expect(rows[2].r).toBe(150); // Charlie (East)
   });
 
-  it('avg([amount]) OVER (PARTITION BY region)', async () => {
-    const rows = await runW('avg([amount]) OVER (PARTITION BY region)');
+  it('avg([amount]) OVER (PARTITION BY [region])', async () => {
+    const rows = await runW('avg([amount]) OVER (PARTITION BY [region])');
     expect(rows[0].r).toBe(75); // (100+50)/2
     expect(rows[1].r).toBe(200); // West single value
     expect(rows[2].r).toBe(75); // (100+50)/2
   });
 
-  it('min([amount]) OVER (PARTITION BY region)', async () => {
-    const rows = await runW('min([amount]) OVER (PARTITION BY region)');
+  it('min([amount]) OVER (PARTITION BY [region])', async () => {
+    const rows = await runW('min([amount]) OVER (PARTITION BY [region])');
     expect(rows[0].r).toBe(50); // Alice (East min)
     expect(rows[1].r).toBe(200); // Bob (West min)
     expect(rows[2].r).toBe(50); // Charlie (East min)
   });
 
-  it('max([amount]) OVER (PARTITION BY region)', async () => {
-    const rows = await runW('max([amount]) OVER (PARTITION BY region)');
+  it('max([amount]) OVER (PARTITION BY [region])', async () => {
+    const rows = await runW('max([amount]) OVER (PARTITION BY [region])');
     expect(rows[0].r).toBe(100); // Alice (East max)
     expect(rows[1].r).toBe(200); // Bob (West max)
     expect(rows[2].r).toBe(100); // Charlie (East max)
@@ -1266,18 +1267,18 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── Frame ──
-  it('sum([amount]) OVER (ORDER BY id ROWS UNBOUNDED PRECEDING) running total', async () => {
+  it('sum([amount]) OVER (ORDER BY [id] ROWS UNBOUNDED PRECEDING) running total', async () => {
     const rows = await runW(
-      'sum([amount]) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)'
+      'sum([amount]) OVER (ORDER BY [id] ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)'
     );
     expect(rows[0].r).toBe(100); // 100
     expect(rows[1].r).toBe(300); // 100+200
     expect(rows[2].r).toBe(350); // 100+200+50
   });
 
-  it('avg([amount]) OVER (ORDER BY id ROWS 1 PRECEDING) moving average 2 rows', async () => {
+  it('avg([amount]) OVER (ORDER BY [id] ROWS 1 PRECEDING) moving average 2 rows', async () => {
     const rows = await runW(
-      'avg([amount]) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'
+      'avg([amount]) OVER (ORDER BY [id] ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)'
     );
     expect(rows[0].r).toBe(100); // (100)/1
     expect(rows[1].r).toBe(150); // (100+200)/2
@@ -1350,7 +1351,8 @@ describe('DuckDB integration — cross-row window functions', () => {
         calculations: [
           {
             field: 'r',
-            expression: 'sum([amount]) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)',
+            expression:
+              'sum([amount]) OVER (ORDER BY [id] ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)',
             action: 'add',
           },
         ],
@@ -1373,7 +1375,7 @@ describe('DuckDB integration — cross-row window functions', () => {
         calculations: [
           {
             field: 'r',
-            expression: '[amount] - lag([amount], 2) OVER (ORDER BY id)',
+            expression: '[amount] - lag([amount], 2) OVER (ORDER BY [id])',
           },
         ],
       })
@@ -1395,7 +1397,7 @@ describe('DuckDB integration — cross-row window functions', () => {
           {
             field: 'r',
             expression:
-              '([amount] - lag([amount], 2) OVER (ORDER BY id)) / lag([amount], 2) OVER (ORDER BY id)',
+              '([amount] - lag([amount], 2) OVER (ORDER BY [id])) / lag([amount], 2) OVER (ORDER BY [id])',
           },
         ],
       })
@@ -1408,7 +1410,7 @@ describe('DuckDB integration — cross-row window functions', () => {
   });
 
   // ── String aggregate ──
-  it("string_agg([name], ', ') OVER (PARTITION BY region) concatenates names", async () => {
+  it("string_agg([name], ', ') OVER (PARTITION BY [region]) concatenates names", async () => {
     const conn = await connect();
     await conn.run('CREATE TABLE w (id INTEGER, name VARCHAR, region VARCHAR)');
     await conn.run(
@@ -1417,7 +1419,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     await conn.run(
       compileCalculateFieldSql('out', 'w', {
         calculations: [
-          { field: 'r', expression: "string_agg([name], ', ') OVER (PARTITION BY region)" },
+          { field: 'r', expression: "string_agg([name], ', ') OVER (PARTITION BY [region])" },
         ],
       })
     );

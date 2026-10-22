@@ -148,7 +148,8 @@ describe('validateGeneratedExecutableWorkflow', () => {
     workflow.nodes[1] = {
       ...workflow.nodes[1],
       type: 'filter',
-      config: { condition: "CAST([Order Date] AS DATE) >= CAST('2010-01-01' AS DATE)" },
+      // Only whitelisted functions belong to the runtime grammar.
+      config: { condition: "date_sub([Order Date], 1) >= '2010-01-01'" },
     };
 
     expect(validateGeneratedExecutableWorkflow(workflow)).toEqual(

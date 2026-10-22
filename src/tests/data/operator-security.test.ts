@@ -17,13 +17,14 @@ describe('data operator security boundaries', () => {
   });
 
   it('rejects statement and external-read keywords in scalar expressions', () => {
-    expect(() => compileScalarExpression('select([value])')).toThrow(/Unsupported SQL keyword/);
-    expect(() => compileScalarExpression('read_csv("secret.csv")')).toThrow(
-      /Unsupported SQL keyword/
-    );
+    // Function whitelist: anything not registered is rejected, not just a blocklist.
+    expect(() => compileScalarExpression('select([value])')).toThrow(/Unknown function/);
+    expect(() => compileScalarExpression('read_csv("secret.csv")')).toThrow(/Unknown function/);
     expect(() => compileScalarExpression('parquet_scan("secret.parquet")')).toThrow(
-      /Unsupported SQL keyword/
+      /Unknown function/
     );
+    expect(() => compileScalarExpression('getenv("HOME")')).toThrow(/Unknown function/);
+    expect(() => compileScalarExpression('[a]; drop table x')).toThrow();
   });
 
   it('limits expression nesting', () => {
