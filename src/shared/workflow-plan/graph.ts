@@ -1,3 +1,4 @@
+import { sqlNamedInputs } from '../sql-query';
 import { getOperatorDefinition, hasBinaryInputs } from '../operators';
 import type { WorkflowPlan, WorkflowPlanDiagnostic, WorkflowPlanNode } from './model';
 
@@ -335,6 +336,19 @@ export function getWorkflowUpstreamSignature(
   const pending = [nodeId];
   while (pending.length > 0) {
     const id = pending.pop()!;
+    // SQL nodes also depend on the input sources they reference by alias.
+    const current = input.nodes.find((node) => node.id === id);
+    if (current?.type === 'sql_query' && typeof current.config?.sql === 'string') {
+      for (const named of sqlNamedInputs(
+        current.config.sql,
+        input.nodes.map((node) => ({ ...node, config: node.config ?? {} }))
+      )) {
+        if (!upstream.has(named.nodeId)) {
+          upstream.add(named.nodeId);
+          pending.push(named.nodeId);
+        }
+      }
+    }
     for (const edge of input.edges) {
       if (edge.targetNodeId === id && !upstream.has(edge.sourceNodeId)) {
         upstream.add(edge.sourceNodeId);

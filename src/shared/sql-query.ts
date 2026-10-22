@@ -360,3 +360,39 @@ export function formatSqlQuery(value: string): string {
   if (line.trim() !== '') lines.push(line);
   return lines.join('\n') + '\n';
 }
+
+interface NamedInputCandidate {
+  id: string;
+  type: string;
+  config: Record<string, unknown>;
+}
+
+/**
+ * Named inputs of a SQL node: besides the wired upstream (`input`), every
+ * enabled input_source with an alias that the query mentions is visible under
+ * that alias, e.g. `SELECT … FROM erp JOIN bank USING (单号)`.
+ */
+export function sqlNamedInputs(
+  sql: string,
+  nodes: readonly NamedInputCandidate[]
+): Array<{ alias: string; nodeId: string }> {
+  // Drop comments and string literals; double-quoted identifiers still count.
+  const visible = sql
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:[^']|'')*'/g, ' ');
+  const words = new Set(
+    (visible.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).map((word) => word.toLowerCase())
+  );
+  const seen = new Set<string>();
+  const named: Array<{ alias: string; nodeId: string }> = [];
+  for (const node of nodes) {
+    if (node.type !== 'input_source' || node.config.disabled === true) continue;
+    const alias = typeof node.config.alias === 'string' ? node.config.alias.trim() : '';
+    const key = alias.toLowerCase();
+    if (!alias || key === 'input' || seen.has(key) || !words.has(key)) continue;
+    seen.add(key);
+    named.push({ alias, nodeId: node.id });
+  }
+  return named;
+}

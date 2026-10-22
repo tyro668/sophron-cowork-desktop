@@ -1949,7 +1949,7 @@
       "selectRawTable": "Select a raw table",
       "inputTableInfo": "{{columns}} fields · {{rows}} rows · updated {{updated}}",
       "inputAlias": "Reference name",
-      "inputAliasHint": "Referenced as [{{alias}}] in join conditions; SQL nodes read only their upstream \"input\"",
+      "inputAliasHint": "Referenced as [{{alias}}] in join conditions; SQL nodes can read it directly as {{alias}} (besides their upstream \"input\")",
       "inputAliasNone": "Generated when connected to a join or SQL node",
       "aiInputLabel": "Input table",
       "aiOutputLabel": "Output table",
