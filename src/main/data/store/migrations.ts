@@ -17,6 +17,7 @@ import { dataFieldTypeOfSpelling } from '../../../shared/data-field-types';
  *   deadlock on the in-flight initialization promise.
  */
 import { migrateConfigToV3Naming } from './v3-config-naming';
+import { parseJflowStep } from '../../../shared/jflow';
 import { computeNextAutomationRunAt } from '../../automation/automation-trigger';
 import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
@@ -218,14 +219,77 @@ export function migrateConfigCastTypeNames(
   return result.changed ? (result.value as Record<string, unknown>) : null;
 }
 
-/** One-time: structured config is the single source of truth; cached DSL text is dropped. */
+/** Keys that carry no operator semantics — a config with only these is "DSL-only". */
+const NON_STRUCTURAL_CONFIG_KEYS = new Set(['layout', 'label', 'description', 'disabled']);
+
+/** Rewrites the v2-era single-step spellings that differ from jflow (`filter`, `limit`). */
+function legacyStepToJflow(dsl: string): string {
+  return dsl
+    .trim()
+    .replace(/^filter\b/, 'where')
+    .replace(/^limit\b/, 'take');
+}
+
+/**
+ * One-time: structured config is the single source of truth; the cached DSL text is dropped.
+ * A node whose config holds *only* DSL text (no structured fields) is converted by parsing the
+ * text as a jflow step; when that fails the text is kept in `data_workflow_legacy_dsl`
+ * (pipeline_id, node_id, operator_type, dsl) so it is recoverable instead of silently lost.
+ */
 export function stripCachedOperatorDsl(
-  _type: string,
+  type: string,
   config: Record<string, unknown>
-): Record<string, unknown> | null {
+): { config: Record<string, unknown>; legacyDsl?: string } | null {
   if (!('dsl' in config)) return null;
-  const { dsl: _dsl, ...rest } = config;
-  return rest;
+  const { dsl, ...rest } = config;
+  const text = typeof dsl === 'string' ? dsl.trim() : '';
+  const structural = Object.keys(rest).some((key) => !NON_STRUCTURAL_CONFIG_KEYS.has(key));
+  if (structural || !text) return { config: rest };
+  try {
+    const parsed = parseJflowStep(legacyStepToJflow(text), { expectedType: type });
+    if (parsed.config && !parsed.diagnostics.some((d) => d.severity === 'error')) {
+      return { config: { ...parsed.config, ...rest } };
+    }
+  } catch {
+    // fall through: keep the text recoverable
+  }
+  return { config: rest, legacyDsl: text };
+}
+
+async function stripCachedOperatorDslMigration(ctx: DataStoreContext): Promise<void> {
+  await ctx.metaRunSql(`
+    CREATE TABLE IF NOT EXISTS data_workflow_legacy_dsl (
+      node_id VARCHAR PRIMARY KEY,
+      pipeline_id VARCHAR NOT NULL,
+      operator_type VARCHAR,
+      dsl VARCHAR NOT NULL,
+      migrated_at BIGINT NOT NULL
+    )
+  `);
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    pipeline_id: string;
+    operator_type: string;
+    config_json: string;
+  }>('SELECT id, pipeline_id, operator_type, config_json FROM data_workflow_nodes');
+  for (const row of rows) {
+    const config = readNodeConfig(row.config_json);
+    if (!config) continue;
+    const type = LEGACY_OPERATOR_TYPES[row.operator_type] ?? row.operator_type;
+    const next = stripCachedOperatorDsl(type, config);
+    if (!next) continue;
+    if (next.legacyDsl) {
+      await ctx.metaRunSql(
+        `INSERT OR REPLACE INTO data_workflow_legacy_dsl (node_id, pipeline_id, operator_type, dsl, migrated_at)
+         VALUES ($node, $pipeline, $type, $dsl, $at)`,
+        { node: row.id, pipeline: row.pipeline_id, type, dsl: next.legacyDsl, at: Date.now() }
+      );
+    }
+    await ctx.metaRunSql('UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id', {
+      id: row.id,
+      config: JSON.stringify(next.config),
+    });
+  }
 }
 
 async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
@@ -896,7 +960,7 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
   {
     version: 15,
     name: 'strip_cached_operator_dsl',
-    up: (ctx) => migrateWorkflowNodeConfigs(ctx, stripCachedOperatorDsl),
+    up: (ctx) => stripCachedOperatorDslMigration(ctx),
   },
   {
     version: 16,

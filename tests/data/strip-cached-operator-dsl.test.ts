@@ -8,15 +8,20 @@ describe('migration 15: strip cached operator dsl', () => {
         calculations: [{ field: 'a', expression: '[b] + 1' }],
         dsl: 'derive [a] = [b] + 2',
       })
-    ).toEqual({ calculations: [{ field: 'a', expression: '[b] + 1' }] });
+    ).toEqual({ config: { calculations: [{ field: 'a', expression: '[b] + 1' }] } });
   });
 
-  it('drops the dsl cache even when no structured config exists', () => {
-    expect(stripCachedOperatorDsl('input', { dsl: 'input pipeline as src', alias: 'src' })).toEqual(
-      {
-        alias: 'src',
-      }
-    );
+  it('converts a dsl-only node into structured config', () => {
+    const result = stripCachedOperatorDsl('filter', { dsl: 'filter [amount] > 1' });
+    expect(result?.legacyDsl).toBeUndefined();
+    expect(result?.config).toMatchObject({ condition: '[amount] > 1' });
+  });
+
+  it('keeps unconvertible dsl-only text recoverable instead of dropping it', () => {
+    expect(stripCachedOperatorDsl('input', { dsl: 'input pipeline as src', layout: {} })).toEqual({
+      config: { layout: {} },
+      legacyDsl: 'input pipeline as src',
+    });
   });
 
   it('leaves configs without a cache untouched', () => {

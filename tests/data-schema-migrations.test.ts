@@ -543,6 +543,72 @@ describe('metadata migrations', () => {
     expect(edgeCount.c).toBe(0);
   });
 
+  it('converts or preserves dsl-only node configs from a pre-v15 database', async () => {
+    const tempRoot = makeTempRoot();
+    const raw = new Database(path.join(tempRoot, 'meta.sqlite'));
+    rawDbs.push(raw);
+    seedLegacyFixture(raw);
+    const insert = raw.prepare(`
+      INSERT INTO data_workflow_nodes (
+        id, pipeline_id, node_key, operator_type, label, x, y, config_json,
+        ordinal, created_at, updated_at
+      ) VALUES (?, 'pipeline-custom', ?, ?, ?, 0, 0, ?, ?, 100, 100)
+    `);
+    insert.run(
+      'custom-f',
+      'f',
+      'filter',
+      '筛选',
+      JSON.stringify({ dsl: 'filter [amount] > 1' }),
+      3
+    );
+    insert.run(
+      'custom-a',
+      'a',
+      'aggregate',
+      '汇总',
+      JSON.stringify({ dsl: 'aggregate by [region] metrics count(*) as [n]' }),
+      4
+    );
+    insert.run(
+      'custom-s',
+      's',
+      'sort',
+      '排序',
+      JSON.stringify({ orderBy: [{ field: 'x', direction: 'asc' }], dsl: 'sort [y] desc' }),
+      5
+    );
+
+    const store = openStore(path.join(tempRoot, 'workspace.duckdb'), raw);
+    await store.getDashboard({});
+
+    const config = (id: string) =>
+      JSON.parse(
+        (
+          raw.prepare('SELECT config_json FROM data_workflow_nodes WHERE id = ?').get(id) as {
+            config_json: string;
+          }
+        ).config_json
+      );
+    // Convertible text becomes structure; structured configs win over a stale cache.
+    expect(config('custom-f')).toMatchObject({ condition: '[amount] > 1' });
+    expect(config('custom-s')).toEqual({ orderBy: [{ field: 'x', direction: 'asc' }] });
+    // Unconvertible v2 text is kept in a recoverable table, not silently dropped.
+    expect(config('custom-a').dsl).toBeUndefined();
+    expect(
+      raw
+        .prepare('SELECT node_id, pipeline_id, operator_type, dsl FROM data_workflow_legacy_dsl')
+        .all()
+    ).toEqual([
+      {
+        node_id: 'custom-a',
+        pipeline_id: 'pipeline-custom',
+        operator_type: 'aggregate',
+        dsl: 'aggregate by [region] metrics count(*) as [n]',
+      },
+    ]);
+  });
+
   it('does not re-run cleanup migrations on subsequent opens', async () => {
     const tempRoot = makeTempRoot();
     const metaPath = path.join(tempRoot, 'meta.sqlite');
