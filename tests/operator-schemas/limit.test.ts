@@ -4,7 +4,7 @@ import { LimitConfigSchema } from '../../src/shared/operator-schemas';
 
 describe('LimitConfigSchema', () => {
   it('parses valid config with all fields', () => {
-    const result = LimitConfigSchema.parse({
+    const result: Record<string, unknown> = LimitConfigSchema.parse({
       limit: 50,
       sampling: 'fixed',
       unit: 'rows',
@@ -19,7 +19,7 @@ describe('LimitConfigSchema', () => {
   });
 
   it('requires a limit while applying defaults to the other fields', () => {
-    const result = LimitConfigSchema.parse({ limit: 10 });
+    const result: Record<string, unknown> = LimitConfigSchema.parse({ limit: 10 });
     expect(result.sampling).toBe('fixed');
     expect(result.unit).toBe('rows');
     expect(result.ties).toBe(false);
@@ -29,7 +29,7 @@ describe('LimitConfigSchema', () => {
   });
 
   it('parses random mode config with seed', () => {
-    const result = LimitConfigSchema.parse({
+    const result: Record<string, unknown> = LimitConfigSchema.parse({
       sampling: 'random',
       limit: 10,
       unit: 'percent',
@@ -42,7 +42,7 @@ describe('LimitConfigSchema', () => {
   });
 
   it('normalizes legacy row-sampling methods to reservoir semantics', () => {
-    const result = LimitConfigSchema.parse({
+    const result: Record<string, unknown> = LimitConfigSchema.parse({
       sampling: 'random',
       limit: 10,
       unit: 'rows',
@@ -53,7 +53,7 @@ describe('LimitConfigSchema', () => {
   });
 
   it('clears legacy offsets in percentage mode', () => {
-    const result = LimitConfigSchema.parse({
+    const result: Record<string, unknown> = LimitConfigSchema.parse({
       limit: 10,
       unit: 'percent',
       offset: 5,
@@ -93,5 +93,18 @@ describe('LimitConfigSchema', () => {
       'Percentage cannot exceed 100'
     );
     expect(LimitConfigSchema.parse({ limit: 1_000, unit: 'rows' }).limit).toBe(1_000);
+  });
+
+  it('keeps only the fields of the selected mode', () => {
+    const random: Record<string, unknown> = LimitConfigSchema.parse({
+      sampling: 'random',
+      limit: 5,
+      orderBy: [{ field: 'x', direction: 'asc' }],
+      offset: 3,
+    });
+    expect(random.orderBy).toBeUndefined();
+    expect(random.offset).toBeUndefined();
+    const fixed: Record<string, unknown> = LimitConfigSchema.parse({ limit: 5, seed: 1 });
+    expect(fixed.seed).toBeUndefined();
   });
 });
