@@ -1725,6 +1725,7 @@
         }
       },
       "operatorCategories": {
+        "cleaning": "Cleaning",
         "input_output": "Input / Output",
         "data_transform": "Data Transformation",
         "advanced_compute": "Advanced Computing"

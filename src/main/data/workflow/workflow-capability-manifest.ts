@@ -5,6 +5,7 @@ import {
   OPERATOR_GROUPS,
   SCHEMA_MAP,
 } from '../../../shared/operators';
+import { OPERATOR_NAMING } from '../../../shared/operators/naming';
 import { WORKFLOW_PLAN_VERSION } from '../../../shared/workflow-plan';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 
@@ -115,6 +116,8 @@ export function buildWorkflowCapabilityManifest(
       schema: PLAN_ENVELOPE_SCHEMA,
       operatorConfigSchemas: operatorConfigJsonSchemas(),
       operatorCategories: OPERATOR_GROUPS,
+      // type ↔ DSL keyword ↔ UI label, so agents can map user wording to plan types.
+      operatorNaming: OPERATOR_NAMING,
       // Edge endpoints per operator — the single source is the registry's ports.
       ports: Object.fromEntries(
         OPERATOR_TYPES.map((type) => [type, OPERATOR_DEFINITIONS[type].ports])

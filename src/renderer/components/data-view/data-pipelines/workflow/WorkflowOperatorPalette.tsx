@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import type { DataWorkflowOperatorType, OperatorCategory } from '../../../../../shared/operators';
 import { Button } from '../../../ui/button';
 import { OPERATOR_CATALOG_GROUPS } from './operator-catalog';
+import { OPERATOR_NAMING } from '../../../../../shared/operators/naming';
 import { WORKFLOW_OPERATOR_MIME } from './workflow-model';
 
 export function WorkflowOperatorPalette({
@@ -37,7 +38,8 @@ export function WorkflowOperatorPalette({
             ? allOperators.filter(
                 ({ type, labelKey }) =>
                   t(labelKey).toLowerCase().includes(normalizedQuery) ||
-                  type.toLowerCase().includes(normalizedQuery)
+                  type.toLowerCase().includes(normalizedQuery) ||
+                  OPERATOR_NAMING[type].dsl.some((kw) => kw.includes(normalizedQuery))
               )
             : allOperators;
           if (normalizedQuery && operators.length === 0) return null;
@@ -75,7 +77,7 @@ export function WorkflowOperatorPalette({
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') onAddOperator?.(type);
                     }}
-                    title={t('data.workflow.addOperatorToCanvas')}
+                    title={`${t('data.workflow.addOperatorToCanvas')}\n${type} · DSL: ${OPERATOR_NAMING[type].dsl.join(' / ')}`}
                     aria-label={`${t(labelKey)} — ${t('data.workflow.addOperatorToCanvas')}`}
                     className="relative mx-2.5 h-8 w-[calc(100%-20px)] cursor-grab justify-start gap-2 rounded-none border-0 bg-transparent pl-[18px] pr-2 text-xs text-text-secondary shadow-none before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent before:opacity-0 hover:bg-accent-muted hover:text-accent hover:before:opacity-100 focus-visible:bg-accent-muted focus-visible:before:opacity-100 active:cursor-grabbing"
                   >

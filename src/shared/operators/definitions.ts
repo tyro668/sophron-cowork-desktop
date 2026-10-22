@@ -80,7 +80,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   deduplicate: defineOperator({
     type: 'deduplicate',
-    category: 'advanced_compute',
+    category: 'cleaning',
     schema: DeduplicateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -88,7 +88,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   missing_value: defineOperator({
     type: 'missing_value',
-    category: 'advanced_compute',
+    category: 'cleaning',
     schema: MissingValueConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -96,7 +96,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   type_convert: defineOperator({
     type: 'type_convert',
-    category: 'data_transform',
+    category: 'cleaning',
     schema: TypeConvertConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
@@ -139,7 +139,7 @@ export const OPERATOR_DEFINITIONS = {
   }),
   field_mapping: defineOperator({
     type: 'field_mapping',
-    category: 'data_transform',
+    category: 'cleaning',
     schema: FieldMappingConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',

@@ -1,3 +1,7 @@
+import {
+  detectFieldRenames,
+  propagateFieldRenames,
+} from '../../../../../shared/workflow-plan/field-rename';
 import { useDataWorkspaceActivation } from '../../../../features/data/hooks/use-data-workspace-activation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -509,10 +513,18 @@ export function PipelineEditor({
       if (!selectedNodeId) return;
       setWorkflow((current) => {
         if (!current) return current;
-        return synchronizeRightInputConfigs({
+        const before = current.nodes.find((node) => node.id === selectedNodeId);
+        const updated = before ? updater(before) : undefined;
+        const next = {
           ...current,
-          nodes: current.nodes.map((node) => (node.id === selectedNodeId ? updater(node) : node)),
-        });
+          nodes: current.nodes.map((node) =>
+            node.id === selectedNodeId && updated ? updated : node
+          ),
+        };
+        // Renamed output fields follow into downstream configs.
+        const renames =
+          before && updated ? detectFieldRenames(before.type, before.config, updated.config) : [];
+        return synchronizeRightInputConfigs(propagateFieldRenames(next, selectedNodeId, renames));
       });
     },
     [selectedNodeId]
