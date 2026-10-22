@@ -18,7 +18,7 @@ interface ColumnLineage {
 type LineageState = Map<string, ColumnLineage>;
 
 export interface WorkflowLineageGraph {
-  nodes: Array<Pick<DataWorkflowNodeInput, 'id' | 'type' | 'config'>>;
+  nodes: Array<{ id: string; type: string; config?: DataWorkflowNodeInput['config'] }>;
   edges: Array<{ sourceNodeId: string; targetNodeId: string; targetHandle?: string | null }>;
 }
 
