@@ -1726,9 +1726,19 @@ describe('DataCommandService', () => {
       { name: 'adj_close', type: 'decimal' },
       { name: 'double_close', type: 'decimal' },
     ]);
-    expect(generated.lineage.map(({ name, type }) => ({ name, type }))).toEqual([
-      { name: 'adj_close', type: 'decimal' },
-      { name: 'double_close', type: 'decimal' },
+    expect(generated.lineage).toEqual([
+      {
+        name: 'adj_close',
+        type: 'decimal',
+        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
+        expression: "cast(replace([adj_close], '$', '') as decimal(18,2))",
+      },
+      {
+        name: 'double_close',
+        type: 'decimal',
+        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
+        expression: '[adj_close] * 2',
+      },
     ]);
   });
 

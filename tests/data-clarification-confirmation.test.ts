@@ -70,7 +70,7 @@ function setup() {
 
 const generateInput = (analysisId: string) => ({
   analysisId,
-  confirmed: true,
+  confirmed: true as const,
   outputMode: 'create' as const,
   resultTableName: 'Sales output',
 });
