@@ -6,21 +6,21 @@ describe('LimitConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = LimitConfigSchema.parse({
       limit: 50,
-      mode: 'fixed',
+      sampling: 'fixed',
       unit: 'rows',
       orderBy: [{ field: 'name', direction: 'asc' }],
       ties: true,
       offset: 10,
     });
     expect(result.limit).toBe(50);
-    expect(result.mode).toBe('fixed');
+    expect(result.sampling).toBe('fixed');
     expect(result.ties).toBe(true);
     expect(result.offset).toBe(10);
   });
 
   it('requires a limit while applying defaults to the other fields', () => {
     const result = LimitConfigSchema.parse({ limit: 10 });
-    expect(result.mode).toBe('fixed');
+    expect(result.sampling).toBe('fixed');
     expect(result.unit).toBe('rows');
     expect(result.ties).toBe(false);
     expect(result.offset).toBe(0);
@@ -30,20 +30,20 @@ describe('LimitConfigSchema', () => {
 
   it('parses random mode config with seed', () => {
     const result = LimitConfigSchema.parse({
-      mode: 'random',
+      sampling: 'random',
       limit: 10,
       unit: 'percent',
       method: 'bernoulli',
       seed: 42,
     });
-    expect(result.mode).toBe('random');
+    expect(result.sampling).toBe('random');
     expect(result.method).toBe('bernoulli');
     expect(result.seed).toBe(42);
   });
 
   it('normalizes legacy row-sampling methods to reservoir semantics', () => {
     const result = LimitConfigSchema.parse({
-      mode: 'random',
+      sampling: 'random',
       limit: 10,
       unit: 'rows',
       method: 'bernoulli',

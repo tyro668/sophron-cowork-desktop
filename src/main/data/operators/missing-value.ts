@@ -10,7 +10,7 @@ export function compileMissingValueSql(
 ): string {
   const parsed = parseOperatorConfig(MissingValueConfigSchema, config);
   if (parsed.strategy === 'drop_empty_rows' || parsed.strategy === 'drop_rows_by_nulls') {
-    const targetColumns = parsed.columns && parsed.columns.length > 0 ? parsed.columns : columns;
+    const targetColumns = parsed.fields && parsed.fields.length > 0 ? parsed.fields : columns;
     if (targetColumns.length === 0) {
       throw new Error('Missing-value row deletion requires at least one input field');
     }
@@ -25,17 +25,17 @@ export function compileMissingValueSql(
   const stages: string[] = [];
   let currentInput = input;
   for (const rule of parsed.rules) {
-    if (!rule.column || !columns.includes(rule.column)) continue;
+    if (!rule.field || !columns.includes(rule.field)) continue;
     if (
       (rule.method === 'mean_fill' || rule.method === 'median_fill') &&
-      columnTypes?.[rule.column] &&
-      !['integer', 'float', 'decimal'].includes(columnTypes[rule.column])
+      columnTypes?.[rule.field] &&
+      !['integer', 'float', 'decimal'].includes(columnTypes[rule.field])
     ) {
       throw new Error(
-        `Missing-value ${rule.method} requires a numeric field, but "${rule.column}" is ${columnTypes[rule.column]}`
+        `Missing-value ${rule.method} requires a numeric field, but "${rule.field}" is ${columnTypes[rule.field]}`
       );
     }
-    const column = quoteIdentifier(rule.column);
+    const column = quoteIdentifier(rule.field);
     let stageQuery: string | null = null;
     switch (rule.method) {
       case 'nullify_values':

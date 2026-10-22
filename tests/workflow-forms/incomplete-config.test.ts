@@ -85,14 +85,14 @@ describe('incomplete config guards', () => {
 
     it('flags a conversion with an empty column', () => {
       const node = makeNode('type_convert', {
-        conversions: [{ column: '  ', type: 'float' }],
+        conversions: [{ field: '  ', type: 'float' }],
       });
       expect(hasInvalidTypeConvertConfig(node)).toBe(true);
     });
 
     it('accepts a complete conversion', () => {
       const node = makeNode('type_convert', {
-        conversions: [{ column: 'amount', type: 'float' }],
+        conversions: [{ field: 'amount', type: 'float' }],
       });
       expect(hasInvalidTypeConvertConfig(node)).toBe(false);
     });
@@ -105,7 +105,7 @@ describe('incomplete config guards', () => {
     });
 
     it('accepts columns without name/value (they are optional)', () => {
-      const node = makeNode('unpivot', { columns: ['q1', 'q2'] });
+      const node = makeNode('unpivot', { fields: ['q1', 'q2'] });
       expect(hasInvalidUnpivotConfig(node)).toBe(false);
     });
   });
@@ -113,28 +113,28 @@ describe('incomplete config guards', () => {
   describe('unnest', () => {
     it('flags a missing column', () => {
       expect(hasInvalidUnnestConfig(makeNode('unnest', {}))).toBe(true);
-      expect(hasInvalidUnnestConfig(makeNode('unnest', { column: ' ' }))).toBe(true);
+      expect(hasInvalidUnnestConfig(makeNode('unnest', { field: ' ' }))).toBe(true);
     });
 
     it('flags a list unnest without an alias', () => {
-      const node = makeNode('unnest', { sourceKind: 'list', column: 'items' });
+      const node = makeNode('unnest', { sourceKind: 'list', field: 'items' });
       expect(hasInvalidUnnestConfig(node)).toBe(true);
     });
 
     it('accepts a list unnest with column and alias', () => {
-      const node = makeNode('unnest', { sourceKind: 'list', column: 'items', alias: 'item' });
+      const node = makeNode('unnest', { sourceKind: 'list', field: 'items', alias: 'item' });
       expect(hasInvalidUnnestConfig(node)).toBe(false);
     });
 
     it('accepts a json unnest without an alias', () => {
-      const node = makeNode('unnest', { sourceKind: 'json', column: 'payload' });
+      const node = makeNode('unnest', { sourceKind: 'json', field: 'payload' });
       expect(hasInvalidUnnestConfig(node)).toBe(false);
     });
 
     it('ignores withIndex for a json unnest (json mode has no index column)', () => {
       const node = makeNode('unnest', {
         sourceKind: 'json',
-        column: 'payload',
+        field: 'payload',
         withIndex: '',
       });
       expect(hasInvalidUnnestConfig(node)).toBe(false);
@@ -143,7 +143,7 @@ describe('incomplete config guards', () => {
     it('flags withIndex set to an empty string', () => {
       const node = makeNode('unnest', {
         sourceKind: 'list',
-        column: 'items',
+        field: 'items',
         alias: 'item',
         withIndex: '',
       });
@@ -241,21 +241,21 @@ describe('incomplete config guards', () => {
 
     it('flags a rule with an empty column', () => {
       const node = makeNode('missing_value', {
-        rules: [{ column: ' ', method: 'literal_fill', value: 'x' }],
+        rules: [{ field: ' ', method: 'literal_fill', value: 'x' }],
       });
       expect(hasInvalidMissingValueConfig(node)).toBe(true);
     });
 
     it('flags nullify_values without values', () => {
       const node = makeNode('missing_value', {
-        rules: [{ column: 'a', method: 'nullify_values', values: [] }],
+        rules: [{ field: 'a', method: 'nullify_values', values: [] }],
       });
       expect(hasInvalidMissingValueConfig(node)).toBe(true);
     });
 
     it('flags literal_fill without a value', () => {
       const node = makeNode('missing_value', {
-        rules: [{ column: 'a', method: 'literal_fill', value: '' }],
+        rules: [{ field: 'a', method: 'literal_fill', value: '' }],
       });
       expect(hasInvalidMissingValueConfig(node)).toBe(true);
     });
@@ -263,7 +263,7 @@ describe('incomplete config guards', () => {
     it('accepts a complete column-mode rule', () => {
       const node = makeNode('missing_value', {
         strategy: 'by_column',
-        rules: [{ column: 'a', method: 'literal_fill', value: 'x' }],
+        rules: [{ field: 'a', method: 'literal_fill', value: 'x' }],
       });
       expect(hasInvalidMissingValueConfig(node)).toBe(false);
     });
@@ -284,7 +284,7 @@ describe('incomplete config guards', () => {
     it('sort', () => {
       expect(hasInvalidSortConfig(makeNode('sort', {}))).toBe(true);
       expect(
-        hasInvalidSortConfig(makeNode('sort', { keys: [{ field: 'a', direction: 'asc' }] }))
+        hasInvalidSortConfig(makeNode('sort', { orderBy: [{ field: 'a', direction: 'asc' }] }))
       ).toBe(false);
     });
 
@@ -306,7 +306,7 @@ describe('incomplete config guards', () => {
 
     it('field_select', () => {
       expect(hasInvalidFieldSelectConfig(makeNode('field_select', {}))).toBe(true);
-      expect(hasInvalidFieldSelectConfig(makeNode('field_select', { columns: ['a'] }))).toBe(false);
+      expect(hasInvalidFieldSelectConfig(makeNode('field_select', { fields: ['a'] }))).toBe(false);
     });
 
     it('deduplicate', () => {
@@ -395,7 +395,7 @@ describe('incomplete config guards', () => {
 
     it('returns null for a complete node', () => {
       const node = makeNode('type_convert', {
-        conversions: [{ column: 'amount', type: 'float' }],
+        conversions: [{ field: 'amount', type: 'float' }],
       });
       expect(incompleteConfigMessageKey(node)).toBeNull();
     });
@@ -406,12 +406,12 @@ describe('incomplete config guards', () => {
           'type_convert',
           {
             conversions: [
-              { column: 'a', type: 'integer' },
-              { column: '', type: 'text' },
+              { field: 'a', type: 'integer' },
+              { field: '', type: 'text' },
             ],
           },
         ],
-        ['sort', { keys: [{ field: 'a' }, { field: '' }] }],
+        ['sort', { orderBy: [{ field: 'a' }, { field: '' }] }],
         [
           'aggregate',
           {
@@ -462,12 +462,12 @@ describe('incomplete config guards', () => {
           {
             strategy: 'by_column',
             rules: [
-              { column: 'a', method: 'literal_fill', value: 'x' },
-              { column: '', method: 'literal_fill', value: '' },
+              { field: 'a', method: 'literal_fill', value: 'x' },
+              { field: '', method: 'literal_fill', value: '' },
             ],
           },
         ],
-        ['deduplicate', { strategy: 'by_columns', columns: ['a'], orderBy: [{ field: '' }] }],
+        ['deduplicate', { strategy: 'by_columns', fields: ['a'], orderBy: [{ field: '' }] }],
       ];
       for (const [type, config] of cases) {
         expect(incompleteConfigMessageKey(makeNode(type, config)), `operator ${type}`).toBe(
@@ -488,7 +488,7 @@ describe('incomplete config guards', () => {
     it('treats an empty deduplicate orderBy as optional', () => {
       const node = makeNode('deduplicate', {
         strategy: 'by_columns',
-        columns: ['a'],
+        fields: ['a'],
         orderBy: [],
       });
       expect(incompleteConfigMessageKey(node)).toBeNull();
@@ -536,7 +536,7 @@ describe('incomplete config guards', () => {
     it('keeps deduplicate columns in the operator-specific guard, not generic rows', () => {
       const node = makeNode('deduplicate', {
         strategy: 'by_columns',
-        columns: ['', 'a'],
+        fields: ['', 'a'],
         orderBy: [],
       });
       expect(incompleteConfigMessageKey(node)).toBe(

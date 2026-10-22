@@ -10,7 +10,7 @@ export function compileSetOpSql(
 ): string {
   const parsed = parseOperatorConfig(SetOpConfigSchema, config);
   const operation = parsed.operation.toUpperCase();
-  const mode = parsed.mode === 'all' ? ' ALL' : '';
+  const mode = parsed.quantifier === 'all' ? ' ALL' : '';
   const match = parsed.operation === 'union' ? parsed.match : 'by_position';
 
   if (operation === 'UNION' && match === 'by_name') {

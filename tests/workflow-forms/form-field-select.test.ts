@@ -13,36 +13,36 @@ function ok(config: Record<string, unknown>) {
 
 describe('FormFieldSelect — config ↔ DSL', () => {
   it('include columns', () => {
-    const r = ok({ mode: 'include', columns: ['id', 'name', 'date'] });
+    const r = ok({ selection: 'include', fields: ['id', 'name', 'date'] });
     expect(r.dsl).toContain('select');
-    expect(r.config.columns).toEqual(['id', 'name', 'date']);
-    expect(r.config.mode).toBe('include');
+    expect(r.config.fields).toEqual(['id', 'name', 'date']);
+    expect(r.config.selection).toBe('include');
   });
 
   it('exclude columns', () => {
-    const r = ok({ mode: 'exclude', columns: ['debug_col'] });
+    const r = ok({ selection: 'exclude', fields: ['debug_col'] });
     expect(r.dsl).toContain('drop');
-    expect(r.config.mode).toBe('exclude');
+    expect(r.config.selection).toBe('exclude');
   });
 
   it('single column', () => {
-    const r = ok({ mode: 'include', columns: ['id'] });
-    expect(r.config.columns).toEqual(['id']);
+    const r = ok({ selection: 'include', fields: ['id'] });
+    expect(r.config.fields).toEqual(['id']);
   });
 
   it('many columns', () => {
     const cols = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const r = ok({ mode: 'include', columns: cols });
-    expect(r.config.columns).toEqual(cols);
+    const r = ok({ selection: 'include', fields: cols });
+    expect(r.config.fields).toEqual(cols);
   });
 });
 
 describe('FormFieldSelect — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
-      { mode: 'include', columns: ['id', 'name'] },
-      { mode: 'exclude', columns: ['tmp'] },
-      { mode: 'include', columns: ['single_col'] },
+      { selection: 'include', fields: ['id', 'name'] },
+      { selection: 'exclude', fields: ['tmp'] },
+      { selection: 'include', fields: ['single_col'] },
     ];
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({
@@ -67,7 +67,7 @@ describe('FormFieldSelect — edge cases', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
       type: 'field_select',
-      config: { mode: 'include', columns: [] },
+      config: { selection: 'include', fields: [] },
     });
     expect(dsl).toBe('');
   });

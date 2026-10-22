@@ -191,7 +191,7 @@ keep left *, [customers].[name] as [customer_name]
     );
 
     expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    expect(result.operator?.config.keys).toEqual([
+    expect(result.operator?.config.orderBy).toEqual([
       { field: 'Unit Price', direction: 'asc' },
       { field: 'Sales 总和', direction: 'desc', nulls: 'last' },
     ]);

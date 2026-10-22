@@ -28,11 +28,11 @@ export default function FormUnpivot({
   const updateConfig = useUpdateConfig(onNodeChange);
   const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
-  const mode = (node.config.mode as string) ?? 'include';
+  const mode = (node.config.selection as string) ?? 'include';
   const nameColumn = (node.config.nameColumn as string) ?? '';
   const valueColumn = (node.config.valueColumn as string) ?? '';
   const includeNulls = !!node.config.includeNulls;
-  const rawColumns = useMemo(() => (node.config.columns as string[]) ?? [], [node.config.columns]);
+  const rawColumns = useMemo(() => (node.config.fields as string[]) ?? [], [node.config.fields]);
 
   const columns = useMemo(
     () =>
@@ -57,7 +57,7 @@ export default function FormUnpivot({
             options={fieldCompletions}
             selected={columns}
             onChange={(selected) =>
-              updateConfig((cfg) => ({ ...cfg, mode: 'include', columns: selected }))
+              updateConfig((cfg) => ({ ...cfg, selection: 'include', fields: selected }))
             }
             optionTypes={columnTypes}
             placeholder={tr('common.selectColumns')}

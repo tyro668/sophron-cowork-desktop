@@ -7,8 +7,8 @@ describe('MissingValueConfigSchema', () => {
     const result = MissingValueConfigSchema.parse({
       strategy: 'by_column',
       rules: [
-        { column: 'age', method: 'literal_fill', value: 0 },
-        { column: 'name', method: 'nullify_values', values: ['N/A', 'unknown'] },
+        { field: 'age', method: 'literal_fill', value: 0 },
+        { field: 'name', method: 'nullify_values', values: ['N/A', 'unknown'] },
       ],
     });
     expect(result.strategy).toBe('by_column');
@@ -32,7 +32,7 @@ describe('MissingValueConfigSchema', () => {
     expect(() =>
       MissingValueConfigSchema.parse({
         strategy: 'drop_rows_by_nulls',
-        columns: ['status'],
+        fields: ['status'],
       })
     ).toThrow(/requires an explicit/);
   });
@@ -57,14 +57,14 @@ describe('MissingValueConfigSchema', () => {
       MissingValueConfigSchema.parse({
         strategy: 'drop_rows_by_nulls',
         condition: 'any_null',
-        columns: [''],
+        fields: [''],
       })
     ).toThrow(z.ZodError);
     expect(() =>
       MissingValueConfigSchema.parse({
         strategy: 'drop_rows_by_nulls',
         condition: 'all_null',
-        columns: ['status', 'status'],
+        fields: ['status', 'status'],
       })
     ).toThrow(/is duplicated/);
   });
@@ -76,12 +76,12 @@ describe('MissingValueConfigSchema', () => {
   it('rejects a rule without a field and an unknown method', () => {
     expect(() =>
       MissingValueConfigSchema.parse({
-        rules: [{ column: '', method: 'skip' }],
+        rules: [{ field: '', method: 'skip' }],
       })
     ).toThrow(z.ZodError);
     expect(() =>
       MissingValueConfigSchema.parse({
-        rules: [{ column: 'amount', method: 'mean_fll' }],
+        rules: [{ field: 'amount', method: 'mean_fll' }],
       })
     ).toThrow(z.ZodError);
   });
@@ -89,8 +89,8 @@ describe('MissingValueConfigSchema', () => {
   it('accepts forward and backward fill without extra ordering config', () => {
     const result = MissingValueConfigSchema.parse({
       rules: [
-        { column: 'first', method: 'forward_fill' },
-        { column: 'second', method: 'backward_fill' },
+        { field: 'first', method: 'forward_fill' },
+        { field: 'second', method: 'backward_fill' },
       ],
     });
     expect(result.rules.map((rule) => rule.method)).toEqual(['forward_fill', 'backward_fill']);
@@ -100,8 +100,8 @@ describe('MissingValueConfigSchema', () => {
     const result = MissingValueConfigSchema.parse({
       strategy: 'by_column',
       rules: [
-        { column: 'status', method: 'nullify_values', values: ['N/A'] },
-        { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
+        { field: 'status', method: 'nullify_values', values: ['N/A'] },
+        { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
       ],
     });
     expect(result.rules).toHaveLength(2);
@@ -111,7 +111,7 @@ describe('MissingValueConfigSchema', () => {
     const result = MissingValueConfigSchema.parse({
       rules: [
         {
-          column: 'mixed',
+          field: 'mixed',
           method: 'nullify_values',
           values: [0, true, 'N/A'],
         },
@@ -123,7 +123,7 @@ describe('MissingValueConfigSchema', () => {
   it('rejects an empty special-value list', () => {
     expect(() =>
       MissingValueConfigSchema.parse({
-        rules: [{ column: 'status', method: 'nullify_values', values: [] }],
+        rules: [{ field: 'status', method: 'nullify_values', values: [] }],
       })
     ).toThrow(/requires at least one value/);
   });
@@ -131,7 +131,7 @@ describe('MissingValueConfigSchema', () => {
   it('rejects null as a literal fill value', () => {
     expect(() =>
       MissingValueConfigSchema.parse({
-        rules: [{ column: 'status', method: 'literal_fill', value: null }],
+        rules: [{ field: 'status', method: 'literal_fill', value: null }],
       })
     ).toThrow(/requires a non-null value/);
   });

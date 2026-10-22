@@ -44,14 +44,14 @@ describe('buildWorkflowPlan', () => {
     const { plan, diagnostics } = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source', { source: 'pipeline' }),
-        node('op', 'sort', { keys: [{ field: 'id', direction: 'asc' }] }),
+        node('op', 'sort', { orderBy: [{ field: 'id', direction: 'asc' }] }),
       ],
       edges: [edge('e1', 'src', 'op')],
     });
     expect(diagnostics).toHaveLength(0);
     expect(plan.version).toBe(WORKFLOW_PLAN_VERSION);
     const sort = plan.nodes.find((item) => item.id === 'op');
-    expect(sort?.config).toMatchObject({ keys: [{ field: 'id', direction: 'asc' }] });
+    expect(sort?.config).toMatchObject({ orderBy: [{ field: 'id', direction: 'asc' }] });
   });
 
   it('reports invalid operator configs and keeps the raw config', () => {
@@ -83,7 +83,7 @@ describe('validateWorkflowPlanGraph', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source'),
-        node('op', 'sort', { keys: [{ field: 'id' }] }),
+        node('op', 'sort', { orderBy: [{ field: 'id' }] }),
         node('out', 'output'),
       ],
       edges: [
@@ -103,7 +103,7 @@ describe('validateWorkflowPlanGraph', () => {
       nodes: [
         node('src', 'input_source'),
         node('out', 'output'),
-        node('orphan', 'sort', { keys: [{ field: 'id' }] }),
+        node('orphan', 'sort', { orderBy: [{ field: 'id' }] }),
       ],
       edges: [edge('e1', 'src', 'out')],
     });
@@ -150,14 +150,14 @@ describe('validateWorkflowPlanGraph', () => {
 describe('validateWorkflowPlanSchemas', () => {
   it('passes when referenced fields exist', () => {
     const diagnostics = schemaDiagnostics(
-      linearPlan({ keys: [{ field: 'id', direction: 'asc' }] }, 'sort')
+      linearPlan({ orderBy: [{ field: 'id', direction: 'asc' }] }, 'sort')
     );
     expect(diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   });
 
   it('reports missing fields on sort keys', () => {
     const diagnostics = schemaDiagnostics(
-      linearPlan({ keys: [{ field: 'missing', direction: 'asc' }] }, 'sort')
+      linearPlan({ orderBy: [{ field: 'missing', direction: 'asc' }] }, 'sort')
     );
     expect(
       diagnostics.some(
@@ -197,7 +197,7 @@ describe('validateWorkflowPlanSchemas', () => {
         node('calc', 'calculate_field', {
           calculations: [{ field: 'total', expression: '[amount] * 2', action: 'add' }],
         }),
-        node('op', 'sort', { keys: [{ field: 'total', direction: 'desc' }] }),
+        node('op', 'sort', { orderBy: [{ field: 'total', direction: 'desc' }] }),
         node('out', 'output', { table: 'result' }),
       ],
       edges: [edge('e1', 'src', 'calc'), edge('e2', 'calc', 'op'), edge('e3', 'op', 'out')],
@@ -210,8 +210,8 @@ describe('validateWorkflowPlanSchemas', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source', { source: 'pipeline' }),
-        node('sel', 'field_select', { mode: 'include', columns: ['id'] }),
-        node('op', 'sort', { keys: [{ field: 'amount', direction: 'desc' }] }),
+        node('sel', 'field_select', { selection: 'include', fields: ['id'] }),
+        node('op', 'sort', { orderBy: [{ field: 'amount', direction: 'desc' }] }),
         node('out', 'output'),
       ],
       edges: [edge('e1', 'src', 'sel'), edge('e2', 'sel', 'op'), edge('e3', 'op', 'out')],
@@ -231,7 +231,7 @@ describe('validateWorkflowPlanSchemas', () => {
         node('map', 'field_mapping', {
           mappings: [{ source: 'amount', targetMode: 'rename', targetValue: 'total' }],
         }),
-        node('op', 'sort', { keys: [{ field: 'total', direction: 'desc' }] }),
+        node('op', 'sort', { orderBy: [{ field: 'total', direction: 'desc' }] }),
         node('out', 'output'),
       ],
       edges: [edge('e1', 'src', 'map'), edge('e2', 'map', 'op'), edge('e3', 'op', 'out')],
@@ -245,13 +245,13 @@ describe('validateWorkflowPlanSchemas', () => {
   });
 
   it('warns on random sampling without seed', () => {
-    const diagnostics = schemaDiagnostics(linearPlan({ mode: 'random', count: 10 }, 'limit'));
+    const diagnostics = schemaDiagnostics(linearPlan({ sampling: 'random', count: 10 }, 'limit'));
     expect(diagnostics.some((item) => item.code === 'limitSampleWithoutSeed')).toBe(true);
   });
 
   it('warns on nondeterministic deduplicate', () => {
     const diagnostics = schemaDiagnostics(
-      linearPlan({ columns: ['id'], keep: 'first', orderBy: [] }, 'deduplicate')
+      linearPlan({ fields: ['id'], keep: 'first', orderBy: [] }, 'deduplicate')
     );
     expect(diagnostics.some((item) => item.code === 'deduplicateNondeterministic')).toBe(true);
   });
@@ -325,7 +325,7 @@ describe('validateWorkflowPlanSchemas', () => {
           type: 'left',
           conditions: [{ left: '[a].[id]', right: '[b].[id]', operator: '=' }],
         }),
-        node('op', 'sort', { keys: [{ field: 'segment', direction: 'asc' }] }),
+        node('op', 'sort', { orderBy: [{ field: 'segment', direction: 'asc' }] }),
         node('out', 'output'),
       ],
       edges: [
@@ -356,8 +356,8 @@ describe('validateWorkflowPlanSchemas', () => {
           // keep one left field + all right columns: left 'name' is dropped
           keep: [{ source: '[a].[id]' }, { side: 'right', wildcard: true }],
         }),
-        node('ok', 'sort', { keys: [{ field: 'segment', direction: 'asc' }] }),
-        node('bad', 'sort', { keys: [{ field: 'name', direction: 'asc' }] }),
+        node('ok', 'sort', { orderBy: [{ field: 'segment', direction: 'asc' }] }),
+        node('bad', 'sort', { orderBy: [{ field: 'name', direction: 'asc' }] }),
         node('out', 'output'),
       ],
       edges: [
@@ -409,7 +409,7 @@ describe('validateWorkflowPlanSchemas', () => {
         node('a', 'input_source', { source: 'pipeline' }),
         node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_name', rightInput: 'b' }),
-        node('s', 'sort', { keys: [{ field: '区域', direction: 'asc' }] }),
+        node('s', 'sort', { orderBy: [{ field: '区域', direction: 'asc' }] }),
         node('out', 'output'),
       ],
       edges: [
@@ -438,7 +438,7 @@ describe('validateWorkflowPlanSchemas', () => {
         node('a', 'input_source', { source: 'pipeline' }),
         node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_position', rightInput: 'b' }),
-        node('s', 'sort', { keys: [{ field: 'other', direction: 'asc' }] }),
+        node('s', 'sort', { orderBy: [{ field: 'other', direction: 'asc' }] }),
         node('out', 'output'),
       ],
       edges: [
@@ -480,7 +480,7 @@ describe('validateWorkflowPlanSchemas', () => {
 
   it('skips field checks when the input schema is unknown', () => {
     const diagnostics = validateWorkflowPlanSchemas(
-      linearPlan({ keys: [{ field: 'anything', direction: 'asc' }] }, 'sort'),
+      linearPlan({ orderBy: [{ field: 'anything', direction: 'asc' }] }, 'sort'),
       () => null
     );
     expect(diagnostics).toHaveLength(0);
@@ -563,7 +563,7 @@ describe('ETL runtime contract validation', () => {
     const uniquePlan = buildWorkflowPlan({
       nodes: [
         node('src', 'input_source', { source: 'pipeline' }),
-        node('ex', 'expect', { kind: 'unique', columns: ['id'] }),
+        node('ex', 'expect', { kind: 'unique', fields: ['id'] }),
         node('out', 'output', { table: 't' }),
       ],
       edges: [edge('e1', 'src', 'ex'), edge('e2', 'ex', 'out')],
@@ -651,7 +651,7 @@ describe('compilePrepWorkflowToFlow plan output', () => {
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     expect(compiled.plan?.version).toBe(WORKFLOW_PLAN_VERSION);
     const sortNode = compiled.plan?.nodes.find((item) => item.type === 'sort');
-    expect(sortNode?.config).toMatchObject({ keys: [{ field: 'id', direction: 'asc' }] });
+    expect(sortNode?.config).toMatchObject({ orderBy: [{ field: 'id', direction: 'asc' }] });
   });
 
   it('emits graph diagnostics for malformed compiled workflows', () => {

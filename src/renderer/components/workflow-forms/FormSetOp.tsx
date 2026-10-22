@@ -19,7 +19,7 @@ import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import {
   DEFAULT_OPERATION,
-  DEFAULT_MODE,
+  DEFAULT_QUANTIFIER,
   DEFAULT_MATCH,
 } from '../../../shared/operator-schemas/set-op';
 
@@ -46,7 +46,7 @@ export default function FormSetOp({
 
   const operation = (node.config.operation as string) ?? DEFAULT_OPERATION;
   const rawRightInput = (node.config.rightInput as string) ?? '';
-  const mode = (node.config.mode as string) ?? DEFAULT_MODE;
+  const mode = (node.config.quantifier as string) ?? DEFAULT_QUANTIFIER;
   const match = (node.config.match as string) ?? DEFAULT_MATCH;
 
   const resolveNodeLabel = useCallback(
@@ -207,7 +207,7 @@ export default function FormSetOp({
             { value: 'all', label: tr('setOpAll'), title: modeTips.all },
             { value: 'distinct', label: tr('setOpDistinct'), title: modeTips.distinct },
           ]}
-          onChange={(value) => updateConfig((config) => ({ ...config, mode: value }))}
+          onChange={(value) => updateConfig((config) => ({ ...config, quantifier: value }))}
         />
         <Cell span={2} v={['muted']}>
           <span className="truncate">{mode === 'distinct' ? modeTips.distinct : modeTips.all}</span>

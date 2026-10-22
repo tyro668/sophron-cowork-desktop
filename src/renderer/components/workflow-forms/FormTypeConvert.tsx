@@ -34,7 +34,7 @@ import {
 } from '../../../shared/operator-schemas/type-convert';
 
 const EMPTY_TYPE_CONVERSION: Readonly<TypeConversionEntry> = {
-  column: '',
+  field: '',
   type: 'text',
 };
 
@@ -116,7 +116,7 @@ export default function FormTypeConvert({
       const next = [...activeConversions];
       next.splice(index + 1, 0, {
         id: createStableRowId(),
-        column: '',
+        field: '',
         type: source.type,
         onError: source.onError,
         format: source.format,
@@ -128,7 +128,7 @@ export default function FormTypeConvert({
   );
 
   const usedFields = useMemo(
-    () => computeUsedFields(activeConversions, (c) => c.column),
+    () => computeUsedFields(activeConversions, (c) => c.field),
     [activeConversions]
   );
 
@@ -161,7 +161,7 @@ export default function FormTypeConvert({
         <Cell v={['th']} />
         {activeConversions.map((conv, i) => {
           const disabledFields = new Set(usedFields);
-          if (conv.column) disabledFields.delete(conv.column);
+          if (conv.field) disabledFields.delete(conv.field);
           const isDateType = conv.type === 'date' || conv.type === 'datetime';
           return (
             <GridRow
@@ -171,10 +171,10 @@ export default function FormTypeConvert({
             >
               <Cell v={['ctl']}>
                 <GlassFieldSingleSelect
-                  value={conv.column}
+                  value={conv.field}
                   options={fieldCompletions}
                   columnTypes={columnTypes}
-                  onChange={(value) => updateConversion(i, { column: value })}
+                  onChange={(value) => updateConversion(i, { field: value })}
                   placeholder={tr('typeConvertSelectField')}
                   searchPlaceholder={tr('fieldPicker.searchField')}
                   emptyText={tr('fieldPicker.noMatch')}

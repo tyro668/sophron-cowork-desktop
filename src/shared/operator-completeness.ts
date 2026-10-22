@@ -28,9 +28,9 @@ export function isCompleteJoinCondition(entry: unknown): boolean {
   return isObject(entry) && hasNonEmptyString(entry.left) && hasNonEmptyString(entry.right);
 }
 
-/** TypeConvert 转换条目：column 必填，type 缺省 text，其余可选。 */
+/** TypeConvert 转换条目：field 必填，type 缺省 text，其余可选。 */
 export function isCompleteTypeConversion(entry: unknown): boolean {
-  return isObject(entry) && hasNonEmptyString(entry.column);
+  return isObject(entry) && hasNonEmptyString(entry.field);
 }
 
 /** FieldMapping 映射条目：source 与有效 target 必填（按 targetMode 决定 target 来源）。 */
@@ -67,7 +67,7 @@ export function isCompletePivotMetric(entry: unknown): boolean {
 
 /** MissingValue 规则：column 必填，其余字段按 method 条件判断。 */
 export function isCompleteMissingValueRule(entry: unknown): boolean {
-  if (!isObject(entry) || !hasNonEmptyString(entry.column)) return false;
+  if (!isObject(entry) || !hasNonEmptyString(entry.field)) return false;
   const method = typeof entry.method === 'string' ? entry.method : 'literal_fill';
   if (method === 'nullify_values') {
     return Array.isArray(entry.values) && entry.values.length > 0;

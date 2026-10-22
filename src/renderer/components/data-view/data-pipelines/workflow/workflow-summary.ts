@@ -1,6 +1,6 @@
 import type { DataWorkflowNode, DataWorkflowOperatorType } from '../../../../types';
 import { dataFieldTypeLabel } from '../../../../../shared/data-field-types';
-import { DEFAULT_MODE, DEFAULT_MATCH } from '../../../../../shared/operator-schemas/set-op';
+import { DEFAULT_QUANTIFIER, DEFAULT_MATCH } from '../../../../../shared/operator-schemas/set-op';
 import type { TranslateFn } from '../../shared';
 
 export interface WorkflowSummaryRow {
@@ -35,10 +35,14 @@ const summarizeInputSource: WorkflowSummarizer = (config, t) => {
 
 const summarizeFieldSelect: WorkflowSummarizer = (config, t) => ({
   primary: [
-    summaryRow(t, 'mode', translateWorkflowValue(t, 'selectModes', 'include')),
-    summaryRow(t, 'columns', formatCount(stringArray(config.columns).length)),
+    summaryRow(
+      t,
+      'mode',
+      translateWorkflowValue(t, 'selectModes', stringValue(config.selection, 'include'))
+    ),
+    summaryRow(t, 'columns', formatCount(stringArray(config.fields).length)),
   ],
-  details: [summaryRow(t, 'fields', formatList(stringArray(config.columns), t), true)],
+  details: [summaryRow(t, 'fields', formatList(stringArray(config.fields), t), true)],
 });
 
 const summarizeFieldMapping: WorkflowSummarizer = (config, t) => ({
@@ -72,7 +76,7 @@ const summarizeDeduplicate: WorkflowSummarizer = (config, t) => ({
     ),
   ],
   details: [
-    summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
+    summaryRow(t, 'columns', formatList(stringArray(config.fields), t), true),
     summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true),
   ],
 });
@@ -98,8 +102,8 @@ const summarizeTypeConvert: WorkflowSummarizer = (config, t) => ({
 });
 
 const summarizeSort: WorkflowSummarizer = (config, t) => ({
-  primary: [summaryRow(t, 'sortKeys', formatCount(recordArray(config.keys).length))],
-  details: [summaryRow(t, 'orderBy', formatSortKeys(config.keys, t), true)],
+  primary: [summaryRow(t, 'sortKeys', formatCount(recordArray(config.orderBy).length))],
+  details: [summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true)],
 });
 
 const summarizeCalculateField: WorkflowSummarizer = (config, t) => ({
@@ -119,7 +123,7 @@ const summarizeJoin: WorkflowSummarizer = (config, t) => getJoinConfigSummary(co
 
 const summarizeLimit: WorkflowSummarizer = (config, t) => ({
   primary: [
-    summaryRow(t, 'mode', stringValue(config.mode, 'limit')),
+    summaryRow(t, 'mode', stringValue(config.sampling, 'fixed')),
     summaryRow(t, 'limit', String(config.limit ?? '')),
   ],
   details: [summaryRow(t, 'orderBy', formatSortKeys(config.orderBy, t), true)],
@@ -145,8 +149,8 @@ const summarizePivot: WorkflowSummarizer = (config, t) => ({
 
 const summarizeUnpivot: WorkflowSummarizer = (config, t) => ({
   primary: [
-    summaryRow(t, 'columns', formatList(stringArray(config.columns), t), true),
-    summaryRow(t, 'mode', stringValue(config.mode, 'include')),
+    summaryRow(t, 'columns', formatList(stringArray(config.fields), t), true),
+    summaryRow(t, 'mode', stringValue(config.selection, 'include')),
   ],
   details: [
     summaryRow(t, 'name', stringValue(config.nameColumn)),
@@ -165,7 +169,7 @@ const summarizeSetOp: WorkflowSummarizer = (config, t) => {
       summaryRow(t, 'rightInput', stringValue(config.rightInput)),
     ],
     details: [
-      summaryRow(t, 'mode', stringValue(config.mode, DEFAULT_MODE)),
+      summaryRow(t, 'mode', stringValue(config.quantifier, DEFAULT_QUANTIFIER)),
       ...(rawOperation === 'union' ? [summaryRow(t, 'match', effectiveMatch)] : []),
     ],
   };
@@ -173,7 +177,7 @@ const summarizeSetOp: WorkflowSummarizer = (config, t) => {
 
 const summarizeUnnest: WorkflowSummarizer = (config, t) => ({
   primary: [
-    summaryRow(t, 'source', stringValue(config.column), false),
+    summaryRow(t, 'source', stringValue(config.field), false),
     summaryRow(t, 'alias', stringValue(config.alias, 'item'), false),
   ],
   details: [summaryRow(t, 'mode', stringValue(config.sourceKind, 'list'))],
@@ -239,7 +243,7 @@ const summarizeExpect: WorkflowSummarizer = (config, t) => {
   const kind = stringValue(config.kind, 'expression');
   const assertion =
     kind === 'unique'
-      ? `unique ${(Array.isArray(config.columns) ? config.columns : []).join(', ')}`
+      ? `unique ${(Array.isArray(config.fields) ? config.fields : []).join(', ')}`
       : kind === 'row_count'
         ? `rows ${stringValue(config.operator, '>=')} ${config.value ?? 0}`
         : stringValue(config.expression);
@@ -402,7 +406,7 @@ function formatMissingRules(value: unknown, t: TranslateFn): string {
       ? ` (${rule.values.map((item) => String(item)).join(', ')})`
       : '';
     const fillValue = rule.value === undefined ? '' : ` = ${String(rule.value)}`;
-    return `${stringValue(rule.column, '?')}: ${methodLabel}${values}${fillValue}`;
+    return `${stringValue(rule.field, '?')}: ${methodLabel}${values}${fillValue}`;
   });
   return formatList(rules, t);
 }
@@ -411,7 +415,7 @@ function formatConversions(value: unknown, t: TranslateFn): string {
   const conversions = recordArray(value).map((item) => {
     const onError = stringValue(item.onError);
     const suffix = onError ? ` (${onError})` : '';
-    return `${stringValue(item.column, '?')} -> ${dataFieldTypeLabel(
+    return `${stringValue(item.field, '?')} -> ${dataFieldTypeLabel(
       stringValue(item.type, 'text')
     )}${suffix}`;
   });

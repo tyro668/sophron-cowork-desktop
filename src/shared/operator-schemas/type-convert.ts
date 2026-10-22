@@ -43,7 +43,7 @@ export const SCALE_MAX = 18;
 export const TypeConversionEntrySchema = z
   .object({
     id: z.string().max(MAX_ROW_ID_LENGTH).optional(),
-    column: nonEmptyTrimmed('Source column is required'),
+    field: nonEmptyTrimmed('Source column is required'),
     type: z
       .enum(['text', 'integer', 'float', 'decimal', 'date', 'datetime', 'boolean'])
       .optional()

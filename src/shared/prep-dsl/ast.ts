@@ -42,7 +42,7 @@ export interface PrepStepAst {
 }
 
 export interface PrepWorkflowAst {
-  version: 'prep-dsl/v2';
+  version: 'prep-dsl/v3';
   sources: PrepOperatorAst[];
   mainSource: string;
   /** Structured chains; `operators` is the flat view kept for compatibility. */

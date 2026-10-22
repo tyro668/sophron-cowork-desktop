@@ -27,7 +27,7 @@ export default function FormUnnest({
   const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const sourceKind = (node.config.sourceKind as 'list' | 'json') ?? 'list';
-  const field = (node.config.column as string) ?? '';
+  const field = (node.config.field as string) ?? '';
   const alias = (node.config.alias as string) ?? '';
   const path = (node.config.path as string) ?? '$';
   const withIndex = node.config.withIndex as string | undefined;
@@ -66,11 +66,11 @@ export default function FormUnnest({
             onChange={(v) =>
               updateConfig((cfg) => {
                 // Auto-fill the alias while it is empty or still the previous auto value.
-                const prev = typeof cfg.column === 'string' ? cfg.column : '';
+                const prev = typeof cfg.field === 'string' ? cfg.field : '';
                 const current = typeof cfg.alias === 'string' ? cfg.alias : '';
                 const suffix = tr('unnestAutoAliasSuffix');
                 const auto = !current || current === `${prev}_${suffix}`;
-                return { ...cfg, column: v, alias: auto && v ? `${v}_${suffix}` : cfg.alias };
+                return { ...cfg, field: v, alias: auto && v ? `${v}_${suffix}` : cfg.alias };
               })
             }
             placeholder={tr('unnestSelectField')}

@@ -29,18 +29,18 @@ export const missingValueCodec: OperatorDslCodec = {
   },
   format: (config) => {
     if (config?.strategy === 'drop_empty_rows') {
-      const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+      const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
       return `missing value row drop when all_null${columns ? ` in ${columns}` : ''}`;
     }
     if (config?.strategy === 'drop_rows_by_nulls') {
-      const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+      const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
       return `missing value row drop when ${String(config.condition ?? 'any_null')}${
         columns ? ` in ${columns}` : ''
       }`;
     }
     const ruleConfigs = objectArray(config?.rules).filter(isCompleteMissingValueRule);
     if (ruleConfigs.length === 0) return null;
-    const columns = ruleConfigs.map((rule) => String(rule.column ?? '').trim()).filter(Boolean);
+    const columns = ruleConfigs.map((rule) => String(rule.field ?? '').trim()).filter(Boolean);
     if (columns.length !== ruleConfigs.length) {
       return null;
     }
@@ -84,7 +84,7 @@ function parseRowRule(text: string, body: string, line: number, diagnostics: Pre
     strategy:
       condition === 'all_null' && columns.length === 0 ? 'drop_empty_rows' : 'drop_rows_by_nulls',
     condition,
-    columns: columns.length > 0 ? columns : undefined,
+    fields: columns.length > 0 ? columns : undefined,
   });
 }
 
@@ -99,12 +99,12 @@ function parseColumnRule(
   const column = toFieldName(field);
   if (cursor.match('skip')) {
     cursor.expectEof('unexpectedMissingValueToken');
-    return { column, method: 'skip' };
+    return { field: column, method: 'skip' };
   }
   if (cursor.match('drop')) {
     cursor.expect('rows', 'invalidMissingValueRule');
     cursor.expectEof('unexpectedMissingValueToken');
-    return { column, method: 'drop' };
+    return { field: column, method: 'drop' };
   }
   if (cursor.match('fill')) {
     const method = cursor.expectOneOfIfPresent(['forward', 'backward', 'mean', 'median', 'mode']);
@@ -117,7 +117,7 @@ function parseColumnRule(
         median: 'median_fill',
         mode: 'mode_fill',
       };
-      return { column, method: methods[method] };
+      return { field: column, method: methods[method] };
     }
     const literal = cursor.consume();
     if (!literal) {
@@ -129,7 +129,7 @@ function parseColumnRule(
     if (value === null) {
       cursor.report('invalidMissingValueLiteral', 'Fill requires a non-null value', literal);
     }
-    return { column, method: 'literal_fill', value };
+    return { field: column, method: 'literal_fill', value };
   }
   if (cursor.match('nullify')) {
     cursor.expect('values', 'invalidMissingValueRule');
@@ -146,14 +146,14 @@ function parseColumnRule(
     }
     cursor.expectType('RParen', 'invalidMissingValueValues');
     cursor.expectEof('unexpectedMissingValueToken');
-    return { column, method: 'nullify_values', values };
+    return { field: column, method: 'nullify_values', values };
   }
   cursor.report('invalidMissingValueRule', 'Unknown missing-value rule');
   return null;
 }
 
 function formatRule(rule: Record<string, unknown>): string | null {
-  const column = formatFieldRef(String(rule.column ?? 'field'));
+  const column = formatFieldRef(String(rule.field ?? 'field'));
   const method = String(rule.method ?? 'skip');
   const supportedMethods = new Set([
     'skip',

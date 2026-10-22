@@ -16,13 +16,16 @@ export default function FormSort({
 }: OperatorFormProps) {
   const updateConfig = useUpdateConfig(onNodeChange);
 
-  const keys = useMemo<SortKey[]>(() => (node.config.keys as SortKey[]) ?? [], [node.config.keys]);
+  const keys = useMemo<SortKey[]>(
+    () => (node.config.orderBy as SortKey[]) ?? [],
+    [node.config.orderBy]
+  );
 
   const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
   const commitKeys = useCallback(
     (next: SortKey[]) => {
-      updateConfig((cfg) => ({ ...cfg, keys: next.length > 0 ? next : undefined }));
+      updateConfig((cfg) => ({ ...cfg, orderBy: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
   );

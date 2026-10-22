@@ -18,7 +18,7 @@ export const limitCodec: OperatorDslCodec = {
       return null;
     }
     const limit = config.limit;
-    if (config?.mode === 'random') {
+    if (config?.sampling === 'random') {
       const isPercent = config?.unit === 'percent';
       const unit = isPercent ? ' percent' : ' rows';
       const method = isPercent && config?.method === 'bernoulli' ? ' bernoulli' : '';
@@ -26,7 +26,7 @@ export const limitCodec: OperatorDslCodec = {
       return `sample ${limit}${unit}${method}${seed}`;
     }
     const orderBy = config?.orderBy;
-    if (config?.mode === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
+    if (config?.sampling === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
       const unit = config?.unit === 'percent' ? ' percent' : '';
       const offset =
         config?.unit !== 'percent' && typeof config?.offset === 'number' && config.offset > 0
@@ -84,7 +84,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
       });
     }
     return createOperator('limit', text, {
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: limit ?? 0,
       unit,
       orderBy,
@@ -115,7 +115,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
     }
     cursor.expectEof('unexpectedSampleToken');
     return createOperator('limit', text, {
-      mode: 'random',
+      sampling: 'random',
       limit: limit ?? 0,
       unit,
       method,
@@ -142,7 +142,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
   }
   cursor.expectEof('unexpectedLimitToken');
   return createOperator('limit', text, {
-    mode: 'fixed',
+    sampling: 'fixed',
     limit: limit ?? 0,
     unit,
     offset,

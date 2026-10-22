@@ -964,7 +964,7 @@ describe('AI workflow capability contract', () => {
     });
 
     expect(result.plan.nodes[2]?.config).toMatchObject({
-      keys: [
+      orderBy: [
         { field: 'score', direction: 'desc' },
         { field: 'label', direction: 'asc' },
       ],

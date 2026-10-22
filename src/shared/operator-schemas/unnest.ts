@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const UnnestConfigSchema = z
   .object({
     sourceKind: z.enum(['list', 'json']).default('list'),
-    column: z.string().trim().min(1, 'Source column is required'),
+    field: z.string().trim().min(1, 'Source column is required'),
     alias: z.string().trim().optional().default(''),
     path: z.string().default('$'),
     withIndex: z.string().trim().optional(),

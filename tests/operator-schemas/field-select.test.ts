@@ -4,8 +4,8 @@ import { FieldSelectConfigSchema } from '../../src/shared/operator-schemas';
 
 describe('FieldSelectConfigSchema', () => {
   it('parses valid config with columns', () => {
-    const result = FieldSelectConfigSchema.parse({ columns: ['a', 'b'] });
-    expect(result.columns).toEqual(['a', 'b']);
+    const result = FieldSelectConfigSchema.parse({ fields: ['a', 'b'] });
+    expect(result.fields).toEqual(['a', 'b']);
   });
 
   it('rejects config when columns are omitted', () => {
@@ -13,25 +13,25 @@ describe('FieldSelectConfigSchema', () => {
   });
 
   it('rejects an empty columns array in exclude mode', () => {
-    expect(() => FieldSelectConfigSchema.parse({ mode: 'exclude', columns: [] })).toThrow(
+    expect(() => FieldSelectConfigSchema.parse({ selection: 'exclude', fields: [] })).toThrow(
       'At least one field must be selected'
     );
   });
 
   it('rejects columns with wrong type', () => {
-    expect(() => FieldSelectConfigSchema.parse({ columns: 'not-array' })).toThrow(z.ZodError);
+    expect(() => FieldSelectConfigSchema.parse({ fields: 'not-array' })).toThrow(z.ZodError);
   });
 
   it('rejects duplicate columns', () => {
-    expect(() => FieldSelectConfigSchema.parse({ columns: ['a', 'a'] })).toThrow(z.ZodError);
+    expect(() => FieldSelectConfigSchema.parse({ fields: ['a', 'a'] })).toThrow(z.ZodError);
   });
 
   it('rejects empty column name', () => {
-    expect(() => FieldSelectConfigSchema.parse({ columns: ['a', ''] })).toThrow(z.ZodError);
+    expect(() => FieldSelectConfigSchema.parse({ fields: ['a', ''] })).toThrow(z.ZodError);
   });
 
   it('trims column names', () => {
-    const result = FieldSelectConfigSchema.parse({ columns: ['  a  ', 'b'] });
-    expect(result.columns[0]).toBe('a');
+    const result = FieldSelectConfigSchema.parse({ fields: ['  a  ', 'b'] });
+    expect(result.fields[0]).toBe('a');
   });
 });

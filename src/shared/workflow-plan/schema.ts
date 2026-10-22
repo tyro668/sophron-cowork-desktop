@@ -187,17 +187,17 @@ function validateNode(
       return left;
     }
     case 'sort':
-      checkFields(node, strArray(config.keys, 'field'), left, diagnostics);
+      checkFields(node, strArray(config.orderBy, 'field'), left, diagnostics);
       return left;
     case 'deduplicate': {
-      checkFields(node, strList(config.columns), left, diagnostics);
+      checkFields(node, strList(config.fields), left, diagnostics);
       checkFields(node, strArray(config.orderBy, 'field'), left, diagnostics);
       const keep = typeof config.keep === 'string' ? config.keep : 'first';
       if (
         keep !== 'random' &&
         left.known &&
         strArray(config.orderBy, 'field').length === 0 &&
-        strList(config.columns).length > 0
+        strList(config.fields).length > 0
       ) {
         push(
           diagnostics,
@@ -210,10 +210,10 @@ function validateNode(
       return left;
     }
     case 'field_select': {
-      const columns = strList(config.columns);
+      const columns = strList(config.fields);
       checkFields(node, columns, left, diagnostics);
       if (!left.known) return UNKNOWN;
-      const exclude = config.mode === 'exclude';
+      const exclude = config.selection === 'exclude';
       return {
         known: true,
         columns: exclude
@@ -253,14 +253,14 @@ function validateNode(
     case 'type_convert': {
       checkFields(
         node,
-        recordArray(config.conversions).map((item) => String(item.column ?? '')),
+        recordArray(config.conversions).map((item) => String(item.field ?? '')),
         left,
         diagnostics
       );
       if (!left.known) return UNKNOWN;
       const retypes = new Map<string, string>();
       for (const item of recordArray(config.conversions)) {
-        const column = String(item.column ?? '');
+        const column = String(item.field ?? '');
         const type = typeof item.type === 'string' ? item.type : '';
         if (column && type) retypes.set(column, type);
       }
@@ -304,10 +304,10 @@ function validateNode(
       return { known: true, columns };
     }
     case 'missing_value': {
-      checkFields(node, strList(config.columns), left, diagnostics);
+      checkFields(node, strList(config.fields), left, diagnostics);
       checkFields(
         node,
-        recordArray(config.rules).map((item) => String(item.column ?? '')),
+        recordArray(config.rules).map((item) => String(item.field ?? '')),
         left,
         diagnostics
       );
@@ -317,7 +317,7 @@ function validateNode(
       checkFields(node, strArray(config.orderBy, 'field'), left, diagnostics);
       if (
         left.known &&
-        config.mode !== 'random' &&
+        config.sampling !== 'random' &&
         strArray(config.orderBy, 'field').length === 0
       ) {
         push(
@@ -328,7 +328,7 @@ function validateNode(
           'Limit without order by returns a nondeterministic row subset'
         );
       }
-      if (config.mode === 'random' && config.seed === undefined && left.known) {
+      if (config.sampling === 'random' && config.seed === undefined && left.known) {
         push(
           diagnostics,
           'warning',
@@ -340,9 +340,9 @@ function validateNode(
       return left;
     }
     case 'unnest': {
-      checkFields(node, [String(config.column ?? '')], left, diagnostics);
+      checkFields(node, [String(config.field ?? '')], left, diagnostics);
       if (!left.known) return UNKNOWN;
-      const source = String(config.column ?? '');
+      const source = String(config.field ?? '');
       const alias = String(config.alias ?? '') || source;
       const columns = left.columns.filter((column) => column.name !== source);
       columns.push({ name: alias });
@@ -355,11 +355,11 @@ function validateNode(
       return { known: true, columns };
     }
     case 'unpivot': {
-      const columns = strList(config.columns);
+      const columns = strList(config.fields);
       checkFields(node, columns, left, diagnostics);
       if (!left.known) return UNKNOWN;
       const kept =
-        config.mode === 'except'
+        config.selection === 'except'
           ? left.columns.filter((column) => columns.includes(column.name))
           : left.columns.filter((column) => !columns.includes(column.name));
       const nameColumn = String(config.nameColumn ?? '') || 'name';
@@ -534,7 +534,7 @@ function validateNode(
           }
         }
       } else if (kind === 'unique') {
-        checkFields(node, strList(config.columns), left, diagnostics);
+        checkFields(node, strList(config.fields), left, diagnostics);
       }
       return left;
     }

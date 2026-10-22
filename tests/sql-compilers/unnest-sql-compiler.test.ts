@@ -36,7 +36,7 @@ describe('compileUnnestSql — list mode', () => {
   it('unnests a basic array into rows', async () => {
     const rows = await executeList("(1, '[1, 2, 3]')", ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'item',
       preserveOrder: true,
     });
@@ -47,7 +47,7 @@ describe('compileUnnestSql — list mode', () => {
   it('returns one row with null when source is NULL', async () => {
     const rows = await executeList('(1, NULL)', ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'item',
     });
     expect(rows).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('compileUnnestSql — list mode', () => {
   it('returns one row with null when source is empty array', async () => {
     const rows = await executeList("(1, '[]')", ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'item',
     });
     expect(rows).toHaveLength(1);
@@ -67,7 +67,7 @@ describe('compileUnnestSql — list mode', () => {
   it('unnests with index column', async () => {
     const rows = await executeList("(1, '[10, 20]')", ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'item',
       withIndex: 'idx',
       preserveOrder: true,
@@ -82,7 +82,7 @@ describe('compileUnnestSql — list mode', () => {
   it('unnests with keepParentNames', async () => {
     const rows = await executeList("(1, '[10, 20]')", ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'val',
       keepParentNames: true,
       preserveOrder: true,
@@ -95,7 +95,7 @@ describe('compileUnnestSql — list mode', () => {
   it('preserves original row order', async () => {
     const rows = await executeList("(1, '[3, 1]'), (2, '[5, 2]')", ['id', 'items'], {
       sourceKind: 'list',
-      column: 'items',
+      field: 'items',
       alias: 'item',
       preserveOrder: true,
     });
@@ -109,7 +109,7 @@ describe('compileUnnestSql — JSON OBJECT mode', () => {
   it('expands JSON object keys into columns', async () => {
     const rows = await executeJson('(1, \'{"a": 10, "b": 20}\')', ['id', 'payload'], {
       sourceKind: 'json',
-      column: 'payload',
+      field: 'payload',
       path: '$',
       _jsonType: 'OBJECT',
       _jsonKeys: ['a', 'b'],
@@ -122,7 +122,7 @@ describe('compileUnnestSql — JSON OBJECT mode', () => {
   it('expands JSON keys with special characters', async () => {
     const rows = await executeJson('(1, \'{"a.b": 1, "normal": 2}\')', ['id', 'payload'], {
       sourceKind: 'json',
-      column: 'payload',
+      field: 'payload',
       path: '$',
       _jsonType: 'OBJECT',
       _jsonKeys: ['a.b', 'normal'],
@@ -135,7 +135,7 @@ describe('compileUnnestSql — JSON OBJECT mode', () => {
   it('returns null columns when JSON source is NULL', async () => {
     const rows = await executeJson('(1, NULL)', ['id', 'payload'], {
       sourceKind: 'json',
-      column: 'payload',
+      field: 'payload',
       path: '$',
       _jsonType: 'OBJECT',
       _jsonKeys: ['a'],
@@ -150,7 +150,7 @@ describe('compileUnnestSql — conflict detection', () => {
     expect(() =>
       compileUnnestSql('out', 'inp', ['id', 'items', 'item'], {
         sourceKind: 'list',
-        column: 'items',
+        field: 'items',
         alias: 'item',
       })
     ).toThrow(/conflict/);
@@ -160,7 +160,7 @@ describe('compileUnnestSql — conflict detection', () => {
     expect(() =>
       compileUnnestSql('out', 'inp', ['id', 'items', 'idx'], {
         sourceKind: 'list',
-        column: 'items',
+        field: 'items',
         alias: 'val',
         withIndex: 'idx',
       })
@@ -171,7 +171,7 @@ describe('compileUnnestSql — conflict detection', () => {
     await expect(
       executeList("(1, '[1]')", ['id', 'items'], {
         sourceKind: 'list',
-        column: 'items',
+        field: 'items',
         alias: 'idx',
         withIndex: 'idx',
       })
@@ -182,7 +182,7 @@ describe('compileUnnestSql — conflict detection', () => {
     await expect(
       executeJson('(1, \'{"id": 1}\')', ['id', 'payload'], {
         sourceKind: 'json',
-        column: 'payload',
+        field: 'payload',
         path: '$',
         _jsonType: 'OBJECT',
         _jsonKeys: ['id'],
@@ -194,7 +194,7 @@ describe('compileUnnestSql — conflict detection', () => {
     await expect(
       executeJson('(1, \'{"A": 1, "a": 2}\')', ['id', 'payload'], {
         sourceKind: 'json',
-        column: 'payload',
+        field: 'payload',
         path: '$',
         _jsonType: 'OBJECT',
         _jsonKeys: ['A', 'a'],

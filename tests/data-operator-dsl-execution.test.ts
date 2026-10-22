@@ -127,7 +127,7 @@ function main() {
     );
 
     const workflow = await store.getPipelineWorkflow(pipeline.id);
-    expect(workflow.nodes.find((node) => node.type === 'sort')?.config.keys).toEqual([
+    expect(workflow.nodes.find((node) => node.type === 'sort')?.config.orderBy).toEqual([
       { field: 'Unit Price', direction: 'asc' },
     ]);
 

@@ -57,7 +57,7 @@ export default function FormExpect({
         ? 'row_count'
         : 'expression';
   const expression = (node.config?.expression as string) ?? '';
-  const columns = useMemo(() => (node.config?.columns as string[]) ?? [], [node.config?.columns]);
+  const columns = useMemo(() => (node.config?.fields as string[]) ?? [], [node.config?.fields]);
   const operator = (node.config?.operator as string) ?? '>=';
   const value = node.config?.value as number | undefined;
   const committedValue = value === undefined || value === null ? '' : String(value);
@@ -113,7 +113,7 @@ export default function FormExpect({
 
   const commitColumns = useCallback(
     (next: string[]) => {
-      updateConfig((cfg) => ({ ...cfg, columns: next.length > 0 ? next : undefined }));
+      updateConfig((cfg) => ({ ...cfg, fields: next.length > 0 ? next : undefined }));
     },
     [updateConfig]
   );

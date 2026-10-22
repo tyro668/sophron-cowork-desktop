@@ -13,7 +13,7 @@ describe('FormSort — copy semantics at config level', () => {
       id: 'test',
       type: 'sort',
       config: {
-        keys: [
+        orderBy: [
           { field: 'revenue', direction: 'desc', nulls: 'last' },
           { field: '', direction: 'desc', nulls: 'last' },
         ],
@@ -27,7 +27,7 @@ describe('FormSort — copy semantics at config level', () => {
       id: 'test',
       type: 'sort',
       config: {
-        keys: [
+        orderBy: [
           { field: 'region', direction: 'asc', nulls: 'first' },
           { field: 'revenue', direction: 'desc', nulls: 'last' },
         ],
@@ -35,7 +35,7 @@ describe('FormSort — copy semantics at config level', () => {
     });
     const parsed = parsePrepOperatorDsl(dsl, 'sort');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const keys = parsed.operator!.config.keys as Array<Record<string, string>>;
+    const keys = parsed.operator!.config.orderBy as Array<Record<string, string>>;
     expect(keys).toHaveLength(2);
     expect(keys[0]).toEqual({ field: 'region', direction: 'asc', nulls: 'first' });
   });

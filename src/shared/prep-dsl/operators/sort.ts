@@ -16,10 +16,10 @@ export const sortCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('sort', command.text, { keys });
+    return createOperator('sort', command.text, { orderBy: keys });
   },
   format: (config) => {
-    const keys = formatSortKeys(config?.keys);
+    const keys = formatSortKeys(config?.orderBy);
     return keys ? `sort by ${keys}` : null;
   },
 };

@@ -589,7 +589,7 @@ describe('DuckDB data pipeline store', () => {
     // config, not the stale cache table.
     const draftInput = {
       nodes: saveInput.nodes.map((node) =>
-        node.id === selectNode!.id ? { ...node, config: { ...node.config, columns: ['id'] } } : node
+        node.id === selectNode!.id ? { ...node, config: { ...node.config, fields: ['id'] } } : node
       ),
       edges: saveInput.edges,
     };

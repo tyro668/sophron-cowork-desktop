@@ -25,7 +25,7 @@ describe('compileMissingValueSql forward/backward fill', () => {
   it('forward fills from the nearest preceding non-null row in original table order', async () => {
     const rows = await execute(
       "(1, 'a', 10, NULL), (2, 'b', 5, 'A'), (3, 'a', 1, NULL), (4, 'b', 20, NULL)",
-      [{ column: 'value', method: 'forward_fill' }]
+      [{ field: 'value', method: 'forward_fill' }]
     );
     expect(rows.map((row) => row.value)).toEqual([null, 'A', 'A', 'A']);
   });
@@ -33,15 +33,15 @@ describe('compileMissingValueSql forward/backward fill', () => {
   it('backward fills from the nearest following non-null row in original table order', async () => {
     const rows = await execute(
       "(1, 'a', 10, NULL), (2, 'b', 5, NULL), (3, 'a', 1, 'B'), (4, 'b', 20, NULL)",
-      [{ column: 'value', method: 'backward_fill' }]
+      [{ field: 'value', method: 'backward_fill' }]
     );
     expect(rows.map((row) => row.value)).toEqual(['B', 'B', 'B', null]);
   });
 
   it('applies repeated treatment of one field in rule order', async () => {
     const rows = await execute("(1, 'a', 10, 'N/A'), (2, 'b', 5, NULL)", [
-      { column: 'value', method: 'nullify_values', values: ['N/A'] },
-      { column: 'value', method: 'literal_fill', value: 'UNKNOWN' },
+      { field: 'value', method: 'nullify_values', values: ['N/A'] },
+      { field: 'value', method: 'literal_fill', value: 'UNKNOWN' },
     ]);
     expect(rows.map((row) => row.value)).toEqual(['UNKNOWN', 'UNKNOWN']);
   });
@@ -57,8 +57,8 @@ describe('compileMissingValueSql typed literal values', () => {
       compileMissingValueSql('out', 'inp', ['id', 'amount', 'active'], {
         strategy: 'by_column',
         rules: [
-          { column: 'amount', method: 'nullify_values', values: [0] },
-          { column: 'active', method: 'nullify_values', values: [false] },
+          { field: 'amount', method: 'nullify_values', values: [0] },
+          { field: 'active', method: 'nullify_values', values: [false] },
         ],
       })
     );
@@ -77,7 +77,7 @@ describe('compileMissingValueSql typed literal values', () => {
     await connection.run(
       compileMissingValueSql('out', 'inp', ['id', 'amount'], {
         strategy: 'by_column',
-        rules: [{ column: 'amount', method: 'literal_fill', value: 1.25 }],
+        rules: [{ field: 'amount', method: 'literal_fill', value: 1.25 }],
       })
     );
     const result = await connection.runAndReadAll('SELECT * FROM out ORDER BY id');
@@ -100,7 +100,7 @@ describe('compileMissingValueSql preserves source column types', () => {
     await connection.run(
       compileMissingValueSql('out', 'inp', ['id', 'amount'], {
         strategy: 'by_column',
-        rules: [{ column: 'amount', method }],
+        rules: [{ field: 'amount', method }],
       })
     );
     const result = await connection.runAndReadAll(
@@ -117,7 +117,7 @@ describe('compileMissingValueSql preserves source column types', () => {
     await connection.run(
       compileMissingValueSql('out', 'inp', ['id', 'amount'], {
         strategy: 'by_column',
-        rules: [{ column: 'amount', method: 'literal_fill', value: 1.5 }],
+        rules: [{ field: 'amount', method: 'literal_fill', value: 1.5 }],
       })
     );
     const result = await connection.runAndReadAll(
@@ -138,7 +138,7 @@ describe('compileMissingValueSql validation and row deletion', () => {
     await connection.run(
       compileMissingValueSql('out', 'inp', ['id', 'first_value', 'second_value'], {
         strategy: 'drop_empty_rows',
-        columns: ['first_value', 'second_value'],
+        fields: ['first_value', 'second_value'],
       })
     );
     const result = await connection.runAndReadAll('SELECT id FROM out ORDER BY id');
@@ -161,7 +161,7 @@ describe('compileMissingValueSql validation and row deletion', () => {
         ['name'],
         {
           strategy: 'by_column',
-          rules: [{ column: 'name', method: 'mean_fill' }],
+          rules: [{ field: 'name', method: 'mean_fill' }],
         },
         { name: 'text' }
       )

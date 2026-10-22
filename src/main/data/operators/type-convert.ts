@@ -16,7 +16,7 @@ export function compileTypeConvertSql(
   const { conversions } = parseOperatorConfig(TypeConvertConfigSchema, config);
   const byColumn = new Map(
     conversions.flatMap((conversion) =>
-      conversion.column && conversion.type ? [[conversion.column, conversion] as const] : []
+      conversion.field && conversion.type ? [[conversion.field, conversion] as const] : []
     )
   );
   const projections = columns.map((column) => {

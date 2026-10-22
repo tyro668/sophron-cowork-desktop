@@ -44,7 +44,7 @@ export default function FormLimit({
   const updateConfig = useUpdateConfig(onNodeChange);
   const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
 
-  const mode = (node.config.mode as string) ?? 'fixed';
+  const mode = (node.config.sampling as string) ?? 'fixed';
   const limit = typeof node.config.limit === 'number' ? node.config.limit : null;
   const unit = (node.config.unit as string) ?? 'rows';
   const offset = typeof node.config.offset === 'number' ? node.config.offset : null;
@@ -115,12 +115,12 @@ export default function FormLimit({
 
   function setMode(nextMode: 'fixed' | 'random') {
     if (nextMode === 'fixed') {
-      updateConfig((cfg) => ({ ...cfg, mode: 'fixed', method: undefined, seed: undefined }));
+      updateConfig((cfg) => ({ ...cfg, sampling: 'fixed', method: undefined, seed: undefined }));
       return;
     }
     updateConfig((cfg) => ({
       ...cfg,
-      mode: 'random',
+      sampling: 'random',
       ties: undefined,
       orderBy: undefined,
       method: unit === 'percent' ? (cfg.method ?? 'system') : undefined,

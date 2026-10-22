@@ -6,7 +6,7 @@ export function compileSortSql(
   input: string,
   config: Record<string, unknown>
 ): string {
-  const { keys } = parseOperatorConfig(SortConfigSchema, config);
+  const { orderBy: keys } = parseOperatorConfig(SortConfigSchema, config);
   const orderBy = sortKeysToSql(keys);
   return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input}${orderBy ? ` ORDER BY ${orderBy}` : ''}`;
 }

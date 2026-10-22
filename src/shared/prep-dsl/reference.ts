@@ -1,6 +1,6 @@
 import type { PrepOperatorType } from './ast';
 
-export const PREP_DSL_REFERENCE_VERSION = 'prep-dsl/v2';
+export const PREP_DSL_REFERENCE_VERSION = 'prep-dsl/v3';
 
 export type PrepDslReferenceTopic =
   'overview' | 'workflow' | 'operators' | 'derive_window' | 'reshape' | 'examples' | 'all';
@@ -162,6 +162,7 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
 
 const OVERVIEW = [
   `Data workflow DSL version: ${PREP_DSL_REFERENCE_VERSION}.`,
+  'Config naming (v3): ordering lists are orderBy (sort/limit/deduplicate); multi-field lists are fields, single field refs are field; field_select/unpivot use selection, limit uses sampling (fixed|random), set_op uses quantifier (all|distinct); only output keeps mode (write mode).',
   'Data workflow DSL is a text pipeline language for reusable data pipelines. It is not JSON.',
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
