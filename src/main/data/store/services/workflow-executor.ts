@@ -530,7 +530,7 @@ export class WorkflowExecutor {
           cacheScope,
           cacheRunId
         );
-        if (node.type === 'input_source') {
+        if (node.type === 'input') {
           const relation = await this.materializeInputSourceWithContract(
             pipeline,
             node,
@@ -624,7 +624,7 @@ export class WorkflowExecutor {
 
         await this.ctx.dropTableIfExists(outputRelation);
         const namedRelations: Array<{ alias: string; relation: string }> = [];
-        if (node.type === 'sql_query' && typeof node.config.sql === 'string') {
+        if (node.type === 'sql' && typeof node.config.sql === 'string') {
           for (const named of sqlNamedInputs(node.config.sql, nodes)) {
             namedRelations.push({
               alias: named.alias,

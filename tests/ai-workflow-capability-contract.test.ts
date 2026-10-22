@@ -26,13 +26,13 @@ import type { WorkflowOperationIr } from '../src/main/data/workflow/workflow-mod
 const CORE_OPERATION_TYPES = [
   'select',
   'rename',
-  'convert_type',
+  'cast',
   'missing_value',
   'deduplicate',
   'derive',
   'filter',
   'sort',
-  'drop',
+  'select',
   'limit',
 ] as const;
 const AGGREGATE_OPERATION_TYPES = ['aggregate'] as const;
@@ -66,8 +66,11 @@ const CAPABILITY_VARIANT_CASES: Array<{
       },
     },
   },
-  { capability: 'select.include_columns', operation: { type: 'select', columns: ['value'] } },
-  { capability: 'drop.exclude_columns', operation: { type: 'drop', columns: ['value'] } },
+  { capability: 'select.include_columns', operation: { type: 'select', fields: ['value'] } },
+  {
+    capability: 'select.exclude_columns',
+    operation: { type: 'select', selection: 'exclude', fields: ['value'] },
+  },
   {
     capability: 'rename.single_column',
     operation: { type: 'rename', source: 'value', target: 'renamed' },
@@ -109,12 +112,12 @@ const CAPABILITY_VARIANT_CASES: Array<{
     },
   },
   {
-    capability: 'convert_type.certified',
-    operation: { type: 'convert_type', column: 'value', targetType: 'decimal', options: {} },
+    capability: 'cast.certified',
+    operation: { type: 'cast', column: 'value', targetType: 'decimal', options: {} },
   },
   {
     capability: 'sort.multi_key',
-    operation: { type: 'sort', keys: [{ field: 'value', direction: 'asc' }] },
+    operation: { type: 'sort', orderBy: [{ field: 'value', direction: 'asc' }] },
   },
   {
     capability: 'aggregate.scalar',
@@ -128,14 +131,14 @@ const CAPABILITY_VARIANT_CASES: Array<{
     capability: 'deduplicate.keep_first',
     operation: {
       type: 'deduplicate',
-      config: { columns: ['value'], keep: 'first', orderBy: [] },
+      config: { fields: ['value'], keep: 'first', orderBy: [] },
     },
   },
   {
     capability: 'deduplicate.keep_last',
     operation: {
       type: 'deduplicate',
-      config: { columns: ['value'], keep: 'last', orderBy: [] },
+      config: { fields: ['value'], keep: 'last', orderBy: [] },
     },
   },
   {
@@ -148,7 +151,7 @@ const CAPABILITY_VARIANT_CASES: Array<{
       type: 'missing_value',
       config: {
         strategy: 'by_column',
-        rules: [{ column: 'value', method: 'literal_fill', value: 0 }],
+        rules: [{ field: 'value', method: 'literal_fill', value: 0 }],
       },
     },
   },
@@ -158,7 +161,7 @@ const CAPABILITY_VARIANT_CASES: Array<{
       type: 'missing_value',
       config: {
         strategy: 'by_column',
-        rules: [{ column: 'value', method: 'mean_fill' }],
+        rules: [{ field: 'value', method: 'mean_fill' }],
       },
     },
   },
@@ -168,7 +171,7 @@ const CAPABILITY_VARIANT_CASES: Array<{
       type: 'missing_value',
       config: {
         strategy: 'by_column',
-        rules: [{ column: 'value', method: 'forward_fill' }],
+        rules: [{ field: 'value', method: 'forward_fill' }],
       },
     },
   },
@@ -176,14 +179,14 @@ const CAPABILITY_VARIANT_CASES: Array<{
     capability: 'limit.global',
     operation: {
       type: 'limit',
-      config: { mode: 'limit', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
+      config: { sampling: 'fixed', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
     },
   },
   {
     capability: 'limit.random',
     operation: {
       type: 'limit',
-      config: { mode: 'random', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
+      config: { sampling: 'random', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
     },
   },
   {
@@ -202,8 +205,8 @@ const CAPABILITY_VARIANT_CASES: Array<{
     operation: {
       type: 'unpivot',
       config: {
-        mode: 'columns',
-        columns: ['value'],
+        selection: 'include',
+        fields: ['value'],
         nameColumn: 'name',
         valueColumn: 'unpivoted_value',
         includeNulls: false,
@@ -216,7 +219,7 @@ const CAPABILITY_VARIANT_CASES: Array<{
       type: 'unnest',
       config: {
         sourceKind: 'list',
-        column: 'value',
+        field: 'value',
         alias: 'item',
         keepParentNames: false,
         preserveOrder: true,
@@ -307,7 +310,7 @@ describe('AI workflow capability contract', () => {
           name: 'selectColumns',
           type: 'select',
           payload:
-            '{ columns: ["order_id", "region", "rev", "profit", "status", "updated_at", "obsolete"] }',
+            '{ fields: ["order_id", "region", "rev", "profit", "status", "updated_at", "obsolete"] }',
         },
         {
           name: 'renameRevenue',
@@ -316,7 +319,7 @@ describe('AI workflow capability contract', () => {
         },
         {
           name: 'convertRevenue',
-          type: 'convert_type',
+          type: 'cast',
           payload:
             '{ column: "revenue", targetType: "decimal", options: { removePrefix: "$", scale: 2 } }',
         },
@@ -324,13 +327,13 @@ describe('AI workflow capability contract', () => {
           name: 'fillRegion',
           type: 'missing_value',
           payload:
-            '{ config: { strategy: "by_column", rules: [{ column: "region", method: "literal_fill", value: "UNKNOWN" }] } }',
+            '{ config: { strategy: "by_column", rules: [{ field: "region", method: "literal_fill", value: "UNKNOWN" }] } }',
         },
         {
           name: 'deduplicateOrders',
           type: 'deduplicate',
           payload:
-            '{ config: { columns: ["order_id"], keep: "last", orderBy: [{ field: "updated_at", direction: "asc" }] } }',
+            '{ config: { fields: ["order_id"], keep: "last", orderBy: [{ field: "updated_at", direction: "asc" }] } }',
         },
         {
           name: 'deriveMargin',
@@ -345,34 +348,35 @@ describe('AI workflow capability contract', () => {
         {
           name: 'sortRevenue',
           type: 'sort',
-          payload: '{ column: expr(row => row["revenue"]), direction: "desc" }',
+          payload: '{ orderBy: [{ field: "revenue", direction: "desc" }] }',
         },
         {
           name: 'dropInternalColumns',
-          type: 'drop',
-          payload: '{ columns: ["status", "updated_at", "obsolete"] }',
+          type: 'select',
+          payload: '{ selection: "exclude", fields: ["status", "updated_at", "obsolete"] }',
         },
         {
           name: 'limitRows',
           type: 'limit',
-          payload: '{ config: { mode: "limit", limit: 2, unit: "rows", offset: 0, orderBy: [] } }',
+          payload:
+            '{ config: { sampling: "fixed", limit: 2, unit: "rows", offset: 0, orderBy: [] } }',
         },
       ]),
     });
 
     expect(result.plan.nodes.map((node) => node.type)).toEqual([
-      'input_source',
-      'field_select',
-      'field_mapping',
-      'calculate_field',
-      'field_select',
-      'field_mapping',
+      'input',
+      'select',
+      'rename',
+      'derive',
+      'select',
+      'rename',
       'missing_value',
       'deduplicate',
-      'calculate_field',
+      'derive',
       'filter',
       'sort',
-      'field_select',
+      'select',
       'limit',
       'output',
     ]);
@@ -409,7 +413,7 @@ describe('AI workflow capability contract', () => {
           name: 'fillMissingValues',
           type: 'missing_value',
           payload:
-            '{ config: { strategy: "by_column", rules: [{ column: "amount", method: "mean_fill" }, { column: "label", method: "backward_fill" }] } }',
+            '{ config: { strategy: "by_column", rules: [{ field: "amount", method: "mean_fill" }, { field: "label", method: "backward_fill" }] } }',
         },
       ]),
     });
@@ -442,11 +446,7 @@ describe('AI workflow capability contract', () => {
       ]),
     });
 
-    expect(result.plan.nodes.map((node) => node.type)).toEqual([
-      'input_source',
-      'aggregate',
-      'output',
-    ]);
+    expect(result.plan.nodes.map((node) => node.type)).toEqual(['input', 'aggregate', 'output']);
     const rows = await queryRows(
       result.dbPath,
       `SELECT region, total_amount, row_count FROM ${result.resultTable} ORDER BY region`
@@ -631,16 +631,16 @@ describe('AI workflow capability contract', () => {
         {
           name: 'sortSalesShare',
           type: 'sort',
-          payload: '{ column: expr(row => row["sales_share"]), direction: "desc" }',
+          payload: '{ orderBy: [{ field: "sales_share", direction: "desc" }] }',
         },
       ]),
     });
 
     expect(result.plan.nodes.map((node) => node.type)).toEqual([
-      'input_source',
+      'input',
       'aggregate',
-      'calculate_field',
-      'calculate_field',
+      'derive',
+      'derive',
       'sort',
       'output',
     ]);
@@ -858,7 +858,7 @@ describe('AI workflow capability contract', () => {
       ]),
     });
 
-    expect(result.plan.nodes.map((node) => node.type)).toEqual(['input_source', 'pivot', 'output']);
+    expect(result.plan.nodes.map((node) => node.type)).toEqual(['input', 'pivot', 'output']);
     const rows = await queryRows(
       result.dbPath,
       `SELECT * FROM ${result.resultTable} ORDER BY region`
@@ -946,19 +946,19 @@ describe('AI workflow capability contract', () => {
           name: 'dropFullyEmptyMarkers',
           type: 'missing_value',
           payload:
-            '{ config: { strategy: "drop_rows_by_nulls", columns: ["a", "b"], condition: "all_null" } }',
+            '{ config: { strategy: "drop_rows_by_nulls", fields: ["a", "b"], condition: "all_null" } }',
         },
         {
           name: 'sortByScoreAndLabel',
           type: 'sort',
           payload:
-            '{ keys: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }] }',
+            '{ orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }] }',
         },
         {
           name: 'takeTopHalf',
           type: 'limit',
           payload:
-            '{ config: { mode: "limit", limit: 50, unit: "percent", offset: 0, orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }], ties: false } }',
+            '{ config: { sampling: "fixed", limit: 50, unit: "percent", offset: 0, orderBy: [{ field: "score", direction: "desc" }, { field: "label", direction: "asc" }], ties: false } }',
         },
       ]),
     });
@@ -992,7 +992,7 @@ describe('AI workflow capability contract', () => {
           name: 'sampleRows',
           type: 'limit',
           payload:
-            '{ config: { mode: "random", limit: 5, unit: "rows", offset: 0, orderBy: [], method: "system", seed: 42 } }',
+            '{ config: { sampling: "random", limit: 5, unit: "rows", offset: 0, orderBy: [], method: "system", seed: 42 } }',
         },
       ]),
     });
@@ -1011,7 +1011,7 @@ describe('AI workflow capability contract', () => {
         name: 'takeBestPerRegion',
         type: 'limit',
         payload:
-          '{ config: { mode: "limit", limit: 1, unit: "rows", offset: 0, orderBy: [{ field: "score", direction: "desc" }], groupBy: ["region"], ties: true } }',
+          '{ config: { sampling: "fixed", limit: 1, unit: "rows", offset: 0, orderBy: [{ field: "score", direction: "desc" }], groupBy: ["region"], ties: true } }',
       },
     ]);
 
@@ -1045,16 +1045,12 @@ describe('AI workflow capability contract', () => {
           name: 'unpivotQuarter',
           type: 'unpivot',
           payload:
-            '{ config: { mode: "columns", columns: ["Q1", "Q2"], nameColumn: "quarter", valueColumn: "revenue", includeNulls: false } }',
+            '{ config: { selection: "include", fields: ["Q1", "Q2"], nameColumn: "quarter", valueColumn: "revenue", includeNulls: false } }',
         },
       ]),
     });
 
-    expect(result.plan.nodes.map((node) => node.type)).toEqual([
-      'input_source',
-      'unpivot',
-      'output',
-    ]);
+    expect(result.plan.nodes.map((node) => node.type)).toEqual(['input', 'unpivot', 'output']);
     const rows = await queryRows(
       result.dbPath,
       `SELECT region, quarter, revenue FROM ${result.resultTable} ORDER BY region, quarter`
@@ -1087,16 +1083,12 @@ describe('AI workflow capability contract', () => {
           name: 'unnestItems',
           type: 'unnest',
           payload:
-            '{ config: { sourceKind: "list", column: "items", alias: "item", path: "$", keepParentNames: false, preserveOrder: true } }',
+            '{ config: { sourceKind: "list", field: "items", alias: "item", path: "$", keepParentNames: false, preserveOrder: true } }',
         },
       ]),
     });
 
-    expect(result.plan.nodes.map((node) => node.type)).toEqual([
-      'input_source',
-      'unnest',
-      'output',
-    ]);
+    expect(result.plan.nodes.map((node) => node.type)).toEqual(['input', 'unnest', 'output']);
     const rows = await queryRows(
       result.dbPath,
       `SELECT id, CAST(item AS INTEGER) AS item FROM ${result.resultTable} ORDER BY id, item`

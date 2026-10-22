@@ -32,7 +32,7 @@ export function WorkflowInputSourceConfig({
   const selectedRawTableById =
     rawTables.find((rawTable) => rawTable.id === selectedRawTableId) ?? null;
   const hasSelectedRawTableInChoices = selectedRawTableById !== null;
-  // DSL-authored inputs bind by table name (`input source rawTable "销售订单"`).
+  // DSL-authored inputs bind by table name (`input rawTable "销售订单"`).
   const selectedRawTable =
     selectedRawTableById ??
     rawTables.find((rawTable) => rawTable.name === selectedRawTableId) ??

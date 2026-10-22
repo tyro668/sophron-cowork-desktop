@@ -11,7 +11,7 @@ function compileMissingValueWorkflow(
   const cleaned = workflow.step(input, "missing_value", {
     config: {
       strategy: "by_column",
-      rules: [{ column: "value", method: "${method}" }]
+      rules: [{ field: "value", method: "${method}" }]
     }
   });
   return workflow.output(cleaned, RESULT_TABLE_NAME, { mode: "replace" });

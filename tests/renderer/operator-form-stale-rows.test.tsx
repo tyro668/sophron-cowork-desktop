@@ -97,7 +97,7 @@ const cases: Array<{
   {
     name: 'FormFieldMapping',
     Form: FormFieldMapping,
-    type: 'field_mapping',
+    type: 'rename',
     key: 'mappings',
     rows: [
       { id: 'f1', source: '金额', targetMode: 'rename', target: '' },
@@ -107,7 +107,7 @@ const cases: Array<{
   {
     name: 'FormCalculateField',
     Form: FormCalculateField,
-    type: 'calculate_field',
+    type: 'derive',
     key: 'calculations',
     rows: [
       { id: 'c1', field: '', expression: '1', action: 'add' },
@@ -143,9 +143,9 @@ describe('operator forms apply queued row edits against the latest config', () =
 describe('FormJoin reference names', () => {
   it('resolves saved conditions by input aliases, not node labels', async () => {
     const nodes = [
-      makeNode('input_source', { alias: 'orders' }),
-      makeNode('type_convert', {}),
-      makeNode('input_source', { alias: 'products' }),
+      makeNode('input', { alias: 'orders' }),
+      makeNode('cast', {}),
+      makeNode('input', { alias: 'products' }),
     ];
     nodes[0] = { ...nodes[0], id: 'orders', label: '输入' };
     nodes[1] = { ...nodes[1], id: 'convert', label: '已重命名的转换' };
@@ -185,8 +185,8 @@ describe('FormJoin reference names', () => {
           createdAt: 0,
         },
       ] as OperatorFormProps['workflowEdges'],
-      sourceNode: { id: 'convert', type: 'type_convert', config: {} },
-      rightSourceNode: { id: 'products', type: 'input_source', config: { alias: 'products' } },
+      sourceNode: { id: 'convert', type: 'cast', config: {} },
+      rightSourceNode: { id: 'products', type: 'input', config: { alias: 'products' } },
     });
     const notFound = (
       en as { data: { workflow: { formLabels: { fieldPicker: { fieldNotFound: string } } } } }

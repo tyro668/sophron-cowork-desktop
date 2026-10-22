@@ -35,7 +35,7 @@ import {
 import { validateGeneratedWorkflowGenerationContract } from '../src/main/data/workflow/schema-inferencer';
 
 const SOURCE = `function removeCount(input) {
-  return workflow.step(input, "drop", { columns: ["记录数"] });
+  return workflow.step(input, "select", { selection: "exclude", fields: ["记录数"] });
 }
 function main() {
   const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
@@ -150,7 +150,7 @@ describe('JavaScript Workflow SDK pipeline', () => {
     config: {
       strategy: "by_column",
       rules: [{
-        column: "Close value",
+        field: "Close value",
         method: "nullify_values",
         values: ["NULL"]
       }]
@@ -169,7 +169,7 @@ function main() {
         strategy: 'by_column',
         rules: [
           {
-            column: 'Close value',
+            field: 'Close value',
             method: 'nullify_values',
             values: ['NULL'],
           },
@@ -201,7 +201,7 @@ function main() {
 
   it('type-checks every workflow operation against its precise payload contract', () => {
     const invalidSelect = `function selectFields(input) {
-  return workflow.step(input, "select", { columns: [42] });
+  return workflow.step(input, "select", { fields: [42] });
 }
 function main() {
   const input = workflow.input(RAW_TABLE_ID);
@@ -212,7 +212,7 @@ function main() {
     );
 
     const invalidScale = `function convertValue(input) {
-  return workflow.step(input, "convert_type", {
+  return workflow.step(input, "cast", {
     column: "Value",
     targetType: "integer",
     options: { scale: 2 }
@@ -228,7 +228,7 @@ function main() {
 
     const invalidKeepPolicy = `function removeDuplicates(input) {
   return workflow.step(input, "deduplicate", {
-    config: { columns: ["ID"], keep: "middle", orderBy: [] }
+    config: { fields: ["ID"], keep: "middle", orderBy: [] }
   });
 }
 function main() {
@@ -245,7 +245,7 @@ function main() {
   return workflow.step(input, "missing_value", {
     config: {
       strategy: "by_column",
-      rules: [{ column: "Value", method: "nullify_values", values: [0] }]
+      rules: [{ field: "Value", method: "nullify_values", values: [0] }]
     }
   });
 }
@@ -299,15 +299,15 @@ function main() {
         details?: { diagnostics?: Array<Record<string, unknown>> };
       };
       expect(commandError.message).toContain('Invalid workflow.step payload for operation "limit"');
-      expect(commandError.message).toContain('mode: "limit"');
+      expect(commandError.message).toContain('sampling: "fixed"');
       expect(commandError.message).not.toContain(
         `Argument of type '"limit"' is not assignable to parameter of type '"unnest"'`
       );
       expect(commandError.details?.diagnostics?.[0]).toMatchObject({
         functionName: 'takeTopRows',
         operationType: 'limit',
-        expectedSignature: expect.stringContaining('mode: "limit"'),
-        repairHint: expect.stringContaining('Never use config.mode="top"'),
+        expectedSignature: expect.stringContaining('sampling: "fixed"'),
+        repairHint: expect.stringContaining('There is no top mode'),
       });
     }
   });
@@ -422,7 +422,7 @@ function main() {
   return workflow.step(input, "unnest", {
     config: {
       sourceKind: "json",
-      column: "Value",
+      field: "Value",
       alias: "item",
       keepParentNames: false,
       preserveOrder: false
@@ -452,8 +452,9 @@ function main() {
         expect.objectContaining({
           operationId: 'remove-count',
           inputOperationId: 'input',
-          type: 'drop',
-          columns: ['记录数'],
+          type: 'select',
+          selection: 'exclude',
+          fields: ['记录数'],
         }),
       ],
     });
@@ -462,7 +463,7 @@ function main() {
 
   it('returns precise V8 syntax diagnostics before sandbox execution', () => {
     const source = `function broken(input) {
-  return workflow.step(input, "drop", { columns: ["记录数"] }));
+  return workflow.step(input, "select", { selection: "exclude", fields: ["记录数"] }));
 }
 function main() {}`;
     try {
@@ -486,7 +487,7 @@ function main() {}`;
 
   it('patches a syntax-invalid helper through the best-effort function index', () => {
     const invalidSource = `function removeCount(input) {
-  return workflow.step(input, "drop", { columns: ["记录数"] }));
+  return workflow.step(input, "select", { selection: "exclude", fields: ["记录数"] }));
 }
 function main() {
   const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
@@ -496,12 +497,14 @@ function main() {
       invalidSource,
       'removeCount',
       `function removeCount(input) {
-  return workflow.step(input, "drop", { columns: ["记录数"] });
+  return workflow.step(input, "select", { selection: "exclude", fields: ["记录数"] });
 }`
     );
 
     expect(buildIr(patched).operations).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: 'drop', columns: ['记录数'] })])
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'select', selection: 'exclude', fields: ['记录数'] }),
+      ])
     );
   });
 
@@ -529,39 +532,31 @@ function main() {
           {
             operationId: 'second-drop',
             inputOperationId: 'input',
-            type: 'drop',
-            columns: ['另一列'],
+            type: 'select',
+            selection: 'exclude',
+            fields: ['另一列'],
           },
         ],
       })
     ).toThrow(/single linear chain/);
   });
 
-  it('normalizes the legacy top limit shape at the IR boundary', () => {
+  it('rejects the removed limit mode field at the IR boundary', () => {
     const ir = buildIr();
     const operationId = ir.operations[0]?.operationId;
-    const normalized = validateAndNormalizeWorkflowIr({
-      ...ir,
-      operations: [
-        {
-          operationId,
-          inputOperationId: 'input',
-          type: 'limit',
-          config: {
-            mode: 'top',
-            limit: 10,
-            unit: 'rows',
-            offset: 0,
-            orderBy: [{ field: '记录数', direction: 'desc' }],
-          },
-        },
-      ],
-    });
-
-    expect(normalized.operations[0]).toMatchObject({
-      type: 'limit',
-      config: { mode: 'limit', unit: 'rows', offset: 0, ties: false },
-    });
+    expect(() =>
+      validateAndNormalizeWorkflowIr({
+        ...ir,
+        operations: [
+          {
+            operationId,
+            inputOperationId: 'input',
+            type: 'limit',
+            config: { mode: 'top', limit: 10, unit: 'rows', offset: 0, orderBy: [] },
+          } as never,
+        ],
+      })
+    ).toThrow(/sampling/);
   });
 
   it('lowers stable IR directly to platform nodes with runtime bindings', () => {
@@ -576,7 +571,7 @@ function main() {
         outputPhysicalTableName: 'runtime_output_physical',
       },
     });
-    expect(plan.nodes.map((node) => node.type)).toEqual(['input_source', 'field_select', 'output']);
+    expect(plan.nodes.map((node) => node.type)).toEqual(['input', 'select', 'output']);
     expect(plan.nodes[0]?.config).toMatchObject({ rawTableId: 'runtime-input' });
     expect(plan.nodes.at(-1)?.config).toMatchObject({ table: 'runtime_output_physical' });
   });
@@ -594,14 +589,14 @@ function main() {
     expect(result).not.toHaveProperty('workflowDsl');
     expect(result.platformOperators).toEqual([
       expect.objectContaining({
-        type: 'field_select',
+        type: 'select',
         config: { selection: 'exclude', fields: ['记录数'] },
       }),
     ]);
     expect(result.platformOperators[0]?.config).not.toHaveProperty('dsl');
     const compatibilityDsl = exportGeneratedWorkflowDsl(result);
-    expect(compatibilityDsl).toContain('input source rawTable "input-1" as src');
-    expect(compatibilityDsl).toContain('drop [记录数]');
+    expect(compatibilityDsl).toContain('input rawTable "input-1" as src');
+    expect(compatibilityDsl).toContain('select except [记录数]');
     expect(compatibilityDsl).toContain('output table "output-1" mode replace');
     expect(result.operationOrigins?.[0]).toMatchObject({
       operationId: 'remove-count',
@@ -772,10 +767,10 @@ function main() {
 
   it('uses Acorn ranges to patch only the diagnosed function', () => {
     const replacement = `function removeCount(input) {
-  return workflow.step(input, "drop", { columns: ["旧字段"] });
+  return workflow.step(input, "select", { selection: "exclude", fields: ["旧字段"] });
 }`;
     const patched = applyWorkflowFunctionPatch(SOURCE, 'removeCount', replacement);
-    expect(patched).toContain('columns: ["旧字段"]');
+    expect(patched).toContain('fields: ["旧字段"]');
     expect(patched.slice(patched.indexOf('function main()'))).toBe(
       SOURCE.slice(SOURCE.indexOf('function main()'))
     );
@@ -844,8 +839,7 @@ it('compiles a date difference in days and sorts by the derived field', () => {
 }
 function sortShippingDays(input) {
   return workflow.step(input, "sort", {
-    column: expr(row => row["Shipping Days"]),
-    direction: "desc"
+    orderBy: [{ field: "Shipping Days", direction: "desc" }]
   });
 }
 function main() {
@@ -868,7 +862,7 @@ function main() {
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     "derive [Shipping Days] = date_diff('day', [Order Date], [Ship Date])"
   );
-  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort [Shipping Days] desc');
   expect(result.expectedOutputSchema).toContainEqual({
     name: 'Shipping Days',
     type: 'integer',
@@ -1060,7 +1054,7 @@ it('lowers native dateDiff, null checks, logical operators, cast, and sorting', 
   });
 }
 function sortShippingDays(input) {
-  return workflow.step(input, "sort", { column: expr(row => row["Shipping Days"]), direction: "desc" });
+  return workflow.step(input, "sort", { orderBy: [{ field: "Shipping Days", direction: "desc" }] });
 }
 function main() {
   const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
@@ -1081,7 +1075,7 @@ function main() {
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else cast(date_diff('day', [Order Date], [Ship Date]) AS INTEGER) end"
   );
-  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Shipping Days] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort [Shipping Days] desc');
 });
 
 it('keeps authoring JavaScript separate from executable source and expression sidecars', () => {
@@ -1310,7 +1304,7 @@ it.each([
 
 it('prevents operation payloads from overriding IR-owned fields', () => {
   const source = `function removeValue(input) {
-  return workflow.step(input, "drop", { columns: ["Value"], type: "derive" });
+  return workflow.step(input, "select", { selection: "exclude", fields: ["Value"], type: "derive" });
 }
 function main() {
   const input = workflow.input(RAW_TABLE_ID);
@@ -1353,10 +1347,9 @@ function main() {
 it('allows one helper to compose multiple sequential named workflow operations', () => {
   const source = `function prepareSales(input) {
   const sorted = workflow.step(input, "sort", {
-    column: expr(row => row["Sales"]),
-    direction: "desc"
+    orderBy: [{ field: "Sales", direction: "desc" }]
   });
-  const cleaned = workflow.step(sorted, "drop", { columns: ["Row ID"] });
+  const cleaned = workflow.step(sorted, "select", { selection: "exclude", fields: ["Row ID"] });
   return cleaned;
 }
 function main() {
@@ -1380,8 +1373,8 @@ function main() {
     'prepareSales',
     'prepareSales',
   ]);
-  expect(exportGeneratedWorkflowDsl(result)).toContain('sort by [Sales] desc');
-  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [Row ID]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('sort [Sales] desc');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('select except [Row ID]');
 });
 
 it('enforces domain-function argument types after derived schema becomes known', () => {
@@ -1460,7 +1453,7 @@ function main() {
     columns: [{ name: 'Sales', type: 'decimal' }],
   });
 
-  expect(exportGeneratedWorkflowDsl(result)).toContain('map [Sales] to [Revenue]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain('rename [Sales] as [Revenue]');
   expect(exportGeneratedWorkflowDsl(result)).toContain('derive [Double Revenue] = [Revenue] * 2');
 });
 
@@ -1546,7 +1539,7 @@ function main() {
     "derive [__sophron_ai_filter_predicate] = regexp_matches([Code], '^[A-Z]+-[0-9]+$')"
   );
   expect(dsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-  expect(dsl).toContain('drop [__sophron_ai_filter_predicate]');
+  expect(dsl).toContain('select except [__sophron_ai_filter_predicate]');
 });
 
 it('types native cast results and normalizes timestamp as datetime during DSL lowering', () => {
@@ -1588,7 +1581,9 @@ function main() {
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     'filter [__sophron_ai_filter_predicate] = true'
   );
-  expect(exportGeneratedWorkflowDsl(result)).toContain('drop [__sophron_ai_filter_predicate]');
+  expect(exportGeneratedWorkflowDsl(result)).toContain(
+    'select except [__sophron_ai_filter_predicate]'
+  );
   expect(result.workflowIr?.operations[1]).toMatchObject({
     type: 'filter',
     condition: {
@@ -1628,7 +1623,7 @@ function main() {
 it('rejects a generated percent limit whose offset would be discarded by the platform schema', () => {
   const source = `function takePercent(input) {
   return workflow.step(input, "limit", {
-    config: { mode: "limit", limit: 25, unit: "percent", offset: 5, orderBy: [] }
+    config: { sampling: "fixed", limit: 25, unit: "percent", offset: 5, orderBy: [] }
   });
 }
 function main() {
@@ -1675,7 +1670,7 @@ it('rejects an IR operation type that was not approved by requirement analysis',
 it('rejects a generated operation variant that differs from the analyzed capability', () => {
   const source = `function deduplicate(input) {
   return workflow.step(input, "deduplicate", {
-    config: { columns: ["id"], keep: "last", orderBy: [] }
+    config: { fields: ["id"], keep: "last", orderBy: [] }
   });
 }
 function main() {

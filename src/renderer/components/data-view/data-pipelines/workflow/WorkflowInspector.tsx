@@ -113,7 +113,7 @@ export function WorkflowInspector({
     ? nodePreviewData.workflowSignature !== upstreamSignature
     : (isPreviewStale ?? false);
   const nodePreviewGeneratedAt = nodePreviewData?.generatedAt ?? nodePreviewFetchedAt;
-  const usesOperatorDsl = Boolean(node && node.type !== 'input_source' && node.type !== 'output');
+  const usesOperatorDsl = Boolean(node && node.type !== 'input' && node.type !== 'output');
   const operatorFieldSourceNode = useMemo(
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
@@ -476,7 +476,7 @@ export function WorkflowInspector({
           className={`min-h-0 flex-1 overflow-hidden ${
             resolvedTab === 'data' ||
             ((resolvedTab === 'config' || resolvedTab === 'dsl') &&
-              (usesOperatorDsl || node.type === 'output' || node.type === 'input_source'))
+              (usesOperatorDsl || node.type === 'output' || node.type === 'input'))
               ? 'p-0'
               : 'p-2.5'
           }`}
@@ -597,7 +597,7 @@ export function WorkflowInspector({
               onFormatDsl={handleFormatOperatorDsl}
               onApplyDsl={() => void handleApplyOperatorDsl()}
             />
-          ) : node.type === 'input_source' ? (
+          ) : node.type === 'input' ? (
             <WorkflowInputSourceConfig
               node={node}
               rawTables={rawTables}

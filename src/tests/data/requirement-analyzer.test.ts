@@ -23,7 +23,7 @@ describe('analyzeDataPipelineRequirement', () => {
           {
             requirement: '删除记录数字段',
             status: 'supported',
-            capabilities: ['drop.exclude_columns'],
+            capabilities: ['select.exclude_columns'],
           },
         ],
       }),
@@ -37,7 +37,7 @@ describe('analyzeDataPipelineRequirement', () => {
       })
     ).resolves.toMatchObject({
       status: 'supported',
-      items: [{ operations: ['drop'], capabilities: ['drop.exclude_columns'] }],
+      items: [{ operations: ['select'], capabilities: ['select.exclude_columns'] }],
     });
   });
 
@@ -48,7 +48,7 @@ describe('analyzeDataPipelineRequirement', () => {
           {
             requirement: '删除记录数字段',
             status: 'supported',
-            capabilities: ['drop.exclude_columns'],
+            capabilities: ['select.exclude_columns'],
           },
           {
             requirement: '把地址转换为经纬度',

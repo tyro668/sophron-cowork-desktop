@@ -7,7 +7,7 @@ const FIELD_NAME_PRESERVING_TYPES = new Set<DataWorkflowNode['type']>([
   'sort',
   'deduplicate',
   'limit',
-  'type_convert',
+  'cast',
 ]);
 
 export function getWorkflowFieldSourceCandidates(

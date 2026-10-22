@@ -43,7 +43,7 @@ describe('FormLimit — config ↔ DSL', () => {
       unit: 'rows',
       orderBy: [{ field: 'revenue', direction: 'desc' }],
     });
-    expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('limit 10');
     expect(r.dsl).toContain('revenue');
     expect(r.dsl).toContain('desc');
   });
@@ -58,7 +58,7 @@ describe('FormLimit — config ↔ DSL', () => {
         { field: 'revenue', direction: 'desc' },
       ],
     });
-    expect(r.dsl).toContain('top 5');
+    expect(r.dsl).toContain('limit 5');
     expect(r.dsl).toContain('category');
     expect(r.dsl).toContain('revenue');
     expect(r.dsl).toContain('asc');
@@ -126,31 +126,31 @@ describe('FormLimit — new features', () => {
       orderBy: [{ field: 'score', direction: 'desc' }],
       ties: true,
     });
-    expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('limit 10');
     expect(r.dsl).toContain('with ties');
   });
 
   it('sample rows mode produces sample DSL', () => {
     const r = ok({ sampling: 'random', limit: 100, unit: 'rows' });
-    expect(r.dsl).toContain('sample 100 rows');
+    expect(r.dsl).toContain('limit 100 rows random');
     expect(r.dsl).not.toContain('system');
     expect(r.dsl).not.toContain('bernoulli');
   });
 
   it('sample percent mode produces sample DSL with percent', () => {
     const r = ok({ sampling: 'random', limit: 10, unit: 'percent', method: 'system' });
-    expect(r.dsl).toContain('sample 10 percent');
+    expect(r.dsl).toContain('limit 10 percent random');
   });
 
   it('sample with seed produces repeatable DSL', () => {
     const r = ok({ sampling: 'random', limit: 100, unit: 'rows', seed: 42 });
-    expect(r.dsl).toContain('sample 100 rows');
+    expect(r.dsl).toContain('limit 100 rows random');
     expect(r.dsl).toContain('repeatable 42');
   });
 
   it('system is default method and omitted in DSL', () => {
     const r = ok({ sampling: 'random', limit: 50, unit: 'percent', method: 'system' });
-    expect(r.dsl).toContain('sample 50 percent');
+    expect(r.dsl).toContain('limit 50 percent random');
     expect(r.dsl).not.toContain('system');
   });
 
@@ -171,7 +171,7 @@ describe('FormLimit — new features', () => {
       orderBy: [{ field: 'score', direction: 'desc' }],
       ties: true,
     });
-    expect(r.dsl).toContain('top 10');
+    expect(r.dsl).toContain('limit 10');
     expect(r.dsl).toContain('percent');
     expect(r.dsl).toContain('with ties');
     expect(r.config.unit).toBe('percent');

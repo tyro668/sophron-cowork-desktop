@@ -6,7 +6,7 @@ describe('prep-dsl/v3 config naming migration', () => {
     expect(migrateConfigToV3Naming('sort', { keys: [{ field: 'a' }] })).toEqual({
       orderBy: [{ field: 'a' }],
     });
-    expect(migrateConfigToV3Naming('field_select', { columns: ['a'], mode: 'exclude' })).toEqual({
+    expect(migrateConfigToV3Naming('select', { columns: ['a'], mode: 'exclude' })).toEqual({
       fields: ['a'],
       selection: 'exclude',
     });
@@ -22,7 +22,7 @@ describe('prep-dsl/v3 config naming migration', () => {
       })
     ).toEqual({ fields: ['a'], rules: [{ field: 'b', method: 'skip' }] });
     expect(
-      migrateConfigToV3Naming('type_convert', { conversions: [{ column: 'x', type: 'text' }] })
+      migrateConfigToV3Naming('cast', { conversions: [{ column: 'x', type: 'text' }] })
     ).toEqual({
       conversions: [{ field: 'x', type: 'text' }],
     });

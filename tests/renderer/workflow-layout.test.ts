@@ -40,7 +40,7 @@ const byId = (nodes: DataWorkflowNode[]) => new Map(nodes.map((n) => [n.id, n]))
 describe('layoutWorkflowNodes', () => {
   it('lays a linear chain out left to right on one row', () => {
     const nodes = layoutWorkflowNodes(
-      [node('a', 'input_source'), node('b'), node('c'), node('out', 'output')],
+      [node('a', 'input'), node('b'), node('c'), node('out', 'output')],
       [edge('a', 'b'), edge('b', 'c'), edge('c', 'out')]
     );
     const map = byId(nodes);
@@ -55,14 +55,7 @@ describe('layoutWorkflowNodes', () => {
   it('wraps wide chains into left-to-right rows so edges keep flowing forward', () => {
     // width 800 → 3 columns per row; a 6-node chain wraps after 3.
     const nodes = layoutWorkflowNodes(
-      [
-        node('a', 'input_source'),
-        node('b'),
-        node('c'),
-        node('d'),
-        node('e'),
-        node('out', 'output'),
-      ],
+      [node('a', 'input'), node('b'), node('c'), node('d'), node('e'), node('out', 'output')],
       [edge('a', 'b'), edge('b', 'c'), edge('c', 'd'), edge('d', 'e'), edge('e', 'out')],
       800
     );
@@ -89,12 +82,12 @@ describe('layoutWorkflowNodes', () => {
     // of looping backward the way a fixed snake order would draw it.
     const nodes = layoutWorkflowNodes(
       [
-        node('in1', 'input_source'),
-        node('in2', 'input_source'),
+        node('in1', 'input'),
+        node('in2', 'input'),
         node('f'),
         node('dd', 'deduplicate'),
         node('j', 'join'),
-        node('s', 'sql_query'),
+        node('s', 'sql'),
         node('out', 'output'),
       ],
       [
@@ -117,7 +110,7 @@ describe('layoutWorkflowNodes', () => {
 
   it('does not wrap when the chain fits the viewport', () => {
     const nodes = layoutWorkflowNodes(
-      [node('a', 'input_source'), node('b'), node('out', 'output')],
+      [node('a', 'input'), node('b'), node('out', 'output')],
       [edge('a', 'b'), edge('b', 'out')],
       1200
     );
@@ -128,7 +121,7 @@ describe('layoutWorkflowNodes', () => {
 
   it('puts branch siblings into the same column and the join downstream', () => {
     const nodes = layoutWorkflowNodes(
-      [node('a', 'input_source'), node('b'), node('c'), node('j', 'join'), node('out', 'output')],
+      [node('a', 'input'), node('b'), node('c'), node('j', 'join'), node('out', 'output')],
       [
         edge('a', 'b'),
         edge('a', 'c'),
@@ -150,7 +143,7 @@ describe('layoutWorkflowNodes', () => {
 
   it('stacks disconnected components into separate bands without overlap', () => {
     const nodes = layoutWorkflowNodes(
-      [node('a1', 'input_source'), node('a2'), node('b1', 'input_source'), node('b2')],
+      [node('a1', 'input'), node('a2'), node('b1', 'input'), node('b2')],
       [edge('a1', 'a2'), edge('b1', 'b2')]
     );
     const map = byId(nodes);
@@ -161,7 +154,7 @@ describe('layoutWorkflowNodes', () => {
 
   it('places isolated orphan nodes', () => {
     const nodes = layoutWorkflowNodes(
-      [node('a', 'input_source'), node('b'), node('orphan')],
+      [node('a', 'input'), node('b'), node('orphan')],
       [edge('a', 'b')]
     );
     const orphan = byId(nodes).get('orphan')!;

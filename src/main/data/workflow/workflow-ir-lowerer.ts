@@ -230,7 +230,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           'filter_predicate',
           context.getCurrentColumns()
         );
-        context.emitOperator('calculate_field', {
+        context.emitOperator('derive', {
           calculations: [{ field: temporaryColumn, expression: compiled.dsl }],
         });
         context.upsertColumn({
@@ -242,7 +242,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         context.emitOperator('filter', {
           condition: `${formatDslField(temporaryColumn)} = true`,
         });
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'exclude',
           fields: [temporaryColumn],
         });
@@ -254,27 +254,18 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   },
   sort: {
     compile(operation, context) {
-      const requestedKeys =
-        operation.keys && operation.keys.length > 0
-          ? operation.keys
-          : [
-              {
-                field: requireWorkflowColumnName(operation.column!, 'sort.column'),
-                direction: operation.direction ?? 'asc',
-              },
-            ];
-      const keys = requestedKeys.map((key) => ({
+      const keys = operation.orderBy.map((key) => ({
         ...key,
-        field: context.requireColumn(key.field, 'sort.keys').name,
+        field: context.requireColumn(key.field, 'sort.orderBy').name,
       }));
       context.emitOperator('sort', {
         orderBy: keys,
       });
     },
   },
-  convert_type: {
+  cast: {
     compile(operation, context) {
-      const column = context.requireColumn(operation.column, 'convert_type.column');
+      const column = context.requireColumn(operation.column, 'cast.column');
       const targetType = normalizePlanTargetType(operation.targetType);
       const onError = operation.options.onError === 'fail' ? 'fail' : 'null';
       const removeChars = Array.isArray(operation.options.removeChars)
@@ -309,20 +300,20 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           scale: operation.options.scale,
           failOnError: onError === 'fail',
         });
-        context.emitOperator('calculate_field', {
+        context.emitOperator('derive', {
           calculations: [{ field: tempColumn, expression }],
         });
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'exclude',
           fields: [column.name],
         });
-        context.emitOperator('field_mapping', {
+        context.emitOperator('rename', {
           mappings: [{ source: tempColumn, targetMode: 'rename', targetValue: column.name }],
         });
         context.removeColumn(column.name);
         context.upsertColumn({ ...convertedColumn, expression });
       } else {
-        context.emitOperator('type_convert', {
+        context.emitOperator('cast', {
           conversions: [{ field: column.name, type: targetType, onError }],
         });
         context.upsertColumn(convertedColumn);
@@ -331,42 +322,36 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   },
   select: {
     compile(operation, context) {
-      const rawSelected = operation.columns;
+      const rawSelected = operation.fields;
+      if (operation.selection === 'exclude') {
+        const dropped = rawSelected.map(
+          (name) => context.requireColumn(name, 'select.fields').name
+        );
+        if (dropped.length > 0) {
+          context.emitOperator('select', { selection: 'exclude', fields: dropped });
+          dropped.forEach((name) => context.removeColumn(name));
+        }
+        return;
+      }
       const inferredDropped = inferDroppedColumnsFromSelectOperation(rawSelected, context);
       if (inferredDropped.length > 0) {
         const dropped = inferredDropped.map(
-          (name) => context.requireColumn(name, 'drop.columns').name
+          (name) => context.requireColumn(name, 'select.fields').name
         );
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'exclude',
           fields: dropped,
         });
         dropped.forEach((name) => context.removeColumn(name));
         return;
       }
-      const selected = rawSelected.map(
-        (name) => context.requireColumn(name, 'select.columns').name
-      );
+      const selected = rawSelected.map((name) => context.requireColumn(name, 'select.fields').name);
       if (selected.length > 0) {
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'include',
           fields: selected,
         });
         context.keepColumns(selected);
-      }
-    },
-  },
-  drop: {
-    compile(operation, context) {
-      const dropped = operation.columns.map(
-        (name) => context.requireColumn(name, 'drop.columns').name
-      );
-      if (dropped.length > 0) {
-        context.emitOperator('field_select', {
-          selection: 'exclude',
-          fields: dropped,
-        });
-        dropped.forEach((name) => context.removeColumn(name));
       }
     },
   },
@@ -377,7 +362,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         operation.target,
         'Generated rename operation requires target'
       );
-      context.emitOperator('field_mapping', {
+      context.emitOperator('rename', {
         mappings: [{ source: source.name, targetMode: 'rename', targetValue: target }],
       });
       context.renameColumn(source.name, target);
@@ -406,14 +391,14 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
       if (existingColumn) {
         const tempColumn = createGeneratedTemporaryColumnName(column, context.getCurrentColumns());
-        context.emitOperator('calculate_field', {
+        context.emitOperator('derive', {
           calculations: [{ field: tempColumn, expression }],
         });
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'exclude',
           fields: [existingColumn.name],
         });
-        context.emitOperator('field_mapping', {
+        context.emitOperator('rename', {
           mappings: [
             { source: tempColumn, targetMode: 'rename', targetValue: existingColumn.name },
           ],
@@ -425,7 +410,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         });
         return;
       }
-      context.emitOperator('calculate_field', {
+      context.emitOperator('derive', {
         calculations: [{ field: column, expression }],
       });
       context.upsertColumn(inferredColumn);
@@ -481,14 +466,14 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         .find((currentColumn) => currentColumn.name.toLowerCase() === column.toLowerCase());
       if (existingColumn) {
         const tempColumn = createGeneratedTemporaryColumnName(column, context.getCurrentColumns());
-        context.emitOperator('calculate_field', {
+        context.emitOperator('derive', {
           calculations: [{ field: tempColumn, expression }],
         });
-        context.emitOperator('field_select', {
+        context.emitOperator('select', {
           selection: 'exclude',
           fields: [existingColumn.name],
         });
-        context.emitOperator('field_mapping', {
+        context.emitOperator('rename', {
           mappings: [
             { source: tempColumn, targetMode: 'rename', targetValue: existingColumn.name },
           ],
@@ -500,7 +485,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         });
         return;
       }
-      context.emitOperator('calculate_field', {
+      context.emitOperator('derive', {
         calculations: [{ field: column, expression }],
       });
       context.upsertColumn(inferredColumn);
@@ -547,8 +532,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   },
   deduplicate: {
     compile(operation, context) {
-      const columns = operation.config.columns.map(
-        (name) => context.requireColumn(name, 'deduplicate.columns').name
+      const columns = operation.config.fields.map(
+        (name) => context.requireColumn(name, 'deduplicate.fields').name
       );
       const orderBy = operation.config.orderBy.map((key) => ({
         ...key,
@@ -572,8 +557,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         return;
       }
       if (operation.config.strategy === 'drop_rows_by_nulls') {
-        const columns = operation.config.columns.map(
-          (name) => context.requireColumn(name, 'missing_value.columns').name
+        const columns = operation.config.fields.map(
+          (name) => context.requireColumn(name, 'missing_value.fields').name
         );
         context.emitOperator('missing_value', {
           strategy: 'drop_rows_by_nulls',
@@ -583,7 +568,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         return;
       }
       const rules = operation.config.rules.map((rule) => {
-        const column = context.requireColumn(rule.column, 'missing_value.rules');
+        const column = context.requireColumn(rule.field, 'missing_value.rules');
         switch (rule.method) {
           case 'skip':
             return { field: column.name, method: 'skip' };
@@ -635,7 +620,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         ...key,
         field: context.requireColumn(key.field, 'limit.orderBy').name,
       }));
-      if (config.mode === 'random') {
+      if (config.sampling === 'random') {
         context.emitOperator('limit', {
           sampling: 'random',
           limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
@@ -659,13 +644,13 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
     compile(operation, context) {
       const config = operation.config;
       const current = context.getCurrentColumns();
-      const configured = config.columns.map(
-        (name) => context.requireColumn(name, 'unpivot.columns').name
+      const configured = config.fields.map(
+        (name) => context.requireColumn(name, 'unpivot.fields').name
       );
       const unpivoted =
-        config.mode === 'except'
+        config.selection === 'exclude'
           ? current.filter((column) => !configured.includes(column.name))
-          : configured.map((name) => context.requireColumn(name, 'unpivot.columns'));
+          : configured.map((name) => context.requireColumn(name, 'unpivot.fields'));
       if (unpivoted.length === 0) {
         throw new DataCommandError('VALIDATION_FAILED', 'Generated unpivot requires columns');
       }
@@ -685,7 +670,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         );
       }
       context.emitOperator('unpivot', {
-        selection: config.mode === 'except' ? 'except' : 'include',
+        selection: config.selection === 'exclude' ? 'except' : 'include',
         fields: configured,
         nameColumn: config.nameColumn,
         valueColumn: config.valueColumn,
@@ -711,7 +696,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
   unnest: {
     compile(operation, context) {
       const config = operation.config;
-      const source = context.requireColumn(config.column, 'unnest.column');
+      const source = context.requireColumn(config.field, 'unnest.field');
       if (!config.alias) {
         throw new DataCommandError('VALIDATION_FAILED', 'Generated unnest requires alias');
       }
@@ -929,12 +914,10 @@ function lowerWorkflowIrOperation(
       return WORKFLOW_IR_OPERATION_LOWERERS.filter.compile(operation, context);
     case 'sort':
       return WORKFLOW_IR_OPERATION_LOWERERS.sort.compile(operation, context);
-    case 'convert_type':
-      return WORKFLOW_IR_OPERATION_LOWERERS.convert_type.compile(operation, context);
+    case 'cast':
+      return WORKFLOW_IR_OPERATION_LOWERERS.cast.compile(operation, context);
     case 'select':
       return WORKFLOW_IR_OPERATION_LOWERERS.select.compile(operation, context);
-    case 'drop':
-      return WORKFLOW_IR_OPERATION_LOWERERS.drop.compile(operation, context);
     case 'rename':
       return WORKFLOW_IR_OPERATION_LOWERERS.rename.compile(operation, context);
     case 'derive':

@@ -85,12 +85,12 @@ export class WorkflowValidator {
 
       const inputSchemas = new Map<string, PlanColumn[]>();
       for (const node of plan.nodes) {
-        if (node.type !== 'input_source') continue;
+        if (node.type !== 'input') continue;
         const columns = await this.compiler.resolveInputSourceColumnTypes(
           {
             id: node.id,
             pipelineId: pipeline.id,
-            type: 'input_source',
+            type: 'input',
             label: node.label ?? '',
             x: node.x ?? 0,
             y: node.y ?? 0,

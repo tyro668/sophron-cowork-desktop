@@ -396,11 +396,11 @@ function operatorCompletions(
   const keyword = labels.keywords;
   const snippets = labels.snippets;
   const byType: Partial<Record<DataWorkflowOperatorType, Completion[]>> = {
-    field_select: [completion('select', keyword, 'select [field]')],
-    field_mapping: [
-      completion('map', keyword, 'map [source_field] to [target_field]'),
-      completion('rename', keyword, 'rename [source_field] as [target_field]'),
+    select: [
+      completion('select', keyword, 'select [field]'),
+      completion('select except', snippets, 'select except [field]'),
     ],
+    rename: [completion('rename', keyword, 'rename [source_field] as [target_field]')],
     filter: [completion('filter', keyword, "filter [field] = 'value'")],
     deduplicate: [
       completion('deduplicate', snippets, 'deduplicate by [field] keep first'),
@@ -411,20 +411,20 @@ function operatorCompletions(
       ),
     ],
     missing_value: [
-      completion('missing value row drop', snippets, 'missing value row drop when all_null'),
+      completion('missing_value row drop', snippets, 'missing_value row drop when all_null'),
       completion(
-        'missing value nullify',
+        'missing_value nullify',
         snippets,
-        "missing value [field] nullify values ('', 'N/A')"
+        "missing_value [field] nullify values ('', 'N/A')"
       ),
-      completion('missing value fill', snippets, "missing value [field] fill 'UNKNOWN'"),
+      completion('missing_value fill', snippets, "missing_value [field] fill 'UNKNOWN'"),
     ],
-    type_convert: [
+    cast: [
       completion('cast', keyword, 'cast [field] as text on_error null'),
       completion('cast date', snippets, "cast [field] as date format '%Y-%m-%d' on_error null"),
     ],
-    sort: [completion('sort by', keyword, 'sort by [field] asc nulls last')],
-    calculate_field: [
+    sort: [completion('sort', keyword, 'sort [field] asc nulls last')],
+    derive: [
       completion('derive', keyword, 'derive [new_field] = [field]'),
       completion('derive if', snippets, 'derive [new_field] = if [field] = 0 then 0 else [field]'),
     ],

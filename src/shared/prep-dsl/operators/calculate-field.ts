@@ -7,7 +7,7 @@ import { isCompleteCalculation } from '../../operator-completeness';
 import { normalizeCalculationDomainExpression } from '../../calculate-field/domain-dsl';
 
 export const calculateFieldCodec: OperatorDslCodec = {
-  type: 'calculate_field',
+  type: 'derive',
   matches: (text) => text.startsWith('derive '),
   parse: (command, diagnostics) => {
     const { text } = command;
@@ -22,7 +22,7 @@ export const calculateFieldCodec: OperatorDslCodec = {
     }
     const normalizedDsl =
       calculations.length > 0 ? `derive ${calculations.map(formatCalculation).join(', ')}` : text;
-    return createOperator('calculate_field', normalizedDsl, { calculations });
+    return createOperator('derive', normalizedDsl, { calculations });
   },
   format: (config) => {
     const calculations = objectArray(config?.calculations)

@@ -35,33 +35,33 @@ export interface OperatorConfigIssue {
 const OPERATOR_ISSUE_CODES: Partial<Record<DataWorkflowOperatorType, OperatorConfigIssueCode>> = {
   sort: 'sort_incomplete_field',
   filter: 'filter_incomplete_field',
-  field_mapping: 'field_mapping_incomplete_field',
-  field_select: 'field_select_missing_field',
+  rename: 'field_mapping_incomplete_field',
+  select: 'field_select_missing_field',
   deduplicate: 'deduplicate_incomplete_field',
   limit: 'limit_incomplete_field',
   pivot: 'pivot_incomplete_field',
   join: 'join_incomplete_field',
-  type_convert: 'type_convert_incomplete_field',
+  cast: 'type_convert_incomplete_field',
   unpivot: 'unpivot_incomplete_field',
   unnest: 'unnest_incomplete_field',
-  calculate_field: 'calculate_field_incomplete_field',
+  derive: 'calculate_field_incomplete_field',
   aggregate: 'aggregate_incomplete_field',
   set_op: 'set_op_incomplete_field',
   missing_value: 'missing_value_incomplete_field',
   expect: 'expect_incomplete_field',
-  sql_query: 'sql_query_invalid',
+  sql: 'sql_query_invalid',
 };
 
 const ROW_COLLECTIONS: Partial<Record<DataWorkflowOperatorType, ReadonlySet<string>>> = {
   sort: new Set(['orderBy']),
   deduplicate: new Set(['orderBy']),
-  type_convert: new Set(['conversions']),
-  field_mapping: new Set(['mappings']),
+  cast: new Set(['conversions']),
+  rename: new Set(['mappings']),
   aggregate: new Set(['metrics']),
   join: new Set(['conditions', 'by']),
   pivot: new Set(['on', 'using']),
   missing_value: new Set(['rules']),
-  calculate_field: new Set(['calculations']),
+  derive: new Set(['calculations']),
 };
 
 function isIncompleteRowIssue(type: DataWorkflowOperatorType, issue: ZodIssue): boolean {

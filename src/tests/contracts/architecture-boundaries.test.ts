@@ -374,7 +374,7 @@ describe('operator registry shape', () => {
 
   it('the operator union is derived from the registry (no duplicate literal union)', () => {
     const src = fs.readFileSync(path.join(SRC, 'shared/data-workflow-types.ts'), 'utf8');
-    expect(src).not.toMatch(/'input_source'\s*\|/);
+    expect(src).not.toMatch(/'input'\s*\|/);
     expect(src).toMatch(/operators\/definition/);
   });
 });

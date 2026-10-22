@@ -54,21 +54,20 @@ describe('workflow node compiler', () => {
           operationId: 'op_select',
           inputOperationId: 'input',
           type: 'select',
-          columns: ['Product Name', 'Sales', 'Profit'],
+          fields: ['Product Name', 'Sales', 'Profit'],
         },
         {
           operationId: 'op_sort',
           inputOperationId: 'op_select',
           type: 'sort',
-          column: { kind: 'column', name: 'Sales' },
-          direction: 'desc',
+          orderBy: [{ field: 'Sales', direction: 'desc' }],
         },
         {
           operationId: 'op_limit',
           inputOperationId: 'op_sort',
           type: 'limit',
           config: {
-            mode: 'limit',
+            sampling: 'fixed',
             limit: 25,
             unit: 'rows',
             offset: 0,
@@ -96,8 +95,8 @@ describe('workflow node compiler', () => {
 
     expect(parseDsl).not.toHaveBeenCalled();
     expect(plan.nodes.map(({ id, type }) => ({ id, type }))).toEqual([
-      { id: 'source_sales', type: 'input_source' },
-      { id: 'field_select_1', type: 'field_select' },
+      { id: 'source_sales', type: 'input' },
+      { id: 'select_1', type: 'select' },
       { id: 'sort_2', type: 'sort' },
       { id: 'limit_3', type: 'limit' },
       { id: 'output_result', type: 'output' },
@@ -111,15 +110,15 @@ describe('workflow node compiler', () => {
     ]);
     expect(plan.edges).toEqual([
       {
-        id: 'edge_source_sales_field_select_1',
+        id: 'edge_source_sales_select_1',
         sourceNodeId: 'source_sales',
-        targetNodeId: 'field_select_1',
+        targetNodeId: 'select_1',
         sourceHandle: 'output',
         targetHandle: 'input',
       },
       {
-        id: 'edge_field_select_1_sort_2',
-        sourceNodeId: 'field_select_1',
+        id: 'edge_select_1_sort_2',
+        sourceNodeId: 'select_1',
         targetNodeId: 'sort_2',
         sourceHandle: 'output',
         targetHandle: 'input',
@@ -222,9 +221,9 @@ describe('workflow node compiler', () => {
     const operationNodes = plan.nodes.slice(1, -1);
     expect(ir.operations).toHaveLength(1);
     expect(operationNodes.map(({ id, type }) => ({ id, type }))).toEqual([
-      { id: 'calculate_field_1', type: 'calculate_field' },
+      { id: 'derive_1', type: 'derive' },
       { id: 'filter_2', type: 'filter' },
-      { id: 'field_select_3', type: 'field_select' },
+      { id: 'select_3', type: 'select' },
     ]);
     expect(plan.operationNodeOrigins).toHaveLength(3);
     expect(plan.operationNodeOrigins.map((origin) => origin.nodeId)).toEqual(

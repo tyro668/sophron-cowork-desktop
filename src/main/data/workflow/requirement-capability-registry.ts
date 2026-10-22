@@ -21,9 +21,14 @@ export const REQUIREMENT_CAPABILITY_REGISTRY = {
   ),
   'select.include_columns': requirementCapability(
     'select',
-    'include a known set of existing columns'
+    'include a known set of existing columns',
+    (operation) => operation.selection !== 'exclude'
   ),
-  'drop.exclude_columns': requirementCapability('drop', 'drop a known set of existing columns'),
+  'select.exclude_columns': requirementCapability(
+    'select',
+    'drop a known set of existing columns',
+    (operation) => operation.selection === 'exclude'
+  ),
   'rename.single_column': requirementCapability('rename', 'rename an existing column'),
   'derive.scalar': requirementCapability(
     'derive',
@@ -46,8 +51,8 @@ export const REQUIREMENT_CAPABILITY_REGISTRY = {
       !normalizeWorkflowAggregateFunction(operation.function) &&
       !RANKING_WINDOW_FUNCTIONS.has(operation.function)
   ),
-  'convert_type.certified': requirementCapability(
-    'convert_type',
+  'cast.certified': requirementCapability(
+    'cast',
     'certified direct casts and cleanup-based conversions'
   ),
   'sort.multi_key': requirementCapability(
@@ -103,12 +108,12 @@ export const REQUIREMENT_CAPABILITY_REGISTRY = {
   'limit.global': requirementCapability(
     'limit',
     'global ordered/unordered row or percent limit, optionally with ties',
-    (operation) => operation.config.mode === 'limit'
+    (operation) => operation.config.sampling === 'fixed'
   ),
   'limit.random': requirementCapability(
     'limit',
     'row or percent random sampling with certified methods',
-    (operation) => operation.config.mode === 'random'
+    (operation) => operation.config.sampling === 'random'
   ),
   'pivot.fixed_values': requirementCapability(
     'pivot',

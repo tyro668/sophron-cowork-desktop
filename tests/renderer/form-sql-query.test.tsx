@@ -11,7 +11,7 @@ import type { DataWorkflowNode } from '../../src/renderer/types';
 const node: DataWorkflowNode = {
   id: 'n1',
   pipelineId: 't1',
-  type: 'sql_query',
+  type: 'sql',
   label: 'SQL',
   x: 0,
   y: 0,

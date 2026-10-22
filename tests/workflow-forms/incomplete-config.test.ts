@@ -19,13 +19,13 @@ function hasIssue(
 const hasInvalidAggregateConfig = (node: DataWorkflowNode) =>
   hasIssue(node, 'aggregate', 'aggregate_incomplete_field');
 const hasInvalidCalculateFieldConfig = (node: DataWorkflowNode) =>
-  hasIssue(node, 'calculate_field', 'calculate_field_incomplete_field');
+  hasIssue(node, 'derive', 'calculate_field_incomplete_field');
 const hasInvalidDeduplicateConfig = (node: DataWorkflowNode) =>
   hasIssue(node, 'deduplicate', 'deduplicate_incomplete_field');
 const hasInvalidFieldMappingConfig = (node: DataWorkflowNode) =>
-  hasIssue(node, 'field_mapping', 'field_mapping_incomplete_field');
+  hasIssue(node, 'rename', 'field_mapping_incomplete_field');
 const hasInvalidFieldSelectConfig = (node: DataWorkflowNode) =>
-  hasIssue(node, 'field_select', 'field_select_missing_field');
+  hasIssue(node, 'select', 'field_select_missing_field');
 const hasInvalidFilterConfig = (node: DataWorkflowNode) =>
   hasIssue(node, 'filter', 'filter_incomplete_field');
 const hasInvalidJoinConditionConfig = (node: DataWorkflowNode) =>
@@ -43,7 +43,7 @@ const hasInvalidSetOpConfig = (node: DataWorkflowNode) =>
 const hasInvalidSortConfig = (node: DataWorkflowNode) =>
   hasIssue(node, 'sort', 'sort_incomplete_field');
 const hasInvalidTypeConvertConfig = (node: DataWorkflowNode) =>
-  hasIssue(node, 'type_convert', 'type_convert_incomplete_field');
+  hasIssue(node, 'cast', 'type_convert_incomplete_field');
 const hasInvalidUnnestConfig = (node: DataWorkflowNode) =>
   hasIssue(node, 'unnest', 'unnest_incomplete_field');
 const hasInvalidUnpivotConfig = (node: DataWorkflowNode) =>
@@ -77,21 +77,21 @@ describe('incomplete config guards', () => {
     expect(hasInvalidSetOpConfig(node)).toBe(false);
   });
 
-  describe('type_convert', () => {
+  describe('cast', () => {
     it('flags missing or empty conversions', () => {
-      expect(hasInvalidTypeConvertConfig(makeNode('type_convert', {}))).toBe(true);
-      expect(hasInvalidTypeConvertConfig(makeNode('type_convert', { conversions: [] }))).toBe(true);
+      expect(hasInvalidTypeConvertConfig(makeNode('cast', {}))).toBe(true);
+      expect(hasInvalidTypeConvertConfig(makeNode('cast', { conversions: [] }))).toBe(true);
     });
 
     it('flags a conversion with an empty column', () => {
-      const node = makeNode('type_convert', {
+      const node = makeNode('cast', {
         conversions: [{ field: '  ', type: 'float' }],
       });
       expect(hasInvalidTypeConvertConfig(node)).toBe(true);
     });
 
     it('accepts a complete conversion', () => {
-      const node = makeNode('type_convert', {
+      const node = makeNode('cast', {
         conversions: [{ field: 'amount', type: 'float' }],
       });
       expect(hasInvalidTypeConvertConfig(node)).toBe(false);
@@ -151,34 +151,32 @@ describe('incomplete config guards', () => {
     });
   });
 
-  describe('calculate_field', () => {
+  describe('derive', () => {
     it('flags missing or empty calculations', () => {
-      expect(hasInvalidCalculateFieldConfig(makeNode('calculate_field', {}))).toBe(true);
-      expect(
-        hasInvalidCalculateFieldConfig(makeNode('calculate_field', { calculations: [] }))
-      ).toBe(true);
+      expect(hasInvalidCalculateFieldConfig(makeNode('derive', {}))).toBe(true);
+      expect(hasInvalidCalculateFieldConfig(makeNode('derive', { calculations: [] }))).toBe(true);
     });
 
     it('flags a row-mode calculation with an empty field or expression', () => {
-      const emptyExpr = makeNode('calculate_field', {
+      const emptyExpr = makeNode('derive', {
         calculations: [{ field: 'margin', expression: ' ' }],
       });
       expect(hasInvalidCalculateFieldConfig(emptyExpr)).toBe(true);
-      const emptyField = makeNode('calculate_field', {
+      const emptyField = makeNode('derive', {
         calculations: [{ field: ' ', expression: '[a] - [b]' }],
       });
       expect(hasInvalidCalculateFieldConfig(emptyField)).toBe(true);
     });
 
     it('accepts a complete calculation', () => {
-      const node = makeNode('calculate_field', {
+      const node = makeNode('derive', {
         calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
       });
       expect(hasInvalidCalculateFieldConfig(node)).toBe(false);
     });
 
     it('flags a placeholder calculation without a target or expression', () => {
-      const node = makeNode('calculate_field', {
+      const node = makeNode('derive', {
         calculations: [{ field: '', expression: '' }],
       });
       expect(hasInvalidCalculateFieldConfig(node)).toBe(true);
@@ -293,20 +291,20 @@ describe('incomplete config guards', () => {
       expect(hasInvalidFilterConfig(makeNode('filter', { condition: '[a] = 1' }))).toBe(false);
     });
 
-    it('field_mapping', () => {
-      expect(hasInvalidFieldMappingConfig(makeNode('field_mapping', {}))).toBe(true);
+    it('rename', () => {
+      expect(hasInvalidFieldMappingConfig(makeNode('rename', {}))).toBe(true);
       expect(
         hasInvalidFieldMappingConfig(
-          makeNode('field_mapping', {
+          makeNode('rename', {
             mappings: [{ source: 'a', targetMode: 'rename', targetValue: 'b' }],
           })
         )
       ).toBe(false);
     });
 
-    it('field_select', () => {
-      expect(hasInvalidFieldSelectConfig(makeNode('field_select', {}))).toBe(true);
-      expect(hasInvalidFieldSelectConfig(makeNode('field_select', { fields: ['a'] }))).toBe(false);
+    it('select', () => {
+      expect(hasInvalidFieldSelectConfig(makeNode('select', {}))).toBe(true);
+      expect(hasInvalidFieldSelectConfig(makeNode('select', { fields: ['a'] }))).toBe(false);
     });
 
     it('deduplicate', () => {
@@ -367,7 +365,7 @@ describe('incomplete config guards', () => {
 
   describe('incompleteConfigMessageKey', () => {
     it('maps each invalid operator to its i18n key', () => {
-      expect(incompleteConfigMessageKey(makeNode('type_convert', {}))).toBe(
+      expect(incompleteConfigMessageKey(makeNode('cast', {}))).toBe(
         'data.workflow.formLabels.typeConvert.typeConvertIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('unpivot', {}))).toBe(
@@ -376,7 +374,7 @@ describe('incomplete config guards', () => {
       expect(incompleteConfigMessageKey(makeNode('unnest', {}))).toBe(
         'data.workflow.formLabels.unnest.unnestIncompleteField'
       );
-      expect(incompleteConfigMessageKey(makeNode('calculate_field', {}))).toBe(
+      expect(incompleteConfigMessageKey(makeNode('derive', {}))).toBe(
         'data.workflow.formLabels.calculateField.calculateFieldIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('aggregate', {}))).toBe(
@@ -394,7 +392,7 @@ describe('incomplete config guards', () => {
     });
 
     it('returns null for a complete node', () => {
-      const node = makeNode('type_convert', {
+      const node = makeNode('cast', {
         conversions: [{ field: 'amount', type: 'float' }],
       });
       expect(incompleteConfigMessageKey(node)).toBeNull();
@@ -403,7 +401,7 @@ describe('incomplete config guards', () => {
     it('uses the generic incomplete-rows message when complete and incomplete entries coexist', () => {
       const cases: Array<[DataWorkflowNode['type'], Record<string, unknown>]> = [
         [
-          'type_convert',
+          'cast',
           {
             conversions: [
               { field: 'a', type: 'integer' },
@@ -440,7 +438,7 @@ describe('incomplete config guards', () => {
           },
         ],
         [
-          'calculate_field',
+          'derive',
           {
             calculations: [
               { field: 'm', expression: '[a]' },
@@ -449,7 +447,7 @@ describe('incomplete config guards', () => {
           },
         ],
         [
-          'field_mapping',
+          'rename',
           {
             mappings: [
               { source: 'a', targetMode: 'rename', targetValue: 'b' },
@@ -477,7 +475,7 @@ describe('incomplete config guards', () => {
     });
 
     it('keeps the operator-specific message when only the required config is missing', () => {
-      expect(incompleteConfigMessageKey(makeNode('type_convert', {}))).toBe(
+      expect(incompleteConfigMessageKey(makeNode('cast', {}))).toBe(
         'data.workflow.formLabels.typeConvert.typeConvertIncompleteField'
       );
       expect(incompleteConfigMessageKey(makeNode('pivot', { using: [] }))).toBe(

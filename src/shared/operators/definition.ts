@@ -18,18 +18,18 @@ import type { OperatorDslCodec } from '../prep-dsl/operators/codec';
  * `OPERATOR_UI` registry.
  */
 export const OPERATOR_TYPES = [
-  'input_source',
+  'input',
   'filter',
-  'field_select',
-  'type_convert',
+  'select',
+  'cast',
   'sort',
   'join',
   'aggregate',
-  'calculate_field',
-  'field_mapping',
+  'derive',
+  'rename',
   'limit',
   'set_op',
-  'sql_query',
+  'sql',
   'deduplicate',
   'missing_value',
   'pivot',
@@ -55,7 +55,7 @@ export type OperatorOutputHandle = 'output' | 'reject';
 
 /** Declared edge endpoints of an operator — drives graph validation and canvas wiring. */
 export interface OperatorPorts {
-  /** Accepted incoming-edge handles. Empty = source-only operator (input_source). */
+  /** Accepted incoming-edge handles. Empty = source-only operator (input). */
   readonly inputs: readonly OperatorInputHandle[];
   /** Provided outgoing-edge handles. Empty = sink-only operator (output). */
   readonly outputs: readonly OperatorOutputHandle[];
@@ -71,12 +71,12 @@ export const BINARY_INPUT_PORTS: OperatorPorts = {
  * How the runtime compiles/executes a node of this type:
  * - `strategy` — single-input SQL via `COMPILE_STRATEGIES[type]`
  * - `join` / `set_op` — dedicated two-input compilers in WorkflowCompiler
- * - `input_source` / `output` / `expect` — source materialization, sink
+ * - `input` / `output` / `expect` — source materialization, sink
  *   commit, and quality gate respectively; not transform strategies.
- * - `sql_query` — a native query bound against the upstream relation.
+ * - `sql` — a native query bound against the upstream relation.
  */
 export type OperatorCompileKind =
-  'strategy' | 'join' | 'set_op' | 'input_source' | 'output' | 'expect' | 'sql_query';
+  'strategy' | 'join' | 'set_op' | 'input' | 'output' | 'expect' | 'sql';
 
 /**
  * Process-agnostic operator definition. Everything the platform needs to know

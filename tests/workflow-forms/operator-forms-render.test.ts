@@ -55,8 +55,8 @@ const baseProps = {
   pipelineId: 'pipeline-1',
   fieldCompletions: ['amount', 'created_at', 'name'],
   otherNodes: [],
-  sourceNode: { id: 'src', type: 'input_source', config: { tableName: 'orders' } },
-  rightSourceNode: { id: 'right', type: 'input_source', config: { tableName: 'refunds' } },
+  sourceNode: { id: 'src', type: 'input', config: { tableName: 'orders' } },
+  rightSourceNode: { id: 'right', type: 'input', config: { tableName: 'refunds' } },
   upstreamRowCount: 100,
   onNodeChange: () => undefined,
 };

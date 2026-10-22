@@ -592,7 +592,7 @@ export function createDataCustomTools(
           Type.Unsafe<Record<string, string>>({
             type: 'object',
             additionalProperties: { type: 'string' },
-            description: 'alias -> rawTableId binding for each input_source node',
+            description: 'alias -> rawTableId binding for each input node',
           })
         ),
         resultTableId: Type.Optional(

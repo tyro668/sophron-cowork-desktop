@@ -257,24 +257,24 @@ const summarizeExpect: WorkflowSummarizer = (config, t) => {
 
 /** Exhaustive per-operator summarizers — keyed by the canonical type union. */
 export const WORKFLOW_SUMMARIZERS: Record<DataWorkflowOperatorType, WorkflowSummarizer> = {
-  input_source: summarizeInputSource,
+  input: summarizeInputSource,
   filter: summarizeFilter,
-  field_select: summarizeFieldSelect,
+  select: summarizeFieldSelect,
   deduplicate: summarizeDeduplicate,
   missing_value: summarizeMissingValue,
-  type_convert: summarizeTypeConvert,
+  cast: summarizeTypeConvert,
   sort: summarizeSort,
   join: summarizeJoin,
   aggregate: summarizeAggregate,
-  calculate_field: summarizeCalculateField,
-  field_mapping: summarizeFieldMapping,
+  derive: summarizeCalculateField,
+  rename: summarizeFieldMapping,
   limit: summarizeLimit,
   pivot: summarizePivot,
   unpivot: summarizeUnpivot,
   set_op: summarizeSetOp,
   unnest: summarizeUnnest,
   expect: summarizeExpect,
-  sql_query: (config, t) => ({
+  sql: (config, t) => ({
     primary: [
       {
         label: t('data.workflow.formLabels.sqlQuery.query'),

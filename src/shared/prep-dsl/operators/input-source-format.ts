@@ -26,12 +26,12 @@ export function formatInputSource(node: PrepFlowNodeLike, alias: string): string
   if (source === 'rawTable') {
     const rawTableId = stringValue(config.rawTableId) ?? stringValue(config.name);
     return rawTableId
-      ? `input source rawTable ${quoteString(rawTableId)}${incremental} as ${alias}`
+      ? `input rawTable ${quoteString(rawTableId)}${incremental} as ${alias}`
       : null;
   }
   if (source === 'file') {
     const filePath = stringValue(config.filePath);
-    return filePath ? `input source file ${quoteString(filePath)}${incremental} as ${alias}` : null;
+    return filePath ? `input file ${quoteString(filePath)}${incremental} as ${alias}` : null;
   }
-  return `input source pipeline${incremental} as ${alias}`;
+  return `input pipeline${incremental} as ${alias}`;
 }

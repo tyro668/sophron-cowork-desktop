@@ -1,6 +1,6 @@
 /**
  * Starter-graph builder for an empty workflow canvas: a ready-to-edit
- * input_source → filter → output chain so a new pipeline never lands on a
+ * input → filter → output chain so a new pipeline never lands on a
  * blank canvas. Node ids/positions follow the editor's own conventions
  * (makeLocalId / getNextWorkflowNodePosition); the graph is a draft — it
  * persists only when the user saves.
@@ -63,7 +63,7 @@ export function buildWorkflowStarterGraph({
    */
   resultTableName?: string;
   /** Localized operator labels (t(catalog.labelKey)). */
-  labels: Record<'input_source' | 'filter' | 'output', string>;
+  labels: Record<'input' | 'filter' | 'output', string>;
 }): WorkflowStarterGraph {
   const createdAt = Date.now();
   const inputConfig: Record<string, unknown> = { source: 'rawTable' };
@@ -75,8 +75,8 @@ export function buildWorkflowStarterGraph({
   }
   const source = starterNode({
     pipelineId,
-    type: 'input_source',
-    label: labels.input_source,
+    type: 'input',
+    label: labels.input,
     index: 0,
     config: inputConfig,
     createdAt,

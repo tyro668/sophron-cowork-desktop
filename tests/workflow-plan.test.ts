@@ -27,7 +27,7 @@ function edge(id: string, source: string, target: string, targetHandle = 'input'
 function linearPlan(operatorConfig: Record<string, unknown>, operatorType = 'sort') {
   return buildWorkflowPlan({
     nodes: [
-      node('src', 'input_source', { source: 'pipeline' }),
+      node('src', 'input', { source: 'pipeline' }),
       node('op', operatorType, operatorConfig),
       node('out', 'output', { table: 'result', mode: 'replace' }),
     ],
@@ -43,7 +43,7 @@ describe('buildWorkflowPlan', () => {
   it('produces a versioned plan with typed configs', () => {
     const { plan, diagnostics } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('op', 'sort', { orderBy: [{ field: 'id', direction: 'asc' }] }),
       ],
       edges: [edge('e1', 'src', 'op')],
@@ -68,8 +68,8 @@ describe('validateWorkflowPlanGraph', () => {
   it('accepts multi-source pipeline workflows', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd1' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd1' }),
         node('j', 'join', { type: 'inner', conditions: [{ left: 'id', right: 'id' }] }),
         node('out', 'output'),
       ],
@@ -82,7 +82,7 @@ describe('validateWorkflowPlanGraph', () => {
   it('flags dangling edges, self cycles and cycles', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source'),
+        node('src', 'input'),
         node('op', 'sort', { orderBy: [{ field: 'id' }] }),
         node('out', 'output'),
       ],
@@ -101,7 +101,7 @@ describe('validateWorkflowPlanGraph', () => {
   it('reports orphan nodes as warnings, not errors, in the pipeline profile', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source'),
+        node('src', 'input'),
         node('out', 'output'),
         node('orphan', 'sort', { orderBy: [{ field: 'id' }] }),
       ],
@@ -116,8 +116,8 @@ describe('validateWorkflowPlanGraph', () => {
   it('enforces generated profile constraints', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source'),
-        node('b', 'input_source'),
+        node('a', 'input'),
+        node('b', 'input'),
         node('out', 'output'),
         node('x', 'unknown_type'),
       ],
@@ -125,7 +125,7 @@ describe('validateWorkflowPlanGraph', () => {
     });
     const diagnostics = validateWorkflowPlanGraph(plan, {
       profile: 'generated',
-      allowedNodeTypes: new Set(['input_source', 'output']),
+      allowedNodeTypes: new Set(['input', 'output']),
     });
     const codes = diagnostics.map((item) => item.code);
     expect(codes).toContain('NODE_GRAPH_INPUT_COUNT');
@@ -135,7 +135,7 @@ describe('validateWorkflowPlanGraph', () => {
 
   it('requires binary operators to have both inputs wired', () => {
     const { plan } = buildWorkflowPlan({
-      nodes: [node('a', 'input_source'), node('j', 'join', {}), node('out', 'output')],
+      nodes: [node('a', 'input'), node('j', 'join', {}), node('out', 'output')],
       edges: [edge('e1', 'a', 'j', 'left'), edge('e2', 'j', 'out')],
     });
     const diagnostics = validateWorkflowPlanGraph(plan, { profile: 'pipeline' });
@@ -176,11 +176,11 @@ describe('validateWorkflowPlanSchemas', () => {
     expect(diagnostics.some((item) => item.code === 'filterConditionInvalid')).toBe(true);
   });
 
-  it('checks expression field references in calculate_field', () => {
+  it('checks expression field references in derive', () => {
     const diagnostics = schemaDiagnostics(
       linearPlan(
         { calculations: [{ field: 'total', expression: '[amount] * [ghost]', action: 'add' }] },
-        'calculate_field'
+        'derive'
       )
     );
     expect(
@@ -193,8 +193,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('propagates calculated fields to downstream operators', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
-        node('calc', 'calculate_field', {
+        node('src', 'input', { source: 'pipeline' }),
+        node('calc', 'derive', {
           calculations: [{ field: 'total', expression: '[amount] * 2', action: 'add' }],
         }),
         node('op', 'sort', { orderBy: [{ field: 'total', direction: 'desc' }] }),
@@ -206,11 +206,11 @@ describe('validateWorkflowPlanSchemas', () => {
     expect(diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   });
 
-  it('validates fields against projected schemas after field_select', () => {
+  it('validates fields against projected schemas after select', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
-        node('sel', 'field_select', { selection: 'include', fields: ['id'] }),
+        node('src', 'input', { source: 'pipeline' }),
+        node('sel', 'select', { selection: 'include', fields: ['id'] }),
         node('op', 'sort', { orderBy: [{ field: 'amount', direction: 'desc' }] }),
         node('out', 'output'),
       ],
@@ -224,11 +224,11 @@ describe('validateWorkflowPlanSchemas', () => {
     ).toBe(true);
   });
 
-  it('renames fields through field_mapping', () => {
+  it('renames fields through rename', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
-        node('map', 'field_mapping', {
+        node('src', 'input', { source: 'pipeline' }),
+        node('map', 'rename', {
           mappings: [{ source: 'amount', targetMode: 'rename', targetValue: 'total' }],
         }),
         node('op', 'sort', { orderBy: [{ field: 'total', direction: 'desc' }] }),
@@ -274,8 +274,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('validates join condition fields on both sides', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'inner',
           conditions: [{ left: '[a].[id]', right: '[b].[missing]', operator: '=' }],
@@ -298,8 +298,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('warns when join condition types are incompatible', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'inner',
           conditions: [{ left: '[a].[id]', right: '[b].[name]', operator: '=' }],
@@ -319,8 +319,8 @@ describe('validateWorkflowPlanSchemas', () => {
     ];
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'left',
           conditions: [{ left: '[a].[id]', right: '[b].[id]', operator: '=' }],
@@ -348,8 +348,8 @@ describe('validateWorkflowPlanSchemas', () => {
     ];
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('j', 'join', {
           type: 'left',
           conditions: [{ left: '[a].[id]', right: '[b].[id]', operator: '=' }],
@@ -390,8 +390,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('checks set_op column alignment by name', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_name' }),
         node('out', 'output'),
       ],
@@ -406,8 +406,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('propagates right-only columns through union by name to downstream operators', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_name', rightInput: 'b' }),
         node('s', 'sort', { orderBy: [{ field: '区域', direction: 'asc' }] }),
         node('out', 'output'),
@@ -435,8 +435,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('keeps left columns only for union by position', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_position', rightInput: 'b' }),
         node('s', 'sort', { orderBy: [{ field: 'other', direction: 'asc' }] }),
         node('out', 'output'),
@@ -461,8 +461,8 @@ describe('validateWorkflowPlanSchemas', () => {
   it('errors when set_op by_position column counts differ', () => {
     const { plan } = buildWorkflowPlan({
       nodes: [
-        node('a', 'input_source', { source: 'pipeline' }),
-        node('b', 'input_source', { source: 'rawTable', rawTableId: 'd' }),
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'rawTable', rawTableId: 'd' }),
         node('u', 'set_op', { operation: 'union', match: 'by_position' }),
         node('out', 'output'),
       ],
@@ -491,7 +491,7 @@ describe('ETL runtime contract validation', () => {
   it('requires merge keys for mode merge and checks them against upstream schema', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('out', 'output', { table: 't', mode: 'merge', mergeKeys: ['id', 'missing_key'] }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -503,7 +503,7 @@ describe('ETL runtime contract validation', () => {
   it('rejects mode merge without keys', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('out', 'output', { table: 't', mode: 'merge' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -515,7 +515,7 @@ describe('ETL runtime contract validation', () => {
   it('checks incrementalBy against the source schema', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline', incrementalBy: 'updated_at' }),
+        node('src', 'input', { source: 'pipeline', incrementalBy: 'updated_at' }),
         node('out', 'output', { table: 't', mode: 'append' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -525,7 +525,7 @@ describe('ETL runtime contract validation', () => {
 
     const ok = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline', incrementalBy: 'created' }),
+        node('src', 'input', { source: 'pipeline', incrementalBy: 'created' }),
         node('out', 'output', { table: 't', mode: 'append' }),
       ],
       edges: [edge('e1', 'src', 'out')],
@@ -536,7 +536,7 @@ describe('ETL runtime contract validation', () => {
   it('does not require a legacy incremental field on a bound input table', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', {
+        node('src', 'input', {
           source: 'rawTable',
           rawTableId: 'table-id',
           incrementalBy: 'removed_column',
@@ -551,7 +551,7 @@ describe('ETL runtime contract validation', () => {
   it('validates expect expression fields and unique columns', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'expression', expression: '[bogus] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -562,7 +562,7 @@ describe('ETL runtime contract validation', () => {
 
     const uniquePlan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'unique', fields: ['id'] }),
         node('out', 'output', { table: 't' }),
       ],
@@ -576,7 +576,7 @@ describe('ETL runtime contract validation', () => {
   it('rejects a reject edge from a non-expect node and a missing reject stream', () => {
     const badSource = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('f', 'filter', { condition: '[amount] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -600,7 +600,7 @@ describe('ETL runtime contract validation', () => {
 
     const missingStream = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('ex', 'expect', { kind: 'expression', expression: '[amount] > 0' }),
         node('out', 'output', { table: 't' }),
       ],
@@ -624,7 +624,7 @@ describe('ETL runtime contract validation', () => {
   it('warns when a declared reject stream has no consuming edge', () => {
     const plan = buildWorkflowPlan({
       nodes: [
-        node('src', 'input_source', { source: 'pipeline' }),
+        node('src', 'input', { source: 'pipeline' }),
         node('ex', 'expect', {
           kind: 'expression',
           expression: '[amount] > 0',
@@ -646,7 +646,7 @@ describe('ETL runtime contract validation', () => {
 describe('compilePrepWorkflowToFlow plan output', () => {
   it('returns a typed versioned plan alongside nodes and edges', () => {
     const parsed = parsePrepDsl(
-      'input source pipeline as src\n  | sort by [id] asc\n  | output table "out" mode replace'
+      'input pipeline as src\n  | sort [id] asc\n  | output table "out" mode replace'
     );
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     expect(compiled.plan?.version).toBe(WORKFLOW_PLAN_VERSION);
@@ -656,7 +656,7 @@ describe('compilePrepWorkflowToFlow plan output', () => {
 
   it('emits graph diagnostics for malformed compiled workflows', () => {
     const parsed = parsePrepDsl(
-      'input source pipeline as src\n  | sort by [id] asc\n  | output table "out" mode replace'
+      'input pipeline as src\n  | sort [id] asc\n  | output table "out" mode replace'
     );
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     const errors = compiled.diagnostics.filter((item) => item.severity === 'error');

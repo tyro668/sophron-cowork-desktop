@@ -243,7 +243,7 @@ export class PipelineService {
     error: string | null,
     failedNodeId: string | null = null
   ): Promise<void> {
-    const inputs = (stats ?? []).filter((stat) => stat.nodeType === 'input_source');
+    const inputs = (stats ?? []).filter((stat) => stat.nodeType === 'input');
     const outputs = (stats ?? []).filter((stat) => stat.nodeType === 'output');
     await this.pipelineRuns
       .finishRun(runId, {

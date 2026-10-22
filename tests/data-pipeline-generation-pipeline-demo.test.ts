@@ -21,7 +21,7 @@ const GENERATED_JAVASCRIPT = `function keepProfitableRows(input) {
 
 function selectOutputColumns(input) {
   return workflow.step(input, "select", {
-    columns: ["OrderID", "Region", "Profit"]
+    fields: ["OrderID", "Region", "Profit"]
   });
 }
 
@@ -103,9 +103,9 @@ describe('数据任务生成分层日志示例', () => {
     });
 
     expect(firstHash).toBe(secondHash);
-    expect(
-      nodePlan.nodes.filter((node) => !['input_source', 'output'].includes(node.type))
-    ).toHaveLength(2);
+    expect(nodePlan.nodes.filter((node) => !['input', 'output'].includes(node.type))).toHaveLength(
+      2
+    );
     expect(compatibilityDsl).toContain('filter [Profit] > 0');
     expect(compatibilityDsl).toContain('select [OrderID], [Region], [Profit]');
     expect(compatibilityDsl).toContain(`output table "${RESULT_TABLE_NAME}" mode replace`);

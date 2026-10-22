@@ -1,6 +1,6 @@
 /**
  * Field rename propagation: when an operator renames a field it produces
- * (field_mapping rename target, calculate_field / aggregate output name, unnest
+ * (rename rename target, derive / aggregate output name, unnest
  * alias), downstream node configs that reference the old name follow along.
  */
 type Config = Record<string, unknown>;
@@ -38,7 +38,7 @@ export function detectFieldRenames(
   after: Config
 ): Array<[string, string]> {
   switch (type) {
-    case 'field_mapping':
+    case 'rename':
       return pairRenames(before.mappings, after.mappings, (r) => {
         if (r.targetMode === 'rename') return str(r.targetValue);
         const source = str(r.source);
@@ -46,7 +46,7 @@ export function detectFieldRenames(
         if (!source) return null;
         return r.targetMode === 'prefix' ? `${value}${source}` : `${source}${value}`;
       });
-    case 'calculate_field':
+    case 'derive':
       return pairRenames(before.calculations, after.calculations, (r) =>
         r.action === 'replace' ? null : str(r.field)
       );

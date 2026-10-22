@@ -44,6 +44,29 @@ export interface MetadataMigration {
 export const METADATA_MIGRATION_LEDGER = 'data_schema_migrations';
 
 /** Rewrites every workflow node config through `transform` (null = unchanged). */
+/** Operator types before v19 → unified names (type = DSL keyword = UI concept). */
+const LEGACY_OPERATOR_TYPES: Record<string, string> = {
+  input_source: 'input',
+  field_select: 'select',
+  type_convert: 'cast',
+  calculate_field: 'derive',
+  field_mapping: 'rename',
+  sql_query: 'sql',
+};
+
+async function renameLegacyOperatorTypes(ctx: DataStoreContext): Promise<void> {
+  for (const [from, to] of Object.entries(LEGACY_OPERATOR_TYPES)) {
+    await ctx.metaRunSql(
+      'UPDATE data_workflow_nodes SET operator_type = $to WHERE operator_type = $from',
+      { from, to }
+    );
+    await ctx.metaRunSql(
+      'UPDATE data_pipeline_node_run_stats SET node_type = $to WHERE node_type = $from',
+      { from, to }
+    );
+  }
+}
+
 async function migrateWorkflowNodeConfigs(
   ctx: DataStoreContext,
   transform: (type: string, config: Record<string, unknown>) => Record<string, unknown> | null
@@ -59,7 +82,8 @@ async function migrateWorkflowNodeConfigs(
       continue;
     }
     if (!config || typeof config !== 'object' || Array.isArray(config)) continue;
-    const next = transform(row.operator_type, config as Record<string, unknown>);
+    const type = LEGACY_OPERATOR_TYPES[row.operator_type] ?? row.operator_type;
+    const next = transform(type, config as Record<string, unknown>);
     if (!next) continue;
     await ctx.metaRunSql('UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id', {
       id: row.id,
@@ -142,7 +166,7 @@ export function stripCachedOperatorDsl(
   if (!('dsl' in config)) return null;
   const { dsl, ...rest } = config;
   const unstructured =
-    type === 'input_source'
+    type === 'input'
       ? !['source', 'rawTableId', 'filePath', 'name'].some((key) => typeof rest[key] === 'string')
       : !formatOperator({ id: '', type: type as PrepOperatorType, config: rest });
   if (typeof dsl === 'string' && dsl.trim() && unstructured) {
@@ -838,6 +862,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     version: 18,
     name: 'expression_sql_quote_semantics_verify',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigQuoteSemantics),
+  },
+  {
+    version: 19,
+    name: 'unify_operator_type_names',
+    up: (ctx) => renameLegacyOperatorTypes(ctx),
   },
 ];
 

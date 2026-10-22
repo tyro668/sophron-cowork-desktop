@@ -11,10 +11,10 @@ import type { PrepOperatorType } from '../../src/shared/prep-dsl';
 describe('prep DSL parser and workflow compiler', () => {
   it('parses a single-source cleaning pipeline', () => {
     const result = parsePrepDsl(`
-      input source pipeline as raw_orders
+      input pipeline as raw_orders
         | select [order_id], [region], [revenue]
-        | missing value row drop when all_null
-        | missing value [region] nullify values ('', 'N/A', '-')
+        | missing_value row drop when all_null
+        | missing_value [region] nullify values ('', 'N/A', '-')
         | cast [revenue] as float on_error null
         | derive [margin] = if [revenue] = 0 then 0 else [profit] / [revenue]
         | output table "clean_orders" mode replace
@@ -24,19 +24,19 @@ describe('prep DSL parser and workflow compiler', () => {
     expect(result.ast?.sources).toHaveLength(1);
     expect(result.ast?.mainSource).toBe('raw_orders');
     expect(result.ast?.operators.map((operator) => operator.type)).toEqual([
-      'field_select',
+      'select',
       'missing_value',
       'missing_value',
-      'type_convert',
-      'calculate_field',
+      'cast',
+      'derive',
     ]);
     expect(result.ast?.output?.type).toBe('output');
   });
 
   it('compiles multi-source join pipelines with left and right handles', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -66,8 +66,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('parses ASOF join', () => {
     const result = parsePrepDsl(`
-      input source pipeline as events
-      input source rawTable "device_status_snapshot" as status
+      input pipeline as events
+      input rawTable "device_status_snapshot" as status
 
       from events
         | join asof status
@@ -91,8 +91,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects legacy dotted field references inside one bracket pair', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers on [orders.customer_id] = [customers.customer_id]
@@ -105,8 +105,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('exports compiled workflows back to DSL', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -117,7 +117,7 @@ keep left *, [customers].[name] as [customer_name]
     const compiled = compilePrepWorkflowToFlow(result.ast!);
     const exported = exportPrepWorkflowDsl(compiled.nodes, compiled.edges);
 
-    expect(exported).toContain('input source pipeline as orders');
+    expect(exported).toContain('input pipeline as orders');
     expect(exported).toContain('from orders');
     expect(exported).toContain('join left customers');
     expect(exported).toContain('[orders].[customer_id]');
@@ -128,7 +128,7 @@ keep left *, [customers].[name] as [customer_name]
       [
         {
           id: 'source',
-          type: 'input_source',
+          type: 'input',
           config: { source: 'rawTable', rawTableId: 'rawTable-sales-id', alias: 'sales' },
         },
         {
@@ -151,7 +151,7 @@ keep left *, [customers].[name] as [customer_name]
       ]
     );
 
-    expect(exported).toContain('input source rawTable "rawTable-sales-id" as sales');
+    expect(exported).toContain('input rawTable "rawTable-sales-id" as sales');
     expect(exported).toContain('output table "Processed Sales" mode replace');
     expect(parsePrepDsl(exported).diagnostics.filter((item) => item.severity === 'error')).toEqual(
       []
@@ -160,14 +160,14 @@ keep left *, [customers].[name] as [customer_name]
 
   it('parses single-operator DSL for every editable operator', () => {
     const cases: Array<[PrepOperatorType, string]> = [
-      ['field_select', 'select [order_id], [region]'],
-      ['field_mapping', 'map [dt] to [order_date]'],
+      ['select', 'select [order_id], [region]'],
+      ['rename', 'rename [dt] as [order_date]'],
       ['filter', 'filter [revenue] > 0'],
       ['deduplicate', 'deduplicate by [order_id] keep last order by [updated_at] desc'],
-      ['missing_value', `missing value [region] nullify values ('', 'N/A')`],
-      ['type_convert', 'cast [revenue] as float on_error null'],
-      ['sort', 'sort by [order_date] desc nulls last'],
-      ['calculate_field', 'derive [margin] = [profit] / [revenue]'],
+      ['missing_value', `missing_value [region] nullify values ('', 'N/A')`],
+      ['cast', 'cast [revenue] as float on_error null'],
+      ['sort', 'sort [order_date] desc nulls last'],
+      ['derive', 'derive [margin] = [profit] / [revenue]'],
       ['aggregate', 'aggregate by [region] metrics sum([revenue]) as [total_revenue]'],
       [
         'join',
@@ -186,7 +186,7 @@ keep left *, [customers].[name] as [customer_name]
 
   it('preserves backtick-quoted sort fields with spaces', () => {
     const result = parsePrepOperatorDsl(
-      'sort by [`Unit Price`] asc, [`Sales 总和`] desc nulls last',
+      'sort [`Unit Price`] asc, [`Sales 总和`] desc nulls last',
       'sort'
     );
 
@@ -196,13 +196,13 @@ keep left *, [customers].[name] as [customer_name]
       { field: 'Sales 总和', direction: 'desc', nulls: 'last' },
     ]);
     expect(result.operator && exportPrepOperatorDsl({ id: 'op', ...result.operator })).toBe(
-      'sort by [Unit Price] asc, [Sales 总和] desc nulls last'
+      'sort [Unit Price] asc, [Sales 总和] desc nulls last'
     );
   });
 
   it('rejects legacy cast target aliases', () => {
     for (const targetType of ['string', 'int', 'double', 'timestamp']) {
-      const result = parsePrepOperatorDsl(`cast [value] as ${targetType}`, 'type_convert');
+      const result = parsePrepOperatorDsl(`cast [value] as ${targetType}`, 'cast');
 
       expect(result.diagnostics.some((item) => item.code === 'invalidCastTargetType')).toBe(true);
     }
@@ -244,7 +244,7 @@ keep left *, [customers].[name] as [customer_name]
     expect(
       exportPrepOperatorDsl({
         id: 'derive-1',
-        type: 'calculate_field',
+        type: 'derive',
         config: { calculations: [{ field: 'margin', expression: '[profit] / [revenue]' }] },
       })
     ).toBe('derive [margin] = [profit] / [revenue]');
@@ -252,8 +252,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join on condition swaps the sides', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -267,8 +267,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join on left side references an undeclared source', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -282,8 +282,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a full workflow whose join keep references an undeclared source', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -298,7 +298,7 @@ keep left *, [customers].[name] as [customer_name]
 
   it('accepts a full workflow self-join referencing the same alias on both sides', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | join left orders
@@ -312,8 +312,8 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join condition whose left side references the right input alias', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
 
       from orders
         | join left customers
@@ -327,9 +327,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join condition whose left side references a declared source not yet in the pipeline', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
-      input source rawTable "product_dim" as products
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
+      input rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -343,9 +343,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a chained join whose later left side references a prior right input by its original alias', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
-      input source rawTable "product_dim" as products
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
+      input rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -361,9 +361,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('accepts a chained join whose later left side references the prior output column name', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
-      input source rawTable "product_dim" as products
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
+      input rawTable "product_dim" as products
 
       from orders
         | join left customers
@@ -380,9 +380,9 @@ keep left *, [customers].[name] as [customer_name]
 
   it('rejects a join keep that references a declared source on neither side', () => {
     const result = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customer_dim" as customers
-      input source rawTable "product_dim" as products
+      input pipeline as orders
+      input rawTable "customer_dim" as customers
+      input rawTable "product_dim" as products
 
       from orders
         | join left customers

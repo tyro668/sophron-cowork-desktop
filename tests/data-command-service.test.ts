@@ -250,7 +250,7 @@ describe('DataCommandService', () => {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'deduplicate',
-            '{ config: { columns: ["id"], keep: "last", orderBy: [] } }',
+            '{ config: { fields: ["id"], keep: "last", orderBy: [] } }',
           ]),
         }),
         hasThinking: false,
@@ -261,7 +261,7 @@ describe('DataCommandService', () => {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'deduplicate',
-            '{ config: { columns: ["id"], keep: "first", orderBy: [] } }',
+            '{ config: { fields: ["id"], keep: "first", orderBy: [] } }',
           ]),
         }),
         hasThinking: false,
@@ -337,7 +337,7 @@ describe('DataCommandService', () => {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'deduplicate',
-            '{ config: { columns: ["id"], keep: "last", orderBy: [] } }',
+            '{ config: { fields: ["id"], keep: "last", orderBy: [] } }',
           ]),
         }),
         hasThinking: false,
@@ -348,7 +348,7 @@ describe('DataCommandService', () => {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'deduplicate',
-            '{ config: { columns: ["id"], keep: "first", orderBy: [] } }',
+            '{ config: { fields: ["id"], keep: "first", orderBy: [] } }',
           ]),
         }),
         hasThinking: false,
@@ -740,7 +740,7 @@ function main() {
     );
 
     const dsl = `
-      input source rawTable "${input.rawTable.id}" as customers
+      input rawTable "${input.rawTable.id}" as customers
 
       from customers
         | output table "customers_copy" mode replace
@@ -752,7 +752,7 @@ function main() {
       dryRun: true,
     });
     expect(dryRun.dryRun).toBe(true);
-    expect(dryRun.workflow.nodes.map((node) => node.type)).toEqual(['input_source', 'output']);
+    expect(dryRun.workflow.nodes.map((node) => node.type)).toEqual(['input', 'output']);
     expect(
       dryRun.workflow.nodes.find((node) => node.type === 'output')?.config.outputResultTableId
     ).toBe(output.resultTable.id);
@@ -803,7 +803,7 @@ function main() {
     expect(onPipelineCompleted).toHaveBeenLastCalledWith(persistedRun.pipeline);
 
     const exported = await service.exportWorkflowDsl({ pipelineId: pipeline.pipeline.id });
-    expect(exported.text).toContain(`input source rawTable "${input.rawTable.id}" as customers`);
+    expect(exported.text).toContain(`input rawTable "${input.rawTable.id}" as customers`);
 
     const outputPreview = await service.previewTable({
       tableKind: 'result',
@@ -842,7 +842,7 @@ function main() {
     });
     const pipeline = await service.createPipeline({ name: 'candidate cache pipeline' });
     const lookupSpy = vi.spyOn(store, 'getRawTableRecord');
-    const dsl = `input source rawTable "${input.rawTable.id}" as src\n  | output table "cache result" mode replace`;
+    const dsl = `input rawTable "${input.rawTable.id}" as src\n  | output table "cache result" mode replace`;
 
     await service.applyWorkflowDsl({
       pipelineId: pipeline.pipeline.id,
@@ -884,7 +884,7 @@ function main() {
       service.runPipeline({
         pipelineId: pipeline.pipeline.id,
         mode: 'persisted',
-        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
         resultTableId: output.resultTable.id,
         saveWorkflow: true,
       })
@@ -937,7 +937,7 @@ function main() {
     const result = await service.runPipeline({
       pipelineId: pipeline.pipeline.id,
       mode: 'temporary',
-      workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "temporary result" mode replace`,
+      workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "temporary result" mode replace`,
     });
 
     expect(result.preview?.totalRows).toBe(1);
@@ -1473,7 +1473,7 @@ function main() {
     expect(second.pipelineId).toBe(first.pipelineId);
     // Existing nodes stay; the generated aggregate→filter chain splices in.
     expect(merged.nodes.map((node) => node.type)).toEqual([
-      'input_source',
+      'input',
       'filter',
       'output',
       'aggregate',
@@ -1522,7 +1522,7 @@ function main() {
         nodes: [
           {
             id: 'input',
-            type: 'input_source' as const,
+            type: 'input' as const,
             label: 'Input',
             x: 0,
             y: 0,
@@ -1586,7 +1586,7 @@ function main() {
     ]);
     expect(vi.mocked(runPiAiOneShot).mock.calls[1][3]?.thinkingBudgets).toEqual({ low: 1024 });
     const saved = await store.getPipelineWorkflow(pipeline.id);
-    expect(saved.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
+    expect(saved.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
     expect(saved.edges).toHaveLength(2);
     const outputNode = saved.nodes.find((node) => node.type === 'output')!;
     expect(saved.edges.filter((edge) => edge.targetNodeId === outputNode.id)).toHaveLength(1);
@@ -1652,7 +1652,7 @@ function main() {
     expect(generated.workflowDsl).toBeUndefined();
     expect(generated.workflowHash).toMatch(/^[a-f0-9]{64}$/);
     const workflow = await store.getPipelineWorkflow(generated.pipelineId);
-    expect(workflow.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
+    expect(workflow.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
     expect(workflow.nodes.every((node) => !Object.hasOwn(node.config, 'dsl'))).toBe(true);
 
     const run = await service.runGeneratedPipeline({
@@ -1704,7 +1704,7 @@ function main() {
     const saved = await store.getPipelineWorkflow(generated.pipelineId);
 
     expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-    expect(saved.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
+    expect(saved.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
     expect(saved.nodes[1]?.config.generatedOrigin).toMatchObject({
       functionName: 'step1',
       nodeType: 'filter',
@@ -1760,7 +1760,7 @@ function main() {
             'derive',
             '{ column: "Revenue", expression: expr(row => row["Sales"] * row["Quantity"]) }',
           ],
-          ['sort', '{ column: expr(row => row["Revenue"]), direction: "desc" }']
+          ['sort', '{ orderBy: [{ field: "Revenue", direction: "desc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -1794,7 +1794,7 @@ function main() {
 
     expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
     expect(generated.workflowDsl).toContain('derive [Revenue] = [Sales] * [Quantity]');
-    expect(generated.workflowDsl).toContain('sort by [Revenue] desc');
+    expect(generated.workflowDsl).toContain('sort [Revenue] desc');
     expect(generated.requiredColumns).toEqual([
       { name: 'Market', type: 'text' },
       { name: 'Sales', type: 'integer' },
@@ -1822,7 +1822,7 @@ function main() {
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow([
           'sort',
-          '{ column: expr(row => row["Unit Price"]), direction: "asc" }',
+          '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }',
         ]),
         requiredColumns: [],
       }),
@@ -1854,7 +1854,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
+    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
     expect(generated.workflowDsl).not.toContain('order by');
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
@@ -1867,9 +1867,9 @@ function main() {
             'derive',
             '{ column: "Customer ID Number", expression: expr(row => regexpExtract(row["Customer ID"], "[0-9]+")) }',
           ],
-          ['drop', '{ columns: ["记录数"] }'],
+          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
           ['filter', '{ condition: expr(row => row["Profit"] > 0) }'],
-          ['sort', '{ column: expr(row => row["Profit"]), direction: "desc" }']
+          ['sort', '{ orderBy: [{ field: "Profit", direction: "desc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2004,7 +2004,7 @@ function main() {
             'derive',
             '{ column: "Profit Shortfall", expression: expr(row => row["Target Profit"] - row["Profit"]) }',
           ],
-          ['sort', '{ column: expr(row => row["Profit Shortfall"]), direction: "desc" }']
+          ['sort', '{ orderBy: [{ field: "Profit Shortfall", direction: "desc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2051,7 +2051,7 @@ function main() {
             'aggregate',
             '{ groupBy: [expr(row => row["Market"]), expr(row => row["Product Type"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "Sales 总和" }, { fn: "sum", expression: expr(row => row["Profit"]), alias: "Profit 总和" }, { fn: "sum", expression: expr(row => row["Marketing"]), alias: "Marketing 总和" }, { fn: "count", expression: "*", alias: "记录数" }] }',
           ],
-          ['sort', '{ column: expr(row => row["Sales 总和"]), direction: "desc" }']
+          ['sort', '{ orderBy: [{ field: "Sales 总和", direction: "desc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2091,7 +2091,7 @@ function main() {
     expect(generated.workflowDsl).toContain(
       'aggregate by [Market], [Product Type] metrics sum([Sales]) as [Sales 总和]'
     );
-    expect(generated.workflowDsl).toContain('sort by [Sales 总和] desc');
+    expect(generated.workflowDsl).toContain('sort [Sales 总和] desc');
     expect(generated.requiredColumns).toEqual([
       { name: 'Market', type: 'text' },
       { name: 'Product Type', type: 'text' },
@@ -2105,8 +2105,8 @@ function main() {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow(
-          ['drop', '{ columns: ["记录数"] }'],
-          ['sort', '{ column: expr(row => row["Unit Price"]), direction: "asc" }']
+          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
+          ['sort', '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2138,8 +2138,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [记录数]');
-    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
+    expect(generated.workflowDsl).toContain('select except [记录数]');
+    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Unit Price', type: 'integer' },
@@ -2150,8 +2150,8 @@ function main() {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow(
-          ['drop', '{ columns: ["记录数"] }'],
-          ['sort', '{ column: expr(row => row["Unit Price"]), direction: "asc" }']
+          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
+          ['sort', '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2183,8 +2183,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [记录数]');
-    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
+    expect(generated.workflowDsl).toContain('select except [记录数]');
+    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Unit Price', type: 'integer' },
@@ -2195,8 +2195,8 @@ function main() {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow(
-          ['sort', '{ column: expr(row => row["Sales"]), direction: "asc" }'],
-          ['drop', '{ columns: ["记录数"] }']
+          ['sort', '{ orderBy: [{ field: "Sales", direction: "asc" }] }'],
+          ['select', '{ selection: "exclude", fields: ["记录数"] }']
         ),
         requiredColumns: [],
       }),
@@ -2235,8 +2235,8 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [Sales] asc');
-    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('sort [Sales] asc');
+    expect(generated.workflowDsl).toContain('select except [记录数]');
     expect(generated.workflowDsl).not.toContain('select [City]');
     expect(generated.requiredColumns).toEqual([
       { name: 'Sales', type: 'integer' },
@@ -2248,10 +2248,10 @@ function main() {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow(
-          ['drop', '{ columns: ["记录数"] }'],
+          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
           ['rename', '{ source: "Adj Close", target: "adj_close" }'],
           [
-            'convert_type',
+            'cast',
             '{ column: "adj_close", targetType: "decimal", options: { removePrefix: "$", scale: 2 } }',
           ]
         ),
@@ -2294,12 +2294,12 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('drop [记录数]');
-    expect(generated.workflowDsl).toContain('map [Adj Close] to [adj_close]');
+    expect(generated.workflowDsl).toContain('select except [记录数]');
+    expect(generated.workflowDsl).toContain('rename [Adj Close] as [adj_close]');
     expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = try_cast');
     expect(generated.workflowDsl).toContain("replace(cast([adj_close] AS VARCHAR), '$', '')");
-    expect(generated.workflowDsl).toContain('drop [adj_close]');
-    expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
+    expect(generated.workflowDsl).toContain('select except [adj_close]');
+    expect(generated.workflowDsl).toContain('rename [__sophron_cast_adj_close] as [adj_close]');
     expect(generated.requiredColumns).toEqual([
       { name: '记录数', type: 'integer' },
       { name: 'Adj Close', type: 'text' },
@@ -2319,11 +2319,11 @@ function main() {
         javascriptSource: asFunctionWorkflow(
           ['rename', '{ source: "Adj Close", target: "adj_close" }'],
           [
-            'convert_type',
+            'cast',
             '{ column: "adj_close", targetType: "decimal", options: { removePrefix: "$", scale: 2 } }',
           ],
           ['derive', '{ column: "double_close", expression: expr(row => row["adj_close"] * 2) }'],
-          ['sort', '{ column: expr(row => row["double_close"]), direction: "desc" }']
+          ['sort', '{ orderBy: [{ field: "double_close", direction: "desc" }] }']
         ),
         requiredColumns: [],
       }),
@@ -2355,9 +2355,9 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('map [__sophron_cast_adj_close] to [adj_close]');
+    expect(generated.workflowDsl).toContain('rename [__sophron_cast_adj_close] as [adj_close]');
     expect(generated.workflowDsl).toContain('derive [double_close] = [adj_close] * 2');
-    expect(generated.workflowDsl).toContain('sort by [double_close] desc');
+    expect(generated.workflowDsl).toContain('sort [double_close] desc');
     expect(generated.requiredColumns).toEqual([{ name: 'Adj Close', type: 'text' }]);
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'adj_close', type: 'decimal' },
@@ -2383,8 +2383,8 @@ function main() {
     vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow(
-          ['convert_type', '{ column: "Adj Close", targetType: "decimal", options: { scale: 2 } }'],
-          ['drop', '{ columns: ["记录数"] }']
+          ['cast', '{ column: "Adj Close", targetType: "decimal", options: { scale: 2 } }'],
+          ['select', '{ selection: "exclude", fields: ["记录数"] }']
         ),
         requiredColumns: [],
       }),
@@ -2417,7 +2417,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain("replace(cast([Adj Close] AS VARCHAR), '$', '')");
-    expect(generated.workflowDsl).toContain('drop [记录数]');
+    expect(generated.workflowDsl).toContain('select except [记录数]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
   });
 
@@ -2651,19 +2651,22 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain('derive [__sophron_cast_ticker] = upper([ticker])');
-    expect(generated.workflowDsl).toContain('drop [ticker]');
-    expect(generated.workflowDsl).toContain('map [__sophron_cast_ticker] to [ticker]');
+    expect(generated.workflowDsl).toContain('select except [ticker]');
+    expect(generated.workflowDsl).toContain('rename [__sophron_cast_ticker] as [ticker]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'ticker', type: 'text' }]);
   });
 
   it('escalates a repeated invalid limit patch to one complete regeneration', async () => {
     const invalidSource = asFunctionWorkflow(
-      ['sort', '{ column: expr(row => row["Sales"]), direction: "desc" }'],
+      ['sort', '{ orderBy: [{ field: "Sales", direction: "desc" }] }'],
       ['limit', '{ config: { mode: "top", limit: 10, unit: "rows", offset: 0, orderBy: [] } }']
     );
     const validSource = asFunctionWorkflow(
-      ['sort', '{ column: expr(row => row["Sales"]), direction: "desc" }'],
-      ['limit', '{ config: { mode: "limit", limit: 10, unit: "rows", offset: 0, orderBy: [] } }']
+      ['sort', '{ orderBy: [{ field: "Sales", direction: "desc" }] }'],
+      [
+        'limit',
+        '{ config: { sampling: "fixed", limit: 10, unit: "rows", offset: 0, orderBy: [] } }',
+      ]
     );
     vi.mocked(runPiAiOneShot)
       .mockResolvedValueOnce({
@@ -2723,10 +2726,10 @@ function main() {
     expect(fullRepairPrompt.outputJsonSchema).not.toHaveProperty('javascriptPatch');
     expect(fullRepairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
       operationType: 'limit',
-      expectedSignature: expect.stringContaining('mode: "limit"'),
-      repairHint: expect.stringContaining('Never use config.mode="top"'),
+      expectedSignature: expect.stringContaining('sampling: "fixed"'),
+      repairHint: expect.stringContaining('There is no top mode'),
     });
-    expect(generated.workflowDsl).toContain('sort by [Sales] desc');
+    expect(generated.workflowDsl).toContain('sort [Sales] desc');
     expect(generated.workflowDsl).toContain('limit 10');
   });
 
@@ -3348,8 +3351,7 @@ function addOverallSalesAndShare(input) {
 
 function sortByShare(input) {
   return workflow.step(input, "sort", {
-    column: expr(row => row["销售额占比"]),
-    direction: "desc"
+    orderBy: [{ field: "销售额占比", direction: "desc" }]
   });
 }
 
@@ -3805,7 +3807,7 @@ function main() {
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workflowDsl: [
-            'input source rawTable "ignored" as src',
+            'input rawTable "ignored" as src',
             "  | filter [Market] <> 'EU'",
             '  | output table "market processed" mode replace',
           ].join('\n'),
@@ -3916,7 +3918,7 @@ function main() {
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workflowDsl: [
-            `input source rawTable "${input.rawTable.id}" as src`,
+            `input rawTable "${input.rawTable.id}" as src`,
             "  | filter [Market] <> 'EU'",
             '  | output table "market processed" mode replace',
           ].join('\n'),
@@ -3954,7 +3956,7 @@ function main() {
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow([
           'sort',
-          '{ column: expr(row => row["Unit Price"]), direction: "asc" }',
+          '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }',
         ]),
         requiredColumns: [],
       }),
@@ -3986,7 +3988,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [Unit Price] asc');
+    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
     expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
   });
 
@@ -3996,7 +3998,7 @@ function main() {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'sort',
-            '{ column: expr(row => row["Market Value"]), direction: "asc" }',
+            '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
           ]),
           requiredColumns: [],
         }),
@@ -4009,7 +4011,7 @@ function main() {
           javascriptPatch: {
             functionName: 'step1',
             replacementSource:
-              'function step1(input) { return workflow.step(input, "sort", { column: expr(row => row["Market Value"]), direction: "asc" }); }',
+              'function step1(input) { return workflow.step(input, "sort", { orderBy: [{ field: "Market Value", direction: "asc" }] }); }',
           },
         }),
         hasThinking: false,
@@ -4020,7 +4022,7 @@ function main() {
         text: JSON.stringify({
           javascriptSource: asFunctionWorkflow([
             'sort',
-            '{ column: expr(row => row["Market Value"]), direction: "asc" }',
+            '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
           ]),
         }),
         hasThinking: false,
@@ -4068,7 +4070,7 @@ function main() {
       text: JSON.stringify({
         javascriptSource: asFunctionWorkflow([
           'sort',
-          '{ column: expr(row => row["Market Value"]), direction: "asc" }',
+          '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
         ]),
         requiredColumns: [],
       }),
@@ -4100,7 +4102,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort by [Market Value] asc');
+    expect(generated.workflowDsl).toContain('sort [Market Value] asc');
     expect(generated.requiredColumns).toEqual([{ name: 'Market Value', type: 'integer' }]);
   });
 
@@ -4592,7 +4594,7 @@ function main() {
     await expect(
       service.runGeneratedPipeline({
         pipelineId: pipeline.pipeline.id,
-        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
         source: {
           location: 'local',
           tableId: input.rawTable.id,
@@ -4629,7 +4631,7 @@ function main() {
       rawTableId: input.rawTable.id,
       resultTableId: output.resultTable.id,
       dsl: [
-        `input source rawTable "${input.rawTable.id}" as src`,
+        `input rawTable "${input.rawTable.id}" as src`,
         '  | select [Market]',
         `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
@@ -4671,7 +4673,7 @@ function main() {
 
     await service.runGeneratedPipeline({
       pipelineId: pipeline.pipeline.id,
-      workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+      workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
       source: { location: 'local', tableId: input.rawTable.id },
       output: {
         location: 'local',
@@ -4687,7 +4689,7 @@ function main() {
     await expect(
       service.runGeneratedPipeline({
         pipelineId: pipeline.pipeline.id,
-        workflowDsl: `input source rawTable "${input.rawTable.id}" as src\n  | select [Market]\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | select [Market]\n  | output table "${output.resultTable.name}" mode replace`,
         source: {
           location: 'local',
           tableId: input.rawTable.id,
@@ -4733,8 +4735,8 @@ function main() {
     const result = await service.runGeneratedPipeline({
       pipelineId: pipeline.pipeline.id,
       workflowDsl: [
-        `input source rawTable "${input.rawTable.id}" as src`,
-        '  | drop [记录数]',
+        `input rawTable "${input.rawTable.id}" as src`,
+        '  | select except [记录数]',
         `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
       source: {
@@ -4790,7 +4792,7 @@ function main() {
       rawTableId: input.rawTable.id,
       resultTableId: output.resultTable.id,
       dsl: [
-        `input source rawTable "${input.rawTable.id}" as src`,
+        `input rawTable "${input.rawTable.id}" as src`,
         `  | output table "${output.resultTable.name}" mode replace`,
       ].join('\n'),
     });
@@ -4849,10 +4851,10 @@ describe('constrained workflow plans and resource bindings', () => {
     const plan = {
       version: 'workflow-plan/v1',
       nodes: [
-        { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
+        { id: 'orders', type: 'input', config: { source: 'rawTable', alias: 'orders' } },
         {
           id: 'customers',
-          type: 'input_source',
+          type: 'input',
           config: { source: 'rawTable', alias: 'customers' },
         },
         {
@@ -4885,8 +4887,8 @@ describe('constrained workflow plans and resource bindings', () => {
       dryRun: true,
     });
     expect(dry.dryRun).toBe(true);
-    expect(dry.dsl).toContain(`input source rawTable "${orders.id}" as orders`);
-    expect(dry.dsl).toContain(`input source rawTable "${customers.id}" as customers`);
+    expect(dry.dsl).toContain(`input rawTable "${orders.id}" as orders`);
+    expect(dry.dsl).toContain(`input rawTable "${customers.id}" as customers`);
     expect(dry.diagnostics?.filter((d) => d.severity === 'error')).toHaveLength(0);
 
     const saved = await service.applyWorkflowPlan({
@@ -4895,7 +4897,7 @@ describe('constrained workflow plans and resource bindings', () => {
       inputResources: { orders: orders.id, customers: customers.id },
       resultTableId: output.id,
     });
-    const inputNodes = saved.workflow.nodes.filter((node) => node.type === 'input_source');
+    const inputNodes = saved.workflow.nodes.filter((node) => node.type === 'input');
     expect(inputNodes.map((node) => node.config.rawTableId).sort()).toEqual(
       [orders.id, customers.id].sort()
     );
@@ -4914,7 +4916,7 @@ describe('constrained workflow plans and resource bindings', () => {
         nodes: [
           {
             id: 'orders',
-            type: 'input_source',
+            type: 'input',
             config: { source: 'rawTable', alias: 'orders', incrementalBy: 'old_column' },
           },
           { id: 'sink', type: 'output', config: { mode: 'replace' } },
@@ -4924,7 +4926,7 @@ describe('constrained workflow plans and resource bindings', () => {
       inputResources: { orders: orders.id },
       resultTableId: output.id,
     });
-    const inputNode = result.workflow.nodes.find((node) => node.type === 'input_source');
+    const inputNode = result.workflow.nodes.find((node) => node.type === 'input');
     expect(inputNode?.config).not.toHaveProperty('incrementalBy');
     expect(result.dsl).not.toContain('incremental by');
   });
@@ -4958,7 +4960,7 @@ describe('constrained workflow plans and resource bindings', () => {
         plan: {
           version: 'workflow-plan/v1',
           nodes: [
-            { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
+            { id: 'orders', type: 'input', config: { source: 'rawTable', alias: 'orders' } },
             { id: 'sink', type: 'output', config: { table: 't' } },
           ],
           edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
@@ -4978,7 +4980,7 @@ describe('constrained workflow plans and resource bindings', () => {
         plan: {
           version: 'workflow-plan/v1',
           nodes: [
-            { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
+            { id: 'orders', type: 'input', config: { source: 'rawTable', alias: 'orders' } },
             { id: 'sink', type: 'output', config: { table: 't' } },
           ],
           edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
@@ -4997,7 +4999,7 @@ describe('constrained workflow plans and resource bindings', () => {
       plan: {
         version: 'workflow-plan/v1',
         nodes: [
-          { id: 'orders', type: 'input_source', config: { source: 'rawTable', alias: 'orders' } },
+          { id: 'orders', type: 'input', config: { source: 'rawTable', alias: 'orders' } },
           { id: 'f', type: 'filter', config: { condition: '[bogus_col] > 0' } },
           { id: 'sink', type: 'output', config: { table: 't' } },
         ],
@@ -5019,8 +5021,8 @@ describe('constrained workflow plans and resource bindings', () => {
     const { orders, customers } = await seedTables(service, tempRoot);
     const pipeline = await service.createPipeline({ name: 'multi dsl pipeline' });
     const dsl = [
-      'input source rawTable "orders-placeholder" as orders',
-      'input source rawTable "customers-placeholder" as customers',
+      'input rawTable "orders-placeholder" as orders',
+      'input rawTable "customers-placeholder" as customers',
       '',
       'from orders',
       '  | join left customers on [orders].[customer_id] = [customers].[customer_id]',
@@ -5031,7 +5033,7 @@ describe('constrained workflow plans and resource bindings', () => {
       dsl,
       inputResources: { orders: orders.id, customers: customers.id },
     });
-    const inputNodes = result.workflow.nodes.filter((node) => node.type === 'input_source');
+    const inputNodes = result.workflow.nodes.filter((node) => node.type === 'input');
     expect(inputNodes.map((node) => node.config.rawTableId).sort()).toEqual(
       [orders.id, customers.id].sort()
     );

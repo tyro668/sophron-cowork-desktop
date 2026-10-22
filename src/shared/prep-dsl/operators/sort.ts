@@ -7,9 +7,9 @@ import { isCompleteSortKey } from '../../operator-completeness';
 
 export const sortCodec: OperatorDslCodec = {
   type: 'sort',
-  matches: (text) => text.startsWith('sort by '),
+  matches: (text) => text.startsWith('sort '),
   parse: (command, diagnostics) => {
-    const keys = parseSortKeys(command.text.slice(8), command.line, diagnostics);
+    const keys = parseSortKeys(command.text.slice(5), command.line, diagnostics);
     if (keys.length === 0) {
       diagnostics.push({
         ...createPrepDiagnostic('sortMissingField', 'Sort requires at least one field'),
@@ -20,7 +20,7 @@ export const sortCodec: OperatorDslCodec = {
   },
   format: (config) => {
     const keys = formatSortKeys(config?.orderBy);
-    return keys ? `sort by ${keys}` : null;
+    return keys ? `sort ${keys}` : null;
   },
 };
 

@@ -5,7 +5,7 @@
  * - ordering lists are always `orderBy` (sort.keys → orderBy);
  * - multi-field lists are `fields`, single field refs are `field`
  *   (columns/column → fields/field);
- * - no bare `mode` except output's write mode: field_select/unpivot `selection`,
+ * - no bare `mode` except output's write mode: select/unpivot `selection`,
  *   limit `sampling`, set_op `quantifier`.
  *
  * Only used by metadata migration v16; runtime code reads v3 names only.
@@ -39,7 +39,7 @@ export function migrateConfigToV3Naming(type: string, input: Config): Config | n
     case 'sort':
       changed = rename(config, 'keys', 'orderBy');
       break;
-    case 'field_select':
+    case 'select':
     case 'unpivot':
       changed = rename(config, 'columns', 'fields');
       changed = rename(config, 'mode', 'selection') || changed;
@@ -55,7 +55,7 @@ export function migrateConfigToV3Naming(type: string, input: Config): Config | n
     case 'unnest':
       changed = rename(config, 'column', 'field');
       break;
-    case 'type_convert':
+    case 'cast':
       changed = renameInRows(config, 'conversions', 'column', 'field');
       break;
     case 'limit':

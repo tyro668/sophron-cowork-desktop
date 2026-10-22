@@ -54,12 +54,12 @@ const EXPECT_PORTS: OperatorPorts = { inputs: ['input'], outputs: ['output', 're
  * renderer OPERATOR_UI) is asserted in operator-registry.test.ts.
  */
 export const OPERATOR_DEFINITIONS = {
-  input_source: defineOperator({
-    type: 'input_source',
+  input: defineOperator({
+    type: 'input',
     category: 'input_output',
     schema: InputSourceConfigSchema,
     ports: SOURCE_PORTS,
-    compileKind: 'input_source',
+    compileKind: 'input',
     // No DSL codec: sources are bound via `from <ref>`/resources, not steps.
   }),
   filter: defineOperator({
@@ -70,8 +70,8 @@ export const OPERATOR_DEFINITIONS = {
     compileKind: 'strategy',
     dsl: filterCodec,
   }),
-  field_select: defineOperator({
-    type: 'field_select',
+  select: defineOperator({
+    type: 'select',
     category: 'data_transform',
     schema: FieldSelectConfigSchema,
     ports: TRANSFORM_PORTS,
@@ -94,8 +94,8 @@ export const OPERATOR_DEFINITIONS = {
     compileKind: 'strategy',
     dsl: missingValueCodec,
   }),
-  type_convert: defineOperator({
-    type: 'type_convert',
+  cast: defineOperator({
+    type: 'cast',
     category: 'cleaning',
     schema: TypeConvertConfigSchema,
     ports: TRANSFORM_PORTS,
@@ -129,16 +129,16 @@ export const OPERATOR_DEFINITIONS = {
     compileKind: 'strategy',
     dsl: aggregateCodec,
   }),
-  calculate_field: defineOperator({
-    type: 'calculate_field',
+  derive: defineOperator({
+    type: 'derive',
     category: 'data_transform',
     schema: CalculateFieldConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
     dsl: calculateFieldCodec,
   }),
-  field_mapping: defineOperator({
-    type: 'field_mapping',
+  rename: defineOperator({
+    type: 'rename',
     category: 'cleaning',
     schema: FieldMappingConfigSchema,
     ports: TRANSFORM_PORTS,
@@ -194,12 +194,12 @@ export const OPERATOR_DEFINITIONS = {
     compileKind: 'expect',
     dsl: expectCodec,
   }),
-  sql_query: defineOperator({
-    type: 'sql_query',
+  sql: defineOperator({
+    type: 'sql',
     category: 'advanced_compute',
     schema: SqlQueryConfigSchema,
     ports: TRANSFORM_PORTS,
-    compileKind: 'sql_query',
+    compileKind: 'sql',
     dsl: sqlQueryCodec,
   }),
   output: defineOperator({

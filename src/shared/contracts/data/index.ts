@@ -545,7 +545,7 @@ export interface DataPipelineRun {
   status: DataPipelineRunStatus;
   /** Execution signature of the workflow version that ran. */
   workflowSignature: string | null;
-  /** Rows read across input_source nodes; null when no stats were collected. */
+  /** Rows read across input nodes; null when no stats were collected. */
   inputRows: number | null;
   /** Rows written across output nodes; null when no stats were collected. */
   outputRows: number | null;

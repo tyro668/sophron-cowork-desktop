@@ -13,13 +13,13 @@ describe('parseWorkflowRunError', () => {
   it('unwraps the node wrapper and extracts a missing field + candidates', () => {
     const raw =
       "Error: Error invoking remote method 'data.runPipelineWithDiagnostics': " +
-      'Error: Workflow node sql_1 (sql_query) failed: ' +
+      'Error: Workflow node sql_1 (sql) failed: ' +
       'Binder Error: Referenced column "missing_col" not found in FROM clause!\n' +
       'Candidate columns: "id", "name", "amount"\n' +
       'LINE 1: SELECT missing_col FROM input\n                 ^';
     const parsed = parseWorkflowRunError(raw);
     expect(parsed.nodeId).toBe('sql_1');
-    expect(parsed.nodeType).toBe('sql_query');
+    expect(parsed.nodeType).toBe('sql');
     expect(parsed.kind).toBe('Binder');
     expect(parsed.missingField).toBe('missing_col');
     expect(parsed.candidateFields).toEqual(['id', 'name', 'amount']);

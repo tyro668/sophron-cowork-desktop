@@ -22,7 +22,7 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'split-package-size',
     title: 'Split package size "20x18x22" into three numeric columns',
     dsl: [
-      'input source rawTable "<rawTableId>" as src',
+      'input rawTable "<rawTableId>" as src',
       "  | derive [包装长CM] = CAST(split_part([包装尺寸CM], 'x', 1) AS INTEGER), [包装宽CM] = CAST(split_part([包装尺寸CM], 'x', 2) AS INTEGER), [包装高CM] = CAST(split_part([包装尺寸CM], 'x', 3) AS INTEGER)",
       '  | output table "02_商品主数据_尺寸拆分" mode replace',
     ].join('\n'),
@@ -31,8 +31,8 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'left-join-dimension',
     title: 'Join a main table with a dimension table',
     dsl: [
-      'input source rawTable "<ordersRawTableId>" as orders',
-      'input source rawTable "<customersRawTableId>" as customers',
+      'input rawTable "<ordersRawTableId>" as orders',
+      'input rawTable "<customersRawTableId>" as customers',
       '',
       'from orders',
       '  | join left customers',
@@ -45,11 +45,11 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     id: 'branching-steps',
     title: 'Branch one cleaned stream into a result and a sample',
     dsl: [
-      'input source rawTable "<ordersRawTableId>" as orders',
+      'input rawTable "<ordersRawTableId>" as orders',
       '',
       'step base = orders',
       '  | filter [amount] > 0',
-      '  | sort by [created_at] desc',
+      '  | sort [created_at] desc',
       'step result = base',
       '  | aggregate by [region] metrics sum([amount]) as [total]',
       '  | output table "Regional totals" mode replace',
@@ -61,15 +61,15 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
 ];
 
 export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
-  { type: 'field_select', title: 'Select fields', dsl: 'select [order_id], [region]' },
+  { type: 'select', title: 'Select fields', dsl: 'select [order_id], [region]' },
   { type: 'filter', title: 'Filter rows', dsl: 'filter [amount] > 0' },
   {
-    type: 'calculate_field',
+    type: 'derive',
     title: 'Derive fields',
     dsl: 'derive [margin] = [profit] / [revenue]',
   },
   {
-    type: 'type_convert',
+    type: 'cast',
     title: 'Cast field types',
     dsl: 'cast [amount] as decimal on_error null',
   },
@@ -81,17 +81,17 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'missing_value',
     title: 'Drop empty rows',
-    dsl: 'missing value row drop when all_null',
+    dsl: 'missing_value row drop when all_null',
   },
   {
     type: 'missing_value',
     title: 'Fill and nullify missing values',
-    dsl: "missing value [region] nullify values ('', 'N/A'), [score] fill 0",
+    dsl: "missing_value [region] nullify values ('', 'N/A'), [score] fill 0",
   },
   {
     type: 'sort',
     title: 'Sort rows',
-    dsl: 'sort by [created_at] desc nulls last',
+    dsl: 'sort [created_at] desc nulls last',
   },
   {
     type: 'aggregate',
@@ -99,9 +99,9 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
     dsl: 'aggregate by year([Date]), [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]',
   },
   {
-    type: 'field_mapping',
+    type: 'rename',
     title: 'Rename fields',
-    dsl: 'map [old_name] to [new_name]',
+    dsl: 'rename [old_name] as [new_name]',
   },
   {
     type: 'join',
@@ -116,10 +116,10 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'limit',
     title: 'Top N rows',
-    dsl: 'top 10 by [amount] desc',
+    dsl: 'limit 10 by [amount] desc',
   },
   {
-    type: 'calculate_field',
+    type: 'derive',
     title: 'Derive window fields',
     dsl: 'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)',
   },
@@ -162,30 +162,30 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
 
 const OVERVIEW = [
   `Data workflow DSL version: ${PREP_DSL_REFERENCE_VERSION}.`,
-  'Config naming (v3): ordering lists are orderBy (sort/limit/deduplicate); multi-field lists are fields, single field refs are field; field_select/unpivot use selection, limit uses sampling (fixed|random), set_op uses quantifier (all|distinct); only output keeps mode (write mode).',
+  'Config naming (v3): ordering lists are orderBy (sort/limit/deduplicate); multi-field lists are fields, single field refs are field; select/unpivot use selection, limit uses sampling (fixed|random), set_op uses quantifier (all|distinct); only output keeps mode (write mode).',
   'Data workflow DSL is a text pipeline language for reusable data pipelines. It is not JSON.',
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Brackets hold the raw name with no quotes — use [Year of Transaction Date], not [`Year of Transaction Date`]. Backtick-quoting inside brackets is only for names that contain ] or a backtick. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
-  'Quotes follow SQL: \'text\' is a text value (escape a quote by doubling it: \'it\'\'s\'); "name" is an identifier — in expressions "amount" means the same field as [amount], and statement names and file paths (output table "t", input source rawTable "id", file "/p.csv") are double-quoted. Formats, JSON paths and prefixes are text values: format \'%Y-%m-%d\', path \'$.items\'.',
+  'Quotes follow SQL: \'text\' is a text value (escape a quote by doubling it: \'it\'\'s\'); "name" is an identifier — in expressions "amount" means the same field as [amount], and statement names and file paths (output table "t", input rawTable "id", file "/p.csv") are double-quoted. Formats, JSON paths and prefixes are text values: format \'%Y-%m-%d\', path \'$.items\'.',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
   'For created input/output tables, prefer passing inputResources (alias -> rawTableId) and resultTableId to data_apply_workflow_dsl/data_apply_workflow_plan instead of embedding or guessing node ids.',
 ].join('\n');
 
 const WORKFLOW = [
   'Workflow shape:',
-  'input source rawTable "<rawTableId>" as src',
+  'input rawTable "<rawTableId>" as src',
   '  | select [col1], [col2]',
   '  | filter [amount] > 0',
   "  | filter [field with spaces] = 'value'",
   '  | output table "Result table" mode replace',
   '',
   'Input source forms:',
-  '- input source pipeline as src',
-  '- input source rawTable "<rawTableId-or-name>" as src',
-  '- input source file "/authorized/path/file.csv" as src',
+  '- input pipeline as src',
+  '- input rawTable "<rawTableId-or-name>" as src',
+  '- input file "/authorized/path/file.csv" as src',
   '',
-  'Important: input source pipeline requires the pipeline to have a sourcePath. If the pipeline reads a created input table, use rawTable input or bind it via inputResources: { <alias>: "<rawTableId>" } on data_apply_workflow_dsl/data_apply_workflow_plan (multi-source: one key per input alias).',
+  'Important: input pipeline requires the pipeline to have a sourcePath. If the pipeline reads a created input table, use rawTable input or bind it via inputResources: { <alias>: "<rawTableId>" } on data_apply_workflow_dsl/data_apply_workflow_plan (multi-source: one key per input alias).',
   '',
   'Named dataflows (branching):',
   'step <name> = <ref> starts a named chain; <ref> is a source alias or an earlier step name.',
@@ -213,7 +213,7 @@ const OPERATORS = [
 ].join('\n');
 
 const DERIVE_WINDOW = [
-  'Window analysis is part of derive/calculate_field DSL:',
+  'Window analysis is part of derive/derive DSL:',
   'Canonical function names use lower_snake_case. SQL functions retain their standard names; domain operations use explicit names such as percent_of_total, first_value, offset_difference, previous_record, same_period_last_year, and year_to_date. Old operation spellings are accepted on input but exports and generated formulas use canonical names.',
   'Scene wrappers are group, ranking, running, reference, moving, compare, and accumulate. Keep field names and string literal values unchanged when normalizing function names.',
   "Comparison result modes are 'value', 'difference', and 'change_rate'. previous_record compares with the previous date-ordered record, not an inferred calendar period.",
@@ -240,7 +240,7 @@ const RESHAPE = [
   'pivot on [month] using sum([revenue]) as [revenue_sum] group by [region]',
   'unpivot [jan], [feb], [mar] into name [month] value [sales]',
   'unnest [items] as [item]',
-  "explode json [payload] path '$.items' as [item]",
+  "unnest json [payload] path '$.items' as [item]",
 ].join('\n');
 
 const EXAMPLES = [
@@ -341,7 +341,7 @@ export function buildPrepDslReferenceMarkdown(): string {
     'Models should submit constrained plans, not guessed paths or field names:',
     '- `data_get_workflow_capability_manifest({ rawTableIds, resultTableIds })` returns the versioned manifest: plan JSON Schema, per-operator config schemas, handle rules, the `alias -> rawTableId` binding contract, runtime semantics, stable diagnostic codes, and real column snapshots for the requested tables.',
     '- A plan is `{ version: "workflow-plan/v1", nodes: [{id,type,config}], edges: [{sourceNodeId,targetNodeId,sourceHandle?,targetHandle?}] }`. Configs must satisfy `plan.operatorConfigSchemas[type]`; field references must exist on the upstream schema.',
-    '- `data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun })` binds every `input_source` node by `config.alias` through `inputResources` (unknown aliases are rejected), runs the same validation pipeline as DSL and the canvas, exports the canonical DSL, and saves unless `dryRun`.',
+    '- `data_apply_workflow_plan({ pipelineId, plan, inputResources, resultTableId, dryRun })` binds every `input` node by `config.alias` through `inputResources` (unknown aliases are rejected), runs the same validation pipeline as DSL and the canvas, exports the canonical DSL, and saves unless `dryRun`.',
     '- Diagnostics carry stable `code` values — repair by code, not by message text.',
     '',
     '## Tool Call Flow',

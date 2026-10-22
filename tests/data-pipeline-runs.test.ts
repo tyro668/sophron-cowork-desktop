@@ -45,7 +45,7 @@ async function runnableSetup(root: string, store: DataPipelineStore, sql?: strin
   const nodes: DataWorkflowSaveInput['nodes'] = [
     {
       id: 'source',
-      type: 'input_source',
+      type: 'input',
       label: 'source',
       x: 0,
       y: 0,
@@ -53,7 +53,7 @@ async function runnableSetup(root: string, store: DataPipelineStore, sql?: strin
     },
   ];
   if (sql) {
-    nodes.push({ id: 'sql', type: 'sql_query', label: 'sql', x: 0, y: 0, config: { sql } });
+    nodes.push({ id: 'sql', type: 'sql', label: 'sql', x: 0, y: 0, config: { sql } });
   }
   nodes.push({
     id: 'output',

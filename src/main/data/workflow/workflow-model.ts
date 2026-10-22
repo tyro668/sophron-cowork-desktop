@@ -30,7 +30,7 @@ export interface GeneratedWorkflowOperationOrigin extends WorkflowSourceLocation
 
 export type GeneratedWorkflowPlatformOperatorType = Exclude<
   DataWorkflowOperatorType,
-  'input_source' | 'join' | 'set_op' | 'output'
+  'input' | 'join' | 'set_op' | 'output'
 >;
 
 /**
@@ -112,13 +112,13 @@ export interface WorkflowDeriveWindowConfig {
 }
 
 export interface WorkflowDeduplicateConfig {
-  columns: string[];
+  fields: string[];
   keep: 'first' | 'last';
   orderBy: WorkflowSortKeyIr[];
 }
 
 export interface WorkflowMissingValueRule {
-  column: string;
+  field: string;
   method:
     | 'skip'
     | 'drop'
@@ -138,14 +138,14 @@ export type WorkflowMissingValueConfig =
   | { strategy: 'drop_empty_rows' }
   | {
       strategy: 'drop_rows_by_nulls';
-      columns: string[];
+      fields: string[];
       condition: 'any_null' | 'all_null';
     }
   | { strategy: 'by_column'; rules: WorkflowMissingValueRule[] };
 
 export type WorkflowLimitConfig =
   | {
-      mode: 'limit';
+      sampling: 'fixed';
       limit: number;
       unit: 'rows';
       offset: number;
@@ -155,7 +155,7 @@ export type WorkflowLimitConfig =
       seed?: never;
     }
   | {
-      mode: 'limit';
+      sampling: 'fixed';
       limit: number;
       unit: 'percent';
       offset: 0;
@@ -165,7 +165,7 @@ export type WorkflowLimitConfig =
       seed?: never;
     }
   | {
-      mode: 'random';
+      sampling: 'random';
       limit: number;
       unit: 'rows';
       offset: 0;
@@ -175,7 +175,7 @@ export type WorkflowLimitConfig =
       seed?: number;
     }
   | {
-      mode: 'random';
+      sampling: 'random';
       limit: number;
       unit: 'percent';
       offset: 0;
@@ -204,8 +204,8 @@ export interface WorkflowPivotConfig {
 }
 
 export interface WorkflowUnpivotConfig {
-  mode: 'columns' | 'except';
-  columns: string[];
+  selection: 'include' | 'exclude';
+  fields: string[];
   nameColumn: string;
   valueColumn: string;
   includeNulls: boolean;
@@ -214,7 +214,7 @@ export interface WorkflowUnpivotConfig {
 export interface WorkflowUnnestConfig {
   /** Platform list mode accepts native lists and JSON-array strings. */
   sourceKind: 'list';
-  column: string;
+  field: string;
   alias: string;
   path?: string;
   withIndex?: string;
@@ -224,20 +224,13 @@ export interface WorkflowUnnestConfig {
 
 export type WorkflowOperationIr = (
   | { type: 'filter'; condition: WorkflowExpressionIr }
-  | {
-      type: 'sort';
-      keys?: WorkflowSortKeyIr[];
-      /** Compatibility shape accepted for already persisted/generated v2.1 workflows. */
-      column?: WorkflowExpressionIr;
-      direction?: 'asc' | 'desc';
-    }
-  | { type: 'drop'; columns: string[] }
-  | { type: 'select'; columns: string[] }
+  | { type: 'sort'; orderBy: WorkflowSortKeyIr[] }
+  | { type: 'select'; fields: string[]; selection?: 'include' | 'exclude' }
   | { type: 'rename'; source: string; target: string }
   | { type: 'derive'; column: string; expression: WorkflowExpressionIr }
   | ({ type: 'derive_window' } & WorkflowDeriveWindowConfig)
   | {
-      type: 'convert_type';
+      type: 'cast';
       column: string;
       targetType: string;
       options: Record<string, unknown>;

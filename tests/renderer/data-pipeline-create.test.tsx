@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * New-pipeline creation flow: unique naming, "create pipeline from this table"
- * seeding a bound input_source node, and opening the editor in rename mode.
+ * seeding a bound input node, and opening the editor in rename mode.
  */
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -192,7 +192,7 @@ describe('useDataActions pipeline creation', () => {
       expect.objectContaining({
         nodes: expect.arrayContaining([
           expect.objectContaining({
-            type: 'input_source',
+            type: 'input',
             config: expect.objectContaining({
               source: 'rawTable',
               rawTableId: 'ds_orders',

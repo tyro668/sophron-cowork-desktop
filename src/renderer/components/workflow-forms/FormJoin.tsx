@@ -87,7 +87,7 @@ export default function FormJoin({
   const leftSourceLabel = resolveNodeLabel(sourceNode);
   const rightSourceLabel = resolveNodeLabel(rightSourceNode);
 
-  // Conditions are keyed by stable reference names (input_source aliases), not
+  // Conditions are keyed by stable reference names (input aliases), not
   // by editable display labels — otherwise saved conditions show as missing
   // and break whenever an upstream node is renamed.
   const referenceAliases = useMemo(

@@ -13,7 +13,7 @@ export const WORKFLOW_PLAN_VERSION = 'workflow-plan/v1' as const;
 
 /**
  * Per-type config map inferred from the operator registry's zod schemas —
- * covers every `DataWorkflowOperatorType`, including `input_source`/`output`,
+ * covers every `DataWorkflowOperatorType`, including `input`/`output`,
  * so the plan node config union never degrades to `Record<string, unknown>`.
  */
 export type { WorkflowOperatorConfigMap } from '../operators';

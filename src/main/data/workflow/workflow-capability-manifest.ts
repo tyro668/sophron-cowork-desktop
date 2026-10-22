@@ -94,7 +94,7 @@ function operatorConfigJsonSchemas(): Record<string, unknown> {
       schemas[type] = { type: 'object', additionalProperties: true };
     }
   }
-  // input_source/output come from SCHEMA_MAP's real Zod schemas too — the
+  // input/output come from SCHEMA_MAP's real Zod schemas too — the
   // manifest must describe exactly what validation accepts.
   return schemas;
 }
@@ -130,13 +130,13 @@ export function buildWorkflowCapabilityManifest(
     },
     resources: {
       inputResources:
-        'Record<alias, rawTableId> — binds each input_source node by its config.alias to a real input table id (from data_list_raw_tables or the snapshots below). rawTableId/inputAlias legacy params bind a single source.',
+        'Record<alias, rawTableId> — binds each input node by its config.alias to a real input table id (from data_list_raw_tables or the snapshots below). rawTableId/inputAlias legacy params bind a single source.',
       resultTableId:
         'Binds the first output node to a real output table id (from data_list_result_tables). Extra sinks bind via config.outputResultTableId.',
     },
     runtime: {
       sqlQuery:
-        'sql_query.config.sql is one DuckDB query (SELECT, WITH, subqueries, joins, window functions). Use input as the wired upstream relation; every input_source with config.alias is also readable by that alias (e.g. FROM erp JOIN bank ...), so a SQL node can combine several named inputs. Result columns flow downstream. Scripts, write statements, and unbound parameters are not supported.',
+        'sql.config.sql is one DuckDB query (SELECT, WITH, subqueries, joins, window functions). Use input as the wired upstream relation; every input with config.alias is also readable by that alias (e.g. FROM erp JOIN bank ...), so a SQL node can combine several named inputs. Result columns flow downstream. Scripts, write statements, and unbound parameters are not supported.',
       outputModes: {
         replace: 'default; rebuilds the target table',
         append: 'adds rows to the existing target (UNION ALL BY NAME); not idempotent by design',
@@ -151,7 +151,7 @@ export function buildWorkflowCapabilityManifest(
       expect:
         'kind expression|unique|row_count; violations fail the run unless config.rejectStream routes rejected rows to a named stream consumable via a `reject` edge',
       incremental:
-        'Bound input tables are always read in full. For pipeline/file sources, input_source.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
+        'Bound input tables are always read in full. For pipeline/file sources, input.incrementalBy reads rows newer than the last committed watermark and advances it only after a successful commit',
       outOfScope:
         'Scheduling, credentials, and retry policy stay in pipeline configuration, not in plans or DSL',
     },

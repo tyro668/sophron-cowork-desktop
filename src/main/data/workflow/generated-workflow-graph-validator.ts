@@ -71,7 +71,7 @@ function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagn
     )
   );
 
-  if (node.type === 'input_source') {
+  if (node.type === 'input') {
     const source = stringValue(config.source);
     const hasRawTable = Boolean(stringValue(config.rawTableId));
     const hasFile = Boolean(stringValue(config.filePath));
@@ -123,13 +123,13 @@ function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagn
         );
       }
     }
-  } else if (node.type === 'calculate_field') {
+  } else if (node.type === 'derive') {
     const calculations = Array.isArray(config.calculations) ? config.calculations : [];
     if (calculations.length === 0) {
       diagnostics.push(
         diagnostic(
           'NODE_CALCULATION_MISSING',
-          `Generated calculate_field node ${node.id} has no calculations`,
+          `Generated derive node ${node.id} has no calculations`,
           node
         )
       );
@@ -139,7 +139,7 @@ function validateNodeConfig(node: DataWorkflowNodeInput): GeneratedWorkflowDiagn
         diagnostics.push(
           diagnostic(
             'NODE_CALCULATION_INVALID',
-            `Generated calculate_field node ${node.id} has an invalid calculation at index ${index}`,
+            `Generated derive node ${node.id} has an invalid calculation at index ${index}`,
             node
           )
         );

@@ -42,14 +42,13 @@ describe('shared operator registry', () => {
       'data_transform',
       'advanced_compute',
     ]);
-    const CLEANING_TYPES = ['deduplicate', 'missing_value', 'type_convert', 'field_mapping'];
-    const ADVANCED_COMPUTE_TYPES = ['sql_query', 'pivot', 'unpivot', 'unnest', 'expect'];
+    const CLEANING_TYPES = ['deduplicate', 'missing_value', 'cast', 'rename'];
+    const ADVANCED_COMPUTE_TYPES = ['sql', 'pivot', 'unpivot', 'unnest', 'expect'];
     expect(OPERATOR_GROUPS.map(({ operatorTypes }) => operatorTypes)).toEqual([
-      ['input_source', 'output'],
+      ['input', 'output'],
       OPERATOR_TYPES.filter((type) => CLEANING_TYPES.includes(type)),
       OPERATOR_TYPES.filter(
-        (type) =>
-          !['input_source', 'output', ...CLEANING_TYPES, ...ADVANCED_COMPUTE_TYPES].includes(type)
+        (type) => !['input', 'output', ...CLEANING_TYPES, ...ADVANCED_COMPUTE_TYPES].includes(type)
       ),
       OPERATOR_TYPES.filter((type) => ADVANCED_COMPUTE_TYPES.includes(type)),
     ]);
@@ -91,15 +90,9 @@ describe('shared operator registry', () => {
       for (const handle of def.ports.outputs) {
         expect(VALID_OUTPUT_HANDLES.has(handle)).toBe(true);
       }
-      expect([
-        'strategy',
-        'join',
-        'set_op',
-        'input_source',
-        'output',
-        'expect',
-        'sql_query',
-      ]).toContain(def.compileKind);
+      expect(['strategy', 'join', 'set_op', 'input', 'output', 'expect', 'sql']).toContain(
+        def.compileKind
+      );
     }
   });
 
@@ -111,9 +104,9 @@ describe('shared operator registry', () => {
   });
 
   it('declares a DSL codec for every step-expressible operator', () => {
-    // input_source binds via `from <ref>`/resources — it has no step codec.
+    // input binds via `from <ref>`/resources — it has no step codec.
     const withoutDsl = OPERATOR_TYPES.filter((type) => !OPERATOR_DEFINITIONS[type].dsl);
-    expect(withoutDsl).toEqual(['input_source']);
+    expect(withoutDsl).toEqual(['input']);
     for (const type of OPERATOR_TYPES) {
       const codec = OPERATOR_DEFINITIONS[type].dsl;
       if (codec) expect(codec.type).toBe(type);
@@ -128,7 +121,7 @@ describe('shared operator registry', () => {
   });
 
   it('declares boundary/binary/quality ports correctly', () => {
-    expect(OPERATOR_DEFINITIONS.input_source.ports).toEqual({ inputs: [], outputs: ['output'] });
+    expect(OPERATOR_DEFINITIONS.input.ports).toEqual({ inputs: [], outputs: ['output'] });
     expect(OPERATOR_DEFINITIONS.output.ports).toEqual({ inputs: ['input'], outputs: [] });
     expect(OPERATOR_DEFINITIONS.join.ports.inputs).toEqual(['left', 'right']);
     expect(OPERATOR_DEFINITIONS.set_op.ports.inputs).toEqual(['left', 'right']);
@@ -138,7 +131,7 @@ describe('shared operator registry', () => {
     expect(hasBinaryInputs('filter')).toBe(false);
     for (const type of OPERATOR_TYPES) {
       const { inputs, outputs } = OPERATOR_DEFINITIONS[type].ports;
-      if (!['input_source', 'join', 'set_op'].includes(type)) {
+      if (!['input', 'join', 'set_op'].includes(type)) {
         expect(inputs).toEqual(['input']);
       }
       if (!['output', 'expect'].includes(type)) {
@@ -194,8 +187,8 @@ describe('renderer operator UI registry', () => {
   });
 
   it('registers a form loader for every non-boundary operator', () => {
-    // input_source/output use binding panels instead of config forms.
-    const boundary = new Set(['input_source', 'output']);
+    // input/output use binding panels instead of config forms.
+    const boundary = new Set(['input', 'output']);
     for (const type of OPERATOR_TYPES) {
       if (boundary.has(type)) {
         expect(OPERATOR_UI[type].form).toBeUndefined();

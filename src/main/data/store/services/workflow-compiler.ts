@@ -44,13 +44,13 @@ export class WorkflowCompiler {
   }
   /**
    * Input columns with normalized types for plan-level schema validation.
-   * Returns null when the node is not an enabled input_source.
+   * Returns null when the node is not an enabled input.
    */
   async resolveInputSourceColumnTypes(
     node: DataWorkflowNode,
     pipelineSourcePath: string | null
   ): Promise<{ name: string; type?: string }[] | null> {
-    if (node.type !== 'input_source' || node.config.disabled === true) {
+    if (node.type !== 'input' || node.config.disabled === true) {
       return null;
     }
 
@@ -166,7 +166,7 @@ export class WorkflowCompiler {
     if (!inputRelation) {
       throw new Error(`Workflow node has no input: ${node.id}`);
     }
-    if (compileKind === 'sql_query') {
+    if (compileKind === 'sql') {
       const { sql } = parseOperatorConfig(SqlQueryConfigSchema, node.config);
       const query = buildSqlQuery(
         sql,

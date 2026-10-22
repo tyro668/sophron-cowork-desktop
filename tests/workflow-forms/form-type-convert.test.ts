@@ -7,7 +7,7 @@ interface OkResult {
 }
 
 function ok(config: Record<string, unknown>): OkResult {
-  const type = 'type_convert' as const;
+  const type = 'cast' as const;
   const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
   const parsed = parsePrepOperatorDsl(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
@@ -96,12 +96,12 @@ describe('FormTypeConvert — config ↔ DSL', () => {
 
   it('DSL idempotent with format', () => {
     const config = { conversions: [{ field: 'dt', type: 'date', format: '%m/%d/%y' }] };
-    const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'type_convert', config });
-    const parsed = parsePrepOperatorDsl(dsl1, 'type_convert');
+    const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'cast', config });
+    const parsed = parsePrepOperatorDsl(dsl1, 'cast');
     expect(parsed.operator).not.toBeNull();
     const dsl2 = exportPrepOperatorDsl({
       id: 't',
-      type: 'type_convert',
+      type: 'cast',
       config: parsed.operator!.config,
     });
     expect(dsl2).toBe(dsl1);
@@ -133,14 +133,14 @@ describe('FormTypeConvert — DSL idempotent', () => {
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({
         id: 't',
-        type: 'type_convert',
+        type: 'cast',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'type_convert');
+      const parsed = parsePrepOperatorDsl(dsl1, 'cast');
       expect(parsed.operator).not.toBeNull();
       const dsl2 = exportPrepOperatorDsl({
         id: 't',
-        type: 'type_convert',
+        type: 'cast',
         config: parsed.operator!.config,
       });
       expect(dsl2).toBe(dsl1);

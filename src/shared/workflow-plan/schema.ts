@@ -19,7 +19,7 @@ import type {
 const UNKNOWN: PlanSchema = { columns: [], known: false };
 
 /**
- * Resolves externally known columns for input_source and sql_query nodes. Returning null
+ * Resolves externally known columns for input and sql nodes. Returning null
  * marks the schema unknown and skips field-existence checks for the node's
  * downstream rather than producing false errors.
  */
@@ -132,13 +132,13 @@ function validateNode(
     return left;
   }
   switch (node.type) {
-    case 'sql_query': {
+    case 'sql': {
       // Arbitrary projections must never masquerade as input passthrough.
       // The main process supplies columns bound by the native SQL engine.
       const columns = resolveInputSchema(node);
       return columns ? { columns, known: true } : UNKNOWN;
     }
-    case 'input_source': {
+    case 'input': {
       const columns = resolveInputSchema(node);
       const incrementalBy =
         typeof config.incrementalBy === 'string' ? config.incrementalBy.trim() : '';
@@ -209,7 +209,7 @@ function validateNode(
       }
       return left;
     }
-    case 'field_select': {
+    case 'select': {
       const columns = strList(config.fields);
       checkFields(node, columns, left, diagnostics);
       if (!left.known) return UNKNOWN;
@@ -221,7 +221,7 @@ function validateNode(
           : left.columns.filter((column) => columns.includes(column.name)),
       };
     }
-    case 'field_mapping': {
+    case 'rename': {
       const mappings = recordArray(config.mappings);
       checkFields(
         node,
@@ -250,7 +250,7 @@ function validateNode(
         ),
       };
     }
-    case 'type_convert': {
+    case 'cast': {
       checkFields(
         node,
         recordArray(config.conversions).map((item) => String(item.field ?? '')),
@@ -271,7 +271,7 @@ function validateNode(
         ),
       };
     }
-    case 'calculate_field': {
+    case 'derive': {
       const calculations = recordArray(config.calculations);
       for (const item of calculations) {
         const expression = String(item.expression ?? '');

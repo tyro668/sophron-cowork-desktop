@@ -6,13 +6,12 @@ import { createOperator, type OperatorDslCodec } from './codec';
 
 export const unnestCodec: OperatorDslCodec = {
   type: 'unnest',
-  matches: (text) => text.startsWith('unnest ') || text.startsWith('explode '),
+  matches: (text) => text.startsWith('unnest '),
   parse: (command, diagnostics) => {
     const { text } = command;
     const cursor = new PrepTokenCursor(text, command.line, diagnostics);
-    const isJson = cursor.match('explode');
-    if (isJson) cursor.expect('json', 'invalidUnnest');
-    else cursor.expect('unnest', 'invalidUnnest');
+    cursor.expect('unnest', 'invalidUnnest');
+    const isJson = cursor.match('json');
     const column = cursor.expectFieldRef('invalidUnnestField');
 
     let path: string | undefined;
@@ -72,7 +71,7 @@ export const unnestCodec: OperatorDslCodec = {
     const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
     const preserveOrder = config?.preserveOrder ? ' preserve order true' : '';
     if (isJson) {
-      return `explode json ${formattedColumn} path ${quoteSqlString(String(config.path ?? '$'))}`;
+      return `unnest json ${formattedColumn} path ${quoteSqlString(String(config.path ?? '$'))}`;
     }
     const alias = String(config?.alias ?? '').trim();
     if (!alias) return null;

@@ -91,7 +91,7 @@ function usePipelineListMeta(pipelines: DataPipeline[]) {
         setMeta((current) => ({
           ...current,
           [pipeline.id]: {
-            inputs: nodes.filter((n) => n.type === 'input_source').map(inputLabel),
+            inputs: nodes.filter((n) => n.type === 'input').map(inputLabel),
             outputs: nodes.filter((n) => n.type === 'output').map(outputLabel),
             lastRun: runs[0] ?? null,
           },
