@@ -86,7 +86,7 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
   {
     type: 'missing_value',
     title: 'Fill and nullify missing values',
-    dsl: 'missing value [region] nullify values ("", "N/A"), [score] fill 0',
+    dsl: "missing value [region] nullify values ('', 'N/A'), [score] fill 0",
   },
   {
     type: 'sort',
@@ -167,6 +167,7 @@ const OVERVIEW = [
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Brackets hold the raw name with no quotes — use [Year of Transaction Date], not [`Year of Transaction Date`]. Backtick-quoting inside brackets is only for names that contain ] or a backtick. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
+  'Quotes follow SQL: \'text\' is a text value (escape a quote by doubling it: \'it\'\'s\'); "name" is an identifier — in expressions "amount" means the same field as [amount], and statement names and file paths (output table "t", input source rawTable "id", file "/p.csv") are double-quoted. Formats, JSON paths and prefixes are text values: format \'%Y-%m-%d\', path \'$.items\'.',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
   'For created input/output tables, prefer passing inputResources (alias -> rawTableId) and resultTableId to data_apply_workflow_dsl/data_apply_workflow_plan instead of embedding or guessing node ids.',
 ].join('\n');
@@ -176,7 +177,7 @@ const WORKFLOW = [
   'input source rawTable "<rawTableId>" as src',
   '  | select [col1], [col2]',
   '  | filter [amount] > 0',
-  '  | filter [field with spaces] = "value"',
+  "  | filter [field with spaces] = 'value'",
   '  | output table "Result table" mode replace',
   '',
   'Input source forms:',
@@ -215,21 +216,21 @@ const DERIVE_WINDOW = [
   'Window analysis is part of derive/calculate_field DSL:',
   'Canonical function names use lower_snake_case. SQL functions retain their standard names; domain operations use explicit names such as percent_of_total, first_value, offset_difference, previous_record, same_period_last_year, and year_to_date. Old operation spellings are accepted on input but exports and generated formulas use canonical names.',
   'Scene wrappers are group, ranking, running, reference, moving, compare, and accumulate. Keep field names and string literal values unchanged when normalizing function names.',
-  'Comparison result modes are "value", "difference", and "change_rate". previous_record compares with the previous date-ordered record, not an inferred calendar period.',
+  "Comparison result modes are 'value', 'difference', and 'change_rate'. previous_record compares with the previous date-ordered record, not an inferred calendar period.",
   'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)',
   'derive [running_amount] = sum([amount]) over(partition by [region] order by [created_at] rows between unbounded preceding and current row)',
   '',
   'Period comparison domain functions:',
-  'derive [previous_amount] = compare(previous_record([amount], [created_at], "value")) over(partition by [region])',
-  'derive [yoy_rate] = compare(same_period_last_year([amount], [created_at], "month", "change_rate")) over(partition by [region])',
-  'Supported year-over-year grains: "year", "quarter", "month", "week", and "day".',
+  "derive [previous_amount] = compare(previous_record([amount], [created_at], 'value')) over(partition by [region])",
+  "derive [yoy_rate] = compare(same_period_last_year([amount], [created_at], 'month', 'change_rate')) over(partition by [region])",
+  "Supported year-over-year grains: 'year', 'quarter', 'month', 'week', and 'day'.",
   'A missing matching year-over-year period produces null.',
   '',
   'Time accumulation domain functions:',
   'derive [year_amount] = accumulate(year_to_date(sum([amount]), [created_at])) over(partition by [region])',
   'derive [fiscal_year_amount] = accumulate(year_to_date(sum([amount]), [created_at], 4)) over(partition by [region])',
   'derive [month_amount] = accumulate(month_to_date(sum([amount]), [created_at])) over(partition by [region])',
-  'derive [rolling_7_day_amount] = accumulate(rolling_time(sum([amount]), [created_at], 7, "day")) over(partition by [region])',
+  "derive [rolling_7_day_amount] = accumulate(rolling_time(sum([amount]), [created_at], 7, 'day')) over(partition by [region])",
   'Supported time aggregates: sum, avg, count, count(distinct [field]), min, and max.',
   'Domain-function over(...) clauses may contain partition by only; date arguments determine ordering and window behavior.',
 ].join('\n');
@@ -239,7 +240,7 @@ const RESHAPE = [
   'pivot on [month] using sum([revenue]) as [revenue_sum] group by [region]',
   'unpivot [jan], [feb], [mar] into name [month] value [sales]',
   'unnest [items] as [item]',
-  'explode json [payload] path "$.items" as [item]',
+  "explode json [payload] path '$.items' as [item]",
 ].join('\n');
 
 const EXAMPLES = [

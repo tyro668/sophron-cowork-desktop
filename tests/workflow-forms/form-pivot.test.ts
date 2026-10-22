@@ -102,7 +102,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
     expect(dsl).toBe(
-      'pivot on [year] in (2024, 2025), [quarter] in ("Q1", "Q2"), [channel] using sum([amount]) as [sum]'
+      `pivot on [year] in (2024, 2025), [quarter] in ('Q1', 'Q2'), [channel] using sum([amount]) as [sum]`
     );
     const r = ok({
       on: [
@@ -137,7 +137,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
 
-    expect(dsl).toBe('pivot on [月份] in ("1月", "2月", "3月") using sum([金额]) as [sum]');
+    expect(dsl).toBe(`pivot on [月份] in ('1月', '2月', '3月') using sum([金额]) as [sum]`);
     expect(
       ok({
         on: [{ field: '月份', values }],

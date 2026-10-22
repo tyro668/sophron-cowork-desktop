@@ -8,7 +8,7 @@ export function parseMissingValueInput(raw: string, fieldType?: string): unknown
   const trimmed = raw.trim();
   const type = fieldType ? normalizeDataFieldType(fieldType) : undefined;
   if (type === 'text' || type === 'date' || type === 'datetime') {
-    return trimmed.startsWith('"') && trimmed.endsWith('"') ? parseLiteral(trimmed) : trimmed;
+    return trimmed.startsWith("'") && trimmed.endsWith("'") ? parseLiteral(trimmed) : trimmed;
   }
   const value = parseLiteral(trimmed);
   if (typeof value !== 'string') return value;

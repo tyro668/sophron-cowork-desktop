@@ -13,7 +13,7 @@ import {
 
 describe('data operator security boundaries', () => {
   it('does not rewrite DSL keywords inside string literals', () => {
-    expect(compileScalarExpression('"if then else end"')).toBe("'if then else end'");
+    expect(compileScalarExpression("'if then else end'")).toBe("'if then else end'");
   });
 
   it('rejects statement and external-read keywords in scalar expressions', () => {

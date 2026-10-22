@@ -167,11 +167,11 @@ function main() {
         input source pipeline as orders
           | select [order_id], [dt], [region], [rev], [profit], [status], [updated_at]
           | map [dt] to [order_date], [rev] to [revenue]
-          | cast [order_date] as date format "%Y-%m-%d" on_error null, [revenue] as float on_error null, [profit] as float on_error null
-          | missing value [region] nullify values ("", "N/A"), [region] fill "UNKNOWN"
+          | cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error null, [profit] as float on_error null
+          | missing value [region] nullify values ('', 'N/A'), [region] fill 'UNKNOWN'
           | deduplicate by [order_id] keep first order by [updated_at] desc
           | derive [margin] = [profit] / nullif([revenue], 0)
-          | filter [status] = "PAID" and [revenue] > 0
+          | filter [status] = 'PAID' and [revenue] > 0
           | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
           | sort by [total_revenue] desc
           | output table "operator_cleaning_output" mode replace
@@ -214,7 +214,7 @@ function main() {
       `
         input source pipeline as prices
           | cast [adj_close] as decimal on_error null
-          | missing value [adj_close] nullify values ("NULL", "N/A")
+          | missing value [adj_close] nullify values ('NULL', 'N/A')
           | output table "typed_missing_marker_output" mode replace
       `
     );
@@ -430,7 +430,7 @@ function main() {
       pipeline.id,
       `
         input source pipeline as dates
-          | cast [val] as date format "%Y-%m-%d" on_error null
+          | cast [val] as date format '%Y-%m-%d' on_error null
           | output table "operator_try_strptime_output" mode replace
       `
     );
@@ -620,7 +620,7 @@ function main() {
     });
     const parsed = parsePrepDsl(`
       input source pipeline as json_src
-        | explode json [payload] path "$"
+        | explode json [payload] path '$'
         | output table "operator_unnest_json_output" mode replace
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
@@ -653,7 +653,7 @@ function main() {
         pipeline.id,
         `
           input source pipeline as json_src
-            | explode json [ghost_column] path "$"
+            | explode json [ghost_column] path '$'
             | output table "operator_unnest_json_missing_output" mode replace
         `
       )

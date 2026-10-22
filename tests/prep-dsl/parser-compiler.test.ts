@@ -14,7 +14,7 @@ describe('prep DSL parser and workflow compiler', () => {
       input source pipeline as raw_orders
         | select [order_id], [region], [revenue]
         | missing value row drop when all_null
-        | missing value [region] nullify values ("", "N/A", "-")
+        | missing value [region] nullify values ('', 'N/A', '-')
         | cast [revenue] as float on_error null
         | derive [margin] = if [revenue] = 0 then 0 else [profit] / [revenue]
         | output table "clean_orders" mode replace
@@ -164,7 +164,7 @@ keep left *, [customers].[name] as [customer_name]
       ['field_mapping', 'map [dt] to [order_date]'],
       ['filter', 'filter [revenue] > 0'],
       ['deduplicate', 'deduplicate by [order_id] keep last order by [updated_at] desc'],
-      ['missing_value', 'missing value [region] nullify values ("", "N/A")'],
+      ['missing_value', `missing value [region] nullify values ('', 'N/A')`],
       ['type_convert', 'cast [revenue] as float on_error null'],
       ['sort', 'sort by [order_date] desc nulls last'],
       ['calculate_field', 'derive [margin] = [profit] / [revenue]'],
@@ -225,11 +225,11 @@ keep left *, [customers].[name] as [customer_name]
   });
 
   it('accepts unicode field names in single-operator expressions', () => {
-    const result = parsePrepOperatorDsl('filter [订单ID]="A1000001"', 'filter');
+    const result = parsePrepOperatorDsl(`filter [订单ID]='A1000001'`, 'filter');
 
     expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     expect(result.operator?.type).toBe('filter');
-    expect(result.operator?.config.condition).toBe('[订单ID]="A1000001"');
+    expect(result.operator?.config.condition).toBe(`[订单ID]='A1000001'`);
   });
 
   it('exports single operators from saved DSL or structured config', () => {
@@ -237,9 +237,9 @@ keep left *, [customers].[name] as [customer_name]
       exportPrepOperatorDsl({
         id: 'filter-1',
         type: 'filter',
-        config: { dsl: 'filter [status] = "PAID"', condition: '[status] = "PAID"' },
+        config: { dsl: `filter [status] = 'PAID'`, condition: `[status] = 'PAID'` },
       })
-    ).toBe('filter [status] = "PAID"');
+    ).toBe(`filter [status] = 'PAID'`);
 
     expect(
       exportPrepOperatorDsl({

@@ -172,7 +172,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
 
   it('preserves sequential rules for the same field in DSL order', () => {
     const parsed = parsePrepOperatorDsl(
-      'missing value [status] nullify values ("N/A"), [status] fill "UNKNOWN"',
+      `missing value [status] nullify values ('N/A'), [status] fill 'UNKNOWN'`,
       'missing_value'
     );
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);

@@ -401,7 +401,7 @@ function operatorCompletions(
       completion('map', keyword, 'map [source_field] to [target_field]'),
       completion('rename', keyword, 'rename [source_field] as [target_field]'),
     ],
-    filter: [completion('filter', keyword, 'filter [field] = "value"')],
+    filter: [completion('filter', keyword, "filter [field] = 'value'")],
     deduplicate: [
       completion('deduplicate', snippets, 'deduplicate by [field] keep first'),
       completion(
@@ -415,13 +415,13 @@ function operatorCompletions(
       completion(
         'missing value nullify',
         snippets,
-        'missing value [field] nullify values ("", "N/A")'
+        "missing value [field] nullify values ('', 'N/A')"
       ),
-      completion('missing value fill', snippets, 'missing value [field] fill "UNKNOWN"'),
+      completion('missing value fill', snippets, "missing value [field] fill 'UNKNOWN'"),
     ],
     type_convert: [
       completion('cast', keyword, 'cast [field] as text on_error null'),
-      completion('cast date', snippets, 'cast [field] as date format "yyyy-MM-dd" on_error null'),
+      completion('cast date', snippets, "cast [field] as date format '%Y-%m-%d' on_error null"),
     ],
     sort: [completion('sort by', keyword, 'sort by [field] asc nulls last')],
     calculate_field: [

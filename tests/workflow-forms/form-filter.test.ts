@@ -73,12 +73,12 @@ describe('FormFilter — config ↔ DSL (flat, backward-compat)', () => {
   });
 
   it('string equality', () => {
-    const r = ok({ condition: '[region] = "EU"' });
+    const r = ok({ condition: `[region] = 'EU'` });
     expect(r.config.condition).toContain('EU');
   });
 
   it('not equal', () => {
-    const r = ok({ condition: '[status] != "TEST"' });
+    const r = ok({ condition: `[status] != 'TEST'` });
     expect(r.config.condition).toContain('!=');
   });
 
@@ -95,23 +95,23 @@ describe('FormFilter — config ↔ DSL (flat, backward-compat)', () => {
   });
 
   it('AND compound', () => {
-    const r = ok({ condition: '[revenue] > 0 and [region] = "EU"' });
+    const r = ok({ condition: `[revenue] > 0 and [region] = 'EU'` });
     expect(r.config.condition).toContain(' and ');
   });
 
   it('OR compound', () => {
-    const r = ok({ condition: '[region] = "EU" or [region] = "US"' });
+    const r = ok({ condition: `[region] = 'EU' or [region] = 'US'` });
     expect(r.config.condition).toContain(' or ');
   });
 
   it('mixed AND + OR', () => {
-    const r = ok({ condition: '[revenue] > 0 and [region] = "EU" or [status] = "VIP"' });
+    const r = ok({ condition: `[revenue] > 0 and [region] = 'EU' or [status] = 'VIP'` });
     expect(r.config.condition).toContain(' and ');
     expect(r.config.condition).toContain(' or ');
   });
 
   it('between + AND compound', () => {
-    const r = ok({ condition: '[price] between 10 and 100 and [region] = "EU"' });
+    const r = ok({ condition: `[price] between 10 and 100 and [region] = 'EU'` });
     expect(r.config.condition).toContain('between');
     expect(r.config.condition).toContain(' and ');
   });
@@ -150,7 +150,7 @@ describe('FormFilter — parseCondition logic', () => {
   });
 
   it('between with AND compound splits correctly', () => {
-    const tokens = splitConditionAnd('[price] between 10 and 100 and [region] = "EU"');
+    const tokens = splitConditionAnd(`[price] between 10 and 100 and [region] = 'EU'`);
     const exprs = tokens.filter((_, i) => i % 2 === 0 && tokens[i].trim());
     expect(exprs.length).toBeGreaterThanOrEqual(1);
   });
@@ -167,8 +167,8 @@ describe('FormFilter — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
       { condition: '[revenue] > 0' },
-      { condition: '[a] between 1 and 10 and [b] = "x"' },
-      { condition: '[x] = "A" or [y] = "B"' },
+      { condition: `[a] between 1 and 10 and [b] = 'x'` },
+      { condition: `[x] = 'A' or [y] = 'B'` },
       { condition: '[date] between 2024-01-01 and 2024-12-31' },
     ];
     for (const config of configs) {
@@ -217,10 +217,10 @@ describe('FormFilter — type-aware value formatting', () => {
     expect(build([{ field: 'a', op: '>', val1: '100', colType: 'float' }])).toBe('[a] > 100');
   });
   it('numeric: strings quoted', () => {
-    expect(build([{ field: 'a', op: '=', val1: 'ABC', colType: 'float' }])).toBe('[a] = "ABC"');
+    expect(build([{ field: 'a', op: '=', val1: 'ABC', colType: 'float' }])).toBe(`[a] = 'ABC'`);
   });
   it('text: numbers quoted', () => {
-    expect(build([{ field: 'a', op: '=', val1: '123', colType: 'text' }])).toBe('[a] = "123"');
+    expect(build([{ field: 'a', op: '=', val1: '123', colType: 'text' }])).toBe(`[a] = '123'`);
   });
   it('boolean: true/false unquoted', () => {
     expect(build([{ field: 'a', op: '=', val1: 'true', colType: 'boolean' }])).toBe('[a] = true');
@@ -229,7 +229,7 @@ describe('FormFilter — type-aware value formatting', () => {
     expect(build([{ field: 'a', op: '=', val1: '[b]', colType: 'text' }])).toBe('[a] = [b]');
   });
   it('quotes null content as a string value', () => {
-    expect(build([{ field: 'x', op: '=', val1: 'null', colType: 'text' }])).toBe('[x] = "null"');
+    expect(build([{ field: 'x', op: '=', val1: 'null', colType: 'text' }])).toBe(`[x] = 'null'`);
   });
   it('uses is null for the SQL NULL filter', () => {
     resetNodeIdCounter();
@@ -250,15 +250,15 @@ describe('FormFilter — type-aware value formatting', () => {
     expect(build([{ field: 'x', op: '=', val1: '42' }])).toBe('[x] = 42');
   });
   it('unknown type: string quoted', () => {
-    expect(build([{ field: 'x', op: '=', val1: 'hi' }])).toBe('[x] = "hi"');
+    expect(build([{ field: 'x', op: '=', val1: 'hi' }])).toBe(`[x] = 'hi'`);
   });
   it('already-quoted unwrapped then re-quoted', () => {
-    expect(build([{ field: 'x', op: '=', val1: '"hello"', colType: 'text' }])).toBe(
-      '[x] = "hello"'
+    expect(build([{ field: 'x', op: '=', val1: "'hello'", colType: 'text' }])).toBe(
+      `[x] = 'hello'`
     );
   });
   it('quoteDslString escapes internal quotes', () => {
-    expect(formatFilterConditionValue('he said "hello"', 'text')).toBe('"he said \\"hello\\""');
+    expect(formatFilterConditionValue("it's", 'text')).toBe("'it''s'");
   });
   it('whitespace-only values are skipped', () => {
     expect(build([{ field: 'x', op: '=', val1: '   ', colType: 'text' }])).toBeUndefined();
@@ -321,7 +321,7 @@ describe('FilterCondition — tree parse + build round-trip', () => {
   });
 
   it('in operator', () => {
-    expect(roundTripTree('[a] in ("x", "y", "z")')).toBe('[a] in ("x", "y", "z")');
+    expect(roundTripTree(`[a] in ('x', 'y', 'z')`)).toBe(`[a] in ('x', 'y', 'z')`);
   });
 
   it('not in operator', () => {
@@ -329,22 +329,22 @@ describe('FilterCondition — tree parse + build round-trip', () => {
   });
 
   it('string operators: like, not like', () => {
-    expect(roundTripTree('[name] like "test"')).toBe('[name] like "test"');
-    expect(roundTripTree('[name] not like "test"')).toBe('[name] not like "test"');
+    expect(roundTripTree(`[name] like 'test'`)).toBe(`[name] like 'test'`);
+    expect(roundTripTree(`[name] not like 'test'`)).toBe(`[name] not like 'test'`);
   });
 
   it('string operators: matches, not matches', () => {
-    expect(roundTripTree('[name] matches "pattern"')).toBe('[name] matches "pattern"');
-    expect(roundTripTree('[name] not matches "pattern"')).toBe('[name] not matches "pattern"');
+    expect(roundTripTree(`[name] matches 'pattern'`)).toBe(`[name] matches 'pattern'`);
+    expect(roundTripTree(`[name] not matches 'pattern'`)).toBe(`[name] not matches 'pattern'`);
   });
 
   it('string operators: begin, end', () => {
-    expect(roundTripTree('[name] begin "pre"')).toBe('[name] begin "pre"');
-    expect(roundTripTree('[name] end "suf"')).toBe('[name] end "suf"');
+    expect(roundTripTree(`[name] begin 'pre'`)).toBe(`[name] begin 'pre'`);
+    expect(roundTripTree(`[name] end 'suf'`)).toBe(`[name] end 'suf'`);
   });
 
   it('string operators in nested groups', () => {
-    const dsl = '([name] like "A" or [name] like "B") and [status] = "ok"';
+    const dsl = `([name] like 'A' or [name] like 'B') and [status] = 'ok'`;
     expect(roundTripTree(dsl)).toBe(dsl);
   });
 
@@ -362,10 +362,10 @@ describe('FilterCondition — tree parse + build round-trip', () => {
   });
 
   it('accepts quoted strings and bare booleans/null as the right-hand value', () => {
-    expect(roundTripTree('[a] = "Beijing"')).toBe('[a] = "Beijing"');
+    expect(roundTripTree(`[a] = 'Beijing'`)).toBe(`[a] = 'Beijing'`);
     expect(roundTripTree('[a] = true')).toBe('[a] = true');
     expect(roundTripTree('[a] = null')).toBe('[a] is null');
-    expect(roundTripTree('[a] in ("Beijing", "Berlin")')).toBe('[a] in ("Beijing", "Berlin")');
+    expect(roundTripTree(`[a] in ('Beijing', 'Berlin')`)).toBe(`[a] in ('Beijing', 'Berlin')`);
   });
 
   it('empty condition returns empty string', () => {
@@ -375,7 +375,7 @@ describe('FilterCondition — tree parse + build round-trip', () => {
   });
 
   it('field names with hyphens', () => {
-    expect(roundTripTree('[Sub-Category] = "Accessories"')).toBe('[Sub-Category] = "Accessories"');
+    expect(roundTripTree(`[Sub-Category] = 'Accessories'`)).toBe(`[Sub-Category] = 'Accessories'`);
   });
 
   it('field names with spaces', () => {
@@ -384,11 +384,11 @@ describe('FilterCondition — tree parse + build round-trip', () => {
   });
 
   it('quoted values survive round-trip', () => {
-    expect(roundTripTree('[region] = "EU"')).toBe('[region] = "EU"');
+    expect(roundTripTree(`[region] = 'EU'`)).toBe(`[region] = 'EU'`);
   });
 
   it('in operator with quoted values', () => {
-    expect(roundTripTree('[region] in ("EU", "US", "CN")')).toBe('[region] in ("EU", "US", "CN")');
+    expect(roundTripTree(`[region] in ('EU', 'US', 'CN')`)).toBe(`[region] in ('EU', 'US', 'CN')`);
   });
 });
 
@@ -406,12 +406,11 @@ describe('FilterCondition — compact operator syntax', () => {
   });
 
   it('keeps the first condition of the reported compound expression', () => {
-    const dsl =
-      '([是否续购] =FALSE  or [商品ID] != "SP00010") and [商品ID] not in ("SP0001", "SP0003", "SP0005")';
+    const dsl = `([是否续购] =FALSE  or [商品ID] != 'SP00010') and [商品ID] not in ('SP0001', 'SP0003', 'SP0005')`;
     const out = roundTripTree(dsl);
     expect(out).toContain('[是否续购] = FALSE');
-    expect(out).toContain('[商品ID] != "SP00010"');
-    expect(out).toContain('[商品ID] not in ("SP0001", "SP0003", "SP0005")');
+    expect(out).toContain(`[商品ID] != 'SP00010'`);
+    expect(out).toContain(`[商品ID] not in ('SP0001', 'SP0003', 'SP0005')`);
   });
 
   it('parses compact comparison operators', () => {
@@ -423,7 +422,7 @@ describe('FilterCondition — compact operator syntax', () => {
   });
 
   it('parses compact not in list', () => {
-    expect(roundTripTree('[a] not in("x","y")')).toBe('[a] not in ("x", "y")');
+    expect(roundTripTree(`[a] not in('x','y')`)).toBe(`[a] not in ('x', 'y')`);
   });
 
   it('parses negative numeric values (tokenizer splits -5 into - and 5)', () => {
@@ -443,7 +442,7 @@ describe('FilterCondition — compact operator syntax', () => {
   });
 
   it('round-trips IN with a comma inside a quoted value losslessly', () => {
-    const dsl = '[city] in ("New York, NY", "Paris")';
+    const dsl = `[city] in ('New York, NY', 'Paris')`;
     const tree = parseConditionTree(dsl);
     const leaf = tree.items[0] as FilterConditionLeaf;
 
@@ -453,7 +452,7 @@ describe('FilterCondition — compact operator syntax', () => {
 
     // UI → DSL (graphical round-trip).
     const rebuilt = buildFilterConditionTree(tree) ?? '';
-    expect(rebuilt).toBe('[city] in ("New York, NY", "Paris")');
+    expect(rebuilt).toBe(`[city] in ('New York, NY', 'Paris')`);
 
     // DSL → SQL (execution layer) keeps the element intact.
     expect(compileFilterConditionExpression(rebuilt)).toBe(
@@ -472,12 +471,12 @@ describe('FilterCondition — compact operator syntax', () => {
   });
 
   it('keeps a quoted "null" string as a value, not SQL NULL', () => {
-    expect(roundTripTree('[code] = "null"')).toBe('[code] = "null"');
-    expect(roundTripTree('[code] != "null"')).toBe('[code] != "null"');
+    expect(roundTripTree(`[code] = 'null'`)).toBe(`[code] = 'null'`);
+    expect(roundTripTree(`[code] != 'null'`)).toBe(`[code] != 'null'`);
   });
 
   it('keeps a quoted "null" inside an IN list as a string', () => {
-    expect(roundTripTree('[code] in ("null", "normal")')).toBe('[code] in ("null", "normal")');
+    expect(roundTripTree(`[code] in ('null', 'normal')`)).toBe(`[code] in ('null', 'normal')`);
   });
 });
 
@@ -500,7 +499,7 @@ describe('FilterCondition — tree parse edge cases', () => {
 
   it('parseConditionTree handles values with escaped quotes', () => {
     resetNodeIdCounter();
-    const tree = parseConditionTree('[msg] = "he said \\"hi\\""');
+    const tree = parseConditionTree(`[msg] = 'he said ''hi'''`);
     expect(tree.items).toHaveLength(1);
     const item = tree.items[0];
     expect(isLeaf(item)).toBe(true);
@@ -526,7 +525,7 @@ describe('FilterCondition — tree parse edge cases', () => {
 
   it('parseConditionTree rejects a leaf with trailing content after IN close', () => {
     resetNodeIdCounter();
-    expect(() => parseConditionTree('[a] in ("x") trailing')).toThrow(
+    expect(() => parseConditionTree(`[a] in ('x') trailing`)).toThrow(
       /Invalid filter condition segment/
     );
   });
@@ -775,16 +774,16 @@ describe('FilterCondition — splitInValues / joinInValues', () => {
   });
 
   it('preserves commas inside quoted values', () => {
-    expect(splitInValues('"New York, NY", Paris')).toEqual(['New York, NY', 'Paris']);
+    expect(splitInValues("'New York, NY', Paris")).toEqual(['New York, NY', 'Paris']);
   });
 
   it('preserves quotes and backslashes inside values', () => {
-    expect(splitInValues('"a\\"b", "c\'d"')).toEqual(['a"b', "c'd"]);
-    expect(splitInValues('"a\\\\b", c')).toEqual(['a\\b', 'c']);
+    expect(splitInValues(`'a"b', 'c''d'`)).toEqual(['a"b', "c'd"]);
+    expect(splitInValues("'a\\b', c")).toEqual(['a\\b', 'c']);
   });
 
   it('preserves empty-string values', () => {
-    expect(splitInValues('"", normal')).toEqual(['', 'normal']);
+    expect(splitInValues("'', normal")).toEqual(['', 'normal']);
   });
 
   it('preserves null/boolean/numeric-looking values', () => {
@@ -796,12 +795,12 @@ describe('FilterCondition — splitInValues / joinInValues', () => {
   });
 
   it('quotes values containing commas or quotes when joining', () => {
-    expect(joinInValues(['New York, NY', 'Paris'])).toBe('"New York, NY", Paris');
-    expect(joinInValues(['a"b', "c'd"])).toBe('"a\\"b", "c\'d"');
+    expect(joinInValues(['New York, NY', 'Paris'])).toBe("'New York, NY', Paris");
+    expect(joinInValues(['a"b', "c'd"])).toBe(`'a"b', 'c''d'`);
   });
 
   it('quotes empty-string values when joining', () => {
-    expect(joinInValues(['', 'normal'])).toBe('"", normal');
+    expect(joinInValues(['', 'normal'])).toBe("'', normal");
   });
 
   it('round-trips value lists losslessly through split→join', () => {
@@ -899,7 +898,7 @@ describe('FilterCondition — tree build edge cases', () => {
       connective: 'and',
       items: [{ kind: 'leaf', id: 'l1', field: 'code', op: '=', val1: '00123', val2: '' }],
     };
-    expect(buildFilterConditionTree(tree, { code: 'text' })).toBe('[code] = "00123"');
+    expect(buildFilterConditionTree(tree, { code: 'text' })).toBe(`[code] = '00123'`);
   });
 
   it('quotes a numeric-looking value on a text column but not on a numeric column', () => {
@@ -910,7 +909,7 @@ describe('FilterCondition — tree build edge cases', () => {
       connective: 'and',
       items: [{ kind: 'leaf', id: 'l1', field: 'a', op: '=', val1: '123', val2: '' }],
     };
-    expect(buildFilterConditionTree(textTree, { a: 'text' })).toBe('[a] = "123"');
+    expect(buildFilterConditionTree(textTree, { a: 'text' })).toBe(`[a] = '123'`);
     const numTree: FilterConditionBranch = {
       kind: 'branch',
       id: 'root',

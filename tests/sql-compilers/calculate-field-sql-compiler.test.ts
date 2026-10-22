@@ -1327,7 +1327,7 @@ describe('DuckDB integration — cross-row window functions', () => {
     expect(Number(percentage[1].r)).toBeCloseTo(1);
     expect(Number(percentage[2].r)).toBeCloseTo(1 / 3);
 
-    const concatenated = await runW('group(string_agg([name], ",")) over(partition by [region])');
+    const concatenated = await runW(`group(string_agg([name], ',')) over(partition by [region])`);
     expect(new Set(String(concatenated[0].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));
     expect(concatenated[1].r).toBe('Bob');
     expect(new Set(String(concatenated[2].r).split(','))).toEqual(new Set(['Alice', 'Charlie']));

@@ -121,10 +121,31 @@ export class PrepTokenCursor {
     return null;
   }
 
+  /** Double-quoted name (SQL identifier style): table, source, output names. */
   expectStringLiteral(code = 'expectedString'): string | null {
+    const current = this.peek();
+    if (current?.tokenType.name === 'StringLiteral' && current.image.startsWith("'")) {
+      this.report(code, `Names use double quotes ("…"), found text literal ${current.image}`);
+      this.consume();
+      return null;
+    }
     const token = this.matchType('StringLiteral');
     if (token) return token.image;
     this.report(code, `Expected a quoted string but found ${this.describeCurrent()}`);
+    return null;
+  }
+
+  /** Single-quoted text value (SQL string literal). Returns the unquoted text. */
+  expectTextLiteral(code = 'expectedString'): string | null {
+    const current = this.peek();
+    if (current?.tokenType.name === 'StringLiteral' && current.image.startsWith('"')) {
+      this.report(code, `Text values use single quotes ('…'), found ${current.image}`);
+      this.consume();
+      return null;
+    }
+    const token = this.matchType('StringLiteral');
+    if (token) return token.image.slice(1, -1).replace(/''/g, "'");
+    this.report(code, `Expected a single-quoted text but found ${this.describeCurrent()}`);
     return null;
   }
 

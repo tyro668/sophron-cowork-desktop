@@ -551,10 +551,10 @@ function parseStringLiteral(value: string): string {
   const quote = value[0];
   const body = value.slice(1, -1);
   if (quote === '"') {
-    return body.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    throw new Error(`Text values use single quotes ('…'); "${body}" is an identifier`);
   }
   // Single-quoted with SQL '' escaping.
-  return body.replace(/''/g, "'").replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  return body.replace(/''/g, "'");
 }
 
 function unwrapFieldRef(value: string): string {

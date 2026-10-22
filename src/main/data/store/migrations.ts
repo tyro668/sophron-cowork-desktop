@@ -33,6 +33,7 @@ import { parsePrepOperatorDsl } from '../../../shared/prep-dsl/operators/parser'
 import type { PrepOperatorType } from '../../../shared/prep-dsl/ast';
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
+import { tokenizeExpression } from '../../../shared/expression-tokenizer';
 
 export interface MetadataMigration {
   readonly version: number;
@@ -65,6 +66,71 @@ async function migrateWorkflowNodeConfigs(
       config: JSON.stringify(next),
     });
   }
+}
+
+const EXPRESSION_CONFIG_KEYS = new Set(['condition', 'expression', 'having', 'predicate']);
+
+/** Rewrites double-quoted string literals ("x") to SQL text literals ('x'). Before v17 a
+ *  double-quoted token in an expression was always text; from v17 it names a field. */
+export function rewriteDoubleQuotedLiterals(expression: string): string {
+  let tokens;
+  try {
+    tokens = tokenizeExpression(expression);
+  } catch {
+    return expression;
+  }
+  let out = '';
+  let cursor = 0;
+  for (const token of tokens) {
+    if (token.type !== 'StringLiteral' || !token.value.startsWith('"')) continue;
+    let text: string;
+    try {
+      text = JSON.parse(token.value) as string;
+    } catch {
+      text = token.value.slice(1, -1).replace(/\\"/g, '"');
+    }
+    out += expression.slice(cursor, token.start) + `'${text.replace(/'/g, "''")}'`;
+    cursor = token.end;
+  }
+  return cursor === 0 ? expression : out + expression.slice(cursor);
+}
+
+function rewriteQuotedValue(value: unknown, key?: string): { value: unknown; changed: boolean } {
+  if (typeof value === 'string') {
+    if (!key || !EXPRESSION_CONFIG_KEYS.has(key) || !value.includes('"')) {
+      return { value, changed: false };
+    }
+    const next = rewriteDoubleQuotedLiterals(value);
+    return { value: next, changed: next !== value };
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const result = rewriteQuotedValue(item, key);
+      changed ||= result.changed;
+      return result.value;
+    });
+    return { value: next, changed };
+  }
+  if (value && typeof value === 'object') {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+      const result = rewriteQuotedValue(child, childKey);
+      changed ||= result.changed;
+      next[childKey] = result.value;
+    }
+    return { value: next, changed };
+  }
+  return { value, changed: false };
+}
+
+export function migrateConfigQuoteSemantics(
+  _type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  const result = rewriteQuotedValue(config);
+  return result.changed ? (result.value as Record<string, unknown>) : null;
 }
 
 /** One-time: structured config becomes the single source of truth. Nodes that
@@ -760,6 +826,18 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     version: 16,
     name: 'prep_dsl_v3_config_naming',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigToV3Naming),
+  },
+  {
+    version: 17,
+    name: 'expression_sql_quote_semantics',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigQuoteSemantics),
+  },
+  {
+    // Idempotent re-run of v17: an interrupted build could record v17 without rewriting.
+    // Configs already using 'text' literals are left untouched.
+    version: 18,
+    name: 'expression_sql_quote_semantics_verify',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigQuoteSemantics),
   },
 ];
 

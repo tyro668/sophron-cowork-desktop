@@ -1,6 +1,6 @@
 import { createPrepDiagnostic } from '../diagnostics';
 import { formatFieldRef, toFieldName } from '../syntax/fields';
-import { quoteString, unquoteString } from '../syntax/literals';
+import { quoteSqlString } from '../syntax/literals';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
 
@@ -19,8 +19,7 @@ export const unnestCodec: OperatorDslCodec = {
     let alias: string | undefined;
     if (isJson) {
       cursor.expect('path', 'invalidUnnestPath');
-      const literal = cursor.expectStringLiteral('invalidUnnestPath');
-      path = literal ? unquoteString(literal) : undefined;
+      path = cursor.expectTextLiteral('invalidUnnestPath') ?? undefined;
     } else {
       cursor.expect('as', 'invalidUnnestAlias');
       const field = cursor.expectFieldRef('invalidUnnestAlias');
@@ -73,7 +72,7 @@ export const unnestCodec: OperatorDslCodec = {
     const keepParentNames = config?.keepParentNames ? ' keep parent names true' : '';
     const preserveOrder = config?.preserveOrder ? ' preserve order true' : '';
     if (isJson) {
-      return `explode json ${formattedColumn} path ${quoteString(String(config.path ?? '$'))}`;
+      return `explode json ${formattedColumn} path ${quoteSqlString(String(config.path ?? '$'))}`;
     }
     const alias = String(config?.alias ?? '').trim();
     if (!alias) return null;
