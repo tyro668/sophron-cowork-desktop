@@ -1479,7 +1479,7 @@
           "expressionFunctionDesc_rpad": "在字符串右侧填充指定字符至目标长度。",
           "expressionFunctionDesc_reverse": "反转字符串。",
           "expressionFunctionDesc_repeat": "将字符串重复指定次数。",
-          "expressionFunctionDesc_try_cast": "安全类型转换，转换失败返回 NULL 而非报错。可用 try_cast([s] AS double) 把字符串解析为数值。",
+          "expressionFunctionDesc_try_cast": "安全类型转换，转换失败返回 NULL 而非报错。可用 try_cast([s] AS float) 把字符串解析为数值。",
           "expressionFunctionCategoryType": "类型转换",
           "expressionFunctionDesc_ifElseEnd": "满足条件时返回一个值，否则返回另一个值",
           "expressionFunctionDesc_ifEnd": "满足条件时返回一个值，否则返回空值",

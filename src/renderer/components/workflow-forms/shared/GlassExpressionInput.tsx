@@ -569,7 +569,7 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
           { name: 'type', type: 'type' },
         ],
         returnType: 'any',
-        examples: ['cast([amount] as double)', 'cast([date] as date)'],
+        examples: ['cast([amount] as float)', 'cast([date] as date)'],
       },
       {
         label: 'try_cast',
@@ -581,7 +581,7 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
           { name: 'type', type: 'type' },
         ],
         returnType: 'any',
-        examples: ['try_cast([amount] as int)', 'try_cast([revenue] as double)'],
+        examples: ['try_cast([amount] as integer)', 'try_cast([revenue] as float)'],
       },
       functionToken(
         'typeof',

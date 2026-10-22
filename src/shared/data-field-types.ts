@@ -56,6 +56,51 @@ export function requireDataFieldType(
   );
 }
 
+/**
+ * The one spelling table: every storage / SQL / legacy spelling maps to a single
+ * DataFieldType (text, integer, float, decimal, date, datetime, boolean). Returns
+ * null when the spelling is not a known type. Used by the expression layer, plan
+ * schema inference, field-pattern filters and the one-time cast migration.
+ */
+const TYPE_SPELLINGS: Record<DataFieldType, readonly string[]> = {
+  text: ['text', 'varchar', 'string', 'char', 'bpchar', 'uuid', 'json'],
+  integer: [
+    'integer',
+    'int',
+    'int4',
+    'int8',
+    'bigint',
+    'smallint',
+    'tinyint',
+    'hugeint',
+    'ubigint',
+    'uinteger',
+    'usmallint',
+    'utinyint',
+    'long',
+    'short',
+  ],
+  float: ['float', 'double', 'real', 'float4', 'float8', 'double precision'],
+  decimal: ['decimal', 'numeric', 'number'],
+  boolean: ['boolean', 'bool', 'logical'],
+  date: ['date'],
+  datetime: ['datetime', 'timestamp', 'timestamptz', 'timestamp with time zone'],
+};
+const SPELLING_TO_TYPE = new Map<string, DataFieldType>(
+  (Object.entries(TYPE_SPELLINGS) as Array<[DataFieldType, readonly string[]]>).flatMap(
+    ([type, spellings]) => spellings.map((spelling) => [spelling, type] as const)
+  )
+);
+
+export function dataFieldTypeOfSpelling(raw: string | null | undefined): DataFieldType | null {
+  const t = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\(.*$/, '')
+    .replace(/\s+/g, ' ');
+  return SPELLING_TO_TYPE.get(t) ?? null;
+}
+
 export function dataFieldTypeFromDuckDbType(storageType: string | null | undefined): DataFieldType {
   const type = String(storageType ?? '')
     .trim()

@@ -1,10 +1,11 @@
+import { dataFieldTypeOfSpelling, type DataFieldType } from './data-field-types';
 /** Rule-based column picking for select / unpivot: by type and/or name pattern. */
 export type FieldTypeFilter = '' | 'text' | 'number' | 'temporal' | 'boolean';
 
-const TYPE_GROUPS: Record<Exclude<FieldTypeFilter, ''>, readonly string[]> = {
-  text: ['text', 'varchar', 'string'],
-  number: ['integer', 'float', 'decimal', 'bigint', 'double'],
-  temporal: ['date', 'datetime', 'timestamp'],
+const TYPE_GROUPS: Record<Exclude<FieldTypeFilter, ''>, readonly DataFieldType[]> = {
+  text: ['text'],
+  number: ['integer', 'float', 'decimal'],
+  temporal: ['date', 'datetime'],
   boolean: ['boolean'],
 };
 
@@ -49,7 +50,7 @@ export function matchFields(
   return fields.filter((field) => {
     if (!byName(field)) return false;
     if (!rule.type) return true;
-    const type = (columnTypes?.[field] ?? '').toLowerCase();
-    return TYPE_GROUPS[rule.type].includes(type);
+    const type = dataFieldTypeOfSpelling(columnTypes?.[field]);
+    return type !== null && TYPE_GROUPS[rule.type].includes(type);
   });
 }

@@ -1,3 +1,4 @@
+import { dataFieldTypeOfSpelling } from '../data-field-types';
 import { tokenizeExpression } from '../expression-tokenizer';
 import { unwrapFieldName } from '../prep-dsl/syntax/fields';
 
@@ -65,18 +66,7 @@ export function normalizePlanColumnType(type: string): string {
 
 /** Normalize a physical/DuckDB type name into the DSL type vocabulary. */
 export function normalizePlanDslType(type: string): string {
-  const normalized = normalizePlanColumnType(type);
-  if (['varchar', 'char', 'string', 'text'].includes(normalized)) return 'text';
-  if (['int', 'integer', 'bigint', 'smallint', 'tinyint', 'hugeint'].includes(normalized)) {
-    return 'integer';
-  }
-  if (['double', 'float', 'real'].includes(normalized)) return 'float';
-  if (normalized === 'number') return 'decimal';
-  if (normalized.startsWith('decimal') || normalized.startsWith('numeric')) return 'decimal';
-  if (normalized.includes('timestamp') || normalized === 'datetime') return 'datetime';
-  if (normalized === 'date') return 'date';
-  if (['bool', 'boolean'].includes(normalized)) return 'boolean';
-  return normalized;
+  return dataFieldTypeOfSpelling(type) ?? normalizePlanColumnType(type);
 }
 
 export type PlanTypeFamily = 'numeric' | 'temporal' | 'text' | 'boolean' | 'other';

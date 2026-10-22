@@ -1,3 +1,4 @@
+import { dataFieldTypeOfSpelling } from '../data-field-types';
 /** Result types the expression layer reasons about (aligned with DataFieldType). */
 export type ExprType =
   'text' | 'integer' | 'float' | 'decimal' | 'boolean' | 'date' | 'datetime' | 'null' | 'unknown';
@@ -5,38 +6,10 @@ export type ExprType =
 export const NUMERIC_TYPES: ReadonlySet<ExprType> = new Set(['integer', 'float', 'decimal']);
 export const TEMPORAL_TYPES: ReadonlySet<ExprType> = new Set(['date', 'datetime']);
 
-/** Map a DataFieldType / DuckDB type spelling to an ExprType. */
+/** Map a DataFieldType / DuckDB type spelling to an ExprType (shared spelling table). */
 export function exprTypeOf(raw: string | undefined): ExprType {
-  const t = (raw ?? '').trim().toLowerCase().replace(/\(.*$/, '');
-  if (!t) return 'unknown';
-  if (['text', 'varchar', 'string', 'char', 'bpchar', 'uuid', 'json'].includes(t)) return 'text';
-  if (
-    [
-      'integer',
-      'int',
-      'int4',
-      'int8',
-      'bigint',
-      'smallint',
-      'tinyint',
-      'hugeint',
-      'ubigint',
-      'uinteger',
-      'usmallint',
-      'utinyint',
-      'long',
-      'short',
-    ].includes(t)
-  )
-    return 'integer';
-  if (['float', 'double', 'real', 'float4', 'float8', 'double precision'].includes(t))
-    return 'float';
-  if (['decimal', 'numeric'].includes(t)) return 'decimal';
-  if (['boolean', 'bool', 'logical'].includes(t)) return 'boolean';
-  if (t === 'date') return 'date';
-  if (['datetime', 'timestamp', 'timestamptz', 'timestamp with time zone'].includes(t))
-    return 'datetime';
-  return 'unknown';
+  if (!(raw ?? '').trim()) return 'unknown';
+  return dataFieldTypeOfSpelling(raw) ?? 'unknown';
 }
 
 /** Numeric widening used by arithmetic, coalesce and conditional branches. */

@@ -1,3 +1,4 @@
+import { duckDbTypeForDataFieldType } from '../data-field-types';
 import type { Expr, FrameBound, WindowSpec } from './ast';
 import { ExpressionError } from './parser';
 
@@ -112,7 +113,7 @@ export function exprToSql(expr: Expr, options: ToSqlOptions = {}): string {
       return parts.join(' ');
     }
     case 'cast':
-      return `${expr.try ? 'TRY_CAST' : 'CAST'}(${sql(expr.e)} AS ${expr.type})`;
+      return `${expr.try ? 'TRY_CAST' : 'CAST'}(${sql(expr.e)} AS ${castTargetSql(expr.type)})`;
     case 'extract':
       return `extract(${quoteLiteral(expr.part)} FROM ${sql(expr.e)})`;
     case 'interval':
@@ -120,6 +121,13 @@ export function exprToSql(expr: Expr, options: ToSqlOptions = {}): string {
     case 'typed':
       return `${expr.type} ${quoteLiteral(expr.value)}`;
   }
+}
+
+/** Field-type name → DuckDB type; decimal(p,s) keeps its parameters. */
+function castTargetSql(type: string): string {
+  const params = /^decimal\s*\(([^)]*)\)$/i.exec(type);
+  if (params) return `DECIMAL(${params[1]})`;
+  return duckDbTypeForDataFieldType(type);
 }
 
 function boundToSql(bound: FrameBound, sql: (e: Expr) => string): string {

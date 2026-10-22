@@ -2297,7 +2297,7 @@ function main() {
     expect(generated.workflowDsl).toContain('select except [记录数]');
     expect(generated.workflowDsl).toContain('rename [Adj Close] as [adj_close]');
     expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = try_cast');
-    expect(generated.workflowDsl).toContain("replace(cast([adj_close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain("replace(cast([adj_close] AS text), '$', '')");
     expect(generated.workflowDsl).toContain('select except [adj_close]');
     expect(generated.workflowDsl).toContain('rename [__sophron_cast_adj_close] as [adj_close]');
     expect(generated.requiredColumns).toEqual([
@@ -2368,7 +2368,7 @@ function main() {
         name: 'adj_close',
         type: 'decimal',
         sourceColumns: [{ name: 'Adj Close', type: 'text' }],
-        expression: "TRY_CAST(REPLACE(CAST([adj_close] AS VARCHAR), '$', '') AS DECIMAL(18,2))",
+        expression: "TRY_CAST(REPLACE(CAST([adj_close] AS text), '$', '') AS decimal(18,2))",
       },
       {
         name: 'double_close',
@@ -2416,7 +2416,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("replace(cast([Adj Close] AS VARCHAR), '$', '')");
+    expect(generated.workflowDsl).toContain("replace(cast([Adj Close] AS text), '$', '')");
     expect(generated.workflowDsl).toContain('select except [记录数]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
   });
@@ -2564,7 +2564,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("regexp_extract(cast([Date] AS VARCHAR), '^[0-9]{4}')");
+    expect(generated.workflowDsl).toContain("regexp_extract(cast([Date] AS text), '^[0-9]{4}')");
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'Date', type: 'date' },
       { name: 'year', type: 'text' },
@@ -2609,7 +2609,7 @@ function main() {
     });
 
     expect(generated.workflowDsl).toContain(
-      "regexp_extract(cast([Date] AS VARCHAR), '^[0-9]{4}-([0-9]{2})', 1)"
+      "regexp_extract(cast([Date] AS text), '^[0-9]{4}-([0-9]{2})', 1)"
     );
   });
 

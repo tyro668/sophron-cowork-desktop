@@ -1,7 +1,7 @@
+import { DATA_FIELD_TYPES } from '../data-field-types';
 import { tokenizeExpression, type ExprToken } from '../expression-tokenizer';
 import type { BinaryOp, Expr, FrameBound, WindowSpec } from './ast';
 import { lookupExpressionFunction } from './functions';
-import { exprTypeOf } from './types';
 
 export class ExpressionError extends Error {
   constructor(
@@ -14,35 +14,8 @@ export class ExpressionError extends Error {
   }
 }
 
-const CAST_TYPE_WORDS = new Set([
-  'text',
-  'varchar',
-  'string',
-  'char',
-  'integer',
-  'int',
-  'bigint',
-  'smallint',
-  'tinyint',
-  'hugeint',
-  'float',
-  'double',
-  'real',
-  'decimal',
-  'numeric',
-  'boolean',
-  'bool',
-  'date',
-  'datetime',
-  'timestamp',
-  'time',
-  'interval',
-  'precision',
-  'with',
-  'zone',
-  'json',
-  'uuid',
-]);
+/** cast targets use the one field-type vocabulary (same names as the cast operator and the UI). */
+const CAST_TYPE_WORDS: ReadonlySet<string> = new Set(DATA_FIELD_TYPES);
 
 /** Keywords that can never start an operand. */
 const RESERVED_WORDS = new Set([
@@ -454,12 +427,16 @@ class Parser {
     this.pos++; // (
     const value = this.parseOr();
     this.expectWord('as');
-    const words: string[] = [];
-    while (this.peek().type === 'Ident' && CAST_TYPE_WORDS.has(this.peek().value.toLowerCase())) {
-      words.push(this.next().value);
+    const word = this.peek();
+    if (word.type !== 'Ident') this.fail('Expected a type after AS', 'unknownType');
+    if (!CAST_TYPE_WORDS.has(word.value.toLowerCase())) {
+      this.fail(
+        `Unknown type '${word.value}'; use one of ${DATA_FIELD_TYPES.join(', ')}`,
+        'unknownType'
+      );
     }
-    if (words.length === 0) this.fail('Expected a type after AS', 'unknownType');
-    let type = words.join(' ');
+    this.next();
+    let type = word.value.toLowerCase();
     if (this.accept('ParenOpen')) {
       const params: string[] = [];
       do {
@@ -468,10 +445,10 @@ class Parser {
         params.push(token.value);
       } while (this.accept('Comma'));
       this.expect('ParenClose', ')');
+      if (type !== 'decimal' || params.length > 2) {
+        this.fail('Only decimal takes parameters: decimal(precision, scale)', 'unknownType');
+      }
       type += `(${params.join(',')})`;
-    }
-    if (exprTypeOf(type) === 'unknown' && !/^(time|interval)/i.test(type)) {
-      this.fail(`Unknown type '${type}'`, 'unknownType');
     }
     this.expect('ParenClose', ') to close cast(');
     return { k: 'cast', e: value, type, try: isTry };
