@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Info } from 'lucide-react';
 import type { OperatorFormProps } from './types';
+import { FieldPatternCells } from './shared/FieldPatternCells';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import {
   Cell,
@@ -66,6 +67,19 @@ export default function FormUnpivot({
           />
         </Cell>
 
+        <LabelCell>{tr('fieldPattern.ruleLabel')}</LabelCell>
+        <FieldPatternCells
+          fields={fieldCompletions}
+          columnTypes={columnTypes}
+          patternSpan={2}
+          onApply={(matched) =>
+            updateConfig((cfg) => ({
+              ...cfg,
+              selection: 'include',
+              fields: [...columns, ...matched.filter((field) => !columns.includes(field))],
+            }))
+          }
+        />
         <LabelCell>{tr('unpivotNameCol')}</LabelCell>
         <Cell span={2} v={['ctl', Boolean(nameError) && 'err']}>
           <GlassCommitTextInput

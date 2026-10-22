@@ -1,3 +1,4 @@
+import { FieldPatternCells } from './shared/FieldPatternCells';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, GripVertical, Search } from 'lucide-react';
 import type { OperatorFormProps } from './types';
@@ -168,6 +169,15 @@ export default function FormFieldSelect({
             total: String(fieldCompletions.length),
           })}
         </Cell>
+        <Cell span={2} v={['muted', 'ctr']}>
+          {tr('fieldPattern.ruleLabel')}
+        </Cell>
+        <FieldPatternCells
+          fields={fieldCompletions}
+          columnTypes={columnTypes}
+          patternSpan={2}
+          onApply={(matched) => commitColumns(mergeSelectedFields(columns, matched))}
+        />
         {visibleFields.length === 0 ? (
           <Cell span={5} v={['muted', 'ctr']}>
             {rightSearch ? tr('fieldPicker.noMatch') : tr('fieldPicker.noFields')}
