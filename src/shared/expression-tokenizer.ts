@@ -222,7 +222,13 @@ function isDigit(ch: string): boolean {
 }
 
 function isIdentStart(ch: string): boolean {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_';
+  // CJK letters allow Chinese function aliases such as 四舍五入(...).
+  return (
+    (ch >= 'a' && ch <= 'z') ||
+    (ch >= 'A' && ch <= 'Z') ||
+    ch === '_' ||
+    (ch >= '\u4e00' && ch <= '\u9fff')
+  );
 }
 
 function isIdentPart(ch: string): boolean {

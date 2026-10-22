@@ -1,5 +1,5 @@
 import { quoteIdentifier, literalToSql, uniqueAlias } from './utils';
-import { compileScalarExpression } from './compute';
+import { compileMetricArguments } from './compute';
 import { PivotConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 import { withPivotMetricDefaultSuffix } from '../../../shared/operator-config/pivot';
 
@@ -8,7 +8,7 @@ function formatAggFn(metricFn: string): string {
 }
 
 function compileAggExpr(expression: string): string {
-  return expression === '*' ? '*' : compileScalarExpression(expression);
+  return expression === '*' ? '*' : compileMetricArguments(expression);
 }
 
 const EMPTY_STRING_PIVOT_COLUMN = 'empty';

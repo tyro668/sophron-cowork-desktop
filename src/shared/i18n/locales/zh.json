@@ -1504,6 +1504,8 @@
           "expressionLintUnknownField": "字段「{{name}}」不在上游数据中",
           "expressionLintUnclosed": "括号未闭合，缺少「{{closer}}」",
           "expressionLintUnexpectedClose": "多余的「{{char}}」，没有对应的左括号",
+          "expressionResultType": "结果类型：{{type}}",
+          "expressionDetailAliases": "中文名",
           "expressionIssueCount": "{{count}} 个问题",
           "expressionShortcutHint": "Ctrl + Enter 确定 · Esc 取消",
           "expressionConfirmBlocked": "请先修正公式中的问题",

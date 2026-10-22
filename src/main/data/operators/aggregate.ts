@@ -1,5 +1,5 @@
 import { quoteIdentifier } from './utils';
-import { compileScalarExpression } from './compute';
+import { compileMetricArguments } from './compute';
 import { AggregateConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
 
 const AGGREGATE_FUNCTION_DEFAULT_PARAMETERS: Record<string, string[]> = {
@@ -20,7 +20,7 @@ export function compileAggregateSql(
     const fn = metric.function?.trim();
     const expression = metric.expression?.trim();
     const alias = metric.alias?.trim();
-    const compiledExpression = expression === '*' ? '*' : compileScalarExpression(expression);
+    const compiledExpression = expression === '*' ? '*' : compileMetricArguments(expression);
     if (fn === 'count_distinct') {
       return `COUNT(DISTINCT ${compiledExpression}) AS ${quoteIdentifier(alias)}`;
     }
