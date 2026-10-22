@@ -112,6 +112,40 @@ export interface JflowCompletionResult {
   options: JflowCompletionOption[];
 }
 
+/**
+ * Fields in scope at `pos`, tracked step by step: the document is compiled up to the start of the
+ * current step (the last top-level `|` before the cursor), and the resulting relation's columns
+ * are the step's input. A `join`/`lookup`/`union` step also sees the named right table. Falls back
+ * to document-wide names when the prefix does not bind (e.g. unknown source schema).
+ */
+export function fieldsAt(text: string, pos: number, catalog: JflowCatalog): string[] {
+  const before = text.slice(0, pos);
+  const pipe = lastStepPipe(before);
+  if (pipe >= 0) {
+    const compiled = compileWorkflowJflow(text.slice(0, pipe), catalog);
+    if (compiled.lastColumns) {
+      const out = [...compiled.lastColumns];
+      const stepText = before.slice(pipe + 1);
+      const right =
+        /^\s*(?:join\s+(?:inner|left|right|full|cross|semi|anti|asof)?\s*|lookup\s+|union\s+|intersect\s+|except\s+)([A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]*)/.exec(
+          stepText
+        );
+      const rightCols = right ? compiled.relationColumns?.[right[1]] : null;
+      for (const c of rightCols ?? []) if (!out.includes(c)) out.push(c);
+      return out;
+    }
+  }
+  return visibleFields(text, catalog);
+}
+
+/** Offset of the last step-separating `|` (not `||`, not inside strings/fields/comments). */
+function lastStepPipe(text: string): number {
+  let last = -1;
+  const { tokens } = lex(text);
+  for (const t of tokens) if (t.tokenType.name === 'Pipe') last = t.startOffset;
+  return last;
+}
+
 /** Field names visible in the document: columns of referenced sources + names defined with `[x] =`. */
 function visibleFields(text: string, catalog: JflowCatalog): string[] {
   const out = new Set<string>();
@@ -148,7 +182,7 @@ export function jflowCompletions(
     const closing = text[pos] === ']' ? '' : ']';
     return {
       from: field.from,
-      options: visibleFields(text, catalog)
+      options: fieldsAt(text, field.from, catalog)
         .filter((f) => f.includes(field.prefix))
         .map((f) => ({
           label: `[${f}]`,

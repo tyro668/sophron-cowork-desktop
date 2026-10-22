@@ -64,6 +64,10 @@ export interface JflowEdge {
 }
 
 export interface JflowCompileResult {
+  /** Columns of the last chain's result (null when unknown). */
+  lastColumns?: string[] | null;
+  /** Columns of every named relation (sources and lets). */
+  relationColumns?: Record<string, string[] | null>;
   nodes: JflowNode[];
   edges: JflowEdge[];
   diagnostics: JflowDiagnostic[];
@@ -257,6 +261,8 @@ class Compiler {
   diagnostics: JflowDiagnostic[] = [];
   /** step id → display label (`#! label:` pragma). */
   labels = new Map<string, string>();
+  /** Columns of the last evaluated chain (editor completion). */
+  lastCols: Cols = null;
   env = new Map<string, Rel>();
   colTypes = new Map<string, Map<string, string>>();
   private seq = 0;
@@ -386,6 +392,7 @@ class Compiler {
     for (const s of f.sources) this.compileSource(s);
     for (const flow of f.flows) {
       const rel = this.chain(flow.chain);
+      this.lastCols = rel.cols;
       if (flow.let) {
         if (this.env.has(flow.let))
           throw new JflowError('E_NAME_DUP', `名字 ${flow.let} 重复定义`, flow.span);
@@ -407,6 +414,15 @@ class Compiler {
     if (ref.form === '@id') {
       const parsed = parseResourceUri(ref.arg);
       if (!parsed) throw new JflowError('E_REF_NOT_FOUND', `无法识别的资源 ${ref.arg}`, ref.span);
+      // With a catalog, local tables must exist: an unknown id is an error, not a guess.
+      if (this.options.resolve && (parsed.kind === 'raw' || parsed.kind === 'result')) {
+        throw new JflowError(
+          'E_REF_NOT_FOUND',
+          `找不到${parsed.kind === 'raw' ? '原始表' : '结果表'} ${ref.arg}${ref.snap ? `（${ref.snap}）` : ''}`,
+          ref.span,
+          ref.snap ? `如果表已重建，可改用 @name('${ref.snap}')` : undefined
+        );
+      }
       return { ...parsed, name: ref.snap };
     }
     if (ref.form === '@path')
@@ -1556,11 +1572,18 @@ export function compileJflow(
     c.diagnostics.push({
       code: error.code,
       severity: 'error',
-      message: error.message,
+      message: error.detail,
       span: error.span,
       hint: error.hint,
     });
-    return { nodes: [], edges: [], diagnostics: c.diagnostics, sourceMap: {} };
+    return {
+      nodes: [],
+      edges: [],
+      diagnostics: c.diagnostics,
+      sourceMap: {},
+      lastColumns: c.lastCols,
+      relationColumns: Object.fromEntries([...c.env].map(([k, v]) => [k, v.cols])),
+    };
   }
   for (const n of c.nodes) {
     const base = n.layout?.composite ?? n.id;
@@ -1568,8 +1591,17 @@ export function compileJflow(
     if (label)
       n.label = n.id === base ? label : `${label}·${n.layout?.role ?? n.id.slice(base.length + 1)}`;
   }
+  const relationColumns: Record<string, string[] | null> = {};
+  for (const [name, rel] of c.env) relationColumns[name] = rel.cols;
   layout(c.nodes, c.edges);
-  return { nodes: c.nodes, edges: c.edges, diagnostics: c.diagnostics, sourceMap: c.sourceMap };
+  return {
+    nodes: c.nodes,
+    edges: c.edges,
+    diagnostics: c.diagnostics,
+    sourceMap: c.sourceMap,
+    lastColumns: c.lastCols,
+    relationColumns,
+  };
 }
 
 export type { Source };

@@ -1,5 +1,5 @@
 /** App-facing jflow API: workflow ⇄ text with catalog-backed resolution. */
-import type { JflowDiagnostic, ResourceRef } from './ast';
+import { JflowError, type JflowDiagnostic, type ResourceRef } from './ast';
 import {
   compileJflow,
   parseResourceUri,
@@ -45,6 +45,14 @@ export function catalogResolver(catalog: JflowCatalog) {
     if (ref.form === '@name') {
       const hits = catalog.tables.filter((x) => x.name === ref.arg);
       if (hits.length === 1) return pick(hits[0]);
+      if (hits.length > 1) {
+        throw new JflowError(
+          'E_REF_AMBIGUOUS',
+          `有 ${hits.length} 张表都叫 ${ref.arg}`,
+          ref.span,
+          `改用 @id('${`local:${hits[0].kind}/${hits[0].id}`}', '${ref.arg}')`
+        );
+      }
       return null;
     }
     if (ref.form === '@path')
@@ -58,6 +66,8 @@ export interface CompiledWorkflow {
   edges: JflowEdge[];
   diagnostics: JflowDiagnostic[];
   sourceMap: Record<string, { start: number; end: number }>;
+  lastColumns?: string[] | null;
+  relationColumns?: Record<string, string[] | null>;
 }
 
 /** Parse + bind + validate + compile. Node ids are scoped with `idPrefix` (the pipeline id). */
@@ -92,6 +102,8 @@ export function compileWorkflowJflow(
     })),
     diagnostics: [...parsed.diagnostics, ...compiled.diagnostics],
     sourceMap,
+    lastColumns: compiled.lastColumns,
+    relationColumns: compiled.relationColumns,
   };
 }
 

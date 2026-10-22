@@ -113,3 +113,60 @@ describe('jflow completion', () => {
     expect(labels).toContain('if_exists:');
   });
 });
+
+describe('step-by-step schema for [ completion', () => {
+  const cat: JflowCatalog = {
+    tables: [
+      {
+        id: 'r1',
+        name: '订单',
+        kind: 'raw',
+        columns: [{ name: '金额' }, { name: '客户' }, { name: '日期' }],
+      },
+      { id: 'r2', name: '客户表', kind: 'raw', columns: [{ name: '客户' }, { name: '等级' }] },
+    ],
+  };
+  const src = `source o = @id('local:raw/r1', '订单')\nsource c = @id('local:raw/r2', '客户表')\n`;
+  const labels = (text: string) =>
+    jflowCompletions(text, text.length, cat)!.options.map((o) => o.label);
+  it('follows select / drop / derive through the chain', () => {
+    expect(labels(`${src}o | select [金额], [客户] | where [`)).toEqual(['[金额]', '[客户]']);
+    expect(labels(`${src}o | drop [日期] | derive [净额] = [金额] * 2 | sort [`)).toEqual([
+      '[金额]',
+      '[客户]',
+      '[净额]',
+    ]);
+  });
+  it('sees group output only after group', () => {
+    expect(labels(`${src}o | group [客户] (agg [合计] = sum([金额])) | where [`)).toEqual([
+      '[客户]',
+      '[合计]',
+    ]);
+  });
+  it('adds the right table columns inside join / lookup', () => {
+    expect(labels(`${src}o | lookup c on [`)).toEqual(['[金额]', '[客户]', '[日期]', '[等级]']);
+  });
+  it('uses let-bound relations as chain heads', () => {
+    expect(labels(`${src}let x = o | select [日期]\nx | where [`)).toEqual(['[日期]']);
+  });
+});
+
+describe('catalog-strict references', () => {
+  it('unknown @id is E_REF_NOT_FOUND', () => {
+    const d = jflowLintDiagnostics(
+      `source o = @id('local:raw/nope', '旧表')\no | write @new('x')\n`,
+      catalog
+    );
+    expect(d.map((x) => x.code)).toContain('E_REF_NOT_FOUND');
+  });
+  it('ambiguous @name is E_REF_AMBIGUOUS', () => {
+    const dup: JflowCatalog = {
+      tables: [
+        { id: 'a', name: 'T', kind: 'raw' },
+        { id: 'b', name: 'T', kind: 'result' },
+      ],
+    };
+    const d = jflowLintDiagnostics(`source o = @name('T')\no | write @new('x')\n`, dup);
+    expect(d.map((x) => x.code)).toContain('E_REF_AMBIGUOUS');
+  });
+});

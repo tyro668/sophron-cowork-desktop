@@ -406,20 +406,23 @@ export function fmtChain(c: Chain, sep = '\n  ', indent = '  '): string {
 }
 
 export function formatJflow(f: JflowFile): string {
-  const out: string[] = [];
+  // Sections are separated by exactly one blank line; text inside ''' raw strings is untouched.
+  const sections: string[] = [];
   if (f.header) {
     const meta = Object.entries(f.header.meta);
-    out.push(
+    sections.push(
       `pipeline ${f.header.name}` +
         (meta.length ? ` (${meta.map(([key, v]) => `${key}: ${fmtExpr(v)}`).join(', ')})` : '')
     );
-    out.push('');
   }
+  const decls: string[] = [];
   for (const p of f.params)
-    out.push(`param $${p.name}: ${fmtType(p.type)}${p.default ? ` = ${fmtExpr(p.default)}` : ''}`);
+    decls.push(
+      `param $${p.name}: ${fmtType(p.type)}${p.default ? ` = ${fmtExpr(p.default)}` : ''}`
+    );
   for (const s of f.sources) {
     const read = Object.entries(s.read);
-    out.push(
+    decls.push(
       pragmaLines(s, '') +
         `source ${s.alias} = ${fmtRef(s.ref)}` +
         (read.length
@@ -430,13 +433,9 @@ export function formatJflow(f: JflowFile): string {
           : '')
     );
   }
-  out.push('');
+  if (decls.length) sections.push(decls.join('\n'));
   for (const fl of f.flows) {
-    out.push(pragmaLines(fl, '') + (fl.let ? `let ${fl.let} = ` : '') + fmtChain(fl.chain));
-    out.push('');
+    sections.push(pragmaLines(fl, '') + (fl.let ? `let ${fl.let} = ` : '') + fmtChain(fl.chain));
   }
-  return `${out
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()}\n`;
+  return `${sections.map((x) => x.replace(/\s+$/, '')).join('\n\n')}\n`;
 }

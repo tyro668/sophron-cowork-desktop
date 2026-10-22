@@ -106,8 +106,9 @@ describe.each(['sales', 'stock', 'recon'])('jflow scenario %s', (name) => {
     for (const n of compiled.nodes) expect(compiled.sourceMap[n.id]).toBeDefined();
   });
 
-  it('formats canonically (format ∘ parse is idempotent)', () => {
+  it('formats canonically (format ∘ parse is idempotent, single blank lines, raw SQL untouched)', () => {
     const once = formatJflow(parseJflow(text).ast!);
+    expect(once).not.toMatch(/\n\n\n/);
     expect(formatJflow(parseJflow(once).ast!)).toBe(once);
   });
 
@@ -123,5 +124,15 @@ describe.each(['sales', 'stock', 'recon'])('jflow scenario %s', (name) => {
     expect(exported.text).not.toMatch(/#! id: [^\n]*~/);
     const ids = new Set(again.nodes.map((n) => n.id));
     for (const n of reviewed) if (!n.id.includes('~')) expect(ids.has(n.id)).toBe(true);
+  });
+});
+
+describe('formatter keeps raw strings verbatim', () => {
+  it('does not collapse blank lines inside sql triple quotes', () => {
+    const sql = 'SELECT 1\n\n\n\nFROM input';
+    const text = `source o = @id('local:raw/x')\n\n\n\no | sql '''${sql}''' | write @new('y')\n`;
+    const out = formatJflow(parseJflow(text).ast!);
+    expect(out).toContain(sql);
+    expect(out.replace(sql, '')).not.toMatch(/\n\n\n/);
   });
 });
