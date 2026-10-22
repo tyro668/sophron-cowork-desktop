@@ -868,6 +868,16 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'unify_operator_type_names',
     up: (ctx) => renameLegacyOperatorTypes(ctx),
   },
+  {
+    version: 20,
+    name: 'unpivot_selection_exclude',
+    up: (ctx) =>
+      migrateWorkflowNodeConfigs(ctx, (type, config) =>
+        type === 'unpivot' && config.selection === 'except'
+          ? { ...config, selection: 'exclude' }
+          : null
+      ),
+  },
 ];
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;

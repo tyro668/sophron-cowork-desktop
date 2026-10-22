@@ -670,7 +670,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         );
       }
       context.emitOperator('unpivot', {
-        selection: config.selection === 'exclude' ? 'except' : 'include',
+        selection: config.selection === 'exclude' ? 'exclude' : 'include',
         fields: configured,
         nameColumn: config.nameColumn,
         valueColumn: config.valueColumn,

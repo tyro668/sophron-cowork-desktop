@@ -46,7 +46,7 @@ export function compileUnpivotSql(
   }
 
   const unpivotColumns =
-    parsed.selection === 'except'
+    parsed.selection === 'exclude'
       ? columns.filter((c) => !configuredSet.has(c.toLowerCase()))
       : configured.filter((c) => columnSet.has(c.toLowerCase()));
   if (unpivotColumns.length === 0) {

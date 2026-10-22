@@ -18,7 +18,7 @@ export const unpivotCodec: OperatorDslCodec = {
     let mode = 'include';
     if (cursor.match('columns')) {
       cursor.expect('except', 'invalidUnpivot');
-      mode = 'except';
+      mode = 'exclude';
     }
 
     const columns: string[] = [];
@@ -69,7 +69,7 @@ export const unpivotCodec: OperatorDslCodec = {
     const columns = stringArray(config?.fields);
     if (columns.length === 0) return null;
     const includeNulls = config?.includeNulls ? 'include nulls ' : '';
-    const mode = config?.selection === 'except' ? 'columns except ' : '';
+    const mode = config?.selection === 'exclude' ? 'columns except ' : '';
     const columnsDsl = columns.map(formatFieldRef).join(', ');
     return `unpivot ${includeNulls}${mode}${columnsDsl} into name ${formatFieldRef(
       String(config?.nameColumn ?? 'name')
