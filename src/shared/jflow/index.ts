@@ -18,9 +18,10 @@ export {
   jflowStepCompletions,
   jflowStepLint,
   parseJflowStep,
+  jflowStepRightAlias,
   JFLOW_STEP_UNSUPPORTED_TYPES,
 } from './step';
-export type { JflowStepExport, JflowStepParse, JflowStepNode } from './step';
+export type { JflowStepContext, JflowStepExport, JflowStepParse, JflowStepNode } from './step';
 export {
   JFLOW_EXAMPLES,
   JFLOW_REFERENCE_VERSION,

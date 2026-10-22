@@ -30,11 +30,11 @@ describe('per-node jflow step', () => {
     }
   });
 
-  it('rejects type changes, composites and multi-input nodes', () => {
+  it('rejects type changes and unknown columns; only input nodes are unsupported', () => {
     expect(parseJflowStep('where [a] > 1', { expectedType: 'sort' }).diagnostics[0]?.code).toBe(
       'E_STEP_TYPE'
     );
-    expect(exportJflowStep({ type: 'join', config: {} }).diagnostics[0]?.code).toBe(
+    expect(exportJflowStep({ type: 'input', config: {} }).diagnostics[0]?.code).toBe(
       'E_STEP_UNSUPPORTED'
     );
     const parsed = parseJflowStep('where [zz] > 1', { columns: COLS });

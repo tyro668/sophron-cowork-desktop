@@ -184,13 +184,20 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     expect(metrics).toHaveLength(1);
   });
 
-  it('join / set_op are edited in the workflow DSL, not per step', () => {
-    for (const type of ['join', 'set_op']) {
-      expect(exportStep({ id: 'test', type, config: { joinType: 'inner' } })).toBe('');
-      expect(
-        parseStep(`${type === 'join' ? 'join inner other on [id]' : 'union other'}`, type).operator
-      ).toBeNull();
-    }
+  it('join / set_op are edited per step against their right input', () => {
+    expect(
+      exportStep({
+        id: 'test',
+        type: 'join',
+        config: {
+          joinType: 'inner',
+          rightAlias: 'right',
+          conditions: [{ left: 'id', operator: '=', right: 'id' }],
+        },
+      })
+    ).toBe('join inner right on [id]');
+    expect(parseStep('join inner right on [id]', 'join').operator?.type).toBe('join');
+    expect(parseStep('union right', 'set_op').operator?.type).toBe('set_op');
   });
 
   it('limit — simple limit', () => {

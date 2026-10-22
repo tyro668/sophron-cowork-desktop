@@ -87,8 +87,10 @@ describe('FormPivot — config ↔ DSL', () => {
         groupBy: ['region'],
       },
     });
-    // group by exports as `select … | pivot …` — two steps, edited in the workflow DSL.
-    expect(dsl).toBe('');
+    // group by exports as `select … | pivot …` and folds back into one pivot node.
+    expect(dsl).toContain('| pivot');
+    const back = parseStep(dsl, 'pivot');
+    expect(back.operator?.config).toMatchObject({ groupBy: ['region'] });
     const r = ok({
       on: [{ field: 'category' }],
       using: [{ function: 'sum', expression: '[amount]', alias: 'total' }],

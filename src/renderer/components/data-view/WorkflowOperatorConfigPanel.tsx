@@ -6,7 +6,7 @@ import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
 import { JflowEditor } from '../JflowEditor';
-import type { JflowColumn } from '../../../shared/jflow';
+import type { JflowColumn, JflowStepContext } from '../../../shared/jflow';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 
@@ -21,6 +21,8 @@ interface WorkflowOperatorConfigPanelProps {
   fieldTypes?: DataColumnTypeInfo[];
   upstreamRowCount?: number;
   operatorDsl: string;
+  /** Two-input / composite context for the per-node jflow editor. */
+  stepContext?: JflowStepContext;
   operatorDslStatus: string | null;
   operatorDslDiagnostics: WorkflowDiagnostic[];
   isEditingOperatorDsl: boolean;
@@ -46,6 +48,7 @@ export function WorkflowOperatorConfigPanel({
   fieldTypes,
   upstreamRowCount,
   operatorDsl,
+  stepContext,
   operatorDslStatus,
   operatorDslDiagnostics,
   isEditingOperatorDsl,
@@ -89,6 +92,7 @@ export function WorkflowOperatorConfigPanel({
       operatorDslStatus={operatorDslStatus}
       operatorDslDiagnostics={operatorDslDiagnostics}
       stepColumns={stepColumns}
+      stepContext={stepContext}
       formatEditorDiagnostic={formatEditorDiagnostic}
       isRunningOperatorDsl={isRunningOperatorDsl}
       onChange={onDslChange}
@@ -191,7 +195,7 @@ export function WorkflowOperatorConfigPanel({
         <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md border border-border-subtle bg-surface">
           <JflowEditor
             value={operatorDsl}
-            step={{ expectedType: node.type, columns: stepColumns }}
+            step={{ ...stepContext, expectedType: node.type, columns: stepColumns }}
             onChange={onDslChange}
             className="h-full"
           />
@@ -224,6 +228,7 @@ function WorkflowOperatorDslDialog({
   operatorDslStatus,
   operatorDslDiagnostics,
   stepColumns,
+  stepContext,
   formatEditorDiagnostic,
   isRunningOperatorDsl,
   onChange,
@@ -238,6 +243,7 @@ function WorkflowOperatorDslDialog({
   operatorDslStatus: string | null;
   operatorDslDiagnostics: WorkflowDiagnostic[];
   stepColumns: JflowColumn[] | null;
+  stepContext?: JflowStepContext;
   formatEditorDiagnostic: (diagnostic: WorkflowDiagnostic) => string;
   isRunningOperatorDsl: boolean;
   onChange: (value: string) => void;
@@ -324,7 +330,7 @@ function WorkflowOperatorDslDialog({
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-surface">
           <JflowEditor
             value={operatorDsl}
-            step={{ expectedType: operatorType, columns: stepColumns }}
+            step={{ ...stepContext, expectedType: operatorType, columns: stepColumns }}
             onChange={onChange}
             className="h-full"
           />

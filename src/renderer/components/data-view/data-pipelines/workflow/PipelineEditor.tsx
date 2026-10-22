@@ -1282,16 +1282,25 @@ export function PipelineEditor({
   }, [onRun, saveWorkflow, pipeline, validateWorkflowBeforeRun]);
 
   const applyAndRunOperatorDsl = useCallback(
-    async (nodeId: string, config: Record<string, unknown>) => {
+    async (
+      nodeId: string,
+      config: Record<string, unknown>,
+      memberConfigs?: Record<string, Record<string, unknown>>
+    ) => {
       if (!workflow) return;
       const now = Date.now();
+      // A composite's members are all updated in the same workflow revision.
+      const configs: Record<string, Record<string, unknown>> = {
+        ...memberConfigs,
+        [nodeId]: config,
+      };
       const nextWorkflow: DataPipelineWorkflow = {
         ...workflow,
         nodes: workflow.nodes.map((node) =>
-          node.id === nodeId
+          configs[node.id]
             ? {
                 ...node,
-                config,
+                config: configs[node.id],
                 updatedAt: now,
               }
             : node
