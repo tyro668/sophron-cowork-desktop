@@ -561,7 +561,7 @@ describe('ETL runtime contract — review fixes', () => {
     );
     // corrupt the compiled sort config: direction must be asc|desc
     const sortNode = compiled.nodes.find((node) => node.type === 'sort')!;
-    sortNode.config = { keys: [{ field: 'id', direction: 'sideways' }] };
+    sortNode.config = { orderBy: [{ field: 'id', direction: 'sideways' }] };
     await expect(
       store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges })
     ).rejects.toThrow(/direction|invalid|enum/i);

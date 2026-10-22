@@ -31,13 +31,13 @@ const currentOperatorCases: Array<{
     name: 'select fields',
     type: 'field_select',
     dsl: 'select [order_id], [region], [revenue]',
-    expectedConfig: { mode: 'include', columns: ['order_id', 'region', 'revenue'] },
+    expectedConfig: { selection: 'include', fields: ['order_id', 'region', 'revenue'] },
   },
   {
     name: 'drop fields',
     type: 'field_select',
     dsl: 'drop [debug_flag], [internal_note]',
-    expectedConfig: { mode: 'exclude', columns: ['debug_flag', 'internal_note'] },
+    expectedConfig: { selection: 'exclude', fields: ['debug_flag', 'internal_note'] },
   },
   {
     name: 'rename fields',
@@ -60,7 +60,7 @@ const currentOperatorCases: Array<{
     name: 'deduplicate rows',
     type: 'deduplicate',
     dsl: 'deduplicate by [order_id] keep last order by [updated_at] desc',
-    expectedConfig: { strategy: 'by_columns', columns: ['order_id'], keep: 'last' },
+    expectedConfig: { strategy: 'by_columns', fields: ['order_id'], keep: 'last' },
   },
   {
     name: 'deduplicate fields containing clause keywords',
@@ -69,7 +69,7 @@ const currentOperatorCases: Array<{
     expectedDsl: 'deduplicate by [order by], [keep status] keep last order by [by score] desc',
     expectedConfig: {
       strategy: 'by_columns',
-      columns: ['order by', 'keep status'],
+      fields: ['order by', 'keep status'],
       keep: 'last',
       orderBy: [{ field: 'by score', direction: 'desc' }],
     },
@@ -93,8 +93,8 @@ const currentOperatorCases: Array<{
     expectedDsl: 'cast [order_date] as date format "%Y-%m-%d", [revenue] as float on_error fail',
     expectedConfig: {
       conversions: [
-        { column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
-        { column: 'revenue', type: 'float', onError: 'fail' },
+        { field: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' },
+        { field: 'revenue', type: 'float', onError: 'fail' },
       ],
     },
   },
@@ -109,7 +109,7 @@ const currentOperatorCases: Array<{
     dsl: 'top 10 by [`with ties score`] desc with ties',
     expectedDsl: 'top 10 by [with ties score] desc with ties',
     expectedConfig: {
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 10,
       unit: 'rows',
       orderBy: [{ field: 'with ties score', direction: 'desc' }],
@@ -216,13 +216,13 @@ const currentOperatorCases: Array<{
     name: 'limit rows',
     type: 'limit',
     dsl: 'limit 100',
-    expectedConfig: { mode: 'fixed', limit: 100, unit: 'rows' },
+    expectedConfig: { sampling: 'fixed', limit: 100, unit: 'rows' },
   },
   {
     name: 'top rows',
     type: 'limit',
     dsl: 'top 10 by [revenue] desc',
-    expectedConfig: { mode: 'fixed', limit: 10, unit: 'rows' },
+    expectedConfig: { sampling: 'fixed', limit: 10, unit: 'rows' },
   },
   {
     name: 'pivot rows',
@@ -238,8 +238,8 @@ const currentOperatorCases: Array<{
     type: 'unpivot',
     dsl: 'unpivot [jan], [feb], [mar] into name [month] value [sales]',
     expectedConfig: {
-      mode: 'include',
-      columns: ['jan', 'feb', 'mar'],
+      selection: 'include',
+      fields: ['jan', 'feb', 'mar'],
       nameColumn: 'month',
       valueColumn: 'sales',
     },
@@ -248,13 +248,18 @@ const currentOperatorCases: Array<{
     name: 'union rows',
     type: 'set_op',
     dsl: 'union returns mode all by name',
-    expectedConfig: { operation: 'union', rightInput: 'returns', mode: 'all', match: 'by_name' },
+    expectedConfig: {
+      operation: 'union',
+      rightInput: 'returns',
+      quantifier: 'all',
+      match: 'by_name',
+    },
   },
   {
     name: 'unnest list',
     type: 'unnest',
     dsl: 'unnest [items] as [item]',
-    expectedConfig: { sourceKind: 'list', column: 'items', alias: 'item' },
+    expectedConfig: { sourceKind: 'list', field: 'items', alias: 'item' },
   },
   {
     name: 'output table',
@@ -317,7 +322,7 @@ const currentOperatorCases: Array<{
     dsl: 'expect unique [order_id], [line_no] reject to bad_rows',
     expectedConfig: {
       kind: 'unique',
-      columns: ['order_id', 'line_no'],
+      fields: ['order_id', 'line_no'],
       rejectStream: 'bad_rows',
     },
   },
@@ -627,15 +632,15 @@ describe('operator DSL executable cases', () => {
   it.each([
     {
       type: 'sort' as const,
-      config: { keys: [{ field: 'a', direction: 'asc' }, { field: '' }] },
+      config: { orderBy: [{ field: 'a', direction: 'asc' }, { field: '' }] },
       expected: 'sort by [a] asc',
     },
     {
       type: 'type_convert' as const,
       config: {
         conversions: [
-          { column: 'a', type: 'integer' },
-          { column: '', type: 'text' },
+          { field: 'a', type: 'integer' },
+          { field: '', type: 'text' },
         ],
       },
       expected: 'cast [a] as integer',
@@ -665,8 +670,8 @@ describe('operator DSL executable cases', () => {
       config: {
         strategy: 'by_column',
         rules: [
-          { column: 'a', method: 'literal_fill', value: 'x' },
-          { column: '', method: 'literal_fill', value: '' },
+          { field: 'a', method: 'literal_fill', value: 'x' },
+          { field: '', method: 'literal_fill', value: '' },
         ],
       },
       expected: 'missing value [a] fill "x"',
@@ -682,11 +687,11 @@ describe('operator DSL executable cases', () => {
   it.each([
     {
       type: 'sort' as const,
-      config: { keys: [{ field: '' }] },
+      config: { orderBy: [{ field: '' }] },
     },
     {
       type: 'type_convert' as const,
-      config: { conversions: [{ column: '' }] },
+      config: { conversions: [{ field: '' }] },
     },
     {
       type: 'aggregate' as const,
@@ -700,7 +705,7 @@ describe('operator DSL executable cases', () => {
     },
     {
       type: 'missing_value' as const,
-      config: { strategy: 'by_column', rules: [{ column: '', method: 'literal_fill', value: '' }] },
+      config: { strategy: 'by_column', rules: [{ field: '', method: 'literal_fill', value: '' }] },
     },
   ])('does not export $type when all entries are incomplete', ({ type, config }) => {
     expect(exportPrepOperatorDsl({ id: `${type}-all-incomplete`, type, config })).toBe('');
@@ -728,7 +733,7 @@ describe('operator DSL executable cases', () => {
       type: 'deduplicate',
       config: {
         strategy: 'by_columns',
-        columns: ['a'],
+        fields: ['a'],
         orderBy: [{ field: 'x', direction: 'asc' }, { field: '' }],
       },
     });
@@ -1023,7 +1028,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('does not export a placeholder field for an empty sort config', () => {
-    expect(exportPrepOperatorDsl({ id: 'sort-empty', type: 'sort', config: { keys: [] } })).toBe(
+    expect(exportPrepOperatorDsl({ id: 'sort-empty', type: 'sort', config: { orderBy: [] } })).toBe(
       ''
     );
   });
@@ -1053,7 +1058,7 @@ describe('operator DSL executable cases', () => {
       exportPrepOperatorDsl({
         id: 'field-select-empty',
         type: 'field_select',
-        config: { mode: 'exclude', columns: [] },
+        config: { selection: 'exclude', columns: [] },
       })
     ).toBe('');
   });
@@ -1128,7 +1133,7 @@ describe('operator DSL executable cases', () => {
         'unnest [keep parent names] as [with index] with index [keep parent names] keep parent names true',
       expectedConfig: {
         sourceKind: 'list',
-        column: 'keep parent names',
+        field: 'keep parent names',
         alias: 'with index',
         withIndex: 'keep parent names',
         keepParentNames: true,
@@ -1139,7 +1144,7 @@ describe('operator DSL executable cases', () => {
       expectedDsl: 'explode json [with index] path "$.keep parent names"',
       expectedConfig: {
         sourceKind: 'json',
-        column: 'with index',
+        field: 'with index',
         path: '$.keep parent names',
         alias: '',
         keepParentNames: false,
@@ -1214,7 +1219,7 @@ describe('operator DSL executable cases', () => {
     );
 
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
-    expect(parsed.operator?.config.keys).toEqual([
+    expect(parsed.operator?.config.orderBy).toEqual([
       { field: 'Unit Price', direction: 'desc', nulls: 'last' },
       { field: 'Order Date', direction: 'asc' },
     ]);
@@ -1279,7 +1284,7 @@ describe('operator DSL executable cases', () => {
       exportPrepWorkflowDsl(
         [
           { id: 'source', type: 'input_source', config: { source: 'pipeline' } },
-          { id: 'sort-empty', type: 'sort', config: { keys: [] } },
+          { id: 'sort-empty', type: 'sort', config: { orderBy: [] } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'sort-empty', targetHandle: 'input' }]
       )
@@ -1526,7 +1531,7 @@ describe('operator DSL executable cases', () => {
       exportPrepOperatorDsl({
         id: 'unnest-no-alias',
         type: 'unnest',
-        config: { sourceKind: 'list', column: 'items' },
+        config: { sourceKind: 'list', field: 'items' },
       })
     ).toBe('');
   });
@@ -1536,7 +1541,7 @@ describe('operator DSL executable cases', () => {
       exportPrepOperatorDsl({
         id: 'unnest-empty-index',
         type: 'unnest',
-        config: { sourceKind: 'list', column: 'items', alias: 'item', withIndex: '' },
+        config: { sourceKind: 'list', field: 'items', alias: 'item', withIndex: '' },
       })
     ).toBe('');
   });
@@ -1633,14 +1638,14 @@ describe('operator DSL executable cases', () => {
         {
           id: 'sort',
           type: 'sort',
-          config: { keys: [{ field: 'amount', direction: 'desc' }] },
+          config: { orderBy: [{ field: 'amount', direction: 'desc' }] },
         },
         { id: 'output', type: 'output', config: { table: 'result', mode: 'replace' } },
         { id: 'source', type: 'input_source', config: { source: 'pipeline', alias: 'source' } },
         {
           id: 'select',
           type: 'field_select',
-          config: { mode: 'include', columns: ['amount'] },
+          config: { selection: 'include', fields: ['amount'] },
         },
       ],
       [
@@ -1668,7 +1673,7 @@ describe('operator DSL executable cases', () => {
 
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
     expect(parsed.operator?.config.conversions).toEqual([
-      { column: 'value as text', type: 'integer', onError: 'fail' },
+      { field: 'value as text', type: 'integer', onError: 'fail' },
     ]);
   });
 

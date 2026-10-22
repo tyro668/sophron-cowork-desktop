@@ -40,7 +40,7 @@ import type {
 } from '../../../shared/operator-schemas/missing-value';
 
 function createEmptyRule(): MissingValueRule {
-  return { id: createStableRowId(), column: '', method: 'literal_fill', value: '' };
+  return { id: createStableRowId(), field: '', method: 'literal_fill', value: '' };
 }
 
 interface MissingValueMethodDefinition {
@@ -99,8 +99,8 @@ export default function FormMissingValue({
     return configuredRules.length > 0 ? ensureStableRowIds(configuredRules) : [createEmptyRule()];
   }, [node.config.rules]);
   const rowColumns = useMemo<string[]>(
-    () => (node.config.columns as string[]) ?? [],
-    [node.config.columns]
+    () => (node.config.fields as string[]) ?? [],
+    [node.config.fields]
   );
 
   const tabMode: TabMode =
@@ -136,7 +136,7 @@ export default function FormMissingValue({
 
   function setRowMode(condition: 'all_null' | 'any_null') {
     updateConfig((cfg) => {
-      const columns = cfg.columns as string[] | undefined;
+      const columns = cfg.fields as string[] | undefined;
       if (condition === 'all_null' && (!columns || columns.length === 0)) {
         return { ...cfg, strategy: 'drop_empty_rows', condition: 'all_null' };
       }
@@ -149,7 +149,7 @@ export default function FormMissingValue({
       ...cfg,
       strategy: 'by_column',
       condition: undefined,
-      columns: undefined,
+      fields: undefined,
     }));
   }
 
@@ -167,14 +167,14 @@ export default function FormMissingValue({
             ...cfg,
             strategy: 'drop_empty_rows',
             condition: 'all_null',
-            columns: undefined,
+            fields: undefined,
           };
         }
         return {
           ...cfg,
           strategy: 'drop_rows_by_nulls',
           condition,
-          columns: hasColumns ? next : undefined,
+          fields: hasColumns ? next : undefined,
         };
       });
     },
@@ -248,7 +248,7 @@ export default function FormMissingValue({
   );
 
   const effectiveMethodOf = (item: MissingValueRule) => {
-    const colType = item.column ? columnTypes[item.column] : undefined;
+    const colType = item.field ? columnTypes[item.field] : undefined;
     const availableMethods = methodsForType(colType);
     const method = availableMethods.some((m) => m.value === item.method)
       ? item.method
@@ -277,7 +277,7 @@ export default function FormMissingValue({
       : method === 'nullify_values'
         ? validateMissingValueListInput(displayedValue, colType)
         : validateMissingValueInput(displayedValue, colType);
-    const field = item.column || tr('missingColumnHeader');
+    const field = item.field || tr('missingColumnHeader');
     const errorMessage =
       inputError === 'required'
         ? method === 'nullify_values'
@@ -376,14 +376,14 @@ export default function FormMissingValue({
                   <GridRow {...rowProps(i)} testId={`missing-value-row-${i}`}>
                     <Cell span={2} v={['ctl']}>
                       <GlassFieldSingleSelect
-                        value={item.column}
+                        value={item.field}
                         options={fieldCompletions}
                         columnTypes={columnTypes}
                         onChange={(col) => {
                           const methods = methodsForType(columnTypes[col]);
                           const methodOk = methods.some((m) => m.value === item.method);
                           updateRule(i, {
-                            column: col,
+                            field: col,
                             method: methodOk ? item.method : (methods[0]?.value ?? 'skip'),
                           });
                         }}

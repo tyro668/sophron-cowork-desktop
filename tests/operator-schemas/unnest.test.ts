@@ -6,14 +6,14 @@ describe('UnnestConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = UnnestConfigSchema.parse({
       sourceKind: 'json',
-      column: 'items',
+      field: 'items',
       alias: 'item',
       path: '$.data',
       withIndex: 'idx',
       keepParentNames: true,
     });
     expect(result.sourceKind).toBe('json');
-    expect(result.column).toBe('items');
+    expect(result.field).toBe('items');
     expect(result.withIndex).toBe('idx');
   });
 
@@ -22,7 +22,7 @@ describe('UnnestConfigSchema', () => {
   });
 
   it('rejects empty alias for list mode', () => {
-    expect(() => UnnestConfigSchema.parse({ column: 'items', alias: '' })).toThrow(z.ZodError);
+    expect(() => UnnestConfigSchema.parse({ field: 'items', alias: '' })).toThrow(z.ZodError);
   });
 
   it('rejects invalid sourceKind value', () => {

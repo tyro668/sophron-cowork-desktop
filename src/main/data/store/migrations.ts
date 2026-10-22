@@ -15,6 +15,7 @@
  * - Never call ctx.ensureMetadataReady() inside a migration; it would
  *   deadlock on the in-flight initialization promise.
  */
+import { migrateConfigToV3Naming } from './v3-config-naming';
 import { computeNextAutomationRunAt } from '../../automation/automation-trigger';
 import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
@@ -754,6 +755,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     version: 15,
     name: 'strip_cached_operator_dsl',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, stripCachedOperatorDsl),
+  },
+  {
+    version: 16,
+    name: 'prep_dsl_v3_config_naming',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigToV3Naming),
   },
 ];
 

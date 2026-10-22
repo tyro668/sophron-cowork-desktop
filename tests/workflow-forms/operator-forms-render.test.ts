@@ -72,13 +72,13 @@ function render<T extends object>(
 
 describe('rewritten operator forms render', () => {
   it('FormSort', () => {
-    const html = render(FormSort, { keys: [{ field: 'amount', direction: 'desc' }] });
+    const html = render(FormSort, { orderBy: [{ field: 'amount', direction: 'desc' }] });
     expect(html).toContain('sortKeys');
   });
 
   it('FormTypeConvert', () => {
     const html = render(FormTypeConvert, {
-      conversions: [{ column: 'amount', type: 'integer' }],
+      conversions: [{ field: 'amount', type: 'integer' }],
     });
     expect(html).toContain('typeConvert');
   });
@@ -98,29 +98,31 @@ describe('rewritten operator forms render', () => {
   });
 
   it('FormLimit fixed + random modes', () => {
-    expect(render(FormLimit, { mode: 'fixed', limit: 10, unit: 'rows' })).toContain('limitMode');
+    expect(render(FormLimit, { sampling: 'fixed', limit: 10, unit: 'rows' })).toContain(
+      'limitMode'
+    );
     expect(
-      render(FormLimit, { mode: 'random', limit: 10, unit: 'percent', method: 'system' })
+      render(FormLimit, { sampling: 'random', limit: 10, unit: 'percent', method: 'system' })
     ).toContain('limitSampleMethod');
   });
 
   it('FormSetOp', () => {
-    const html = render(FormSetOp, { operation: 'union', mode: 'all', match: 'by_name' });
+    const html = render(FormSetOp, { operation: 'union', quantifier: 'all', match: 'by_name' });
     expect(html).toContain('data-venn-region="both"');
     expect(html).toContain('setOpMatchMode');
   });
 
   it('FormUnnest list + json modes', () => {
-    expect(render(FormUnnest, { sourceKind: 'list', column: 'items', alias: 'item' })).toContain(
+    expect(render(FormUnnest, { sourceKind: 'list', field: 'items', alias: 'item' })).toContain(
       'unnestIndexCol'
     );
-    expect(render(FormUnnest, { sourceKind: 'json', column: 'meta' })).not.toContain(
+    expect(render(FormUnnest, { sourceKind: 'json', field: 'meta' })).not.toContain(
       'unnestIndexCol'
     );
   });
 
   it('FormUnpivot', () => {
-    const html = render(FormUnpivot, { columns: ['amount'], nameColumn: 'n', valueColumn: 'v' });
+    const html = render(FormUnpivot, { fields: ['amount'], nameColumn: 'n', valueColumn: 'v' });
     expect(html).toContain('unpivotNullsLabel');
   });
 
@@ -128,7 +130,7 @@ describe('rewritten operator forms render', () => {
     expect(
       render(FormMissingValue, {
         strategy: 'by_column',
-        rules: [{ column: 'amount', method: 'literal_fill', value: '0' }],
+        rules: [{ field: 'amount', method: 'literal_fill', value: '0' }],
       })
     ).toContain('missingMethodHeader');
     expect(

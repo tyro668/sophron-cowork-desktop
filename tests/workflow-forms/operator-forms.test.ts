@@ -40,14 +40,14 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   });
 
   it('field_select — include', () => {
-    const result = ok({ mode: 'include', columns: ['id', 'name', 'date'] }, 'field_select');
-    expect(result.config.mode).toBe('include');
-    expect(result.config.columns).toEqual(['id', 'name', 'date']);
+    const result = ok({ selection: 'include', fields: ['id', 'name', 'date'] }, 'field_select');
+    expect(result.config.selection).toBe('include');
+    expect(result.config.fields).toEqual(['id', 'name', 'date']);
   });
 
   it('field_select — exclude', () => {
-    const result = ok({ mode: 'exclude', columns: ['debug_col'] }, 'field_select');
-    expect(result.config.mode).toBe('exclude');
+    const result = ok({ selection: 'exclude', fields: ['debug_col'] }, 'field_select');
+    expect(result.config.selection).toBe('exclude');
   });
 
   it('field_mapping', () => {
@@ -68,7 +68,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         strategy: 'by_columns',
-        columns: ['order_id', 'sku_id'],
+        fields: ['order_id', 'sku_id'],
         keep: 'last',
         orderBy: [{ field: 'updated_at', direction: 'desc' }],
       },
@@ -86,7 +86,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('type_convert — single', () => {
     const result = ok(
       {
-        conversions: [{ column: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
+        conversions: [{ field: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       },
       'type_convert'
     );
@@ -99,8 +99,8 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         conversions: [
-          { column: 'revenue', type: 'float', onError: 'null' },
-          { column: 'qty', type: 'integer', onError: 'fail' },
+          { field: 'revenue', type: 'float', onError: 'null' },
+          { field: 'qty', type: 'integer', onError: 'fail' },
         ],
       },
       'type_convert'
@@ -111,14 +111,14 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('sort', () => {
     const result = ok(
       {
-        keys: [
+        orderBy: [
           { field: 'region', direction: 'asc', nulls: 'last' },
           { field: 'revenue', direction: 'desc' },
         ],
       },
       'sort'
     );
-    const keys = result.config.keys as Array<Record<string, unknown>>;
+    const keys = result.config.orderBy as Array<Record<string, unknown>>;
     expect(keys).toHaveLength(2);
     expect(keys[0].nulls).toBe('last');
   });
@@ -253,21 +253,21 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   });
 
   it('limit — simple limit', () => {
-    const result = ok({ mode: 'fixed', limit: 100 }, 'limit');
-    expect(result.config.mode).toBe('fixed');
+    const result = ok({ sampling: 'fixed', limit: 100 }, 'limit');
+    expect(result.config.sampling).toBe('fixed');
     expect(result.config.limit).toBe(100);
   });
 
   it('limit — top with sort', () => {
     const result = ok(
       {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: 10,
         orderBy: [{ field: 'revenue', direction: 'desc' }],
       },
       'limit'
     );
-    expect(result.config.mode).toBe('fixed');
+    expect(result.config.sampling).toBe('fixed');
   });
 
   it('pivot', () => {
@@ -285,7 +285,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
   it('unpivot', () => {
     const result = ok(
       {
-        columns: ['jan', 'feb', 'mar'],
+        fields: ['jan', 'feb', 'mar'],
         nameColumn: 'month',
         valueColumn: 'sales',
       },
@@ -297,7 +297,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
 
   it('set_op — union', () => {
     const result = ok(
-      { operation: 'union', rightInput: 'returns', mode: 'all', match: 'by_name' },
+      { operation: 'union', rightInput: 'returns', quantifier: 'all', match: 'by_name' },
       'set_op'
     );
     expect(result.config.operation).toBe('union');
@@ -305,7 +305,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
 
   it('unnest — list', () => {
     const result = ok(
-      { sourceKind: 'list', column: 'items', alias: 'item', withIndex: 'item_index' },
+      { sourceKind: 'list', field: 'items', alias: 'item', withIndex: 'item_index' },
       'unnest'
     );
     expect(result.config.alias).toBe('item');
@@ -316,7 +316,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         sourceKind: 'json',
-        column: 'payload',
+        field: 'payload',
         path: '$.items',
         alias: 'item',
       },
@@ -333,7 +333,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
 
   it('missing_value — drop_rows_by_nulls', () => {
     const result = ok(
-      { strategy: 'drop_rows_by_nulls', condition: 'any_null', columns: ['id', 'name'] },
+      { strategy: 'drop_rows_by_nulls', condition: 'any_null', fields: ['id', 'name'] },
       'missing_value'
     );
     expect(result.config.condition).toBe('any_null');
@@ -344,9 +344,9 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       {
         strategy: 'by_column',
         rules: [
-          { column: 'region', method: 'nullify_values', values: ['', 'N/A', '-'] },
-          { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
-          { column: 'revenue', method: 'literal_fill', value: '0' },
+          { field: 'region', method: 'nullify_values', values: ['', 'N/A', '-'] },
+          { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
+          { field: 'revenue', method: 'literal_fill', value: '0' },
         ],
       },
       'missing_value'
@@ -362,8 +362,8 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       {
         strategy: 'by_column',
         rules: [
-          { column: 'revenue', method: 'mean_fill' },
-          { column: 'name', method: 'mode_fill' },
+          { field: 'revenue', method: 'mean_fill' },
+          { field: 'name', method: 'mode_fill' },
         ],
       },
       'missing_value'

@@ -115,7 +115,7 @@ export const typeConvertCodec: OperatorDslCodec = {
           line: command.line,
         });
       }
-      conversions.push({ column: toFieldName(field), type: targetType, format, onError, scale });
+      conversions.push({ field: toFieldName(field), type: targetType, format, onError, scale });
       if (cursor.eof) break;
       cursor.consume();
       if (cursor.eof) cursor.report('invalidCast', 'Cast requires a conversion after ","');
@@ -141,7 +141,7 @@ export const typeConvertCodec: OperatorDslCodec = {
             : '',
         ].filter(Boolean);
         const suffix = options.length > 0 ? ` ${options.join(' ')}` : '';
-        return `${formatFieldRef(String(conversion.column ?? 'field'))} as ${String(
+        return `${formatFieldRef(String(conversion.field ?? 'field'))} as ${String(
           conversion.type ?? 'text'
         )}${suffix}`;
       })

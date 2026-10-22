@@ -243,8 +243,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           condition: `${formatDslField(temporaryColumn)} = true`,
         });
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: [temporaryColumn],
+          selection: 'exclude',
+          fields: [temporaryColumn],
         });
         context.removeColumn(temporaryColumn);
         return;
@@ -268,7 +268,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         field: context.requireColumn(key.field, 'sort.keys').name,
       }));
       context.emitOperator('sort', {
-        keys,
+        orderBy: keys,
       });
     },
   },
@@ -313,8 +313,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           calculations: [{ field: tempColumn, expression }],
         });
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: [column.name],
+          selection: 'exclude',
+          fields: [column.name],
         });
         context.emitOperator('field_mapping', {
           mappings: [{ source: tempColumn, targetMode: 'rename', targetValue: column.name }],
@@ -323,7 +323,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         context.upsertColumn({ ...convertedColumn, expression });
       } else {
         context.emitOperator('type_convert', {
-          conversions: [{ column: column.name, type: targetType, onError }],
+          conversions: [{ field: column.name, type: targetType, onError }],
         });
         context.upsertColumn(convertedColumn);
       }
@@ -338,8 +338,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           (name) => context.requireColumn(name, 'drop.columns').name
         );
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: dropped,
+          selection: 'exclude',
+          fields: dropped,
         });
         dropped.forEach((name) => context.removeColumn(name));
         return;
@@ -349,8 +349,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       );
       if (selected.length > 0) {
         context.emitOperator('field_select', {
-          mode: 'include',
-          columns: selected,
+          selection: 'include',
+          fields: selected,
         });
         context.keepColumns(selected);
       }
@@ -363,8 +363,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       );
       if (dropped.length > 0) {
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: dropped,
+          selection: 'exclude',
+          fields: dropped,
         });
         dropped.forEach((name) => context.removeColumn(name));
       }
@@ -410,8 +410,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           calculations: [{ field: tempColumn, expression }],
         });
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: [existingColumn.name],
+          selection: 'exclude',
+          fields: [existingColumn.name],
         });
         context.emitOperator('field_mapping', {
           mappings: [
@@ -485,8 +485,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
           calculations: [{ field: tempColumn, expression }],
         });
         context.emitOperator('field_select', {
-          mode: 'exclude',
-          columns: [existingColumn.name],
+          selection: 'exclude',
+          fields: [existingColumn.name],
         });
         context.emitOperator('field_mapping', {
           mappings: [
@@ -556,7 +556,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       }));
       context.emitOperator('deduplicate', {
         strategy: columns.length > 0 ? 'by_columns' : 'all_columns',
-        columns: columns.length > 0 ? columns : undefined,
+        fields: columns.length > 0 ? columns : undefined,
         keep: operation.config.keep,
         orderBy: orderBy.length > 0 ? orderBy : undefined,
       });
@@ -577,7 +577,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         );
         context.emitOperator('missing_value', {
           strategy: 'drop_rows_by_nulls',
-          columns,
+          fields: columns,
           condition: operation.config.condition,
         });
         return;
@@ -586,9 +586,9 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         const column = context.requireColumn(rule.column, 'missing_value.rules');
         switch (rule.method) {
           case 'skip':
-            return { column: column.name, method: 'skip' };
+            return { field: column.name, method: 'skip' };
           case 'drop':
-            return { column: column.name, method: 'drop' };
+            return { field: column.name, method: 'drop' };
           case 'nullify_values':
             if (!rule.values?.length) {
               throw new DataCommandError(
@@ -597,7 +597,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
               );
             }
             return {
-              column: column.name,
+              field: column.name,
               method: 'nullify_values',
               values: rule.values,
             };
@@ -609,7 +609,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
               );
             }
             assertGeneratedFilterComparable(column, '=', rule.value, 'missing_value.literal_fill');
-            return { column: column.name, method: 'literal_fill', value: rule.value };
+            return { field: column.name, method: 'literal_fill', value: rule.value };
           case 'mean_fill':
           case 'median_fill':
             if (column.type && !isNumericDslType(column.type)) {
@@ -618,11 +618,11 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
                 `Missing-value ${rule.method} requires a numeric column: ${column.name}`
               );
             }
-            return { column: column.name, method: rule.method };
+            return { field: column.name, method: rule.method };
           case 'mode_fill':
           case 'forward_fill':
           case 'backward_fill':
-            return { column: column.name, method: rule.method };
+            return { field: column.name, method: rule.method };
         }
       });
       context.emitOperator('missing_value', { strategy: 'by_column', rules });
@@ -637,7 +637,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       }));
       if (config.mode === 'random') {
         context.emitOperator('limit', {
-          mode: 'random',
+          sampling: 'random',
           limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
           unit: config.unit,
           method: config.unit === 'percent' ? (config.method ?? 'system') : undefined,
@@ -646,7 +646,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         return;
       }
       context.emitOperator('limit', {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: config.unit === 'rows' ? Math.floor(config.limit) : config.limit,
         unit: config.unit === 'percent' ? 'percent' : 'rows',
         orderBy: orderBy.length > 0 ? orderBy : undefined,
@@ -685,8 +685,8 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
         );
       }
       context.emitOperator('unpivot', {
-        mode: config.mode === 'except' ? 'except' : 'include',
-        columns: configured,
+        selection: config.mode === 'except' ? 'except' : 'include',
+        fields: configured,
         nameColumn: config.nameColumn,
         valueColumn: config.valueColumn,
         includeNulls: config.includeNulls,
@@ -739,7 +739,7 @@ const WORKFLOW_IR_OPERATION_LOWERERS = {
       const alias = config.keepParentNames ? `${source.name}_${config.alias}` : config.alias;
       context.emitOperator('unnest', {
         sourceKind: 'list',
-        column: source.name,
+        field: source.name,
         path: config.path,
         alias: config.alias,
         withIndex: config.withIndex,

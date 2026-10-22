@@ -19,26 +19,26 @@ function ok(config: Record<string, unknown>) {
 
 describe('FormLimit — config ↔ DSL', () => {
   it('simple limit with default rows', () => {
-    const r = ok({ mode: 'fixed', limit: 100, unit: 'rows' });
+    const r = ok({ sampling: 'fixed', limit: 100, unit: 'rows' });
     expect(r.dsl).toContain('limit 100');
     expect(r.dsl).not.toContain('top');
     expect(r.config.limit).toBe(100);
   });
 
   it('limit with percent unit', () => {
-    const r = ok({ mode: 'fixed', limit: 50, unit: 'percent' });
+    const r = ok({ sampling: 'fixed', limit: 50, unit: 'percent' });
     expect(r.dsl).toContain('limit 50 percent');
   });
 
   it('limit with offset', () => {
-    const r = ok({ mode: 'fixed', limit: 25, unit: 'rows', offset: 10 });
+    const r = ok({ sampling: 'fixed', limit: 25, unit: 'rows', offset: 10 });
     expect(r.dsl).toContain('limit 25');
     expect(r.dsl).toContain('offset 10');
   });
 
   it('top mode with order by', () => {
     const r = ok({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 10,
       unit: 'rows',
       orderBy: [{ field: 'revenue', direction: 'desc' }],
@@ -50,7 +50,7 @@ describe('FormLimit — config ↔ DSL', () => {
 
   it('top mode with multiple order keys', () => {
     const r = ok({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 5,
       unit: 'rows',
       orderBy: [
@@ -66,7 +66,7 @@ describe('FormLimit — config ↔ DSL', () => {
   });
 
   it('limit without offset omits offset in DSL', () => {
-    const r = ok({ mode: 'fixed', limit: 100, unit: 'rows' });
+    const r = ok({ sampling: 'fixed', limit: 100, unit: 'rows' });
     expect(r.dsl).not.toContain('offset');
     expect(r.config.offset).toBeUndefined();
   });
@@ -75,17 +75,17 @@ describe('FormLimit — config ↔ DSL', () => {
 describe('FormLimit — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
-      { mode: 'fixed', limit: 100, unit: 'rows' },
-      { mode: 'fixed', limit: 50, unit: 'percent' },
-      { mode: 'fixed', limit: 25, unit: 'rows', offset: 10 },
+      { sampling: 'fixed', limit: 100, unit: 'rows' },
+      { sampling: 'fixed', limit: 50, unit: 'percent' },
+      { sampling: 'fixed', limit: 25, unit: 'rows', offset: 10 },
       {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: 10,
         unit: 'rows',
         orderBy: [{ field: 'revenue', direction: 'desc' }],
       },
       {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: 5,
         unit: 'rows',
         orderBy: [
@@ -94,14 +94,14 @@ describe('FormLimit — DSL idempotent', () => {
         ],
       },
       {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: 10,
         unit: 'rows',
         orderBy: [{ field: 'score', direction: 'desc' }],
         ties: true,
       },
-      { mode: 'random', limit: 100, unit: 'rows' },
-      { mode: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
+      { sampling: 'random', limit: 100, unit: 'rows' },
+      { sampling: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
     ];
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'limit', config });
@@ -120,7 +120,7 @@ describe('FormLimit — DSL idempotent', () => {
 describe('FormLimit — new features', () => {
   it('top with ties includes with ties in DSL', () => {
     const r = ok({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 10,
       unit: 'rows',
       orderBy: [{ field: 'score', direction: 'desc' }],
@@ -131,25 +131,25 @@ describe('FormLimit — new features', () => {
   });
 
   it('sample rows mode produces sample DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows' });
+    const r = ok({ sampling: 'random', limit: 100, unit: 'rows' });
     expect(r.dsl).toContain('sample 100 rows');
     expect(r.dsl).not.toContain('system');
     expect(r.dsl).not.toContain('bernoulli');
   });
 
   it('sample percent mode produces sample DSL with percent', () => {
-    const r = ok({ mode: 'random', limit: 10, unit: 'percent', method: 'system' });
+    const r = ok({ sampling: 'random', limit: 10, unit: 'percent', method: 'system' });
     expect(r.dsl).toContain('sample 10 percent');
   });
 
   it('sample with seed produces repeatable DSL', () => {
-    const r = ok({ mode: 'random', limit: 100, unit: 'rows', seed: 42 });
+    const r = ok({ sampling: 'random', limit: 100, unit: 'rows', seed: 42 });
     expect(r.dsl).toContain('sample 100 rows');
     expect(r.dsl).toContain('repeatable 42');
   });
 
   it('system is default method and omitted in DSL', () => {
-    const r = ok({ mode: 'random', limit: 50, unit: 'percent', method: 'system' });
+    const r = ok({ sampling: 'random', limit: 50, unit: 'percent', method: 'system' });
     expect(r.dsl).toContain('sample 50 percent');
     expect(r.dsl).not.toContain('system');
   });
@@ -165,7 +165,7 @@ describe('FormLimit — new features', () => {
 
   it('percent + orderBy + ties preserves the percent unit', () => {
     const r = ok({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 10,
       unit: 'percent',
       orderBy: [{ field: 'score', direction: 'desc' }],
@@ -179,7 +179,7 @@ describe('FormLimit — new features', () => {
 
   it('ordered row limits preserve offset in top DSL', () => {
     const r = ok({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 10,
       unit: 'rows',
       offset: 5,

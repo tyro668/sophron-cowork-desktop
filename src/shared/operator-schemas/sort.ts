@@ -5,7 +5,7 @@ const MAX_SORT_KEY_COUNT = 100;
 
 export const SortConfigSchema = z
   .object({
-    keys: z
+    orderBy: z
       .array(SortKeySchema)
       .max(MAX_SORT_KEY_COUNT)
       .refine(
@@ -17,7 +17,7 @@ export const SortConfigSchema = z
       )
       .default([]),
   })
-  .refine((config) => config.keys.length > 0, {
-    path: ['keys'],
+  .refine((config) => config.orderBy.length > 0, {
+    path: ['orderBy'],
     message: 'At least one sort field is required',
   });

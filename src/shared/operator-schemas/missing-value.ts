@@ -16,7 +16,7 @@ export type MissingValueMethod = z.infer<typeof MissingValueMethodSchema>;
 
 export const MissingValueRuleSchema = z.object({
   id: z.string().optional(),
-  column: z.string().trim().min(1),
+  field: z.string().trim().min(1),
   method: MissingValueMethodSchema.default('literal_fill'),
   values: z.array(z.unknown()).optional(),
   value: z.unknown().optional(),
@@ -26,7 +26,7 @@ export const MissingValueConfigSchema = z
   .object({
     strategy: z.enum(['by_column', 'drop_empty_rows', 'drop_rows_by_nulls']).default('by_column'),
     rules: z.array(MissingValueRuleSchema).default([]),
-    columns: z.array(z.string().trim().min(1)).optional(),
+    fields: z.array(z.string().trim().min(1)).optional(),
     condition: z.enum(['all_null', 'any_null']).optional(),
   })
   .superRefine((config, context) => {
@@ -44,13 +44,13 @@ export const MissingValueConfigSchema = z
         message: 'drop_empty_rows only supports the all_null condition',
       });
     }
-    if (config.strategy !== 'by_column' && config.columns) {
+    if (config.strategy !== 'by_column' && config.fields) {
       const seenColumns = new Set<string>();
-      config.columns.forEach((column, index) => {
+      config.fields.forEach((column, index) => {
         if (seenColumns.has(column)) {
           context.addIssue({
             code: 'custom',
-            path: ['columns', index],
+            path: ['fields', index],
             message: `Row deletion field "${column}" is duplicated`,
           });
         } else {

@@ -5,14 +5,14 @@ import { UnpivotConfigSchema } from '../../src/shared/operator-schemas';
 describe('UnpivotConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = UnpivotConfigSchema.parse({
-      columns: ['q1', 'q2'],
-      mode: 'except',
+      fields: ['q1', 'q2'],
+      selection: 'except',
       nameColumn: 'quarter',
       valueColumn: 'revenue',
       includeNulls: true,
     });
-    expect(result.columns).toEqual(['q1', 'q2']);
-    expect(result.mode).toBe('except');
+    expect(result.fields).toEqual(['q1', 'q2']);
+    expect(result.selection).toBe('except');
     expect(result.includeNulls).toBe(true);
   });
 
@@ -21,13 +21,13 @@ describe('UnpivotConfigSchema', () => {
   });
 
   it('rejects invalid mode value', () => {
-    expect(() => UnpivotConfigSchema.parse({ columns: ['q1'], mode: 'invalid' })).toThrow(
+    expect(() => UnpivotConfigSchema.parse({ fields: ['q1'], selection: 'invalid' })).toThrow(
       z.ZodError
     );
   });
 
   it('rejects includeNulls with wrong type', () => {
-    expect(() => UnpivotConfigSchema.parse({ columns: ['q1'], includeNulls: 'yes' })).toThrow(
+    expect(() => UnpivotConfigSchema.parse({ fields: ['q1'], includeNulls: 'yes' })).toThrow(
       z.ZodError
     );
   });

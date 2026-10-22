@@ -25,17 +25,17 @@ export default function FormFieldSelect({
   const updateConfig = useUpdateConfig(onNodeChange);
 
   const columns = useMemo(
-    () => (node.config.columns as string[] | undefined) ?? [],
-    [node.config.columns]
+    () => (node.config.fields as string[] | undefined) ?? [],
+    [node.config.fields]
   );
-  const mode = node.config.mode === 'exclude' ? 'exclude' : 'include';
+  const mode = node.config.selection === 'exclude' ? 'exclude' : 'include';
 
   const commitColumns = useCallback(
     (next: string[]) => {
       updateConfig((cfg) => ({
         ...cfg,
-        mode,
-        columns: next.length > 0 ? next : undefined,
+        selection: mode,
+        fields: next.length > 0 ? next : undefined,
       }));
     },
     [mode, updateConfig]
@@ -146,7 +146,7 @@ export default function FormFieldSelect({
             label: option.label,
             title: option.tip,
           }))}
-          onChange={(value) => updateConfig((cfg) => ({ ...cfg, mode: value }))}
+          onChange={(value) => updateConfig((cfg) => ({ ...cfg, selection: value }))}
           ariaLabel={tr('fieldSelectMode')}
         />
         <Cell v={['ctl']}>

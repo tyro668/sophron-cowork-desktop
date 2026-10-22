@@ -28,7 +28,7 @@ export function normalizeMissingValueMethods(
 ): { rules: MissingValueRule[]; changed: boolean } {
   let changed = false;
   const next = rules.map((rule) => {
-    const colType = rule.column ? columnTypes[rule.column] : undefined;
+    const colType = rule.field ? columnTypes[rule.field] : undefined;
     if (!colType) return rule;
     const allowed = methodsForMissingValueType(colType);
     if (allowed.includes(rule.method)) return rule;

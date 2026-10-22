@@ -134,7 +134,7 @@ function PreviewApp() {
     {
       op: 'sort',
       node: nodeFor('sort', {
-        keys: [
+        orderBy: [
           { field: 'created_at', direction: 'desc', nulls: 'last' },
           { field: 'id', direction: 'asc' },
         ],
@@ -145,8 +145,8 @@ function PreviewApp() {
       op: 'type_convert',
       node: nodeFor('type_convert', {
         conversions: [
-          { column: 'amount', type: 'integer' },
-          { column: 'created_at', type: 'date' },
+          { field: 'amount', type: 'integer' },
+          { field: 'created_at', type: 'date' },
         ],
       }),
       C: FormTypeConvert,
@@ -172,7 +172,7 @@ function PreviewApp() {
       op: 'limit',
       variant: 'fixed',
       node: nodeFor('limit-fixed', {
-        mode: 'fixed',
+        sampling: 'fixed',
         limit: 100,
         unit: 'rows',
         offset: 5,
@@ -185,7 +185,7 @@ function PreviewApp() {
       op: 'limit',
       variant: 'random',
       node: nodeFor('limit-random', {
-        mode: 'random',
+        sampling: 'random',
         limit: 10,
         unit: 'percent',
         method: 'system',
@@ -195,7 +195,7 @@ function PreviewApp() {
     },
     {
       op: 'set_op',
-      node: nodeFor('set_op', { operation: 'union', mode: 'all', match: 'by_name' }),
+      node: nodeFor('set_op', { operation: 'union', quantifier: 'all', match: 'by_name' }),
       C: FormSetOp,
     },
     {
@@ -203,7 +203,7 @@ function PreviewApp() {
       variant: 'list',
       node: nodeFor('unnest-list', {
         sourceKind: 'list',
-        column: 'items',
+        field: 'items',
         alias: 'item',
         withIndex: 'idx',
         keepParentNames: true,
@@ -214,14 +214,14 @@ function PreviewApp() {
     {
       op: 'unnest',
       variant: 'json',
-      node: nodeFor('unnest-json', { sourceKind: 'json', column: 'meta', path: '$.items[*]' }),
+      node: nodeFor('unnest-json', { sourceKind: 'json', field: 'meta', path: '$.items[*]' }),
       C: FormUnnest,
     },
     {
       op: 'unpivot',
       node: nodeFor('unpivot', {
-        columns: ['amount', 'price'],
-        mode: 'include',
+        fields: ['amount', 'price'],
+        selection: 'include',
         nameColumn: '指标',
         valueColumn: '值',
         includeNulls: false,
@@ -234,8 +234,8 @@ function PreviewApp() {
       node: nodeFor('missing-col', {
         strategy: 'by_column',
         rules: [
-          { column: 'amount', method: 'literal_fill', value: '0' },
-          { column: 'name', method: 'forward_fill' },
+          { field: 'amount', method: 'literal_fill', value: '0' },
+          { field: 'name', method: 'forward_fill' },
         ],
       }),
       C: FormMissingValue,
@@ -246,7 +246,7 @@ function PreviewApp() {
       node: nodeFor('missing-row', {
         strategy: 'drop_rows_by_nulls',
         condition: 'any_null',
-        columns: ['amount', 'name'],
+        fields: ['amount', 'name'],
       }),
       C: FormMissingValue,
     },

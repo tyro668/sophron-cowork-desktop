@@ -53,7 +53,7 @@ const OPERATOR_ISSUE_CODES: Partial<Record<DataWorkflowOperatorType, OperatorCon
 };
 
 const ROW_COLLECTIONS: Partial<Record<DataWorkflowOperatorType, ReadonlySet<string>>> = {
-  sort: new Set(['keys']),
+  sort: new Set(['orderBy']),
   deduplicate: new Set(['orderBy']),
   type_convert: new Set(['conversions']),
   field_mapping: new Set(['mappings']),

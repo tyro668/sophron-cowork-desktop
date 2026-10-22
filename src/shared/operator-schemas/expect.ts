@@ -8,7 +8,7 @@ export const ExpectConfigSchema = z
   .object({
     kind: z.enum(EXPECT_KINDS).default('expression'),
     expression: z.string().optional(),
-    columns: z.array(nonEmptyTrimmed('unique field is required')).optional(),
+    fields: z.array(nonEmptyTrimmed('unique field is required')).optional(),
     operator: z.enum(EXPECT_ROW_OPERATORS).optional(),
     value: z.number().int().nonnegative().optional(),
     rejectStream: nonEmptyTrimmed('reject stream name is required').optional(),
@@ -22,10 +22,10 @@ export const ExpectConfigSchema = z
         message: 'expect requires an expression',
       });
     }
-    if (config.kind === 'unique' && (config.columns ?? []).length === 0) {
+    if (config.kind === 'unique' && (config.fields ?? []).length === 0) {
       context.addIssue({
         code: 'custom',
-        path: ['columns'],
+        path: ['fields'],
         message: 'expect unique requires at least one field',
       });
     }

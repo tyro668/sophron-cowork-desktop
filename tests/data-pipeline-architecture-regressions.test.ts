@@ -89,7 +89,7 @@ describe('data pipeline architecture regressions', () => {
           label: 'Select',
           x: 0,
           y: 0,
-          config: { columns: ['id'], mode: 'include' },
+          config: { fields: ['id'], selection: 'include' },
         },
         { id: 'output', type: 'output', label: 'Output', x: 0, y: 0, config: {} },
       ],
@@ -135,7 +135,7 @@ describe('data pipeline architecture regressions', () => {
         label: node.label,
         x: node.x,
         y: node.y,
-        config: node.id === selectedNode.id ? { ...node.config, columns: ['value'] } : node.config,
+        config: node.id === selectedNode.id ? { ...node.config, fields: ['value'] } : node.config,
       })),
       edges: moved.edges,
     });
@@ -143,7 +143,7 @@ describe('data pipeline architecture regressions', () => {
       pipelineId: pipeline.id,
       nodeId: selectedNode.id,
       nodeType: selectedNode.type,
-      nodeConfig: { ...selectedNode.config, columns: ['value'] },
+      nodeConfig: { ...selectedNode.config, fields: ['value'] },
     });
     // The stale cache is gone; the schema falls back to plan inference using
     // the new executable config rather than showing the old cached columns.

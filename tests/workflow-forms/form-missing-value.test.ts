@@ -30,33 +30,33 @@ describe('FormMissingValue — config ↔ DSL', () => {
     const r = ok({
       strategy: 'drop_rows_by_nulls',
       condition: 'any_null',
-      columns: ['id', 'name'],
+      fields: ['id', 'name'],
     });
     expect(r.dsl).toContain('in [id]');
-    expect(r.config.columns).toEqual(['id', 'name']);
+    expect(r.config.fields).toEqual(['id', 'name']);
   });
 
   it('round trips all-null row deletion with specific columns', () => {
     const r = ok({
       strategy: 'drop_rows_by_nulls',
       condition: 'all_null',
-      columns: ['id', 'name'],
+      fields: ['id', 'name'],
     });
     expect(r.dsl).toContain('row drop when all_null in [id], [name]');
     expect(r.config.strategy).toBe('drop_rows_by_nulls');
     expect(r.config.condition).toBe('all_null');
-    expect(r.config.columns).toEqual(['id', 'name']);
+    expect(r.config.fields).toEqual(['id', 'name']);
   });
 
   it('preserves scoped fields when exporting a legacy drop_empty_rows config', () => {
     const r = ok({
       strategy: 'drop_empty_rows',
-      columns: ['id', 'name'],
+      fields: ['id', 'name'],
     });
     expect(r.dsl).toContain('row drop when all_null in [id], [name]');
     expect(r.config.strategy).toBe('drop_rows_by_nulls');
     expect(r.config.condition).toBe('all_null');
-    expect(r.config.columns).toEqual(['id', 'name']);
+    expect(r.config.fields).toEqual(['id', 'name']);
   });
 
   it('reports duplicate row-deletion fields in DSL', () => {
@@ -77,7 +77,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: skip', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'field', method: 'skip' }],
+      rules: [{ field: 'field', method: 'skip' }],
     });
     expect(r.dsl).toContain('skip');
     expect(r.config.rules).toHaveLength(1);
@@ -86,7 +86,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: nullify values', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'region', method: 'nullify_values', values: ['', 'N/A'] }],
+      rules: [{ field: 'region', method: 'nullify_values', values: ['', 'N/A'] }],
     });
     expect(r.dsl).toContain('nullify values');
     const rules = r.config.rules as Array<Record<string, unknown>>;
@@ -96,7 +96,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: literal fill', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'region', method: 'literal_fill', value: 'UNKNOWN' }],
+      rules: [{ field: 'region', method: 'literal_fill', value: 'UNKNOWN' }],
     });
     expect(r.dsl).toContain('fill');
     const rules = r.config.rules as Array<Record<string, unknown>>;
@@ -122,7 +122,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
         type: 'missing_value',
         config: {
           strategy: 'by_column',
-          rules: [{ column: 'region', method: 'literal_fill', value: null }],
+          rules: [{ field: 'region', method: 'literal_fill', value: null }],
         },
       })
     ).toBe('');
@@ -131,7 +131,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: mean fill', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'revenue', method: 'mean_fill' }],
+      rules: [{ field: 'revenue', method: 'mean_fill' }],
     });
     expect(r.dsl).toContain('fill mean');
   });
@@ -139,7 +139,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: forward fill', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'status', method: 'forward_fill' }],
+      rules: [{ field: 'status', method: 'forward_fill' }],
     });
     expect(r.dsl).toContain('[status] fill forward');
     const rules = r.config.rules as Array<Record<string, unknown>>;
@@ -149,7 +149,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   it('by_column: drop rows for column', () => {
     const r = ok({
       strategy: 'by_column',
-      rules: [{ column: 'page_id', method: 'drop' }],
+      rules: [{ field: 'page_id', method: 'drop' }],
     });
     expect(r.dsl).toContain('drop rows');
   });
@@ -158,9 +158,9 @@ describe('FormMissingValue — config ↔ DSL', () => {
     const r = ok({
       strategy: 'by_column',
       rules: [
-        { column: 'region', method: 'nullify_values', values: ['', 'N/A'] },
-        { column: 'status', method: 'literal_fill', value: 'UNKNOWN' },
-        { column: 'revenue', method: 'mean_fill' },
+        { field: 'region', method: 'nullify_values', values: ['', 'N/A'] },
+        { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
+        { field: 'revenue', method: 'mean_fill' },
       ],
     });
     const rules = r.config.rules as Array<Record<string, unknown>>;
@@ -187,8 +187,8 @@ describe('FormMissingValue — config ↔ DSL', () => {
         config: {
           strategy: 'by_column',
           rules: [
-            { column: 'status', method: 'forward_fill' },
-            { column: 'status', method: 'backward_fill' },
+            { field: 'status', method: 'forward_fill' },
+            { field: 'status', method: 'backward_fill' },
           ],
         },
       })
@@ -249,7 +249,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
         'utf8'
       )
     );
-    expect(source).not.toContain('disabled={!item.column}');
+    expect(source).not.toContain('disabled={!item.field}');
     expect(source).toContain('methodsForMissingValueType(colType)');
     expect(source).toContain('STATISTICAL_METHODS');
     expect(source).toContain('MODE_METHODS');
@@ -300,7 +300,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       type: 'missing_value',
       config: {
         strategy: 'by_column',
-        rules: [{ column: 'amount', method: 'mean_fll' }],
+        rules: [{ field: 'amount', method: 'mean_fll' }],
       },
     });
     expect(dsl).toBe('');
@@ -384,8 +384,8 @@ describe('FormMissingValue — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
       { strategy: 'drop_empty_rows' },
-      { strategy: 'drop_rows_by_nulls', condition: 'any_null', columns: ['id'] },
-      { strategy: 'by_column', rules: [{ column: 'r', method: 'literal_fill', value: 'X' }] },
+      { strategy: 'drop_rows_by_nulls', condition: 'any_null', fields: ['id'] },
+      { strategy: 'by_column', rules: [{ field: 'r', method: 'literal_fill', value: 'X' }] },
     ];
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({
@@ -408,13 +408,13 @@ describe('FormMissingValue — DSL idempotent', () => {
 // ── method/type compatibility normalization ──────────────────────────────
 
 describe('normalizeMissingValueMethods', () => {
-  const asRules = (rules: Array<{ id: string; column: string; method: string }>) =>
+  const asRules = (rules: Array<{ id: string; field: string; method: string }>) =>
     rules as MissingValueRule[];
 
   it('resets methods the column type no longer supports', () => {
     const rules = asRules([
-      { id: 'r1', column: 'amount', method: 'mean_fill' },
-      { id: 'r2', column: 'name', method: 'median_fill' },
+      { id: 'r1', field: 'amount', method: 'mean_fill' },
+      { id: 'r2', field: 'name', method: 'median_fill' },
     ]);
     const { rules: next, changed } = normalizeMissingValueMethods(rules, {
       amount: 'text',
@@ -428,8 +428,8 @@ describe('normalizeMissingValueMethods', () => {
 
   it('keeps rules whose methods stay valid for the column type', () => {
     const rules = asRules([
-      { id: 'r1', column: 'amount', method: 'mean_fill' },
-      { id: 'r2', column: 'name', method: 'skip' },
+      { id: 'r1', field: 'amount', method: 'mean_fill' },
+      { id: 'r2', field: 'name', method: 'skip' },
     ]);
     const { rules: next, changed } = normalizeMissingValueMethods(rules, { name: 'text' });
     expect(changed).toBe(false);
@@ -437,7 +437,7 @@ describe('normalizeMissingValueMethods', () => {
   });
 
   it('ignores rules whose column has no known type yet', () => {
-    const rules = asRules([{ id: 'r1', column: 'amount', method: 'mean_fill' }]);
+    const rules = asRules([{ id: 'r1', field: 'amount', method: 'mean_fill' }]);
     const { changed } = normalizeMissingValueMethods(rules, {});
     expect(changed).toBe(false);
   });

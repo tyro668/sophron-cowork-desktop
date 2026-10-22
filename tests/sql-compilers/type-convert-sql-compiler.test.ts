@@ -23,7 +23,7 @@ describe('compileTypeConvertSql — try_strptime', () => {
       "(1, '2024-03-15', 'x'), (2, 'invalid', 'x'), (3, '2024-06-01', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       }
     );
     expect(rows.map((r) => String(r.id))).toEqual(['1', '2', '3']);
@@ -38,7 +38,7 @@ describe('compileTypeConvertSql — try_strptime', () => {
       ['id', 'val', 'extra'],
       {
         conversions: [
-          { column: 'val', type: 'datetime', format: '%Y-%m-%d %H:%M:%S', onError: 'null' },
+          { field: 'val', type: 'datetime', format: '%Y-%m-%d %H:%M:%S', onError: 'null' },
         ],
       }
     );
@@ -58,7 +58,7 @@ describe('compileTypeConvertSql — timezone auto-parse', () => {
     );
     await connection.run(
       compileTypeConvertSql('out', 'inp', ['id', 'val', 'extra'], {
-        conversions: [{ column: 'val', type: 'datetime', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'datetime', onError: 'null' }],
       })
     );
     // Query UTC values via AT TIME ZONE to avoid session timezone dependency
@@ -80,7 +80,7 @@ describe('compileTypeConvertSql — decimal scale', () => {
       "(1, '12.34', 'x'), (2, '56.78', 'x'), (3, '9.99', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'decimal', scale: 0, onError: 'null' }],
+        conversions: [{ field: 'val', type: 'decimal', scale: 0, onError: 'null' }],
       }
     );
     expect(rows.map((r) => Number(r.val))).toEqual([12, 57, 10]);
@@ -95,7 +95,7 @@ describe('compileTypeConvertSql — decimal scale', () => {
     );
     await connection.run(
       compileTypeConvertSql('out', 'inp', ['id', 'val', 'extra'], {
-        conversions: [{ column: 'val', type: 'decimal', scale: 18, onError: 'null' }],
+        conversions: [{ field: 'val', type: 'decimal', scale: 18, onError: 'null' }],
       })
     );
     const result = await connection.runAndReadAll(
@@ -114,7 +114,7 @@ describe('compileTypeConvertSql — on_error behavior', () => {
       "(1, '123', 'x'), (2, 'abc', 'x'), (3, '456', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'integer', onError: 'keep' }],
+        conversions: [{ field: 'val', type: 'integer', onError: 'keep' }],
       }
     );
     expect(rows.map((r) => String(r.val))).toEqual(['123', 'abc', '456']);
@@ -125,7 +125,7 @@ describe('compileTypeConvertSql — on_error behavior', () => {
       "(1, '123', 'x'), (2, 'abc', 'x'), (3, '456', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'integer', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'integer', onError: 'null' }],
       }
     );
     expect(Number(rows[0].val)).toBe(123);
@@ -141,7 +141,7 @@ describe('compileTypeConvertSql — on_error behavior', () => {
     await expect(
       connection.run(
         compileTypeConvertSql('out2', 'inp2', ['id', 'val', 'extra'], {
-          conversions: [{ column: 'val', type: 'integer', onError: 'fail' }],
+          conversions: [{ field: 'val', type: 'integer', onError: 'fail' }],
         })
       )
     ).rejects.toThrow();
@@ -154,7 +154,7 @@ describe('compileTypeConvertSql — date/datetime cross-type with format', () =>
       "(1, '2024-03-15', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       },
       { val: 'date' }
     );
@@ -166,9 +166,7 @@ describe('compileTypeConvertSql — date/datetime cross-type with format', () =>
       "(1, '2024-03-15 10:30:00', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [
-          { column: 'val', type: 'date', format: '%Y-%m-%d %H:%M:%S', onError: 'null' },
-        ],
+        conversions: [{ field: 'val', type: 'date', format: '%Y-%m-%d %H:%M:%S', onError: 'null' }],
       },
       { val: 'datetime' }
     );
@@ -180,7 +178,7 @@ describe('compileTypeConvertSql — date/datetime cross-type with format', () =>
       "(1, '2024-03-15', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'datetime', format: '%Y-%m-%d', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'datetime', format: '%Y-%m-%d', onError: 'null' }],
       },
       { val: 'date' }
     );
@@ -191,7 +189,7 @@ describe('compileTypeConvertSql — date/datetime cross-type with format', () =>
 describe('compileTypeConvertSql — basic type conversions', () => {
   it('converts text to integer', async () => {
     const rows = await execute("(1, '42', 'x'), (2, '-7', 'x')", ['id', 'val', 'extra'], {
-      conversions: [{ column: 'val', type: 'integer', onError: 'null' }],
+      conversions: [{ field: 'val', type: 'integer', onError: 'null' }],
     });
     expect(Number(rows[0].val)).toBe(42);
     expect(Number(rows[1].val)).toBe(-7);
@@ -199,7 +197,7 @@ describe('compileTypeConvertSql — basic type conversions', () => {
 
   it('converts text to float', async () => {
     const rows = await execute("(1, '3.14', 'x'), (2, '-0.5', 'x')", ['id', 'val', 'extra'], {
-      conversions: [{ column: 'val', type: 'float', onError: 'null' }],
+      conversions: [{ field: 'val', type: 'float', onError: 'null' }],
     });
     expect(Number(rows[0].val)).toBeCloseTo(3.14);
     expect(Number(rows[1].val)).toBeCloseTo(-0.5);
@@ -210,7 +208,7 @@ describe('compileTypeConvertSql — basic type conversions', () => {
       "(1, 'true', 'x'), (2, 'false', 'x'), (3, '1', 'x'), (4, '0', 'x')",
       ['id', 'val', 'extra'],
       {
-        conversions: [{ column: 'val', type: 'boolean', onError: 'null' }],
+        conversions: [{ field: 'val', type: 'boolean', onError: 'null' }],
       }
     );
     expect(Boolean(rows[0].val)).toBe(true);

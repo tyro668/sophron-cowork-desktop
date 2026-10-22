@@ -53,7 +53,7 @@ export const unnestCodec: OperatorDslCodec = {
     }
     return createOperator('unnest', text, {
       sourceKind: isJson ? 'json' : 'list',
-      column: column ? toFieldName(column) : '',
+      field: column ? toFieldName(column) : '',
       path,
       alias: alias ?? '',
       withIndex,
@@ -62,7 +62,7 @@ export const unnestCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
-    const column = String(config?.column ?? '').trim();
+    const column = String(config?.field ?? '').trim();
     if (!column) return null;
     const formattedColumn = formatFieldRef(column);
     const isJson = config?.sourceKind === 'json';

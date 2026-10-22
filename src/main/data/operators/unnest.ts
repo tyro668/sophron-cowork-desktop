@@ -16,7 +16,7 @@ export function compileUnnestSql(
   config: Record<string, unknown>
 ): string {
   const parsed = parseOperatorConfig(UnnestConfigSchema, config);
-  const rawColumn = parsed.column;
+  const rawColumn = parsed.field;
   const rawAlias = parsed.alias;
   const column = quoteIdentifier(rawColumn);
   const alias = quoteIdentifier(rawAlias);

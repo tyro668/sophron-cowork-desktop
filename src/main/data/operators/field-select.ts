@@ -7,7 +7,10 @@ export function compileFieldSelectSql(
   columns: string[],
   config: Record<string, unknown>
 ): string {
-  const { columns: selected, mode } = parseOperatorConfig(FieldSelectConfigSchema, config);
+  const { fields: selected, selection: mode } = parseOperatorConfig(
+    FieldSelectConfigSchema,
+    config
+  );
   const missing = selected.filter((c) => c && !columns.includes(c));
   if (missing.length > 0) {
     throw new Error(`Field '${missing.join("', '")}' does not exist in input schema`);

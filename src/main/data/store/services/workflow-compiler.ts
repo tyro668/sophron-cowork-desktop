@@ -215,7 +215,7 @@ export class WorkflowCompiler {
       compileConfig = { ...pivotConfig, on, [RESOLVED_DYNAMIC_PIVOT_VALUES]: true };
     }
     if (node.type === 'unnest' && node.config.sourceKind === 'json') {
-      const columnName = String(node.config.column ?? '');
+      const columnName = String(node.config.field ?? '');
       const jsonPath = String(node.config.path ?? '$');
       if (columnName) {
         const columnExpression =

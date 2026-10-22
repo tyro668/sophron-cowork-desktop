@@ -33,7 +33,7 @@ export default function FormDeduplicate({
 
   const strategy: 'by_columns' | 'all_columns' =
     node.config?.strategy === 'all_columns' ? 'all_columns' : 'by_columns';
-  const columns = useMemo(() => (node.config?.columns as string[]) ?? [], [node.config?.columns]);
+  const columns = useMemo(() => (node.config?.fields as string[]) ?? [], [node.config?.fields]);
   const keep: 'first' | 'last' = node.config?.keep === 'last' ? 'last' : 'first';
   const orderBy = useMemo(() => (node.config?.orderBy as SortKey[]) ?? [], [node.config?.orderBy]);
   const orderField = orderBy[0]?.field ?? '';
@@ -44,7 +44,7 @@ export default function FormDeduplicate({
       updateConfig((cfg) => ({
         ...cfg,
         strategy: next,
-        columns: next === 'all_columns' ? undefined : cfg.columns,
+        fields: next === 'all_columns' ? undefined : cfg.fields,
       }));
     },
     [updateConfig]
@@ -58,7 +58,7 @@ export default function FormDeduplicate({
       updateConfig((cfg) => ({
         ...cfg,
         strategy: 'by_columns',
-        columns: next.length > 0 ? next : undefined,
+        fields: next.length > 0 ? next : undefined,
       }));
     },
     [updateConfig]

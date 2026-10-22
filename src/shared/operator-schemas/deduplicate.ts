@@ -3,12 +3,12 @@ import { nonEmptyTrimmed, SortKeySchema } from './common';
 
 export const DeduplicateConfigSchema = z
   .object({
-    columns: z.array(nonEmptyTrimmed('Deduplication field is required')).default([]),
+    fields: z.array(nonEmptyTrimmed('Deduplication field is required')).default([]),
     keep: z.enum(['first', 'last']).default('first'),
     orderBy: z.array(SortKeySchema).default([]),
     strategy: z.enum(['by_columns', 'all_columns']).optional(),
   })
-  .refine((config) => config.columns.length > 0 || config.strategy === 'all_columns', {
-    path: ['columns'],
+  .refine((config) => config.fields.length > 0 || config.strategy === 'all_columns', {
+    path: ['fields'],
     message: 'At least one deduplication field is required',
   });

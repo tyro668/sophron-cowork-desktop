@@ -595,7 +595,7 @@ function main() {
     expect(result.platformOperators).toEqual([
       expect.objectContaining({
         type: 'field_select',
-        config: { mode: 'exclude', columns: ['记录数'] },
+        config: { selection: 'exclude', fields: ['记录数'] },
       }),
     ]);
     expect(result.platformOperators[0]?.config).not.toHaveProperty('dsl');
@@ -1641,7 +1641,7 @@ function main() {
   );
   expect(
     validateGeneratedOperatorConfig('limit', {
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 25,
       unit: 'percent',
       offset: 5,

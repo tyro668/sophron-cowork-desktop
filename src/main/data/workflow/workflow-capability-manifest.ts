@@ -9,7 +9,7 @@ import { WORKFLOW_PLAN_VERSION } from '../../../shared/workflow-plan';
 import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
 
 export const WORKFLOW_CAPABILITY_MANIFEST_VERSION = 'workflow-capability-manifest/v1' as const;
-export const PREP_DSL_LANGUAGE_VERSION = 'prep-dsl/v2' as const;
+export const PREP_DSL_LANGUAGE_VERSION = 'prep-dsl/v3' as const;
 
 export interface ManifestColumnSnapshot {
   name: string;

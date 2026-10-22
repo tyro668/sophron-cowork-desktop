@@ -1,7 +1,7 @@
 import { createPrepDiagnostic } from '../diagnostics';
 import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, type OperatorDslCodec } from './codec';
-import { DEFAULT_MODE, DEFAULT_MATCH } from '../../operator-schemas/set-op';
+import { DEFAULT_QUANTIFIER, DEFAULT_MATCH } from '../../operator-schemas/set-op';
 
 function readTableName(cursor: PrepTokenCursor): string | null {
   if (cursor.eof) return null;
@@ -20,7 +20,7 @@ export const setOpCodec: OperatorDslCodec = {
     const cursor = new PrepTokenCursor(text, command.line, diagnostics);
     const operation = cursor.expectOneOf(['union', 'intersect', 'except'], 'invalidSetOperation');
     const rightInput = readTableName(cursor) ?? '';
-    let mode = DEFAULT_MODE;
+    let mode = DEFAULT_QUANTIFIER;
     let match = operation === 'union' ? DEFAULT_MATCH : 'by_position';
     if (cursor.match('mode')) {
       mode = cursor.expectOneOf(['all', 'distinct'], 'invalidSetOperationMode') ?? mode;
@@ -39,7 +39,7 @@ export const setOpCodec: OperatorDslCodec = {
     return createOperator('set_op', text, {
       operation: operation ?? 'union',
       rightInput: rightInput ?? '',
-      mode,
+      quantifier: mode,
       match: match === 'by_name' ? 'by_name' : 'by_position',
     });
   },
@@ -47,7 +47,7 @@ export const setOpCodec: OperatorDslCodec = {
     const rightInput = String(config?.rightInput ?? '').trim();
     if (!rightInput) return null;
     const operation = String(config?.operation ?? 'union');
-    const mode = String(config?.mode ?? DEFAULT_MODE);
+    const mode = String(config?.quantifier ?? DEFAULT_QUANTIFIER);
     const match = operation === 'union' ? (config?.match ?? DEFAULT_MATCH) : 'by_position';
     return `${operation} ${rightInput} mode ${mode}${operation === 'union' ? ` by ${match === 'by_name' ? 'name' : 'position'}` : ''}`;
   },

@@ -56,13 +56,13 @@ describe('isCompleteJoinCondition', () => {
 
 describe('isCompleteTypeConversion', () => {
   it('accepts a conversion with a column', () => {
-    expect(isCompleteTypeConversion({ column: 'a', type: 'integer' })).toBe(true);
+    expect(isCompleteTypeConversion({ field: 'a', type: 'integer' })).toBe(true);
   });
 
   it('rejects missing or empty column', () => {
     expect(isCompleteTypeConversion({})).toBe(false);
-    expect(isCompleteTypeConversion({ column: '' })).toBe(false);
-    expect(isCompleteTypeConversion({ column: '  ' })).toBe(false);
+    expect(isCompleteTypeConversion({ field: '' })).toBe(false);
+    expect(isCompleteTypeConversion({ field: '  ' })).toBe(false);
   });
 });
 
@@ -130,25 +130,25 @@ describe('isCompletePivotAxis / isCompletePivotMetric', () => {
 
 describe('isCompleteMissingValueRule', () => {
   it('accepts a literal_fill rule with a value', () => {
-    expect(isCompleteMissingValueRule({ column: 'a', method: 'literal_fill', value: 'x' })).toBe(
+    expect(isCompleteMissingValueRule({ field: 'a', method: 'literal_fill', value: 'x' })).toBe(
       true
     );
   });
 
   it('rejects a literal_fill rule without a value', () => {
-    expect(isCompleteMissingValueRule({ column: 'a', method: 'literal_fill', value: '' })).toBe(
+    expect(isCompleteMissingValueRule({ field: 'a', method: 'literal_fill', value: '' })).toBe(
       false
     );
   });
 
   it('accepts a nullify_values rule with values', () => {
     expect(
-      isCompleteMissingValueRule({ column: 'a', method: 'nullify_values', values: ['x'] })
+      isCompleteMissingValueRule({ field: 'a', method: 'nullify_values', values: ['x'] })
     ).toBe(true);
   });
 
   it('rejects a nullify_values rule without values', () => {
-    expect(isCompleteMissingValueRule({ column: 'a', method: 'nullify_values', values: [] })).toBe(
+    expect(isCompleteMissingValueRule({ field: 'a', method: 'nullify_values', values: [] })).toBe(
       false
     );
   });

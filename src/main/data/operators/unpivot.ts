@@ -35,7 +35,7 @@ export function compileUnpivotSql(
   columnTypes?: Record<string, string>
 ): string {
   const parsed = parseOperatorConfig(UnpivotConfigSchema, config);
-  const configured = parsed.columns;
+  const configured = parsed.fields;
 
   const columnSet = new Set(columns.map((c) => c.toLowerCase()));
   const configuredSet = new Set(configured.map((c) => c.toLowerCase()));
@@ -46,7 +46,7 @@ export function compileUnpivotSql(
   }
 
   const unpivotColumns =
-    parsed.mode === 'except'
+    parsed.selection === 'except'
       ? columns.filter((c) => !configuredSet.has(c.toLowerCase()))
       : configured.filter((c) => columnSet.has(c.toLowerCase()));
   if (unpivotColumns.length === 0) {

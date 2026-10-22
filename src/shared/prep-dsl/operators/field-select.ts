@@ -37,11 +37,11 @@ export const fieldSelectCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('field_select', text, { mode, columns });
+    return createOperator('field_select', text, { selection: mode, fields: columns });
   },
   format: (config) => {
-    const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+    const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
     if (!columns) return null;
-    return `${config?.mode === 'exclude' ? 'drop' : 'select'} ${columns}`;
+    return `${config?.selection === 'exclude' ? 'drop' : 'select'} ${columns}`;
   },
 };

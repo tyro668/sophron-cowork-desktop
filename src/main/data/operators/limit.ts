@@ -106,7 +106,7 @@ export function compileLimitSql(
   }
   const limit = parsed.limit;
 
-  if (parsed.mode === 'random') {
+  if (parsed.sampling === 'random') {
     return compileRandomSql(output, input, columns, parsed, limit);
   }
   return compileFixedSql(output, input, columns, parsed, limit);

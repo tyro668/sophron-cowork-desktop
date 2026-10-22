@@ -6,7 +6,7 @@ describe('compileLimitSql', () => {
   it('rejects percentages above 100 instead of silently clamping them', () => {
     expect(() =>
       compileLimitSql('output', 'input', ['value'], {
-        mode: 'fixed',
+        sampling: 'fixed',
         unit: 'percent',
         limit: 101,
       })
@@ -15,7 +15,7 @@ describe('compileLimitSql', () => {
 
   it('uses reservoir semantics for fixed-row sampling even with legacy method config', () => {
     const sql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'random',
+      sampling: 'random',
       unit: 'rows',
       limit: 10,
       method: 'bernoulli',
@@ -28,12 +28,12 @@ describe('compileLimitSql', () => {
 
   it('defaults percentage sampling to system and supports bernoulli explicitly', () => {
     const systemSql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'random',
+      sampling: 'random',
       unit: 'percent',
       limit: 10,
     });
     const bernoulliSql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'random',
+      sampling: 'random',
       unit: 'percent',
       limit: 10,
       method: 'bernoulli',
@@ -45,7 +45,7 @@ describe('compileLimitSql', () => {
 
   it('compiles offset+ties into a numbered CTE with rank boundary and projection', () => {
     const sql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'fixed',
+      sampling: 'fixed',
       unit: 'rows',
       limit: 5,
       offset: 2,
@@ -65,7 +65,7 @@ describe('compileLimitSql', () => {
 
   it('uses the requested projection columns instead of selecting all in offset+ties', () => {
     const sql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'fixed',
+      sampling: 'fixed',
       unit: 'rows',
       limit: 5,
       offset: 2,
@@ -79,7 +79,7 @@ describe('compileLimitSql', () => {
 
   it('compiles offset+ties with offset 0 into the same numbered CTE path', () => {
     const sql = compileLimitSql('output', 'input', ['value'], {
-      mode: 'fixed',
+      sampling: 'fixed',
       unit: 'rows',
       limit: 5,
       offset: 0,
@@ -103,7 +103,7 @@ describe('compileLimitSql', () => {
       );
       await connection.run(
         compileLimitSql('output', 'input', ['id', 'score'], {
-          mode: 'fixed',
+          sampling: 'fixed',
           unit: 'rows',
           limit: 2,
           offset: 2,
@@ -136,7 +136,7 @@ describe('compileLimitSql', () => {
       );
       await connection.run(
         compileLimitSql('output', 'input', ['__rn', '__rk', 'id', 'score'], {
-          mode: 'fixed',
+          sampling: 'fixed',
           unit: 'rows',
           limit: 1,
           offset: 0,

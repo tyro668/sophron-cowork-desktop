@@ -170,7 +170,7 @@ export function parsePrepDsl(input: string): PrepParseResult {
     step.operators.filter((operator) => operator.type !== 'output')
   );
   const ast: PrepWorkflowAst = {
-    version: 'prep-dsl/v2',
+    version: 'prep-dsl/v3',
     sources,
     mainSource,
     steps,

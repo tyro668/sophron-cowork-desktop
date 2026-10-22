@@ -18,7 +18,7 @@ function errorsOf(
 
 describe('prep DSL reference registry', () => {
   it('keeps the embedded reference versioned and available at runtime', () => {
-    expect(PREP_DSL_REFERENCE_VERSION).toBe('prep-dsl/v2');
+    expect(PREP_DSL_REFERENCE_VERSION).toBe('prep-dsl/v3');
     expect(getPrepDslReference('overview')).toContain(PREP_DSL_REFERENCE_VERSION);
     expect(getPrepDslReference('all')).toContain('Data workflow DSL is a text pipeline language');
   });

@@ -19,14 +19,14 @@ function ok(config: Record<string, unknown>): OkResult {
 describe('FormTypeConvert — config ↔ DSL', () => {
   it('single conversion to date', () => {
     const r = ok({
-      conversions: [{ column: 'order_date', type: 'date' }],
+      conversions: [{ field: 'order_date', type: 'date' }],
     });
     expect(r.dsl).toContain('cast [order_date] as date');
   });
 
   it('conversion to float with on_error', () => {
     const r = ok({
-      conversions: [{ column: 'revenue', type: 'float', onError: 'null' }],
+      conversions: [{ field: 'revenue', type: 'float', onError: 'null' }],
     });
     expect(r.dsl).toContain('as float');
     // on_error null is the default and is omitted in canonical output
@@ -35,7 +35,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
 
   it('conversion to integer with on_error fail', () => {
     const r = ok({
-      conversions: [{ column: 'qty', type: 'integer', onError: 'fail' }],
+      conversions: [{ field: 'qty', type: 'integer', onError: 'fail' }],
     });
     expect(r.dsl).toContain('on_error fail');
   });
@@ -44,7 +44,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     const r = ok({
       conversions: [
         {
-          column: 'created_at',
+          field: 'created_at',
           type: 'datetime',
         },
       ],
@@ -54,7 +54,7 @@ describe('FormTypeConvert — config ↔ DSL', () => {
 
   it('decimal conversion', () => {
     const r = ok({
-      conversions: [{ column: 'price', type: 'decimal' }],
+      conversions: [{ field: 'price', type: 'decimal' }],
     });
     expect(r.dsl).toContain('decimal');
   });
@@ -62,9 +62,9 @@ describe('FormTypeConvert — config ↔ DSL', () => {
   it('multiple conversions', () => {
     const r = ok({
       conversions: [
-        { column: 'dt', type: 'date' },
-        { column: 'rev', type: 'float', onError: 'null' },
-        { column: 'qty', type: 'integer', onError: 'fail' },
+        { field: 'dt', type: 'date' },
+        { field: 'rev', type: 'float', onError: 'null' },
+        { field: 'qty', type: 'integer', onError: 'fail' },
       ],
     });
     const convs = r.config.conversions as Array<Record<string, unknown>>;
@@ -73,14 +73,14 @@ describe('FormTypeConvert — config ↔ DSL', () => {
 
   it('text conversion with on_error keep', () => {
     const r = ok({
-      conversions: [{ column: 'name', type: 'text', onError: 'keep' }],
+      conversions: [{ field: 'name', type: 'text', onError: 'keep' }],
     });
     expect(r.dsl).toContain('on_error keep');
   });
 
   it('date conversion with format', () => {
     const r = ok({
-      conversions: [{ column: 'date_str', type: 'date', format: '%m/%d/%y' }],
+      conversions: [{ field: 'date_str', type: 'date', format: '%m/%d/%y' }],
     });
     expect(r.dsl).toContain('format "%m/%d/%y"');
     expect(r.config.conversions![0].format).toBe('%m/%d/%y');
@@ -88,14 +88,14 @@ describe('FormTypeConvert — config ↔ DSL', () => {
 
   it('datetime conversion with format', () => {
     const r = ok({
-      conversions: [{ column: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
+      conversions: [{ field: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
     });
     expect(r.dsl).toContain('format "%Y-%m-%d %H:%M:%S"');
     expect(r.config.conversions![0].format).toBe('%Y-%m-%d %H:%M:%S');
   });
 
   it('DSL idempotent with format', () => {
-    const config = { conversions: [{ column: 'dt', type: 'date', format: '%m/%d/%y' }] };
+    const config = { conversions: [{ field: 'dt', type: 'date', format: '%m/%d/%y' }] };
     const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'type_convert', config });
     const parsed = parsePrepOperatorDsl(dsl1, 'type_convert');
     expect(parsed.operator).not.toBeNull();
@@ -119,12 +119,12 @@ describe('FormTypeConvert — type detection', () => {
 describe('FormTypeConvert — DSL idempotent', () => {
   it('export→parse→export produces same DSL', () => {
     const configs = [
-      { conversions: [{ column: 'dt', type: 'date' }] },
-      { conversions: [{ column: 'rev', type: 'float', onError: 'null' }] },
+      { conversions: [{ field: 'dt', type: 'date' }] },
+      { conversions: [{ field: 'rev', type: 'float', onError: 'null' }] },
       {
         conversions: [
           {
-            column: 'ts',
+            field: 'ts',
             type: 'datetime',
           },
         ],

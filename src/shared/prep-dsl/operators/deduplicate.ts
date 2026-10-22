@@ -55,13 +55,13 @@ export const deduplicateCodec: OperatorDslCodec = {
     }
     return createOperator('deduplicate', text, {
       strategy: columns ? 'by_columns' : 'all_columns',
-      columns,
+      fields: columns,
       keep,
       orderBy,
     });
   },
   format: (config) => {
-    const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+    const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
     if (!columns && config?.strategy !== 'all_columns') return null;
     const parts = ['deduplicate'];
     if (columns) parts.push(`by ${columns}`);

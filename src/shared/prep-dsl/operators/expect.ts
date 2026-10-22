@@ -47,7 +47,7 @@ export const expectCodec: OperatorDslCodec = {
         cursor.report('invalidExpectUnique', 'expect unique requires at least one field');
       }
       config.kind = 'unique';
-      config.columns = columns;
+      config.fields = columns;
     } else if (first === 'rows') {
       cursor.consume();
       const operator = cursor.expectOneOf([...EXPECT_ROW_OPERATORS], 'invalidExpectRows');
@@ -92,7 +92,7 @@ export const expectCodec: OperatorDslCodec = {
     const kind = String(config?.kind ?? 'expression');
     let assertion = '';
     if (kind === 'unique') {
-      const columns = stringArray(config?.columns).map(formatFieldRef).join(', ');
+      const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
       if (!columns) return null;
       assertion = `unique ${columns}`;
     } else if (kind === 'row_count') {

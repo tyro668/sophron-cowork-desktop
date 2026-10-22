@@ -146,14 +146,14 @@ describe('workflow node compiler', () => {
       alias: 'sales',
     });
     expect(plan.nodes[1].config).toMatchObject({
-      mode: 'include',
-      columns: ['Product Name', 'Sales', 'Profit'],
+      selection: 'include',
+      fields: ['Product Name', 'Sales', 'Profit'],
     });
     expect(plan.nodes[2].config).toMatchObject({
-      keys: [{ field: 'Sales', direction: 'desc' }],
+      orderBy: [{ field: 'Sales', direction: 'desc' }],
     });
     expect(plan.nodes[3].config).toMatchObject({
-      mode: 'fixed',
+      sampling: 'fixed',
       limit: 25,
       unit: 'rows',
     });

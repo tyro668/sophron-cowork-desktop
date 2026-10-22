@@ -54,7 +54,7 @@ describe('compileUnpivotSql — type cast paths', () => {
     const { rows: result, valueType } = await execute(
       rows,
       columns,
-      { columns: ['q1', 'q2'], mode: 'include', includeNulls: false },
+      { fields: ['q1', 'q2'], selection: 'include', includeNulls: false },
       { id: 'integer', q1: 'integer', q2: 'text' }
     );
     expect(valueType).toBe('VARCHAR');
@@ -72,7 +72,7 @@ describe('compileUnpivotSql — type cast paths', () => {
     const { rows: result, valueType } = await execute(
       rows,
       columns,
-      { columns: ['q1', 'q2'], mode: 'include', includeNulls: true },
+      { fields: ['q1', 'q2'], selection: 'include', includeNulls: true },
       { id: 'integer', q1: 'integer', q2: 'text' }
     );
     expect(valueType).toBe('VARCHAR');
@@ -91,7 +91,7 @@ describe('compileUnpivotSql — type cast paths', () => {
     const { rows: result, valueType } = await execute(
       rowsNum,
       columns,
-      { columns: ['q1', 'q2'], mode: 'include', includeNulls: false },
+      { fields: ['q1', 'q2'], selection: 'include', includeNulls: false },
       { id: 'integer', q1: 'integer', q2: 'float' }
     );
     expect(valueType).toBe('DOUBLE');
@@ -106,7 +106,7 @@ describe('compileUnpivotSql — type cast paths', () => {
     const { rows: result, valueType } = await execute(
       rowsNum,
       columns,
-      { columns: ['q1', 'q2'], mode: 'include', includeNulls: true },
+      { fields: ['q1', 'q2'], selection: 'include', includeNulls: true },
       { id: 'integer', q1: 'integer', q2: 'float' }
     );
     expect(valueType).toBe('DOUBLE');

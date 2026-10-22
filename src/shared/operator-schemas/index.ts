@@ -30,7 +30,7 @@ export type { DateFormat, TypeConversionEntry } from './type-convert';
 export { UnpivotConfigSchema } from './unpivot';
 export { UnnestConfigSchema } from './unnest';
 export { SetOpConfigSchema } from './set-op';
-export { DEFAULT_OPERATION, DEFAULT_MODE, DEFAULT_MATCH } from './set-op';
+export { DEFAULT_OPERATION, DEFAULT_QUANTIFIER, DEFAULT_MATCH } from './set-op';
 export { AggregateConfigSchema, MAX_METRIC_COUNT } from './aggregate';
 export { CalculateFieldConfigSchema, MAX_CALCULATION_COUNT } from './calculate-field';
 export {

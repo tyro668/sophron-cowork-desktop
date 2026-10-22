@@ -58,18 +58,18 @@ export const unpivotCodec: OperatorDslCodec = {
       });
     }
     return createOperator('unpivot', text, {
-      mode,
-      columns,
+      selection: mode,
+      fields: columns,
       nameColumn: nameColumn ? toFieldName(nameColumn) : '',
       valueColumn: valueColumn ? toFieldName(valueColumn) : '',
       includeNulls,
     });
   },
   format: (config) => {
-    const columns = stringArray(config?.columns);
+    const columns = stringArray(config?.fields);
     if (columns.length === 0) return null;
     const includeNulls = config?.includeNulls ? 'include nulls ' : '';
-    const mode = config?.mode === 'except' ? 'columns except ' : '';
+    const mode = config?.selection === 'except' ? 'columns except ' : '';
     const columnsDsl = columns.map(formatFieldRef).join(', ');
     return `unpivot ${includeNulls}${mode}${columnsDsl} into name ${formatFieldRef(
       String(config?.nameColumn ?? 'name')

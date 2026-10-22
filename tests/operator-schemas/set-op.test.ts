@@ -6,12 +6,12 @@ describe('SetOpConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = SetOpConfigSchema.parse({
       operation: 'union',
-      mode: 'all',
+      quantifier: 'all',
       match: 'by_name',
       rightInput: 'node_123',
     });
     expect(result.operation).toBe('union');
-    expect(result.mode).toBe('all');
+    expect(result.quantifier).toBe('all');
     expect(result.match).toBe('by_name');
   });
 

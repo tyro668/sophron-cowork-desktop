@@ -5,18 +5,18 @@ import { DeduplicateConfigSchema } from '../../src/shared/operator-schemas';
 describe('DeduplicateConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = DeduplicateConfigSchema.parse({
-      columns: ['id'],
+      fields: ['id'],
       keep: 'last',
       orderBy: [{ field: 'ts', direction: 'desc' }],
     });
-    expect(result.columns).toEqual(['id']);
+    expect(result.fields).toEqual(['id']);
     expect(result.keep).toBe('last');
     expect(result.orderBy).toHaveLength(1);
   });
 
   it('applies defaults for explicit all-column deduplication', () => {
     const result = DeduplicateConfigSchema.parse({ strategy: 'all_columns' });
-    expect(result.columns).toEqual([]);
+    expect(result.fields).toEqual([]);
     expect(result.keep).toBe('first');
     expect(result.orderBy).toEqual([]);
   });
@@ -28,6 +28,6 @@ describe('DeduplicateConfigSchema', () => {
   });
 
   it('rejects columns with wrong type', () => {
-    expect(() => DeduplicateConfigSchema.parse({ columns: 123 })).toThrow(z.ZodError);
+    expect(() => DeduplicateConfigSchema.parse({ fields: 123 })).toThrow(z.ZodError);
   });
 });

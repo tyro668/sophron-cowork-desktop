@@ -34,27 +34,27 @@ describe('FormDeduplicate — config ↔ DSL', () => {
   it('按单个字段去重', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['order_id'],
+      fields: ['order_id'],
       keep: 'first',
     });
     expect(r.dsl).toContain('deduplicate by [order_id]');
-    expect(r.config.columns).toEqual(['order_id']);
+    expect(r.config.fields).toEqual(['order_id']);
   });
 
   it('按多个字段去重', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['order_id', 'customer_id', 'region'],
+      fields: ['order_id', 'customer_id', 'region'],
       keep: 'first',
     });
     expect(r.dsl).toContain('by [order_id], [customer_id], [region]');
-    expect(r.config.columns).toEqual(['order_id', 'customer_id', 'region']);
+    expect(r.config.fields).toEqual(['order_id', 'customer_id', 'region']);
   });
 
   it('按字段去重 + 保留最后一条 + 单字段排序', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['order_id'],
+      fields: ['order_id'],
       keep: 'last',
       orderBy: [{ field: 'updated_at', direction: 'desc' }],
     });
@@ -65,7 +65,7 @@ describe('FormDeduplicate — config ↔ DSL', () => {
   it('按字段去重 + 多字段排序', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['user_id'],
+      fields: ['user_id'],
       keep: 'first',
       orderBy: [
         { field: 'created_at', direction: 'asc' },
@@ -78,7 +78,7 @@ describe('FormDeduplicate — config ↔ DSL', () => {
   it('NULL 置前的排序', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['id'],
+      fields: ['id'],
       keep: 'last',
       orderBy: [{ field: 'closed_at', direction: 'asc', nulls: 'first' }],
     });
@@ -88,7 +88,7 @@ describe('FormDeduplicate — config ↔ DSL', () => {
   it('NULL 置后的排序（显式）', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['id'],
+      fields: ['id'],
       keep: 'last',
       orderBy: [{ field: 'updated_at', direction: 'asc', nulls: 'last' }],
     });
@@ -98,7 +98,7 @@ describe('FormDeduplicate — config ↔ DSL', () => {
   it('排序不指定 NULL 处理时 DSL 省略 nulls 子句', () => {
     const r = ok({
       strategy: 'by_columns',
-      columns: ['id'],
+      fields: ['id'],
       keep: 'first',
       orderBy: [{ field: 'priority', direction: 'desc' }],
     });
@@ -112,16 +112,16 @@ describe('FormDeduplicate — DSL 往返幂等', () => {
   const configs: Record<string, unknown>[] = [
     { strategy: 'all_columns' },
     { strategy: 'all_columns', keep: 'last' },
-    { strategy: 'by_columns', columns: ['id'], keep: 'first' },
+    { strategy: 'by_columns', fields: ['id'], keep: 'first' },
     {
       strategy: 'by_columns',
-      columns: ['a', 'b'],
+      fields: ['a', 'b'],
       keep: 'last',
       orderBy: [{ field: 'ts', direction: 'desc' }],
     },
     {
       strategy: 'by_columns',
-      columns: ['x'],
+      fields: ['x'],
       keep: 'last',
       orderBy: [
         { field: 'rank', direction: 'asc' },
@@ -130,7 +130,7 @@ describe('FormDeduplicate — DSL 往返幂等', () => {
     },
     {
       strategy: 'by_columns',
-      columns: ['order_id', 'item_id'],
+      fields: ['order_id', 'item_id'],
       keep: 'first',
       orderBy: [{ field: 'created_at', direction: 'desc', nulls: 'first' }],
     },
@@ -158,7 +158,7 @@ describe('FormDeduplicate — DSL 解析准确性', () => {
     const parsed = parsePrepOperatorDsl('deduplicate', 'deduplicate');
     expect(parsed.operator!.config.strategy).toBe('all_columns');
     expect(parsed.operator!.config.keep).toBe('first');
-    expect(parsed.operator!.config.columns).toBeUndefined();
+    expect(parsed.operator!.config.fields).toBeUndefined();
     expect(parsed.operator!.config.orderBy).toBeUndefined();
   });
 
@@ -174,7 +174,7 @@ describe('FormDeduplicate — DSL 解析准确性', () => {
     );
     const cfg = parsed.operator!.config;
     expect(cfg.strategy).toBe('by_columns');
-    expect(cfg.columns).toEqual(['order_id']);
+    expect(cfg.fields).toEqual(['order_id']);
     expect(cfg.keep).toBe('last');
     expect(cfg.orderBy).toEqual([{ field: 'updated_at', direction: 'desc' }]);
   });
@@ -294,7 +294,7 @@ describe('FormDeduplicate — 真实使用场景', () => {
   it('电商订单去重：按订单号去重，保留最新（按更新时间降序）', () => {
     const config = {
       strategy: 'by_columns',
-      columns: ['order_id'],
+      fields: ['order_id'],
       keep: 'last',
       orderBy: [{ field: 'updated_at', direction: 'desc' }],
     };
@@ -305,7 +305,7 @@ describe('FormDeduplicate — 真实使用场景', () => {
   it('客户去重：按姓名+手机号联合去重，保留最早创建记录', () => {
     const config = {
       strategy: 'by_columns',
-      columns: ['name', 'phone'],
+      fields: ['name', 'phone'],
       keep: 'first',
       orderBy: [{ field: 'created_at', direction: 'asc' }],
     };
@@ -324,7 +324,7 @@ describe('FormDeduplicate — 真实使用场景', () => {
   it('排行榜去重：按用户去重，按分数降序保留最高，分数相同按时间升序保留最早', () => {
     const config = {
       strategy: 'by_columns',
-      columns: ['user_id'],
+      fields: ['user_id'],
       keep: 'first',
       orderBy: [
         { field: 'score', direction: 'desc' },
@@ -339,7 +339,7 @@ describe('FormDeduplicate — 真实使用场景', () => {
   it('NULL 值处理：将空值排到末尾', () => {
     const config = {
       strategy: 'by_columns',
-      columns: ['id'],
+      fields: ['id'],
       keep: 'last',
       orderBy: [{ field: 'closed_at', direction: 'asc', nulls: 'last' }],
     };
@@ -348,11 +348,11 @@ describe('FormDeduplicate — 真实使用场景', () => {
   });
 
   it('切换保留策略：first 和 last 均在 DSL 中体现', () => {
-    const first = ok({ strategy: 'by_columns', columns: ['id'], keep: 'first' });
+    const first = ok({ strategy: 'by_columns', fields: ['id'], keep: 'first' });
     // keep first is the default and is omitted in canonical output
     expect(first.dsl).not.toContain('keep first');
 
-    const last = ok({ strategy: 'by_columns', columns: ['id'], keep: 'last' });
+    const last = ok({ strategy: 'by_columns', fields: ['id'], keep: 'last' });
     expect(last.dsl).toContain('keep last');
     expect(first.dsl).not.toBe(last.dsl);
   });

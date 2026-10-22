@@ -109,7 +109,7 @@ export class WorkflowExecutor {
 
     let violation: string;
     if (kind === 'unique') {
-      const columns = (Array.isArray(config.columns) ? config.columns : []).map((column) =>
+      const columns = (Array.isArray(config.fields) ? config.fields : []).map((column) =>
         quoteIdentifier(String(column))
       );
       if (columns.length === 0) {
