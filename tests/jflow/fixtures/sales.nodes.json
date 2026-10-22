@@ -1,0 +1,283 @@
+[
+  {
+    "id": "src_east",
+    "type": "input",
+    "config": {
+      "alias": "east",
+      "source": "rawTable",
+      "rawTableId": "1391f251-02d8-439e-92ad-d34a0c49e191",
+      "ref": {
+        "uri": "local:raw/1391f251-02d8-439e-92ad-d34a0c49e191",
+        "name": "场景_华东9月销售"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "src_south",
+    "type": "input",
+    "config": {
+      "alias": "south",
+      "source": "rawTable",
+      "rawTableId": "30da98c6-eb51-4484-9651-b7a1ea9f60c1",
+      "ref": {
+        "uri": "local:raw/30da98c6-eb51-4484-9651-b7a1ea9f60c1",
+        "name": "场景_华南9月销售"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "src_north",
+    "type": "input",
+    "config": {
+      "alias": "north",
+      "source": "rawTable",
+      "rawTableId": "a715a497-fdee-41e8-a996-e7f96ca55eb8",
+      "ref": {
+        "uri": "local:raw/a715a497-fdee-41e8-a996-e7f96ca55eb8",
+        "name": "场景_华北9月销售"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "src_target",
+    "type": "input",
+    "config": {
+      "alias": "target",
+      "source": "rawTable",
+      "rawTableId": "f57b9192-526f-4f3c-bc23-50140dbfe099",
+      "ref": {
+        "uri": "local:raw/f57b9192-526f-4f3c-bc23-50140dbfe099",
+        "name": "2026年9月销售目标"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "n1~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "区域",
+          "action": "replace",
+          "expression": "cast([区域] as text)"
+        },
+        {
+          "field": "门店",
+          "action": "replace",
+          "expression": "cast([门店] as text)"
+        },
+        {
+          "field": "品类",
+          "action": "replace",
+          "expression": "cast([品类] as text)"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "src_north"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "group-keys"
+    }
+  },
+  {
+    "id": "n1~2",
+    "type": "aggregate",
+    "config": {
+      "groupBy": ["区域", "门店", "品类"],
+      "metrics": [
+        {
+          "function": "sum",
+          "expression": "[销售额]",
+          "alias": "__a1"
+        },
+        {
+          "function": "sum",
+          "expression": "[销量]",
+          "alias": "__a2"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1~1"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "aggregate-temp"
+    }
+  },
+  {
+    "id": "n1~3",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "销售额",
+          "action": "add",
+          "expression": "cast([__a1] as decimal(18,4))"
+        },
+        {
+          "field": "销量",
+          "action": "add",
+          "expression": "cast([__a2] as integer)"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1~2"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "post-agg"
+    }
+  },
+  {
+    "id": "n1",
+    "type": "select",
+    "config": {
+      "fields": ["__a1", "__a2"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n1~3"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n2~1",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "华北汇总"
+    },
+    "inputs": {
+      "input": "src_east",
+      "right": "n1"
+    },
+    "layout": {
+      "composite": "n2",
+      "role": "union-fold"
+    }
+  },
+  {
+    "id": "n2",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "south"
+    },
+    "inputs": {
+      "input": "n2~1",
+      "right": "src_south"
+    },
+    "layout": {
+      "composite": "n2",
+      "role": "union-fold"
+    }
+  },
+  {
+    "id": "n3",
+    "type": "join",
+    "config": {
+      "joinType": "left",
+      "rightAlias": "target",
+      "conditions": [
+        {
+          "left": "区域",
+          "operator": "=",
+          "right": "区域"
+        },
+        {
+          "left": "门店",
+          "operator": "=",
+          "right": "门店"
+        },
+        {
+          "left": "品类",
+          "operator": "=",
+          "right": "品类"
+        }
+      ],
+      "keep": [
+        {
+          "side": "left",
+          "wildcard": true
+        },
+        {
+          "side": "right",
+          "source": "目标销售额",
+          "alias": "目标销售额"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n2",
+      "right": "src_target"
+    }
+  },
+  {
+    "id": "n4",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "达成率",
+          "action": "add",
+          "expression": "round(cast([销售额] as decimal(18,4)) / nullif(cast([目标销售额] as decimal(18,4)), 0), 4)"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n3"
+    }
+  },
+  {
+    "id": "n5",
+    "type": "sort",
+    "config": {
+      "orderBy": [
+        {
+          "field": "区域",
+          "direction": "asc",
+          "nulls": "last"
+        },
+        {
+          "field": "门店",
+          "direction": "asc",
+          "nulls": "last"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n4"
+    }
+  },
+  {
+    "id": "n6",
+    "type": "output",
+    "config": {
+      "destination": "duckdb_table",
+      "mode": "replace",
+      "outputStrategy": "existing",
+      "outputResultTableId": "e048ff5a-7bda-4645-9bac-b28bcb4670ba",
+      "resultTableId": "e048ff5a-7bda-4645-9bac-b28bcb4670ba",
+      "table": "output_e048ff5a_7bda_4645_9bac_b28bcb4670ba",
+      "resultTableName": "场景_9月门店达成"
+    },
+    "inputs": {
+      "input": "n5"
+    }
+  }
+]

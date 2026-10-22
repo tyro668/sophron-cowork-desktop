@@ -1,0 +1,1091 @@
+[
+  {
+    "id": "src_erp",
+    "type": "input",
+    "config": {
+      "alias": "erp",
+      "source": "rawTable",
+      "rawTableId": "4f8611cd-8a7c-43e1-ae36-b202b18f3851",
+      "ref": {
+        "uri": "local:raw/4f8611cd-8a7c-43e1-ae36-b202b18f3851",
+        "name": "场景_ERP收款9月"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "src_bank",
+    "type": "input",
+    "config": {
+      "alias": "bank",
+      "source": "rawTable",
+      "rawTableId": "191d29e1-d59b-4514-b740-c6b16ca12f0c",
+      "ref": {
+        "uri": "local:raw/191d29e1-d59b-4514-b740-c6b16ca12f0c",
+        "name": "场景_银行流水9月"
+      }
+    },
+    "inputs": {}
+  },
+  {
+    "id": "n1~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "收款单号",
+          "action": "replace",
+          "expression": "cast([收款单号] as text)"
+        },
+        {
+          "field": "业务日期",
+          "action": "add",
+          "expression": "cast([单据日期] as date)"
+        },
+        {
+          "field": "客户",
+          "action": "add",
+          "expression": "cast([客户名称] as text)"
+        },
+        {
+          "field": "金额",
+          "action": "add",
+          "expression": "cast([应收金额] as decimal(18,2))"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "src_erp"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n1",
+    "type": "select",
+    "config": {
+      "fields": ["收款单号", "业务日期", "客户", "金额"],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n1~1"
+    },
+    "layout": {
+      "composite": "n1",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n2",
+    "type": "filter",
+    "config": {
+      "condition": "cast([收入金额] as decimal(18,2)) > 0"
+    },
+    "inputs": {
+      "input": "src_bank"
+    }
+  },
+  {
+    "id": "n3~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "流水号",
+          "action": "replace",
+          "expression": "cast([流水号] as text)"
+        },
+        {
+          "field": "业务日期",
+          "action": "add",
+          "expression": "cast([交易日期] as date)"
+        },
+        {
+          "field": "客户",
+          "action": "add",
+          "expression": "cast([对方户名] as text)"
+        },
+        {
+          "field": "金额",
+          "action": "add",
+          "expression": "cast([收入金额] as decimal(18,2))"
+        },
+        {
+          "field": "摘要单号",
+          "action": "add",
+          "expression": "regexp_extract(coalesce([摘要], ''), '(AR[0-9]+)', 1)"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n2"
+    },
+    "layout": {
+      "composite": "n3",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n3",
+    "type": "select",
+    "config": {
+      "fields": ["流水号", "业务日期", "客户", "金额", "摘要单号"],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n3~1"
+    },
+    "layout": {
+      "composite": "n3",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n4",
+    "type": "join",
+    "config": {
+      "joinType": "inner",
+      "rightAlias": "b",
+      "expression": "[b].[摘要单号] = [left].[收款单号]",
+      "keep": [
+        {
+          "side": "left",
+          "wildcard": true
+        },
+        {
+          "side": "right",
+          "source": "业务日期",
+          "alias": "银行日期"
+        },
+        {
+          "side": "right",
+          "source": "金额",
+          "alias": "银行金额"
+        },
+        {
+          "side": "right",
+          "source": "流水号",
+          "alias": "流水号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1",
+      "right": "n3"
+    }
+  },
+  {
+    "id": "n5",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "日差",
+          "action": "add",
+          "expression": "abs(date_diff('day', [业务日期], [银行日期]))"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n4"
+    }
+  },
+  {
+    "id": "n6~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "__rn",
+          "action": "add",
+          "expression": "row_number() over(partition by [收款单号] order by [日差], [流水号])"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n5"
+    },
+    "layout": {
+      "composite": "n6",
+      "role": "rownum"
+    }
+  },
+  {
+    "id": "n6~2",
+    "type": "filter",
+    "config": {
+      "condition": "[__rn] <= 1"
+    },
+    "inputs": {
+      "input": "n6~1"
+    },
+    "layout": {
+      "composite": "n6",
+      "role": "filter"
+    }
+  },
+  {
+    "id": "n6",
+    "type": "select",
+    "config": {
+      "fields": ["__rn"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n6~2"
+    },
+    "layout": {
+      "composite": "n6",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n7",
+    "type": "select",
+    "config": {
+      "fields": ["日差"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n6"
+    }
+  },
+  {
+    "id": "n8",
+    "type": "join",
+    "config": {
+      "joinType": "inner",
+      "rightAlias": "b",
+      "expression": "[b].[摘要单号] = '' and [b].[客户] = [left].[客户] and [b].[金额] = [left].[金额] and abs(date_diff('day', [left].[业务日期], [b].[业务日期])) <= 5",
+      "keep": [
+        {
+          "side": "left",
+          "wildcard": true
+        },
+        {
+          "side": "right",
+          "source": "业务日期",
+          "alias": "银行日期"
+        },
+        {
+          "side": "right",
+          "source": "金额",
+          "alias": "银行金额"
+        },
+        {
+          "side": "right",
+          "source": "流水号",
+          "alias": "流水号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1",
+      "right": "n3"
+    }
+  },
+  {
+    "id": "n9",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "日差",
+          "action": "add",
+          "expression": "abs(date_diff('day', [业务日期], [银行日期]))"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n8"
+    }
+  },
+  {
+    "id": "n10~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "__rn",
+          "action": "add",
+          "expression": "row_number() over(partition by [收款单号] order by [日差], [流水号])"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n9"
+    },
+    "layout": {
+      "composite": "n10",
+      "role": "rownum"
+    }
+  },
+  {
+    "id": "n10~2",
+    "type": "filter",
+    "config": {
+      "condition": "[__rn] <= 1"
+    },
+    "inputs": {
+      "input": "n10~1"
+    },
+    "layout": {
+      "composite": "n10",
+      "role": "filter"
+    }
+  },
+  {
+    "id": "n10",
+    "type": "select",
+    "config": {
+      "fields": ["__rn"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n10~2"
+    },
+    "layout": {
+      "composite": "n10",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n11~1",
+    "type": "aggregate",
+    "config": {
+      "groupBy": [],
+      "metrics": [
+        {
+          "function": "count",
+          "expression": "*",
+          "alias": "__n"
+        },
+        {
+          "function": "count",
+          "expression": "[收款单号]",
+          "alias": "__nn"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n7"
+    },
+    "layout": {
+      "composite": "n11",
+      "role": "na-stats"
+    }
+  },
+  {
+    "id": "n11~2",
+    "type": "join",
+    "config": {
+      "joinType": "anti",
+      "rightAlias": "na_r",
+      "conditions": [
+        {
+          "left": "收款单号",
+          "operator": "=",
+          "right": "收款单号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n10",
+      "right": "n7"
+    },
+    "layout": {
+      "composite": "n11",
+      "role": "na-anti"
+    }
+  },
+  {
+    "id": "n11~3",
+    "type": "join",
+    "config": {
+      "joinType": "cross",
+      "rightAlias": "na_s"
+    },
+    "inputs": {
+      "input": "n11~2",
+      "right": "n11~1"
+    },
+    "layout": {
+      "composite": "n11",
+      "role": "na-cross"
+    }
+  },
+  {
+    "id": "n11~4",
+    "type": "filter",
+    "config": {
+      "condition": "[__n] = 0 or ([__nn] = [__n] and [收款单号] is not null)"
+    },
+    "inputs": {
+      "input": "n11~3"
+    },
+    "layout": {
+      "composite": "n11",
+      "role": "na-filter"
+    }
+  },
+  {
+    "id": "n11",
+    "type": "select",
+    "config": {
+      "fields": ["__n", "__nn"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n11~4"
+    },
+    "layout": {
+      "composite": "n11",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n12~1",
+    "type": "aggregate",
+    "config": {
+      "groupBy": [],
+      "metrics": [
+        {
+          "function": "count",
+          "expression": "*",
+          "alias": "__n"
+        },
+        {
+          "function": "count",
+          "expression": "[流水号]",
+          "alias": "__nn"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n7"
+    },
+    "layout": {
+      "composite": "n12",
+      "role": "na-stats"
+    }
+  },
+  {
+    "id": "n12~2",
+    "type": "join",
+    "config": {
+      "joinType": "anti",
+      "rightAlias": "na_r",
+      "conditions": [
+        {
+          "left": "流水号",
+          "operator": "=",
+          "right": "流水号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n11",
+      "right": "n7"
+    },
+    "layout": {
+      "composite": "n12",
+      "role": "na-anti"
+    }
+  },
+  {
+    "id": "n12~3",
+    "type": "join",
+    "config": {
+      "joinType": "cross",
+      "rightAlias": "na_s"
+    },
+    "inputs": {
+      "input": "n12~2",
+      "right": "n12~1"
+    },
+    "layout": {
+      "composite": "n12",
+      "role": "na-cross"
+    }
+  },
+  {
+    "id": "n12~4",
+    "type": "filter",
+    "config": {
+      "condition": "[__n] = 0 or ([__nn] = [__n] and [流水号] is not null)"
+    },
+    "inputs": {
+      "input": "n12~3"
+    },
+    "layout": {
+      "composite": "n12",
+      "role": "na-filter"
+    }
+  },
+  {
+    "id": "n12",
+    "type": "select",
+    "config": {
+      "fields": ["__n", "__nn"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n12~4"
+    },
+    "layout": {
+      "composite": "n12",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n13",
+    "type": "select",
+    "config": {
+      "fields": ["日差"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n12"
+    }
+  },
+  {
+    "id": "n15",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "m2"
+    },
+    "inputs": {
+      "input": "n7",
+      "right": "n13"
+    }
+  },
+  {
+    "id": "n14",
+    "type": "join",
+    "config": {
+      "joinType": "left",
+      "rightAlias": "mm",
+      "conditions": [
+        {
+          "left": "收款单号",
+          "operator": "=",
+          "right": "收款单号"
+        }
+      ],
+      "keep": [
+        {
+          "side": "left",
+          "wildcard": true
+        },
+        {
+          "side": "right",
+          "source": "银行日期",
+          "alias": "银行日期"
+        },
+        {
+          "side": "right",
+          "source": "银行金额",
+          "alias": "银行金额"
+        },
+        {
+          "side": "right",
+          "source": "流水号",
+          "alias": "流水号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n1",
+      "right": "n15"
+    }
+  },
+  {
+    "id": "n17",
+    "type": "filter",
+    "config": {
+      "condition": "[流水号] is null"
+    },
+    "inputs": {
+      "input": "n14"
+    }
+  },
+  {
+    "id": "n18~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "差异类型",
+          "action": "add",
+          "expression": "'ERP有银行无'"
+        },
+        {
+          "field": "ERP金额",
+          "action": "add",
+          "expression": "[金额]"
+        },
+        {
+          "field": "ERP日期",
+          "action": "add",
+          "expression": "[业务日期]"
+        },
+        {
+          "field": "说明",
+          "action": "add",
+          "expression": "'ERP已记应收，银行无对应收入'"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n17"
+    },
+    "layout": {
+      "composite": "n18",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n18",
+    "type": "select",
+    "config": {
+      "fields": ["差异类型", "收款单号", "客户", "ERP金额", "ERP日期", "说明"],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n18~1"
+    },
+    "layout": {
+      "composite": "n18",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n19",
+    "type": "filter",
+    "config": {
+      "condition": "[流水号] is not null and [银行金额] <> [金额]"
+    },
+    "inputs": {
+      "input": "n14"
+    }
+  },
+  {
+    "id": "n20~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "差异类型",
+          "action": "add",
+          "expression": "'金额不一致'"
+        },
+        {
+          "field": "ERP金额",
+          "action": "add",
+          "expression": "[金额]"
+        },
+        {
+          "field": "ERP日期",
+          "action": "add",
+          "expression": "[业务日期]"
+        },
+        {
+          "field": "银行流水号",
+          "action": "add",
+          "expression": "[流水号]"
+        },
+        {
+          "field": "说明",
+          "action": "add",
+          "expression": "'ERP与银行金额相差 ' || cast([银行金额] - [金额] as text) || ' 元'"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n19"
+    },
+    "layout": {
+      "composite": "n20",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n20",
+    "type": "select",
+    "config": {
+      "fields": [
+        "差异类型",
+        "收款单号",
+        "客户",
+        "ERP金额",
+        "银行金额",
+        "ERP日期",
+        "银行日期",
+        "银行流水号",
+        "说明"
+      ],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n20~1"
+    },
+    "layout": {
+      "composite": "n20",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n16~1",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "u0"
+    },
+    "inputs": {
+      "input": "n18",
+      "right": "n20"
+    },
+    "layout": {
+      "composite": "n16",
+      "role": "union-fold"
+    }
+  },
+  {
+    "id": "n21",
+    "type": "filter",
+    "config": {
+      "condition": "[流水号] is not null and abs(date_diff('day', [业务日期], [银行日期])) > 3"
+    },
+    "inputs": {
+      "input": "n14"
+    }
+  },
+  {
+    "id": "n22~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "差异类型",
+          "action": "add",
+          "expression": "'日期差>3天'"
+        },
+        {
+          "field": "ERP金额",
+          "action": "add",
+          "expression": "[金额]"
+        },
+        {
+          "field": "ERP日期",
+          "action": "add",
+          "expression": "[业务日期]"
+        },
+        {
+          "field": "银行流水号",
+          "action": "add",
+          "expression": "[流水号]"
+        },
+        {
+          "field": "说明",
+          "action": "add",
+          "expression": "'到账日期相差 ' || cast(abs(date_diff('day', [业务日期], [银行日期])) as text) || ' 天'"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n21"
+    },
+    "layout": {
+      "composite": "n22",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n22",
+    "type": "select",
+    "config": {
+      "fields": [
+        "差异类型",
+        "收款单号",
+        "客户",
+        "ERP金额",
+        "银行金额",
+        "ERP日期",
+        "银行日期",
+        "银行流水号",
+        "说明"
+      ],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n22~1"
+    },
+    "layout": {
+      "composite": "n22",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n16~2",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "u1"
+    },
+    "inputs": {
+      "input": "n16~1",
+      "right": "n22"
+    },
+    "layout": {
+      "composite": "n16",
+      "role": "union-fold"
+    }
+  },
+  {
+    "id": "n24",
+    "type": "filter",
+    "config": {
+      "condition": "[流水号] is not null"
+    },
+    "inputs": {
+      "input": "n14"
+    }
+  },
+  {
+    "id": "n23~1",
+    "type": "aggregate",
+    "config": {
+      "groupBy": [],
+      "metrics": [
+        {
+          "function": "count",
+          "expression": "*",
+          "alias": "__n"
+        },
+        {
+          "function": "count",
+          "expression": "[流水号]",
+          "alias": "__nn"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n24"
+    },
+    "layout": {
+      "composite": "n23",
+      "role": "na-stats"
+    }
+  },
+  {
+    "id": "n23~2",
+    "type": "join",
+    "config": {
+      "joinType": "anti",
+      "rightAlias": "na_r",
+      "conditions": [
+        {
+          "left": "流水号",
+          "operator": "=",
+          "right": "流水号"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n3",
+      "right": "n24"
+    },
+    "layout": {
+      "composite": "n23",
+      "role": "na-anti"
+    }
+  },
+  {
+    "id": "n23~3",
+    "type": "join",
+    "config": {
+      "joinType": "cross",
+      "rightAlias": "na_s"
+    },
+    "inputs": {
+      "input": "n23~2",
+      "right": "n23~1"
+    },
+    "layout": {
+      "composite": "n23",
+      "role": "na-cross"
+    }
+  },
+  {
+    "id": "n23~4",
+    "type": "filter",
+    "config": {
+      "condition": "[__n] = 0 or ([__nn] = [__n] and [流水号] is not null)"
+    },
+    "inputs": {
+      "input": "n23~3"
+    },
+    "layout": {
+      "composite": "n23",
+      "role": "na-filter"
+    }
+  },
+  {
+    "id": "n23",
+    "type": "select",
+    "config": {
+      "fields": ["__n", "__nn"],
+      "selection": "exclude"
+    },
+    "inputs": {
+      "input": "n23~4"
+    },
+    "layout": {
+      "composite": "n23",
+      "role": "drop-temp"
+    }
+  },
+  {
+    "id": "n25~1",
+    "type": "derive",
+    "config": {
+      "calculations": [
+        {
+          "field": "差异类型",
+          "action": "add",
+          "expression": "'银行有ERP无'"
+        },
+        {
+          "field": "银行金额",
+          "action": "add",
+          "expression": "[金额]"
+        },
+        {
+          "field": "银行日期",
+          "action": "add",
+          "expression": "[业务日期]"
+        },
+        {
+          "field": "银行流水号",
+          "action": "add",
+          "expression": "[流水号]"
+        },
+        {
+          "field": "说明",
+          "action": "add",
+          "expression": "'银行流水无对应ERP收款单'"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n23"
+    },
+    "layout": {
+      "composite": "n25",
+      "role": "calc"
+    }
+  },
+  {
+    "id": "n25",
+    "type": "select",
+    "config": {
+      "fields": ["差异类型", "客户", "银行金额", "银行日期", "银行流水号", "说明"],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n25~1"
+    },
+    "layout": {
+      "composite": "n25",
+      "role": "project"
+    }
+  },
+  {
+    "id": "n16",
+    "type": "set_op",
+    "config": {
+      "operation": "union",
+      "quantifier": "all",
+      "match": "by_name",
+      "rightInput": "u2"
+    },
+    "inputs": {
+      "input": "n16~2",
+      "right": "n25"
+    },
+    "layout": {
+      "composite": "n16",
+      "role": "union-fold"
+    }
+  },
+  {
+    "id": "n26",
+    "type": "select",
+    "config": {
+      "fields": [
+        "差异类型",
+        "收款单号",
+        "客户",
+        "ERP金额",
+        "银行金额",
+        "ERP日期",
+        "银行日期",
+        "银行流水号",
+        "说明"
+      ],
+      "selection": "include"
+    },
+    "inputs": {
+      "input": "n16"
+    }
+  },
+  {
+    "id": "n27",
+    "type": "sort",
+    "config": {
+      "orderBy": [
+        {
+          "field": "差异类型",
+          "direction": "asc"
+        },
+        {
+          "field": "收款单号",
+          "direction": "asc"
+        },
+        {
+          "field": "银行流水号",
+          "direction": "asc"
+        }
+      ]
+    },
+    "inputs": {
+      "input": "n26"
+    }
+  },
+  {
+    "id": "n28",
+    "type": "output",
+    "config": {
+      "destination": "duckdb_table",
+      "mode": "replace",
+      "outputStrategy": "existing",
+      "outputResultTableId": "d023585a-5384-4230-8795-28dc6d8de5cc",
+      "resultTableId": "d023585a-5384-4230-8795-28dc6d8de5cc",
+      "table": "output_d023585a_5384_4230_8795_28dc6d8de5cc",
+      "resultTableName": "场景_对账差异",
+      "schemaPolicy": "extend"
+    },
+    "inputs": {
+      "input": "n27"
+    }
+  }
+]

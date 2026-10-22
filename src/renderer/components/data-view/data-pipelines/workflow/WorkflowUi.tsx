@@ -25,6 +25,9 @@ import {
   type WorkflowFlowNode,
 } from './workflow-model';
 
+import { JflowEditor } from '../../../JflowEditor';
+import type { JflowCatalog } from '../../../../../shared/jflow';
+
 interface WorkflowDslDialogProps {
   mode: 'import' | 'export';
   value: string;
@@ -33,9 +36,13 @@ interface WorkflowDslDialogProps {
   onApply: () => void;
   onCopy: () => void;
   onClose: () => void;
+  catalog?: JflowCatalog;
 }
 
+const EMPTY_CATALOG: JflowCatalog = { tables: [] };
+
 export function WorkflowDslDialog({
+  catalog,
   mode,
   value,
   error,
@@ -77,14 +84,15 @@ export function WorkflowDslDialog({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 bg-surface p-3">
-        <textarea
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          readOnly={!isImport}
-          spellCheck={false}
-          className="min-h-0 flex-1 resize-none rounded-lg border border-border-muted bg-surface px-3 py-2.5 font-mono text-[12px] leading-5 text-text-secondary outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 read-only:bg-surface-active"
-          placeholder={t('data.workflow.dslPlaceholder')}
-        />
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-muted bg-surface">
+          <JflowEditor
+            value={value}
+            catalog={catalog ?? EMPTY_CATALOG}
+            readOnly={!isImport}
+            onChange={onChange}
+            className="h-full"
+          />
+        </div>
         {error && (
           <div className="max-h-24 overflow-y-auto whitespace-pre-line rounded-lg border border-error/20 bg-error/10 px-3 py-2 text-xs font-medium text-error">
             <div className="flex items-start gap-2">

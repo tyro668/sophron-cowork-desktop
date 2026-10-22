@@ -1,3 +1,6 @@
+import { logWarn } from '../../../utils/logger';
+import { inputSourceFingerprint } from '../source-fingerprint';
+import type { WatermarkUpdate } from '../repositories/watermark-repository';
 import { sqlNamedInputs } from '../../../../shared/sql-query';
 /** Executes workflows into staging tables (temporary output mode). */
 import { resolveCsvReadPath } from '../csv-encoding';
@@ -172,7 +175,7 @@ export class WorkflowExecutor {
     node: DataWorkflowNode,
     sourcePath: string | null,
     outputRelation: string,
-    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>
+    watermarkUpdates: WatermarkUpdate[]
   ): Promise<string> {
     const incrementalBy =
       typeof node.config.incrementalBy === 'string' ? node.config.incrementalBy.trim() : '';
@@ -186,11 +189,19 @@ export class WorkflowExecutor {
 
     const column = quoteIdentifier(incrementalBy);
     const table = quoteIdentifier(relation);
-    const previous = await this.watermarks.getPipelineWatermark(
+    const fingerprint = inputSourceFingerprint(node.config, sourcePath);
+    const lookup = await this.watermarks.getPipelineWatermark(
       pipeline.id,
       node.id,
-      incrementalBy
+      incrementalBy,
+      fingerprint
     );
+    if (lookup.reset) {
+      logWarn(
+        `[DataPipelineStore] W_WATERMARK_RESET: source of node ${node.id} changed (resource, read options or incremental column); reading in full`
+      );
+    }
+    const previous = lookup.value;
     if (previous !== null) {
       const filtered = `${relation}_incr`;
       await this.ctx.dropTableIfExists(filtered);
@@ -204,7 +215,12 @@ export class WorkflowExecutor {
       );
       const value = maxRow[0]?.value;
       if (value !== null && value !== undefined) {
-        watermarkUpdates.push({ nodeId: node.id, column: incrementalBy, value: String(value) });
+        watermarkUpdates.push({
+          nodeId: node.id,
+          column: incrementalBy,
+          value: String(value),
+          fingerprint,
+        });
       }
       return filtered;
     }
@@ -213,7 +229,12 @@ export class WorkflowExecutor {
     );
     const value = maxRow[0]?.value;
     if (value !== null && value !== undefined) {
-      watermarkUpdates.push({ nodeId: node.id, column: incrementalBy, value: String(value) });
+      watermarkUpdates.push({
+        nodeId: node.id,
+        column: incrementalBy,
+        value: String(value),
+        fingerprint,
+      });
     }
     return relation;
   }
@@ -224,7 +245,7 @@ export class WorkflowExecutor {
     pipeline: DataPipeline;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     const diagnostics: PrepDiagnostic[] = [];
@@ -301,7 +322,7 @@ export class WorkflowExecutor {
     columnCount: number;
     sourceRawTableId: string | null;
     nodeStats?: WorkflowNodeRunStat[];
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     if (workflow.nodes.length > 0) {
@@ -380,7 +401,7 @@ export class WorkflowExecutor {
     columnCount: number;
     sourceRawTableId: string | null;
     nodeStats: WorkflowNodeRunStat[];
-    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates: WatermarkUpdate[];
     stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -421,9 +442,10 @@ export class WorkflowExecutor {
     columnCount: number;
     sourceRawTableId: string | null;
     nodeStats: WorkflowNodeRunStat[];
-    watermarkUpdates: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates: WatermarkUpdate[];
     stagedSinks: Array<{ nodeId: string; stagingTable: string }>;
   }> {
+    if (outputMode !== 'temporary') assertIncrementalWriteAllowed(nodes);
     const outputTarget: { tableName: string; outputResultTableId?: string } =
       outputMode === 'temporary'
         ? { tableName: tableNameFromId('temp_pipeline', `${pipeline.id}_${uuidv4()}`) }
@@ -434,7 +456,7 @@ export class WorkflowExecutor {
     const resultTable = outputTarget.tableName;
     const relationByNode = new Map<string, string>();
     const visitingNodeIds = new Set<string>();
-    const watermarkUpdates: Array<{ nodeId: string; column: string; value: string }> = [];
+    const watermarkUpdates: WatermarkUpdate[] = [];
     const cacheScope: WorkflowCacheScope = outputMode === 'temporary' ? 'temporary' : 'permanent';
     const cacheRunId = uuidv4();
     const cacheExpiresAt =
@@ -772,5 +794,34 @@ export class WorkflowExecutor {
       watermarkUpdates,
       stagedSinks,
     };
+  }
+}
+
+/**
+ * E_INCR_REPLACE (jflow v4 §11.3): an incremental file/pipeline source feeding a replace output
+ * keeps only the newly read rows. That is only allowed when the output opts in with
+ * allowPartial: true (v25 set it on every pre-existing node, so old behaviour is unchanged).
+ */
+export function assertIncrementalWriteAllowed(nodes: DataWorkflowNode[]): void {
+  const incremental = nodes.some((node) => {
+    if (node.type !== 'input' || node.config.disabled === true) return false;
+    if (typeof node.config.incrementalBy !== 'string' || !node.config.incrementalBy.trim()) {
+      return false;
+    }
+    const usesRaw =
+      node.config.source === 'rawTable' ||
+      (typeof node.config.source !== 'string' && Boolean(node.config.rawTableId));
+    return !usesRaw;
+  });
+  if (!incremental) return;
+  for (const node of nodes) {
+    if (node.type !== 'output') continue;
+    const mode = typeof node.config.mode === 'string' ? node.config.mode : 'replace';
+    if (mode === 'replace' && node.config.allowPartial !== true) {
+      throw new Error(
+        `E_INCR_REPLACE: output ${node.label || node.id} uses mode replace with an incremental source; ` +
+          'use mode merge (or append), or set allowPartial: true to keep only the newly read rows'
+      );
+    }
   }
 }

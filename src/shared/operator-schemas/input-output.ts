@@ -72,6 +72,14 @@ export const OutputConfigSchema = z
     resultTableId: z.string().trim().optional(),
     outputStrategy: z.enum(['existing', 'auto']).optional(),
     resultTableName: z.string().trim().optional(),
+    /** v24: creation intent, orthogonal to mode. new = create on first successful run. */
+    intent: z.enum(['new', 'bound']).optional(),
+    /** v24: resource identity {uri, name}; name is a display snapshot only. */
+    ref: z
+      .looseObject({ uri: z.string().trim().min(1), name: z.string().nullable().optional() })
+      .optional(),
+    /** v25: incremental source + replace keeps only the new rows; must be explicit. */
+    allowPartial: z.boolean().optional(),
   })
   .superRefine((config, context) => {
     if (config.mode === 'merge' && (!config.mergeKeys || config.mergeKeys.length === 0)) {

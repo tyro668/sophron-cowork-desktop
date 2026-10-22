@@ -142,6 +142,14 @@ export function duckDbTypeForDataFieldType(value: string | null | undefined): st
   }
 }
 
+/** Physical DECIMAL for a cast entry: explicit precision wins; otherwise the pre-v23 rule. */
+export function duckDbDecimalType(scale: number, precision?: number): string {
+  if (precision === undefined) return duckDbDecimalTypeForScale(scale);
+  const p = Math.max(1, Math.min(38, Math.trunc(precision)));
+  const s = Math.max(0, Math.min(p, Math.trunc(scale)));
+  return `DECIMAL(${p},${s})`;
+}
+
 export function duckDbDecimalTypeForScale(scale: number): string {
   const normalizedScale = Math.max(0, Math.min(18, Math.trunc(scale)));
   const precision = Math.max(18, normalizedScale + 1);

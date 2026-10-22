@@ -59,6 +59,8 @@ export class WorkflowBindingResolver {
           config: {
             ...config,
             outputStrategy: 'auto',
+            intent: 'bound',
+            ref: { uri: `local:result/${resultTable.id}`, name: resultTable.name },
             resultTableName: resultTable.name,
             outputResultTableId: resultTable.id,
             table: resultTable.tableName,
@@ -76,6 +78,8 @@ export class WorkflowBindingResolver {
           config: {
             ...config,
             outputStrategy: 'existing',
+            intent: 'bound',
+            ref: { uri: `local:result/${resultTable.id}`, name: resultTable.name },
             resultTableName: resultTable.name,
             outputResultTableId: resultTable.id,
             table: resultTable.tableName,

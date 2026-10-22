@@ -1,0 +1,19 @@
+pipeline 场景_9月门店达成加工
+
+source east   = @id('local:raw/1391f251-02d8-439e-92ad-d34a0c49e191', '场景_华东9月销售')
+source south  = @id('local:raw/30da98c6-eb51-4484-9651-b7a1ea9f60c1', '场景_华南9月销售')
+source north  = @id('local:raw/a715a497-fdee-41e8-a996-e7f96ca55eb8', '场景_华北9月销售')
+source target = @id('local:raw/f57b9192-526f-4f3c-bc23-50140dbfe099', '2026年9月销售目标')
+
+## 华北逐日汇总（原 SQL 节点）
+let 华北汇总 = north
+  | group [区域] = cast([区域] as text), [门店] = cast([门店] as text), [品类] = cast([品类] as text) (agg
+      [销售额] = cast(sum([销售额]) as decimal(18,4)),
+      [销量]   = cast(sum([销量]) as integer))
+
+east
+  | union 华北汇总, south
+  | join left target on [区域], [门店], [品类] keep: [left].*, [target].[目标销售额]
+  | derive [达成率] = round(cast([销售额] as decimal(18,4)) / nullif(cast([目标销售额] as decimal(18,4)), 0), 4)
+  | sort [区域] nulls: last, [门店] nulls: last
+  | write @id('local:result/e048ff5a-7bda-4645-9bac-b28bcb4670ba', '场景_9月门店达成') mode: replace
