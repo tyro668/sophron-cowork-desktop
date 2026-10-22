@@ -1044,6 +1044,17 @@
           "pivotPreviewPrefix": "Output columns: ",
           "pivotPreviewSuffix": " (values × measures)"
         },
+        "fieldPattern": {
+          "anyType": "Any type",
+          "text": "Text",
+          "number": "Number",
+          "temporal": "Date/time",
+          "boolean": "Boolean",
+          "patternPlaceholder": "Name pattern: sales*, /^Q\\d$/ or a substring",
+          "patternLabel": "Select fields by name pattern",
+          "apply": "Add matches ({{count}})",
+          "ruleLabel": "By rule"
+        },
         "unpivot": {
           "unpivotIncompleteField": "Please select at least one column to unpivot",
           "unpivotDimensionsLabel": "Fields to unpivot",

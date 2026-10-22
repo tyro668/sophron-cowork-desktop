@@ -694,8 +694,19 @@ export function PipelineEditor({
             );
           }
         }
-        return next;
+        // Connected insertions re-run the auto-layout so the chain stays readable
+        // (no overlapping nodes or detours after splicing).
+        if (next.edges.length === current.edges.length) return next;
+        return {
+          ...next,
+          nodes: layoutWorkflowNodes(
+            next.nodes,
+            next.edges,
+            canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
+          ),
+        };
       });
+      setLayoutEpoch((current) => current + 1);
     },
     [selectedNode, selectSingleNode, t, pipeline.id]
   );
