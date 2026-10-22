@@ -108,7 +108,7 @@ describe('compileScalarExpression', () => {
   });
 
   it('CAST', () => {
-    expect(compileScalarExpression('CAST([amount] AS double)')).toBe('CAST("amount" AS double)');
+    expect(compileScalarExpression('CAST([amount] AS float)')).toBe('CAST("amount" AS DOUBLE)');
   });
 
   it('round with precision', () => {

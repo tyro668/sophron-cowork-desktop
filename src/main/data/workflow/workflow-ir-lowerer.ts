@@ -1034,7 +1034,7 @@ function compileWorkflowExpression(
       }
       if (operator === 'contains' || operator === 'not_contains') {
         return {
-          dsl: `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${left.dsl} AS VARCHAR), ${right.dsl})`,
+          dsl: `${operator === 'not_contains' ? 'NOT ' : ''}contains(CAST(${left.dsl} AS text), ${right.dsl})`,
           type: 'boolean',
           sourceColumns,
           precedence: 0,
@@ -1068,8 +1068,8 @@ function compileWorkflowExpression(
       const targetType = normalizePlanTargetType(expression.targetType);
       const sqlType =
         targetType === 'decimal'
-          ? duckDbDecimalTypeForScale(normalizeDecimalScale(expression.options.scale))
-          : targetType.toUpperCase();
+          ? duckDbDecimalTypeForScale(normalizeDecimalScale(expression.options.scale)).toLowerCase()
+          : targetType;
       return {
         dsl: `CAST(${value.dsl} AS ${sqlType})`,
         type: targetType,
@@ -1114,7 +1114,7 @@ function compileWorkflowExpression(
         index === 0 &&
         argument.type &&
         normalizeDslTypeName(argument.type) !== 'text'
-          ? `CAST(${argument.dsl} AS VARCHAR)`
+          ? `CAST(${argument.dsl} AS text)`
           : argument.dsl
       );
       return {
@@ -1616,15 +1616,15 @@ function compilePlanTypeConversionExpression({
   scale: unknown;
   failOnError: boolean;
 }): string {
-  let expression = `CAST(${formatDslField(columnName)} AS VARCHAR)`;
+  let expression = `CAST(${formatDslField(columnName)} AS text)`;
   for (const value of [removePrefix, ...removeChars].filter(Boolean)) {
     expression = `REPLACE(${expression}, ${literalToDsl(value)}, '')`;
   }
   if (targetType === 'text') return expression;
   const storageType =
     targetType === 'decimal'
-      ? duckDbDecimalTypeForScale(normalizeDecimalScale(scale))
-      : targetType.toUpperCase();
+      ? duckDbDecimalTypeForScale(normalizeDecimalScale(scale)).toLowerCase()
+      : targetType;
   return `${failOnError ? 'CAST' : 'TRY_CAST'}(${expression} AS ${storageType})`;
 }
 

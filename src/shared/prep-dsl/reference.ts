@@ -23,7 +23,7 @@ export const PREP_DSL_WORKFLOW_EXAMPLES: PrepDslWorkflowExample[] = [
     title: 'Split package size "20x18x22" into three numeric columns',
     dsl: [
       'input rawTable "<rawTableId>" as src',
-      "  | derive [包装长CM] = CAST(split_part([包装尺寸CM], 'x', 1) AS INTEGER), [包装宽CM] = CAST(split_part([包装尺寸CM], 'x', 2) AS INTEGER), [包装高CM] = CAST(split_part([包装尺寸CM], 'x', 3) AS INTEGER)",
+      "  | derive [包装长CM] = CAST(split_part([包装尺寸CM], 'x', 1) AS integer), [包装宽CM] = CAST(split_part([包装尺寸CM], 'x', 2) AS integer), [包装高CM] = CAST(split_part([包装尺寸CM], 'x', 3) AS integer)",
       '  | output table "02_商品主数据_尺寸拆分" mode replace',
     ].join('\n'),
   },
@@ -167,6 +167,7 @@ const OVERVIEW = [
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Brackets hold the raw name with no quotes — use [Year of Transaction Date], not [`Year of Transaction Date`]. Backtick-quoting inside brackets is only for names that contain ] or a backtick. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
+  'One type vocabulary everywhere (cast operator, UI, expression cast): text, integer, float, decimal, date, datetime, boolean. In expressions write cast([x] as float) / try_cast([x] as decimal(18,2)); SQL spellings like varchar/double/timestamp are rejected outside SQL nodes.',
   'Quotes follow SQL: \'text\' is a text value (escape a quote by doubling it: \'it\'\'s\'); "name" is an identifier — in expressions "amount" means the same field as [amount], and statement names and file paths (output table "t", input rawTable "id", file "/p.csv") are double-quoted. Formats, JSON paths and prefixes are text values: format \'%Y-%m-%d\', path \'$.items\'.',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
   'For created input/output tables, prefer passing inputResources (alias -> rawTableId) and resultTableId to data_apply_workflow_dsl/data_apply_workflow_plan instead of embedding or guessing node ids.',

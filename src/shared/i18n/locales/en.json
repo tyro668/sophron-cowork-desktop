@@ -1479,7 +1479,7 @@
           "expressionFunctionDesc_rpad": "Right-pads a string with a specified character to reach the target length.",
           "expressionFunctionDesc_reverse": "Reverses the characters in a string.",
           "expressionFunctionDesc_repeat": "Repeats a string a specified number of times.",
-          "expressionFunctionDesc_try_cast": "Safely converts an expression to the specified type. Returns NULL on failure instead of throwing an error. Can be used to parse a string into a number, e.g. try_cast([revenue] AS double).",
+          "expressionFunctionDesc_try_cast": "Safely converts an expression to the specified type. Returns NULL on failure instead of throwing an error. Can be used to parse a string into a number, e.g. try_cast([revenue] AS float).",
           "expressionFunctionCategoryType": "Type conversion",
           "expressionFunctionDesc_ifElseEnd": "Returns one value when the condition holds, otherwise another",
           "expressionFunctionDesc_ifEnd": "Returns a value when the condition holds, otherwise null",

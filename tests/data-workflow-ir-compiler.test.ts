@@ -731,7 +731,7 @@ function main() {
     });
 
     expect(exportGeneratedWorkflowDsl(result)).toContain(
-      'derive [Upper Value] = upper(cast([Value] AS VARCHAR))'
+      'derive [Upper Value] = upper(cast([Value] AS text))'
     );
   });
 
@@ -1073,7 +1073,7 @@ function main() {
   });
 
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else cast(date_diff('day', [Order Date], [Ship Date]) AS INTEGER) end"
+    "if [Order Date] IS NULL OR [Ship Date] IS NULL then NULL else cast(date_diff('day', [Order Date], [Ship Date]) AS integer) end"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain('sort [Shipping Days] desc');
 });
@@ -1576,7 +1576,7 @@ function main() {
 
   expect(exportGeneratedWorkflowDsl(result)).toContain('cast([Raw] AS decimal(18,2)) * 2');
   expect(exportGeneratedWorkflowDsl(result)).toContain(
-    "derive [__sophron_ai_filter_predicate] = [Created At] >= cast('2020-01-01 00:00:00' AS DATETIME)"
+    "derive [__sophron_ai_filter_predicate] = [Created At] >= cast('2020-01-01 00:00:00' AS datetime)"
   );
   expect(exportGeneratedWorkflowDsl(result)).toContain(
     'filter [__sophron_ai_filter_predicate] = true'

@@ -1,3 +1,4 @@
+import { dataFieldTypeOfSpelling } from '../../../shared/data-field-types';
 /**
  * Versioned metadata schema migrations.
  *
@@ -154,6 +155,67 @@ export function migrateConfigQuoteSemantics(
   config: Record<string, unknown>
 ): Record<string, unknown> | null {
   const result = rewriteQuotedValue(config);
+  return result.changed ? (result.value as Record<string, unknown>) : null;
+}
+
+const CAST_TARGET_SPELLING =
+  /(\bas\s+)(timestamp\s+with\s+time\s+zone|double\s+precision|[A-Za-z_][A-Za-z0-9_]*)(?=\s*[()])/gi;
+
+/** Rewrites expression cast targets to the one field-type vocabulary
+ *  (`as varchar` → `as text`, `as double` → `as float`, `as timestamp` → `as datetime`, …).
+ *  Single-quoted text is left untouched. */
+export function rewriteCastTargetTypes(expression: string): string {
+  return expression
+    .split(/('(?:[^']|'')*')/)
+    .map((part, index) =>
+      index % 2 === 1
+        ? part
+        : part.replace(CAST_TARGET_SPELLING, (whole, prefix: string, spelling: string) => {
+            const type = dataFieldTypeOfSpelling(spelling);
+            return type && type !== spelling.toLowerCase() ? `${prefix}${type}` : whole;
+          })
+    )
+    .join('');
+}
+
+function rewriteExpressionStrings(
+  value: unknown,
+  rewrite: (expression: string) => string,
+  key?: string
+): { value: unknown; changed: boolean } {
+  if (typeof value === 'string') {
+    if (!key || !EXPRESSION_CONFIG_KEYS.has(key)) return { value, changed: false };
+    const next = rewrite(value);
+    return { value: next, changed: next !== value };
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next = value.map((item) => {
+      const result = rewriteExpressionStrings(item, rewrite, key);
+      changed ||= result.changed;
+      return result.value;
+    });
+    return { value: next, changed };
+  }
+  if (value && typeof value === 'object') {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+      const result = rewriteExpressionStrings(child, rewrite, childKey);
+      changed ||= result.changed;
+      next[childKey] = result.value;
+    }
+    return { value: next, changed };
+  }
+  return { value, changed: false };
+}
+
+export function migrateConfigCastTypeNames(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (type === 'sql') return null; // SQL nodes stay native DuckDB SQL
+  const result = rewriteExpressionStrings(config, rewriteCastTargetTypes);
   return result.changed ? (result.value as Record<string, unknown>) : null;
 }
 
@@ -882,6 +944,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     version: 21,
     name: 'limit_config_per_mode',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, splitLimitConfigByMode),
+  },
+  {
+    version: 22,
+    name: 'expression_cast_field_type_names',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigCastTypeNames),
   },
 ];
 

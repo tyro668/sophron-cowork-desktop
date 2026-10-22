@@ -34,3 +34,26 @@ describe('SQL quote semantics in the DSL', () => {
     expect(migrateConfigQuoteSemantics('filter', { condition: "[s] = 'A'" })).toBeNull();
   });
 });
+
+describe('field-type names in expression casts', () => {
+  it('migrates SQL spellings of cast targets to field types, leaving text alone', async () => {
+    const { rewriteCastTargetTypes, migrateConfigCastTypeNames } =
+      await import('../src/main/data/store/migrations');
+    expect(rewriteCastTargetTypes("cast([a] as varchar) || 'as double)'")).toBe(
+      "cast([a] as text) || 'as double)'"
+    );
+    expect(rewriteCastTargetTypes('try_cast([d] as TIMESTAMP) + cast([n] as double)')).toBe(
+      'try_cast([d] as datetime) + cast([n] as float)'
+    );
+    expect(rewriteCastTargetTypes('cast([x] as decimal(18,4))')).toBe('cast([x] as decimal(18,4))');
+    expect(rewriteCastTargetTypes('cast([x] as bigint)')).toBe('cast([x] as integer)');
+    expect(migrateConfigCastTypeNames('sql', { expression: 'cast(a as varchar)' })).toBeNull();
+  });
+
+  it('accepts only field-type names as cast targets', async () => {
+    const { parseExpression } = await import('../src/shared/expression');
+    expect(() => parseExpression('cast([a] as varchar)')).toThrow(/use one of text/);
+    expect(() => parseExpression('cast([a] as text(3))')).toThrow();
+    expect(() => parseExpression('cast([a] as decimal(18,2))')).not.toThrow();
+  });
+});
