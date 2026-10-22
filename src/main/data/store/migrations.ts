@@ -878,7 +878,29 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
           : null
       ),
   },
+  {
+    version: 21,
+    name: 'limit_config_per_mode',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, splitLimitConfigByMode),
+  },
 ];
+
+const LIMIT_FIXED_KEYS = new Set(['orderBy', 'ties', 'offset']);
+const LIMIT_RANDOM_KEYS = new Set(['method', 'seed']);
+/** Drops the keys that belong to the other limit mode (limit is a discriminated union). */
+export function splitLimitConfigByMode(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (type !== 'limit') return null;
+  const sampling = config.sampling === 'random' ? 'random' : 'fixed';
+  const foreign = sampling === 'random' ? LIMIT_FIXED_KEYS : LIMIT_RANDOM_KEYS;
+  const next: Record<string, unknown> = { sampling };
+  for (const [key, value] of Object.entries(config)) {
+    if (key !== 'sampling' && !foreign.has(key)) next[key] = value;
+  }
+  return JSON.stringify(next) === JSON.stringify(config) ? null : next;
+}
 
 export const METADATA_SCHEMA_VERSION = METADATA_MIGRATIONS[METADATA_MIGRATIONS.length - 1].version;
 

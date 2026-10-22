@@ -1,13 +1,12 @@
-import { z } from 'zod';
 import { quoteIdentifier, sortKeysToSql, uniqueAlias } from './utils';
 import { LimitConfigSchema, parseOperatorConfig } from '../../../shared/operator-schemas';
+import type { FixedLimitConfig, RandomLimitConfig } from '../../../shared/operator-schemas/limit';
 
-type LimitParsed = z.infer<typeof LimitConfigSchema>;
 function compileFixedSql(
   output: string,
   input: string,
   columns: string[],
-  parsed: LimitParsed,
+  parsed: FixedLimitConfig,
   limit: number
 ): string {
   const unit = parsed.unit;
@@ -78,7 +77,7 @@ function compileRandomSql(
   output: string,
   input: string,
   _columns: string[],
-  parsed: LimitParsed,
+  parsed: RandomLimitConfig,
   limit: number
 ): string {
   if (parsed.unit === 'percent') {
