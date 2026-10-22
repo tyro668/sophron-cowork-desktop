@@ -1,26 +1,24 @@
+import { defaultMetricAlias } from './metric-naming';
 import { translatePivotInput } from '../data-field-types';
 import type { PivotAxisEntry, PivotLiteral } from '../operator-schemas/pivot';
 
-const PIVOT_METRIC_DEFAULT_SUFFIXES: Record<string, string> = {
-  sum: 'sum',
-  avg: 'avg',
-  min: 'min',
-  max: 'max',
-  count: 'count',
-  count_distinct: 'distinct_count',
-};
-
-export function getPivotMetricDefaultSuffix(fn: string): string {
-  const normalized = fn.trim().toLowerCase();
-  return PIVOT_METRIC_DEFAULT_SUFFIXES[normalized] ?? normalized;
+/**
+ * Pivot output columns are `<values>_<suffix>`. With a single metric and no explicit
+ * suffix the columns are just the pivot values (no `_count`/`_sum` noise). With
+ * several metrics the default suffix follows the shared metric naming (`field_fn`).
+ */
+export function pivotMetricSuffixes(
+  metrics: ReadonlyArray<{ function: string; expression?: string; alias?: string }>
+): string[] {
+  if (metrics.length === 1 && !metrics[0].alias?.trim()) return [''];
+  return metrics.map(
+    (metric) =>
+      metric.alias?.trim() || defaultMetricAlias(metric.function, metric.expression ?? '', 'count')
+  );
 }
 
-export function withPivotMetricDefaultSuffix<T extends { function: string; alias?: string }>(
-  metric: T
-): T & { alias: string } {
-  return metric.alias?.trim()
-    ? { ...metric, alias: metric.alias }
-    : { ...metric, alias: getPivotMetricDefaultSuffix(metric.function) };
+export function pivotColumnName(values: string, suffix: string): string {
+  return suffix ? `${values}_${suffix}` : values;
 }
 
 export interface PivotAxisSelectionSummary {

@@ -36,7 +36,8 @@ import {
   normalizePivotAxes,
   togglePivotAxisValue,
   addCustomPivotAxisValue,
-  getPivotMetricDefaultSuffix,
+  pivotColumnName,
+  pivotMetricSuffixes,
   getPivotAxisSelectionSummary,
   getPivotPreservedValues,
   togglePivotVisibleValues,
@@ -189,6 +190,10 @@ export default function FormPivot({
     () => validateAggregateMetrics(activeMetrics, [], { checkGroupConflict: false }),
     [activeMetrics]
   );
+  const defaultSuffixes = useMemo(
+    () => pivotMetricSuffixes(activeMetrics.map((metric) => ({ ...metric, alias: '' }))),
+    [activeMetrics]
+  );
   const errorCount = issues.reduce((n, item) => n + item.messages.length, 0);
   const rowLabels = {
     add: tr('rowAdd'),
@@ -204,11 +209,10 @@ export default function FormPivot({
     const values = (first.values.length > 0 ? first.values.map(literalDisplay) : firstAxisValues)
       .filter((value) => value !== '')
       .slice(0, 2);
-    const suffixes = activeMetrics.map(
-      (metric) => metric.alias?.trim() || getPivotMetricDefaultSuffix(metric.function)
-    );
+    const suffixes = pivotMetricSuffixes(activeMetrics);
     const out: string[] = [];
-    for (const value of values) for (const suffix of suffixes) out.push(`${value}_${suffix}`);
+    for (const value of values)
+      for (const suffix of suffixes) out.push(pivotColumnName(value, suffix));
     return out.slice(0, 3);
   }, [activeMetrics, axes, firstAxisValues]);
 
@@ -305,9 +309,11 @@ export default function FormPivot({
                   <GlassCommitTextInput
                     value={metric.alias ?? ''}
                     onCommit={(value) => updateMetric(index, { alias: value.trim() })}
-                    placeholder={tr('pivotDefaultSuffix', {
-                      suffix: getPivotMetricDefaultSuffix(metric.function),
-                    })}
+                    placeholder={
+                      defaultSuffixes[index]
+                        ? tr('pivotDefaultSuffix', { suffix: defaultSuffixes[index] })
+                        : tr('pivotNoSuffix')
+                    }
                     ariaLabel={tr('pivotSuffixLabel')}
                     ariaInvalid={issue.aliasError}
                     className="h-full w-full px-2.5 text-[13px]"

@@ -2,7 +2,7 @@ import type { PrepDiagnostic } from '../ast';
 import type { ExprToken } from '../../expression-tokenizer';
 import { tokenizeExpression } from '../../expression-tokenizer';
 import { createPrepDiagnostic } from '../diagnostics';
-import { formatFieldRef, parseFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
+import { formatFieldRef, parseFieldRefExact, toFieldName } from '../syntax/fields';
 import { splitTopLevel } from '../syntax/scanner';
 
 interface ParsedMetric {
@@ -43,7 +43,7 @@ export function parseMetrics(
       {
         function: metric.function,
         expression: metric.expression,
-        alias: alias ? toFieldName(alias) : defaultAlias(metric.function, metric.expression),
+        ...(alias ? { alias: toFieldName(alias) } : {}),
       },
     ];
   });
@@ -100,9 +100,4 @@ function parseMetricEntry(part: string): ParsedMetric | null {
 export function formatMetric(metric: Record<string, unknown>): string {
   const alias = typeof metric.alias === 'string' ? ` as ${formatFieldRef(metric.alias)}` : '';
   return `${String(metric.function ?? 'count')}(${String(metric.expression ?? '*')})${alias}`;
-}
-
-function defaultAlias(fn: string, expression: string): string {
-  const field = parseFieldRef(expression.trim());
-  return field ? `${fn}_${toFieldName(field)}` : fn;
 }

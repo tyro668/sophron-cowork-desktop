@@ -1,4 +1,8 @@
 import { useState } from 'react';
+import {
+  defaultMetricAlias,
+  isCountAllRows,
+} from '../../../../shared/operator-config/metric-naming';
 import { FunctionSquare, List } from 'lucide-react';
 import { GlassFieldSingleSelect } from './GlassFieldSingleSelect';
 import { GlassExpressionInput } from './GlassExpressionInput';
@@ -12,9 +16,9 @@ export function plainFieldOf(expression: string): string | null {
 
 /** Auto output name for a metric, e.g. `销售额_sum`; count(*) → `行数`. */
 export function autoMetricAlias(fn: string, expression: string, rowsLabel: string): string {
-  const field = plainFieldOf(expression);
-  if (field) return `${field}_${fn}`;
-  if (fn === 'count' && (!expression.trim() || expression.trim() === '*')) return rowsLabel;
+  if (plainFieldOf(expression) || isCountAllRows(fn, expression)) {
+    return defaultMetricAlias(fn, expression, rowsLabel);
+  }
   return '';
 }
 

@@ -16,6 +16,7 @@ describe('dropdown-first metric input', () => {
     expect(autoMetricAlias('sum', '[销售额]', '行数')).toBe('销售额_sum');
     expect(autoMetricAlias('count', '*', '行数')).toBe('行数');
     expect(autoMetricAlias('sum', '[a] * [b]', '行数')).toBe('');
+    expect(autoMetricAlias('count_distinct', '[客户]', '行数')).toBe('客户_count_distinct');
   });
 });
 

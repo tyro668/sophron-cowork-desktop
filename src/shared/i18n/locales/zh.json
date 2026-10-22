@@ -1020,6 +1020,7 @@
           "pivotExpressionPlaceholder": "请原始表达式",
           "pivotSuffixLabel": "列名后缀",
           "pivotDefaultSuffix": "默认后缀：{{suffix}}",
+          "pivotNoSuffix": "无后缀（单个度量时列名即透视值）",
           "pivotAddMetric": "添加度量",
           "pivotRemoveMetric": "删除",
           "pivotIncompleteField": "透视字段和聚合指标需至少各配置一项，且表达式不能为空",

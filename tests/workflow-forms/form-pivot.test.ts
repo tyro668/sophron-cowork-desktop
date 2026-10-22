@@ -7,8 +7,8 @@ import {
   togglePivotAxisValue,
   togglePivotVisibleValues,
   removePivotCustomValue,
-  getPivotMetricDefaultSuffix,
-  withPivotMetricDefaultSuffix,
+  pivotColumnName,
+  pivotMetricSuffixes,
   getPivotAxisSelectionSummary,
   getPivotPreservedValues,
 } from '../../src/shared/operator-config';
@@ -53,20 +53,20 @@ describe('FormPivot — config ↔ DSL', () => {
     expect(dsl).toBe('');
   });
 
-  it('applies a readable default suffix when an alias is omitted', () => {
+  it('omits the suffix when a single metric has no alias', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
       type: 'pivot',
       config: { on: [{ field: 'category' }], using: [{ function: 'count', expression: '*' }] },
     });
-    expect(dsl).toBe('pivot on [category] using count(*) as [count]');
+    expect(dsl).toBe('pivot on [category] using count(*)');
     const r = ok({
       on: [{ field: 'category' }],
       using: [{ function: 'count', expression: '*' }],
     });
     expect(r.config.on).toEqual([{ field: 'category', values: [] }]);
     expect((r.config.using as Array<Record<string, unknown>>)[0].function).toBe('count');
-    expect((r.config.using as Array<Record<string, unknown>>)[0].alias).toBe('count');
+    expect((r.config.using as Array<Record<string, unknown>>)[0].alias).toBeUndefined();
   });
 
   it('round-trips a complete pivot config with an alias and group by', () => {
@@ -102,7 +102,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
     expect(dsl).toBe(
-      `pivot on [year] in (2024, 2025), [quarter] in ('Q1', 'Q2'), [channel] using sum([amount]) as [sum]`
+      `pivot on [year] in (2024, 2025), [quarter] in ('Q1', 'Q2'), [channel] using sum([amount])`
     );
     const r = ok({
       on: [
@@ -137,7 +137,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
 
-    expect(dsl).toBe(`pivot on [月份] in ('1月', '2月', '3月') using sum([金额]) as [sum]`);
+    expect(dsl).toBe(`pivot on [月份] in ('1月', '2月', '3月') using sum([金额])`);
     expect(
       ok({
         on: [{ field: '月份', values }],
@@ -165,24 +165,21 @@ describe('FormPivot — config ↔ DSL', () => {
 });
 
 describe('pivot metric default suffixes', () => {
-  it.each([
-    ['sum', 'sum'],
-    ['avg', 'avg'],
-    ['min', 'min'],
-    ['max', 'max'],
-    ['count', 'count'],
-    ['count_distinct', 'distinct_count'],
-  ] as const)('maps %s to the readable suffix %s', (fn, suffix) => {
-    expect(getPivotMetricDefaultSuffix(fn)).toBe(suffix);
+  it('omits the suffix for a single metric without alias', () => {
+    expect(pivotMetricSuffixes([{ function: 'count', expression: '*' }])).toEqual(['']);
+    expect(pivotColumnName('华东', '')).toBe('华东');
   });
 
-  it('preserves a custom suffix and fills only a blank suffix', () => {
+  it('uses field_fn for several metrics and keeps custom suffixes', () => {
     expect(
-      withPivotMetricDefaultSuffix({ function: 'max', expression: '[amount]', alias: 'peak' })
-    ).toEqual({ function: 'max', expression: '[amount]', alias: 'peak' });
-    expect(
-      withPivotMetricDefaultSuffix({ function: 'max', expression: '[amount]', alias: '' })
-    ).toEqual({ function: 'max', expression: '[amount]', alias: 'max' });
+      pivotMetricSuffixes([
+        { function: 'sum', expression: '[金额]' },
+        { function: 'sum', expression: '[数量]' },
+        { function: 'count', expression: '*' },
+        { function: 'max', expression: '[amount]', alias: 'peak' },
+      ])
+    ).toEqual(['金额_sum', '数量_sum', 'count', 'peak']);
+    expect(pivotColumnName('华东', '金额_sum')).toBe('华东_金额_sum');
   });
 });
 
