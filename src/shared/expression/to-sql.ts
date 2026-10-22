@@ -5,6 +5,8 @@ import { ExpressionError } from './parser';
 export interface ToSqlOptions {
   /** Allow `[source].[field]` (join conditions); otherwise rejected. */
   allowQualified?: boolean;
+  /** Join predicates: resolve every field's qualifier to a SQL relation alias (e.g. l / r). */
+  resolveQualifier?: (qualifier: string | undefined, name: string) => string;
 }
 
 function quoteIdentifier(name: string): string {
@@ -57,6 +59,9 @@ export function exprToSql(expr: Expr, options: ToSqlOptions = {}): string {
 
   switch (expr.k) {
     case 'field':
+      if (options.resolveQualifier) {
+        return `${options.resolveQualifier(expr.qualifier, expr.name)}.${quoteIdentifier(expr.name)}`;
+      }
       if (expr.qualifier !== undefined) {
         if (!options.allowQualified) {
           throw new ExpressionError(

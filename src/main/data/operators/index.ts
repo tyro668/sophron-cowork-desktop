@@ -13,7 +13,12 @@ export { compileUnnestSql } from './unnest';
 export { compileScalarExpression } from './compute';
 export { compileFilterConditionExpression } from './filter';
 export { compileSetOpSql } from './set-op';
-export { compileJoinConditionList, compileJoinProjection, compileAsofJoinSql } from './join';
+export {
+  compileJoinConditionList,
+  compileJoinPredicate,
+  compileJoinProjection,
+  compileAsofJoinSql,
+} from './join';
 export {
   quoteIdentifier,
   quoteValueIdentifier,

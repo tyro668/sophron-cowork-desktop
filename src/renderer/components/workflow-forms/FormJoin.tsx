@@ -3,6 +3,7 @@ import { GitMerge, Settings, Table2 } from 'lucide-react';
 import { OPERATOR_ICONS } from '../data-view/data-pipelines/workflow/operator-icons';
 import type { OperatorFormProps } from './types';
 import { dataClient } from '../../features/data/api/data-client';
+import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { canAppendRow, ensureStableRowIds } from './shared/rowListOperations';
@@ -484,6 +485,25 @@ export default function FormJoin({
             />
           </>
         )}
+        {needsConditions && !isAsof ? (
+          <>
+            <LabelCell>{tr('joinMatchLabel')}</LabelCell>
+            <Cell span={4} v={['ctl']}>
+              <GlassExpressionInput
+                value={typeof node.config.expression === 'string' ? node.config.expression : ''}
+                onChange={(value) =>
+                  updateConfig((cfg) => ({ ...cfg, expression: value.trim() || undefined }))
+                }
+                fieldCompletions={[...new Set([...fieldCompletions, ...rightRawColumns])]}
+                lintFields={[
+                  ...new Set([leftAlias, rightAlias, ...fieldCompletions, ...rightRawColumns]),
+                ]}
+                placeholder={tr('joinMatchPlaceholder', { left: leftAlias, right: rightAlias })}
+                title={tr('joinMatchLabel')}
+              />
+            </Cell>
+          </>
+        ) : null}
       </FormGrid>
 
       {/* Keep field dialog */}
