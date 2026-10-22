@@ -62,6 +62,7 @@ import {
 } from './workflow/requirement-capability-registry';
 import { compileJflowAgainstStore } from './jflow-catalog';
 import { toWorkflowDiagnostic } from './workflow-dsl-compiler';
+import { deriveWorkflowLineage } from './workflow/workflow-lineage';
 import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-store';
 
 interface GeneratedWorkflowCandidateValidation {
@@ -258,7 +259,15 @@ export class GeneratedPipelineCommandService {
           ...(generated.summary ? { changeSummary: generated.summary } : {}),
           requiredColumns: referencedColumns(generated.text, generationColumns),
           expectedOutputSchema: validation.outputSchema ?? [],
-          lineage: lineageFor(validation.outputSchema ?? [], generationColumns),
+          lineage: deriveWorkflowLineage(
+            validation.candidate.workflow,
+            validation.outputSchema ?? [],
+            (node) =>
+              stringConfigValue(node.config?.rawTableId) === preparedInput.rawTable.id
+                ? preparedInput.columnsSnapshot
+                : [],
+            validation.terminalOutputNodeId
+          ),
           columnsSnapshot: generationColumns,
           sourceSummaryHash: hashColumns(generationColumns),
           workflowHash: hashWorkflowGraph(validation.candidate.workflow),
@@ -799,15 +808,4 @@ function referencedColumns(
     [...text.matchAll(/\[((?:[^\]]|\]\])+)\]/g)].map((match) => match[1].replace(/\]\]/g, ']'))
   );
   return columns.filter((column) => referenced.has(column.name)).map(toAutomationColumnSnapshot);
-}
-
-function lineageFor(
-  outputSchema: DataAutomationColumnSnapshot[],
-  sourceColumns: DataAutomationColumnSnapshot[]
-) {
-  const byName = new Map(sourceColumns.map((column) => [column.name.toLowerCase(), column]));
-  return outputSchema.map((column) => {
-    const source = byName.get(column.name.toLowerCase());
-    return { ...column, sourceColumns: source ? [toAutomationColumnSnapshot(source)] : [] };
-  });
 }

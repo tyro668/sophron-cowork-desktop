@@ -30,6 +30,7 @@ import {
   type JflowCatalog,
   type JflowColumn,
 } from '../../shared/jflow';
+import type { JflowStepContext } from '../../shared/jflow';
 
 const EMPTY_CATALOG: JflowCatalog = { tables: [] };
 
@@ -83,7 +84,7 @@ const jflowTheme = EditorView.theme({
 });
 
 /** Single-step mode: the doc is one pipe step of a node with this type and input schema. */
-export interface JflowEditorStep {
+export interface JflowEditorStep extends JflowStepContext {
   expectedType: string;
   columns: JflowColumn[] | null;
 }

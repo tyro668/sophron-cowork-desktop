@@ -101,7 +101,7 @@ export const DATA_TOOL_COPY = {
   data_analyze_pipeline_requirement: {
     label: 'Analyze data pipeline requirement',
     description:
-      'Analyze a natural-language requirement against the registered single-input data-pipeline capabilities. Always call this before generating a pipeline. Show the result to the user and wait for a new user message with explicit confirmation. Ambiguous or unsupported requirements must be revised and analyzed again.',
+      "Analyze a natural-language requirement against the registered single-input data-pipeline capabilities. Always call this before generating a pipeline. Show the result to the user and wait for a new user message with explicit confirmation. Ambiguous or unsupported requirements must be revised and analyzed again. Call it on the requirement as stated instead of asking clarifying questions in prose first: vague criteria come back as needs_confirmation, and the user's answer to that question then counts as the confirmation.",
   },
   data_generate_pipeline_from_requirement: {
     label: 'Generate data pipeline from requirement',
@@ -207,6 +207,8 @@ export const AUTOMATION_TOOL_COPY = {
 export const TOOL_RESULT_GUIDANCE = {
   dataAnalysisSupported:
     'Show this plan to the user and wait for an explicit confirmation in a new user message. Then call data_generate_pipeline_from_requirement with this analysisId.',
+  dataAnalysisClarified:
+    "The user's latest message answered the earlier clarification, so it already confirms this plan. Call data_generate_pipeline_from_requirement now with this analysisId and confirmed=true; do not ask for another confirmation.",
   dataAnalysisNeedsConfirmation:
     'Ask the user to clarify or revise the ambiguous/unsupported items, then analyze the revised requirement again. Do not generate yet.',
   dataAnalysisUnsupported:

@@ -14,8 +14,10 @@ import {
   JFLOW_STEP_UNSUPPORTED_TYPES,
   exportJflowStep,
   jflowDiagnosticToWorkflow,
+  jflowStepRightAlias,
   parseJflowStep,
 } from '../../../../../shared/jflow';
+import type { JflowStepContext } from '../../../../../shared/jflow';
 import type { WorkflowDiagnostic } from '../../../../../shared/workflow-diagnostics';
 import type { DataColumnTypeInfo } from '../../../../../shared/data-field-types';
 import { RAW_TABLE_PREVIEW_PAGE_SIZE, fixedTabWidthClass } from '../../shared';
@@ -69,7 +71,11 @@ export function WorkflowInspector({
   activeTab: WorkflowInspectorTab;
   onActiveTabChange: (tab: WorkflowInspectorTab) => void;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
-  onApplyOperatorDsl: (nodeId: string, config: Record<string, unknown>) => Promise<void>;
+  onApplyOperatorDsl: (
+    nodeId: string,
+    config: Record<string, unknown>,
+    memberConfigs?: Record<string, Record<string, unknown>>
+  ) => Promise<void>;
   isRunningOperatorDsl: boolean;
   nodeDataRefreshVersion: number;
   runStat?: WorkflowNodeRunStat;
@@ -125,6 +131,49 @@ export function WorkflowInspector({
     () => getWorkflowRightSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
   );
+  // A composite (one jflow step lowered to several nodes) is edited as a whole:
+  // the per-node DSL covers every member in chain order.
+  const operatorStepContext = useMemo<JflowStepContext>(() => {
+    if (!node) return {};
+    const context: JflowStepContext = {};
+    if (node.type === 'join' || node.type === 'set_op') {
+      context.rightAlias = jflowStepRightAlias(node);
+    }
+    const composite = (node.config?.layout as { composite?: string } | undefined)?.composite;
+    if (composite) {
+      const group = workflowNodes.filter(
+        (candidate) =>
+          (candidate.config?.layout as { composite?: string } | undefined)?.composite === composite
+      );
+      if (group.length > 1) {
+        const ids = new Set(group.map((member) => member.id));
+        const next = new Map<string, string>();
+        const hasUpstream = new Set<string>();
+        for (const edge of workflowEdges ?? []) {
+          if (ids.has(edge.sourceNodeId) && ids.has(edge.targetNodeId)) {
+            next.set(edge.sourceNodeId, edge.targetNodeId);
+            hasUpstream.add(edge.targetNodeId);
+          }
+        }
+        const ordered: DataWorkflowNode[] = [];
+        let cursor = group.find((member) => !hasUpstream.has(member.id))?.id;
+        while (cursor && ordered.length < group.length) {
+          const member = group.find((candidate) => candidate.id === cursor);
+          if (!member) break;
+          ordered.push(member);
+          cursor = next.get(cursor);
+        }
+        if (ordered.length === group.length) {
+          context.members = ordered.map((member) => ({
+            id: member.id,
+            type: member.type,
+            config: member.config,
+          }));
+        }
+      }
+    }
+    return context;
+  }, [node, workflowEdges, workflowNodes]);
   const operatorFieldSourceCandidates = useMemo(
     () => getWorkflowFieldSourceCandidates(operatorFieldSourceNode, workflowNodes, workflowEdges),
     [operatorFieldSourceNode, workflowEdges, workflowNodes]
@@ -136,7 +185,7 @@ export function WorkflowInspector({
 
   useEffect(() => {
     if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
-    const exported = exportJflowStep(node);
+    const exported = exportJflowStep(node, operatorStepContext);
     setOperatorDsl(exported.text);
     setOperatorDslBeforeEdit(exported.text);
     setOperatorDslDiagnostics(
@@ -151,6 +200,7 @@ export function WorkflowInspector({
     node?.config,
     node?.config?.calculations,
     node?.label,
+    operatorStepContext,
     usesOperatorDsl,
   ]);
 
@@ -304,18 +354,19 @@ export function WorkflowInspector({
 
   const handleCancelOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    const nextDsl = operatorDslBeforeEdit || exportJflowStep(node).text;
+    const nextDsl = operatorDslBeforeEdit || exportJflowStep(node, operatorStepContext).text;
     setOperatorDsl(nextDsl);
     setOperatorDslStatus(null);
     setOperatorDslDiagnostics([]);
     setIsEditingOperatorDsl(false);
     setIsDslDialogOpen(false);
-  }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
+  }, [node, operatorDslBeforeEdit, operatorStepContext, usesOperatorDsl]);
 
   const parseOperatorStep = useCallback(
     (text: string) => {
       if (!node) return null;
       const result = parseJflowStep(text, {
+        ...operatorStepContext,
         expectedType: node.type,
         columns: operatorFieldTypes.length
           ? operatorFieldTypes.map((column) => ({
@@ -329,25 +380,43 @@ export function WorkflowInspector({
         setOperatorDslStatus(null);
         return null;
       }
-      return result.config;
+      return { config: result.config, memberConfigs: result.memberConfigs };
     },
-    [node, operatorFieldTypes]
+    [node, operatorFieldTypes, operatorStepContext]
+  );
+
+  const exportParsedStep = useCallback(
+    (
+      config: Record<string, unknown>,
+      memberConfigs?: Record<string, Record<string, unknown>>
+    ): string => {
+      if (!node) return '';
+      const members = operatorStepContext.members?.map((member) => ({
+        ...member,
+        config: (member.id && memberConfigs?.[member.id]) || member.config,
+      }));
+      return exportJflowStep(
+        { id: node.id, type: node.type, config },
+        { ...operatorStepContext, members }
+      ).text;
+    },
+    [node, operatorStepContext]
   );
 
   const handleFormatOperatorDsl = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    const config = parseOperatorStep(operatorDsl);
-    if (!config) return;
+    const parsed = parseOperatorStep(operatorDsl);
+    if (!parsed) return;
     setIsEditingOperatorDsl(true);
-    setOperatorDsl(exportJflowStep({ id: node.id, type: node.type, config }).text);
+    setOperatorDsl(exportParsedStep(parsed.config, parsed.memberConfigs));
     setOperatorDslStatus(null);
-  }, [node, operatorDsl, parseOperatorStep, usesOperatorDsl]);
+  }, [exportParsedStep, node, operatorDsl, parseOperatorStep, usesOperatorDsl]);
 
   const handleApplyOperatorDsl = useCallback(async () => {
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
-    const config = parseOperatorStep(operatorDsl);
-    if (!config) return;
-    const nextDsl = exportJflowStep({ id: node.id, type: node.type, config }).text || operatorDsl;
+    const parsed = parseOperatorStep(operatorDsl);
+    if (!parsed) return;
+    const nextDsl = exportParsedStep(parsed.config, parsed.memberConfigs) || operatorDsl;
     setOperatorDsl(nextDsl);
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
@@ -357,8 +426,9 @@ export function WorkflowInspector({
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
-    await onApplyOperatorDsl(node.id, config);
+    await onApplyOperatorDsl(node.id, parsed.config, parsed.memberConfigs);
   }, [
+    exportParsedStep,
     isEditingOperatorDsl,
     isRunningOperatorDsl,
     node,
@@ -588,6 +658,7 @@ export function WorkflowInspector({
               fieldTypes={operatorFieldTypes}
               upstreamRowCount={nodePreviewData?.totalRows}
               operatorDsl={operatorDsl}
+              stepContext={operatorStepContext}
               operatorDslStatus={operatorDslStatus}
               operatorDslDiagnostics={operatorDslDiagnostics}
               isEditingOperatorDsl={isEditingOperatorDsl}
