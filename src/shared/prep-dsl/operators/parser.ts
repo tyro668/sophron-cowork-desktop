@@ -360,7 +360,7 @@ function parseInputSource(
   }
   advance();
 
-  const config: Record<string, unknown> = { dsl: text };
+  const config: Record<string, unknown> = {};
 
   if (srcType.image === 'pipeline') {
     config.source = 'pipeline';
@@ -596,7 +596,9 @@ function makeOperator(
     type,
     label: OPERATOR_LABELS[type],
     dsl,
-    config: { dsl, ...withoutUndefined(config) },
+    // Structured config is the single source of truth; the DSL text lives on the
+    // AST only and is re-derived by the formatter, never cached in config.
+    config: withoutUndefined(config),
   };
 }
 

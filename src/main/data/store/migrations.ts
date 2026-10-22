@@ -27,6 +27,9 @@ import {
   storedRawTableSourceKindSql,
   type DataRawTableRow,
 } from './data-store-records';
+import { formatOperator } from '../../../shared/prep-dsl/operators/formatter';
+import { parsePrepOperatorDsl } from '../../../shared/prep-dsl/operators/parser';
+import type { PrepOperatorType } from '../../../shared/prep-dsl/ast';
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
 
@@ -37,6 +40,50 @@ export interface MetadataMigration {
 }
 
 export const METADATA_MIGRATION_LEDGER = 'data_schema_migrations';
+
+/** Rewrites every workflow node config through `transform` (null = unchanged). */
+async function migrateWorkflowNodeConfigs(
+  ctx: DataStoreContext,
+  transform: (type: string, config: Record<string, unknown>) => Record<string, unknown> | null
+): Promise<void> {
+  const rows = await ctx.metaQueryRows<{ id: string; operator_type: string; config_json: string }>(
+    'SELECT id, operator_type, config_json FROM data_workflow_nodes'
+  );
+  for (const row of rows) {
+    let config: unknown;
+    try {
+      config = JSON.parse(row.config_json || '{}');
+    } catch {
+      continue;
+    }
+    if (!config || typeof config !== 'object' || Array.isArray(config)) continue;
+    const next = transform(row.operator_type, config as Record<string, unknown>);
+    if (!next) continue;
+    await ctx.metaRunSql('UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id', {
+      id: row.id,
+      config: JSON.stringify(next),
+    });
+  }
+}
+
+/** One-time: structured config becomes the single source of truth. Nodes that
+ *  only carried DSL text are parsed into structure; the cached text is dropped. */
+export function stripCachedOperatorDsl(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (!('dsl' in config)) return null;
+  const { dsl, ...rest } = config;
+  const unstructured =
+    type === 'input_source'
+      ? !['source', 'rawTableId', 'filePath', 'name'].some((key) => typeof rest[key] === 'string')
+      : !formatOperator({ id: '', type: type as PrepOperatorType, config: rest });
+  if (typeof dsl === 'string' && dsl.trim() && unstructured) {
+    const parsed = parsePrepOperatorDsl(dsl, type as PrepOperatorType);
+    if (parsed.operator?.type === type) return { ...parsed.operator.config, ...rest };
+  }
+  return rest;
+}
 
 async function createBaselineSchema(ctx: DataStoreContext): Promise<void> {
   await ctx.metaRunSql(`
@@ -702,6 +749,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
         );
       }
     },
+  },
+  {
+    version: 15,
+    name: 'strip_cached_operator_dsl',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, stripCachedOperatorDsl),
   },
 ];
 

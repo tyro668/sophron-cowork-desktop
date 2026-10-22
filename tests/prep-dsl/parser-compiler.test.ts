@@ -179,7 +179,8 @@ keep left *, [customers].[name] as [customer_name]
       const result = parsePrepOperatorDsl(dsl, type);
       expect(result.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
       expect(result.operator?.type).toBe(type);
-      expect(result.operator?.config.dsl).toBe(dsl);
+      expect(result.operator?.dsl).toBe(dsl);
+      expect(result.operator?.config).not.toHaveProperty('dsl');
     }
   });
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatOperator } from '../../../../../shared/prep-dsl/operators/formatter';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, CircleAlert, MousePointerClick, PencilLine, Play } from 'lucide-react';
@@ -339,7 +340,9 @@ export function WorkflowInspector({
       setOperatorDslStatus(null);
       return;
     }
-    const nextDsl = result.operator.config.dsl as string;
+    const nextDsl =
+      formatOperator({ id: node.id, type: node.type, config: result.operator.config }) ??
+      result.operator.dsl;
     setOperatorDsl(nextDsl);
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));

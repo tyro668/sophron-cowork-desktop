@@ -23,7 +23,6 @@ export const CalculationSchema = z
 export const CalculateFieldConfigSchema = z
   .object({
     calculations: z.array(CalculationSchema).max(MAX_CALCULATION_COUNT).default([]),
-    dsl: z.string().optional(),
   })
   .strict()
   .refine((config) => config.calculations.length > 0, {

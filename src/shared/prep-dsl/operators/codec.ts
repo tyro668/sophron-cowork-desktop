@@ -21,7 +21,9 @@ export function createOperator(
     type,
     label: type,
     dsl,
-    config: { dsl, ...withoutUndefined(config) },
+    // Structured config is the single source of truth; the DSL text lives on the
+    // AST only and is re-derived by the formatter, never cached in config.
+    config: withoutUndefined(config),
   };
 }
 
