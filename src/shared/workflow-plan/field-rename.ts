@@ -1,8 +1,21 @@
 /**
  * Field rename propagation: when an operator renames a field it produces
- * (rename rename target, derive / aggregate output name, unnest
- * alias), downstream node configs that reference the old name follow along.
+ * (rename target, derive / aggregate output name, unnest alias), downstream
+ * node configs that *read that field* follow along.
+ *
+ * References are resolved, not text-matched:
+ * - expressions are tokenized; only field tokens (`[x]`, `"x"`, `[t].[x]`) whose
+ *   name matches and whose qualifier (if any) names a source on the renamed
+ *   field's branch are rewritten — strings and other tables' fields are untouched;
+ * - a join only rewrites the side (left/right) the renamed field flows into;
+ * - output-name keys (derive targets, aggregate aliases, unpivot name/value
+ *   columns…) are never rewritten, and a downstream node that re-defines or
+ *   drops the old name stops the propagation on that path.
  */
+import { tokenizeExpression } from '../expression-tokenizer';
+import { unwrapField } from '../expression/parser';
+import { formatFieldName } from '../prep-dsl/syntax/fields';
+
 type Config = Record<string, unknown>;
 type Row = Record<string, unknown>;
 
@@ -62,78 +75,242 @@ export function detectFieldRenames(
   }
 }
 
-const FIELD_KEYS = new Set(['field', 'source', 'nameColumn', 'valueColumn']);
-const FIELD_LIST_KEYS = new Set(['fields', 'groupBy', 'mergeKeys']);
-const EXPRESSION_KEYS = new Set(['condition', 'expression', 'left', 'right']);
+/** Accepts a field qualifier (`[t].[x]` → `t`); unqualified refs always match. */
+export type QualifierFilter = (qualifier: string) => boolean;
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Rewrite field references to `from` inside one expression, using the expression
+ * tokenizer so string literals, functions and other tables' fields are untouched.
+ */
+export function renameExpressionField(
+  expression: string,
+  from: string,
+  to: string,
+  acceptsQualifier: QualifierFilter = () => true
+): string {
+  let tokens;
+  try {
+    tokens = tokenizeExpression(expression);
+  } catch {
+    return expression;
+  }
+  const edits: Array<{ start: number; end: number; text: string }> = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const isField = token.type === 'FieldRef';
+    const isQuotedIdentifier = token.type === 'StringLiteral' && token.value.startsWith('"');
+    if (!isField && !isQuotedIdentifier) continue;
+    // A qualifier token (`[t]` in `[t].[x]`) is a source name, not a field.
+    if (isField && tokens[index + 1]?.type === 'Dot' && tokens[index + 2]?.type === 'FieldRef') {
+      continue;
+    }
+    const name = isField ? unwrapField(token.value) : token.value.slice(1, -1).replace(/""/g, '"');
+    if (name !== from) continue;
+    const qualified =
+      isField && tokens[index - 1]?.type === 'Dot' && tokens[index - 2]?.type === 'FieldRef';
+    if (qualified && !acceptsQualifier(unwrapField(tokens[index - 2].value))) continue;
+    const text = isField ? formatFieldName(to) : `"${to.replace(/"/g, '""')}"`;
+    edits.push({ start: token.start, end: token.end, text });
+  }
+  if (edits.length === 0) return expression;
+  let out = '';
+  let cursor = 0;
+  for (const edit of edits) {
+    out += expression.slice(cursor, edit.start) + edit.text;
+    cursor = edit.end;
+  }
+  return out + expression.slice(cursor);
 }
 
-/** Rewrite references to `from` as `to` in one node config (returns null when unchanged). */
-export function renameFieldReferences(config: Config, from: string, to: string): Config | null {
+/** Keys holding one input field name / a list of input field names / an expression. */
+const FIELD_KEYS = new Set(['field', 'source', 'leftTime', 'rightTime']);
+const FIELD_LIST_KEYS = new Set(['fields', 'groupBy', 'mergeKeys', 'partitionBy']);
+const EXPRESSION_KEYS = new Set(['condition', 'expression', 'having']);
+/** Per-operator keys that *define* output names; never rewritten. */
+const OUTPUT_KEYS: Record<string, ReadonlySet<string>> = {
+  unnest: new Set(['alias', 'withIndex']),
+  unpivot: new Set(['nameColumn', 'valueColumn']),
+};
+
+export type JoinSide = 'left' | 'right';
+
+interface RenameContext {
+  from: string;
+  to: string;
+  type: string;
+  /** Join side the renamed field flows into (join nodes only). */
+  side?: JoinSide;
+  acceptsQualifier: QualifierFilter;
+}
+
+function rewriteConfig(config: Config, ctx: RenameContext): Config | null {
   let changed = false;
-  const bracket = new RegExp(`\\[${escapeRegExp(from)}\\]`, 'g');
-  const visit = (value: unknown, key: string | null): unknown => {
+  const outputKeys = OUTPUT_KEYS[ctx.type];
+  const visit = (value: unknown, key: string | null, parent: Row | null): unknown => {
     if (typeof value === 'string') {
-      if (key && FIELD_KEYS.has(key) && value === from) {
-        changed = true;
-        return to;
+      if (!key || outputKeys?.has(key)) return value;
+      // A derive calculation's `field` is the column it defines, not one it reads.
+      if (ctx.type === 'derive' && key === 'field' && parent && 'expression' in parent) {
+        return value;
       }
-      if (key && EXPRESSION_KEYS.has(key) && bracket.test(value)) {
-        bracket.lastIndex = 0;
+      if (EXPRESSION_KEYS.has(key)) {
+        const next = renameExpressionField(value, ctx.from, ctx.to, ctx.acceptsQualifier);
+        if (next !== value) changed = true;
+        return next;
+      }
+      if (ctx.type === 'join') {
+        // Conditions / asof keys: `left` reads the left input, `right` the right one.
+        const side =
+          key === 'left' || key === 'leftTime'
+            ? 'left'
+            : key === 'right' || key === 'rightTime'
+              ? 'right'
+              : null;
+        const keepSide =
+          key === 'source' && parent && typeof parent.side === 'string' ? parent.side : null;
+        const effective = side ?? keepSide;
+        if (effective && effective !== ctx.side) return value;
+        if (!side && key !== 'source') return value;
+      } else if (!FIELD_KEYS.has(key)) {
+        return value;
+      }
+      if (value === ctx.from) {
         changed = true;
-        return value.replace(bracket, `[${to}]`);
+        return ctx.to;
       }
       return value;
     }
     if (Array.isArray(value)) {
       return value.map((item) => {
-        if (key && FIELD_LIST_KEYS.has(key) && item === from) {
-          changed = true;
-          return to;
+        if (typeof item === 'string') {
+          if (key && FIELD_LIST_KEYS.has(key) && !outputKeys?.has(key) && item === ctx.from) {
+            changed = true;
+            return ctx.to;
+          }
+          return item;
         }
-        return visit(item, key && FIELD_LIST_KEYS.has(key) ? null : key);
+        return visit(item, key, parent);
       });
     }
     if (value && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value as Config).map(([k, v]) => [k, visit(v, k)]));
+      const record = value as Row;
+      return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, visit(v, k, record)]));
     }
     return value;
   };
-  const next = visit(config, null) as Config;
+  const next = visit(config, null, null) as Config;
   return changed ? next : null;
+}
+
+/** Rewrite references to `from` as `to` in one node config (returns null when unchanged). */
+export function renameFieldReferences(
+  config: Config,
+  from: string,
+  to: string,
+  options: { type?: string; side?: JoinSide; acceptsQualifier?: QualifierFilter } = {}
+): Config | null {
+  return rewriteConfig(config, {
+    from,
+    to,
+    type: options.type ?? '',
+    side: options.side,
+    acceptsQualifier: options.acceptsQualifier ?? (() => true),
+  });
+}
+
+/** True when the node (after rewriting) no longer passes the old field name downstream. */
+function stopsPropagation(type: string, config: Config, from: string, to: string): boolean {
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  switch (type) {
+    case 'derive':
+      return rows(config.calculations).some((row) => row.field === from);
+    case 'rename':
+      return rows(config.mappings).some((row) => row.targetValue === from);
+    case 'aggregate':
+      return (
+        rows(config.metrics).some((row) => row.alias === from) ||
+        !JSON.stringify(list(config.groupBy)).includes(JSON.stringify(to))
+      );
+    case 'select':
+      return config.selection !== 'exclude'
+        ? !list(config.fields).includes(to)
+        : list(config.fields).includes(to);
+    case 'unnest':
+      return config.alias === from || config.withIndex === from;
+    case 'unpivot':
+      return config.nameColumn === from || config.valueColumn === from;
+    case 'sql':
+    case 'output':
+      return true;
+    default:
+      return false;
+  }
 }
 
 interface RenameGraph {
   nodes: Array<{ id: string; type: string; config: Config }>;
-  edges: Array<{ sourceNodeId: string; targetNodeId: string }>;
+  edges: Array<{ sourceNodeId: string; targetNodeId: string; targetHandle?: string | null }>;
 }
 
-/** Apply renames to every node downstream of `nodeId`. */
+/** Aliases of the input sources feeding `nodeId` (its own branch). */
+function branchSourceAliases(graph: RenameGraph, nodeId: string): Set<string> {
+  const aliases = new Set<string>();
+  const seen = new Set<string>();
+  const pending = [nodeId];
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = graph.nodes.find((n) => n.id === id);
+    if (node?.type === 'input') {
+      const alias = str(node.config.alias);
+      if (alias) aliases.add(alias);
+    }
+    for (const edge of graph.edges) if (edge.targetNodeId === id) pending.push(edge.sourceNodeId);
+  }
+  return aliases;
+}
+
+/** Apply renames to every node downstream of `nodeId` that resolves the field to it. */
 export function propagateFieldRenames<T extends RenameGraph>(
   graph: T,
   nodeId: string,
   renames: Array<[string, string]>
 ): T {
   if (renames.length === 0) return graph;
-  const downstream = new Set<string>();
-  const pending = [nodeId];
-  while (pending.length) {
-    const id = pending.pop()!;
-    for (const edge of graph.edges) {
-      if (edge.sourceNodeId === id && !downstream.has(edge.targetNodeId)) {
-        downstream.add(edge.targetNodeId);
-        pending.push(edge.targetNodeId);
+  const aliases = branchSourceAliases(graph, nodeId);
+  const acceptsQualifier: QualifierFilter = (qualifier) => aliases.has(qualifier);
+  const configs = new Map(graph.nodes.map((node) => [node.id, node.config]));
+  for (const [from, to] of renames) {
+    const visited = new Set<string>();
+    const pending: Array<{ id: string }> = [{ id: nodeId }];
+    while (pending.length) {
+      const { id } = pending.pop()!;
+      for (const edge of graph.edges) {
+        if (edge.sourceNodeId !== id) continue;
+        const target = graph.nodes.find((node) => node.id === edge.targetNodeId);
+        if (!target) continue;
+        const side: JoinSide | undefined =
+          target.type === 'join' ? (edge.targetHandle === 'right' ? 'right' : 'left') : undefined;
+        const visitKey = `${target.id}:${side ?? ''}`;
+        if (visited.has(visitKey)) continue;
+        visited.add(visitKey);
+        const current = configs.get(target.id)!;
+        const next =
+          renameFieldReferences(current, from, to, {
+            type: target.type,
+            side,
+            acceptsQualifier,
+          }) ?? current;
+        configs.set(target.id, next);
+        if (!stopsPropagation(target.type, next, from, to)) pending.push({ id: target.id });
       }
     }
   }
   return {
     ...graph,
     nodes: graph.nodes.map((node) => {
-      if (!downstream.has(node.id)) return node;
-      let config = node.config;
-      for (const [from, to] of renames) config = renameFieldReferences(config, from, to) ?? config;
+      const config = configs.get(node.id)!;
       return config === node.config ? node : { ...node, config };
     }),
   };

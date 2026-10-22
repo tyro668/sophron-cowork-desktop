@@ -79,7 +79,7 @@ export function unquoteString(raw: string): string {
   }
 }
 
-function unwrapField(token: string): string {
+export function unwrapField(token: string): string {
   const inner = token.slice(1, -1);
   if (!inner.startsWith('`') || !inner.endsWith('`')) return inner;
   return inner.slice(1, -1).replace(/\\([\\`])/g, '$1');
