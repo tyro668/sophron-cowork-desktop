@@ -367,23 +367,143 @@ interface NamedInputCandidate {
   config: Record<string, unknown>;
 }
 
+type RelationToken = { kind: 'word' | 'ident' | 'punct'; text: string };
+
+function tokenizeSqlForRelations(sql: string): RelationToken[] {
+  const tokens: RelationToken[] = [];
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (sql.startsWith('--', i)) {
+      const end = sql.indexOf('\n', i);
+      i = end < 0 ? sql.length : end;
+    } else if (sql.startsWith('/*', i)) {
+      const end = sql.indexOf('*/', i + 2);
+      i = end < 0 ? sql.length : end + 2;
+    } else if (ch === "'") {
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") i += 2;
+        else if (sql[i++] === "'") break;
+      }
+      tokens.push({ kind: 'punct', text: "'" });
+    } else if (ch === '"') {
+      let text = '';
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === '"' && sql[i + 1] === '"') {
+          text += '"';
+          i += 2;
+        } else if (sql[i] === '"') {
+          i += 1;
+          break;
+        } else text += sql[i++];
+      }
+      tokens.push({ kind: 'ident', text });
+    } else if (/[A-Za-z_\u0080-\uffff]/.test(ch)) {
+      const match = /^[A-Za-z_0-9\u0080-\uffff$]+/.exec(sql.slice(i))![0];
+      tokens.push({ kind: 'word', text: match });
+      i += match.length;
+    } else if (/\s/.test(ch)) {
+      i += 1;
+    } else {
+      tokens.push({ kind: 'punct', text: ch });
+      i += 1;
+    }
+  }
+  return tokens;
+}
+
+const RELATION_CLAUSE_END = new Set([
+  'where',
+  'group',
+  'having',
+  'order',
+  'limit',
+  'offset',
+  'qualify',
+  'window',
+  'union',
+  'intersect',
+  'except',
+  'on',
+  'using',
+  'join',
+  'inner',
+  'left',
+  'right',
+  'full',
+  'cross',
+  'natural',
+  'asof',
+  'positional',
+  'anti',
+  'semi',
+  'lateral',
+  'select',
+  'pivot',
+  'unpivot',
+  'sample',
+  'tablesample',
+  'returning',
+]);
+
+/**
+ * Names that appear in relation position: right after FROM / JOIN, or after a comma
+ * inside a FROM list (`FROM a x, b`). Column names, aliases, functions and CTE
+ * names are not relations, so an input alias equal to a column name is not pulled in.
+ */
+export function sqlRelationNames(sql: string): Set<string> {
+  const tokens = tokenizeSqlForRelations(sql);
+  const relations = new Set<string>();
+  const ctes = new Set<string>();
+  const lower = (t: RelationToken | undefined) =>
+    t && t.kind === 'word' ? t.text.toLowerCase() : '';
+  const isName = (t: RelationToken | undefined) => !!t && (t.kind === 'ident' || t.kind === 'word');
+  for (let k = 0; k < tokens.length; k += 1) {
+    const word = lower(tokens[k]);
+    // CTE definitions: `WITH name AS (` / `, name AS (`
+    if (isName(tokens[k]) && lower(tokens[k + 1]) === 'as' && tokens[k + 2]?.text === '(') {
+      const prev = tokens[k - 1];
+      if (lower(prev) === 'with' || lower(prev) === 'recursive' || prev?.text === ',') {
+        ctes.add(tokens[k].text.toLowerCase());
+      }
+    }
+    if (word !== 'from' && word !== 'join') continue;
+    let p = k + 1;
+    for (;;) {
+      const rel = tokens[p];
+      if (!isName(rel) || (rel.kind === 'word' && RELATION_CLAUSE_END.has(lower(rel)))) break;
+      // schema-qualified names (`main.t`) are not input aliases
+      if (tokens[p + 1]?.text === '.' || tokens[p + 1]?.text === '(') break;
+      relations.add(rel.text.toLowerCase());
+      p += 1;
+      if (word === 'join') break;
+      // optional alias: `AS x` or a bare name
+      if (lower(tokens[p]) === 'as') p += 2;
+      else if (
+        isName(tokens[p]) &&
+        !(tokens[p].kind === 'word' && RELATION_CLAUSE_END.has(lower(tokens[p])))
+      )
+        p += 1;
+      if (tokens[p]?.text !== ',') break;
+      p += 1;
+    }
+  }
+  for (const cte of ctes) relations.delete(cte);
+  return relations;
+}
+
 /**
  * Named inputs of a SQL node: besides the wired upstream (`input`), every
- * enabled input with an alias that the query mentions is visible under
+ * enabled input with an alias that the query uses as a relation (FROM/JOIN position) is visible under
  * that alias, e.g. `SELECT … FROM erp JOIN bank USING (单号)`.
  */
 export function sqlNamedInputs(
   sql: string,
   nodes: readonly NamedInputCandidate[]
 ): Array<{ alias: string; nodeId: string }> {
-  // Drop comments and string literals; double-quoted identifiers still count.
-  const visible = sql
-    .replace(/--[^\n]*/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/'(?:[^']|'')*'/g, ' ');
-  const words = new Set(
-    (visible.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? []).map((word) => word.toLowerCase())
-  );
+  const words = sqlRelationNames(sql);
   const seen = new Set<string>();
   const named: Array<{ alias: string; nodeId: string }> = [];
   for (const node of nodes) {
