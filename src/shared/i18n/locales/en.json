@@ -1020,6 +1020,7 @@
           "pivotExpressionPlaceholder": "Enter an expression",
           "pivotSuffixLabel": "Column suffix",
           "pivotDefaultSuffix": "Default suffix: {{suffix}}",
+          "pivotNoSuffix": "No suffix (single metric: columns are the pivot values)",
           "pivotAddMetric": "Add measure",
           "pivotRemoveMetric": "Remove",
           "pivotIncompleteField": "Pivot fields and aggregate metrics each need at least one entry with a non-empty expression",

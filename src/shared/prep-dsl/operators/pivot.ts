@@ -10,7 +10,6 @@ import { isCompletePivotAxis, isCompletePivotMetric } from '../../operator-compl
 import { formatLiteral } from '../syntax/literals';
 import { createOperator, objectArray, type OperatorDslCodec } from './codec';
 import { formatMetric, parseMetrics } from './metrics';
-import { withPivotMetricDefaultSuffix } from '../../operator-config/pivot';
 
 interface PivotAxisEntry {
   field: string;
@@ -101,13 +100,11 @@ export const pivotCodec: OperatorDslCodec = {
     if (using.length === 0) return null;
     const usingDsl = using
       .map((metric) =>
-        formatMetric(
-          withPivotMetricDefaultSuffix({
-            ...metric,
-            function: String(metric.function ?? 'count'),
-            alias: typeof metric.alias === 'string' ? metric.alias : undefined,
-          })
-        )
+        formatMetric({
+          ...metric,
+          function: String(metric.function ?? 'count'),
+          alias: typeof metric.alias === 'string' && metric.alias.trim() ? metric.alias : undefined,
+        })
       )
       .join(', ');
     const groupBy = Array.isArray(config?.groupBy) ? config.groupBy : [];

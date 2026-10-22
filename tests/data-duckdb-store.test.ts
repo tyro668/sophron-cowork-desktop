@@ -67,19 +67,14 @@ describe('DuckDB data pipeline store', () => {
     });
     expect(preview.columns).toHaveLength(8);
     expect(preview.columns).toEqual(
-      expect.arrayContaining([
-        'empty_1_east_sum_amount',
-        'empty_west_sum_amount',
-        'empty_0_east_sum_amount',
-        'paid_west_sum_amount',
-      ])
+      expect.arrayContaining(['empty_1_east', 'empty_west', 'empty_0_east', 'paid_west'])
     );
     expect(preview.rows).toHaveLength(1);
     expect(preview.rows[0]).toMatchObject({
-      empty_1_east_sum_amount: '10',
-      empty_west_sum_amount: '20',
-      empty_0_east_sum_amount: '30',
-      paid_west_sum_amount: '40',
+      empty_1_east: '10',
+      empty_west: '20',
+      empty_0_east: '30',
+      paid_west: '40',
     });
   });
 

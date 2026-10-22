@@ -178,9 +178,16 @@ export default function FormAggregate({
   const addMetricAfter = useCallback(
     (index: number) => {
       if (!canAppendRow(activeMetrics.length, MAX_METRIC_COUNT)) return;
-      handleMetricsChange(insertRowAfter(activeMetrics, index, createEmptyMetric()));
+      // New rows start as a named row count (行数, 行数_2, …) instead of a blank placeholder.
+      const rowsLabel = tr('metricRowsAlias');
+      const taken = new Set(activeMetrics.map((metric) => metric.alias?.trim()));
+      let alias = rowsLabel;
+      for (let n = 2; taken.has(alias); n += 1) alias = `${rowsLabel}_${n}`;
+      handleMetricsChange(
+        insertRowAfter(activeMetrics, index, { ...createEmptyMetric(), expression: '*', alias })
+      );
     },
-    [activeMetrics, handleMetricsChange]
+    [activeMetrics, handleMetricsChange, tr]
   );
 
   const copyMetric = useCallback(
@@ -307,7 +314,13 @@ export default function FormAggregate({
                   <GlassCommitTextInput
                     value={metric.alias ?? ''}
                     onCommit={(value) => updateMetric(index, { alias: value.trim() })}
-                    placeholder={tr('aggregateAliasPlaceholder')}
+                    placeholder={
+                      autoMetricAlias(
+                        metric.function,
+                        metric.expression ?? '',
+                        tr('metricRowsAlias')
+                      ) || tr('aggregateAliasPlaceholder')
+                    }
                     ariaLabel={tr('aggregateAlias')}
                     ariaInvalid={issue.aliasError}
                     className="h-full w-full px-2.5 text-[13px]"

@@ -2,7 +2,7 @@ import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../prep-dsl/syntax/fields';
 import { planJoinProjectionColumns } from '../prep-dsl/join-projection';
 import { parseConditionTree, type FilterConditionNode } from '../filter-condition';
-import { withPivotMetricDefaultSuffix } from '../operator-config/pivot';
+import { pivotColumnName, pivotMetricSuffixes } from '../operator-config/pivot';
 import {
   extractExpressionFieldNames,
   isExpressionSyntaxValid,
@@ -448,14 +448,17 @@ function validateNode(
         (combos, values) => combos.flatMap((combo) => values.map((value) => `${combo}_${value}`)),
         ['']
       );
-      const metricAliases = recordArray(config.using).map(
-        (metric) =>
-          withPivotMetricDefaultSuffix(metric as { function: string; alias?: string }).alias
+      const metricAliases = pivotMetricSuffixes(
+        recordArray(config.using) as Array<{
+          function: string;
+          expression?: string;
+          alias?: string;
+        }>
       );
       const seen = new Set<string>(columns.map((column) => column.name));
       for (const combo of valueCombos) {
         for (const alias of metricAliases) {
-          const name = `${combo}_${alias}`;
+          const name = pivotColumnName(combo, alias);
           if (seen.has(name)) {
             push(
               diagnostics,
