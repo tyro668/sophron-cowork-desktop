@@ -697,7 +697,7 @@ describe('DataToolService', () => {
 
     const result = await service.getWorkflowDslReference({ topic: 'examples' });
 
-    expect(result.content[0]?.text).toContain('input source rawTable "<rawTableId>" as src');
+    expect(result.content[0]?.text).toContain('input rawTable "<rawTableId>" as src');
     expect(result.content[0]?.text).toContain('data_apply_workflow_dsl');
     expect(result.content[0]?.text).not.toContain('design/prep');
   });

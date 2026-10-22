@@ -647,7 +647,7 @@ describe('compileCalculateFieldSql', () => {
 
 describe('DuckDB integration — compileCalculateFieldSql execution', () => {
   it('keeps an imported DSL replacement executable after form normalization and editing', async () => {
-    const parsed = parsePrepOperatorDsl('derive [amount] = [amount] * 2', 'calculate_field');
+    const parsed = parsePrepOperatorDsl('derive [amount] = [amount] * 2', 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     const imported = parsed.operator?.config.calculations as CalculationConfigEntry[];
     const calculations = normalizeCalculationEntries(imported, [

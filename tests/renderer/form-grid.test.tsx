@@ -158,7 +158,7 @@ describe('WorkflowInputSourceConfig', () => {
       createElement(WorkflowInputSourceConfig, {
         node: {
           id: 'i',
-          type: 'input_source',
+          type: 'input',
           config: { rawTableId: '销售订单', alias: 'orders' },
         },
         rawTables: [rawTable],

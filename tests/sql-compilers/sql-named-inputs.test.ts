@@ -5,10 +5,10 @@ import { getWorkflowUpstreamSignature } from '../../src/shared/workflow-plan/gra
 import { compileCalculateFieldSql } from '../../src/main/data/operators/calculate-field';
 
 const nodes = [
-  { id: 'a', type: 'input_source', config: { alias: 'erp' } },
-  { id: 'b', type: 'input_source', config: { alias: 'bank' } },
-  { id: 'c', type: 'input_source', config: { alias: 'unused' } },
-  { id: 'd', type: 'input_source', config: { alias: 'off', disabled: true } },
+  { id: 'a', type: 'input', config: { alias: 'erp' } },
+  { id: 'b', type: 'input', config: { alias: 'bank' } },
+  { id: 'c', type: 'input', config: { alias: 'unused' } },
+  { id: 'd', type: 'input', config: { alias: 'off', disabled: true } },
 ];
 
 describe('SQL node named inputs', () => {
@@ -37,7 +37,7 @@ describe('SQL node named inputs', () => {
             ...nodes.slice(0, 2).map((n) => (n.id === 'b' ? { ...n, config: { alias, x: 1 } } : n)),
             {
               id: 's',
-              type: 'sql_query',
+              type: 'sql',
               config: { sql: 'SELECT * FROM input JOIN bank USING (id)' },
             },
           ],
@@ -50,7 +50,7 @@ describe('SQL node named inputs', () => {
   });
 });
 
-describe('calculate_field sequential references', () => {
+describe('derive sequential references', () => {
   it('keeps independent rows in a single SELECT', () => {
     expect(
       compileCalculateFieldSql('o', 'i', {

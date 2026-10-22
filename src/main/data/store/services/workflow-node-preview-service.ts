@@ -260,7 +260,7 @@ export class WorkflowNodePreviewService {
     const { plan } = buildWorkflowPlan({ nodes: overlaid, edges: runtime.edges });
     const inputSchemas = new Map<string, PlanColumn[]>();
     for (const planNode of plan.nodes) {
-      if (planNode.type !== 'input_source') continue;
+      if (planNode.type !== 'input') continue;
       const pipelineNode = overlaid.find((item) => item.id === planNode.id);
       if (!pipelineNode) continue;
       const columns = await this.compiler.resolveInputSourceColumnTypes(
@@ -308,7 +308,7 @@ export class WorkflowNodePreviewService {
     let tableName = (await this.resolveWorkflowNodePreviewTable(pipeline, node))?.tableName ?? null;
     if (!tableName || !(await this.ctx.physicalTableExists(tableName))) {
       // 缓存表不存在，尝试从源文件加载数据创建临时表
-      if (node.type !== 'input_source' || node.config.disabled === true) {
+      if (node.type !== 'input' || node.config.disabled === true) {
         return [];
       }
       const source =
@@ -399,7 +399,7 @@ export class WorkflowNodePreviewService {
     if (node.config.disabled === true) {
       return null;
     }
-    if (node.type === 'input_source') {
+    if (node.type === 'input') {
       const source =
         typeof node.config.source === 'string'
           ? node.config.source
@@ -428,7 +428,7 @@ export class WorkflowNodePreviewService {
         workflowSignature: cache.workflowSignature,
       };
     }
-    if (node.type === 'input_source') {
+    if (node.type === 'input') {
       return { tableName: tableNameFromId('workflow_source', node.id) };
     }
     if (node.type === 'output') {

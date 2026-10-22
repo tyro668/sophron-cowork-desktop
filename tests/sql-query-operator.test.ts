@@ -33,7 +33,7 @@ async function fixture(sql: string, tail = '') {
   stores.push(store);
   const pipeline = await store.createPipeline({ name: 'SQL test', sourcePath });
   const parsed = parsePrepDsl(
-    `input source pipeline as src\n | sql ${JSON.stringify(sql)}\n${tail}\n | output table "sql_result"`
+    `input pipeline as src\n | sql ${JSON.stringify(sql)}\n${tail}\n | output table "sql_result"`
   );
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
   const flow = compilePrepWorkflowToFlow(parsed.ast!);
@@ -85,8 +85,8 @@ describe('SQL query lexical contract and DSL', () => {
     const parsed = parsePrepDsl(exported);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
     const again = compilePrepWorkflowToFlow(parsed.ast!);
-    expect(again.nodes.find((node) => node.type === 'sql_query')?.config?.sql).toBe(sql);
-    expect(parsePrepOperatorDsl(`sql ${JSON.stringify(sql)}`, 'sql_query').diagnostics).toEqual([]);
+    expect(again.nodes.find((node) => node.type === 'sql')?.config?.sql).toBe(sql);
+    expect(parsePrepOperatorDsl(`sql ${JSON.stringify(sql)}`, 'sql').diagnostics).toEqual([]);
   });
 });
 
@@ -95,7 +95,7 @@ describe('SQL query native execution', () => {
     const sql = `WITH totals AS (SELECT group_name, sum(amount) AS total FROM input GROUP BY group_name)\nSELECT *, row_number() OVER (ORDER BY total DESC) AS position FROM totals; -- done`;
     const { store, pipeline, workflow } = await fixture(sql, ' | filter [total] > 10');
     const saved = await store.savePipelineWorkflow(pipeline.id, workflow);
-    const node = saved.nodes.find((item) => item.type === 'sql_query')!;
+    const node = saved.nodes.find((item) => item.type === 'sql')!;
     const columns = await store.getWorkflowNodeColumns({
       pipelineId: pipeline.id,
       nodeId: node.id,
@@ -134,7 +134,7 @@ describe('SQL query native execution', () => {
       ' | filter [amount] > 0'
     );
     await expect(store.savePipelineWorkflow(pipeline.id, workflow)).rejects.toThrow(/amount/);
-    const node = workflow.nodes.find((item) => item.type === 'sql_query')!;
+    const node = workflow.nodes.find((item) => item.type === 'sql')!;
     node.config!.sql = 'SELECT missing_field FROM input';
     await expect(store.savePipelineWorkflow(pipeline.id, workflow)).rejects.toThrow(
       /missing_field/
@@ -144,7 +144,7 @@ describe('SQL query native execution', () => {
   });
   it('keeps SQL after an untyped calculated column executable', async () => {
     const { store, pipeline, workflow } = await fixture('SELECT * FROM input');
-    const dsl = `input source pipeline as src\n | derive [doubled] = [amount] * 2\n | sql ${JSON.stringify('SELECT sum(doubled) AS total FROM input')}\n | output table "sql_result"`;
+    const dsl = `input pipeline as src\n | derive [doubled] = [amount] * 2\n | sql ${JSON.stringify('SELECT sum(doubled) AS total FROM input')}\n | output table "sql_result"`;
     const flow = compilePrepWorkflowToFlow(parsePrepDsl(dsl).ast!);
     await store.savePipelineWorkflow(pipeline.id, {
       ...workflow,

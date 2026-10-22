@@ -22,8 +22,7 @@ export async function resolveSqlQuerySchemas(
   const pending = new Map(
     plan.nodes
       .filter(
-        (node) =>
-          node.type === 'sql_query' && (node.config as Record<string, unknown>).disabled !== true
+        (node) => node.type === 'sql' && (node.config as Record<string, unknown>).disabled !== true
       )
       .map((node) => [node.id, node])
   );
@@ -32,7 +31,7 @@ export async function resolveSqlQuerySchemas(
       code: 'planSqlQueryInvalid',
       severity: 'error',
       nodeId: id,
-      nodeType: 'sql_query',
+      nodeType: 'sql',
       message: `SQL: ${error instanceof Error ? error.message : String(error)}`,
       params: { message: error instanceof Error ? error.message : String(error) },
     });

@@ -51,7 +51,7 @@ function edgeExists(wf: DataPipelineWorkflow, source: string, target: string): b
 describe('removeWorkflowNode', () => {
   it('reconnects the predecessor to the successor (A→B→C becomes A→C)', () => {
     const wf = workflow(
-      [node('src', 'input_source'), node('a'), node('b'), node('out', 'output')],
+      [node('src', 'input'), node('a'), node('b'), node('out', 'output')],
       [edge('src', 'a'), edge('a', 'b'), edge('b', 'out')]
     );
     const next = removeWorkflowNode(wf, 'b');
@@ -63,7 +63,7 @@ describe('removeWorkflowNode', () => {
 
   it('does not fabricate edges for head or tail deletions', () => {
     const wf = workflow(
-      [node('src', 'input_source'), node('a'), node('out', 'output')],
+      [node('src', 'input'), node('a'), node('out', 'output')],
       [edge('src', 'a'), edge('a', 'out')]
     );
     const headRemoved = removeWorkflowNode(wf, 'src');
@@ -76,7 +76,7 @@ describe('removeWorkflowNode', () => {
 
   it('supports chained multi-delete (X→A→B→C deleting A and B yields X→C)', () => {
     const wf = workflow(
-      [node('x', 'input_source'), node('a'), node('b'), node('c'), node('out', 'output')],
+      [node('x', 'input'), node('a'), node('b'), node('c'), node('out', 'output')],
       [edge('x', 'a'), edge('a', 'b'), edge('b', 'c'), edge('c', 'out')]
     );
     const next = removeWorkflowNode(removeWorkflowNode(wf, 'a'), 'b');
@@ -87,7 +87,7 @@ describe('removeWorkflowNode', () => {
   it('does not bypass reject-stream edges or right-side inputs', () => {
     const wf = workflow(
       [
-        node('src', 'input_source'),
+        node('src', 'input'),
         node('expect_1', 'expect'),
         node('reject_sink'),
         node('out', 'output'),
@@ -106,7 +106,7 @@ describe('removeWorkflowNode', () => {
 
   it('preserves handles when bypassing into a join right input', () => {
     const wf = workflow(
-      [node('l', 'input_source'), node('b'), node('j', 'join'), node('out', 'output')],
+      [node('l', 'input'), node('b'), node('j', 'join'), node('out', 'output')],
       [edge('l', 'b'), edge('b', 'j', 'output', 'right'), edge('j', 'out')]
     );
     const next = removeWorkflowNode(wf, 'b');

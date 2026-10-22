@@ -3,7 +3,7 @@ import { OPERATOR_DEFINITIONS, OPERATOR_TYPES } from '../../operators';
 import type { OperatorCommand, OperatorDslCodec } from './codec';
 
 // Codec coverage derives from the operator registry: `dsl` is absent only for
-// operators not expressible as DSL steps (input_source binds via `from <ref>`).
+// operators not expressible as DSL steps (input binds via `from <ref>`).
 const codecs: readonly OperatorDslCodec[] = OPERATOR_TYPES.flatMap((type) => {
   const codec = OPERATOR_DEFINITIONS[type].dsl;
   return codec ? [codec] : [];

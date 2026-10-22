@@ -38,7 +38,7 @@ describe('DuckDB data pipeline store', () => {
     stores.push(store);
     const pipeline = await store.createPipeline({ name: 'Dynamic empty pivot', sourcePath });
     const parsed = parsePrepDsl(`
-      input source pipeline as source
+      input pipeline as source
 
       from source
         | derive [status] = case when [id] = 1 then '' when [id] = 2 then 'empty' when [id] = 3 then 'empty_0' else 'paid' end
@@ -95,7 +95,7 @@ describe('DuckDB data pipeline store', () => {
     stores.push(store);
     const pipeline = await store.createPipeline({ name: 'Empty dynamic pivot', sourcePath });
     const parsed = parsePrepDsl(`
-      input source pipeline as source
+      input pipeline as source
 
       from source
         | pivot on [status] using sum([amount]) group by [region]
@@ -428,7 +428,7 @@ describe('DuckDB data pipeline store', () => {
 
     const pipeline = await store.createPipeline({ name: 'Typed pipeline' });
     const parsed = parsePrepDsl(`
-      input source rawTable "${imported.id}" as typed
+      input rawTable "${imported.id}" as typed
 
       from typed
         | cast [text_col] as text,
@@ -480,7 +480,7 @@ describe('DuckDB data pipeline store', () => {
 
     const pipeline = await store.createPipeline({ name: 'Schema inference pipeline' });
     const parsed = parsePrepDsl(`
-      input source rawTable "${imported.id}" as src
+      input rawTable "${imported.id}" as src
 
       from src
         | select [id], [amount]
@@ -495,7 +495,7 @@ describe('DuckDB data pipeline store', () => {
       edges: compiled.edges,
     });
     const filterNode = saved.nodes.find((node) => node.type === 'filter');
-    const selectNode = saved.nodes.find((node) => node.type === 'field_select');
+    const selectNode = saved.nodes.find((node) => node.type === 'select');
     expect(filterNode).toBeTruthy();
     expect(selectNode).toBeTruthy();
 
@@ -540,7 +540,7 @@ describe('DuckDB data pipeline store', () => {
 
     const pipeline = await store.createPipeline({ name: 'Draft schema pipeline' });
     const parsed = parsePrepDsl(`
-      input source rawTable "${imported.id}" as src
+      input rawTable "${imported.id}" as src
 
       from src
         | select [id], [amount]
@@ -551,7 +551,7 @@ describe('DuckDB data pipeline store', () => {
       nodes: compiled.nodes,
       edges: compiled.edges,
     });
-    const selectNode = saved.nodes.find((node) => node.type === 'field_select');
+    const selectNode = saved.nodes.find((node) => node.type === 'select');
     expect(selectNode).toBeTruthy();
 
     const saveInput = {
@@ -923,7 +923,7 @@ describe('DuckDB data pipeline store', () => {
       nodes: [
         {
           id: 'node_source',
-          type: 'input_source',
+          type: 'input',
           label: '数据源',
           x: 40,
           y: 120,
@@ -973,7 +973,7 @@ describe('DuckDB data pipeline store', () => {
 
     const pipeline = await store.createPipeline({ name: 'Auto publish', sourcePath });
     const parsed = parsePrepDsl(`
-      input source pipeline as sales
+      input pipeline as sales
 
       from sales
         | output table "temporary_name" mode replace
@@ -1102,8 +1102,8 @@ describe('DuckDB data pipeline store', () => {
     await store.importRawTable({ filePath: customersPath, name: 'customers' });
     const pipeline = await store.createPipeline({ name: 'Join orders', sourcePath: ordersPath });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customers" as customers
+      input pipeline as orders
+      input rawTable "customers" as customers
 
       from orders
         | cast [revenue] as float on_error null
@@ -1170,8 +1170,8 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customers" as customers
+      input pipeline as orders
+      input rawTable "customers" as customers
 
       from orders
         | join left customers
@@ -1215,7 +1215,7 @@ describe('DuckDB data pipeline store', () => {
     const resultTable = await store.createResultTable({ name: 'Orders output' });
     const pipeline = await store.createPipeline({ name: 'Publish orders', sourcePath: ordersPath });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | cast [revenue] as float on_error null
@@ -1287,7 +1287,7 @@ describe('DuckDB data pipeline store', () => {
     await store.importRawTable({ filePath: customersPath, name: 'customers' });
     const pipeline = await store.createPipeline({ name: 'RawTable only workflow' });
     const parsed = parsePrepDsl(`
-      input source rawTable "customers" as customers
+      input rawTable "customers" as customers
 
       from customers
         | output table "customers_copy" mode replace
@@ -1323,7 +1323,7 @@ describe('DuckDB data pipeline store', () => {
     const resultTable = await store.createResultTable({ name: 'Formal output' });
     const pipeline = await store.createPipeline({ name: 'Draft run', sourcePath: ordersPath });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | cast [revenue] as float on_error null
@@ -1413,7 +1413,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | cast [revenue] as float on_error null
@@ -1500,7 +1500,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | filter [revenue] > 10
@@ -1574,7 +1574,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | filter [revenue] > 10
@@ -1624,7 +1624,7 @@ describe('DuckDB data pipeline store', () => {
     const rawTable = await store.importRawTable({ filePath: ordersPath });
     const pipeline = await store.createPipeline({ name: 'Input source columns' });
     const parsed = parsePrepDsl(`
-      input source rawTable "${rawTable.id}" as orders
+      input rawTable "${rawTable.id}" as orders
 
       from orders
         | filter [revenue] > 10
@@ -1635,7 +1635,7 @@ describe('DuckDB data pipeline store', () => {
       nodes: compiled.nodes,
       edges: compiled.edges,
     });
-    const inputNode = saved.nodes.find((node) => node.type === 'input_source');
+    const inputNode = saved.nodes.find((node) => node.type === 'input');
     expect(inputNode).toBeTruthy();
 
     await expect(
@@ -1678,7 +1678,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | filter [订单ID]='A1000001'
@@ -1736,7 +1736,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: citiesPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as cities
+      input pipeline as cities
 
       from cities
         | filter ([City] matches '.*en$' or [City] begin 'Al') and [Category] not matches 'Office.*'
@@ -1787,7 +1787,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: citiesPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as cities
+      input pipeline as cities
 
       from cities
         | filter [City] like '%ach%' and [Category] not like 'Office%' and [City] end 'en'
@@ -1831,7 +1831,7 @@ describe('DuckDB data pipeline store', () => {
       sourcePath: ordersPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
+      input pipeline as orders
 
       from orders
         | cast [revenue] as float on_error null
@@ -1878,8 +1878,8 @@ describe('DuckDB data pipeline store', () => {
     await store.importRawTable({ filePath: statusPath, name: 'status' });
     const pipeline = await store.createPipeline({ name: 'Asof events', sourcePath: eventsPath });
     const parsed = parsePrepDsl(`
-      input source pipeline as events
-      input source rawTable "status" as status
+      input pipeline as events
+      input rawTable "status" as status
 
       from events
         | cast [event_time] as datetime
@@ -1950,12 +1950,12 @@ describe('DuckDB data pipeline store', () => {
           config_json, created_at, updated_at
         )
         VALUES
-          ('legacy-node-1', 'legacy-default-pipeline', 'source', '数据源', 1, 'input_source', 48, 128, '{}', 1, 1),
+          ('legacy-node-1', 'legacy-default-pipeline', 'source', '数据源', 1, 'input', 48, 128, '{}', 1, 1),
           ('legacy-node-2', 'legacy-default-pipeline', 'filter', '筛选', 2, 'filter', 190, 128, '{}', 1, 1),
           ('legacy-node-3', 'legacy-default-pipeline', 'deduplicate', '去重', 3, 'deduplicate', 332, 128, '{}', 1, 1),
           ('legacy-node-4', 'legacy-default-pipeline', 'missing', '缺失值处理', 4, 'missing_value', 474, 128, '{}', 1, 1),
-          ('legacy-node-5', 'legacy-default-pipeline', 'calculate', '计算字段', 5, 'calculate_field', 190, 270, '{}', 1, 1),
-          ('legacy-node-6', 'legacy-default-pipeline', 'mapping', '字段映射', 6, 'field_mapping', 474, 270, '{}', 1, 1),
+          ('legacy-node-5', 'legacy-default-pipeline', 'calculate', '计算字段', 5, 'derive', 190, 270, '{}', 1, 1),
+          ('legacy-node-6', 'legacy-default-pipeline', 'mapping', '字段映射', 6, 'rename', 474, 270, '{}', 1, 1),
           ('legacy-node-7', 'legacy-default-pipeline', 'output', '输出', 7, 'output', 474, 412, '{}', 1, 1)
       `);
       // Simulate a pre-ledger database so the next open re-runs migrations.

@@ -7,7 +7,7 @@ import {
 } from '../../src/shared/operator-config';
 
 function ok(config: Record<string, unknown>) {
-  const type = 'field_mapping' as const;
+  const type = 'rename' as const;
   const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
   const parsed = parsePrepOperatorDsl(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
@@ -21,7 +21,7 @@ describe('FormFieldMapping — config ↔ DSL', () => {
     const r = ok({
       mappings: [{ source: 'id', targetMode: 'rename', targetValue: 'user_id' }],
     });
-    expect(r.dsl).toContain('map');
+    expect(r.dsl).toContain('rename');
     expect(r.dsl).toContain('id');
     expect(r.dsl).toContain('user_id');
   });
@@ -66,14 +66,14 @@ describe('FormFieldMapping — DSL idempotent', () => {
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({
         id: 't',
-        type: 'field_mapping',
+        type: 'rename',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'field_mapping');
+      const parsed = parsePrepOperatorDsl(dsl1, 'rename');
       expect(parsed.operator).not.toBeNull();
       const dsl2 = exportPrepOperatorDsl({
         id: 't',
-        type: 'field_mapping',
+        type: 'rename',
         config: parsed.operator!.config,
       });
       expect(dsl2).toBe(dsl1);
@@ -81,7 +81,7 @@ describe('FormFieldMapping — DSL idempotent', () => {
   });
 
   it('parses DSL into configuration accepted by the graphical form', () => {
-    const parsed = parsePrepOperatorDsl('map [old] to [new]', 'field_mapping');
+    const parsed = parsePrepOperatorDsl('rename [old] as [new]', 'rename');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     const mappings = parsed.operator?.config.mappings as Record<string, unknown>[];
     expect(mappings.map(normalizeFieldMappingEntry)).toEqual([

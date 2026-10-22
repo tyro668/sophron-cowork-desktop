@@ -64,8 +64,8 @@ export function compileLoweredWorkflowToPlatformNodes({
 
   const sourceNode: DataWorkflowNodeInput = {
     id: makeNodeId('source', inputAlias),
-    type: 'input_source',
-    label: DEFAULT_OPERATOR_LABELS.input_source,
+    type: 'input',
+    label: DEFAULT_OPERATOR_LABELS.input,
     ...nodePosition(0),
     config: withoutUndefinedProperties({
       source: 'rawTable',

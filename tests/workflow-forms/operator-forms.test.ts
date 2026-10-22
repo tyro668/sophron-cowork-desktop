@@ -39,18 +39,18 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     expect(result.config.condition).toContain('and');
   });
 
-  it('field_select — include', () => {
-    const result = ok({ selection: 'include', fields: ['id', 'name', 'date'] }, 'field_select');
+  it('select — include', () => {
+    const result = ok({ selection: 'include', fields: ['id', 'name', 'date'] }, 'select');
     expect(result.config.selection).toBe('include');
     expect(result.config.fields).toEqual(['id', 'name', 'date']);
   });
 
-  it('field_select — exclude', () => {
-    const result = ok({ selection: 'exclude', fields: ['debug_col'] }, 'field_select');
+  it('select — exclude', () => {
+    const result = ok({ selection: 'exclude', fields: ['debug_col'] }, 'select');
     expect(result.config.selection).toBe('exclude');
   });
 
-  it('field_mapping', () => {
+  it('rename', () => {
     const result = ok(
       {
         mappings: [
@@ -58,7 +58,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
           { source: 'rev', targetMode: 'rename', targetValue: 'revenue' },
         ],
       },
-      'field_mapping'
+      'rename'
     );
     expect(result.config.mappings).toHaveLength(2);
     expect((result.config.mappings as Array<Record<string, string>>)[0].source).toBe('dt');
@@ -83,19 +83,19 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     expect(result.config.strategy).toBe('all_columns');
   });
 
-  it('type_convert — single', () => {
+  it('cast — single', () => {
     const result = ok(
       {
         conversions: [{ field: 'order_date', type: 'date', format: '%Y-%m-%d', onError: 'null' }],
       },
-      'type_convert'
+      'cast'
     );
     const conversions = result.config.conversions as Array<Record<string, unknown>>;
     expect(conversions).toHaveLength(1);
     expect(conversions[0].type).toBe('date');
   });
 
-  it('type_convert — multiple fields', () => {
+  it('cast — multiple fields', () => {
     const result = ok(
       {
         conversions: [
@@ -103,7 +103,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
           { field: 'qty', type: 'integer', onError: 'fail' },
         ],
       },
-      'type_convert'
+      'cast'
     );
     expect(result.config.conversions as Array<unknown>).toHaveLength(2);
   });
@@ -123,21 +123,21 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     expect(keys[0].nulls).toBe('last');
   });
 
-  it('calculate_field — derive', () => {
+  it('derive — derive', () => {
     const result = ok(
       {
         calculations: [
           { field: 'margin', expression: 'if [revenue] = 0 then 0 else [profit] / [revenue]' },
         ],
       },
-      'calculate_field'
+      'derive'
     );
     const calcs = result.config.calculations as Array<Record<string, unknown>>;
     expect(calcs).toHaveLength(1);
     expect(calcs[0].field).toBe('margin');
   });
 
-  it('calculate_field — window function', () => {
+  it('derive — window function', () => {
     const result = ok(
       {
         calculations: [
@@ -147,7 +147,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
           },
         ],
       },
-      'calculate_field'
+      'derive'
     );
     const calcs = result.config.calculations as Array<Record<string, unknown>>;
     expect(calcs[0].expression).toContain('over(');
@@ -379,14 +379,14 @@ describe('operator forms — empty config handling', () => {
   it('handles empty config without crashing', () => {
     const types: PrepOperatorType[] = [
       'filter',
-      'field_select',
+      'select',
       'deduplicate',
-      'type_convert',
+      'cast',
       'sort',
-      'calculate_field',
+      'derive',
       'aggregate',
       'join',
-      'field_mapping',
+      'rename',
       'limit',
       'pivot',
       'unpivot',
@@ -412,15 +412,15 @@ describe('operator forms — empty config handling', () => {
 describe('operator forms — all registered types', () => {
   const ALL_FORM_TYPES: PrepOperatorType[] = [
     'filter',
-    'field_select',
-    'field_mapping',
+    'select',
+    'rename',
     'deduplicate',
     'missing_value',
-    'type_convert',
+    'cast',
     'sort',
     'join',
     'aggregate',
-    'calculate_field',
+    'derive',
     'limit',
     'pivot',
     'unpivot',
@@ -431,13 +431,13 @@ describe('operator forms — all registered types', () => {
   it('every registered form type has a round-trip test', () => {
     const testedTypes = new Set([
       'filter',
-      'field_select',
-      'field_mapping',
+      'select',
+      'rename',
       'deduplicate',
       'missing_value',
-      'type_convert',
+      'cast',
       'sort',
-      'calculate_field',
+      'derive',
       'aggregate',
       'join',
       'limit',

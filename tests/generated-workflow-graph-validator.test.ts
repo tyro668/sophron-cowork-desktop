@@ -11,7 +11,7 @@ function validWorkflow(): DataWorkflowSaveInput {
     nodes: [
       {
         id: 'input',
-        type: 'input_source',
+        type: 'input',
         label: '输入',
         x: 0,
         y: 0,
@@ -19,7 +19,7 @@ function validWorkflow(): DataWorkflowSaveInput {
       },
       {
         id: 'derive',
-        type: 'calculate_field',
+        type: 'derive',
         label: '计算字段',
         x: 160,
         y: 0,
@@ -48,7 +48,7 @@ describe('validateGeneratedExecutableWorkflow', () => {
     }
     expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET).toEqual(
       new Set([
-        'input_source',
+        'input',
         'output',
         ...Object.values(AI_PREP_DSL_OPERATION_CAPABILITIES).flatMap((capability) =>
           capability.aiEnabled ? capability.emittedNodeTypes : []
@@ -88,7 +88,7 @@ describe('validateGeneratedExecutableWorkflow', () => {
           code: 'NODE_CALCULATION_MISSING',
           severity: 'error',
           nodeId: 'derive',
-          nodeType: 'calculate_field',
+          nodeType: 'derive',
           operationId: 'op_margin',
           operatorIndex: 0,
           operationType: 'derive',
@@ -118,7 +118,7 @@ describe('validateGeneratedExecutableWorkflow', () => {
           code: 'invalidConfig',
           severity: 'error',
           nodeId: 'derive',
-          nodeType: 'calculate_field',
+          nodeType: 'derive',
           params: expect.objectContaining({ path: 'inventedRuntimeOption' }),
         }),
       ])

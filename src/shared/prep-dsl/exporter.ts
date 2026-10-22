@@ -42,19 +42,17 @@ export function exportPrepWorkflowDsl(
   nodes: PrepFlowNodeLike[],
   edges: PrepFlowEdgeLike[]
 ): string {
-  const sources = nodes.filter((node) => node.type === 'input_source');
+  const sources = nodes.filter((node) => node.type === 'input');
   const sourceAliases = allocateSourceAliases(sources);
   const sourceLines = sources.map((node) => {
     const line = formatInputSource(node, sourceAliases.get(node.id) ?? 'src');
     if (!line) {
-      throw new Error(
-        `Cannot export incomplete input_source node${node.id ? ` (${node.id})` : ''}`
-      );
+      throw new Error(`Cannot export incomplete input node${node.id ? ` (${node.id})` : ''}`);
     }
     return line;
   });
   if (sources.length === 0) {
-    sourceLines.push('input source pipeline as src');
+    sourceLines.push('input pipeline as src');
   }
 
   const { chains, streamNames, rightInputs } = decomposeIntoChains(nodes, edges, sourceAliases);
@@ -240,7 +238,7 @@ function decomposeIntoChains(
   for (const node of nodes) {
     const ins = incoming.get(node.id) ?? [];
     const outs = outgoing.get(node.id) ?? [];
-    if (node.type === 'input_source') {
+    if (node.type === 'input') {
       if (ins.length > 0) {
         throw new Error(`Cannot export workflow: input node ${node.id} has incoming edges`);
       }
@@ -297,7 +295,7 @@ function decomposeIntoChains(
 
   const streamNames = new Map<string, string>();
   const usedNames = new Set<string>();
-  for (const source of nodes.filter((item) => item.type === 'input_source')) {
+  for (const source of nodes.filter((item) => item.type === 'input')) {
     const alias = sourceAliases.get(source.id) ?? 'src';
     streamNames.set(source.id, alias);
     usedNames.add(alias.toLowerCase());
@@ -340,7 +338,7 @@ function decomposeIntoChains(
   let stepSeq = 0;
 
   for (const node of ordered) {
-    if (node.type === 'input_source' || visited.has(node.id)) continue;
+    if (node.type === 'input' || visited.has(node.id)) continue;
     // A chain may only start where its input stream is already named (source or
     // junction producer); other producers belong to an open chain and would
     // have visited this node during the walk.
@@ -388,7 +386,7 @@ function decomposeIntoChains(
   }
 
   for (const node of nodes) {
-    if (node.type !== 'input_source' && !visited.has(node.id)) {
+    if (node.type !== 'input' && !visited.has(node.id)) {
       throw new Error(
         `Cannot export workflow: ${node.type} node ${node.id} is unreachable from an input source`
       );

@@ -30,7 +30,7 @@ function edge(sourceNodeId: string, targetNodeId: string): DataWorkflowEdge {
 
 describe('getWorkflowFieldSourceCandidates', () => {
   it('透传算子未缓存时可继续查询上游输入表字段', () => {
-    const input = node('input', 'input_source');
+    const input = node('input', 'input');
     const filter = node('filter', 'filter');
     const sort = node('sort', 'sort');
     expect(
@@ -43,8 +43,8 @@ describe('getWorkflowFieldSourceCandidates', () => {
   });
 
   it('字段选择算子会改变输出字段，不能越过它回退', () => {
-    const input = node('input', 'input_source');
-    const select = node('select', 'field_select');
+    const input = node('input', 'input');
+    const select = node('select', 'select');
     const filter = node('filter', 'filter');
     expect(
       getWorkflowFieldSourceCandidates(

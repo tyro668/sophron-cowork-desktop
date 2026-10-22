@@ -8,17 +8,17 @@ import { OPERATOR_NAMING } from '../../src/shared/operators/naming';
 import { OPERATOR_TYPES, OPERATOR_GROUPS } from '../../src/shared/operators';
 
 describe('field rename propagation', () => {
-  it('detects rename targets edited in field_mapping and calculate_field', () => {
+  it('detects rename targets edited in rename and derive', () => {
     expect(
       detectFieldRenames(
-        'field_mapping',
+        'rename',
         { mappings: [{ id: 'm', source: 'a', targetMode: 'rename', targetValue: 'b' }] },
         { mappings: [{ id: 'm', source: 'a', targetMode: 'rename', targetValue: 'c' }] }
       )
     ).toEqual([['b', 'c']]);
     expect(
       detectFieldRenames(
-        'calculate_field',
+        'derive',
         { calculations: [{ id: 'x', field: '利润', expression: '1', action: 'add' }] },
         { calculations: [{ id: 'x', field: '毛利', expression: '1', action: 'add' }] }
       )
@@ -50,7 +50,7 @@ describe('field rename propagation', () => {
     const graph = {
       nodes: [
         { id: 'up', type: 'filter', config: { condition: '[a] > 1' } },
-        { id: 'n', type: 'field_mapping', config: {} },
+        { id: 'n', type: 'rename', config: {} },
         { id: 'down', type: 'sort', config: { orderBy: [{ field: 'a' }] } },
       ],
       edges: [
@@ -68,7 +68,7 @@ describe('operator naming table', () => {
   it('covers every operator type and the cleaning group', () => {
     expect(Object.keys(OPERATOR_NAMING).sort()).toEqual([...OPERATOR_TYPES].sort());
     expect(OPERATOR_GROUPS.find((g) => g.category === 'cleaning')?.operatorTypes).toEqual(
-      expect.arrayContaining(['deduplicate', 'missing_value', 'type_convert', 'field_mapping'])
+      expect.arrayContaining(['deduplicate', 'missing_value', 'cast', 'rename'])
     );
   });
 });

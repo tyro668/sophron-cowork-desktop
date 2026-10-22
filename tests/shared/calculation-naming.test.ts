@@ -53,7 +53,7 @@ describe('canonical calculation names and compatibility', () => {
       parseCalculationFunctionWizardInput(canonical)
     );
     expect(parseCalculationFunctionWizardInput(canonical)).toBeDefined();
-    const parsed = parsePrepOperatorDsl(`derive [result] = ${legacy}`, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(`derive [result] = ${legacy}`, 'derive');
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
     expect(parsed.operator?.config.calculations).toEqual([
       { field: 'result', expression: canonical },
@@ -62,7 +62,7 @@ describe('canonical calculation names and compatibility', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'test',
-        type: 'calculate_field',
+        type: 'derive',
         config: { calculations: [{ field: 'result', expression: legacy }] },
       })
     ).toBe(`derive [result] = ${canonical}`);
@@ -87,7 +87,7 @@ describe('canonical calculation names and compatibility', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'sql',
-        type: 'calculate_field',
+        type: 'derive',
         config: {
           calculations: [{ field: 'n', expression: 'ROW_NUMBER() OVER (ORDER BY [Date])' }],
         },
@@ -104,7 +104,7 @@ describe('canonical calculation names and compatibility', () => {
     `accumulate(rolling(sum([Amount]), [Date], 7, 'hour'))`,
   ])('does not let legacy aliases bypass validation: %s', (expression) => {
     expect(() => normalizeCalculationDomainExpression(expression)).toThrow();
-    const parsed = parsePrepOperatorDsl(`derive [result] = ${expression}`, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(`derive [result] = ${expression}`, 'derive');
     expect(parsed.diagnostics.some((item) => item.severity === 'error')).toBe(true);
   });
 });

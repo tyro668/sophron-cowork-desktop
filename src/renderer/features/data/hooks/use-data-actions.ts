@@ -77,7 +77,7 @@ export function useDataActions(deps: DataActionsDeps) {
   /**
    * Creates a pipeline with a guaranteed-unique name and opens the editor in
    * rename mode. With `sourceRawTable`, the pipeline is persisted with a bound
-   * `input_source` node — the "create pipeline from this table" flow lands on a
+   * `input` node — the "create pipeline from this table" flow lands on a
    * canvas that is already wired to the selected input table.
    */
   const createPipelineAndEdit = useCallback(
@@ -112,7 +112,7 @@ export function useDataActions(deps: DataActionsDeps) {
               sourceRawTableId: sourceRawTable.id,
               sourceName: sourceRawTable.name,
               labels: {
-                input_source: t(getOperatorCatalog('input_source').labelKey),
+                input: t(getOperatorCatalog('input').labelKey),
                 filter: t(getOperatorCatalog('filter').labelKey),
                 output: t(getOperatorCatalog('output').labelKey),
               },

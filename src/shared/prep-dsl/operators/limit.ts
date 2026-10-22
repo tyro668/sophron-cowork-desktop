@@ -6,8 +6,8 @@ import { formatSortKeys, parseSortKeys } from './sort';
 
 export const limitCodec: OperatorDslCodec = {
   type: 'limit',
-  matches: (text) =>
-    text.startsWith('limit ') || text.startsWith('top ') || text.startsWith('sample '),
+  // One keyword: `limit N [offset k]`, `limit N by [f] desc [with ties]`, `limit N random`.
+  matches: (text) => text.startsWith('limit '),
   parse: (command, diagnostics) => parseLimit(command.text, command.line, diagnostics),
   format: (config) => {
     if (
@@ -23,7 +23,7 @@ export const limitCodec: OperatorDslCodec = {
       const unit = isPercent ? ' percent' : ' rows';
       const method = isPercent && config?.method === 'bernoulli' ? ' bernoulli' : '';
       const seed = typeof config?.seed === 'number' ? ` repeatable ${config.seed}` : '';
-      return `sample ${limit}${unit}${method}${seed}`;
+      return `limit ${limit}${unit} random${method}${seed}`;
     }
     const orderBy = config?.orderBy;
     if (config?.sampling === 'fixed' && Array.isArray(orderBy) && orderBy.length > 0) {
@@ -32,7 +32,7 @@ export const limitCodec: OperatorDslCodec = {
         config?.unit !== 'percent' && typeof config?.offset === 'number' && config.offset > 0
           ? ` offset ${config.offset}`
           : '';
-      return `top ${limit}${unit} by ${formatSortKeys(orderBy) || '[field] desc'}${offset}${
+      return `limit ${limit}${unit} by ${formatSortKeys(orderBy) || '[field] desc'}${offset}${
         config?.ties ? ' with ties' : ''
       }`;
     }
@@ -47,12 +47,11 @@ export const limitCodec: OperatorDslCodec = {
 
 function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
   const cursor = new PrepTokenCursor(text, line, diagnostics);
-  if (text.startsWith('top ')) {
-    cursor.expect('top', 'invalidTop');
-    const limit = cursor.expectPositiveInteger('invalidLimit');
-    const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
-    validatePercentLimit(limit, unit, line, diagnostics);
-    cursor.expect('by', 'invalidTop');
+  cursor.expect('limit', 'invalidLimit');
+  const limit = cursor.expectPositiveInteger('invalidLimit');
+  const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
+  validatePercentLimit(limit, unit, line, diagnostics);
+  if (cursor.match('by')) {
     const orderByStart = cursor.index;
     const offsetIndex = findTopLevelSequence(cursor.tokens, ['offset'], orderByStart);
     const withTiesIndex = findTopLevelSequence(cursor.tokens, ['with', 'ties'], orderByStart);
@@ -93,11 +92,7 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
     });
   }
 
-  if (text.startsWith('sample ')) {
-    cursor.expect('sample', 'invalidSample');
-    const limit = cursor.expectPositiveInteger('invalidLimit');
-    const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
-    validatePercentLimit(limit, unit, line, diagnostics);
+  if (cursor.match('random')) {
     const specifiedMethod = cursor.expectOneOfIfPresent(['bernoulli', 'system']);
     if (unit === 'rows' && specifiedMethod) {
       diagnostics.push({
@@ -123,10 +118,6 @@ function parseLimit(text: string, line: number, diagnostics: PrepDiagnostic[]) {
     });
   }
 
-  cursor.expect('limit', 'invalidLimit');
-  const limit = cursor.expectPositiveInteger('invalidLimit');
-  const unit = cursor.expectOneOfIfPresent(['rows', 'percent']) ?? 'rows';
-  validatePercentLimit(limit, unit, line, diagnostics);
   let offset: number | undefined;
   if (cursor.match('offset')) {
     offset = cursor.expectNonNegativeInteger('invalidLimitOffset') ?? undefined;

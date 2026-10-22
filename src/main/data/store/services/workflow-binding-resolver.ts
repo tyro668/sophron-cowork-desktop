@@ -92,7 +92,7 @@ export class WorkflowBindingResolver {
   }
   async findWorkflowSourceRawTableId(nodes: DataWorkflowNode[]): Promise<string | null> {
     for (const node of nodes) {
-      if (node.type !== 'input_source' || node.config.disabled === true) {
+      if (node.type !== 'input' || node.config.disabled === true) {
         continue;
       }
       const source =

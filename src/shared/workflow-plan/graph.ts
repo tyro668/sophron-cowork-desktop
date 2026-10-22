@@ -18,7 +18,7 @@ export interface WorkflowPlanGraphOptions {
 /**
  * Handle allowlists come from the operator registry's declared ports. The
  * `['input']`/`['output']` fallbacks keep diagnostics stable for edges touching
- * port-less endpoints (source-only input_source / sink-only output): the
+ * port-less endpoints (source-only input / sink-only output): the
  * dedicated INPUT_HAS_INCOMING / OUTPUT_HAS_OUTGOING codes fire instead of a
  * generic handle error.
  */
@@ -68,13 +68,13 @@ export function validateWorkflowPlanGraph(
     }
   }
 
-  const inputNodes = plan.nodes.filter((node) => node.type === 'input_source');
+  const inputNodes = plan.nodes.filter((node) => node.type === 'input');
   const outputNodes = plan.nodes.filter((node) => node.type === 'output');
   if (generated && inputNodes.length !== 1) {
     diagnostics.push(
       diagnostic(
         'NODE_GRAPH_INPUT_COUNT',
-        `Generated workflow must contain exactly one input_source node; received ${inputNodes.length}`
+        `Generated workflow must contain exactly one input node; received ${inputNodes.length}`
       )
     );
   }
@@ -82,7 +82,7 @@ export function validateWorkflowPlanGraph(
     diagnostics.push(
       diagnostic(
         generated ? 'NODE_GRAPH_INPUT_COUNT' : 'PLAN_GRAPH_NO_INPUT',
-        'Workflow has no input_source node',
+        'Workflow has no input node',
         undefined,
         // Pipeline workflows may draft without an input source; generated ones cannot.
         generated ? 'error' : 'warning'
@@ -151,7 +151,7 @@ export function validateWorkflowPlanGraph(
   for (const node of plan.nodes) {
     const nodeIncoming = incoming.get(node.id) ?? [];
     const nodeOutgoing = outgoing.get(node.id) ?? [];
-    if (node.type === 'input_source') {
+    if (node.type === 'input') {
       if (nodeIncoming.length !== 0) {
         diagnostics.push(
           diagnostic(
@@ -338,7 +338,7 @@ export function getWorkflowUpstreamSignature(
     const id = pending.pop()!;
     // SQL nodes also depend on the input sources they reference by alias.
     const current = input.nodes.find((node) => node.id === id);
-    if (current?.type === 'sql_query' && typeof current.config?.sql === 'string') {
+    if (current?.type === 'sql' && typeof current.config?.sql === 'string') {
       for (const named of sqlNamedInputs(
         current.config.sql,
         input.nodes.map((node) => ({ ...node, config: node.config ?? {} }))

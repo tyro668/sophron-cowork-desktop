@@ -75,8 +75,8 @@ function makeNode(type: string, config: Record<string, unknown>): DataWorkflowNo
   };
 }
 
-const sourceNode = makeNode('input_source', { tableName: 'orders' });
-const rightSourceNode = makeNode('input_source', { tableName: 'refunds' });
+const sourceNode = makeNode('input', { tableName: 'orders' });
+const rightSourceNode = makeNode('input', { tableName: 'refunds' });
 const otherNodes = [sourceNode, rightSourceNode];
 
 function Panel({
@@ -142,8 +142,8 @@ function PreviewApp() {
       C: FormSort,
     },
     {
-      op: 'type_convert',
-      node: nodeFor('type_convert', {
+      op: 'cast',
+      node: nodeFor('cast', {
         conversions: [
           { field: 'amount', type: 'integer' },
           { field: 'created_at', type: 'date' },
@@ -152,8 +152,8 @@ function PreviewApp() {
       C: FormTypeConvert,
     },
     {
-      op: 'field_mapping',
-      node: nodeFor('field_mapping', {
+      op: 'rename',
+      node: nodeFor('rename', {
         mappings: [
           { source: 'amount', targetMode: 'rename', targetValue: 'amt' },
           { source: 'name', targetMode: 'keep' },
@@ -162,8 +162,8 @@ function PreviewApp() {
       C: FormFieldMapping,
     },
     {
-      op: 'calculate_field',
-      node: nodeFor('calculate_field', {
+      op: 'derive',
+      node: nodeFor('derive', {
         calculations: [{ field: 'total', expression: '[amount] * [qty]', action: 'add' }],
       }),
       C: FormCalculateField,
@@ -304,13 +304,13 @@ function PreviewApp() {
       id: 'n-in',
       type: 'operator',
       position: { x: 40, y: 60 },
-      data: { workflowNode: makeNode('input_source', { tableName: 'orders' }) },
+      data: { workflowNode: makeNode('input', { tableName: 'orders' }) },
     },
     {
       id: 'n-in2',
       type: 'operator',
       position: { x: 40, y: 140 },
-      data: { workflowNode: makeNode('input_source', { tableName: 'refunds' }) },
+      data: { workflowNode: makeNode('input', { tableName: 'refunds' }) },
     },
     {
       id: 'n-join',

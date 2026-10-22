@@ -19,7 +19,7 @@ describe('FormSort — copy semantics at config level', () => {
         ],
       },
     });
-    expect(dsl).toBe('sort by [revenue] desc nulls last');
+    expect(dsl).toBe('sort [revenue] desc nulls last');
   });
 
   it('a completed copied key round-trips through DSL', () => {

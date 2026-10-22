@@ -63,24 +63,24 @@ export const WORKFLOW_OPERATOR_TYPES = OPERATOR_TYPES;
 export const WORKFLOW_OPERATOR_TYPE_SET = new Set<string>(WORKFLOW_OPERATOR_TYPES);
 
 export const DEFAULT_OPERATOR_LABELS: Record<DataWorkflowOperatorType, string> = {
-  input_source: '输入',
+  input: '输入',
   filter: '筛选',
-  field_select: '字段选择',
+  select: '字段选择',
   deduplicate: '去重',
   missing_value: '缺失值处理',
-  type_convert: '类型转换',
+  cast: '类型转换',
   sort: '排序',
   join: '表连接',
   aggregate: '聚合',
-  calculate_field: '计算字段',
-  field_mapping: '字段映射',
+  derive: '计算字段',
+  rename: '字段映射',
   limit: '限制行数',
   pivot: '透视',
   unpivot: '反透视',
   set_op: '集合操作',
   unnest: '嵌套展开',
   expect: '质量断言',
-  sql_query: 'SQL',
+  sql: 'SQL',
   output: '输出',
 };
 
@@ -94,8 +94,8 @@ export const LEGACY_DEFAULT_WORKFLOW_NODES: ReadonlyArray<{
 }> = [
   {
     key: 'source',
-    type: 'input_source',
-    label: DEFAULT_OPERATOR_LABELS.input_source,
+    type: 'input',
+    label: DEFAULT_OPERATOR_LABELS.input,
     x: 48,
     y: 128,
     config: { output: 'raw_rawTable' },
@@ -135,16 +135,16 @@ export const LEGACY_DEFAULT_WORKFLOW_NODES: ReadonlyArray<{
   },
   {
     key: 'calculate',
-    type: 'calculate_field',
-    label: DEFAULT_OPERATOR_LABELS.calculate_field,
+    type: 'derive',
+    label: DEFAULT_OPERATOR_LABELS.derive,
     x: 190,
     y: 270,
     config: { expression: '' },
   },
   {
     key: 'mapping',
-    type: 'field_mapping',
-    label: DEFAULT_OPERATOR_LABELS.field_mapping,
+    type: 'rename',
+    label: DEFAULT_OPERATOR_LABELS.rename,
     x: 474,
     y: 270,
     config: { mappings: [] },
@@ -195,8 +195,7 @@ export function isLegacyDefaultWorkflow(rows: DataWorkflowNodeRow[]): boolean {
     const normalizedType = normalizeOperatorType(row.operator_type ?? row.node_key);
     const legacyLabel = String(row.label);
     const isLegacyInputLabel =
-      legacyNode.type === 'input_source' &&
-      (legacyLabel === '数据源' || legacyLabel === '输入数据源');
+      legacyNode.type === 'input' && (legacyLabel === '数据源' || legacyLabel === '输入数据源');
     return (
       normalizedType === legacyNode.type &&
       (legacyLabel === legacyNode.label || isLegacyInputLabel) &&
@@ -354,7 +353,7 @@ export function workflowExecutionSignature(input: DataWorkflowSaveInput): string
 export function workflowRequiresPipelineSource(nodes: DataWorkflowNode[]): boolean {
   if (nodes.length === 0) return true;
   return nodes.some((node) => {
-    if (node.type !== 'input_source') return false;
+    if (node.type !== 'input') return false;
     const source =
       typeof node.config.source === 'string'
         ? node.config.source
@@ -386,9 +385,9 @@ export function normalizeOperatorType(value: string | null | undefined): DataWor
   }
   switch (value) {
     case 'load_source':
-      return 'input_source';
+      return 'input';
     case 'profile_schema':
-      return 'field_select';
+      return 'select';
     case 'drop_empty_rows':
       return 'missing_value';
     case 'deduplicate_rows':

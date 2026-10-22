@@ -61,7 +61,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
 
   it('reports duplicate row-deletion fields in DSL', () => {
     const parsed = parsePrepOperatorDsl(
-      'missing value row drop when any_null in [status], [status]',
+      'missing_value row drop when any_null in [status], [status]',
       'missing_value'
     );
     expect(parsed.diagnostics).toEqual(
@@ -104,7 +104,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   });
 
   it('rejects fill null DSL as a no-op', () => {
-    const parsed = parsePrepOperatorDsl('missing value [region] fill null', 'missing_value');
+    const parsed = parsePrepOperatorDsl('missing_value [region] fill null', 'missing_value');
     expect(parsed.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -172,7 +172,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
 
   it('preserves sequential rules for the same field in DSL order', () => {
     const parsed = parsePrepOperatorDsl(
-      `missing value [status] nullify values ('N/A'), [status] fill 'UNKNOWN'`,
+      `missing_value [status] nullify values ('N/A'), [status] fill 'UNKNOWN'`,
       'missing_value'
     );
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
@@ -192,7 +192,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
           ],
         },
       })
-    ).toBe('missing value [status] fill forward, [status] fill backward');
+    ).toBe('missing_value [status] fill forward, [status] fill backward');
   });
 
   it('allows fields to be selected in more than one graphical rule', async () => {

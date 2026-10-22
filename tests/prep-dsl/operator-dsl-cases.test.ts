@@ -23,26 +23,26 @@ const currentOperatorCases: Array<{
 }> = [
   {
     name: 'input source',
-    type: 'input_source',
-    dsl: 'input source rawTable "orders_input" as orders',
+    type: 'input',
+    dsl: 'input rawTable "orders_input" as orders',
     expectedConfig: { source: 'rawTable', rawTableId: 'orders_input', alias: 'orders' },
   },
   {
     name: 'select fields',
-    type: 'field_select',
+    type: 'select',
     dsl: 'select [order_id], [region], [revenue]',
     expectedConfig: { selection: 'include', fields: ['order_id', 'region', 'revenue'] },
   },
   {
     name: 'drop fields',
-    type: 'field_select',
-    dsl: 'drop [debug_flag], [internal_note]',
+    type: 'select',
+    dsl: 'select except [debug_flag], [internal_note]',
     expectedConfig: { selection: 'exclude', fields: ['debug_flag', 'internal_note'] },
   },
   {
     name: 'rename fields',
-    type: 'field_mapping',
-    dsl: 'map [dt] to [order_date], [rev] to [revenue]',
+    type: 'rename',
+    dsl: 'rename [dt] as [order_date], [rev] as [revenue]',
     expectedConfig: {
       mappings: [
         { source: 'dt', targetMode: 'rename', targetValue: 'order_date' },
@@ -77,18 +77,18 @@ const currentOperatorCases: Array<{
   {
     name: 'drop empty rows',
     type: 'missing_value',
-    dsl: 'missing value row drop when all_null',
+    dsl: 'missing_value row drop when all_null',
     expectedConfig: { strategy: 'drop_empty_rows', condition: 'all_null' },
   },
   {
     name: 'nullify and fill missing values',
     type: 'missing_value',
-    dsl: `missing value [region] nullify values ('', 'N/A'), [score] fill median`,
+    dsl: `missing_value [region] nullify values ('', 'N/A'), [score] fill median`,
     expectedConfig: { strategy: 'by_column' },
   },
   {
     name: 'convert types',
-    type: 'type_convert',
+    type: 'cast',
     dsl: `cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error fail`,
     expectedDsl: `cast [order_date] as date format '%Y-%m-%d', [revenue] as float on_error fail`,
     expectedConfig: {
@@ -101,13 +101,13 @@ const currentOperatorCases: Array<{
   {
     name: 'sort rows',
     type: 'sort',
-    dsl: 'sort by [order_date] desc nulls last, [order_id] asc',
+    dsl: 'sort [order_date] desc nulls last, [order_id] asc',
   },
   {
     name: 'limit sorted rows with a clause keyword in the field name',
     type: 'limit',
-    dsl: 'top 10 by [`with ties score`] desc with ties',
-    expectedDsl: 'top 10 by [with ties score] desc with ties',
+    dsl: 'limit 10 by [`with ties score`] desc with ties',
+    expectedDsl: 'limit 10 by [with ties score] desc with ties',
     expectedConfig: {
       sampling: 'fixed',
       limit: 10,
@@ -181,7 +181,7 @@ const currentOperatorCases: Array<{
   },
   {
     name: 'derive scalar field',
-    type: 'calculate_field',
+    type: 'derive',
     dsl: 'derive [margin] = [profit] / nullif([revenue], 0)',
     expectedConfig: {
       calculations: [{ field: 'margin', expression: '[profit] / nullif([revenue], 0)' }],
@@ -189,7 +189,7 @@ const currentOperatorCases: Array<{
   },
   {
     name: 'derive window field',
-    type: 'calculate_field',
+    type: 'derive',
     dsl: 'derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)',
     expectedConfig: {
       calculations: [
@@ -221,7 +221,7 @@ const currentOperatorCases: Array<{
   {
     name: 'top rows',
     type: 'limit',
-    dsl: 'top 10 by [revenue] desc',
+    dsl: 'limit 10 by [revenue] desc',
     expectedConfig: { sampling: 'fixed', limit: 10, unit: 'rows' },
   },
   {
@@ -302,8 +302,8 @@ const currentOperatorCases: Array<{
   },
   {
     name: 'input source incremental',
-    type: 'input_source',
-    dsl: 'input source pipeline incremental by [updated_at] as orders',
+    type: 'input',
+    dsl: 'input pipeline incremental by [updated_at] as orders',
     expectedConfig: {
       source: 'pipeline',
       incrementalBy: 'updated_at',
@@ -336,7 +336,7 @@ const currentOperatorCases: Array<{
 
 describe('operator DSL executable cases', () => {
   it('rejects sort DSL without a valid field', () => {
-    const parsed = parsePrepOperatorDsl('sort by []', 'sort');
+    const parsed = parsePrepOperatorDsl('sort []', 'sort');
 
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'sortMissingField' })])
@@ -344,11 +344,11 @@ describe('operator DSL executable cases', () => {
   });
 
   it.each([
-    'sort by [order_date] desc garbage',
-    'sort by [order_date] asc desc',
-    'sort by [order_date] nulls middle',
-    'sort by [order_date] nulls last asc',
-    'sort by [order_date],',
+    'sort [order_date] desc garbage',
+    'sort [order_date] asc desc',
+    'sort [order_date] nulls middle',
+    'sort [order_date] nulls last asc',
+    'sort [order_date],',
   ])('rejects partially parsed sort DSL: %s', (dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, 'sort');
 
@@ -356,16 +356,16 @@ describe('operator DSL executable cases', () => {
   });
 
   it.each([
-    ['field_select', 'select [order_id] garbage'],
-    ['field_mapping', 'map [order_id] to [id] garbage'],
+    ['select', 'select [order_id] garbage'],
+    ['rename', 'rename [order_id] as [id] garbage'],
     ['limit', 'limit 10 garbage'],
-    ['limit', 'sample 10 rows system repeatable 1 garbage'],
-    ['limit', 'top 10 by [amount] desc with ties garbage'],
-    ['type_convert', 'cast [amount] as float garbage'],
+    ['limit', 'limit 10 rows random system repeatable 1 garbage'],
+    ['limit', 'limit 10 by [amount] desc with ties garbage'],
+    ['cast', 'cast [amount] as float garbage'],
     ['set_op', 'union returns mode all by name garbage'],
     ['output', 'output table "result" mode replace garbage'],
     ['deduplicate', 'deduplicate by [id] keep first garbage'],
-    ['missing_value', 'missing value [amount] garbage'],
+    ['missing_value', 'missing_value [amount] garbage'],
     ['unnest', 'unnest [items] as [item] garbage'],
     ['unpivot', 'unpivot [q1] into name [quarter] value [amount] garbage'],
     ['pivot', 'pivot on [region] garbage using count(*)'],
@@ -374,13 +374,13 @@ describe('operator DSL executable cases', () => {
     ['aggregate', 'aggregate by year([Date]) extra metrics sum([amount]) as [total_amount]'],
     ['aggregate', 'aggregate by year([Date]), month([Date]) metrics count(*) as [rows]'],
     ['aggregate', 'aggregate by year([Date]), [Date] metrics count(*) as [rows]'],
-    ['calculate_field', 'derive [result] garbage = [amount]'],
+    ['derive', 'derive [result] garbage = [amount]'],
     ['join', 'join left returns garbage'],
     ['join', 'join left returns on [orders].[id] = [returns].[id] garbage'],
     ['join', 'join left returns on [orders].[id] = [returns].[id] suffix _l _r garbage'],
     ['join', 'join left returns on [l.id] != [r.id] garbage'],
     ['output', 'output table "result" mode replace mode append'],
-    ['type_convert', 'cast [amount] as float on_error null on_error keep'],
+    ['cast', 'cast [amount] as float on_error null on_error keep'],
   ] as const)('rejects trailing DSL for %s: %s', (type, dsl) => {
     const parsed = parsePrepOperatorDsl(dsl, type);
 
@@ -633,10 +633,10 @@ describe('operator DSL executable cases', () => {
     {
       type: 'sort' as const,
       config: { orderBy: [{ field: 'a', direction: 'asc' }, { field: '' }] },
-      expected: 'sort by [a] asc',
+      expected: 'sort [a] asc',
     },
     {
-      type: 'type_convert' as const,
+      type: 'cast' as const,
       config: {
         conversions: [
           { field: 'a', type: 'integer' },
@@ -656,14 +656,14 @@ describe('operator DSL executable cases', () => {
       expected: 'aggregate all metrics sum([a]) as [total]',
     },
     {
-      type: 'field_mapping' as const,
+      type: 'rename' as const,
       config: {
         mappings: [
           { source: 'a', targetMode: 'rename', targetValue: 'b' },
           { source: '', targetMode: 'rename', targetValue: '' },
         ],
       },
-      expected: 'map [a] to [b]',
+      expected: 'rename [a] as [b]',
     },
     {
       type: 'missing_value' as const,
@@ -674,7 +674,7 @@ describe('operator DSL executable cases', () => {
           { field: '', method: 'literal_fill', value: '' },
         ],
       },
-      expected: `missing value [a] fill 'x'`,
+      expected: `missing_value [a] fill 'x'`,
     },
   ])('filters incomplete $type rows while keeping complete ones', ({ type, config, expected }) => {
     const dsl = exportPrepOperatorDsl({ id: `${type}-filtered`, type, config });
@@ -690,7 +690,7 @@ describe('operator DSL executable cases', () => {
       config: { orderBy: [{ field: '' }] },
     },
     {
-      type: 'type_convert' as const,
+      type: 'cast' as const,
       config: { conversions: [{ field: '' }] },
     },
     {
@@ -698,7 +698,7 @@ describe('operator DSL executable cases', () => {
       config: { metrics: [{ function: 'sum', expression: '[a]', alias: '' }] },
     },
     {
-      type: 'field_mapping' as const,
+      type: 'rename' as const,
       config: {
         mappings: [{ source: '', targetMode: 'rename', targetValue: '' }],
       },
@@ -740,10 +740,10 @@ describe('operator DSL executable cases', () => {
     expect(dsl).toBe('deduplicate by [a] order by [x] asc');
   });
 
-  it('filters incomplete row calculations from a calculate_field DSL', () => {
+  it('filters incomplete row calculations from a derive DSL', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'calc-filtered',
-      type: 'calculate_field',
+      type: 'derive',
       config: {
         calculations: [
           { field: 'm', expression: '[a] - [b]' },
@@ -1034,7 +1034,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('rejects incomplete field mapping DSL and does not export placeholder fields', () => {
-    const parsed = parsePrepOperatorDsl('map [] to [target]', 'field_mapping');
+    const parsed = parsePrepOperatorDsl('rename [] as [target]', 'rename');
 
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'invalidFieldMapping' })])
@@ -1042,14 +1042,14 @@ describe('operator DSL executable cases', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'mapping-empty',
-        type: 'field_mapping',
+        type: 'rename',
         config: { mappings: [] },
       })
     ).toBe('');
   });
 
   it('rejects empty field selection DSL and does not export an empty drop operation', () => {
-    const parsed = parsePrepOperatorDsl('select []', 'field_select');
+    const parsed = parsePrepOperatorDsl('select []', 'select');
 
     expect(errorsOf(parsed.diagnostics)).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'fieldSelectMissingField' })])
@@ -1057,7 +1057,7 @@ describe('operator DSL executable cases', () => {
     expect(
       exportPrepOperatorDsl({
         id: 'field-select-empty',
-        type: 'field_select',
+        type: 'select',
         config: { selection: 'exclude', columns: [] },
       })
     ).toBe('');
@@ -1140,8 +1140,8 @@ describe('operator DSL executable cases', () => {
       },
     },
     {
-      dsl: "explode json [`with index`] path '$.keep parent names'",
-      expectedDsl: `explode json [with index] path '$.keep parent names'`,
+      dsl: "unnest json [`with index`] path '$.keep parent names'",
+      expectedDsl: `unnest json [with index] path '$.keep parent names'`,
       expectedConfig: {
         sourceKind: 'json',
         field: 'with index',
@@ -1165,15 +1165,15 @@ describe('operator DSL executable cases', () => {
 
   it('compiles and round-trips a workflow that uses every currently executable operator family', () => {
     const parsed = parsePrepDsl(`
-      input source pipeline as orders
-      input source rawTable "customers" as customers
+      input pipeline as orders
+      input rawTable "customers" as customers
 
       from orders
         | select [order_id], [customer_id], [dt], [region], [rev], [profit], [status], [updated_at]
-        | map [dt] to [order_date], [rev] to [revenue]
+        | rename [dt] as [order_date], [rev] as [revenue]
         | cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error null, [profit] as float on_error null
-        | missing value [region] nullify values ('', 'N/A')
-        | missing value [region] fill 'UNKNOWN'
+        | missing_value [region] nullify values ('', 'N/A')
+        | missing_value [region] fill 'UNKNOWN'
         | deduplicate by [order_id] keep last order by [updated_at] desc
         | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
         | filter [status] = 'PAID' and [revenue] > 0
@@ -1181,7 +1181,7 @@ describe('operator DSL executable cases', () => {
             on [orders].[customer_id] = [customers].[customer_id]
             keep left *, [customers].[name] as [customer_name]
         | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
-        | sort by [total_revenue] desc
+        | sort [total_revenue] desc
         | output table "operator_case_output" mode replace
     `);
 
@@ -1191,15 +1191,15 @@ describe('operator DSL executable cases', () => {
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);
     expect(errorsOf(compiled.diagnostics)).toHaveLength(0);
     expect(compiled.nodes.map((node) => node.type)).toEqual([
-      'input_source',
-      'input_source',
-      'field_select',
-      'field_mapping',
-      'type_convert',
+      'input',
+      'input',
+      'select',
+      'rename',
+      'cast',
       'missing_value',
       'missing_value',
       'deduplicate',
-      'calculate_field',
+      'derive',
       'filter',
       'join',
       'aggregate',
@@ -1214,7 +1214,7 @@ describe('operator DSL executable cases', () => {
 
   it('parses sort options after a backtick field containing spaces', () => {
     const parsed = parsePrepOperatorDsl(
-      'sort by [`Unit Price`] desc nulls last, [`Order Date`] asc',
+      'sort [`Unit Price`] desc nulls last, [`Order Date`] asc',
       'sort'
     );
 
@@ -1226,7 +1226,7 @@ describe('operator DSL executable cases', () => {
   });
 
   it('does not split mapping and join keywords inside backtick fields', () => {
-    const mapping = parsePrepOperatorDsl('map [`from to`] to [`mapped as value`]', 'field_mapping');
+    const mapping = parsePrepOperatorDsl('rename [`from to`] as [`mapped as value`]', 'rename');
     const join = parsePrepOperatorDsl(
       'join left products on [orders].[`brand and model`] = [products].[`brand and model`] and [orders].[sku] = [products].[sku]',
       'join'
@@ -1283,7 +1283,7 @@ describe('operator DSL executable cases', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { source: 'pipeline' } },
+          { id: 'source', type: 'input', config: { source: 'pipeline' } },
           { id: 'sort-empty', type: 'sort', config: { orderBy: [] } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'sort-empty', targetHandle: 'input' }]
@@ -1302,7 +1302,7 @@ describe('operator DSL executable cases', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { source: 'pipeline' } },
+          { id: 'source', type: 'input', config: { source: 'pipeline' } },
           { id: 'filter-empty', type: 'filter', config: { condition: '' } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'filter-empty', targetHandle: 'input' }]
@@ -1510,16 +1510,14 @@ describe('operator DSL executable cases', () => {
     expect(exportPrepOperatorDsl({ id: 'limit-empty', type: 'limit', config: {} })).toBe('');
   });
 
-  it('does not export a type_convert without conversions', () => {
-    expect(
-      exportPrepOperatorDsl({ id: 'typeconvert-empty', type: 'type_convert', config: {} })
-    ).toBe('');
+  it('does not export a cast without conversions', () => {
+    expect(exportPrepOperatorDsl({ id: 'typeconvert-empty', type: 'cast', config: {} })).toBe('');
   });
 
-  it('does not export a calculate_field without calculations', () => {
-    expect(
-      exportPrepOperatorDsl({ id: 'calculatefield-empty', type: 'calculate_field', config: {} })
-    ).toBe('');
+  it('does not export a derive without calculations', () => {
+    expect(exportPrepOperatorDsl({ id: 'calculatefield-empty', type: 'derive', config: {} })).toBe(
+      ''
+    );
   });
 
   it('does not export an unnest without a column', () => {
@@ -1585,7 +1583,7 @@ describe('operator DSL executable cases', () => {
     ).toBe('');
   });
 
-  it.each(['limit 101 percent', 'sample 101 percent'])(
+  it.each(['limit 101 percent', 'limit 101 percent random'])(
     'rejects percentages above 100: %s',
     (dsl) => {
       const parsed = parsePrepOperatorDsl(dsl, 'limit');
@@ -1597,20 +1595,20 @@ describe('operator DSL executable cases', () => {
   );
 
   it('preserves percent and offset units in top DSL', () => {
-    const percentDsl = 'top 10 percent by [score] desc with ties';
+    const percentDsl = 'limit 10 percent by [score] desc with ties';
     const percent = parsePrepOperatorDsl(percentDsl, 'limit');
     expect(errorsOf(percent.diagnostics)).toHaveLength(0);
     expect(percent.operator?.config).toMatchObject({ unit: 'percent', ties: true });
     expect(exportPrepOperatorDsl({ id: 'percent_top', ...percent.operator! })).toBe(percentDsl);
 
-    const rowsDsl = 'top 10 by [score] desc offset 5 with ties';
+    const rowsDsl = 'limit 10 by [score] desc offset 5 with ties';
     const rows = parsePrepOperatorDsl(rowsDsl, 'limit');
     expect(errorsOf(rows.diagnostics)).toHaveLength(0);
     expect(rows.operator?.config).toMatchObject({ unit: 'rows', offset: 5, ties: true });
     expect(exportPrepOperatorDsl({ id: 'rows_top', ...rows.operator! })).toBe(rowsDsl);
   });
 
-  it.each(['sample 10 rows system', 'sample 10 rows bernoulli'])(
+  it.each(['limit 10 rows random system', 'limit 10 rows random bernoulli'])(
     'rejects percentage-only methods for fixed-row sampling: %s',
     (dsl) => {
       const parsed = parsePrepOperatorDsl(dsl, 'limit');
@@ -1621,7 +1619,7 @@ describe('operator DSL executable cases', () => {
     }
   );
 
-  it.each(['limit 10 percent offset 5', 'top 10 percent by [score] offset 5'])(
+  it.each(['limit 10 percent offset 5', 'limit 10 percent by [score] offset 5'])(
     'rejects offsets for percentage-based limits: %s',
     (dsl) => {
       const parsed = parsePrepOperatorDsl(dsl, 'limit');
@@ -1641,10 +1639,10 @@ describe('operator DSL executable cases', () => {
           config: { orderBy: [{ field: 'amount', direction: 'desc' }] },
         },
         { id: 'output', type: 'output', config: { table: 'result', mode: 'replace' } },
-        { id: 'source', type: 'input_source', config: { source: 'pipeline', alias: 'source' } },
+        { id: 'source', type: 'input', config: { source: 'pipeline', alias: 'source' } },
         {
           id: 'select',
-          type: 'field_select',
+          type: 'select',
           config: { selection: 'include', fields: ['amount'] },
         },
       ],
@@ -1657,19 +1655,16 @@ describe('operator DSL executable cases', () => {
 
     expect(exported).toBe(
       [
-        'input source pipeline as source',
+        'input pipeline as source',
         '  | select [amount]',
-        '  | sort by [amount] desc',
+        '  | sort [amount] desc',
         '  | output table "result" mode replace',
       ].join('\n')
     );
   });
 
   it('parses cast fields containing the as keyword', () => {
-    const parsed = parsePrepOperatorDsl(
-      'cast [`value as text`] as integer on_error fail',
-      'type_convert'
-    );
+    const parsed = parsePrepOperatorDsl('cast [`value as text`] as integer on_error fail', 'cast');
 
     expect(errorsOf(parsed.diagnostics)).toHaveLength(0);
     expect(parsed.operator?.config.conversions).toEqual([
@@ -1679,8 +1674,8 @@ describe('operator DSL executable cases', () => {
 
   it('rejects incremental reads for input tables and omits legacy settings on export', () => {
     const parsed = parsePrepOperatorDsl(
-      `input source rawTable 'orders_input' incremental by [updated_at] as orders`,
-      'input_source'
+      `input rawTable 'orders_input' incremental by [updated_at] as orders`,
+      'input'
     );
     expect(
       errorsOf(parsed.diagnostics)
@@ -1691,7 +1686,7 @@ describe('operator DSL executable cases', () => {
       [
         {
           id: 'source',
-          type: 'input_source',
+          type: 'input',
           config: {
             source: 'rawTable',
             rawTableId: 'orders_input',
@@ -1703,7 +1698,7 @@ describe('operator DSL executable cases', () => {
       ],
       [{ sourceNodeId: 'source', targetNodeId: 'out', targetHandle: 'input' }]
     );
-    expect(exported).toContain('input source rawTable "orders_input" as orders');
+    expect(exported).toContain('input rawTable "orders_input" as orders');
     expect(exported).not.toContain('incremental by');
   });
 

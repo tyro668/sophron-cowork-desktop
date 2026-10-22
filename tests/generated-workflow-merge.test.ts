@@ -28,7 +28,7 @@ function edge(
 
 function generatedChain(opIds: string[] = ['filter_1']) {
   const nodes = [
-    node('source_src', 'input_source'),
+    node('source_src', 'input'),
     ...opIds.map((id) => node(id, 'filter', 0, 0)),
     node('output_result', 'output'),
   ];
@@ -48,7 +48,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
   it('inserts the generated chain between the anchor and its successors', () => {
     const base = {
       nodes: [
-        node('source_1', 'input_source', 0, 0),
+        node('source_1', 'input', 0, 0),
         node('filter_1', 'filter', 300, 0),
         node('out_1', 'output', 600, 0),
       ],
@@ -78,7 +78,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
 
   it('keeps the generated output node when the anchor tail is open', () => {
     const base = {
-      nodes: [node('source_1', 'input_source'), node('sort_1', 'sort', 300, 0)],
+      nodes: [node('source_1', 'input'), node('sort_1', 'sort', 300, 0)],
       edges: [edge('source_1', 'sort_1')],
     };
     const merged = mergeGeneratedChainAfterAnchor(base, 'sort_1', generatedChain(['limit_1']));
@@ -94,20 +94,20 @@ describe('mergeGeneratedChainAfterAnchor', () => {
   it('appends after a lone input node with exactly one edge into each new node', () => {
     const scope = (id: string) => (id.startsWith('task__') ? id : `task__${id}`);
     const merged = mergeGeneratedChainAfterAnchor(
-      { nodes: [node('task__source', 'input_source')], edges: [] },
+      { nodes: [node('task__source', 'input')], edges: [] },
       'task__source',
       generatedChain(['filter_1', 'filter_2']),
       scope
     );
     expect(merged.edges).toHaveLength(3);
-    for (const node of merged.nodes.filter((node) => node.type !== 'input_source')) {
+    for (const node of merged.nodes.filter((node) => node.type !== 'input')) {
       expect(merged.edges.filter((edge) => edge.targetNodeId === node.id)).toHaveLength(1);
     }
   });
 
   it('inserts before the sink when the anchor is an output node', () => {
     const base = {
-      nodes: [node('source_1', 'input_source', 0, 0), node('out_1', 'output', 300, 0)],
+      nodes: [node('source_1', 'input', 0, 0), node('out_1', 'output', 300, 0)],
       edges: [edge('source_1', 'out_1')],
     };
     const merged = mergeGeneratedChainAfterAnchor(base, 'out_1', generatedChain(['filter_2']));
@@ -122,7 +122,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
 
   it('deduplicates generated node ids against the base graph and remaps origins', () => {
     const base = {
-      nodes: [node('source_1', 'input_source'), node('filter_1', 'filter', 300, 0)],
+      nodes: [node('source_1', 'input'), node('filter_1', 'filter', 300, 0)],
       edges: [edge('source_1', 'filter_1')],
     };
     const generated = generatedChain(['filter_1']);
@@ -138,7 +138,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
   it('keeps reject-handle edges on the anchor untouched', () => {
     const base = {
       nodes: [
-        node('source_1', 'input_source'),
+        node('source_1', 'input'),
         node('expect_1', 'expect', 300, 0),
         node('dead', 'output', 600, 0),
       ],
@@ -158,7 +158,7 @@ describe('mergeGeneratedChainAfterAnchor', () => {
   });
 
   it('throws when the anchor node does not exist', () => {
-    const base = { nodes: [node('source_1', 'input_source')], edges: [] };
+    const base = { nodes: [node('source_1', 'input')], edges: [] };
     expect(() => mergeGeneratedChainAfterAnchor(base, 'missing', generatedChain())).toThrow();
   });
 });

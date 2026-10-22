@@ -23,7 +23,7 @@ export interface WorkflowResourceBindings {
   rawTableId?: string;
   inputAlias?: string;
   /**
-   * Multi-source binding: `alias -> rawTableId`. Binds every input_source
+   * Multi-source binding: `alias -> rawTableId`. Binds every input
    * node whose `config.alias` matches a key. Unknown aliases are rejected.
    */
   inputs?: Record<string, string>;
@@ -82,17 +82,17 @@ export class WorkflowDslCompiler {
     if (bindings.rawTableId) {
       const alias =
         sanitizeAlias(bindings.inputAlias) ||
-        stringConfigValue(nodes.find((node) => node.type === 'input_source')?.config?.alias) ||
+        stringConfigValue(nodes.find((node) => node.type === 'input')?.config?.alias) ||
         'src';
       if (!aliasBindings.has(alias)) aliasBindings.set(alias, bindings.rawTableId);
     }
 
     if (aliasBindings.size > 0) {
-      const inputNodes = nodes.filter((node) => node.type === 'input_source');
+      const inputNodes = nodes.filter((node) => node.type === 'input');
       if (inputNodes.length === 0) {
         throw new DataCommandError(
           'VALIDATION_FAILED',
-          'Workflow has no input_source node to bind input resources'
+          'Workflow has no input node to bind input resources'
         );
       }
       const knownAliases = new Set(
@@ -110,7 +110,7 @@ export class WorkflowDslCompiler {
         bound.set(alias, await this.resources.requireRawTable(tableId));
       }
       nodes = nodes.map((node) => {
-        if (node.type !== 'input_source') return node;
+        if (node.type !== 'input') return node;
         const alias = stringConfigValue(node.config?.alias);
         const table = alias ? bound.get(alias) : undefined;
         if (!table) return node;
@@ -124,7 +124,7 @@ export class WorkflowDslCompiler {
             rawTableId: table.id,
             rawTableName: table.name,
             alias,
-            dsl: `input source rawTable "${escapeDslString(table.id)}" as ${alias}`,
+            dsl: `input rawTable "${escapeDslString(table.id)}" as ${alias}`,
           },
         };
       });
@@ -170,7 +170,7 @@ export class WorkflowDslCompiler {
       );
     }
     nodes = nodes.map((node) => {
-      if (node.type !== 'input_source') return node;
+      if (node.type !== 'input') return node;
       const config = { ...(node.config ?? {}) };
       const source =
         stringConfigValue(config.source) ||
@@ -194,7 +194,7 @@ export class WorkflowDslCompiler {
             severity: 'error',
             code: 'invalidDslFormat',
             message:
-              'Workflow DSL must be text prep DSL, not JSON. Example: input source rawTable "<rawTableId>" as src | derive [new_field] = expression | output table "Result" mode replace',
+              'Workflow DSL must be text prep DSL, not JSON. Example: input rawTable "<rawTableId>" as src | derive [new_field] = expression | output table "Result" mode replace',
           },
         ],
       };

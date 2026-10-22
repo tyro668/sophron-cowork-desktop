@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 
 function ok(config: Record<string, unknown>) {
-  const type = 'field_select' as const;
+  const type = 'select' as const;
   const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
   const parsed = parsePrepOperatorDsl(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
@@ -21,7 +21,7 @@ describe('FormFieldSelect — config ↔ DSL', () => {
 
   it('exclude columns', () => {
     const r = ok({ selection: 'exclude', fields: ['debug_col'] });
-    expect(r.dsl).toContain('drop');
+    expect(r.dsl).toContain('select except');
     expect(r.config.selection).toBe('exclude');
   });
 
@@ -47,14 +47,14 @@ describe('FormFieldSelect — DSL idempotent', () => {
     for (const config of configs) {
       const dsl1 = exportPrepOperatorDsl({
         id: 't',
-        type: 'field_select',
+        type: 'select',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'field_select');
+      const parsed = parsePrepOperatorDsl(dsl1, 'select');
       expect(parsed.operator).not.toBeNull();
       const dsl2 = exportPrepOperatorDsl({
         id: 't',
-        type: 'field_select',
+        type: 'select',
         config: parsed.operator!.config,
       });
       expect(dsl2).toBe(dsl1);
@@ -66,7 +66,7 @@ describe('FormFieldSelect — edge cases', () => {
   it('empty columns produce empty DSL (no-op)', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
-      type: 'field_select',
+      type: 'select',
       config: { selection: 'include', fields: [] },
     });
     expect(dsl).toBe('');

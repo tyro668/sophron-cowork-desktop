@@ -306,7 +306,7 @@ export class DataStoreContext {
               SELECT 1
               FROM data_workflow_nodes n
               WHERE n.pipeline_id = t.id
-                AND coalesce(n.operator_type, n.node_key) IN ('input_source', 'read_source')
+                AND coalesce(n.operator_type, n.node_key) IN ('input', 'read_source')
                 AND (
                   coalesce(n.config_json, '') LIKE '%"rawTableId":"' || ${inputAlias}.id || '"%'
                   OR coalesce(n.config_json, '') LIKE '%"rawTableId": "' || ${inputAlias}.id || '"%'

@@ -42,7 +42,7 @@ describe('categorized operator palette', () => {
     const heading = screen.getByRole('button', {
       name: new RegExp(i18n.t('data.workflow.operatorCategories.input_output')),
     });
-    const inputName = `${i18n.t('data.workflow.operators.input_source')} — ${i18n.t('data.workflow.addOperatorToCanvas')}`;
+    const inputName = `${i18n.t('data.workflow.operators.input')} — ${i18n.t('data.workflow.addOperatorToCanvas')}`;
     fireEvent.click(heading);
     expect(heading.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('button', { name: inputName })).toBeNull();
@@ -52,11 +52,11 @@ describe('categorized operator palette', () => {
     fireEvent.click(input);
     expect(onAddOperator).not.toHaveBeenCalled();
     fireEvent.doubleClick(input);
-    expect(onAddOperator).toHaveBeenCalledWith('input_source');
+    expect(onAddOperator).toHaveBeenCalledWith('input');
     const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
     const dragEvent = createEvent.dragStart(input, { dataTransfer });
     fireEvent(input, dragEvent);
-    expect(dataTransfer.setData).toHaveBeenCalledWith(WORKFLOW_OPERATOR_MIME, 'input_source');
+    expect(dataTransfer.setData).toHaveBeenCalledWith(WORKFLOW_OPERATOR_MIME, 'input');
     expect((dragEvent as DragEvent).dataTransfer?.effectAllowed).toBe('copy');
   });
 });

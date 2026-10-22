@@ -49,14 +49,14 @@ function wrapNoColumns(
  * union key type rejects unknown keys at compile time.
  */
 export const COMPILE_STRATEGIES: Partial<Record<DataWorkflowOperatorType, CompileStrategy>> = {
-  field_select: { compile: compileFieldSelectSql, needsColumns: true },
-  field_mapping: { compile: compileFieldMappingSql, needsColumns: true },
+  select: { compile: compileFieldSelectSql, needsColumns: true },
+  rename: { compile: compileFieldMappingSql, needsColumns: true },
   missing_value: { compile: compileMissingValueSql, needsColumns: true },
-  type_convert: { compile: compileTypeConvertSql, needsColumns: true },
+  cast: { compile: compileTypeConvertSql, needsColumns: true },
   deduplicate: { compile: compileDeduplicateSql, needsColumns: true },
   filter: { compile: buildFilterSql, needsColumns: false },
   sort: { compile: wrapNoColumns(compileSortSql), needsColumns: false },
-  calculate_field: {
+  derive: {
     compile: (output, input, columns, config) =>
       compileCalculateFieldSql(output, input, config, columns),
     needsColumns: true,

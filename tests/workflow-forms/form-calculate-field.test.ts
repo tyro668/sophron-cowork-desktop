@@ -11,8 +11,8 @@ interface OkResult {
 }
 
 function ok(config: Record<string, unknown>): OkResult {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'calculate_field', config });
-  const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'derive', config });
+  const parsed = parsePrepOperatorDsl(dsl, 'derive');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, 'null operator').not.toBeNull();
@@ -41,7 +41,7 @@ describe('FormCalculateField - config and DSL', () => {
   it('expression with window function', () => {
     const dsl =
       'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)';
-    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     const calculations = parsed.operator!.config.calculations as Array<Record<string, unknown>>;
     expect(calculations).toHaveLength(1);
@@ -61,7 +61,7 @@ describe('FormCalculateField - config and DSL', () => {
   it('empty calculations does not produce DSL', () => {
     const dsl = exportPrepOperatorDsl({
       id: 'test',
-      type: 'calculate_field',
+      type: 'derive',
       config: {},
     });
     expect(dsl).toBe('');
@@ -69,11 +69,11 @@ describe('FormCalculateField - config and DSL', () => {
 
   it('idempotent: single derivation', () => {
     const dsl1 = 'derive [margin] = [revenue] - [cost]';
-    const parsed = parsePrepOperatorDsl(dsl1, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl1, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     const dsl2 = exportPrepOperatorDsl({
       id: 'test',
-      type: 'calculate_field',
+      type: 'derive',
       config: parsed.operator!.config,
     });
     expect(dsl2).toBe(dsl1);
@@ -81,11 +81,11 @@ describe('FormCalculateField - config and DSL', () => {
 
   it('idempotent: complex expression with commas', () => {
     const dsl1 = "derive [full_name] = concat([first], ', ', [last])";
-    const parsed = parsePrepOperatorDsl(dsl1, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl1, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     const dsl2 = exportPrepOperatorDsl({
       id: 'test',
-      type: 'calculate_field',
+      type: 'derive',
       config: parsed.operator!.config,
     });
     expect(dsl2).toBe(dsl1);
@@ -121,13 +121,13 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [cume] = ranking(cume_dist()) over(partition by [region] order by [amount])',
     'derive [bucket] = ranking(ntile(4)) over(order by [amount] desc)',
   ])('round-trips canonical calculation domain DSL: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl, 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
 
     expect(
       exportPrepOperatorDsl({
         id: 'test',
-        type: 'calculate_field',
+        type: 'derive',
         config: parsed.operator!.config,
       })
     ).toBe(dsl);
@@ -136,14 +136,14 @@ describe('FormCalculateField - config and DSL', () => {
   it('normalizes calculation domain function spacing on export', () => {
     const parsed = parsePrepOperatorDsl(
       `derive [x] = compare(same_period_last_year( [sales] , [date] , 'month' , 'value')) over( partition by [region] )`,
-      'calculate_field'
+      'derive'
     );
 
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     expect(
       exportPrepOperatorDsl({
         id: 'test',
-        type: 'calculate_field',
+        type: 'derive',
         config: parsed.operator!.config,
       })
     ).toBe(
@@ -192,7 +192,7 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [x] = group(sum([sales])); drop table source',
     'derive [x] = group(sum([sales])) over()',
   ])('rejects invalid calculation domain DSL: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl, 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
       []
     );
@@ -205,7 +205,7 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region],, [product])',
     'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region]',
   ])('rejects malformed domain partition lists: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'calculate_field');
+    const parsed = parsePrepOperatorDsl(dsl, 'derive');
 
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
       []

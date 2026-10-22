@@ -52,18 +52,12 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
   ),
   irOperation(
     'select',
-    'workflow.step(input, "select", { columns: ["field"] })',
-    '{ columns: WorkflowNonEmptyStringArray }',
+    'workflow.step(input, "select", { fields: ["field"], selection?: "include|exclude" }). selection "exclude" drops the listed fields',
+    '{ fields: WorkflowNonEmptyStringArray; selection?: "include" | "exclude" }',
     (op, at) => {
-      assertStringArray(op.columns, `${at}.columns`, true);
-    }
-  ),
-  irOperation(
-    'drop',
-    'workflow.step(input, "drop", { columns: ["field"] })',
-    '{ columns: WorkflowNonEmptyStringArray }',
-    (op, at) => {
-      assertStringArray(op.columns, `${at}.columns`, true);
+      assertStringArray(op.fields, `${at}.fields`, true);
+      if (op.selection !== undefined)
+        assertEnum(op.selection, ['include', 'exclude'], `${at}.selection`);
     }
   ),
   irOperation(
@@ -91,8 +85,8 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
     validateDeriveWindow
   ),
   irOperation(
-    'convert_type',
-    'workflow.step(input, "convert_type", { column: "field", targetType: "integer|float|decimal|text|boolean|date|datetime|timestamp", options: { onError?: "null|fail", removePrefix?: string, removeChars?: string[], scale?: decimal-only } })',
+    'cast',
+    'workflow.step(input, "cast", { column: "field", targetType: "integer|float|decimal|text|boolean|date|datetime|timestamp", options: { onError?: "null|fail", removePrefix?: string, removeChars?: string[], scale?: decimal-only } })',
     'WorkflowConvertTypePayload',
     (op, at) => {
       assertString(op.column, `${at}.column`);
@@ -121,16 +115,10 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
   ),
   irOperation(
     'sort',
-    'workflow.step(input, "sort", { keys: [{ field: "primary", direction: "asc|desc", nulls?: "first|last" }, { field: "secondary", direction: "asc|desc" }] })',
-    '{ keys: readonly [WorkflowSortKey, ...WorkflowSortKey[]] } | { column: WorkflowNativeExpression<unknown>; direction: "asc" | "desc" }',
+    'workflow.step(input, "sort", { orderBy: [{ field: "primary", direction: "asc|desc", nulls?: "first|last" }, { field: "secondary", direction: "asc|desc" }] })',
+    '{ orderBy: readonly [WorkflowSortKey, ...WorkflowSortKey[]] }',
     (op, at) => {
-      if (op.keys !== undefined) {
-        validateSortKeys(op.keys, `${at}.keys`, true);
-        return;
-      }
-      // Compatibility with workflows generated before multi-key sort was exposed.
-      validateExpression(op.column, `${at}.column`);
-      assertEnum(op.direction, ['asc', 'desc'], `${at}.direction`);
+      validateSortKeys(op.orderBy, `${at}.orderBy`, true);
     }
   ),
   irOperation(
@@ -141,19 +129,19 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
   ),
   irOperation(
     'deduplicate',
-    'workflow.step(input, "deduplicate", { config: { columns, keep: "first|last", orderBy } }). orderBy defines which row is first or last; without orderBy, source row order is used',
+    'workflow.step(input, "deduplicate", { config: { fields, keep: "first|last", orderBy } }). orderBy defines which row is first or last; without orderBy, source row order is used',
     '{ config: WorkflowDeduplicateConfig }',
     validateDeduplicate
   ),
   irOperation(
     'missing_value',
-    'workflow.step(input, "missing_value", { config: { strategy: "drop_empty_rows" } | { strategy: "drop_rows_by_nulls", columns: ["field"], condition: "any_null|all_null" } | { strategy: "by_column", rules: [{ column: "field", method: "skip|drop|nullify_values|literal_fill|mean_fill|median_fill|mode_fill|forward_fill|backward_fill", values?: ["text marker"], value?: nonNullLiteral }] } }). mean_fill and median_fill require numeric columns; forward/backward fill use source row order',
+    'workflow.step(input, "missing_value", { config: { strategy: "drop_empty_rows" } | { strategy: "drop_rows_by_nulls", fields: ["field"], condition: "any_null|all_null" } | { strategy: "by_column", rules: [{ field: "field", method: "skip|drop|nullify_values|literal_fill|mean_fill|median_fill|mode_fill|forward_fill|backward_fill", values?: ["text marker"], value?: nonNullLiteral }] } }). mean_fill and median_fill require numeric columns; forward/backward fill use source row order',
     '{ config: WorkflowMissingValueConfig }',
     validateMissingValue
   ),
   irOperation(
     'limit',
-    'workflow.step(input, "limit", { config: { mode: "limit" or "random", limit: positiveCountOrPercent, unit: "rows|percent", offset: 0, orderBy: [], ties?: boolean, method?: "system|bernoulli", seed?: integer } }). Use mode limit plus orderBy for global top/bottom and mode random for sampling. Percent limits require offset 0. Per-group limits are unsupported. bernoulli is valid only for percent sampling. ties requires orderBy and is supported for ordered row/percent limits',
+    'workflow.step(input, "limit", { config: { sampling: "fixed" or "random", limit: positiveCountOrPercent, unit: "rows|percent", offset: 0, orderBy: [], ties?: boolean, method?: "system|bernoulli", seed?: integer } }). Use sampling fixed plus orderBy for global top/bottom and sampling random for sampling. Percent limits require offset 0. Per-group limits are unsupported. bernoulli is valid only for percent sampling. ties requires orderBy and is supported for ordered row/percent limits',
     '{ config: WorkflowLimitConfig }',
     validateLimit
   ),
@@ -165,13 +153,13 @@ export const WORKFLOW_IR_OPERATION_REGISTRY = [
   ),
   irOperation(
     'unpivot',
-    'workflow.step(input, "unpivot", { config: { mode, columns, nameColumn, valueColumn, includeNulls } })',
+    'workflow.step(input, "unpivot", { config: { selection: "include|exclude", fields, nameColumn, valueColumn, includeNulls } }). selection exclude unpivots every field except the listed ones',
     '{ config: WorkflowUnpivotConfig }',
     validateUnpivot
   ),
   irOperation(
     'unnest',
-    'workflow.step(input, "unnest", { config: { sourceKind: "list", column: "arrayField", alias: "item", path?: "$.nested", withIndex?: "item_index", keepParentNames: false, preserveOrder: true } }). list mode expands either a native list or a JSON-array string into rows. JSON object expansion into dynamic columns, recursive, and maxDepth are not supported by generated workflows',
+    'workflow.step(input, "unnest", { config: { sourceKind: "list", field: "arrayField", alias: "item", path?: "$.nested", withIndex?: "item_index", keepParentNames: false, preserveOrder: true } }). list mode expands either a native list or a JSON-array string into rows. JSON object expansion into dynamic columns, recursive, and maxDepth are not supported by generated workflows',
     '{ config: WorkflowUnnestConfig }',
     validateUnnest
   ),
@@ -277,22 +265,22 @@ type WorkflowDeriveWindowPayload =
   | (WorkflowWindowCommon & { function: "first_value" | "last_value"; expression: WorkflowNativeExpression<unknown> })
   | (WorkflowWindowCommon & { function: "nth_value"; expression: WorkflowNativeExpression<unknown>; nth: number })
   | (WorkflowWindowCommon & { function: "lag" | "lead"; expression: WorkflowNativeExpression<unknown>; offset?: number; defaultValue?: WorkflowLiteral });
-type WorkflowDeduplicateConfig = { columns: ReadonlyArray<string>; keep: "first" | "last"; orderBy: ReadonlyArray<WorkflowSortKey> };
+type WorkflowDeduplicateConfig = { fields: ReadonlyArray<string>; keep: "first" | "last"; orderBy: ReadonlyArray<WorkflowSortKey> };
 type WorkflowMissingValueRule =
-  | { column: string; method: "skip" | "drop" }
-  | { column: string; method: "nullify_values"; values: readonly [string, ...string[]] }
-  | { column: string; method: "literal_fill"; value: WorkflowNonNullLiteral }
-  | { column: string; method: "mean_fill" | "median_fill" | "mode_fill" | "forward_fill" | "backward_fill" };
+  | { field: string; method: "skip" | "drop" }
+  | { field: string; method: "nullify_values"; values: readonly [string, ...string[]] }
+  | { field: string; method: "literal_fill"; value: WorkflowNonNullLiteral }
+  | { field: string; method: "mean_fill" | "median_fill" | "mode_fill" | "forward_fill" | "backward_fill" };
 type WorkflowNonEmptyMissingValueRules = readonly [WorkflowMissingValueRule, ...WorkflowMissingValueRule[]];
 type WorkflowMissingValueConfig =
   | { strategy: "drop_empty_rows" }
-  | { strategy: "drop_rows_by_nulls"; columns: WorkflowNonEmptyStringArray; condition: "any_null" | "all_null" }
+  | { strategy: "drop_rows_by_nulls"; fields: WorkflowNonEmptyStringArray; condition: "any_null" | "all_null" }
   | { strategy: "by_column"; rules: WorkflowNonEmptyMissingValueRules };
 type WorkflowLimitConfig =
-  | { mode: "limit"; limit: number; unit: "rows"; offset: number; orderBy: ReadonlyArray<WorkflowSortKey>; ties?: boolean; method?: never; seed?: never }
-  | { mode: "limit"; limit: number; unit: "percent"; offset: 0; orderBy: ReadonlyArray<WorkflowSortKey>; ties?: boolean; method?: never; seed?: never }
-  | { mode: "random"; limit: number; unit: "rows"; offset: 0; orderBy: readonly []; ties?: never; method?: "system"; seed?: number }
-  | { mode: "random"; limit: number; unit: "percent"; offset: 0; orderBy: readonly []; ties?: never; method?: "system" | "bernoulli"; seed?: number };
+  | { sampling: "fixed"; limit: number; unit: "rows"; offset: number; orderBy: ReadonlyArray<WorkflowSortKey>; ties?: boolean; method?: never; seed?: never }
+  | { sampling: "fixed"; limit: number; unit: "percent"; offset: 0; orderBy: ReadonlyArray<WorkflowSortKey>; ties?: boolean; method?: never; seed?: never }
+  | { sampling: "random"; limit: number; unit: "rows"; offset: 0; orderBy: readonly []; ties?: never; method?: "system"; seed?: number }
+  | { sampling: "random"; limit: number; unit: "percent"; offset: 0; orderBy: readonly []; ties?: never; method?: "system" | "bernoulli"; seed?: number };
 type WorkflowPivotMetric =
   | { function: "count"; expression: WorkflowNativeExpression<unknown> | "*"; alias: string; parameters?: never }
   | { function: ${numericAggregates}; expression: WorkflowNativeExpression<number>; alias: string; parameters?: never }
@@ -300,8 +288,8 @@ type WorkflowPivotMetric =
   | { function: "string_agg"; expression: WorkflowNativeExpression<string>; alias: string; parameters: readonly [string] }
   | { function: "quantile_cont" | "quantile_disc" | "approx_quantile"; expression: WorkflowNativeExpression<number>; alias: string; parameters: readonly [number] };
 type WorkflowPivotConfig = { on: readonly [{ field: string; values: readonly [WorkflowLiteral, ...WorkflowLiteral[]] }]; using: readonly [WorkflowPivotMetric, ...WorkflowPivotMetric[]]; groupBy: ReadonlyArray<string> };
-type WorkflowUnpivotConfig = { mode: "columns" | "except"; columns: WorkflowNonEmptyStringArray; nameColumn: string; valueColumn: string; includeNulls: boolean };
-type WorkflowUnnestConfig = { sourceKind: "list"; column: string; alias: string; path?: string; withIndex?: string; keepParentNames: boolean; preserveOrder: boolean };
+type WorkflowUnpivotConfig = { selection: "include" | "exclude"; fields: WorkflowNonEmptyStringArray; nameColumn: string; valueColumn: string; includeNulls: boolean };
+type WorkflowUnnestConfig = { sourceKind: "list"; field: string; alias: string; path?: string; withIndex?: string; keepParentNames: boolean; preserveOrder: boolean };
 declare const workflowValueBrand: unique symbol;
 interface WorkflowValue { readonly [workflowValueBrand]: true }
 interface WorkflowStepPayloadMap {
@@ -443,7 +431,7 @@ function validateDeriveWindow(op: Record<string, unknown>, at: string): void {
 
 function validateDeduplicate(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
-  assertStringArray(config.columns, `${at}.config.columns`);
+  assertStringArray(config.fields, `${at}.config.fields`);
   assertEnum(config.keep, ['first', 'last'], `${at}.config.keep`);
   validateSortKeys(config.orderBy, `${at}.config.orderBy`);
 }
@@ -456,14 +444,14 @@ function validateMissingValue(op: Record<string, unknown>, at: string): void {
     `${at}.config.strategy`
   );
   if (config.strategy === 'drop_rows_by_nulls') {
-    assertStringArray(config.columns, `${at}.config.columns`, true);
+    assertStringArray(config.fields, `${at}.config.fields`, true);
     assertEnum(config.condition, ['any_null', 'all_null'], `${at}.config.condition`);
     return;
   }
   if (config.strategy !== 'by_column') return;
   assertArray(config.rules, `${at}.config.rules`, true).forEach((value, item) => {
     const rule = assertRecord(value, `${at}.config.rules[${item}]`);
-    assertString(rule.column, `${at}.config.rules[${item}].column`);
+    assertString(rule.field, `${at}.config.rules[${item}].field`);
     assertEnum(
       rule.method,
       [
@@ -491,7 +479,7 @@ function validateMissingValue(op: Record<string, unknown>, at: string): void {
 
 function validateLimit(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
-  assertEnum(config.mode, ['limit', 'top', 'random'], `${at}.config.mode`);
+  assertEnum(config.sampling, ['fixed', 'random'], `${at}.config.sampling`);
   const limit = assertFiniteNumber(config.limit, `${at}.config.limit`);
   if (limit <= 0) fail(`${at}.config.limit must be greater than zero`);
   assertEnum(config.unit, ['rows', 'percent'], `${at}.config.unit`);
@@ -511,19 +499,7 @@ function validateLimit(op: Record<string, unknown>, at: string): void {
   if (config.method !== undefined)
     assertEnum(config.method, ['system', 'bernoulli'], `${at}.config.method`);
   if (config.seed !== undefined) assertInteger(config.seed, `${at}.config.seed`);
-  if (config.mode === 'top') {
-    if (config.unit !== 'rows') fail(`${at}.config.unit must be rows when mode is top`);
-    if (config.offset !== 0) fail(`${at}.config.offset must be 0 when mode is top`);
-    assertArray(config.orderBy, `${at}.config.orderBy`, true);
-    if (config.method !== undefined || config.seed !== undefined) {
-      fail(`${at}.config.method and seed are not valid when mode is top`);
-    }
-    // Compatibility input is normalized at the IR trust boundary. Downstream code only sees
-    // the canonical limit modes advertised by the current authoring SDK.
-    config.mode = 'limit';
-    config.ties = false;
-  }
-  if (config.mode === 'random') {
+  if (config.sampling === 'random') {
     if (offset !== 0) fail(`${at}.config.offset must be 0 for random sampling`);
     if ((config.orderBy as unknown[]).length > 0)
       fail(`${at}.config.orderBy must be empty for random sampling`);
@@ -612,8 +588,8 @@ function normalizeAggregateFunction(value: unknown, at: string): string {
 
 function validateUnpivot(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
-  assertEnum(config.mode, ['columns', 'except'], `${at}.config.mode`);
-  assertStringArray(config.columns, `${at}.config.columns`, true);
+  assertEnum(config.selection, ['include', 'exclude'], `${at}.config.selection`);
+  assertStringArray(config.fields, `${at}.config.fields`, true);
   assertString(config.nameColumn, `${at}.config.nameColumn`);
   assertString(config.valueColumn, `${at}.config.valueColumn`);
   assertBoolean(config.includeNulls, `${at}.config.includeNulls`);
@@ -622,7 +598,7 @@ function validateUnpivot(op: Record<string, unknown>, at: string): void {
 function validateUnnest(op: Record<string, unknown>, at: string): void {
   const config = assertRecord(op.config, `${at}.config`);
   assertEnum(config.sourceKind, ['list'], `${at}.config.sourceKind`);
-  assertString(config.column, `${at}.config.column`);
+  assertString(config.field, `${at}.config.field`);
   assertString(config.alias, `${at}.config.alias`);
   assertBoolean(config.keepParentNames, `${at}.config.keepParentNames`);
   assertBoolean(config.preserveOrder, `${at}.config.preserveOrder`);

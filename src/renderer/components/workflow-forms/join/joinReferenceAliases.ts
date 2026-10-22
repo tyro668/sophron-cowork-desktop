@@ -1,6 +1,6 @@
 /**
  * Join conditions reference columns as `[alias].[field]`, where `alias` is the
- * stable reference name of an upstream `input_source` (its `config.alias`) —
+ * stable reference name of an upstream `input` (its `config.alias`) —
  * the same names the DSL validator accepts. Node display labels are NOT
  * reference names: they are editable and often generic (输入 / 类型转换).
  */
@@ -37,7 +37,7 @@ export function collectUpstreamInputAliases(
     if (seen.has(id)) continue;
     seen.add(id);
     const node = byId.get(id);
-    if (node?.type === 'input_source') {
+    if (node?.type === 'input') {
       const alias = aliasOf(node);
       if (alias && !result.includes(alias)) result.push(alias);
       continue;

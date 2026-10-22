@@ -4,17 +4,13 @@ import type { WorkflowExpressionIr, WorkflowOperationIr } from './workflow-model
 export const AI_PREP_DSL_RUNTIME_PROFILE_VERSION = 'platform-node-runtime-compat/v3' as const;
 
 export type AiPrepDslExpressionContext =
-  | 'filter'
-  | 'derive'
-  | 'derive_window'
-  | 'aggregate'
-  | 'pivot';
+  'filter' | 'derive' | 'derive_window' | 'aggregate' | 'pivot';
 export type AiPrepDslExpressionLowering = 'direct' | 'materialize_filter_predicate';
 
 type WorkflowIrOperationType = WorkflowOperationIr['type'];
 type AiPrepDslOperationNodeType = Exclude<
   DataWorkflowOperatorType,
-  'input_source' | 'join' | 'set_op' | 'output'
+  'input' | 'join' | 'set_op' | 'output'
 >;
 
 export interface AiPrepDslOperationCapability {
@@ -37,11 +33,11 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
   filter: {
     irType: 'filter',
     nodeType: 'filter',
-    emittedNodeTypes: ['filter', 'calculate_field', 'field_select'],
+    emittedNodeTypes: ['filter', 'derive', 'select'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
-      'Simple predicates lower directly; predicates containing casts or function calls are materialized through derive -> filter -> drop.',
+      'Simple predicates lower directly; predicates containing casts or function calls are materialized through derive -> filter -> select except.',
   },
   sort: {
     irType: 'sort',
@@ -51,56 +47,49 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
     lowering: 'direct',
     runtimeContract: 'Sort by one or more resolved columns with direction and null ordering.',
   },
-  drop: {
-    irType: 'drop',
-    nodeType: 'field_select',
-    emittedNodeTypes: ['field_select'],
-    aiEnabled: true,
-    lowering: 'direct',
-    runtimeContract: 'Exclude existing columns through the field-select node.',
-  },
   select: {
     irType: 'select',
-    nodeType: 'field_select',
-    emittedNodeTypes: ['field_select'],
+    nodeType: 'select',
+    emittedNodeTypes: ['select'],
     aiEnabled: true,
     lowering: 'direct',
-    runtimeContract: 'Include existing columns through the field-select node.',
+    runtimeContract:
+      'Include (selection include) or exclude (selection exclude) existing columns through the select node.',
   },
   rename: {
     irType: 'rename',
-    nodeType: 'field_mapping',
-    emittedNodeTypes: ['field_mapping'],
+    nodeType: 'rename',
+    emittedNodeTypes: ['rename'],
     aiEnabled: true,
     lowering: 'direct',
     runtimeContract: 'Rename one existing column and use the new name in later operations.',
   },
   derive: {
     irType: 'derive',
-    nodeType: 'calculate_field',
-    emittedNodeTypes: ['calculate_field', 'field_select', 'field_mapping'],
+    nodeType: 'derive',
+    emittedNodeTypes: ['derive', 'select', 'rename'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
-      'Emit a calculate-field expression from the allowlisted expression IR; same-name replacement uses temporary derive/drop/map steps.',
+      'Emit a calculate-field expression from the allowlisted expression IR; same-name replacement uses temporary derive/select-except/rename steps.',
   },
   derive_window: {
     irType: 'derive_window',
-    nodeType: 'calculate_field',
-    emittedNodeTypes: ['calculate_field', 'field_select', 'field_mapping'],
+    nodeType: 'derive',
+    emittedNodeTypes: ['derive', 'select', 'rename'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
       'Lower certified aggregate, ranking, value and offset windows with structured frames into calculate-field OVER expressions.',
   },
-  convert_type: {
-    irType: 'convert_type',
-    nodeType: 'type_convert',
-    emittedNodeTypes: ['type_convert', 'calculate_field', 'field_select', 'field_mapping'],
+  cast: {
+    irType: 'cast',
+    nodeType: 'cast',
+    emittedNodeTypes: ['cast', 'derive', 'select', 'rename'],
     aiEnabled: true,
     lowering: 'recipe',
     runtimeContract:
-      'Use the native cast node for direct conversions and a derive/drop/map recipe for cleanup or decimal scaling.',
+      'Use the native cast node for direct conversions and a derive/select-except/rename recipe for cleanup or decimal scaling.',
   },
   aggregate: {
     irType: 'aggregate',
@@ -169,7 +158,7 @@ export const AI_PREP_DSL_OPERATION_CAPABILITIES = {
 };
 
 const AI_GENERATED_WORKFLOW_BOUNDARY_NODE_TYPES = [
-  'input_source',
+  'input',
   'output',
 ] as const satisfies readonly DataWorkflowOperatorType[];
 

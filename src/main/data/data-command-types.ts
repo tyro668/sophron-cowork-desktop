@@ -426,7 +426,7 @@ export interface ApplyWorkflowDslCommand {
   dsl: string;
   rawTableId?: string;
   inputAlias?: string;
-  /** Multi-source binding: `alias -> rawTableId` for each input_source node. */
+  /** Multi-source binding: `alias -> rawTableId` for each input node. */
   inputResources?: Record<string, string>;
   resultTableId?: string;
   dryRun?: boolean;

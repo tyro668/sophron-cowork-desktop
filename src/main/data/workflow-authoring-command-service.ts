@@ -132,7 +132,7 @@ export class WorkflowAuthoringCommandService {
       resultTableId: input.resultTableId,
     });
     for (const node of bound.nodes) {
-      if (node.type !== 'input_source') continue;
+      if (node.type !== 'input') continue;
       const source = stringConfigValue(node.config?.source);
       if (source === 'rawTable' && !stringConfigValue(node.config?.rawTableId)) {
         diagnostics.push({
@@ -250,7 +250,7 @@ export class WorkflowAuthoringCommandService {
     const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
     const rawTable = await this.resources.requireRawTable(input.rawTableId);
     const node = findWorkflowNode(workflow, input.nodeId);
-    if (node.type !== 'input_source') {
+    if (node.type !== 'input') {
       throw new DataCommandError(
         'VALIDATION_FAILED',
         `Workflow node is not an input operator: ${input.nodeId}`
@@ -266,7 +266,7 @@ export class WorkflowAuthoringCommandService {
         rawTableId: rawTable.id,
         rawTableName: rawTable.name,
         alias,
-        dsl: `input source rawTable "${escapeDslString(rawTable.id)}" as ${alias}`,
+        dsl: `input rawTable "${escapeDslString(rawTable.id)}" as ${alias}`,
       },
     });
     return this.saveOrPreview(input.pipelineId, nextWorkflow, Boolean(input.dryRun));
@@ -275,7 +275,7 @@ export class WorkflowAuthoringCommandService {
   private async applyOperatorDslUnlocked(input: ApplyOperatorDslCommand): Promise<WorkflowResult> {
     const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
     const node = findWorkflowNode(workflow, input.nodeId);
-    if (node.type === 'input_source' || node.type === 'output') {
+    if (node.type === 'input' || node.type === 'output') {
       throw new DataCommandError(
         'VALIDATION_FAILED',
         'Use data_configure_input_operator or data_configure_output_operator for input/output nodes'

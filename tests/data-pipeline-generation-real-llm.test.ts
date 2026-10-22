@@ -156,13 +156,13 @@ describeRealLlm('真实 LLM 数据任务生成示例', () => {
   it('调用应用当前模型并打印 JavaScript、IR、平台节点和 Prep DSL', async () => {
     const result = await runRealLlmDataPipelineGenerationDemo(FILTER_SCENARIO);
     expect(result.compatibilityDsl).toContain('filter [Profit] > 0');
-    expect(result.compatibilityDsl).toContain('sort by [Profit] desc');
+    expect(result.compatibilityDsl).toContain('sort [Profit] desc');
   }, 120_000);
 
   it('调用真实模型生成包含计算字段的工作流并打印每一层结果', async () => {
     const result = await runRealLlmDataPipelineGenerationDemo(CALCULATED_FIELD_SCENARIO);
     expect(result.compatibilityDsl).toContain('derive [SalesAmount] = [Quantity] * [UnitPrice]');
-    expect(result.compatibilityDsl).toContain('sort by [SalesAmount] desc');
+    expect(result.compatibilityDsl).toContain('sort [SalesAmount] desc');
     expect(result.generated.expectedOutputSchema).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'SalesAmount', type: 'decimal' })])
     );

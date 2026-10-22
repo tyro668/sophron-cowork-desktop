@@ -90,7 +90,7 @@ function main() {
 
     expect(compatibilityDsl).toContain('derive [__sophron_ai_filter_predicate] =');
     expect(compatibilityDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-    expect(compatibilityDsl).toContain('drop [__sophron_ai_filter_predicate]');
+    expect(compatibilityDsl).toContain('select except [__sophron_ai_filter_predicate]');
     await saveWorkflowDsl(store, pipeline.id, compatibilityDsl);
 
     const completed = await store.runPipeline(pipeline.id);
@@ -119,9 +119,9 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as prices
-          | drop [记录数]
-          | sort by [\`Unit Price\`] asc
+        input pipeline as prices
+          | select except [记录数]
+          | sort [\`Unit Price\`] asc
           | output table "operator_quoted_sort_output" mode replace
       `
     );
@@ -164,16 +164,16 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as orders
+        input pipeline as orders
           | select [order_id], [dt], [region], [rev], [profit], [status], [updated_at]
-          | map [dt] to [order_date], [rev] to [revenue]
+          | rename [dt] as [order_date], [rev] as [revenue]
           | cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error null, [profit] as float on_error null
-          | missing value [region] nullify values ('', 'N/A'), [region] fill 'UNKNOWN'
+          | missing_value [region] nullify values ('', 'N/A'), [region] fill 'UNKNOWN'
           | deduplicate by [order_id] keep first order by [updated_at] desc
           | derive [margin] = [profit] / nullif([revenue], 0)
           | filter [status] = 'PAID' and [revenue] > 0
           | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
-          | sort by [total_revenue] desc
+          | sort [total_revenue] desc
           | output table "operator_cleaning_output" mode replace
       `
     );
@@ -212,9 +212,9 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as prices
+        input pipeline as prices
           | cast [adj_close] as decimal on_error null
-          | missing value [adj_close] nullify values ('NULL', 'N/A')
+          | missing_value [adj_close] nullify values ('NULL', 'N/A')
           | output table "typed_missing_marker_output" mode replace
       `
     );
@@ -254,11 +254,11 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as orders
+        input pipeline as orders
           | cast [revenue] as float on_error null
           | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
           | filter [rn] <= 2
-          | sort by [region] asc, [rn] asc
+          | sort [region] asc, [rn] asc
           | output table "operator_window_derive_output" mode replace
       `
     );
@@ -304,7 +304,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as prices
+        input pipeline as prices
           | derive [\`Adj Close\`] = CAST(REPLACE([\`Adj Close\`], '$', '') AS DECIMAL(18,2))
           | output table "operator_same_field_derive_output" mode replace
       `
@@ -347,9 +347,9 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as profit
+        input pipeline as profit
           | filter [Profit] >= 0
-          | sort by [Profit] asc
+          | sort [Profit] asc
           | output table "operator_profit_filter_sort_output" mode replace
       `
     );
@@ -394,9 +394,9 @@ function main() {
       store,
       pipeline.id,
       `
-        input source rawTable "${input.id}" as src
+        input rawTable "${input.id}" as src
           | filter [Profit] >= 0
-          | sort by [Profit] asc
+          | sort [Profit] asc
           | output table "operator_profit_rawTable_filter_sort_output" mode replace
       `
     );
@@ -429,7 +429,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as dates
+        input pipeline as dates
           | cast [val] as date format '%Y-%m-%d' on_error null
           | output table "operator_try_strptime_output" mode replace
       `
@@ -468,7 +468,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as timestamps
+        input pipeline as timestamps
           | cast [val] as datetime on_error null
           | output table "operator_try_strptime_tz_output" mode replace
       `
@@ -501,7 +501,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as dec0
+        input pipeline as dec0
           | cast [val] as decimal scale 0 on_error null
           | output table "operator_decimal_scale_0_output" mode replace
       `
@@ -532,7 +532,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as dec18
+        input pipeline as dec18
           | cast [val] as decimal scale 18 on_error null
           | output table "operator_decimal_scale_18_output" mode replace
       `
@@ -560,7 +560,7 @@ function main() {
       sourcePath: decPath,
     });
     const dsl = `
-      input source pipeline as dec19
+      input pipeline as dec19
         | cast [val] as decimal scale 19 on_error null
         | output table "operator_decimal_scale_19_output" mode replace
     `;
@@ -588,7 +588,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as keep
+        input pipeline as keep
           | cast [val] as integer on_error keep
           | output table "operator_keep_output" mode replace
       `
@@ -619,8 +619,8 @@ function main() {
       sourcePath: jsonPath,
     });
     const parsed = parsePrepDsl(`
-      input source pipeline as json_src
-        | explode json [payload] path '$'
+      input pipeline as json_src
+        | unnest json [payload] path '$'
         | output table "operator_unnest_json_output" mode replace
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
@@ -652,8 +652,8 @@ function main() {
         store,
         pipeline.id,
         `
-          input source pipeline as json_src
-            | explode json [ghost_column] path '$'
+          input pipeline as json_src
+            | unnest json [ghost_column] path '$'
             | output table "operator_unnest_json_missing_output" mode replace
         `
       )
@@ -673,7 +673,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as src
+        input pipeline as src
           | output table "operator_append_output" mode append
       `
     );
@@ -698,7 +698,7 @@ function main() {
       store,
       pipeline.id,
       `
-        input source pipeline as src
+        input pipeline as src
           | output table "operator_exists_output" mode error_if_exists
       `
     );
@@ -709,7 +709,7 @@ function main() {
 
   it('flags output rawTable/file destinations as unsupported at compile time', () => {
     const parsed = parsePrepDsl(
-      'input source pipeline as src\n  | output rawTable "results" mode replace'
+      'input pipeline as src\n  | output rawTable "results" mode replace'
     );
     expect(parsed.ast).not.toBeNull();
     const compiled = compilePrepWorkflowToFlow(parsed.ast!);

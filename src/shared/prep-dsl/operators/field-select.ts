@@ -4,13 +4,14 @@ import { PrepTokenCursor } from '../syntax/token-cursor';
 import { createOperator, stringArray, type OperatorDslCodec } from './codec';
 
 export const fieldSelectCodec: OperatorDslCodec = {
-  type: 'field_select',
-  matches: (text) => text.startsWith('select ') || text.startsWith('drop '),
+  type: 'select',
+  // `select [a], [b]` keeps fields; `select except [a]` drops them (one keyword per operator).
+  matches: (text) => text.startsWith('select '),
   parse: (command, diagnostics) => {
     const { text } = command;
-    const mode = text.startsWith('select ') ? 'include' : 'exclude';
+    const mode = /^select\s+except\s/.test(text) ? 'exclude' : 'include';
     const cursor = new PrepTokenCursor(
-      text.slice(mode === 'include' ? 7 : 5),
+      text.replace(/^select\s+(?:except\s+)?/, ''),
       command.line,
       diagnostics
     );
@@ -37,11 +38,11 @@ export const fieldSelectCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('field_select', text, { selection: mode, fields: columns });
+    return createOperator('select', text, { selection: mode, fields: columns });
   },
   format: (config) => {
     const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
     if (!columns) return null;
-    return `${config?.selection === 'exclude' ? 'drop' : 'select'} ${columns}`;
+    return `${config?.selection === 'exclude' ? 'select except' : 'select'} ${columns}`;
   },
 };

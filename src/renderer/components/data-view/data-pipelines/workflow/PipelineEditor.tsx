@@ -323,11 +323,11 @@ export function PipelineEditor({
 
   const nodes = useMemo(() => workflow?.nodes ?? [], [workflow?.nodes]);
   const edges = useMemo(() => workflow?.edges ?? [], [workflow?.edges]);
-  // The input table AI generation binds to: first enabled input_source node
+  // The input table AI generation binds to: first enabled input node
   // with a rawTable, else the pipeline-level source binding.
   const boundRawTable = useMemo(() => {
     for (const node of nodes) {
-      if (node.type !== 'input_source' || node.config.disabled === true) continue;
+      if (node.type !== 'input' || node.config.disabled === true) continue;
       const rawTableId =
         stringValue(node.config.rawTableId) ||
         stringValue(node.config.rawTableId) ||
@@ -723,7 +723,7 @@ export function PipelineEditor({
         sourceName: boundRawTable?.name ?? null,
         resultTableName: t('data.workflow.starterOutputName', { name: pipeline.name }),
         labels: {
-          input_source: t(getOperatorCatalog('input_source').labelKey),
+          input: t(getOperatorCatalog('input').labelKey),
           filter: t(getOperatorCatalog('filter').labelKey),
           output: t(getOperatorCatalog('output').labelKey),
         },

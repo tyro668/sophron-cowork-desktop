@@ -23,24 +23,24 @@ export {
 } from '../syntax/fields';
 
 const OPERATOR_LABELS: Record<PrepOperatorType, string> = {
-  input_source: 'input_source',
+  input: 'input',
   filter: 'filter',
-  field_select: 'field_select',
+  select: 'select',
   deduplicate: 'deduplicate',
   missing_value: 'missing_value',
-  type_convert: 'type_convert',
+  cast: 'cast',
   sort: 'sort',
   join: 'join',
   aggregate: 'aggregate',
-  calculate_field: 'calculate_field',
-  field_mapping: 'field_mapping',
+  derive: 'derive',
+  rename: 'rename',
   limit: 'limit',
   pivot: 'pivot',
   unpivot: 'unpivot',
   set_op: 'set_op',
   unnest: 'unnest',
   expect: 'expect',
-  sql_query: 'sql_query',
+  sql: 'sql',
   output: 'output',
 };
 
@@ -133,7 +133,7 @@ export function parsePrepDsl(input: string): PrepParseResult {
     }
     const operator = parseOperator(command, diagnostics);
     if (!operator) continue;
-    if (operator.type === 'input_source') {
+    if (operator.type === 'input') {
       sources.push(operator);
       if (!mainSource) mainSource = sourceAlias(operator) ?? 'source';
       continue;
@@ -344,14 +344,6 @@ function parseInputSource(
   }
   advance();
 
-  // Consume "source"
-  const t2 = peek();
-  if (!t2 || t2.image !== 'source') {
-    error('Expected "source"');
-    return null;
-  }
-  advance();
-
   // Source type: pipeline | file <string> | rawTable <string>
   const srcType = peek();
   if (!srcType || srcType.tokenType.name !== 'Identifier') {
@@ -488,7 +480,7 @@ function parseInputSource(
     consumed.add(kw.image);
   }
 
-  return makeOperator('input_source', text, config);
+  return makeOperator('input', text, config);
 }
 
 function collectInitialDiagnostics(input: string): PrepDiagnostic[] {
@@ -584,7 +576,7 @@ function isTopLevelLine(text: string): boolean {
 }
 
 function isInputSource(text: string): boolean {
-  return text.startsWith('input source ');
+  return text.startsWith('input ');
 }
 
 function makeOperator(

@@ -18,7 +18,7 @@ export interface OperatorUiDefinition {
   Icon: LucideIcon;
   colorClassName: string;
   nodeClassName: string;
-  /** Lazy form loader; absent for boundary nodes (input_source/output) that use binding panels. */
+  /** Lazy form loader; absent for boundary nodes (input/output) that use binding panels. */
   form?: OperatorFormLoader;
   summarize: WorkflowSummarizer;
 }
@@ -30,13 +30,13 @@ const OPERATOR_CHIP_CLASS = 'text-accent bg-accent-muted';
 const OPERATOR_NODE_CLASS = 'border-accent/35 bg-accent-muted text-accent';
 
 export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition> = {
-  input_source: {
-    type: 'input_source',
-    labelKey: 'data.workflow.operators.input_source',
-    Icon: OPERATOR_ICONS.input_source,
+  input: {
+    type: 'input',
+    labelKey: 'data.workflow.operators.input',
+    Icon: OPERATOR_ICONS.input,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
-    summarize: WORKFLOW_SUMMARIZERS.input_source,
+    summarize: WORKFLOW_SUMMARIZERS.input,
   },
   filter: {
     type: 'filter',
@@ -47,14 +47,14 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
     form: () => import('../../../workflow-forms/FormFilter'),
     summarize: WORKFLOW_SUMMARIZERS.filter,
   },
-  field_select: {
-    type: 'field_select',
-    labelKey: 'data.workflow.operators.field_select',
-    Icon: OPERATOR_ICONS.field_select,
+  select: {
+    type: 'select',
+    labelKey: 'data.workflow.operators.select',
+    Icon: OPERATOR_ICONS.select,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormFieldSelect'),
-    summarize: WORKFLOW_SUMMARIZERS.field_select,
+    summarize: WORKFLOW_SUMMARIZERS.select,
   },
   deduplicate: {
     type: 'deduplicate',
@@ -74,14 +74,14 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
     form: () => import('../../../workflow-forms/FormMissingValue'),
     summarize: WORKFLOW_SUMMARIZERS.missing_value,
   },
-  type_convert: {
-    type: 'type_convert',
-    labelKey: 'data.workflow.operators.type_convert',
-    Icon: OPERATOR_ICONS.type_convert,
+  cast: {
+    type: 'cast',
+    labelKey: 'data.workflow.operators.cast',
+    Icon: OPERATOR_ICONS.cast,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormTypeConvert'),
-    summarize: WORKFLOW_SUMMARIZERS.type_convert,
+    summarize: WORKFLOW_SUMMARIZERS.cast,
   },
   sort: {
     type: 'sort',
@@ -110,23 +110,23 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
     form: () => import('../../../workflow-forms/FormAggregate'),
     summarize: WORKFLOW_SUMMARIZERS.aggregate,
   },
-  calculate_field: {
-    type: 'calculate_field',
-    labelKey: 'data.workflow.operators.calculate_field',
-    Icon: OPERATOR_ICONS.calculate_field,
+  derive: {
+    type: 'derive',
+    labelKey: 'data.workflow.operators.derive',
+    Icon: OPERATOR_ICONS.derive,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormCalculateField'),
-    summarize: WORKFLOW_SUMMARIZERS.calculate_field,
+    summarize: WORKFLOW_SUMMARIZERS.derive,
   },
-  field_mapping: {
-    type: 'field_mapping',
-    labelKey: 'data.workflow.operators.field_mapping',
-    Icon: OPERATOR_ICONS.field_mapping,
+  rename: {
+    type: 'rename',
+    labelKey: 'data.workflow.operators.rename',
+    Icon: OPERATOR_ICONS.rename,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormFieldMapping'),
-    summarize: WORKFLOW_SUMMARIZERS.field_mapping,
+    summarize: WORKFLOW_SUMMARIZERS.rename,
   },
   limit: {
     type: 'limit',
@@ -182,14 +182,14 @@ export const OPERATOR_UI: Record<DataWorkflowOperatorType, OperatorUiDefinition>
     form: () => import('../../../workflow-forms/FormExpect'),
     summarize: WORKFLOW_SUMMARIZERS.expect,
   },
-  sql_query: {
-    type: 'sql_query',
-    labelKey: 'data.workflow.operators.sql_query',
-    Icon: OPERATOR_ICONS.sql_query,
+  sql: {
+    type: 'sql',
+    labelKey: 'data.workflow.operators.sql',
+    Icon: OPERATOR_ICONS.sql,
     colorClassName: OPERATOR_CHIP_CLASS,
     nodeClassName: OPERATOR_NODE_CLASS,
     form: () => import('../../../workflow-forms/FormSqlQuery'),
-    summarize: WORKFLOW_SUMMARIZERS.sql_query,
+    summarize: WORKFLOW_SUMMARIZERS.sql,
   },
   output: {
     type: 'output',

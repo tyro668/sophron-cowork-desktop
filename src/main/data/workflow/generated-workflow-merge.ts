@@ -13,7 +13,7 @@ export interface GeneratedWorkflowMergeResult {
 }
 
 /**
- * Splices the standalone generated chain (`input_source → ops… → output`) into an
+ * Splices the standalone generated chain (`input → ops… → output`) into an
  * existing workflow at the selected anchor node:
  *
  * - anchor with `output` edges: the chain is inserted between the anchor and its
@@ -191,7 +191,7 @@ function orderedGeneratedOperators(generated: {
 }): DataWorkflowNodeInput[] {
   const byId = new Map(generated.nodes.map((node) => [node.id, node]));
   const nextOf = new Map(generated.edges.map((edge) => [edge.sourceNodeId, edge.targetNodeId]));
-  const source = generated.nodes.find((node) => node.type === 'input_source');
+  const source = generated.nodes.find((node) => node.type === 'input');
   const ordered: DataWorkflowNodeInput[] = [];
   const seen = new Set<string>();
   let cursor = source?.id;

@@ -10,7 +10,7 @@ import { buildWorkflowStarterGraph } from '../../src/renderer/components/data-vi
 import { orderWorkflowNodes } from '../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowExplainDialog';
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../src/renderer/types';
 
-const LABELS = { input_source: 'Input', filter: 'Filter', output: 'Output' };
+const LABELS = { input: 'Input', filter: 'Filter', output: 'Output' };
 
 function makeNode(id: string, type = 'filter'): DataWorkflowNode {
   return {
@@ -47,7 +47,7 @@ describe('buildWorkflowStarterGraph', () => {
       labels: LABELS,
     });
 
-    expect(graph.nodes.map((node) => node.type)).toEqual(['input_source', 'filter', 'output']);
+    expect(graph.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
     expect(graph.edges).toHaveLength(2);
     expect(graph.edges[0].sourceNodeId).toBe(graph.nodes[0].id);
     expect(graph.edges[0].targetNodeId).toBe(graph.nodes[1].id);

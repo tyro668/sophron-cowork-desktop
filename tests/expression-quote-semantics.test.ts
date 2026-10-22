@@ -14,7 +14,7 @@ describe('SQL quote semantics in the DSL', () => {
   });
 
   it('rejects double-quoted text values in statement value positions', () => {
-    const parsed = parsePrepOperatorDsl('cast [d] as date format "%Y-%m-%d"', 'type_convert');
+    const parsed = parsePrepOperatorDsl('cast [d] as date format "%Y-%m-%d"', 'cast');
     expect(parsed.diagnostics.some((d) => d.severity === 'error')).toBe(true);
   });
 

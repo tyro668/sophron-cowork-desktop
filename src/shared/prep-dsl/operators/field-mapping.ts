@@ -9,12 +9,11 @@ import {
 } from '../../operator-config/field-mapping';
 
 export const fieldMappingCodec: OperatorDslCodec = {
-  type: 'field_mapping',
-  matches: (text) => text.startsWith('map ') || text.startsWith('rename '),
+  type: 'rename',
+  matches: (text) => text.startsWith('rename '),
   parse: (command, diagnostics) => {
     const { text } = command;
-    const isMap = text.startsWith('map ');
-    const cursor = new PrepTokenCursor(text.slice(isMap ? 4 : 7), command.line, diagnostics);
+    const cursor = new PrepTokenCursor(text.slice(7), command.line, diagnostics);
     const mappings: Array<{
       source: string;
       targetMode: 'rename';
@@ -22,7 +21,7 @@ export const fieldMappingCodec: OperatorDslCodec = {
     }> = [];
     while (!cursor.eof) {
       const source = cursor.expectFieldRef('invalidFieldMapping');
-      if (!source || !cursor.expect(isMap ? 'to' : 'as', 'invalidFieldMapping')) break;
+      if (!source || !cursor.expect('as', 'invalidFieldMapping')) break;
       const target = cursor.expectFieldRef('invalidFieldMapping');
       if (!target || !toFieldName(source).trim() || !toFieldName(target).trim()) {
         cursor.report('invalidFieldMapping', 'Field mapping requires non-empty fields');
@@ -51,7 +50,7 @@ export const fieldMappingCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('field_mapping', text, { mappings });
+    return createOperator('rename', text, { mappings });
   },
   format: (config) => {
     const mappings = objectArray(config?.mappings).filter(isCompleteFieldMapping);
@@ -59,8 +58,8 @@ export const fieldMappingCodec: OperatorDslCodec = {
     const formatted = mappings.map((mapping) => {
       const source = typeof mapping.source === 'string' ? mapping.source.trim() : '';
       const target = computeFieldMappingTarget(normalizeFieldMappingEntry(mapping)).trim();
-      return source && target ? `${formatFieldRef(source)} to ${formatFieldRef(target)}` : '';
+      return source && target ? `${formatFieldRef(source)} as ${formatFieldRef(target)}` : '';
     });
-    return formatted.every(Boolean) ? `map ${formatted.join(', ')}` : null;
+    return formatted.every(Boolean) ? `rename ${formatted.join(', ')}` : null;
   },
 };

@@ -5,12 +5,12 @@ import {
 } from '../../src/renderer/components/workflow-forms/join/joinReferenceAliases';
 import { patchRowAt } from '../../src/renderer/components/workflow-forms/shared/rowListOperations';
 
-// orders -> dedupe -> type_convert -> join(left); products -> join(right)
+// orders -> dedupe -> cast -> join(left); products -> join(right)
 const nodes = [
-  { id: 'orders', type: 'input_source', config: { alias: 'orders' } },
-  { id: 'products', type: 'input_source', config: { alias: 'products' } },
+  { id: 'orders', type: 'input', config: { alias: 'orders' } },
+  { id: 'products', type: 'input', config: { alias: 'products' } },
   { id: 'dedupe', type: 'deduplicate', config: {} },
-  { id: 'convert', type: 'type_convert', config: {} },
+  { id: 'convert', type: 'cast', config: {} },
   { id: 'join', type: 'join', config: { rightAlias: 'products' } },
 ];
 const edges = [
@@ -21,7 +21,7 @@ const edges = [
 ];
 
 describe('join reference aliases', () => {
-  it('walks upstream to input_source aliases instead of using display labels', () => {
+  it('walks upstream to input aliases instead of using display labels', () => {
     expect(collectUpstreamInputAliases('convert', nodes, edges)).toEqual(['orders']);
     expect(collectUpstreamInputAliases('products', nodes, edges)).toEqual(['products']);
   });

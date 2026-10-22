@@ -45,7 +45,7 @@ const passthroughWorkflow = (table: string): DataWorkflowSaveInput => ({
   nodes: [
     {
       id: 'source',
-      type: 'input_source',
+      type: 'input',
       label: 'source',
       x: 0,
       y: 0,

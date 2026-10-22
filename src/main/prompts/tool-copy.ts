@@ -135,7 +135,7 @@ export const DATA_TOOL_COPY = {
   data_apply_workflow_plan: {
     label: 'Apply workflow plan',
     description:
-      'Apply a constrained workflow plan ({version, nodes, edges} matching the capability manifest). Binds input_source nodes by alias via inputResources, validates configs/graph/schema, exports canonical DSL, and saves unless dryRun.',
+      'Apply a constrained workflow plan ({version, nodes, edges} matching the capability manifest). Binds input nodes by alias via inputResources, validates configs/graph/schema, exports canonical DSL, and saves unless dryRun.',
   },
   data_apply_workflow_dsl: {
     label: 'Apply workflow DSL',
@@ -145,7 +145,7 @@ export const DATA_TOOL_COPY = {
   data_configure_input_operator: {
     label: 'Configure input operator',
     description:
-      'Bind an input_source node to a real raw table (alias optional). The operator reads the full raw table on every run.',
+      'Bind an input node to a real raw table (alias optional). The operator reads the full raw table on every run.',
   },
   data_configure_output_operator: {
     label: 'Configure output operator',

@@ -77,7 +77,7 @@ describe('data pipeline architecture regressions', () => {
       nodes: [
         {
           id: 'source',
-          type: 'input_source',
+          type: 'input',
           label: 'Source',
           x: 0,
           y: 0,
@@ -85,7 +85,7 @@ describe('data pipeline architecture regressions', () => {
         },
         {
           id: 'select',
-          type: 'field_select',
+          type: 'select',
           label: 'Select',
           x: 0,
           y: 0,
@@ -99,7 +99,7 @@ describe('data pipeline architecture regressions', () => {
       ],
     };
     const saved = await store.savePipelineWorkflow(pipeline.id, workflow);
-    const selectedNode = saved.nodes.find((node) => node.type === 'field_select')!;
+    const selectedNode = saved.nodes.find((node) => node.type === 'select')!;
     await store.runPipeline(pipeline.id, { outputMode: 'temporary' });
     const initialPreview = await store.previewWorkflowNode({
       pipelineId: pipeline.id,
@@ -160,7 +160,7 @@ describe('data pipeline architecture regressions', () => {
   it('keeps right-input configuration aligned when a right edge moves to another node', () => {
     const workflow = makeWorkflow(
       [
-        makeNode('source', 'input_source', { alias: 'orders' }),
+        makeNode('source', 'input', { alias: 'orders' }),
         makeNode('join-a', 'join', { rightInput: 'orders', rightAlias: 'orders' }),
         makeNode('join-b', 'join', {}),
       ],

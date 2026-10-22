@@ -9,9 +9,9 @@ import { isCompleteMissingValueRule } from '../../operator-completeness';
 
 export const missingValueCodec: OperatorDslCodec = {
   type: 'missing_value',
-  matches: (text) => text.startsWith('missing value '),
+  matches: (text) => text.startsWith('missing_value '),
   parse: (command, diagnostics) => {
-    const body = command.text.slice('missing value '.length);
+    const body = command.text.slice('missing_value '.length);
     if (body.startsWith('row ')) {
       return parseRowRule(command.text, body, command.line, diagnostics);
     }
@@ -30,11 +30,11 @@ export const missingValueCodec: OperatorDslCodec = {
   format: (config) => {
     if (config?.strategy === 'drop_empty_rows') {
       const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
-      return `missing value row drop when all_null${columns ? ` in ${columns}` : ''}`;
+      return `missing_value row drop when all_null${columns ? ` in ${columns}` : ''}`;
     }
     if (config?.strategy === 'drop_rows_by_nulls') {
       const columns = stringArray(config?.fields).map(formatFieldRef).join(', ');
-      return `missing value row drop when ${String(config.condition ?? 'any_null')}${
+      return `missing_value row drop when ${String(config.condition ?? 'any_null')}${
         columns ? ` in ${columns}` : ''
       }`;
     }
@@ -46,7 +46,7 @@ export const missingValueCodec: OperatorDslCodec = {
     }
     const rules = ruleConfigs.map(formatRule);
     if (rules.some((rule) => rule === null)) return null;
-    return `missing value ${rules.join(', ') || '[field] skip'}`;
+    return `missing_value ${rules.join(', ') || '[field] skip'}`;
   },
 };
 

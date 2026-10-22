@@ -7,7 +7,7 @@ import { DATE_FORMAT_VALUES, SCALE_MIN, SCALE_MAX } from '../../operator-schemas
 import { isCompleteTypeConversion } from '../../operator-completeness';
 
 export const typeConvertCodec: OperatorDslCodec = {
-  type: 'type_convert',
+  type: 'cast',
   matches: (text) => text.startsWith('cast '),
   parse: (command, diagnostics) => {
     const cursor = new PrepTokenCursor(command.text.slice(5), command.line, diagnostics);
@@ -125,7 +125,7 @@ export const typeConvertCodec: OperatorDslCodec = {
         line: command.line,
       });
     }
-    return createOperator('type_convert', command.text, { conversions });
+    return createOperator('cast', command.text, { conversions });
   },
   format: (config) => {
     const conversions = objectArray(config?.conversions).filter(isCompleteTypeConversion);
