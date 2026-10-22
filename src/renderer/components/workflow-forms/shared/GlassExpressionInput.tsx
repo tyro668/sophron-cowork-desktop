@@ -1045,6 +1045,8 @@ function FunctionList({
   );
 }
 
+export const EXPRESSION_PREVIEW_MAX_LINES = 3;
+
 export function GlassExpressionInput({
   value,
   onChange,
@@ -1075,9 +1077,19 @@ export function GlassExpressionInput({
         aria-label={label}
         title={value || undefined}
         style={{ paddingLeft: 10 }}
-        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 pr-8 text-left font-mono text-[12.5px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 py-1 pr-8 text-left font-mono text-[12.5px] leading-[18px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
       >
-        <span className={`block min-w-0 shrink truncate${issueCount > 0 ? ' text-error' : ''}`}>
+        {/* Long formulas wrap to up to 3 lines (full text in the tooltip/editor) instead of a one-line ellipsis. */}
+        <span
+          data-testid="expression-preview"
+          className={`min-w-0 shrink whitespace-pre-wrap break-all${issueCount > 0 ? ' text-error' : ''}`}
+          style={{
+            display: '-webkit-box',
+            WebkitLineClamp: EXPRESSION_PREVIEW_MAX_LINES,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
           {value || (
             <span className="font-sans text-text-muted">
               {placeholderProp ?? tr('expressionPlaceholder')}
