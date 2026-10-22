@@ -1,7 +1,7 @@
 import { duckDbTypeForDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
 import type { DataColumnTypeInfo } from '../../../shared/contracts';
 import { parseDuration } from '../../../shared/operator-schemas/join';
-import { parseFieldRefExact } from '../../../shared/prep-dsl';
+import { parseFieldRefExact } from '../../../shared/expression-syntax/fields';
 
 export function quoteIdentifier(identifier: string): string {
   return quoteValueIdentifier(identifier);

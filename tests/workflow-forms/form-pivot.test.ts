@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import {
   addPivotCandidate,
   addPivotValue,
@@ -14,17 +14,25 @@ import {
 } from '../../src/shared/operator-config';
 
 function ok(config: Record<string, unknown>) {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'pivot', config });
-  const parsed = parsePrepOperatorDsl(dsl, 'pivot');
+  const dsl = exportStep({ id: 'test', type: 'pivot', config });
+  const parsed = parseStep(dsl, 'pivot');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, 'null operator').not.toBeNull();
   return parsed.operator!;
 }
 
+function axes(on: unknown) {
+  return (on as Array<Record<string, unknown>>).map(({ customValues: _custom, ...axis }) => axis);
+}
+
+function axesOf(config: Record<string, unknown>) {
+  return { config: { on: axes(ok(config).config.on) } };
+}
+
 describe('FormPivot — config ↔ DSL', () => {
   it('export returns empty when on is absent', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: { using: [{ function: 'sum', expression: '[amount]' }] },
@@ -33,7 +41,7 @@ describe('FormPivot — config ↔ DSL', () => {
   });
 
   it('export returns empty when using is absent', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: { on: [{ field: 'category' }], using: [] },
@@ -42,7 +50,7 @@ describe('FormPivot — config ↔ DSL', () => {
   });
 
   it('export returns empty when a metric is incomplete', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: {
@@ -54,23 +62,23 @@ describe('FormPivot — config ↔ DSL', () => {
   });
 
   it('omits the suffix when a single metric has no alias', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: { on: [{ field: 'category' }], using: [{ function: 'count', expression: '*' }] },
     });
-    expect(dsl).toBe('pivot on [category] using count(*)');
+    expect(dsl).toBe('pivot [category] values: count(*)');
     const r = ok({
       on: [{ field: 'category' }],
       using: [{ function: 'count', expression: '*' }],
     });
-    expect(r.config.on).toEqual([{ field: 'category', values: [] }]);
+    expect(axes(r.config.on)).toEqual([{ field: 'category', values: [] }]);
     expect((r.config.using as Array<Record<string, unknown>>)[0].function).toBe('count');
     expect((r.config.using as Array<Record<string, unknown>>)[0].alias).toBeUndefined();
   });
 
   it('round-trips a complete pivot config with an alias and group by', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: {
@@ -79,17 +87,17 @@ describe('FormPivot — config ↔ DSL', () => {
         groupBy: ['region'],
       },
     });
-    expect(dsl).toBe('pivot on [category] using sum([amount]) as [total] group by [region]');
+    // group by exports as `select … | pivot …` — two steps, edited in the workflow DSL.
+    expect(dsl).toBe('');
     const r = ok({
       on: [{ field: 'category' }],
       using: [{ function: 'sum', expression: '[amount]', alias: 'total' }],
-      groupBy: ['region'],
     });
     expect((r.config.using as Array<Record<string, unknown>>)[0].alias).toBe('total');
   });
 
   it('round-trips multiple ON fields each with their own value list', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: {
@@ -102,7 +110,7 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
     expect(dsl).toBe(
-      `pivot on [year] in (2024, 2025), [quarter] in ('Q1', 'Q2'), [channel] using sum([amount])`
+      `pivot [year] in (2024, 2025), [quarter] in ('Q1', 'Q2'), [channel] values: sum([amount])`
     );
     const r = ok({
       on: [
@@ -112,7 +120,7 @@ describe('FormPivot — config ↔ DSL', () => {
       ],
       using: [{ function: 'sum', expression: '[amount]' }],
     });
-    expect(r.config.on).toEqual([
+    expect(axes(r.config.on)).toEqual([
       { field: 'year', values: [2024, 2025] },
       { field: 'quarter', values: ['Q1', 'Q2'] },
       { field: 'channel', values: [] },
@@ -128,7 +136,7 @@ describe('FormPivot — config ↔ DSL', () => {
       'text'
     );
 
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'pivot',
       config: {
@@ -137,9 +145,9 @@ describe('FormPivot — config ↔ DSL', () => {
       },
     });
 
-    expect(dsl).toBe(`pivot on [月份] in ('1月', '2月', '3月') using sum([金额])`);
+    expect(dsl).toBe(`pivot [月份] in ('1月', '2月', '3月') values: sum([金额])`);
     expect(
-      ok({
+      axesOf({
         on: [{ field: '月份', values }],
         using: [{ function: 'sum', expression: '[金额]' }],
       }).config.on
@@ -156,7 +164,7 @@ describe('FormPivot — config ↔ DSL', () => {
     );
 
     expect(
-      ok({
+      axesOf({
         on: [{ field: 'month_number', values }],
         using: [{ function: 'count', expression: '*' }],
       }).config.on

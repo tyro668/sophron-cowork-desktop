@@ -1,47 +1,28 @@
 export {
-  GENERATED_WORKFLOW_REPAIR_ATTEMPTS,
-  GENERATED_WORKFLOW_REPAIR_POLICY,
-  createGeneratedWorkflowRepairBudget,
-  generateDataPipelineWorkflowFromRequirement,
-  normalizeColumnSnapshot,
-  repairGeneratedWorkflowFromDiagnostics,
-} from './workflow-generator';
+  JFLOW_GENERATION_REPAIR_ATTEMPTS,
+  extractJflowProgram,
+  generateJflowProgram,
+} from './jflow-generator';
 export type {
+  GeneratedJflowProgram,
   WorkflowModelUsageEvent,
   WorkflowModelUsageObserver,
-  WorkflowRepairOutcome,
-} from './workflow-generator';
+} from './jflow-generator';
 export { analyzeDataPipelineRequirement } from './requirement-analyzer';
 export {
+  areComparableColumnTypes,
   hashColumns,
-  reconcileGeneratedWorkflowWithOutputPreview,
+  normalizeColumnSnapshot,
+  outputSchemaFromPreview,
+  toAutomationColumnSnapshot,
   validateGeneratedOutputPreviewSchema,
   validateGeneratedPipelineSchema,
-  validateGeneratedWorkflowGenerationContract,
 } from './schema-inferencer';
-export type { GeneratedDataPipelineWorkflow } from './workflow-model';
 export {
-  createWorkflowRepairBudget,
-  isWorkflowDiagnosticRepairable,
   normalizeWorkflowFailureDiagnostics,
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
-  workflowRepairIncidentKey,
-  workflowRepairStageForDiagnostics,
 } from './workflow-failure';
-export type {
-  WorkflowFailureDiagnostic,
-  WorkflowFailureStage,
-  WorkflowRepairBudget,
-  WorkflowRepairBudgetConfig,
-  WorkflowRepairClass,
-  WorkflowRepairStage,
-} from './workflow-failure';
-export { compileLoweredWorkflowToPlatformNodes } from './workflow-node-compiler';
-export type {
-  CompiledGeneratedWorkflowNodePlan,
-  GeneratedWorkflowOperationNodeOrigin,
-  WorkflowNodeCompilerBindings,
-} from './workflow-node-compiler';
+export type { WorkflowFailureDiagnostic, WorkflowFailureStage } from './workflow-failure';
 export { validateGeneratedExecutableWorkflow } from './generated-workflow-graph-validator';
 export { isRecord } from './utils';

@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import { compileFilterConditionExpression } from '../../src/main/data/operators/filter';
 import { getOperatorConfigIssue } from '../../src/shared/operator-validation';
 import FormFilter, {
@@ -47,8 +47,8 @@ vi.mock('react-i18next', () => ({
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function roundTrip(config: Record<string, unknown>) {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'filter', config });
-  const parsed = parsePrepOperatorDsl(dsl, 'filter');
+  const dsl = exportStep({ id: 'test', type: 'filter', config });
+  const parsed = parseStep(dsl, 'filter');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   return { dsl, parsed, errors };
 }
@@ -79,7 +79,7 @@ describe('FormFilter — config ↔ DSL (flat, backward-compat)', () => {
 
   it('not equal', () => {
     const r = ok({ condition: `[status] != 'TEST'` });
-    expect(r.config.condition).toContain('!=');
+    expect(r.config.condition).toContain(`[status] <> 'TEST'`);
   });
 
   it('between two values', () => {
@@ -89,9 +89,8 @@ describe('FormFilter — config ↔ DSL (flat, backward-compat)', () => {
   });
 
   it('between with dates', () => {
-    const r = ok({ condition: '[order_date] between 2024-01-01 and 2024-12-31' });
-    expect(r.config.condition).toContain('between');
-    expect(r.config.condition).toContain('2024-01-01');
+    const r = ok({ condition: "[order_date] between '2024-01-01' and '2024-12-31'" });
+    expect(r.config.condition).toBe("[order_date] between '2024-01-01' and '2024-12-31'");
   });
 
   it('AND compound', () => {
@@ -172,10 +171,10 @@ describe('FormFilter — DSL idempotent', () => {
       { condition: '[date] between 2024-01-01 and 2024-12-31' },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'filter', config });
-      const parsed = parsePrepOperatorDsl(dsl1, 'filter');
+      const dsl1 = exportStep({ id: 't', type: 'filter', config });
+      const parsed = parseStep(dsl1, 'filter');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'filter',
         config: parsed.operator!.config,

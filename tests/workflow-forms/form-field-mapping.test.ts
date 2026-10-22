@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import { compileFieldMappingSql } from '../../src/main/data/operators/field-mapping';
 import {
   computeFieldMappingTarget,
@@ -8,8 +8,8 @@ import {
 
 function ok(config: Record<string, unknown>) {
   const type = 'rename' as const;
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, `null operator: ${dsl}`).not.toBeNull();
@@ -64,14 +64,14 @@ describe('FormFieldMapping — DSL idempotent', () => {
       { mappings: [{ source: 'old name', targetMode: 'rename', targetValue: 'new_name' }] },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({
+      const dsl1 = exportStep({
         id: 't',
         type: 'rename',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'rename');
+      const parsed = parseStep(dsl1, 'rename');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'rename',
         config: parsed.operator!.config,
@@ -81,7 +81,7 @@ describe('FormFieldMapping — DSL idempotent', () => {
   });
 
   it('parses DSL into configuration accepted by the graphical form', () => {
-    const parsed = parsePrepOperatorDsl('rename [old] as [new]', 'rename');
+    const parsed = parseStep('rename [old] as [new]', 'rename');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     const mappings = parsed.operator?.config.mappings as Record<string, unknown>[];
     expect(mappings.map(normalizeFieldMappingEntry)).toEqual([

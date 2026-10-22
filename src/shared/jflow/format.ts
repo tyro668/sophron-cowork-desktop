@@ -63,6 +63,34 @@ export function fmtType(t: TypeRef): string {
   return t.p !== undefined ? `${t.name}(${t.p},${t.s})` : t.name;
 }
 
+const DURATION_UNITS: Record<string, string> = {
+  ms: 'millisecond',
+  s: 'second',
+  m: 'minute',
+  h: 'hour',
+  d: 'day',
+  w: 'week',
+  mo: 'month',
+  q: 'quarter',
+  y: 'year',
+};
+
+/** `7d` → `interval 7 'day'` (config / SQL dialect). */
+export function durationToInterval(v: string): string {
+  const m = /^(\d+(?:\.\d+)?)(ms|mo|[smhdwqy])$/.exec(v);
+  return m ? `interval ${m[1]} '${DURATION_UNITS[m[2]]}'` : v;
+}
+
+/** `interval 7 'day'` → `7d` (inverse of durationToInterval; unknown units unchanged). */
+export function intervalsToDurations(text: string): string {
+  const inverse = Object.fromEntries(Object.entries(DURATION_UNITS).map(([k, v]) => [v, k]));
+  return text.replace(
+    /\binterval\s+(\d+(?:\.\d+)?)\s+'([a-z]+?)s?'/gi,
+    (all, n: string, unit: string) =>
+      inverse[unit.toLowerCase()] ? `${n}${inverse[unit.toLowerCase()]}` : all
+  );
+}
+
 export function fmtExpr(e: Expr, dialect: Dialect = 'jflow'): string {
   const X = (x: Expr) => fmtExpr(x, dialect);
   const P = (x: Expr, need: number) => (level(x) < need ? `(${X(x)})` : X(x));
@@ -71,6 +99,7 @@ export function fmtExpr(e: Expr, dialect: Dialect = 'jflow'): string {
       return (e.q ? `${fmtField(e.q)}.` : '') + fmtField(e.name);
     case 'lit':
       if (e.t === 'str') return fmtString(e.v);
+      if (e.t === 'dur' && dialect === 'cfg') return durationToInterval(e.v);
       if (e.t === 'num' || e.t === 'dur') return e.v;
       if (e.t === 'bool') return e.v ? 'true' : 'false';
       return 'null';

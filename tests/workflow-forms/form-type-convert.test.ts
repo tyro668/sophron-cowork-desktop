@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 
 interface OkResult {
   dsl: string;
@@ -8,8 +8,8 @@ interface OkResult {
 
 function ok(config: Record<string, unknown>): OkResult {
   const type = 'cast' as const;
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, `null operator: ${dsl}`).not.toBeNull();
@@ -29,15 +29,14 @@ describe('FormTypeConvert — config ↔ DSL', () => {
       conversions: [{ field: 'revenue', type: 'float', onError: 'null' }],
     });
     expect(r.dsl).toContain('as float');
-    // on_error null is the default and is omitted in canonical output
-    expect(r.dsl).not.toContain('on_error');
+    expect(r.dsl).toBe('cast [revenue] as float on_error: null');
   });
 
   it('conversion to integer with on_error fail', () => {
     const r = ok({
       conversions: [{ field: 'qty', type: 'integer', onError: 'fail' }],
     });
-    expect(r.dsl).toContain('on_error fail');
+    expect(r.dsl).toContain('cast [qty] as integer on_error: fail');
   });
 
   it('datetime conversion', () => {
@@ -75,14 +74,14 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     const r = ok({
       conversions: [{ field: 'name', type: 'text', onError: 'keep' }],
     });
-    expect(r.dsl).toContain('on_error keep');
+    expect(r.dsl).toContain('cast [name] as text on_error: keep');
   });
 
   it('date conversion with format', () => {
     const r = ok({
       conversions: [{ field: 'date_str', type: 'date', format: '%m/%d/%y' }],
     });
-    expect(r.dsl).toContain("format '%m/%d/%y'");
+    expect(r.dsl).toContain(`cast [date_str] as date format: '%m/%d/%y'`);
     expect(r.config.conversions![0].format).toBe('%m/%d/%y');
   });
 
@@ -90,16 +89,16 @@ describe('FormTypeConvert — config ↔ DSL', () => {
     const r = ok({
       conversions: [{ field: 'ts', type: 'datetime', format: '%Y-%m-%d %H:%M:%S' }],
     });
-    expect(r.dsl).toContain("format '%Y-%m-%d %H:%M:%S'");
+    expect(r.dsl).toContain(`cast [ts] as datetime format: '%Y-%m-%d %H:%M:%S'`);
     expect(r.config.conversions![0].format).toBe('%Y-%m-%d %H:%M:%S');
   });
 
   it('DSL idempotent with format', () => {
     const config = { conversions: [{ field: 'dt', type: 'date', format: '%m/%d/%y' }] };
-    const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'cast', config });
-    const parsed = parsePrepOperatorDsl(dsl1, 'cast');
+    const dsl1 = exportStep({ id: 't', type: 'cast', config });
+    const parsed = parseStep(dsl1, 'cast');
     expect(parsed.operator).not.toBeNull();
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 't',
       type: 'cast',
       config: parsed.operator!.config,
@@ -131,14 +130,14 @@ describe('FormTypeConvert — DSL idempotent', () => {
       },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({
+      const dsl1 = exportStep({
         id: 't',
         type: 'cast',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'cast');
+      const parsed = parseStep(dsl1, 'cast');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'cast',
         config: parsed.operator!.config,

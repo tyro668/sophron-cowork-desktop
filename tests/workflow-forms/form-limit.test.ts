@@ -3,14 +3,14 @@ import {
   validateLimitSeed,
 } from '../../src/renderer/components/workflow-forms/FormLimit';
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 function ok(config: Record<string, unknown>) {
   const type = 'limit' as const;
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, `null operator: ${dsl}`).not.toBeNull();
@@ -20,20 +20,20 @@ function ok(config: Record<string, unknown>) {
 describe('FormLimit — config ↔ DSL', () => {
   it('simple limit with default rows', () => {
     const r = ok({ sampling: 'fixed', limit: 100, unit: 'rows' });
-    expect(r.dsl).toContain('limit 100');
+    expect(r.dsl).toContain('take 100');
     expect(r.dsl).not.toContain('top');
     expect(r.config.limit).toBe(100);
   });
 
   it('limit with percent unit', () => {
     const r = ok({ sampling: 'fixed', limit: 50, unit: 'percent' });
-    expect(r.dsl).toContain('limit 50 percent');
+    expect(r.dsl).toContain('take 50%');
   });
 
   it('limit with offset', () => {
     const r = ok({ sampling: 'fixed', limit: 25, unit: 'rows', offset: 10 });
-    expect(r.dsl).toContain('limit 25');
-    expect(r.dsl).toContain('offset 10');
+    expect(r.dsl).toContain('take 25 offset: 10');
+    expect(r.dsl).toContain('take 25 offset: 10');
   });
 
   it('top mode with order by', () => {
@@ -43,9 +43,9 @@ describe('FormLimit — config ↔ DSL', () => {
       unit: 'rows',
       orderBy: [{ field: 'revenue', direction: 'desc' }],
     });
-    expect(r.dsl).toContain('limit 10');
+    expect(r.dsl).toContain('take 10 sort: -[revenue]');
     expect(r.dsl).toContain('revenue');
-    expect(r.dsl).toContain('desc');
+    expect(r.dsl).toContain('take 10 sort: -[revenue]');
   });
 
   it('top mode with multiple order keys', () => {
@@ -58,11 +58,11 @@ describe('FormLimit — config ↔ DSL', () => {
         { field: 'revenue', direction: 'desc' },
       ],
     });
-    expect(r.dsl).toContain('limit 5');
+    expect(r.dsl).toContain('take 5 sort: [category], -[revenue]');
     expect(r.dsl).toContain('category');
     expect(r.dsl).toContain('revenue');
-    expect(r.dsl).toContain('asc');
-    expect(r.dsl).toContain('desc');
+    expect(r.dsl).toContain('take 5 sort: [category], -[revenue]');
+    expect(r.dsl).toContain('-[revenue]');
   });
 
   it('limit without offset omits offset in DSL', () => {
@@ -104,10 +104,10 @@ describe('FormLimit — DSL idempotent', () => {
       { sampling: 'random', limit: 10, unit: 'percent', method: 'system', seed: 42 },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({ id: 't', type: 'limit', config });
-      const parsed = parsePrepOperatorDsl(dsl1, 'limit');
+      const dsl1 = exportStep({ id: 't', type: 'limit', config });
+      const parsed = parseStep(dsl1, 'limit');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'limit',
         config: parsed.operator!.config,
@@ -126,40 +126,38 @@ describe('FormLimit — new features', () => {
       orderBy: [{ field: 'score', direction: 'desc' }],
       ties: true,
     });
-    expect(r.dsl).toContain('limit 10');
-    expect(r.dsl).toContain('with ties');
+    expect(r.dsl).toContain('take 10 sort: -[score] ties: include');
+    expect(r.dsl).toContain('take 10 sort: -[score] ties: include');
   });
 
   it('sample rows mode produces sample DSL', () => {
     const r = ok({ sampling: 'random', limit: 100, unit: 'rows' });
-    expect(r.dsl).toContain('limit 100 rows random');
+    expect(r.dsl).toContain('sample 100');
     expect(r.dsl).not.toContain('system');
     expect(r.dsl).not.toContain('bernoulli');
   });
 
   it('sample percent mode produces sample DSL with percent', () => {
     const r = ok({ sampling: 'random', limit: 10, unit: 'percent', method: 'system' });
-    expect(r.dsl).toContain('limit 10 percent random');
+    expect(r.dsl).toContain('sample 10%');
   });
 
   it('sample with seed produces repeatable DSL', () => {
     const r = ok({ sampling: 'random', limit: 100, unit: 'rows', seed: 42 });
-    expect(r.dsl).toContain('limit 100 rows random');
-    expect(r.dsl).toContain('repeatable 42');
+    expect(r.dsl).toContain('sample 100 seed: 42');
+    expect(r.dsl).toContain('sample 100 seed: 42');
   });
 
   it('system is default method and omitted in DSL', () => {
     const r = ok({ sampling: 'random', limit: 50, unit: 'percent', method: 'system' });
-    expect(r.dsl).toContain('limit 50 percent random');
+    expect(r.dsl).toContain('sample 50%');
     expect(r.dsl).not.toContain('system');
   });
 
   it('rejects a zero limit', () => {
-    expect(exportPrepOperatorDsl({ id: 'limit-zero', type: 'limit', config: { limit: 0 } })).toBe(
-      ''
-    );
-    expect(parsePrepOperatorDsl('limit 0', 'limit').diagnostics).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'invalidLimit' })])
+    expect(exportStep({ id: 'limit-zero', type: 'limit', config: { limit: 0 } })).toBe('');
+    expect(parseStep('take 0', 'limit').diagnostics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'E_ARG_RANGE' })])
     );
   });
 
@@ -171,9 +169,9 @@ describe('FormLimit — new features', () => {
       orderBy: [{ field: 'score', direction: 'desc' }],
       ties: true,
     });
-    expect(r.dsl).toContain('limit 10');
-    expect(r.dsl).toContain('percent');
-    expect(r.dsl).toContain('with ties');
+    expect(r.dsl).toContain('take 10% sort: -[score] ties: include');
+    expect(r.dsl).toContain('take 10% sort: -[score] ties: include');
+    expect(r.dsl).toContain('ties: include');
     expect(r.config.unit).toBe('percent');
   });
 
@@ -186,7 +184,7 @@ describe('FormLimit — new features', () => {
       orderBy: [{ field: 'score', direction: 'desc' }],
     });
 
-    expect(r.dsl).toContain('offset 5');
+    expect(r.dsl).toContain('take 10 sort: -[score] offset: 5');
     expect(r.config.offset).toBe(5);
   });
 });

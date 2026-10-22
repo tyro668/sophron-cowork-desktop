@@ -1,7 +1,7 @@
 import { parseExpression } from '../expression';
 import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
-import { parseFieldRef } from '../prep-dsl/syntax/fields';
-import { planJoinProjectionColumns } from '../prep-dsl/join-projection';
+import { parseFieldRef } from '../expression-syntax/fields';
+import { planJoinProjectionColumns } from './join-projection';
 import { pivotColumnName, pivotMetricSuffixes } from '../operator-config/pivot';
 import {
   extractExpressionFieldNames,

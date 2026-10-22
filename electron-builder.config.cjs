@@ -99,10 +99,6 @@ module.exports = {
       { from: 'resources/tray-icon-fold.ico', to: 'tray-icon-fold.ico' },
       { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
       { from: 'resources/tray-icon-fold.png', to: 'tray-icon-fold.png' },
-      {
-        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
-        to: 'workflow/workflow-sandbox-runner.js',
-      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/win32-x64', to: 'node' },
       { from: 'resources/node/win32-x64/node_modules/npm', to: 'node/node_modules/npm' },
@@ -142,10 +138,6 @@ module.exports = {
       { from: 'resources/icon-fold-mac.png', to: 'icon-fold-mac.png' },
       { from: 'resources/tray-iconTemplate.png', to: 'tray-iconTemplate.png' },
       { from: 'resources/tray-icon-foldTemplate.png', to: 'tray-icon-foldTemplate.png' },
-      {
-        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
-        to: 'workflow/workflow-sandbox-runner.js',
-      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/darwin-${arch}', to: 'node' },
       {
@@ -173,10 +165,6 @@ module.exports = {
       { from: 'resources/icon-fold.png', to: 'icon-fold.png' },
       { from: 'resources/tray-icon.png', to: 'tray-icon.png' },
       { from: 'resources/tray-icon-fold.png', to: 'tray-icon-fold.png' },
-      {
-        from: 'src/main/data/workflow/workflow-sandbox-runner.js',
-        to: 'workflow/workflow-sandbox-runner.js',
-      },
       { from: '.bundle-resources/mcp', to: 'mcp' },
       { from: 'resources/node/linux-x64', to: 'node' },
       { from: 'resources/node/linux-x64/lib/node_modules/npm', to: 'node/lib/node_modules/npm' },

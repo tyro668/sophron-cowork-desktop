@@ -1,5 +1,4 @@
 import { SqlQueryConfigSchema } from '../operator-schemas/sql-query';
-import { sqlQueryCodec } from '../prep-dsl/operators/sql-query';
 import { SortConfigSchema } from '../operator-schemas/sort';
 import { FieldSelectConfigSchema } from '../operator-schemas/field-select';
 import { FieldMappingConfigSchema } from '../operator-schemas/field-mapping';
@@ -17,23 +16,6 @@ import { JoinConfigSchema } from '../operator-schemas/join';
 import { FilterConfigSchema } from '../operator-schemas/filter';
 import { ExpectConfigSchema } from '../operator-schemas/expect';
 import { InputSourceConfigSchema, OutputConfigSchema } from '../operator-schemas/input-output';
-import { sortCodec } from '../prep-dsl/operators/sort';
-import { fieldSelectCodec } from '../prep-dsl/operators/field-select';
-import { fieldMappingCodec } from '../prep-dsl/operators/field-mapping';
-import { deduplicateCodec } from '../prep-dsl/operators/deduplicate';
-import { typeConvertCodec } from '../prep-dsl/operators/type-convert';
-import { unpivotCodec } from '../prep-dsl/operators/unpivot';
-import { unnestCodec } from '../prep-dsl/operators/unnest';
-import { setOpCodec } from '../prep-dsl/operators/set-op';
-import { aggregateCodec } from '../prep-dsl/operators/aggregate';
-import { calculateFieldCodec } from '../prep-dsl/operators/calculate-field';
-import { missingValueCodec } from '../prep-dsl/operators/missing-value';
-import { limitCodec } from '../prep-dsl/operators/limit';
-import { pivotCodec } from '../prep-dsl/operators/pivot';
-import { joinCodec } from '../prep-dsl/operators/join';
-import { filterCodec } from '../prep-dsl/operators/filter';
-import { expectCodec } from '../prep-dsl/operators/expect';
-import { outputCodec } from '../prep-dsl/operators/output';
 import {
   BINARY_INPUT_PORTS,
   TRANSFORM_PORTS,
@@ -68,7 +50,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: FilterConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: filterCodec,
   }),
   select: defineOperator({
     type: 'select',
@@ -76,7 +57,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: FieldSelectConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: fieldSelectCodec,
   }),
   deduplicate: defineOperator({
     type: 'deduplicate',
@@ -84,7 +64,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: DeduplicateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: deduplicateCodec,
   }),
   missing_value: defineOperator({
     type: 'missing_value',
@@ -92,7 +71,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: MissingValueConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: missingValueCodec,
   }),
   cast: defineOperator({
     type: 'cast',
@@ -100,7 +78,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: TypeConvertConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: typeConvertCodec,
   }),
   sort: defineOperator({
     type: 'sort',
@@ -108,7 +85,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: SortConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: sortCodec,
   }),
   join: defineOperator({
     type: 'join',
@@ -116,7 +92,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: JoinConfigSchema,
     ports: BINARY_INPUT_PORTS,
     compileKind: 'join',
-    dsl: joinCodec,
     creationDefaults: {
       conflict: { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' },
     },
@@ -127,7 +102,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: AggregateConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: aggregateCodec,
   }),
   derive: defineOperator({
     type: 'derive',
@@ -135,7 +109,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: CalculateFieldConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: calculateFieldCodec,
   }),
   rename: defineOperator({
     type: 'rename',
@@ -143,7 +116,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: FieldMappingConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: fieldMappingCodec,
   }),
   limit: defineOperator({
     type: 'limit',
@@ -151,7 +123,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: LimitConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: limitCodec,
     creationDefaults: { limit: 10 },
   }),
   pivot: defineOperator({
@@ -160,7 +131,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: PivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: pivotCodec,
   }),
   unpivot: defineOperator({
     type: 'unpivot',
@@ -168,7 +138,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: UnpivotConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: unpivotCodec,
   }),
   set_op: defineOperator({
     type: 'set_op',
@@ -176,7 +145,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: SetOpConfigSchema,
     ports: BINARY_INPUT_PORTS,
     compileKind: 'set_op',
-    dsl: setOpCodec,
   }),
   unnest: defineOperator({
     type: 'unnest',
@@ -184,7 +152,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: UnnestConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
-    dsl: unnestCodec,
   }),
   expect: defineOperator({
     type: 'expect',
@@ -192,7 +159,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: ExpectConfigSchema,
     ports: EXPECT_PORTS,
     compileKind: 'expect',
-    dsl: expectCodec,
   }),
   sql: defineOperator({
     type: 'sql',
@@ -200,7 +166,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: SqlQueryConfigSchema,
     ports: TRANSFORM_PORTS,
     compileKind: 'sql',
-    dsl: sqlQueryCodec,
   }),
   output: defineOperator({
     type: 'output',
@@ -208,7 +173,6 @@ export const OPERATOR_DEFINITIONS = {
     schema: OutputConfigSchema,
     ports: SINK_PORTS,
     compileKind: 'output',
-    dsl: outputCodec,
   }),
 } satisfies Record<DataWorkflowOperatorType, OperatorDefinition>;
 

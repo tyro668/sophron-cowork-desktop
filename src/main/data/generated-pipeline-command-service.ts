@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { exportPrepWorkflowDsl, type PrepDiagnostic } from '../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../shared/workflow-diagnostics';
 import type {
   DataAutomationColumnSnapshot,
   DataPipeline,
@@ -42,35 +42,33 @@ import { mergeGeneratedChainAfterAnchor } from './workflow/generated-workflow-me
 import { scopedWorkflowEntityId } from './store/workflow-model';
 import {
   analyzeDataPipelineRequirement,
-  compileLoweredWorkflowToPlatformNodes,
-  createGeneratedWorkflowRepairBudget,
-  type GeneratedDataPipelineWorkflow,
-  generateDataPipelineWorkflowFromRequirement,
+  generateJflowProgram,
   hashColumns,
-  isWorkflowDiagnosticRepairable,
+  JFLOW_GENERATION_REPAIR_ATTEMPTS,
   normalizeWorkflowFailureDiagnostics,
-  reconcileGeneratedWorkflowWithOutputPreview,
-  repairGeneratedWorkflowFromDiagnostics,
+  outputSchemaFromPreview,
+  toAutomationColumnSnapshot,
+  type GeneratedJflowProgram,
   type WorkflowModelUsageEvent,
-  validateGeneratedOutputPreviewSchema,
   validateGeneratedExecutableWorkflow,
-  validateGeneratedWorkflowGenerationContract,
   workflowCommandCodeForDiagnostics,
   workflowDiagnosticsFromError,
 } from './workflow';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
+import { AI_JFLOW_RUNTIME_PROFILE_VERSION } from './workflow/jflow-capability-profile';
 import {
   createRequirementCapabilityContract,
   getRequirementCapabilityContractOperationTypes,
   type RequirementCapabilityContract,
 } from './workflow/requirement-capability-registry';
+import { compileJflowAgainstStore } from './jflow-catalog';
+import { toWorkflowDiagnostic } from './workflow-dsl-compiler';
 import { RequirementAnalysisReceiptStore } from './requirement-analysis-receipt-store';
 
 interface GeneratedWorkflowCandidateValidation {
-  diagnostics: PrepDiagnostic[];
-  generated?: GeneratedDataPipelineWorkflow;
+  diagnostics: WorkflowDiagnostic[];
   candidate?: CompiledWorkflowCandidate;
-  compatibilityDsl?: string;
+  /** Columns of the temporary-run output preview. */
+  outputSchema?: DataAutomationColumnSnapshot[];
   /** Output node the generated chain feeds after an anchor merge (null when none). */
   terminalOutputNodeId?: string | null;
 }
@@ -86,11 +84,12 @@ interface GenerationAnchor {
   keepsGeneratedOutput: boolean;
   /** Name shown to the generator — the downstream output's name when the merge drops the generated sink. */
   promptOutputName: string;
+  /** `local:result/<id>` of the downstream output the merge keeps, when it is bound. */
+  promptOutputUri?: string;
 }
 
 export interface GeneratedPipelineCommandServiceOptions {
   recordLlmUsage?: DataPipelineLlmUsageRecorder;
-  exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
 }
 
 export class GeneratedPipelineCommandService {
@@ -176,86 +175,47 @@ export class GeneratedPipelineCommandService {
     };
     try {
       return await this.locks.withKeyedLock(`pipeline:${pipeline.id}`, async () => {
-        const repairBudget = createGeneratedWorkflowRepairBudget();
-        let generated = await generateDataPipelineWorkflowFromRequirement({
-          rawTableId: preparedInput.rawTable.id,
+        const rawTableUri = `local:raw/${preparedInput.rawTable.id}`;
+        const generationRequest = {
+          rawTableUri,
           resultTableName: generationOutputName,
+          ...(resultTable
+            ? { resultTableUri: `local:result/${resultTable.id}` }
+            : anchor?.promptOutputUri
+              ? { resultTableUri: anchor.promptOutputUri }
+              : {}),
           requirement: processRequirement,
           columns: generationColumns,
           requirementContract,
           runtimeConfig: input.runtimeConfig,
-          repairBudget,
           onModelUsage,
           signal: input.signal,
           onActivity: input.onActivity,
-        });
-        let validation = await this.validateGeneratedWorkflowCandidate({
-          pipelineId: pipeline.id,
-          rawTableId: preparedInput.rawTable.id,
-          rawTableName: preparedInput.rawTable.name,
-          resultTableId: resultTable?.id,
-          resultTableName: generationOutputName,
-          outputPhysicalTableName: resultTable?.tableName,
-          columns: generationColumns,
-          generated,
-          anchor,
-        });
-        generated = validation.generated ?? generated;
-        let compatibilityDsl = validation.compatibilityDsl;
-        let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
-        while (
-          validationErrors.length > 0 &&
-          validationErrors.every(isWorkflowDiagnosticRepairable)
-        ) {
-          if (!generated.javascriptSource) {
-            throw new DataCommandError(
-              'VALIDATION_FAILED',
-              'Generated workflow repair requires the original JavaScript source',
-              {
-                diagnostics: normalizeWorkflowFailureDiagnostics(
-                  [
-                    {
-                      severity: 'error',
-                      code: 'MISSING_GENERATED_JAVASCRIPT_SOURCE',
-                      message: 'Generated workflow repair requires the original JavaScript source',
-                    },
-                  ],
-                  {
-                    failureStage: 'internal',
-                    commandErrorCode: 'VALIDATION_FAILED',
-                    repairClass: 'none',
-                  }
-                ),
-              }
-            );
-          }
-          generated = await repairGeneratedWorkflowFromDiagnostics({
-            rawTableId: preparedInput.rawTable.id,
-            resultTableName: generationOutputName,
-            requirement: processRequirement,
-            columns: generationColumns,
-            requirementContract,
-            runtimeConfig: input.runtimeConfig,
-            failedJavascriptSource: generated.javascriptSource,
-            diagnostics: validationErrors,
-            repairBudget,
-            onModelUsage,
-            signal: input.signal,
-            onActivity: input.onActivity,
-          });
-          validation = await this.validateGeneratedWorkflowCandidate({
+        };
+        const validate = (program: GeneratedJflowProgram) =>
+          this.validateGeneratedWorkflowCandidate({
             pipelineId: pipeline.id,
             rawTableId: preparedInput.rawTable.id,
             rawTableName: preparedInput.rawTable.name,
             resultTableId: resultTable?.id,
-            resultTableName: generationOutputName,
-            outputPhysicalTableName: resultTable?.tableName,
             columns: generationColumns,
-            generated,
+            program,
             anchor,
           });
-          generated = validation.generated ?? generated;
-          compatibilityDsl = validation.compatibilityDsl;
+        let generated = await generateJflowProgram(generationRequest);
+        let validation = await validate(generated);
+        let validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
+        for (
+          let attempt = 1;
+          validationErrors.length > 0 && attempt <= JFLOW_GENERATION_REPAIR_ATTEMPTS;
+          attempt += 1
+        ) {
+          input.signal?.throwIfAborted();
+          generated = await generateJflowProgram({
+            ...generationRequest,
+            previous: { text: generated.text, diagnostics: validationErrors, attempt },
+          });
+          validation = await validate(generated);
           validationErrors = diagnosticsWithSeverity(validation.diagnostics, 'error');
         }
         if (validationErrors.length > 0) {
@@ -293,11 +253,12 @@ export class GeneratedPipelineCommandService {
           pipelineName: pipeline.name,
           resultTableId: terminalResultTableId,
           resultTableName: terminalResultTableName,
-          ...(compatibilityDsl ? { workflowDsl: compatibilityDsl } : {}),
-          workflowDslAvailable: Boolean(compatibilityDsl),
-          requiredColumns: generated.requiredColumns,
-          expectedOutputSchema: generated.expectedOutputSchema,
-          lineage: generated.lineage,
+          workflowDsl: generated.text,
+          workflowDslAvailable: true,
+          ...(generated.summary ? { changeSummary: generated.summary } : {}),
+          requiredColumns: referencedColumns(generated.text, generationColumns),
+          expectedOutputSchema: validation.outputSchema ?? [],
+          lineage: lineageFor(validation.outputSchema ?? [], generationColumns),
           columnsSnapshot: generationColumns,
           sourceSummaryHash: hashColumns(generationColumns),
           workflowHash: hashWorkflowGraph(validation.candidate.workflow),
@@ -355,7 +316,7 @@ export class GeneratedPipelineCommandService {
       rawTableName: preparedInput.rawTable.name,
       columnsSnapshot: analysisColumns,
       sourceSummaryHash: hashColumns(analysisColumns),
-      capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+      capabilityProfileVersion: AI_JFLOW_RUNTIME_PROFILE_VERSION,
     };
     const receipt = this.analysisReceipts.create({
       authoringRequest: input.authoringRequest ?? {
@@ -427,6 +388,10 @@ export class GeneratedPipelineCommandService {
       (edge) =>
         edge.sourceNodeId === node.id && (!edge.sourceHandle || edge.sourceHandle === 'output')
     );
+    const downstreamOutput = findDownstreamOutputNode(workflow, node, outgoing);
+    const downstreamResultId =
+      stringConfigValue(downstreamOutput?.config?.outputResultTableId) ??
+      stringConfigValue(downstreamOutput?.config?.resultTableId);
     return {
       pipelineId,
       workflow,
@@ -434,8 +399,9 @@ export class GeneratedPipelineCommandService {
       columns,
       keepsGeneratedOutput: node.type !== 'output' && outgoing.length === 0,
       promptOutputName:
-        findDownstreamOutputName(workflow, node, outgoing) ??
+        outputNameOf(downstreamOutput) ??
         `${normalizeOptionalName(node.label) || 'result'}_processed`,
+      ...(downstreamResultId ? { promptOutputUri: `local:result/${downstreamResultId}` } : {}),
     };
   }
 
@@ -491,7 +457,7 @@ export class GeneratedPipelineCommandService {
         'Requirement analysis does not belong to this generation flow.'
       );
     }
-    if (receipt.capabilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
+    if (receipt.capabilityProfileVersion !== AI_JFLOW_RUNTIME_PROFILE_VERSION) {
       throw new DataCommandError(
         'ANALYSIS_STALE',
         'Data-pipeline capabilities changed after analysis. Analyze the requirement again.'
@@ -540,72 +506,53 @@ export class GeneratedPipelineCommandService {
     rawTableId: string;
     rawTableName: string;
     resultTableId?: string;
-    resultTableName: string;
-    outputPhysicalTableName?: string;
     columns: DataAutomationColumnSnapshot[];
-    generated: GeneratedDataPipelineWorkflow;
+    program: GeneratedJflowProgram;
     anchor?: GenerationAnchor | null;
   }): Promise<GeneratedWorkflowCandidateValidation> {
-    const contractDiagnostics = normalizeWorkflowFailureDiagnostics(
-      validateGeneratedWorkflowGenerationContract(input.generated, input.columns),
-      {
-        failureStage: 'generation_contract',
-        commandErrorCode: 'VALIDATION_FAILED',
-        repairClass: 'none',
-      }
-    );
-    if (diagnosticsWithSeverity(contractDiagnostics, 'error').length > 0) {
-      return { diagnostics: contractDiagnostics };
-    }
-
-    let candidate: CompiledWorkflowCandidate;
-    let canonicalGenerated: GeneratedDataPipelineWorkflow;
+    const text = input.program.text;
+    let workflow: WorkflowSaveShape;
     let terminalOutputNodeId: string | null = null;
     try {
-      const plan = compileLoweredWorkflowToPlatformNodes({
-        semantics: input.generated,
-        bindings: {
-          rawTableId: input.rawTableId,
-          rawTableName: input.rawTableName,
-          resultTableId: input.resultTableId,
-          resultTableName: input.resultTableName,
-          outputPhysicalTableName: input.outputPhysicalTableName,
-          outputMode: 'replace',
+      const compiled = await compileJflowAgainstStore(this.store, text, '', [
+        {
+          id: input.rawTableId,
+          name: input.rawTableName,
+          kind: 'raw',
+          columns: input.columns.map((column) => ({
+            name: column.name,
+            type: column.type ?? 'VARCHAR',
+          })),
         },
-      });
-      let workflow = { nodes: plan.nodes, edges: plan.edges };
-      let operationNodeOrigins = plan.operationNodeOrigins;
+      ]);
+      const compileDiagnostics = compiled.diagnostics.map(toWorkflowDiagnostic(text));
+      if (diagnosticsWithSeverity(compileDiagnostics, 'error').length > 0) {
+        return { diagnostics: compileDiagnostics };
+      }
+      const shapeDiagnostics = generatedShapeDiagnostics(
+        compiled.nodes as DataWorkflowNodeInput[],
+        input.rawTableId
+      );
+      if (shapeDiagnostics.length > 0) return { diagnostics: shapeDiagnostics };
+      workflow = {
+        nodes: await this.bindGeneratedOutput(
+          compiled.nodes as DataWorkflowNodeInput[],
+          input.resultTableId
+        ),
+        edges: compiled.edges,
+      };
       if (input.anchor) {
-        // Anchor mode: splice the generated ops into the draft workflow at the
-        // selected node — the plan's standalone input/output boundary nodes are
-        // dropped or rebound inside the merge.
+        // Anchor mode: splice the generated steps into the draft workflow at the selected node —
+        // the standalone input/output boundary nodes are dropped or rebound inside the merge.
         const merged = mergeGeneratedChainAfterAnchor(
           input.anchor.workflow,
           input.anchor.node.id,
-          { nodes: plan.nodes, edges: plan.edges },
+          workflow,
           (id) => scopedWorkflowEntityId(input.anchor!.pipelineId, id)
         );
         workflow = { nodes: merged.nodes, edges: merged.edges };
         terminalOutputNodeId = merged.terminalOutputNodeId;
-        operationNodeOrigins = plan.operationNodeOrigins.map((origin) => ({
-          ...origin,
-          nodeId: merged.nodeIdMap.get(origin.nodeId) ?? origin.nodeId,
-        }));
       }
-      canonicalGenerated = {
-        ...input.generated,
-        operationOrigins: operationNodeOrigins,
-        requiredColumns: plan.requiredColumns,
-        expectedOutputSchema: plan.expectedOutputSchema,
-        lineage: plan.lineage,
-      };
-      candidate = {
-        workflow,
-        diagnostics: normalizeWorkflowFailureDiagnostics(
-          validateGeneratedExecutableWorkflow(workflow),
-          { failureStage: 'node_validation', commandErrorCode: 'VALIDATION_FAILED' }
-        ),
-      };
     } catch (error) {
       return {
         diagnostics: workflowDiagnosticsFromError(error, {
@@ -614,13 +561,16 @@ export class GeneratedPipelineCommandService {
         }),
       };
     }
-    const nodeDiagnostics = candidate.diagnostics;
-    if (diagnosticsWithSeverity(nodeDiagnostics, 'error').length > 0) {
-      return { generated: canonicalGenerated, diagnostics: nodeDiagnostics };
+    const candidate: CompiledWorkflowCandidate = {
+      workflow,
+      diagnostics: normalizeWorkflowFailureDiagnostics(
+        validateGeneratedExecutableWorkflow(workflow),
+        { failureStage: 'node_validation', commandErrorCode: 'VALIDATION_FAILED' }
+      ),
+    };
+    if (diagnosticsWithSeverity(candidate.diagnostics, 'error').length > 0) {
+      return { diagnostics: candidate.diagnostics };
     }
-    const compatibilityDsl = this.tryExportCompatibilityWorkflowDsl(candidate.workflow, {
-      pipelineId: input.pipelineId,
-    });
     try {
       const temporaryExecution = await this.store.validatePipelineWorkflow(input.pipelineId, {
         workflow: candidate.workflow,
@@ -640,40 +590,17 @@ export class GeneratedPipelineCommandService {
         temporaryRun.diagnostics ?? [],
         { failureStage: 'node_execution', commandErrorCode: 'RUN_FAILED' }
       );
-      const outputSchemaDiagnostics = normalizeWorkflowFailureDiagnostics(
-        validateGeneratedOutputPreviewSchema(
-          temporaryRun.preview,
-          canonicalGenerated.expectedOutputSchema
-        ).map((diagnostic) => ({
-          ...diagnostic,
-          severity: 'warning' as const,
-          code: 'outputSchemaCalibrated',
-          message: `Static output schema was calibrated from temporary run: ${diagnostic.message}`,
-        })),
-        {
-          failureStage: 'output_validation',
-          commandErrorCode: 'VALIDATION_FAILED',
-          repairClass: 'none',
-        }
-      );
       return {
-        generated: reconcileGeneratedWorkflowWithOutputPreview(
-          canonicalGenerated,
-          temporaryRun.preview,
-          input.columns
-        ),
         candidate,
-        compatibilityDsl,
+        outputSchema: outputSchemaFromPreview(temporaryRun.preview),
         terminalOutputNodeId,
-        diagnostics: [...nodeDiagnostics, ...executionDiagnostics, ...outputSchemaDiagnostics],
+        diagnostics: [...candidate.diagnostics, ...executionDiagnostics],
       };
     } catch (error) {
       const commandError = toCommandError(error, 'RUN_FAILED');
       return {
-        generated: canonicalGenerated,
-        compatibilityDsl,
         diagnostics: [
-          ...nodeDiagnostics,
+          ...candidate.diagnostics,
           ...workflowDiagnosticsFromError(commandError, {
             failureStage: 'node_execution',
             commandErrorCode: commandError.code,
@@ -689,24 +616,32 @@ export class GeneratedPipelineCommandService {
     }
   }
 
-  private tryExportCompatibilityWorkflowDsl(
-    workflow: WorkflowSaveShape,
-    context: Record<string, unknown>
-  ): string | undefined {
-    try {
-      const workflowDsl = (this.options.exportWorkflowDsl ?? exportPrepWorkflowDsl)(
-        workflow.nodes,
-        workflow.edges
-      ).trim();
-      return workflowDsl || undefined;
-    } catch (error) {
-      logDataCommandFallback(
-        'Failed to export generated workflow compatibility DSL',
-        error,
-        context
-      );
-      return undefined;
-    }
+  /** Rebinds the program's `write @new(...)` to the resolved result table. */
+  private async bindGeneratedOutput(
+    nodes: DataWorkflowNodeInput[],
+    resultTableId: string | undefined
+  ): Promise<DataWorkflowNodeInput[]> {
+    if (!resultTableId) return nodes;
+    const resultTable = await this.resources.requireResultTable(resultTableId);
+    return nodes.map((node) =>
+      node.type === 'output'
+        ? {
+            ...node,
+            config: {
+              ...(node.config ?? {}),
+              outputStrategy: 'existing',
+              outputResultTableId: resultTable.id,
+              resultTableId: resultTable.id,
+              resultTableName: resultTable.name,
+              table: resultTable.tableName,
+              destination: 'duckdb_table',
+              mode: 'replace',
+              intent: 'bound',
+              ref: { uri: `local:result/${resultTable.id}`, name: resultTable.name },
+            },
+          }
+        : node
+    );
   }
 
   private recordWorkflowModelUsage(
@@ -719,13 +654,8 @@ export class GeneratedPipelineCommandService {
       ...attribution,
       ...(event.phase === 'repair'
         ? {
-            repairStrategy: event.repairStrategy,
             attempt: event.attempt,
-            functionName: event.functionName,
-            failureStage: event.failureStage,
             errorCode: event.errorCode,
-            operationType: event.operationType,
-            repairOutcome: event.repairOutcome,
           }
         : {}),
     };
@@ -793,18 +723,22 @@ export class GeneratedPipelineCommandService {
 }
 
 /** First output-sink name reachable from the anchor through `output` edges. */
-function findDownstreamOutputName(
+function outputNameOf(node: DataWorkflowNodeInput | undefined): string | undefined {
+  if (!node) return undefined;
+  return (
+    stringConfigValue(node.config?.resultTableName) ||
+    stringConfigValue(node.config?.table) ||
+    stringConfigValue(node.config?.outputResultTableId) ||
+    undefined
+  );
+}
+
+function findDownstreamOutputNode(
   workflow: WorkflowSaveShape,
   anchor: DataWorkflowNodeInput,
   anchorOutEdges: WorkflowSaveShape['edges']
-): string | undefined {
-  const nameOf = (node: DataWorkflowNodeInput | undefined) =>
-    node
-      ? stringConfigValue(node.config?.resultTableName) ||
-        stringConfigValue(node.config?.table) ||
-        stringConfigValue(node.config?.outputResultTableId)
-      : '';
-  if (anchor.type === 'output') return nameOf(anchor) || undefined;
+): DataWorkflowNodeInput | undefined {
+  if (anchor.type === 'output') return anchor;
   const byId = new Map(workflow.nodes.map((node) => [node.id, node]));
   const visited = new Set<string>();
   const queue = anchorOutEdges.map((edge) => edge.targetNodeId);
@@ -814,7 +748,7 @@ function findDownstreamOutputName(
     visited.add(id);
     const node = byId.get(id);
     if (!node) continue;
-    if (node.type === 'output') return nameOf(node) || undefined;
+    if (node.type === 'output') return node;
     for (const edge of workflow.edges) {
       if (
         edge.sourceNodeId === id &&
@@ -826,4 +760,54 @@ function findDownstreamOutputName(
     }
   }
   return undefined;
+}
+
+/** Generated programs read exactly the analysed raw table and write exactly once. */
+function generatedShapeDiagnostics(
+  nodes: DataWorkflowNodeInput[],
+  rawTableId: string
+): WorkflowDiagnostic[] {
+  const diagnostics: WorkflowDiagnostic[] = [];
+  const inputs = nodes.filter((node) => node.type === 'input');
+  const outputs = nodes.filter((node) => node.type === 'output');
+  const foreign = inputs.filter(
+    (node) => stringConfigValue(node.config?.rawTableId) !== rawTableId
+  );
+  if (inputs.length !== 1 || foreign.length > 0) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'E_GEN_SOURCE',
+      message: `The program must declare exactly one source: source src = @id('local:raw/${rawTableId}')`,
+    });
+  }
+  if (outputs.length !== 1) {
+    diagnostics.push({
+      severity: 'error',
+      code: 'E_GEN_WRITE',
+      message: 'The program must end with exactly one write @new(...)',
+    });
+  }
+  return diagnostics;
+}
+
+/** Input columns the program references as [field] tokens. */
+function referencedColumns(
+  text: string,
+  columns: DataAutomationColumnSnapshot[]
+): DataAutomationColumnSnapshot[] {
+  const referenced = new Set(
+    [...text.matchAll(/\[((?:[^\]]|\]\])+)\]/g)].map((match) => match[1].replace(/\]\]/g, ']'))
+  );
+  return columns.filter((column) => referenced.has(column.name)).map(toAutomationColumnSnapshot);
+}
+
+function lineageFor(
+  outputSchema: DataAutomationColumnSnapshot[],
+  sourceColumns: DataAutomationColumnSnapshot[]
+) {
+  const byName = new Map(sourceColumns.map((column) => [column.name.toLowerCase(), column]));
+  return outputSchema.map((column) => {
+    const source = byName.get(column.name.toLowerCase());
+    return { ...column, sourceColumns: source ? [toAutomationColumnSnapshot(source)] : [] };
+  });
 }

@@ -1,6 +1,6 @@
 import { dataFieldTypeOfSpelling } from '../data-field-types';
 import { tokenizeExpression } from '../expression-tokenizer';
-import { unwrapFieldName } from '../prep-dsl/syntax/fields';
+import { unwrapFieldName } from '../expression-syntax/fields';
 
 /**
  * Extract field names referenced by an expression string (filter condition,

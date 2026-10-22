@@ -10,7 +10,7 @@ import type {
   DataPipeline,
   DataRunPipelineInput,
 } from '../../../../shared/contracts';
-import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
+import type { WorkflowDiagnostic } from '../../../../shared/workflow-diagnostics';
 import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import {
@@ -243,12 +243,12 @@ export class WorkflowExecutor {
     input: DataRunPipelineInput
   ): Promise<{
     pipeline: DataPipeline;
-    diagnostics: PrepDiagnostic[];
+    diagnostics: WorkflowDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
     watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
-    const diagnostics: PrepDiagnostic[] = [];
+    const diagnostics: WorkflowDiagnostic[] = [];
     await this.ctx.ensureReady();
     await this.caches.cleanupExpiredWorkflowNodeCaches();
     const pipeline = await this.pipelines.requirePipeline(id);
@@ -315,7 +315,7 @@ export class WorkflowExecutor {
     sourcePath: string | null,
     workflow: RuntimeWorkflow,
     outputMode: WorkflowOutputMode,
-    diagnostics: PrepDiagnostic[] = []
+    diagnostics: WorkflowDiagnostic[] = []
   ): Promise<{
     resultTable: string;
     rowCount: number;
@@ -394,7 +394,7 @@ export class WorkflowExecutor {
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
     outputMode: WorkflowOutputMode,
-    diagnostics: PrepDiagnostic[] = []
+    diagnostics: WorkflowDiagnostic[] = []
   ): Promise<{
     resultTable: string;
     rowCount: number;
@@ -432,7 +432,7 @@ export class WorkflowExecutor {
     nodes: DataWorkflowNode[],
     edges: DataWorkflowEdge[],
     outputMode: WorkflowOutputMode,
-    diagnostics: PrepDiagnostic[],
+    diagnostics: WorkflowDiagnostic[],
     nodeById: Map<string, DataWorkflowNode>,
     outputNode: DataWorkflowNode | null,
     nodeStats: WorkflowNodeRunStat[]

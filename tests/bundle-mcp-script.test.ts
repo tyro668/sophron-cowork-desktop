@@ -59,15 +59,12 @@ describe('bundle-mcp staging', () => {
     expect(builderConfig).not.toContain('- from: dist-mcp');
   });
 
-  it('packages the workflow sandbox runner in the legacy builder config', () => {
+  it('no longer packages the removed workflow sandbox runner', () => {
     const builderConfig = fs.readFileSync(
       path.resolve(process.cwd(), 'electron-builder.yml'),
       'utf8'
     );
 
-    expect(
-      builderConfig.match(/from: src\/main\/data\/workflow\/workflow-sandbox-runner\.js/g)
-    ).toHaveLength(3);
-    expect(builderConfig.match(/to: workflow\/workflow-sandbox-runner\.js/g)).toHaveLength(3);
+    expect(builderConfig).not.toContain('workflow-sandbox-runner');
   });
 });

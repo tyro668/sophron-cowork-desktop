@@ -1,5 +1,5 @@
 import type { DataWorkflowNodeInput, DataWorkflowSaveInput } from '../../../shared/contracts';
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import {
   buildWorkflowPlan,
   validateWorkflowPlanGraph,
@@ -7,9 +7,9 @@ import {
 } from '../../../shared/workflow-plan';
 import { compileFilterConditionExpression } from '../operators/filter';
 import { validateGeneratedOperatorConfig } from './generated-operator-config-validator';
-import { AI_GENERATED_WORKFLOW_NODE_TYPE_SET } from './prep-dsl-capability-profile';
+import { AI_GENERATED_WORKFLOW_NODE_TYPE_SET } from './jflow-capability-profile';
 
-export interface GeneratedWorkflowDiagnostic extends PrepDiagnostic {
+export interface GeneratedWorkflowDiagnostic extends WorkflowDiagnostic {
   operationId?: string;
   operatorIndex?: number;
   operationType?: string;
@@ -155,7 +155,7 @@ function diagnostic(
   message: string,
   node?: DataWorkflowNodeInput
 ): GeneratedWorkflowDiagnostic {
-  const base: PrepDiagnostic = {
+  const base: WorkflowDiagnostic = {
     severity: 'error',
     code,
     message,
@@ -164,7 +164,7 @@ function diagnostic(
   return node ? withNodeContext(base, node) : base;
 }
 
-function withNodeContext<T extends PrepDiagnostic>(
+function withNodeContext<T extends WorkflowDiagnostic>(
   diagnostic: T,
   node: DataWorkflowNodeInput
 ): T & GeneratedWorkflowDiagnostic {

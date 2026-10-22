@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseExpression } from '../src/shared/expression/parser';
-import { parsePrepOperatorDsl } from '../src/shared/prep-dsl';
+import { parseStep } from './helpers/jflow-step';
 import {
   migrateConfigQuoteSemantics,
   rewriteDoubleQuotedLiterals,
@@ -14,12 +14,12 @@ describe('SQL quote semantics in the DSL', () => {
   });
 
   it('rejects double-quoted text values in statement value positions', () => {
-    const parsed = parsePrepOperatorDsl('cast [d] as date format "%Y-%m-%d"', 'cast');
+    const parsed = parseStep('cast [d] as date format "%Y-%m-%d"', 'cast');
     expect(parsed.diagnostics.some((d) => d.severity === 'error')).toBe(true);
   });
 
   it('rejects single-quoted names in output statements', () => {
-    const parsed = parsePrepOperatorDsl("output table 'x' mode replace", 'output');
+    const parsed = parseStep("output table 'x' mode replace", 'output');
     expect(parsed.diagnostics.some((d) => d.severity === 'error')).toBe(true);
   });
 

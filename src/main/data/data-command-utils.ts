@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
-import type { PrepDiagnostic } from '../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../shared/workflow-diagnostics';
 import type {
   DataPipelineWorkflow,
   DataWorkflowEdge,
@@ -20,7 +20,7 @@ export const MAX_PREVIEW_LIMIT = 100;
 
 export interface CompiledWorkflowCandidate {
   workflow: WorkflowSaveShape;
-  diagnostics: PrepDiagnostic[];
+  diagnostics: WorkflowDiagnostic[];
 }
 
 export function listWindow(
@@ -133,13 +133,13 @@ function toWorkflowEdgeInput(edge: DataWorkflowEdge): DataWorkflowEdgeInput {
 }
 
 export function diagnosticsWithSeverity(
-  diagnostics: PrepDiagnostic[],
-  severity: PrepDiagnostic['severity']
-): PrepDiagnostic[] {
+  diagnostics: WorkflowDiagnostic[],
+  severity: WorkflowDiagnostic['severity']
+): WorkflowDiagnostic[] {
   return diagnostics.filter((diagnostic) => diagnostic.severity === severity);
 }
 
-export function summarizeDiagnostics(diagnostics: PrepDiagnostic[]): string {
+export function summarizeDiagnostics(diagnostics: WorkflowDiagnostic[]): string {
   if (diagnostics.length === 0) return 'DSL validation failed';
   return diagnostics
     .slice(0, 3)

@@ -31,9 +31,6 @@ import {
   storedRawTableSourceKindSql,
   type DataRawTableRow,
 } from './data-store-records';
-import { formatOperator } from '../../../shared/prep-dsl/operators/formatter';
-import { parsePrepOperatorDsl } from '../../../shared/prep-dsl/operators/parser';
-import type { PrepOperatorType } from '../../../shared/prep-dsl/ast';
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
 import { tokenizeExpression } from '../../../shared/expression-tokenizer';
@@ -221,22 +218,13 @@ export function migrateConfigCastTypeNames(
   return result.changed ? (result.value as Record<string, unknown>) : null;
 }
 
-/** One-time: structured config becomes the single source of truth. Nodes that
- *  only carried DSL text are parsed into structure; the cached text is dropped. */
+/** One-time: structured config is the single source of truth; cached DSL text is dropped. */
 export function stripCachedOperatorDsl(
-  type: string,
+  _type: string,
   config: Record<string, unknown>
 ): Record<string, unknown> | null {
   if (!('dsl' in config)) return null;
-  const { dsl, ...rest } = config;
-  const unstructured =
-    type === 'input'
-      ? !['source', 'rawTableId', 'filePath', 'name'].some((key) => typeof rest[key] === 'string')
-      : !formatOperator({ id: '', type: type as PrepOperatorType, config: rest });
-  if (typeof dsl === 'string' && dsl.trim() && unstructured) {
-    const parsed = parsePrepOperatorDsl(dsl, type as PrepOperatorType);
-    if (parsed.operator?.type === type) return { ...parsed.operator.config, ...rest };
-  }
+  const { dsl: _dsl, ...rest } = config;
   return rest;
 }
 

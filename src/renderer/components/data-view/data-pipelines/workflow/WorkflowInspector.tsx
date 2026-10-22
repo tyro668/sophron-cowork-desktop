@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { formatOperator } from '../../../../../shared/prep-dsl/operators/formatter';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, CircleAlert, MousePointerClick, PencilLine, Play } from 'lucide-react';
@@ -12,10 +11,12 @@ import type {
   WorkflowNodeRunStat,
 } from '../../../../types';
 import {
-  exportPrepOperatorDsl,
-  parsePrepOperatorDsl,
-  type PrepDiagnostic,
-} from '../../../../../shared/prep-dsl';
+  JFLOW_STEP_UNSUPPORTED_TYPES,
+  exportJflowStep,
+  jflowDiagnosticToWorkflow,
+  parseJflowStep,
+} from '../../../../../shared/jflow';
+import type { WorkflowDiagnostic } from '../../../../../shared/workflow-diagnostics';
 import type { DataColumnTypeInfo } from '../../../../../shared/data-field-types';
 import { RAW_TABLE_PREVIEW_PAGE_SIZE, fixedTabWidthClass } from '../../shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
@@ -28,7 +29,7 @@ import { WorkflowRunLogsPanel } from './WorkflowRunLogsPanel';
 import { WorkflowInputSourceConfig } from './WorkflowInputSourceConfig';
 import { WorkflowOutputConfig } from './WorkflowOutputConfig';
 import { WorkflowNodeDataPreview, WorkflowSummaryPanel } from './WorkflowUi';
-import { formatPrepDiagnosticForUi } from './workflow-diagnostics';
+import { formatWorkflowDiagnosticForUi } from './workflow-diagnostics';
 import { getWorkflowFieldSourceCandidates } from './workflow-field-candidates';
 import type { WorkflowInspectorTab } from './workflow-model';
 
@@ -88,7 +89,7 @@ export function WorkflowInspector({
   const [operatorDslBeforeEdit, setOperatorDslBeforeEdit] = useState('');
   const [isEditingOperatorDsl, setIsEditingOperatorDsl] = useState(false);
   const [isDslDialogOpen, setIsDslDialogOpen] = useState(false);
-  const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<PrepDiagnostic[]>([]);
+  const [operatorDslDiagnostics, setOperatorDslDiagnostics] = useState<WorkflowDiagnostic[]>([]);
   const [operatorDslStatus, setOperatorDslStatus] = useState<string | null>(null);
   const [operatorFieldCompletions, setOperatorFieldCompletions] = useState<string[]>([]);
   const [operatorFieldTypes, setOperatorFieldTypes] = useState<DataColumnTypeInfo[]>([]);
@@ -113,7 +114,9 @@ export function WorkflowInspector({
     ? nodePreviewData.workflowSignature !== upstreamSignature
     : (isPreviewStale ?? false);
   const nodePreviewGeneratedAt = nodePreviewData?.generatedAt ?? nodePreviewFetchedAt;
-  const usesOperatorDsl = Boolean(node && node.type !== 'input' && node.type !== 'output');
+  const usesOperatorDsl = Boolean(
+    node && node.type !== 'output' && !JFLOW_STEP_UNSUPPORTED_TYPES.has(node.type)
+  );
   const operatorFieldSourceNode = useMemo(
     () => getWorkflowFieldSourceNode(node, workflowNodes, workflowEdges),
     [node, workflowEdges, workflowNodes]
@@ -126,27 +129,21 @@ export function WorkflowInspector({
     () => getWorkflowFieldSourceCandidates(operatorFieldSourceNode, workflowNodes, workflowEdges),
     [operatorFieldSourceNode, workflowEdges, workflowNodes]
   );
-  const editorCompletionLabels = useMemo(
-    () => ({
-      keywords: t('data.workflow.completionGroups.keywords'),
-      snippets: t('data.workflow.completionGroups.snippets'),
-      types: t('data.workflow.completionGroups.types'),
-      fields: t('data.workflow.completionGroups.fields'),
-    }),
-    [t]
-  );
   const formatEditorDiagnostic = useCallback(
-    (diagnostic: PrepDiagnostic) => formatPrepDiagnosticForUi(diagnostic, t),
+    (diagnostic: WorkflowDiagnostic) => formatWorkflowDiagnosticForUi(diagnostic, t),
     [t]
   );
 
   useEffect(() => {
     if (!node || !usesOperatorDsl || isEditingOperatorDsl) return;
-    const cleanNode = { ...node, config: { ...node.config, dsl: undefined } };
-    const nextDsl = exportPrepOperatorDsl(cleanNode);
-    setOperatorDsl(nextDsl);
-    setOperatorDslBeforeEdit(nextDsl);
-    setOperatorDslDiagnostics([]);
+    const exported = exportJflowStep(node);
+    setOperatorDsl(exported.text);
+    setOperatorDslBeforeEdit(exported.text);
+    setOperatorDslDiagnostics(
+      exported.diagnostics
+        .filter((diagnostic) => diagnostic.severity === 'error')
+        .map(jflowDiagnosticToWorkflow(exported.text))
+    );
     setOperatorDslStatus(null);
   }, [
     isEditingOperatorDsl,
@@ -307,7 +304,7 @@ export function WorkflowInspector({
 
   const handleCancelOperatorDslEdit = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    const nextDsl = operatorDslBeforeEdit || exportPrepOperatorDsl(node);
+    const nextDsl = operatorDslBeforeEdit || exportJflowStep(node).text;
     setOperatorDsl(nextDsl);
     setOperatorDslStatus(null);
     setOperatorDslDiagnostics([]);
@@ -315,34 +312,42 @@ export function WorkflowInspector({
     setIsDslDialogOpen(false);
   }, [node, operatorDslBeforeEdit, usesOperatorDsl]);
 
+  const parseOperatorStep = useCallback(
+    (text: string) => {
+      if (!node) return null;
+      const result = parseJflowStep(text, {
+        expectedType: node.type,
+        columns: operatorFieldTypes.length
+          ? operatorFieldTypes.map((column) => ({
+              name: column.name,
+              type: column.storageType || column.type,
+            }))
+          : null,
+      });
+      setOperatorDslDiagnostics(result.diagnostics.map(jflowDiagnosticToWorkflow(text)));
+      if (!result.config || result.diagnostics.some((d) => d.severity === 'error')) {
+        setOperatorDslStatus(null);
+        return null;
+      }
+      return result.config;
+    },
+    [node, operatorFieldTypes]
+  );
+
   const handleFormatOperatorDsl = useCallback(() => {
     if (!node || !usesOperatorDsl) return;
-    const result = parsePrepOperatorDsl(operatorDsl, node.type);
-    setOperatorDslDiagnostics(result.diagnostics);
-    const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-    if (!result.operator || errors.length > 0) {
-      setOperatorDslStatus(null);
-      return;
-    }
+    const config = parseOperatorStep(operatorDsl);
+    if (!config) return;
     setIsEditingOperatorDsl(true);
-    setOperatorDsl(
-      exportPrepOperatorDsl({ id: node.id, type: node.type, config: result.operator.config })
-    );
+    setOperatorDsl(exportJflowStep({ id: node.id, type: node.type, config }).text);
     setOperatorDslStatus(null);
-  }, [node, operatorDsl, usesOperatorDsl]);
+  }, [node, operatorDsl, parseOperatorStep, usesOperatorDsl]);
 
   const handleApplyOperatorDsl = useCallback(async () => {
     if (!node || !usesOperatorDsl || !isEditingOperatorDsl || isRunningOperatorDsl) return;
-    const result = parsePrepOperatorDsl(operatorDsl, node.type);
-    setOperatorDslDiagnostics(result.diagnostics);
-    const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-    if (!result.operator || errors.length > 0) {
-      setOperatorDslStatus(null);
-      return;
-    }
-    const nextDsl =
-      formatOperator({ id: node.id, type: node.type, config: result.operator.config }) ??
-      result.operator.dsl;
+    const config = parseOperatorStep(operatorDsl);
+    if (!config) return;
+    const nextDsl = exportJflowStep({ id: node.id, type: node.type, config }).text || operatorDsl;
     setOperatorDsl(nextDsl);
     setOperatorDslBeforeEdit(nextDsl);
     setOperatorDslStatus(t('data.workflow.operatorDslApplied'));
@@ -352,13 +357,14 @@ export function WorkflowInspector({
     setNodePreviewPage(1);
     setNodePreviewData(null);
     setNodePreviewError(null);
-    await onApplyOperatorDsl(node.id, result.operator.config);
+    await onApplyOperatorDsl(node.id, config);
   }, [
     isEditingOperatorDsl,
     isRunningOperatorDsl,
     node,
     onApplyOperatorDsl,
     operatorDsl,
+    parseOperatorStep,
     t,
     usesOperatorDsl,
   ]);
@@ -587,11 +593,9 @@ export function WorkflowInspector({
               isEditingOperatorDsl={isEditingOperatorDsl}
               isDslDialogOpen={isDslDialogOpen}
               isRunningOperatorDsl={isRunningOperatorDsl}
-              editorCompletionLabels={editorCompletionLabels}
               formatEditorDiagnostic={formatEditorDiagnostic}
               onNodeChange={onNodeChange}
               onDslChange={handleOperatorDslChange}
-              onDiagnosticsChange={setOperatorDslDiagnostics}
               onStartDslEdit={handleStartOperatorDslEdit}
               onCancelDslEdit={handleCancelOperatorDslEdit}
               onFormatDsl={handleFormatOperatorDsl}

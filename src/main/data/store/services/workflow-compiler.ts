@@ -9,7 +9,7 @@ import {
   PivotConfigSchema,
   parseOperatorConfig,
 } from '../../../../shared/operator-schemas';
-import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
+import type { WorkflowDiagnostic } from '../../../../shared/workflow-diagnostics';
 import {
   quoteIdentifier,
   compileAsofJoinSql,
@@ -19,7 +19,7 @@ import {
   literalToSql,
   RESOLVED_DYNAMIC_PIVOT_VALUES,
 } from '../../operators';
-import { parseFieldRefExact } from '../../../../shared/prep-dsl';
+import { parseFieldRefExact } from '../../../../shared/expression-syntax/fields';
 import { getOperatorDefinition } from '../../../../shared/operators';
 import { COMPILE_STRATEGIES } from '../../operators/strategy';
 import { DataStoreContext } from '../data-store-context';
@@ -151,7 +151,7 @@ export class WorkflowCompiler {
     outputRelation: string,
     relationByNode: Map<string, string>,
     edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[] = [],
+    diagnostics: WorkflowDiagnostic[] = [],
     namedRelations: ReadonlyArray<{ alias: string; relation: string }> = []
   ): Promise<string> {
     const compileKind = getOperatorDefinition(node.type)?.compileKind;
@@ -280,7 +280,7 @@ export class WorkflowCompiler {
     outputRelation: string,
     relationByNode: Map<string, string>,
     edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[] = []
+    diagnostics: WorkflowDiagnostic[] = []
   ): Promise<string> {
     const leftRelation = relationByNode.get(
       relationKeyForEdge(this.findIncomingEdge(node.id, edges, 'left'))
@@ -348,7 +348,7 @@ export class WorkflowCompiler {
     config: ReturnType<typeof JoinConfigSchema.parse>,
     leftRelation: string,
     rightRelation: string,
-    diagnostics: PrepDiagnostic[]
+    diagnostics: WorkflowDiagnostic[]
   ): Promise<void> {
     const expectation = config.expect;
     if (!expectation || expectation === 'many_to_many') return;

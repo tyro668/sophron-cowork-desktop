@@ -1,5 +1,5 @@
 import type { KeepItem } from '../operator-schemas';
-import { parseFieldRef } from '../prep-dsl/syntax/fields';
+import { parseFieldRef } from '../expression-syntax/fields';
 import {
   normalizeDuration,
   parseDuration,

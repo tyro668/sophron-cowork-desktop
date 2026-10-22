@@ -22,7 +22,7 @@ import {
   RowActionsCell,
   WarningRow,
 } from './shared/FormGrid';
-import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { parseFieldRef } from '../../../shared/expression-syntax/fields';
 import { JoinVennSVG, type JoinVennType } from './join/JoinVennIcon';
 import { JoinAsofSection, type JoinAsofPatch } from './join/JoinAsofSection';
 import { JoinFieldSettingsDialog } from './join/JoinFieldSettingsDialog';

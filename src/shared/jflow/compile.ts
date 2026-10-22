@@ -7,6 +7,11 @@
  */
 import { lookupExpressionFunction } from '../expression/functions';
 import { parseExpression } from '../expression/parser';
+import {
+  expandCalculationDomainExpression,
+  normalizeCalculationDomainExpression,
+  parseCalculationFunctionDslExpression,
+} from '../calculate-field/domain-dsl';
 import type {
   Chain,
   Expr,
@@ -207,13 +212,36 @@ function cx(e: Expr, span?: Span): string {
   try {
     parseExpression(text);
   } catch (error) {
+    // Calculation-domain wrappers (group/compare/ranking/… over (…)) are stored verbatim; the SQL
+    // compiler expands them.
+    let domainError: unknown = null;
+    try {
+      if (parseCalculationFunctionDslExpression(text)) {
+        expandCalculationDomainExpression(text); // validates arguments
+        return normalizeCalculationDomainExpression(text);
+      }
+    } catch (err) {
+      domainError = err;
+    }
+    const reason = domainError ?? error;
     throw new JflowError(
       'E_EXPR_UNSUPPORTED',
-      `表达式不能转换成现有配置：${text}（${error instanceof Error ? error.message : String(error)}）`,
+      `表达式不能转换成现有配置：${text}（${reason instanceof Error ? reason.message : String(reason)}）`,
       span
     );
   }
   return text;
+}
+
+/** take / sample counts must be positive (percent ≤ 100). */
+function checkLimitCount(st: Step): void {
+  const n = Number(st.n);
+  if (!Number.isFinite(n) || n <= 0 || (st.pct && n > 100))
+    throw new JflowError(
+      'E_ARG_RANGE',
+      st.pct ? '百分比必须在 (0, 100] 之间' : '行数必须大于 0',
+      st.span
+    );
 }
 
 function sortKeys(keys: SortKey[], span: Span): Array<Record<string, unknown>> {
@@ -714,6 +742,7 @@ class Compiler {
   }
 
   L_take(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
+    checkLimitCount(st);
     const sort = args.sort?.t === 'sortlist' ? args.sort.v : [];
     for (const k of sort) this.checkField(k.field.name, cur.cols, st.span);
     const ties = args.ties?.t === 'enum' && args.ties.v === 'include';
@@ -778,6 +807,7 @@ class Compiler {
   L_sample(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
     if (args.per)
       throw new JflowError('E_NOT_SUPPORTED_R1', 'sample per: 在 R1 中还不能转换', st.span);
+    checkLimitCount(st);
     const cfg: Record<string, unknown> = {
       sampling: 'random',
       limit: Number(st.n),
@@ -1356,6 +1386,8 @@ class Compiler {
   L_drop_empty(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
     const fields = args.fields?.t === 'fields' ? args.fields.v : undefined;
     fields?.forEach((f) => this.checkField(f, cur.cols, st.span));
+    const dup = fields?.find((f, i) => fields.indexOf(f) !== i);
+    if (dup) throw new JflowError('E_DUP_FIELD', `字段 [${dup}] 重复`, st.span);
     const cfg: Record<string, unknown> = {
       strategy: 'drop_rows_by_nulls',
       rules: [],

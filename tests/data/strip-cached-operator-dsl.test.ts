@@ -11,9 +11,11 @@ describe('migration 15: strip cached operator dsl', () => {
     ).toEqual({ calculations: [{ field: 'a', expression: '[b] + 1' }] });
   });
 
-  it('parses dsl-only nodes into structure', () => {
-    expect(stripCachedOperatorDsl('input', { dsl: 'input pipeline as src' })).toEqual(
-      expect.objectContaining({ source: 'pipeline', alias: 'src' })
+  it('drops the dsl cache even when no structured config exists', () => {
+    expect(stripCachedOperatorDsl('input', { dsl: 'input pipeline as src', alias: 'src' })).toEqual(
+      {
+        alias: 'src',
+      }
     );
   });
 

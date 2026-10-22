@@ -25,8 +25,13 @@ import {
   jflowCompletions,
   jflowHighlightTokens,
   jflowLintDiagnostics,
+  jflowStepCompletions,
+  jflowStepLint,
   type JflowCatalog,
+  type JflowColumn,
 } from '../../shared/jflow';
+
+const EMPTY_CATALOG: JflowCatalog = { tables: [] };
 
 const marks = new Map<string, Decoration>();
 const mark = (cls: string) => {
@@ -77,9 +82,16 @@ const jflowTheme = EditorView.theme({
   '.cm-jflow-invalid': { textDecoration: 'underline wavy #dc2626' },
 });
 
+/** Single-step mode: the doc is one pipe step of a node with this type and input schema. */
+export interface JflowEditorStep {
+  expectedType: string;
+  columns: JflowColumn[] | null;
+}
+
 export interface JflowEditorProps {
   value: string;
-  catalog: JflowCatalog;
+  catalog?: JflowCatalog;
+  step?: JflowEditorStep;
   readOnly?: boolean;
   onChange?: (value: string) => void;
   className?: string;
@@ -87,7 +99,8 @@ export interface JflowEditorProps {
 
 export function JflowEditor({
   value,
-  catalog,
+  catalog = EMPTY_CATALOG,
+  step,
   readOnly = false,
   onChange,
   className,
@@ -95,6 +108,8 @@ export function JflowEditor({
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const catalogRef = useRef(catalog);
+  const stepRef = useRef(step);
+  stepRef.current = step;
   const onChangeRef = useRef(onChange);
   const ro = useRef(new Compartment());
   catalogRef.current = catalog;
@@ -103,7 +118,10 @@ export function JflowEditor({
   useEffect(() => {
     if (!host.current) return;
     const complete = (ctx: CompletionContext): CompletionResult | null => {
-      const r = jflowCompletions(ctx.state.doc.toString(), ctx.pos, catalogRef.current);
+      const doc = ctx.state.doc.toString();
+      const r = stepRef.current
+        ? jflowStepCompletions(doc, ctx.pos, stepRef.current.columns)
+        : jflowCompletions(doc, ctx.pos, catalogRef.current);
       if (!r || r.options.length === 0) return null;
       if (
         !ctx.explicit &&
@@ -123,9 +141,13 @@ export function JflowEditor({
           jflowHighlight,
           jflowTheme,
           lintGutter(),
-          linter((ev) => jflowLintDiagnostics(ev.state.doc.toString(), catalogRef.current), {
-            delay: 300,
-          }),
+          linter(
+            (ev) =>
+              stepRef.current
+                ? jflowStepLint(ev.state.doc.toString(), stepRef.current)
+                : jflowLintDiagnostics(ev.state.doc.toString(), catalogRef.current),
+            { delay: 300 }
+          ),
           autocompletion({ override: [complete], activateOnTyping: true }),
           EditorView.inputHandler.of((ev, _from, _to, text) => {
             if (text === '[' || text === '|' || text === "'")

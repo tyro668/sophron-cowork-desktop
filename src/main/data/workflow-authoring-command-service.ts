@@ -1,8 +1,5 @@
-import {
-  exportPrepWorkflowDsl,
-  parsePrepOperatorDsl,
-  type PrepDiagnostic,
-} from '../../shared/prep-dsl';
+import { exportWorkflowJflow, parseJflowStep } from '../../shared/jflow';
+import type { WorkflowDiagnostic } from '../../shared/workflow-diagnostics';
 import { WORKFLOW_PLAN_VERSION, type WorkflowPlanDiagnostic } from '../../shared/workflow-plan';
 import { WORKFLOW_OPERATOR_TYPE_SET, WORKFLOW_OPERATOR_TYPES } from './store/workflow-model';
 import type { DataPipelineStore } from './data-pipeline-store';
@@ -25,7 +22,6 @@ import { DataCommandLockCoordinator } from './data-command-lock-coordinator';
 import { DataCommandResources } from './data-command-resources';
 import {
   diagnosticsWithSeverity,
-  escapeDslString,
   findWorkflowNode,
   normalizeRequiredName,
   sanitizeAlias,
@@ -34,7 +30,22 @@ import {
   toWorkflowSaveShape,
   updateWorkflowNode,
 } from './data-command-utils';
-import { WorkflowDslCompiler } from './workflow-dsl-compiler';
+import { toWorkflowDiagnostic, WorkflowDslCompiler } from './workflow-dsl-compiler';
+
+/** Workflow → jflow text; throws with the exporter's first error when a node is not expressible. */
+export function exportWorkflowJflowText(
+  workflow: Pick<WorkflowSaveShape, 'nodes' | 'edges'>,
+  pipelineName?: string
+): string {
+  const exported = exportWorkflowJflow(
+    workflow.nodes.map((node) => ({ ...node, config: node.config ?? {} })),
+    workflow.edges,
+    { pipelineName }
+  );
+  const error = exported.diagnostics.find((item) => item.severity === 'error');
+  if (error) throw new DataCommandError('VALIDATION_FAILED', error.message);
+  return exported.text;
+}
 import { WorkflowPreviewService } from './workflow-preview-service';
 import { buildWorkflowCapabilityManifest } from './workflow/workflow-capability-manifest';
 
@@ -89,7 +100,8 @@ export class WorkflowAuthoringCommandService {
 
   async exportWorkflowDsl(input: ExportWorkflowDslCommand): Promise<TextResult> {
     const workflow = await this.store.getPipelineWorkflow(input.pipelineId);
-    return { text: exportPrepWorkflowDsl(workflow.nodes, workflow.edges) };
+    const pipeline = await this.resources.requirePipeline(input.pipelineId);
+    return { text: exportWorkflowJflowText(workflow, pipeline.name) };
   }
 
   async configureInputOperator(input: ConfigureInputOperatorCommand): Promise<WorkflowResult> {
@@ -160,7 +172,7 @@ export class WorkflowAuthoringCommandService {
     let dsl: string | undefined;
     if (errors.length === 0) {
       try {
-        dsl = exportPrepWorkflowDsl(bound.nodes, bound.edges);
+        dsl = exportWorkflowJflowText(bound);
       } catch (error) {
         diagnostics.push({
           severity: 'error',
@@ -224,7 +236,7 @@ export class WorkflowAuthoringCommandService {
     let dsl: string | undefined;
     if (errors.length === 0) {
       try {
-        dsl = exportPrepWorkflowDsl(compiled.workflow.nodes, compiled.workflow.edges);
+        dsl = exportWorkflowJflowText(compiled.workflow);
       } catch {
         dsl = undefined;
       }
@@ -266,7 +278,7 @@ export class WorkflowAuthoringCommandService {
         rawTableId: rawTable.id,
         rawTableName: rawTable.name,
         alias,
-        dsl: `input rawTable "${escapeDslString(rawTable.id)}" as ${alias}`,
+        ref: { uri: `local:raw/${rawTable.id}`, name: rawTable.name },
       },
     });
     return this.saveOrPreview(input.pipelineId, nextWorkflow, Boolean(input.dryRun));
@@ -287,24 +299,22 @@ export class WorkflowAuthoringCommandService {
         `Operator type mismatch: node is ${node.type}, request is ${input.operatorType}`
       );
     }
-    const parsed = parsePrepOperatorDsl(input.dsl, node.type);
-    const errors = diagnosticsWithSeverity(parsed.diagnostics, 'error');
-    if ((errors.length > 0 || !parsed.operator) && !input.dryRun) {
+    const parsed = parseJflowStep(input.dsl, { expectedType: node.type });
+    const stepDiagnostics = parsed.diagnostics.map(toWorkflowDiagnostic(input.dsl));
+    const errors = diagnosticsWithSeverity(stepDiagnostics, 'error');
+    if ((errors.length > 0 || !parsed.config) && !input.dryRun) {
       throw new DataCommandError('DSL_PARSE_FAILED', summarizeDiagnostics(errors), {
-        diagnostics: parsed.diagnostics,
+        diagnostics: stepDiagnostics,
       });
     }
-    const nextWorkflow = parsed.operator
-      ? updateWorkflowNode(workflow, input.nodeId, {
-          label: parsed.operator.label ?? node.label,
-          config: parsed.operator.config,
-        })
+    const nextWorkflow = parsed.config
+      ? updateWorkflowNode(workflow, input.nodeId, { config: parsed.config })
       : toWorkflowSaveShape(workflow);
     return this.saveOrPreview(
       input.pipelineId,
       nextWorkflow,
       Boolean(input.dryRun),
-      parsed.diagnostics
+      stepDiagnostics
     );
   }
 
@@ -404,7 +414,7 @@ export class WorkflowAuthoringCommandService {
     pipelineId: string,
     workflow: WorkflowSaveShape,
     dryRun: boolean,
-    diagnostics: PrepDiagnostic[] = []
+    diagnostics: WorkflowDiagnostic[] = []
   ): Promise<WorkflowResult> {
     if (dryRun) {
       return {
@@ -433,7 +443,7 @@ interface SubmittedPlanEnvelope {
  */
 function normalizeSubmittedPlan(
   plan: unknown,
-  diagnostics: PrepDiagnostic[]
+  diagnostics: WorkflowDiagnostic[]
 ): WorkflowSaveShape | null {
   const envelope = (plan ?? {}) as SubmittedPlanEnvelope;
   if (envelope.version !== WORKFLOW_PLAN_VERSION) {
@@ -472,7 +482,7 @@ function normalizeSubmittedPlan(
         code: 'duplicatePlanNodeId',
         message: `Duplicate plan node id "${id}"`,
         nodeId: id,
-      } as PrepDiagnostic);
+      } as WorkflowDiagnostic);
       return;
     }
     seenIds.add(id);

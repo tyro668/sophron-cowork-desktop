@@ -55,7 +55,7 @@ import type {
   RequirementAnalysisReceipt,
   RequirementAnalysisReceiptStore,
 } from './requirement-analysis-receipt-store';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './workflow/prep-dsl-capability-profile';
+import { AI_JFLOW_RUNTIME_PROFILE_VERSION } from './workflow/jflow-capability-profile';
 import { hashColumns, normalizeColumnSnapshot } from './workflow';
 import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-reference';
 import { sliceWorkflowCapabilityManifest } from './workflow/workflow-capability-manifest';
@@ -647,7 +647,7 @@ export class DataToolService {
         'A verified later user message is required. Show the analysis to the user and wait for explicit confirmation before generation.'
       );
     }
-    if (receipt.capabilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
+    if (receipt.capabilityProfileVersion !== AI_JFLOW_RUNTIME_PROFILE_VERSION) {
       throw new DataCommandError(
         'ANALYSIS_STALE',
         'Data-pipeline capabilities changed after analysis. Analyze the requirement again.'

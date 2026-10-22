@@ -1,4 +1,4 @@
-import { parseFieldRefExact, toFieldName } from '../prep-dsl/syntax/fields';
+import { parseFieldRefExact, toFieldName } from '../expression-syntax/fields';
 import { parseCalculationFunctionDslExpression } from './domain-dsl';
 import { validateCalculationFunctionInput } from './function-input';
 import { getCalculationFunction, type CalculationFunctionInput } from './function-registry';

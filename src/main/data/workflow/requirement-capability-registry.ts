@@ -1,132 +1,85 @@
 import { DataCommandError } from '../data-command-types';
-import { normalizeWorkflowAggregateFunction } from './workflow-aggregate-registry';
-import type { WorkflowIr, WorkflowOperationIr } from './workflow-model';
+
+/** Workflow operation kinds a requirement can map to (jflow step families). */
+export type RequirementOperationType =
+  | 'filter'
+  | 'select'
+  | 'rename'
+  | 'derive'
+  | 'derive_window'
+  | 'cast'
+  | 'sort'
+  | 'aggregate'
+  | 'deduplicate'
+  | 'missing_value'
+  | 'limit'
+  | 'pivot'
+  | 'unpivot'
+  | 'unnest';
 
 interface RequirementCapabilityDefinition {
-  operation: WorkflowOperationIr['type'];
+  operation: RequirementOperationType;
   description: string;
-  matches(operation: WorkflowOperationIr): boolean;
 }
 
 /**
- * Requirement-analysis capabilities are intentionally finer grained than IR
- * operation names. They describe only variants certified through native nodes
- * and DuckDB, preventing a model from treating every payload of an operation as
- * equally supported.
+ * Requirement-analysis capabilities. Each id names a jflow step variant certified through native
+ * nodes and DuckDB; the confirmed contract scopes the generation prompt.
  */
 export const REQUIREMENT_CAPABILITY_REGISTRY = {
-  'filter.boolean_predicate': requirementCapability(
+  'filter.boolean_predicate': cap(
     'filter',
     'row-dependent boolean predicates using certified expressions'
   ),
-  'select.include_columns': requirementCapability(
-    'select',
-    'include a known set of existing columns',
-    (operation) => operation.selection !== 'exclude'
-  ),
-  'select.exclude_columns': requirementCapability(
-    'select',
-    'drop a known set of existing columns',
-    (operation) => operation.selection === 'exclude'
-  ),
-  'rename.single_column': requirementCapability('rename', 'rename an existing column'),
-  'derive.scalar': requirementCapability(
-    'derive',
-    'derive a scalar column with certified expressions'
-  ),
-  'derive_window.aggregate': requirementCapability(
+  'select.include_columns': cap('select', 'include a known set of existing columns'),
+  'select.exclude_columns': cap('select', 'drop a known set of existing columns'),
+  'rename.single_column': cap('rename', 'rename an existing column'),
+  'derive.scalar': cap('derive', 'derive a scalar column with certified expressions'),
+  'derive_window.aggregate': cap(
     'derive_window',
-    'aggregate window functions with structured partitions and frames',
-    (operation) => Boolean(normalizeWorkflowAggregateFunction(operation.function))
+    'aggregate window functions with structured partitions and frames'
   ),
-  'derive_window.ranking': requirementCapability(
+  'derive_window.ranking': cap('derive_window', 'ranking window functions'),
+  'derive_window.value_or_offset': cap(
     'derive_window',
-    'ranking window functions',
-    (operation) => RANKING_WINDOW_FUNCTIONS.has(operation.function)
+    'first/last/nth value or lag/lead window functions'
   ),
-  'derive_window.value_or_offset': requirementCapability(
-    'derive_window',
-    'first/last/nth value or lag/lead window functions',
-    (operation) =>
-      !normalizeWorkflowAggregateFunction(operation.function) &&
-      !RANKING_WINDOW_FUNCTIONS.has(operation.function)
-  ),
-  'cast.certified': requirementCapability(
-    'cast',
-    'certified direct casts and cleanup-based conversions'
-  ),
-  'sort.multi_key': requirementCapability(
-    'sort',
-    'one or more known sort keys with direction and null ordering'
-  ),
-  'aggregate.scalar': requirementCapability(
+  'cast.certified': cap('cast', 'certified direct casts and cleanup-based conversions'),
+  'sort.multi_key': cap('sort', 'one or more known sort keys with direction and null ordering'),
+  'aggregate.scalar': cap(
     'aggregate',
     'scalar aggregate metrics grouped by direct column references'
   ),
-  'deduplicate.keep_first': requirementCapability(
+  'aggregate.conditional': cap(
+    'aggregate',
+    'conditional aggregates such as sumif / countif inside group'
+  ),
+  'deduplicate.keep_first': cap(
     'deduplicate',
-    'deduplicate while keeping the first row by optional ordering',
-    (operation) => operation.config.keep === 'first'
+    'deduplicate while keeping the first row by optional ordering'
   ),
-  'deduplicate.keep_last': requirementCapability(
+  'deduplicate.keep_last': cap(
     'deduplicate',
-    'deduplicate while keeping the last row by optional ordering',
-    (operation) => operation.config.keep === 'last'
+    'deduplicate while keeping the last row by optional ordering'
   ),
-  'missing.drop_rows': requirementCapability(
+  'missing.drop_rows': cap(
     'missing_value',
-    'drop fully empty rows or rows null in selected columns',
-    (operation) =>
-      operation.config.strategy !== 'by_column' ||
-      operation.config.rules.some((rule) => rule.method === 'drop')
+    'drop fully empty rows or rows null in selected columns'
   ),
-  'missing.literal_or_sentinel': requirementCapability(
+  'missing.literal_or_sentinel': cap(
     'missing_value',
-    'literal fill or convert explicit textual sentinels to null',
-    (operation) =>
-      operation.config.strategy === 'by_column' &&
-      operation.config.rules.some(
-        (rule) => rule.method === 'nullify_values' || rule.method === 'literal_fill'
-      )
+    'literal fill or convert explicit textual sentinels to null'
   ),
-  'missing.statistical_fill': requirementCapability(
-    'missing_value',
-    'mean/median numeric fill or mode fill',
-    (operation) =>
-      operation.config.strategy === 'by_column' &&
-      operation.config.rules.some((rule) =>
-        ['mean_fill', 'median_fill', 'mode_fill'].includes(rule.method)
-      )
-  ),
-  'missing.ordered_fill': requirementCapability(
-    'missing_value',
-    'forward/backward fill using source row order',
-    (operation) =>
-      operation.config.strategy === 'by_column' &&
-      operation.config.rules.some((rule) => ['forward_fill', 'backward_fill'].includes(rule.method))
-  ),
-  'limit.global': requirementCapability(
+  'missing.statistical_fill': cap('missing_value', 'mean/median numeric fill or mode fill'),
+  'missing.ordered_fill': cap('missing_value', 'forward/backward fill using source row order'),
+  'limit.global': cap(
     'limit',
-    'global ordered/unordered row or percent limit, optionally with ties',
-    (operation) => operation.config.sampling === 'fixed'
+    'global ordered/unordered row or percent limit, optionally with ties'
   ),
-  'limit.random': requirementCapability(
-    'limit',
-    'row or percent random sampling with certified methods',
-    (operation) => operation.config.sampling === 'random'
-  ),
-  'pivot.fixed_values': requirementCapability(
-    'pivot',
-    'one pivot axis with fixed values and scalar metrics'
-  ),
-  'unpivot.columns': requirementCapability(
-    'unpivot',
-    'unpivot known compatible columns into name/value columns'
-  ),
-  'unnest.list_rows': requirementCapability(
-    'unnest',
-    'expand a native list or JSON-array string into rows'
-  ),
+  'limit.random': cap('limit', 'row or percent random sampling with certified methods'),
+  'pivot.fixed_values': cap('pivot', 'one pivot axis with fixed values and scalar metrics'),
+  'unpivot.columns': cap('unpivot', 'unpivot known compatible columns into name/value columns'),
+  'unnest.list_rows': cap('unnest', 'expand a native list or JSON-array string into rows'),
 } as const satisfies Record<string, RequirementCapabilityDefinition>;
 
 export type RequirementCapabilityId = keyof typeof REQUIREMENT_CAPABILITY_REGISTRY;
@@ -134,15 +87,6 @@ export type RequirementCapabilityId = keyof typeof REQUIREMENT_CAPABILITY_REGIST
 export interface RequirementCapabilityContract {
   capabilityIds: RequirementCapabilityId[];
 }
-
-const RANKING_WINDOW_FUNCTIONS = new Set([
-  'row_number',
-  'rank',
-  'dense_rank',
-  'percent_rank',
-  'cume_dist',
-  'ntile',
-]);
 
 export function getRequirementCapabilityPrompt(
   capabilityIds?: readonly RequirementCapabilityId[]
@@ -180,104 +124,10 @@ export function createRequirementCapabilityContract(
 
 export function getRequirementCapabilityContractOperationTypes(
   contract: RequirementCapabilityContract
-): WorkflowOperationIr['type'][] {
+): RequirementOperationType[] {
   return [
     ...new Set(contract.capabilityIds.map((id) => REQUIREMENT_CAPABILITY_REGISTRY[id].operation)),
   ];
-}
-
-/**
- * Resolve the exact certified capability variant used by a generated IR operation.
- * This is the AI-owned bridge between requirement analysis and generation; platform
- * schemas and SQL remain read-only execution contracts.
- */
-export function getRequiredRequirementCapabilities(
-  operation: WorkflowOperationIr
-): RequirementCapabilityId[] {
-  return (
-    Object.entries(REQUIREMENT_CAPABILITY_REGISTRY) as Array<
-      [RequirementCapabilityId, RequirementCapabilityDefinition]
-    >
-  )
-    .filter(([, definition]) => definition.matches(operation))
-    .map(([id]) => id);
-}
-
-export function validateWorkflowIrAgainstRequirementCapabilityContract(
-  ir: WorkflowIr,
-  contract: RequirementCapabilityContract
-): void {
-  const operationTypes = getRequirementCapabilityContractOperationTypes(contract);
-  const allowedOperations = new Set(operationTypes);
-  const declaredCapabilities = new Set(contract.capabilityIds);
-  const generatedOperations = new Set(ir.operations.map((operation) => operation.type));
-  const usedCapabilities = new Set<RequirementCapabilityId>();
-  const diagnostics: Array<Record<string, unknown>> = [];
-
-  for (const operation of ir.operations) {
-    const location = operation.location;
-    if (!allowedOperations.has(operation.type)) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'ANALYSIS_OPERATION_NOT_DECLARED',
-        message: `Generated operation ${operation.type} was not approved by requirement analysis`,
-        operationId: operation.operationId,
-        operationType: operation.type,
-        functionName: location?.functionName,
-        line: location?.line,
-        column: location?.column,
-        repairClass: 'full_regeneration',
-        repairHint: `Remove ${operation.type}; generate only analyzed operations: ${operationTypes.join(', ')}`,
-      });
-    }
-    for (const capability of getRequiredRequirementCapabilities(operation)) {
-      usedCapabilities.add(capability);
-      if (declaredCapabilities.has(capability)) continue;
-      diagnostics.push({
-        severity: 'error',
-        code: 'ANALYSIS_CAPABILITY_MISMATCH',
-        message: `Generated ${operation.type} uses capability ${capability}, which was not approved by requirement analysis`,
-        operationId: operation.operationId,
-        operationType: operation.type,
-        functionName: location?.functionName,
-        line: location?.line,
-        column: location?.column,
-        repairClass: 'full_regeneration',
-        repairHint: `Use only these analyzed capability variants: ${contract.capabilityIds.join(', ')}`,
-      });
-    }
-  }
-
-  for (const operationType of allowedOperations) {
-    if (generatedOperations.has(operationType)) continue;
-    diagnostics.push({
-      severity: 'error',
-      code: 'ANALYSIS_OPERATION_MISSING',
-      message: `Generated workflow omitted analyzed operation ${operationType}`,
-      operationType,
-      repairClass: 'full_regeneration',
-      repairHint: `Add the analyzed ${operationType} operation without adding unapproved operations`,
-    });
-  }
-
-  for (const capabilityId of declaredCapabilities) {
-    if (usedCapabilities.has(capabilityId)) continue;
-    diagnostics.push({
-      severity: 'error',
-      code: 'ANALYSIS_CAPABILITY_UNUSED',
-      message: `Generated workflow did not implement analyzed capability ${capabilityId}`,
-      operationType: REQUIREMENT_CAPABILITY_REGISTRY[capabilityId].operation,
-      repairClass: 'full_regeneration',
-      repairHint: `Implement the approved capability ${capabilityId}: ${REQUIREMENT_CAPABILITY_REGISTRY[capabilityId].description}`,
-    });
-  }
-
-  if (diagnostics.length === 0) return;
-  throw new DataCommandError(
-    'VALIDATION_FAILED',
-    'Generated workflow does not match the confirmed requirement-analysis capability contract',
-    { diagnostics }
-  );
 }
 
 function uniqueCapabilities(
@@ -286,16 +136,16 @@ function uniqueCapabilities(
   return [...new Set(capabilities)];
 }
 
-function requirementCapability<T extends WorkflowOperationIr['type']>(
-  operation: T,
-  description: string,
-  matches: (operation: Extract<WorkflowOperationIr, { type: T }>) => boolean = () => true
+function cap(
+  operation: RequirementOperationType,
+  description: string
 ): RequirementCapabilityDefinition {
-  return {
-    operation,
-    description,
-    matches: (candidate) =>
-      candidate.type === operation &&
-      matches(candidate as Extract<WorkflowOperationIr, { type: T }>),
-  };
+  return { operation, description };
+}
+
+/** Distinct operation kinds, used by the requirement-analysis prompt. */
+export function getRequirementOperationTypeList(): string {
+  return [
+    ...new Set(Object.values(REQUIREMENT_CAPABILITY_REGISTRY).map((item) => item.operation)),
+  ].join(', ');
 }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle2, Code2, Copy, Maximize2, X } from 'lucide-react';
 import type { DataWorkflowEdge, DataWorkflowNode, DataWorkflowOperatorType } from '../../types';
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import { OperatorFormWrapper } from '../workflow-forms/OperatorFormWrapper';
-import { PrepDslEditor } from '../PrepDslEditor';
+import { JflowEditor } from '../JflowEditor';
+import type { JflowColumn } from '../../../shared/jflow';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 
@@ -21,20 +22,13 @@ interface WorkflowOperatorConfigPanelProps {
   upstreamRowCount?: number;
   operatorDsl: string;
   operatorDslStatus: string | null;
-  operatorDslDiagnostics: PrepDiagnostic[];
+  operatorDslDiagnostics: WorkflowDiagnostic[];
   isEditingOperatorDsl: boolean;
   isDslDialogOpen: boolean;
   isRunningOperatorDsl: boolean;
-  editorCompletionLabels: {
-    keywords: string;
-    snippets: string;
-    types: string;
-    fields: string;
-  };
-  formatEditorDiagnostic: (diagnostic: PrepDiagnostic) => string;
+  formatEditorDiagnostic: (diagnostic: WorkflowDiagnostic) => string;
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
   onDslChange: (value: string) => void;
-  onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
   onStartDslEdit: () => void;
   onCancelDslEdit: () => void;
   onFormatDsl: () => void;
@@ -57,11 +51,9 @@ export function WorkflowOperatorConfigPanel({
   isEditingOperatorDsl,
   isDslDialogOpen,
   isRunningOperatorDsl,
-  editorCompletionLabels,
   formatEditorDiagnostic,
   onNodeChange,
   onDslChange,
-  onDiagnosticsChange,
   onStartDslEdit,
   onCancelDslEdit,
   onFormatDsl,
@@ -72,6 +64,18 @@ export function WorkflowOperatorConfigPanel({
     (diagnostic) => diagnostic.severity === 'error'
   );
   const hasErrors = visibleDiagnostics.length > 0;
+
+  const stepColumns = useMemo<JflowColumn[] | null>(() => {
+    if (fieldTypes?.length) {
+      return fieldTypes.map((column) => ({
+        name: column.name,
+        type: column.storageType || column.type,
+      }));
+    }
+    return fieldCompletions.length
+      ? fieldCompletions.map((name) => ({ name, type: 'VARCHAR' }))
+      : null;
+  }, [fieldCompletions, fieldTypes]);
 
   const copyDsl = useCallback(() => {
     void navigator.clipboard?.writeText(operatorDsl);
@@ -84,12 +88,10 @@ export function WorkflowOperatorConfigPanel({
       operatorDsl={operatorDsl}
       operatorDslStatus={operatorDslStatus}
       operatorDslDiagnostics={operatorDslDiagnostics}
-      editorCompletionLabels={editorCompletionLabels}
-      fieldCompletions={fieldCompletions}
+      stepColumns={stepColumns}
       formatEditorDiagnostic={formatEditorDiagnostic}
       isRunningOperatorDsl={isRunningOperatorDsl}
       onChange={onDslChange}
-      onDiagnosticsChange={onDiagnosticsChange}
       onClose={onCancelDslEdit}
       onCopy={copyDsl}
       onFormat={onFormatDsl}
@@ -187,17 +189,11 @@ export function WorkflowOperatorConfigPanel({
           </div>
         </div>
         <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md border border-border-subtle bg-surface">
-          <PrepDslEditor
+          <JflowEditor
             value={operatorDsl}
-            operatorType={node.type}
-            placeholderText={t('data.workflow.operatorDslPlaceholder')}
-            completionLabels={editorCompletionLabels}
-            formatDiagnostic={formatEditorDiagnostic}
+            step={{ expectedType: node.type, columns: stepColumns }}
             onChange={onDslChange}
-            onDiagnosticsChange={onDiagnosticsChange}
-            fieldCompletions={fieldCompletions}
-            editable
-            height="100%"
+            className="h-full"
           />
         </div>
         {visibleDiagnostics.length > 0 && isEditingOperatorDsl && (
@@ -227,12 +223,10 @@ function WorkflowOperatorDslDialog({
   operatorDsl,
   operatorDslStatus,
   operatorDslDiagnostics,
-  editorCompletionLabels,
-  fieldCompletions,
+  stepColumns,
   formatEditorDiagnostic,
   isRunningOperatorDsl,
   onChange,
-  onDiagnosticsChange,
   onClose,
   onCopy,
   onFormat,
@@ -242,18 +236,11 @@ function WorkflowOperatorDslDialog({
   operatorType: DataWorkflowOperatorType;
   operatorDsl: string;
   operatorDslStatus: string | null;
-  operatorDslDiagnostics: PrepDiagnostic[];
-  editorCompletionLabels: {
-    keywords: string;
-    snippets: string;
-    types: string;
-    fields: string;
-  };
-  fieldCompletions: string[];
-  formatEditorDiagnostic: (diagnostic: PrepDiagnostic) => string;
+  operatorDslDiagnostics: WorkflowDiagnostic[];
+  stepColumns: JflowColumn[] | null;
+  formatEditorDiagnostic: (diagnostic: WorkflowDiagnostic) => string;
   isRunningOperatorDsl: boolean;
   onChange: (value: string) => void;
-  onDiagnosticsChange: (diagnostics: PrepDiagnostic[]) => void;
   onClose: () => void;
   onCopy: () => void;
   onFormat: () => void;
@@ -335,17 +322,11 @@ function WorkflowOperatorDslDialog({
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle bg-surface">
-          <PrepDslEditor
+          <JflowEditor
             value={operatorDsl}
-            operatorType={operatorType}
-            placeholderText={t('data.workflow.operatorDslPlaceholder')}
-            completionLabels={editorCompletionLabels}
-            formatDiagnostic={formatEditorDiagnostic}
+            step={{ expectedType: operatorType, columns: stepColumns }}
             onChange={onChange}
-            onDiagnosticsChange={onDiagnosticsChange}
-            fieldCompletions={fieldCompletions}
-            editable
-            height="100%"
+            className="h-full"
           />
         </div>
         {visibleDiagnostics.length > 0 && (

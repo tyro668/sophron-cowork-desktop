@@ -48,52 +48,53 @@ describe('central prompt catalog', () => {
 
   it('builds data-workflow system and user prompts from the catalog', () => {
     const analysisSystem = buildRequirementAnalysisSystemPrompt();
-    const generationSystem = buildWorkflowGenerationSystemPrompt();
+    const generationSystem = buildWorkflowGenerationSystemPrompt({
+      rawTableUri: 'local:table/input-1',
+      resultTableName: "o'out",
+    });
     const analysisUser = JSON.parse(
       buildRequirementAnalysisUserPrompt({
         requirement: '按销售额降序',
         inputColumns: [{ name: 'Sales', type: 'decimal' }],
       })
     );
-    const generationUser = JSON.parse(
-      buildWorkflowGenerationUserPrompt({
-        rawTableId: 'input-1',
-        resultTableName: 'output-1',
-        requirement: '按销售额降序',
-        columns: [{ name: 'Sales', type: 'decimal' }],
-      })
-    );
+    const generationUser = buildWorkflowGenerationUserPrompt({
+      requirement: '按销售额降序',
+      columns: [{ name: 'Sales', type: 'decimal' }],
+    });
 
     expect(analysisSystem).toContain('filter.boolean_predicate');
-    expect(generationSystem).toContain('workflow.step(input');
+    for (const needle of [
+      "@id('local:table/input-1')",
+      "@name('",
+      '[金额]',
+      'elseif',
+      'sumif(',
+      'countif(',
+      'FULL output projection',
+    ]) {
+      expect(generationSystem).toContain(needle);
+    }
+    expect(generationSystem).toContain("o''out");
+    expect(generationSystem).not.toContain('workflow.step(');
     expect(analysisSystem).not.toContain('{{');
     expect(generationSystem).not.toContain('{{');
     expect(analysisUser.requirement).toBe('按销售额降序');
-    expect(generationUser.examples).toHaveLength(7);
+    expect(generationUser).toContain('- [Sales] decimal');
   });
 
-  it('gives scoped repairs one consistent response contract in system and user prompts', () => {
-    const system = buildWorkflowGenerationSystemPrompt({
-      repairFunctionName: 'filterPositiveProfit',
+  it('feeds the failed program and diagnostics back for repair', () => {
+    const user = buildWorkflowGenerationUserPrompt({
+      requirement: '利润大于0',
+      columns: [{ name: '利润', type: 'string' }],
+      failedText: 'where [利润 > 0',
+      diagnostics: [
+        { severity: 'error', code: 'E_PARSE_UNEXPECTED', message: 'bad', line: 1, column: 7 },
+      ],
     });
-    const user = JSON.parse(
-      buildWorkflowGenerationUserPrompt({
-        rawTableId: 'input',
-        resultTableName: 'output',
-        requirement: '利润大于0',
-        columns: [{ name: '利润', type: 'string' }],
-        failedJavascriptSource: 'function filterPositiveProfit() {}',
-        repairFunctionName: 'filterPositiveProfit',
-        repairStrategy: 'function_patch',
-      })
-    );
-    expect(system).toContain('"javascriptPatch":{"functionName":"filterPositiveProfit"');
-    expect(system).not.toContain('Return {"javascriptSource":"..."}');
-    expect(system).not.toContain('{{');
-    expect(user.outputJsonSchema).not.toHaveProperty('javascriptSource');
-    expect(user.outputJsonSchema.javascriptPatch.functionName).toBe('filterPositiveProfit');
-    expect(user.generationRules.mainContract).toContain('Return only the replacement');
-    expect(user.examples).toBeUndefined();
+    expect(user).toContain('```jflow\nwhere [利润 > 0\n```');
+    expect(user).toContain('E_PARSE_UNEXPECTED (line 1:7): bad');
+    expect(user).toContain('Return the complete corrected program.');
   });
 
   it('contains prompt copy for every app-owned custom data and automation tool', () => {

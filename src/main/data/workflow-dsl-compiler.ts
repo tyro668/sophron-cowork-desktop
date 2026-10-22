@@ -1,14 +1,11 @@
-import {
-  compilePrepWorkflowToFlow,
-  parsePrepDsl,
-  type PrepDiagnostic,
-} from '../../shared/prep-dsl';
-import { formatFieldRef } from '../../shared/prep-dsl/syntax/fields';
+import type { WorkflowDiagnostic } from '../../shared/workflow-diagnostics';
+import { jflowDiagnosticToWorkflow as toWorkflowDiagnostic } from '../../shared/jflow';
 import { DataCommandError, type WorkflowSaveShape } from './data-command-types';
 import { DataCommandResources } from './data-command-resources';
+import type { DataPipelineStore } from './data-pipeline-store';
+import { compileJflowAgainstStore } from './jflow-catalog';
 import {
   cloneCompiledWorkflowCandidate,
-  escapeDslString,
   hashText,
   looksLikeJson,
   sanitizeAlias,
@@ -33,12 +30,15 @@ export interface WorkflowResourceBindings {
 export class WorkflowDslCompiler {
   private readonly workflowCandidateCache = new Map<string, Promise<CompiledWorkflowCandidate>>();
 
-  constructor(private readonly resources: DataCommandResources) {}
+  constructor(
+    private readonly resources: DataCommandResources,
+    private readonly store: DataPipelineStore
+  ) {}
 
   async compileWorkflowDsl(
     dsl: string,
     bindings: WorkflowResourceBindings = {}
-  ): Promise<{ workflow: WorkflowSaveShape; diagnostics: PrepDiagnostic[] }> {
+  ): Promise<{ workflow: WorkflowSaveShape; diagnostics: WorkflowDiagnostic[] }> {
     const cacheKey = hashText(JSON.stringify({ dsl, bindings }));
     const cached = this.workflowCandidateCache.get(cacheKey);
     if (cached) {
@@ -124,7 +124,7 @@ export class WorkflowDslCompiler {
             rawTableId: table.id,
             rawTableName: table.name,
             alias,
-            dsl: `input rawTable "${escapeDslString(table.id)}" as ${alias}`,
+            ref: { uri: `local:raw/${table.id}`, name: table.name },
           },
         };
       });
@@ -143,13 +143,6 @@ export class WorkflowDslCompiler {
       const mergeKeys = Array.isArray(outputNode.config?.mergeKeys)
         ? outputNode.config.mergeKeys
         : [];
-      const schemaPolicy = stringConfigValue(outputNode.config?.schemaPolicy);
-      const mergeClause =
-        mode === 'merge' && mergeKeys.length > 0
-          ? ` by ${mergeKeys.map((key) => formatFieldRef(String(key))).join(', ')}`
-          : '';
-      const schemaClause =
-        schemaPolicy && schemaPolicy !== 'extend' ? ` schema ${schemaPolicy}` : '';
       nodes = nodes.map((node) =>
         node.id === outputNode.id
           ? {
@@ -163,7 +156,9 @@ export class WorkflowDslCompiler {
                 table: resultTable.tableName,
                 destination: 'duckdb_table',
                 mode,
-                dsl: `output table "${escapeDslString(resultTable.name)}" mode ${mode}${mergeClause}${schemaClause}`,
+                ...(mergeKeys.length > 0 ? { mergeKeys } : {}),
+                intent: 'bound',
+                ref: { uri: `local:result/${resultTable.id}`, name: resultTable.name },
               },
             }
           : node
@@ -194,22 +189,24 @@ export class WorkflowDslCompiler {
             severity: 'error',
             code: 'invalidDslFormat',
             message:
-              'Workflow DSL must be text prep DSL, not JSON. Example: input rawTable "<rawTableId>" as src | derive [new_field] = expression | output table "Result" mode replace',
+              "Workflow DSL must be jflow text, not JSON. Example: source src = @id('local:raw/<rawTableId>')\nsrc | derive [new_field] = [a] + 1 | write @new('Result')",
           },
         ],
       };
     }
-    const parsed = parsePrepDsl(dsl);
-    const diagnostics = [...parsed.diagnostics];
-    if (!parsed.ast) return { workflow: { nodes: [], edges: [] }, diagnostics };
-    const compiled = compilePrepWorkflowToFlow(parsed.ast);
-    diagnostics.push(...compiled.diagnostics);
+    const compiled = await compileJflowAgainstStore(this.store, dsl);
+    const diagnostics = compiled.diagnostics.map(toWorkflowDiagnostic(dsl));
+    if (diagnostics.some((item) => item.severity === 'error')) {
+      return { workflow: { nodes: [], edges: [] }, diagnostics };
+    }
     return {
       workflow: await this.applyWorkflowResourceBindings(
-        { nodes: compiled.nodes, edges: compiled.edges },
+        { nodes: compiled.nodes as WorkflowSaveShape['nodes'], edges: compiled.edges },
         bindings
       ),
       diagnostics,
     };
   }
 }
+
+export { toWorkflowDiagnostic };

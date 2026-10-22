@@ -8,7 +8,7 @@ import type { DataCommandService } from '../src/main/data/data-command-service';
 import type { AnalyzePipelineRequirementCommand } from '../src/main/data/data-command-types';
 import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';
 import { hashColumns } from '../src/main/data/workflow';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from '../src/main/data/workflow/prep-dsl-capability-profile';
+import { AI_JFLOW_RUNTIME_PROFILE_VERSION } from '../src/main/data/workflow/jflow-capability-profile';
 const request: DataPipelineAuthoringRequest = {
   id: 'request',
   source: { location: 'local', tableId: 'selected-input' },
@@ -73,7 +73,7 @@ describe('data-pipeline authoring loop', () => {
         rawTableName: 'Input',
         columnsSnapshot: columns,
         sourceSummaryHash: hashColumns(columns),
-        capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+        capabilityProfileVersion: AI_JFLOW_RUNTIME_PROFILE_VERSION,
       };
       const receipt = receipts.create({
         authoringRequest: input.authoringRequest,

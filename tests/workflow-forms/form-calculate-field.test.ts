@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import {
   type CalculationConfigEntry,
   createCalculationRow,
@@ -11,8 +11,8 @@ interface OkResult {
 }
 
 function ok(config: Record<string, unknown>): OkResult {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'derive', config });
-  const parsed = parsePrepOperatorDsl(dsl, 'derive');
+  const dsl = exportStep({ id: 'test', type: 'derive', config });
+  const parsed = parseStep(dsl, 'derive');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, 'null operator').not.toBeNull();
@@ -24,7 +24,9 @@ describe('FormCalculateField - config and DSL', () => {
     const r = ok({
       calculations: [{ field: 'margin', expression: '[revenue] - [cost]' }],
     });
-    expect(r.config.calculations).toEqual([{ field: 'margin', expression: '[revenue] - [cost]' }]);
+    expect(r.config.calculations).toEqual([
+      { field: 'margin', action: 'add', expression: '[revenue] - [cost]' },
+    ]);
   });
 
   it('multiple calculations', () => {
@@ -41,7 +43,7 @@ describe('FormCalculateField - config and DSL', () => {
   it('expression with window function', () => {
     const dsl =
       'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)';
-    const parsed = parsePrepOperatorDsl(dsl, 'derive');
+    const parsed = parseStep(dsl, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     const calculations = parsed.operator!.config.calculations as Array<Record<string, unknown>>;
     expect(calculations).toHaveLength(1);
@@ -52,14 +54,14 @@ describe('FormCalculateField - config and DSL', () => {
   it('conditional expression', () => {
     const r = ok({
       calculations: [
-        { field: 'ratio', expression: 'if [revenue] = 0 then 0 else [profit] / [revenue]' },
+        { field: 'ratio', expression: 'if [revenue] = 0 then 0 else [profit] / [revenue] end' },
       ],
     });
     expect(r.config.calculations![0].expression).toContain('then');
   });
 
   it('empty calculations does not produce DSL', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'derive',
       config: {},
@@ -69,9 +71,9 @@ describe('FormCalculateField - config and DSL', () => {
 
   it('idempotent: single derivation', () => {
     const dsl1 = 'derive [margin] = [revenue] - [cost]';
-    const parsed = parsePrepOperatorDsl(dsl1, 'derive');
+    const parsed = parseStep(dsl1, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'derive',
       config: parsed.operator!.config,
@@ -81,9 +83,9 @@ describe('FormCalculateField - config and DSL', () => {
 
   it('idempotent: complex expression with commas', () => {
     const dsl1 = "derive [full_name] = concat([first], ', ', [last])";
-    const parsed = parsePrepOperatorDsl(dsl1, 'derive');
+    const parsed = parseStep(dsl1, 'derive');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'derive',
       config: parsed.operator!.config,
@@ -113,7 +115,7 @@ describe('FormCalculateField - config and DSL', () => {
     `derive [group_names] = group(string_agg([name], ', ')) over(partition by [region])`,
     'derive [cum_sales] = running(sum([sales])) over(partition by [region] order by [date])',
     'derive [mov_sales] = moving(avg([sales])) over(partition by [region] order by [date] rows between 1 preceding and current row)',
-    `derive [mov_range] = moving(sum([sales])) over(order by [date] range between interval 7 'day' preceding and current row)`,
+    'derive [mov_range] = moving(sum([sales])) over(order by [date] range between 7d preceding and current row)',
     'derive [rn] = ranking(row_number()) over(partition by [region] order by [amount] desc)',
     'derive [ranked] = ranking(rank()) over(order by [amount] desc, [date])',
     'derive [dense] = ranking(dense_rank()) over(partition by [region] order by [amount])',
@@ -121,11 +123,11 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [cume] = ranking(cume_dist()) over(partition by [region] order by [amount])',
     'derive [bucket] = ranking(ntile(4)) over(order by [amount] desc)',
   ])('round-trips canonical calculation domain DSL: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'derive');
+    const parsed = parseStep(dsl, 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
 
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'test',
         type: 'derive',
         config: parsed.operator!.config,
@@ -134,14 +136,14 @@ describe('FormCalculateField - config and DSL', () => {
   });
 
   it('normalizes calculation domain function spacing on export', () => {
-    const parsed = parsePrepOperatorDsl(
+    const parsed = parseStep(
       `derive [x] = compare(same_period_last_year( [sales] , [date] , 'month' , 'value')) over( partition by [region] )`,
       'derive'
     );
 
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'test',
         type: 'derive',
         config: parsed.operator!.config,
@@ -192,7 +194,7 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [x] = group(sum([sales])); drop table source',
     'derive [x] = group(sum([sales])) over()',
   ])('rejects invalid calculation domain DSL: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'derive');
+    const parsed = parseStep(dsl, 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
       []
     );
@@ -205,7 +207,7 @@ describe('FormCalculateField - config and DSL', () => {
     'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region],, [product])',
     'derive [x] = accumulate(year_to_date(sum([sales]), [date])) over(partition by [region]',
   ])('rejects malformed domain partition lists: %s', (dsl) => {
-    const parsed = parsePrepOperatorDsl(dsl, 'derive');
+    const parsed = parseStep(dsl, 'derive');
 
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).not.toEqual(
       []
