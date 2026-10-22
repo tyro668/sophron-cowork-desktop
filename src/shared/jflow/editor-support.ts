@@ -6,7 +6,8 @@
  *   `name:` params per verb (from the strict VERB_ARGS table).
  */
 import type { IToken } from 'chevrotain';
-import type { JflowDiagnostic } from './ast';
+import type { JflowDiagnostic, JflowFix } from './ast';
+import { windowSuggestionAt } from '../expression/window-suggest';
 import { VERB_ARGS } from './args';
 import { RESERVED_WORDS, SOFT_WORDS, VERB_WORDS } from './lexer';
 import { fieldCompletionContext, lex } from './parse';
@@ -71,6 +72,8 @@ export interface JflowLintDiagnostic {
   severity: 'error' | 'warning' | 'info';
   message: string;
   code: string;
+  /** One-click rewrite (see applyJflowFix). */
+  fix?: JflowFix;
 }
 
 /** Map parse/bind/validate diagnostics to editor ranges (never outside the doc, never empty). */
@@ -92,6 +95,7 @@ export function mapDiagnosticsToLint(
       severity: d.severity === 'error' ? 'error' : d.severity === 'warning' ? 'warning' : 'info',
       message: d.hint ? `${d.code}: ${d.message}（${d.hint}）` : `${d.code}: ${d.message}`,
       code: d.code,
+      ...(d.fix ? { fix: d.fix } : {}),
     };
   });
 }
@@ -219,6 +223,19 @@ export function jflowCompletions(
       options: [...VERB_WORDS]
         .filter((v) => v.startsWith(verb[1]))
         .map((v) => ({ label: v, type: 'verb' })),
+    };
+  }
+  // `avg([x]) ▌` → window value suggestions
+  const win = windowSuggestionAt(before);
+  if (win) {
+    return {
+      from: win.from,
+      options: win.options.map((o) => ({
+        label: o.label,
+        type: 'keyword' as const,
+        apply: o.apply,
+        detail: o.detail,
+      })),
     };
   }
   // word inside a step → named params of the current verb

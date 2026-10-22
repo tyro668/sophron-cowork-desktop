@@ -218,6 +218,15 @@ export interface JflowDiagnostic {
   /** Auxiliary-node role when the diagnostic comes from a composite step. */
   role?: string;
   stepId?: string;
+  /** One-click rewrite: replace `span` (a whole `| verb …` step) with `text`. */
+  fix?: JflowFix;
+}
+
+export interface JflowFix {
+  title: string;
+  span: Span;
+  /** Replacement steps, each starting with `| ` (drop the first pipe when the doc has none). */
+  text: string;
 }
 
 export class JflowError extends Error {
@@ -225,7 +234,8 @@ export class JflowError extends Error {
     readonly code: string,
     message: string,
     readonly span?: Span,
-    readonly hint?: string
+    readonly hint?: string,
+    readonly fix?: JflowFix
   ) {
     super(`${code}: ${message}${hint ? `（建议：${hint}）` : ''}`);
     this.detail = message;

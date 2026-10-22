@@ -29,3 +29,11 @@ export {
   getJflowReference,
 } from './reference';
 export type { JflowExample, JflowReferenceTopic } from './reference';
+export {
+  applyJflowFix,
+  splitNestedAggregateStep,
+  rowLevelAggregateProblem,
+  NESTED_AGGREGATE_HINT,
+  expressionAggregateIssue,
+} from './window-rewrite';
+export type { ExpressionAggregateIssue } from './window-rewrite';

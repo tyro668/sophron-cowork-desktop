@@ -1,5 +1,31 @@
 import { isNumericDataFieldType, normalizeDataFieldType } from '../data-field-types';
 import { tokenizeExpression } from '../expression-tokenizer';
+import { lookupExpressionFunction } from '../expression/functions';
+import { parseExpression } from '../expression/parser';
+
+/**
+ * A comparison value that is an expression rather than a literal: it calls a known function
+ * (e.g. the window value `avg([销售额]) over (by: [区域])`) and parses as an expression.
+ * Kept verbatim in the condition.
+ */
+export function isFilterExpressionValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith("'")) return false;
+  try {
+    const tokens = tokenizeExpression(trimmed);
+    const callsFunction = tokens.some(
+      (token, i) =>
+        token.type === 'Ident' &&
+        tokens[i + 1]?.type === 'ParenOpen' &&
+        Boolean(lookupExpressionFunction(token.value))
+    );
+    if (!callsFunction) return false;
+    parseExpression(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function unquoteValue(value: string): string {
   const trimmed = value.trim();
@@ -64,6 +90,7 @@ export function formatFilterConditionValue(value: string, colType: string | unde
   const trimmed = value.trim();
   if (!trimmed) return "''";
   if (isDslFieldReference(trimmed)) return trimmed;
+  if (isFilterExpressionValue(trimmed)) return trimmed;
 
   const unquoted = unwrapQuotedValue(trimmed);
   const normalizedType = colType ? normalizeDataFieldType(colType) : undefined;

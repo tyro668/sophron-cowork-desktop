@@ -5,6 +5,12 @@
  * last node keeps `stepId` so downstream edges and run stats hang on a stable id. Temporary
  * columns use the `__` prefix and are dropped by the composite's last node.
  */
+import {
+  NESTED_AGGREGATE_HINT,
+  addOverToRowAggregates,
+  rowLevelAggregateProblem,
+  splitNestedAggregateStep,
+} from './window-rewrite';
 import { lookupExpressionFunction } from '../expression/functions';
 import { parseExpression } from '../expression/parser';
 import {
@@ -19,6 +25,7 @@ import type {
   Head,
   JflowDiagnostic,
   JflowFile,
+  JflowFix,
   ResourceRef,
   SortKey,
   Source,
@@ -28,7 +35,7 @@ import type {
 } from './ast';
 import { JflowError } from './ast';
 import { checkCastItemArgs, checkStepArgs, type StepArgs } from './args';
-import { fmtExpr } from './format';
+import { fmtExpr, fmtStep } from './format';
 
 export interface JflowColumn {
   name: string;
@@ -555,9 +562,27 @@ class Compiler {
   }
 
   // ------------------------------------------------------------ verbs
+  /** Bare / nested aggregates in a row-level step: error with a hint and an `over ()` fix. */
+  private checkRowAggregates(st: Step, exprs: Expr[]): void {
+    const problem = rowLevelAggregateProblem(exprs);
+    if (!problem) return;
+    let fix: JflowFix | undefined;
+    if (problem.code === 'E_AGG_ROW') {
+      const fixed: Step = st.cond
+        ? { ...st, cond: addOverToRowAggregates(st.cond) }
+        : {
+            ...st,
+            derives: (st.derives ?? []).map((d) => ({ ...d, e: addOverToRowAggregates(d.e) })),
+          };
+      fix = { title: '加上 over ()（全部行）', span: st.span, text: `| ${fmtStep(fixed).trim()}` };
+    }
+    throw new JflowError(problem.code, problem.message, st.span, problem.hint, fix);
+  }
+
   L_where(cur: Rel, st: Step, sid: string): Rel {
     const cond = st.cond!;
     this.checkExprFields(cond, cur.cols, st.span);
+    this.checkRowAggregates(st, [cond]);
     if (hasWindow(cond)) {
       const a = this.node(
         sid,
@@ -705,6 +730,10 @@ class Compiler {
   }
 
   L_derive(cur: Rel, st: Step, sid: string): Rel {
+    this.checkRowAggregates(
+      st,
+      (st.derives ?? []).map((d) => d.e)
+    );
     const cols = cur.cols ? [...cur.cols] : null;
     const calcs = (st.derives ?? []).map((d) => {
       if (d.name.startsWith('__'))
@@ -921,7 +950,14 @@ class Compiler {
       const e = x as Expr;
       if (e.k && isAggregateCall(e)) {
         const s = simple(e);
-        if (!s) throw new JflowError('E_AGG_NESTED', '不支持嵌套聚合', st.span);
+        if (!s)
+          throw new JflowError(
+            'E_AGG_NESTED',
+            '不支持嵌套聚合',
+            st.span,
+            NESTED_AGGREGATE_HINT,
+            splitNestedAggregateStep(st) ?? undefined
+          );
         const name = `__a${metrics.length + 1}`;
         metrics.push({ ...s, alias: name });
         tmp.push(name);
@@ -1607,6 +1643,7 @@ export function compileJflow(
       message: error.detail,
       span: error.span,
       hint: error.hint,
+      ...(error.fix ? { fix: error.fix } : {}),
     });
     return {
       nodes: [],

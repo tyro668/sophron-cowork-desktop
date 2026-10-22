@@ -11,7 +11,7 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { linter, lintGutter } from '@codemirror/lint';
+import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
 import {
   Decoration,
@@ -27,6 +27,7 @@ import {
   jflowLintDiagnostics,
   jflowStepCompletions,
   jflowStepLint,
+  applyJflowFix,
   type JflowCatalog,
   type JflowColumn,
 } from '../../shared/jflow';
@@ -127,7 +128,8 @@ export function JflowEditor({
       if (
         !ctx.explicit &&
         r.from === ctx.pos &&
-        !/[[('|]$/.test(ctx.state.sliceDoc(ctx.pos - 1, ctx.pos))
+        !/[[('|]$/.test(ctx.state.sliceDoc(ctx.pos - 1, ctx.pos)) &&
+        !r.options[0]?.label.startsWith('over')
       )
         return null;
       return { from: r.from, options: r.options, validFor: undefined };
@@ -143,15 +145,45 @@ export function JflowEditor({
           jflowTheme,
           lintGutter(),
           linter(
-            (ev) =>
-              stepRef.current
-                ? jflowStepLint(ev.state.doc.toString(), stepRef.current)
-                : jflowLintDiagnostics(ev.state.doc.toString(), catalogRef.current),
+            (ev) => {
+              const doc = ev.state.doc.toString();
+              const step = stepRef.current;
+              const diagnostics = step
+                ? jflowStepLint(doc, step)
+                : jflowLintDiagnostics(doc, catalogRef.current);
+              return diagnostics.map(({ fix, ...d }): Diagnostic => {
+                // A per-node editor holds one step: multi-step rewrites belong to the workflow DSL.
+                if (!fix || (step && fix.text.includes('\n'))) return d;
+                return {
+                  ...d,
+                  actions: [
+                    {
+                      name: fix.title,
+                      apply: (target) => {
+                        const current = target.state.doc.toString();
+                        target.dispatch({
+                          changes: {
+                            from: 0,
+                            to: current.length,
+                            insert: applyJflowFix(current, fix),
+                          },
+                        });
+                      },
+                    },
+                  ],
+                };
+              });
+            },
             { delay: 300 }
           ),
           autocompletion({ override: [complete], activateOnTyping: true }),
           EditorView.inputHandler.of((ev, _from, _to, text) => {
-            if (text === '[' || text === '|' || text === "'")
+            if (
+              text === '[' ||
+              text === '|' ||
+              text === "'" ||
+              (text === ' ' && /\)\s*$/.test(ev.state.sliceDoc(Math.max(0, _from - 40), _from)))
+            )
               setTimeout(() => startCompletion(ev), 0);
             return false;
           }),

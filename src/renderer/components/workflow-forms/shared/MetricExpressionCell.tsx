@@ -63,6 +63,7 @@ export function MetricExpressionCell({
             fieldCompletions={fieldCompletions}
             columnTypes={columnTypes}
             placeholder={placeholder ?? tr('expressionPlaceholder')}
+            aggregateContext="metric"
           />
         </div>
         <button

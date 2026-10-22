@@ -37,7 +37,7 @@ export const REQUIREMENT_CAPABILITY_REGISTRY = {
   'derive.scalar': cap('derive', 'derive a scalar column with certified expressions'),
   'derive_window.aggregate': cap(
     'derive_window',
-    'aggregate window functions with structured partitions and frames'
+    'aggregate window values (avg/sum/… over () or over (by: …)) beside every row, e.g. comparing a row or group total with the overall or per-group average'
   ),
   'derive_window.ranking': cap('derive_window', 'ranking window functions'),
   'derive_window.value_or_offset': cap(

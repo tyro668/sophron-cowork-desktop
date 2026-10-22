@@ -37,6 +37,7 @@ import type {
   WorkflowNodeRunStat,
 } from '../../../../types';
 import {
+  applyJflowFix,
   compileWorkflowJflow,
   exportWorkflowJflow,
   type JflowCatalog,
@@ -382,9 +383,18 @@ export function PipelineEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [workflowStructureSignature]
   );
+  const splitNestedAggregateRef = useRef<(nodeId: string) => void>(() => undefined);
+  const splitNestedAggregate = useCallback(
+    (nodeId: string) => splitNestedAggregateRef.current(nodeId),
+    []
+  );
   const workflowDataContext = useMemo(
-    () => ({ version: nodeDataRefreshVersion, workflow: draftWorkflowInput }),
-    [draftWorkflowInput, nodeDataRefreshVersion]
+    () => ({
+      version: nodeDataRefreshVersion,
+      workflow: draftWorkflowInput,
+      splitNestedAggregate,
+    }),
+    [draftWorkflowInput, nodeDataRefreshVersion, splitNestedAggregate]
   );
   const isWorkflowDirty =
     Boolean(workflowSignature) &&
@@ -1432,60 +1442,95 @@ export function PipelineEditor({
     setDslError(null);
   }, []);
 
+  /** Replace the canvas with a compiled jflow document; returns the error text, if any. */
+  const importJflowText = useCallback(
+    (text: string): string | null => {
+      if (!workflow) return null;
+      const compiled = compileWorkflowJflow(text, jflowCatalog, pipeline.id);
+      const errors = compiled.diagnostics.filter((item) => item.severity === 'error');
+      if (errors.length > 0 || compiled.nodes.length === 0) {
+        return formatJflowDiagnostics(errors) || t('data.workflow.dslInvalid');
+      }
+      const now = Date.now();
+      const nextNodes: DataWorkflowNode[] = compiled.nodes
+        .filter((node) => isWorkflowOperatorType(node.type))
+        .map((node) => ({
+          id: node.id,
+          pipelineId: pipeline.id,
+          type: node.type as DataWorkflowOperatorType,
+          label:
+            node.label || t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
+          x: node.x,
+          y: node.y,
+          config: node.config ?? {},
+          createdAt: now,
+          updatedAt: now,
+        }));
+      const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
+        id: edge.id,
+        pipelineId: pipeline.id,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        sourceHandle: edge.sourceHandle ?? 'output',
+        targetHandle: edge.targetHandle ?? 'input',
+        createdAt: now,
+      }));
+      setLayoutEpoch((current) => current + 1);
+      setWorkflow({
+        ...workflow,
+        nodes: layoutWorkflowNodes(
+          nextNodes,
+          nextEdges,
+          canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
+        ),
+        edges: nextEdges,
+      });
+      return null;
+    },
+    [workflow, jflowCatalog, pipeline.id, formatJflowDiagnostics, t]
+  );
+
+  splitNestedAggregateRef.current = (nodeId: string) => {
+    if (!workflow) return;
+    try {
+      let text = exportWorkflowJflow(workflow.nodes, workflow.edges, {
+        pipelineName: pipelineTitle,
+      }).text;
+      for (let pass = 0; pass < 8; pass += 1) {
+        const fix = compileWorkflowJflow(text, jflowCatalog, pipeline.id).diagnostics.find(
+          (item) => item.code === 'E_AGG_NESTED' && item.fix
+        )?.fix;
+        if (!fix) break;
+        text = applyJflowFix(text, fix);
+      }
+      const error = importJflowText(text);
+      setLocalError(error);
+      if (!error) selectSingleNode(nodeId);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const applyDslImport = useCallback(() => {
     if (!workflow) return;
     setDslError(null);
     const compiled = compileWorkflowJflow(dslText, jflowCatalog, pipeline.id);
-    const errors = compiled.diagnostics.filter((item) => item.severity === 'error');
-    if (errors.length > 0 || compiled.nodes.length === 0) {
-      setDslError(formatJflowDiagnostics(errors) || t('data.workflow.dslInvalid'));
+    const error = importJflowText(dslText);
+    if (error) {
+      setDslError(error);
       return;
     }
-    const now = Date.now();
-    const nextNodes: DataWorkflowNode[] = compiled.nodes
-      .filter((node) => isWorkflowOperatorType(node.type))
-      .map((node) => ({
-        id: node.id,
-        pipelineId: pipeline.id,
-        type: node.type as DataWorkflowOperatorType,
-        label: node.label || t(getOperatorCatalog(node.type as DataWorkflowOperatorType).labelKey),
-        x: node.x,
-        y: node.y,
-        config: node.config ?? {},
-        createdAt: now,
-        updatedAt: now,
-      }));
-    const nextEdges: DataWorkflowEdge[] = compiled.edges.map((edge) => ({
-      id: edge.id,
-      pipelineId: pipeline.id,
-      sourceNodeId: edge.sourceNodeId,
-      targetNodeId: edge.targetNodeId,
-      sourceHandle: edge.sourceHandle ?? 'output',
-      targetHandle: edge.targetHandle ?? 'input',
-      createdAt: now,
-    }));
-    setLayoutEpoch((current) => current + 1);
-    setWorkflow({
-      ...workflow,
-      nodes: layoutWorkflowNodes(
-        nextNodes,
-        nextEdges,
-        canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
-      ),
-      edges: nextEdges,
-    });
-    selectSingleNode(nextNodes[0]?.id ?? null);
+    selectSingleNode(compiled.nodes.find((node) => isWorkflowOperatorType(node.type))?.id ?? null);
     closeDslDialog();
     setLocalError(null);
   }, [
     closeDslDialog,
     dslText,
-    selectSingleNode,
-    t,
-    pipeline.id,
-    workflow,
+    importJflowText,
     jflowCatalog,
-    formatJflowDiagnostics,
+    pipeline.id,
+    selectSingleNode,
+    workflow,
   ]);
 
   return (

@@ -271,28 +271,34 @@ function validateNode(
       };
     }
     case 'derive': {
+      // Calculations run in order: later ones may reference fields added by earlier ones
+      // (including window values such as `avg([x]) over ()`).
       const calculations = recordArray(config.calculations);
+      const columns = left.known ? [...left.columns] : [];
       for (const item of calculations) {
         const expression = String(item.expression ?? '');
-        if (!expression.trim()) continue;
-        if (!isExpressionSyntaxValid(expression)) {
-          push(
-            diagnostics,
-            'error',
-            node,
-            'expressionSyntaxInvalid',
-            `Calculation expression is not parseable: ${expression.slice(0, 120)}`,
-            { field: String(item.field ?? '') }
-          );
-          continue;
-        }
-        checkFields(node, extractExpressionFieldNames(expression), left, diagnostics, 'expression');
-      }
-      if (!left.known) return UNKNOWN;
-      const columns = [...left.columns];
-      for (const item of calculations) {
         const field = String(item.field ?? '');
-        if (!field) continue;
+        if (expression.trim()) {
+          if (!isExpressionSyntaxValid(expression)) {
+            push(
+              diagnostics,
+              'error',
+              node,
+              'expressionSyntaxInvalid',
+              `Calculation expression is not parseable: ${expression.slice(0, 120)}`,
+              { field }
+            );
+          } else {
+            checkFields(
+              node,
+              extractExpressionFieldNames(expression),
+              { known: left.known, columns },
+              diagnostics,
+              'expression'
+            );
+          }
+        }
+        if (!left.known || !field) continue;
         const existing = columns.findIndex((column) => column.name === field);
         if (existing >= 0 && item.action === 'replace') {
           columns[existing] = { name: field };
@@ -300,6 +306,7 @@ function validateNode(
           columns.push({ name: field });
         }
       }
+      if (!left.known) return UNKNOWN;
       return { known: true, columns };
     }
     case 'missing_value': {

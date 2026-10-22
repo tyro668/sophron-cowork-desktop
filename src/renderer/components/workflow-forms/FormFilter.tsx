@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { Copy, CornerDownRight, GitMerge, Plus } from 'lucide-react';
+import { Copy, CornerDownRight, FunctionSquare, GitMerge, List, Plus } from 'lucide-react';
 import {
   AddRow,
   Cell,
@@ -13,6 +13,7 @@ import {
 import type { OperatorFormProps } from './types';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassValueInput } from './shared/GlassValueInput';
+import { GlassExpressionInput } from './shared/GlassExpressionInput';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -35,6 +36,7 @@ import {
   splitInValues,
   joinInValues,
   MAX_NESTING_DEPTH,
+  isFilterExpressionValue,
   type FilterConditionLeaf,
   type FilterConditionBranch,
   type FilterConditionNode,
@@ -154,6 +156,7 @@ export function flattenFilterTree(root: FilterConditionBranch): FlatFilterRow[] 
 }
 
 const NULL_OPS = new Set(['is null', 'is not null']);
+const COMPARISON_OPS = new Set(['=', '!=', '>', '>=', '<', '<=']);
 
 /** Leaf validation: a chosen field needs its value(s); extra rows need a field. */
 export function validateFilterLeaf(
@@ -222,6 +225,11 @@ function ConditionLeafRow({
   const isValsLoading = ctx.loadingValues[leaf.field] ?? false;
   const isValsError = ctx.columnValuesError[leaf.field] ?? false;
   const issue = validateFilterLeaf(leaf, effectiveOp, ctx.totalRows);
+  // Comparisons can take an expression on the right — e.g. the window value
+  // `avg([销售额]) over (by: [区域])` — edited with the shared expression input.
+  const canUseExpression = COMPARISON_OPS.has(effectiveOp);
+  const [expressionMode, setExpressionMode] = useState(() => isFilterExpressionValue(leaf.val1));
+  const showExpression = canUseExpression && (expressionMode || isFilterExpressionValue(leaf.val1));
   const indentStyle =
     row.depth > 0
       ? {
@@ -299,6 +307,33 @@ function ConditionLeafRow({
               noSuggestionsLabel={tr('valueInput.noSuggestions')}
               onOpen={() => ctx.fetchColumnValues(leaf.field)}
             />
+          ) : showExpression ? (
+            <div className="flex h-full w-full items-center">
+              <div className="min-w-0 flex-1">
+                <GlassExpressionInput
+                  value={leaf.val1}
+                  onChange={(v) => ctx.updateLeaf(leaf.id, { val1: v })}
+                  fieldCompletions={ctx.fieldCompletions}
+                  columnTypes={ctx.columnTypes}
+                  aggregateContext="row"
+                  placeholder={tr('filterExpressionPlaceholder')}
+                />
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-full items-center justify-center text-text-muted hover:text-accent"
+                style={{ flex: '0 0 28px', width: 28, padding: 0 }}
+                title={tr('filterUseValue')}
+                aria-label={tr('filterUseValue')}
+                data-testid="filter-use-value"
+                onClick={() => {
+                  setExpressionMode(false);
+                  ctx.updateLeaf(leaf.id, { val1: '' });
+                }}
+              >
+                <List className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : (
             <>
               <GlassValueInput
@@ -312,6 +347,19 @@ function ConditionLeafRow({
                 className="!w-full"
                 onOpen={() => ctx.fetchColumnValues(leaf.field)}
               />
+              {canUseExpression && (
+                <button
+                  type="button"
+                  className="inline-flex h-full items-center justify-center text-text-muted hover:text-accent"
+                  style={{ flex: '0 0 28px', width: 28, padding: 0 }}
+                  title={tr('filterUseExpression')}
+                  aria-label={tr('filterUseExpression')}
+                  data-testid="filter-use-expression"
+                  onClick={() => setExpressionMode(true)}
+                >
+                  <FunctionSquare className="h-3.5 w-3.5" />
+                </button>
+              )}
               {isBetween ? (
                 <>
                   <span className="opg-between-sep">{tr('filterAnd')}</span>

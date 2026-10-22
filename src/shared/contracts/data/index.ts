@@ -580,6 +580,8 @@ export interface DataAutomationLineageEntry {
   type?: string;
   sourceColumns: DataAutomationColumnSnapshot[];
   expression?: string;
+  /** Set when the column is a window value, e.g. `avg · 按 区域` for `avg([x]) over (by: [区域])`. */
+  window?: string;
 }
 
 export interface DataAutomationSourceBinding {

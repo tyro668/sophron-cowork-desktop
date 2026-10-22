@@ -96,4 +96,13 @@ describe('deriveWorkflowLineage', () => {
     expect(result[0].sourceColumns).toEqual([src('门店')]);
     expect(result[1].sourceColumns.map((c) => c.name).sort()).toEqual(['品类', '销售额'].sort());
   });
+  it('labels window-value columns with their partition', () => {
+    const result = lineage('  | derive [门店均值] = avg([销售额]) over (by: [门店])', [
+      ...SALES,
+      { name: '门店均值', type: 'decimal' },
+    ]);
+    const entry = result.find((e) => e.name === '门店均值');
+    expect(entry?.window).toBe('avg · 按 门店');
+    expect(result.find((e) => e.name === '销售额')?.window).toBeUndefined();
+  });
 });

@@ -161,7 +161,8 @@ export function tokenizeExpression(input: string): ExprToken[] {
       ch === '<' ||
       ch === '>' ||
       ch === '!' ||
-      ch === '|'
+      ch === '|' ||
+      ch === ':'
     ) {
       pushToken({ type: 'Operator', value: ch, start: i, end: i + 1 });
       i++;

@@ -3,4 +3,9 @@ export * from './model';
 export * from './ops';
 export * from './parser';
 export * from './tree';
-export { formatFilterConditionValue, joinInValues, splitInValues } from './values';
+export {
+  formatFilterConditionValue,
+  isFilterExpressionValue,
+  joinInValues,
+  splitInValues,
+} from './values';

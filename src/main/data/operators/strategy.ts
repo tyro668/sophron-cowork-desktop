@@ -11,7 +11,7 @@ import { compileLimitSql } from './limit';
 import { compilePivotSql } from './pivot';
 import { compileUnpivotSql } from './unpivot';
 import { compileUnnestSql } from './unnest';
-import { compileFilterConditionExpression } from './filter';
+import { compileFilterConditionExpression, expressionHasWindow } from './filter';
 
 export interface CompileStrategy {
   compile: (
@@ -34,7 +34,10 @@ export function buildFilterSql(
   if (!condition) {
     throw new Error('Filter requires a condition');
   }
-  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} WHERE ${compileFilterConditionExpression(condition)}`;
+  // Window values (`[x] > avg([x]) over (by: [g])`) are evaluated after WHERE; QUALIFY filters
+  // on them in the same pass.
+  const clause = expressionHasWindow(condition) ? 'QUALIFY' : 'WHERE';
+  return `CREATE TEMP TABLE ${output} AS SELECT * FROM ${input} ${clause} ${compileFilterConditionExpression(condition)}`;
 }
 
 function wrapNoColumns(
