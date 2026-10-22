@@ -65,6 +65,7 @@ export function CalculateFieldExpressionInput({
       fieldCompletions={fieldCompletions}
       columnTypes={columnTypes}
       assistantPanel={assistantPanel}
+      aggregateContext="row"
       title={expressionInputProps.title ?? tr('calcFieldEditorTitle')}
     />
   );

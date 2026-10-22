@@ -27,6 +27,8 @@ import {
 } from './shared/rowListOperations';
 import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
 import { useUpdateConfig } from '../../hooks/useUpdateConfig';
+import { useWorkflowDataContext } from '../../hooks/workflow-data-context';
+import { expressionAggregateIssue } from '../../../shared/jflow';
 import { useWorkflowNodeColumnTypes } from '../../hooks/useWorkflowNodeColumnTypes';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
@@ -71,6 +73,7 @@ export default function FormAggregate({
   const tr = useFormTranslation('aggregate');
   const columnTypes = useWorkflowNodeColumnTypes({ pipelineId, sourceNode });
   const updateConfig = useUpdateConfig(onNodeChange);
+  const { splitNestedAggregate } = useWorkflowDataContext();
 
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config.groupBy]);
   const dateGranularity = useMemo(
@@ -341,6 +344,27 @@ export default function FormAggregate({
                   {tr(message.key, message.params)}
                 </ErrorRow>
               ))}
+              {expressionAggregateIssue(metric.expression ?? '', 'metric') && (
+                <ErrorRow key={`${index}-nested`} span={4}>
+                  <span data-testid={`aggregate-nested-${index}`}>
+                    <b>{tr('rowPrefix', { index: index + 1 })}</b>
+                    {tr('aggregateNestedHint', {
+                      fn: metric.function,
+                      alias: metric.alias || tr('aggregateAliasPlaceholder'),
+                    })}
+                  </span>
+                  {splitNestedAggregate && (
+                    <button
+                      type="button"
+                      data-testid={`aggregate-split-${index}`}
+                      onClick={() => splitNestedAggregate(node.id)}
+                      className="ml-2 rounded-md border border-border-subtle bg-surface px-2 py-0.5 text-[12px] font-medium text-accent hover:bg-accent-muted"
+                    >
+                      {tr('aggregateNestedSplit')}
+                    </button>
+                  )}
+                </ErrorRow>
+              )}
             </Fragment>
           );
         })}

@@ -15,7 +15,8 @@ select lists the FULL output projection (every column that must remain, in order
 To overwrite an existing column use derive replace [col] = expr; derive [new] = expr adds a column.
 Use one step per concern; several derive/where steps in sequence are fine. Column references must use the current name at that point of the chain (after rename use the new name).
 Top/bottom N: sort … then take N, or take N per: [group] sort: -[metric] for per-group limits.
-Totals beside every row (percent of total, running sums, ranking, lag/lead) use window functions in derive: sum([x]) over (), row_number() over (partition by [k] order by [v] desc).
+Totals beside every row (percent of total, averages, running sums, ranking, lag/lead) are window values in derive / where: avg([x]) over () for all rows, sum([x]) over (by: [k]) per group, rank() over (by: [k] sort: -[v]) ordered. Later fields in one derive may use earlier ones, and if / where may use window values inline: derive [达标] = if [销售额] >= avg([销售额]) over () then '达标' else '不达标' end.
+Comparing a per-group total with the average (or max, total…) across groups is two levels: group first, then a window value over the grouped rows — | group [门店] (agg [销售额合计] = sum([销售额])) | derive [门店均值] = avg([销售额合计]) over () | derive [是否达标] = if [销售额合计] >= [门店均值] then '达标' else '不达标' end. Never nest aggregates (avg(sum(…)) fails with E_AGG_NESTED) and never fall back to sql for this.
 Division that may hit zero: [a] / nullif([b], 0). Date differences: date_diff('day', [start], [end]); never subtract dates.
 Fixed-decimal money/rates: cast(expr as decimal(18,2)) or round(expr, 2). Text currency like '$8.34': cast [价格] as decimal(18,2) on_error: null after derive replace [价格] = replace([价格], '$', '').
 Marker values such as 'N/A' or '' that mean null: nullify [a] values ('N/A', ''). Replace nulls: fill [a] with 0. Drop rows with nulls: where [a] is not null.

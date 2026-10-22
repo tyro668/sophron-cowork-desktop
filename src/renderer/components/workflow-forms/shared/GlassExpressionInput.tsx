@@ -22,6 +22,14 @@ import {
   type DecorationSet,
 } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
+import {
+  autocompletion,
+  startCompletion,
+  type CompletionContext,
+  type CompletionResult,
+} from '@codemirror/autocomplete';
+import { windowSuggestionAt } from '../../../../shared/expression/window-suggest';
+import { expressionAggregateIssue } from '../../../../shared/jflow';
 import { tags } from '@lezer/highlight';
 import { DataTypeIcon } from './DataTypeIcon';
 import './form-grid.css';
@@ -609,6 +617,11 @@ export interface GlassExpressionInputProps {
   subtitle?: string;
   /** Fields the linter treats as known (defaults to fieldCompletions). */
   lintFields?: string[];
+  /**
+   * Aggregate lint: `row` (derive / filter values — bare aggregates need `over (…)`, nested ones
+   * a group) or `metric` (argument of an aggregate metric — any aggregate is nested).
+   */
+  aggregateContext?: 'row' | 'metric';
 }
 
 const EXPR_KEYWORDS = new Set([
@@ -1047,6 +1060,21 @@ function FunctionList({
 
 export const EXPRESSION_PREVIEW_MAX_LINES = 3;
 
+/** `avg([x]) ▌` → `over ()` / `over (by: …)`. */
+function windowCompletionSource(ctx: CompletionContext): CompletionResult | null {
+  const suggestion = windowSuggestionAt(ctx.state.sliceDoc(0, ctx.pos));
+  if (!suggestion) return null;
+  return {
+    from: suggestion.from,
+    options: suggestion.options.map((option) => ({
+      label: option.label,
+      apply: option.apply,
+      detail: option.detail,
+      type: 'keyword',
+    })),
+  };
+}
+
 export function GlassExpressionInput({
   value,
   onChange,
@@ -1059,6 +1087,7 @@ export function GlassExpressionInput({
   title,
   subtitle,
   lintFields,
+  aggregateContext,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation('expression');
   const [open, setOpen] = useState(false);
@@ -1116,6 +1145,7 @@ export function GlassExpressionInput({
           title={label}
           subtitle={subtitle}
           lintFields={lintFields}
+          aggregateContext={aggregateContext}
           tr={tr}
         />
       )}
@@ -1135,6 +1165,7 @@ function ExpressionEditorDialog({
   title,
   subtitle,
   lintFields,
+  aggregateContext,
   tr,
 }: GlassExpressionInputProps & {
   onClose: () => void;
@@ -1160,6 +1191,10 @@ function ExpressionEditorDialog({
     () => lintExpression(draft, lintFields ?? fieldCompletions),
     [draft, fieldCompletions, lintFields]
   );
+  const aggregateIssue = useMemo(
+    () => (aggregateContext ? expressionAggregateIssue(draft, aggregateContext) : null),
+    [aggregateContext, draft]
+  );
   // Typed expression layer: result type (or first grammar error) for the status bar.
   const analysis = useMemo(
     () => (draft.trim() ? analyzeExpression(draft, columnTypes ?? {}) : null),
@@ -1183,6 +1218,12 @@ function ExpressionEditorDialog({
           syntaxHighlighting(exprHighlightStyle),
           exprTheme,
           issueField,
+          autocompletion({ override: [windowCompletionSource], activateOnTyping: true }),
+          EditorView.inputHandler.of((view, from, _to, text) => {
+            if (text === ' ' && /\)\s*$/.test(view.state.sliceDoc(Math.max(0, from - 40), from)))
+              setTimeout(() => startCompletion(view), 0);
+            return false;
+          }),
           placeholder(placeholderText),
           keymap.of([
             {
@@ -1262,7 +1303,7 @@ function ExpressionEditorDialog({
   const titleSpan = wizard ? assistantPanel.titleSpan : 5;
   const rows = wizard
     ? '44px 36px minmax(0,1fr) 48px'
-    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}minmax(0,1fr) 48px`;
+    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}${aggregateIssue && !wizard ? '30px ' : ''}minmax(0,1fr) 48px`;
 
   const tabClass = (active: boolean) =>
     `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors ${ROW_BORDER} ${
@@ -1406,6 +1447,30 @@ function ExpressionEditorDialog({
                 </span>
               </button>
             ))}
+            {aggregateIssue && !wizard && (
+              <div
+                key="aggregate-issue"
+                data-testid="expression-aggregate-issue"
+                style={{ gridColumn: '1 / -1' }}
+                className={`flex min-w-0 items-center gap-2 bg-warning/[0.08] px-3 text-[12px] text-text-primary ${ROW_BORDER}`}
+              >
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-warning" />
+                <b className="shrink-0 font-semibold">{aggregateIssue.message}</b>
+                <span className="min-w-0 truncate text-text-secondary" title={aggregateIssue.hint}>
+                  {aggregateIssue.hint}
+                </span>
+                {aggregateIssue.fixText && (
+                  <button
+                    type="button"
+                    data-testid="expression-aggregate-fix"
+                    onClick={() => replaceExpression(aggregateIssue.fixText!)}
+                    className="ml-auto shrink-0 rounded-md border border-border-subtle px-2 py-0.5 text-[12px] font-medium text-accent hover:bg-accent-muted"
+                  >
+                    {tr('expressionAddOverFix')}
+                  </button>
+                )}
+              </div>
+            )}
 
             <div
               key="fields"

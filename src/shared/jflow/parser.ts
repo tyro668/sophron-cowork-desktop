@@ -1634,6 +1634,31 @@ class JflowParser extends EmbeddedActionsParser {
         },
       });
     });
+    // Named form (same vocabulary as take): `over (by: [区域] sort: -[销售额])`.
+    this.OPTION6(() => {
+      this.CONSUME3(k('by'));
+      this.CONSUME(Colon);
+      this.AT_LEAST_ONE_SEP3({
+        SEP: Comma,
+        DEF: () => {
+          const e = this.SUBRULE3(this.expr);
+          this.ACTION(() => o.partition.push(e));
+        },
+      });
+    });
+    this.OPTION7(() => {
+      this.CONSUME(k('sort'));
+      this.CONSUME2(Colon);
+      this.AT_LEAST_ONE_SEP4({
+        SEP: Comma,
+        DEF: () => {
+          const key = this.SUBRULE(this.sortKey);
+          this.ACTION(() =>
+            o.order.push({ e: key.field, dir: key.desc ? 'desc' : null, nulls: key.nulls })
+          );
+        },
+      });
+    });
     this.OPTION5(() => {
       const unit = this.OR3([
         { ALT: () => this.CONSUME(k('rows')).image },

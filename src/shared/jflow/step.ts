@@ -165,14 +165,14 @@ export function parseJflowStep(
     (rightAlias ? `source ${rightAlias} = @id('${STUB_RIGHT_URI}')\n` : '') +
     `${STUB_ALIAS}\n  | `;
   const parsed = parseJflow(`${prefix}${step}\n`);
+  const move = (span: { start: number; end: number }) => ({
+    start: Math.max(0, span.start - prefix.length + lead),
+    end: Math.max(0, span.end - prefix.length + lead),
+  });
   const shift = (d: JflowDiagnostic): JflowDiagnostic => ({
     ...d,
-    span: d.span
-      ? {
-          start: Math.max(0, d.span.start - prefix.length + lead),
-          end: Math.max(0, d.span.end - prefix.length + lead),
-        }
-      : d.span,
+    span: d.span ? move(d.span) : d.span,
+    ...(d.fix ? { fix: { ...d.fix, span: move(d.fix.span) } } : {}),
   });
   if (!parsed.ast || parsed.diagnostics.some((d) => d.severity === 'error')) {
     return { config: null, type: null, diagnostics: parsed.diagnostics.map(shift) };

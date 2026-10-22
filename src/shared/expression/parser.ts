@@ -120,6 +120,10 @@ class Parser {
     const token = this.peek();
     return token.type === 'Operator' && token.value === op;
   }
+  private isColon(offset = 0): boolean {
+    const token = this.peek(offset);
+    return token.type === 'Operator' && token.value === ':';
+  }
   private accept(type: ExprToken['type']): boolean {
     if (this.peek().type !== type) return false;
     this.pos++;
@@ -512,6 +516,24 @@ class Parser {
           }
         }
         spec.orderBy.push(entry);
+      } while (this.accept('Comma'));
+    }
+    // Named form (jflow / take vocabulary): `over (by: [区域] sort: -[销售额])`.
+    if (this.isWord('by') && this.isColon(1)) {
+      this.pos += 2;
+      do spec.partitionBy.push(this.parseConcat());
+      while (this.accept('Comma'));
+    }
+    if (this.isWord('sort') && this.isColon(1)) {
+      this.pos += 2;
+      do {
+        let direction: 'ASC' | 'DESC' | undefined;
+        if (this.isOp('-')) {
+          this.pos++;
+          direction = 'DESC';
+        }
+        const expr = this.parseConcat();
+        spec.orderBy.push(direction ? { expr, direction } : { expr });
       } while (this.accept('Comma'));
     }
     const unitWord = ['rows', 'range', 'groups'].find((w) => this.isWord(w));

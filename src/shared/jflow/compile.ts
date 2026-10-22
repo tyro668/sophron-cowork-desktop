@@ -5,6 +5,12 @@
  * last node keeps `stepId` so downstream edges and run stats hang on a stable id. Temporary
  * columns use the `__` prefix and are dropped by the composite's last node.
  */
+import {
+  NESTED_AGGREGATE_HINT,
+  addOverToRowAggregates,
+  rowLevelAggregateProblem,
+  splitNestedAggregateStep,
+} from './window-rewrite';
 import { lookupExpressionFunction } from '../expression/functions';
 import { parseExpression } from '../expression/parser';
 import {
@@ -19,6 +25,7 @@ import type {
   Head,
   JflowDiagnostic,
   JflowFile,
+  JflowFix,
   ResourceRef,
   SortKey,
   Source,
@@ -28,7 +35,7 @@ import type {
 } from './ast';
 import { JflowError } from './ast';
 import { checkCastItemArgs, checkStepArgs, type StepArgs } from './args';
-import { fmtExpr } from './format';
+import { fmtExpr, fmtStep } from './format';
 
 export interface JflowColumn {
   name: string;
@@ -295,9 +302,22 @@ class Compiler {
   colTypes = new Map<string, Map<string, string>>();
   private seq = 0;
   private usedIds = new Set<string>();
+  /** Explicit `#! id:` values anywhere in the file; generated ids never take them. */
+  private reservedIds = new Set<string>();
   private currentSpan: Span = { start: 0, end: 0 };
 
   constructor(private readonly options: JflowCompileOptions) {}
+
+  reserveIds(file: unknown): void {
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return;
+      if (Array.isArray(value)) return value.forEach(visit);
+      const record = value as Record<string, unknown>;
+      if (typeof record.id === 'string' && 'span' in record) this.reservedIds.add(record.id);
+      Object.values(record).forEach(visit);
+    };
+    visit(file);
+  }
 
   private stepId(step: { id?: string }): string {
     if (step.id) {
@@ -310,7 +330,7 @@ class Compiler {
     do {
       this.seq += 1;
       id = `n${this.seq}`;
-    } while (this.usedIds.has(id));
+    } while (this.usedIds.has(id) || this.reservedIds.has(id));
     this.usedIds.add(id);
     return id;
   }
@@ -555,9 +575,27 @@ class Compiler {
   }
 
   // ------------------------------------------------------------ verbs
+  /** Bare / nested aggregates in a row-level step: error with a hint and an `over ()` fix. */
+  private checkRowAggregates(st: Step, exprs: Expr[]): void {
+    const problem = rowLevelAggregateProblem(exprs);
+    if (!problem) return;
+    let fix: JflowFix | undefined;
+    if (problem.code === 'E_AGG_ROW') {
+      const fixed: Step = st.cond
+        ? { ...st, cond: addOverToRowAggregates(st.cond) }
+        : {
+            ...st,
+            derives: (st.derives ?? []).map((d) => ({ ...d, e: addOverToRowAggregates(d.e) })),
+          };
+      fix = { title: '加上 over ()（全部行）', span: st.span, text: `| ${fmtStep(fixed).trim()}` };
+    }
+    throw new JflowError(problem.code, problem.message, st.span, problem.hint, fix);
+  }
+
   L_where(cur: Rel, st: Step, sid: string): Rel {
     const cond = st.cond!;
     this.checkExprFields(cond, cur.cols, st.span);
+    this.checkRowAggregates(st, [cond]);
     if (hasWindow(cond)) {
       const a = this.node(
         sid,
@@ -705,6 +743,10 @@ class Compiler {
   }
 
   L_derive(cur: Rel, st: Step, sid: string): Rel {
+    this.checkRowAggregates(
+      st,
+      (st.derives ?? []).map((d) => d.e)
+    );
     const cols = cur.cols ? [...cur.cols] : null;
     const calcs = (st.derives ?? []).map((d) => {
       if (d.name.startsWith('__'))
@@ -921,7 +963,14 @@ class Compiler {
       const e = x as Expr;
       if (e.k && isAggregateCall(e)) {
         const s = simple(e);
-        if (!s) throw new JflowError('E_AGG_NESTED', '不支持嵌套聚合', st.span);
+        if (!s)
+          throw new JflowError(
+            'E_AGG_NESTED',
+            '不支持嵌套聚合',
+            st.span,
+            NESTED_AGGREGATE_HINT,
+            splitNestedAggregateStep(st) ?? undefined
+          );
         const name = `__a${metrics.length + 1}`;
         metrics.push({ ...s, alias: name });
         tmp.push(name);
@@ -1598,6 +1647,7 @@ export function compileJflow(
 ): JflowCompileResult {
   const c = new Compiler(options);
   try {
+    c.reserveIds(file);
     c.compileFile(file);
   } catch (error) {
     if (!(error instanceof JflowError)) throw error;
@@ -1607,6 +1657,7 @@ export function compileJflow(
       message: error.detail,
       span: error.span,
       hint: error.hint,
+      ...(error.fix ? { fix: error.fix } : {}),
     });
     return {
       nodes: [],

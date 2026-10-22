@@ -18,6 +18,7 @@ import type {
   TypeRef,
 } from './ast';
 import type { ArgValue } from './args';
+import { lookupExpressionFunction } from '../expression/functions';
 
 export type Dialect = 'jflow' | 'cfg';
 
@@ -163,6 +164,22 @@ export function fmtExpr(e: Expr, dialect: Dialect = 'jflow'): string {
       let s = `${e.name}(${args.join(', ')})`;
       if (e.over) {
         const o = e.over;
+        const kind = lookupExpressionFunction(e.name)?.kind;
+        const named =
+          dialect === 'jflow' &&
+          (kind === 'aggregate' || kind === 'window') &&
+          !o.frame &&
+          o.order.every((key) => key.e.k === 'field' && !key.nulls && key.dir !== 'asc');
+        if (named) {
+          const parts: string[] = [];
+          if (o.partition.length) parts.push(`by: ${o.partition.map(X).join(', ')}`);
+          if (o.order.length) {
+            parts.push(
+              `sort: ${o.order.map((key) => (key.dir === 'desc' ? '-' : '') + X(key.e)).join(', ')}`
+            );
+          }
+          return `${s} over (${parts.join(' ')})`;
+        }
         const parts: string[] = [];
         if (o.partition.length) parts.push(`partition by ${o.partition.map(X).join(', ')}`);
         if (o.order.length) {

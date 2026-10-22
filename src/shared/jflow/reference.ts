@@ -60,10 +60,23 @@ const OPERATORS = `Steps (one per line, each starting with |):
 - sql '''SELECT … FROM input'''                 escape hatch (the upstream table is named input)
 - write @new('结果表') mode: replace`;
 
-const DERIVE_WINDOW = `Window functions go in derive / where with over (...):
-  | derive [排名] = row_number() over (partition by [区域] order by [销售额] desc)
-  | derive [累计] = sum([金额]) over (partition by [客户] order by [日期])
-  | where [日期] = max([日期]) over ()          latest snapshot
+const DERIVE_WINDOW = `Window values: any aggregate (or rank / row_number / lag …) followed by over (…) is a
+row-level value — every row keeps its own values and also carries the aggregate:
+  over ()                         all rows
+  over (by: [区域])                per group (partition)
+  over (by: [区域] sort: -[销售额])  ordered (running sums, ranking); same by: / sort: vocabulary as take
+  | derive [全店均值] = avg([销售额]) over ()
+  | derive [区域合计] = sum([销售额]) over (by: [区域]), [占比] = [销售额] / [区域合计]
+  | derive [名次] = rank() over (by: [区域] sort: -[销售额])
+  | derive [累计] = sum([金额]) over (by: [客户] sort: [日期])
+  | derive [达标] = if [销售额] >= avg([销售额]) over () then '达标' else '不达标' end
+  | where [销售额] > avg([销售额]) over (by: [区域])      (a hidden column is added and dropped)
+Later fields in the same derive may use earlier ones ([占比] above uses [区域合计]).
+Two-level comparisons ("each store's total vs the average across stores") are a group then a window
+value — never a nested aggregate such as avg(sum([销售额])) (E_AGG_NESTED):
+  | group [门店] (agg [销售额合计] = sum([销售额]))
+  | derive [门店均值] = avg([销售额合计]) over ()
+  | derive [是否达标] = if [销售额合计] >= [门店均值] then '达标' else '不达标' end
 Use take … per: … for "top N per group" instead of a manual row_number filter when possible.`;
 
 const RESHAPE = `Reshape:

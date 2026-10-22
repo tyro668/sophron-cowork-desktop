@@ -10,6 +10,12 @@ import type {
   DataWorkflowNodeInput,
 } from '../../../shared/contracts/data';
 import { extractFieldNamesFromExpression } from './utils';
+import { describeWindowValue } from '../../../shared/expression/window-suggest';
+
+function windowLabel(expression: string | undefined): { window?: string } {
+  const description = expression ? describeWindowValue(expression) : null;
+  return description ? { window: description.label } : {};
+}
 
 interface ColumnLineage {
   sources: Map<string, DataAutomationColumnSnapshot>;
@@ -220,6 +226,7 @@ export function deriveWorkflowLineage(
       ...column,
       sourceColumns: [...lineage.sources.values()],
       ...(lineage.expression ? { expression: lineage.expression } : {}),
+      ...windowLabel(lineage.expression),
     };
   });
 }

@@ -12,3 +12,4 @@ Allowed operations: {{WORKFLOW_CAPABILITIES}}.
 Allowed expression functions: {{JFLOW_FUNCTIONS}}. Conditions use if/then/elseif/else/end; conditional aggregates use sumif/countif; date differences use date_diff('unit', start, end).
 This workflow has exactly one raw table. Treat joins and any second data source as unsupported.
 Multiple sequential operations are supported; do not classify a requirement as unsupported merely because it needs more than one step.
+Comparing a row or a per-group total with an overall or per-group aggregate (each store's total vs the average across stores, share of region total, rank within region) is supported: aggregate first if needed, then a window value such as avg([x]) over () or sum([x]) over (by: [k]) in derive.

@@ -92,7 +92,7 @@ describe('canonical calculation names and compatibility', () => {
           calculations: [{ field: 'n', expression: 'ROW_NUMBER() OVER (ORDER BY [Date])' }],
         },
       })
-    ).toBe('derive [n] = row_number() over(order by [Date])');
+    ).toBe('derive [n] = row_number() over (sort: [Date])');
   });
 
   it.each([

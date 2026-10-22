@@ -13,6 +13,11 @@ export interface WorkflowDataContextValue {
    * draft edits instead of falling back to the saved workflow.
    */
   workflow: DataWorkflowSaveInput | null;
+  /**
+   * Rewrites a group/aggregate node whose metrics nest aggregates (`avg(sum([x]))`) into the
+   * group + `avg([…]) over ()` pair, through the workflow jflow (E_AGG_NESTED quick-fix).
+   */
+  splitNestedAggregate?: (nodeId: string) => void;
 }
 
 export const WorkflowDataContext = createContext<WorkflowDataContextValue>({

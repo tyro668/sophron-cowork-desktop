@@ -7,7 +7,7 @@ import {
   type FilterConditionLeaf,
 } from './model';
 import { createEmptyLeaf } from './tree';
-import { unwrapQuotedValue } from './values';
+import { isFilterExpressionValue, unwrapQuotedValue } from './values';
 
 export interface EditableFilterCondition {
   tree: FilterConditionBranch;
@@ -309,6 +309,9 @@ function parseLeafCondition(expr: string): FilterConditionLeaf | null {
   if (opToken.type === 'Operator') {
     const op = opToken.value === '<>' ? '!=' : opToken.value;
     const valueToken = cursor.peek();
+    // `[销售额] > avg([销售额]) over (by: [区域])` — the right side is an expression.
+    const rest = valueToken ? trimmed.slice(valueToken.start) : '';
+    if (isFilterExpressionValue(rest)) return leaf(field, op, rest.trim());
     const value = parseSignedValue(cursor);
     if (value === undefined || !cursor.eof) return null;
     // Normalize `= null` / `!= null` to the unary `is null` / `is not null`

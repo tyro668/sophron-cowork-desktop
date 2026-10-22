@@ -17,6 +17,13 @@ import {
 } from '../../../../shared/calculate-field/window-frame';
 import { buildCalculationFunctionDslExpression } from '../../../../shared/calculate-field/domain-dsl';
 import {
+  WINDOW_COMPARE_FUNCTIONS,
+  WINDOW_COMPARE_MODES,
+  buildWindowCompareExpression,
+  type WindowCompareFunction,
+  type WindowCompareMode,
+} from '../../../../shared/calculate-field/window-compare';
+import {
   CALCULATION_FRAME_BOUND_TYPES,
   CALCULATION_INTERVAL_UNITS,
   calculationFrameBoundType,
@@ -24,7 +31,7 @@ import {
   formatCalculationFrameBound,
   type CalculationFrameBoundType,
 } from '../../../../shared/calculate-field/wizard-state';
-import { AlertCircle, Check } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDragReorder } from '../../../hooks/useDragReorder';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
@@ -89,6 +96,11 @@ export function CalculationFunctionWizard({
   const initialStart = initialFrame ? parseWindowFrameBound(initialFrame.start) : undefined;
   const initialEnd = initialFrame ? parseWindowFrameBound(initialFrame.end) : undefined;
   const [category, setCategory] = useState<CalculationFunctionCategory>(initialCategory);
+  // 「与整体/分组汇总比较」: plain window values (`avg([x]) over (by: …)`), not a domain wrapper.
+  const [windowCompare, setWindowCompare] = useState(false);
+  const [windowFn, setWindowFn] = useState<WindowCompareFunction>('avg');
+  const [windowMode, setWindowMode] = useState<WindowCompareMode>('value');
+  const [windowSortOpen, setWindowSortOpen] = useState(false);
   const initialFunction = calculationFunctionsByCategory(category)[0];
   const [functionId, setFunctionId] = useState(initialDefinition?.id ?? initialFunction.id);
   const [value, setValue] = useState(initialInput?.value ?? '');
@@ -243,7 +255,27 @@ export function CalculationFunctionWizard({
     value,
   ]);
 
-  const preview = useMemo(() => {
+  const windowPreview = useMemo(() => {
+    if (!windowCompare) return null;
+    if (!value.trim()) return { expression: '', error: '' };
+    try {
+      return {
+        expression: buildWindowCompareExpression({
+          fn: windowFn,
+          field: value,
+          partitionBy,
+          orderBy: windowSortOpen ? orderBy : [],
+          mode: windowMode,
+          flagLabels: [tr('calcFieldWindowFlagAbove'), tr('calcFieldWindowFlagBelow')],
+        }),
+        error: '',
+      };
+    } catch {
+      return { expression: '', error: tr('calcFieldErrInvalidConfig') };
+    }
+  }, [orderBy, partitionBy, tr, value, windowCompare, windowFn, windowMode, windowSortOpen]);
+
+  const definitionPreview = useMemo(() => {
     if (Object.keys(fieldErrors).length > 0) {
       return { expression: '', error: '' };
     }
@@ -274,9 +306,11 @@ export function CalculationFunctionWizard({
     tr,
     value,
   ]);
+  const preview = windowPreview ?? definitionPreview;
 
   function selectCategory(nextCategory: CalculationFunctionCategory): void {
     const [firstDefinition] = calculationFunctionsByCategory(nextCategory);
+    setWindowCompare(false);
     setCategory(nextCategory);
     setFunctionId(firstDefinition.id);
     setExtraParameter(firstDefinition.extraParameter?.defaultValue ?? '');
@@ -508,6 +542,84 @@ export function CalculationFunctionWizard({
     </>
   );
 
+  const windowRows = (
+    <>
+      <FormRow label={tr('calcFieldValueLabel')} required>
+        <GlassFieldSingleSelect
+          value={value}
+          options={windowFn === 'count' ? ['*', ...fieldCompletions] : fieldCompletions}
+          columnTypes={columnTypes}
+          onChange={setValue}
+          placeholder={tr('expressionFunctionArgumentPlaceholder')}
+          className="h-8 w-full"
+        />
+      </FormRow>
+      <FormRow label={tr('calcFieldWindowCompareMode')}>
+        <GlassOptionSingleSelect
+          value={windowMode}
+          groups={[
+            {
+              key: 'windowMode',
+              items: WINDOW_COMPARE_MODES.map((mode) => ({
+                value: mode,
+                label: tr(`calcFieldWindowMode_${mode}`),
+              })),
+            },
+          ]}
+          onChange={(next) => setWindowMode(next as WindowCompareMode)}
+          className="h-8 w-full text-[12px]"
+        />
+      </FormRow>
+      <FormRow label={tr('calcFieldWindowScope')} variant="chips">
+        <GlassOptionMultiSelect
+          options={fieldCompletions}
+          selected={partitionBy}
+          onChange={setPartitionBy}
+          onClear={() => setPartitionBy([])}
+          optionTypes={columnTypes}
+          maxHeight="240px"
+          placeholder={tr('calcFieldWindowScopeAll')}
+        />
+      </FormRow>
+      <FormRow label={tr('calcFieldWindowAdvanced')} variant="text">
+        <button
+          type="button"
+          onClick={() => setWindowSortOpen((open) => !open)}
+          className="inline-flex items-center gap-1 text-[12.5px] text-text-muted hover:text-text-primary"
+          aria-expanded={windowSortOpen}
+        >
+          {windowSortOpen ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+          {tr('calcFieldWindowSortToggle')}
+        </button>
+        {windowSortOpen && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <GlassFieldSingleSelect
+              value={orderBy[0]?.field ?? ''}
+              options={fieldCompletions}
+              columnTypes={columnTypes}
+              onChange={(field) =>
+                setOrderBy(field ? [{ field, direction: orderBy[0]?.direction ?? 'asc' }] : [])
+              }
+              placeholder={tr('expressionFunctionArgumentPlaceholder')}
+              className="h-8 min-w-0 flex-1"
+            />
+            <GlassDirectionToggle
+              value={orderBy[0]?.direction ?? 'asc'}
+              onChange={(direction) =>
+                orderBy[0] && setOrderBy([{ field: orderBy[0].field, direction }])
+              }
+              className="h-6 w-20 px-1 text-[11px]"
+            />
+          </div>
+        )}
+      </FormRow>
+    </>
+  );
+
   const listRow =
     'flex h-8 w-full shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
   const paneHeader =
@@ -546,15 +658,30 @@ export function CalculationFunctionWizard({
           aria-label={tr('calcFieldCategoryHeader')}
           className="fx-list min-h-0 flex-1"
         >
+          <button
+            key="window_compare"
+            type="button"
+            role="option"
+            aria-selected={windowCompare}
+            data-testid="calc-scenario-window-compare"
+            onClick={() => setWindowCompare(true)}
+            className={`${listRow} ${
+              windowCompare
+                ? 'bg-accent-muted text-accent'
+                : 'text-text-primary hover:bg-surface-hover'
+            }`}
+          >
+            {tr('calcFieldScenarioWindowCompare')}
+          </button>
           {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
             <button
               key={item}
               type="button"
               role="option"
-              aria-selected={item === category}
+              aria-selected={!windowCompare && item === category}
               onClick={() => selectCategory(item)}
               className={`${listRow} ${
-                item === category
+                !windowCompare && item === category
                   ? 'bg-accent-muted text-accent'
                   : 'text-text-primary hover:bg-surface-hover'
               }`}
@@ -574,26 +701,45 @@ export function CalculationFunctionWizard({
           aria-label={tr('calcFieldFunctionHeader')}
           className="fx-list min-h-0 flex-1"
         >
-          {definitions.map((item) => {
-            const selected = item.id === definition.id;
-            return (
+          {windowCompare &&
+            WINDOW_COMPARE_FUNCTIONS.map((fn) => (
               <button
-                key={item.id}
+                key={fn}
                 type="button"
                 role="option"
-                aria-selected={selected}
-                onClick={() => selectFunction(item.id)}
+                aria-selected={fn === windowFn}
+                onClick={() => setWindowFn(fn)}
                 className={`${listRow} ${
-                  selected
+                  fn === windowFn
                     ? 'bg-accent-muted text-accent'
                     : 'text-text-primary hover:bg-surface-hover'
                 }`}
               >
-                <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
-                {selected && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                <span className="min-w-0 truncate">{tr(`calcFieldFn_${fn}`)}</span>
+                {fn === windowFn && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
               </button>
-            );
-          })}
+            ))}
+          {!windowCompare &&
+            definitions.map((item) => {
+              const selected = item.id === definition.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => selectFunction(item.id)}
+                  className={`${listRow} ${
+                    selected
+                      ? 'bg-accent-muted text-accent'
+                      : 'text-text-primary hover:bg-surface-hover'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                </button>
+              );
+            })}
         </div>
       </div>
       <div
@@ -603,9 +749,9 @@ export function CalculationFunctionWizard({
       >
         <div className={paneHeader}>{tr('calcFieldParamsHeader')}</div>
         <div className="opg fx-list min-h-0 flex-1 grid-cols-[104px_minmax(0,1fr)]">
-          {basicRows}
-          {fieldRows}
-          {hasSpecialConfig && (
+          {windowCompare ? windowRows : basicRows}
+          {!windowCompare && fieldRows}
+          {!windowCompare && hasSpecialConfig && (
             <FrameEditor
               frameType={frameType}
               setFrameType={setFrameType}

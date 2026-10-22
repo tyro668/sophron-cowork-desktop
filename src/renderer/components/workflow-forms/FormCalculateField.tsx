@@ -10,9 +10,16 @@ import {
   FormScroll,
   GlassCommitTextInput,
   GridRow,
+  HintRow,
   RowActionsCell,
   SegmentCells,
 } from './shared/FormGrid';
+import { describeWindowValue } from '../../../shared/expression/window-suggest';
+
+/** `avg · 按 区域` for a window-value formula, else ''. */
+function windowValueLabel(expression: string): string {
+  return expression.trim() ? (describeWindowValue(expression)?.label ?? '') : '';
+}
 import { CALCULATE_FIELD_GRID_COLUMNS } from './shared/gridColumns';
 import { useGridRowDrag } from './shared/useGridRowDrag';
 import { lintExpression } from './shared/expressionLint';
@@ -223,6 +230,16 @@ export default function FormCalculateField({
                   {messages.join(tr('calcFieldMessageSeparator')) + tr('calcFieldMessageEnd')}
                 </ErrorRow>
               ) : null}
+              {windowValueLabel(calculation.expression) && (
+                <HintRow span={5}>
+                  <span data-testid={`calc-window-label-${index}`}>
+                    {tr('calcFieldWindowValueLabel', {
+                      field: calculation.field || tr('rowPrefix', { index: index + 1 }),
+                      label: windowValueLabel(calculation.expression),
+                    })}
+                  </span>
+                </HintRow>
+              )}
             </Fragment>
           );
         })}

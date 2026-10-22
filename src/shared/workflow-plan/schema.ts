@@ -1,4 +1,5 @@
 import { parseExpression } from '../expression';
+import { inferType } from '../expression/infer';
 import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../expression-syntax/fields';
 import { planJoinProjectionColumns } from './join-projection';
@@ -17,6 +18,31 @@ import type {
 } from './model';
 
 const UNKNOWN: PlanSchema = { columns: [], known: false };
+
+const CONCRETE_TYPES = new Set([
+  'text',
+  'integer',
+  'float',
+  'decimal',
+  'boolean',
+  'date',
+  'datetime',
+]);
+
+/**
+ * Result type of a calculation / metric expression over known columns, so draft schemas keep
+ * derived and aggregated columns typed (field lists drop untyped columns before a run).
+ */
+function inferColumnType(expression: string, columns: PlanColumn[]): string | undefined {
+  try {
+    const types: Record<string, string> = {};
+    for (const column of columns) if (column.type) types[column.name] = column.type;
+    const type = inferType(parseExpression(expression), types).type;
+    return CONCRETE_TYPES.has(type) ? type : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Resolves externally known columns for input and sql nodes. Returning null
@@ -271,35 +297,44 @@ function validateNode(
       };
     }
     case 'derive': {
+      // Calculations run in order: later ones may reference fields added by earlier ones
+      // (including window values such as `avg([x]) over ()`).
       const calculations = recordArray(config.calculations);
+      const columns = left.known ? [...left.columns] : [];
       for (const item of calculations) {
         const expression = String(item.expression ?? '');
-        if (!expression.trim()) continue;
-        if (!isExpressionSyntaxValid(expression)) {
-          push(
-            diagnostics,
-            'error',
-            node,
-            'expressionSyntaxInvalid',
-            `Calculation expression is not parseable: ${expression.slice(0, 120)}`,
-            { field: String(item.field ?? '') }
-          );
-          continue;
+        const field = String(item.field ?? '');
+        if (expression.trim()) {
+          if (!isExpressionSyntaxValid(expression)) {
+            push(
+              diagnostics,
+              'error',
+              node,
+              'expressionSyntaxInvalid',
+              `Calculation expression is not parseable: ${expression.slice(0, 120)}`,
+              { field }
+            );
+          } else {
+            checkFields(
+              node,
+              extractExpressionFieldNames(expression),
+              { known: left.known, columns },
+              diagnostics,
+              'expression'
+            );
+          }
         }
-        checkFields(node, extractExpressionFieldNames(expression), left, diagnostics, 'expression');
+        if (!left.known || !field) continue;
+        const type = inferColumnType(expression, columns);
+        const column: PlanColumn = type ? { name: field, type } : { name: field };
+        const existing = columns.findIndex((item) => item.name === field);
+        if (existing >= 0 && item.action === 'replace') {
+          columns[existing] = column;
+        } else if (existing < 0) {
+          columns.push(column);
+        }
       }
       if (!left.known) return UNKNOWN;
-      const columns = [...left.columns];
-      for (const item of calculations) {
-        const field = String(item.field ?? '');
-        if (!field) continue;
-        const existing = columns.findIndex((column) => column.name === field);
-        if (existing >= 0 && item.action === 'replace') {
-          columns[existing] = { name: field };
-        } else if (existing < 0) {
-          columns.push({ name: field });
-        }
-      }
       return { known: true, columns };
     }
     case 'missing_value': {
@@ -406,7 +441,10 @@ function validateNode(
       });
       for (const metric of recordArray(config.metrics)) {
         const alias = String(metric.alias ?? '') || String(metric.function ?? 'metric');
-        columns.push({ name: alias });
+        const fn = String(metric.function ?? '');
+        const argument = String(metric.expression ?? '') || '*';
+        const type = fn ? inferColumnType(`${fn}(${argument})`, left.columns) : undefined;
+        columns.push(type ? { name: alias, type } : { name: alias });
       }
       return { known: true, columns };
     }
