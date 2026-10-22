@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { OperatorFormProps } from './types';
 import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import FormFilter from './FormFilter';
+import { parseEditableFilterCondition } from '../../../shared/filter-condition';
+import type { DataWorkflowNode } from '../../types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
 import {
@@ -40,6 +43,7 @@ export default function FormExpect({
   pipelineId,
   fieldCompletions,
   sourceNode,
+  otherNodes,
   onNodeChange,
 }: OperatorFormProps) {
   const tr = useFormTranslation('expect');
@@ -65,6 +69,36 @@ export default function FormExpect({
   }, [committedValue, value]);
   const valueInvalid = rawValue.trim() !== '' && parseThreshold(rawValue) === undefined;
   const rejectStream = (node.config?.rejectStream as string) ?? '';
+
+  // Expression assertions compile with the filter grammar, so they reuse the
+  // filter row builder (dropdown-first); unparseable text falls back to the raw input.
+  const builderParses = useMemo(
+    () => !expression.trim() || parseEditableFilterCondition(expression).error === null,
+    [expression]
+  );
+  const conditionNode = useMemo<DataWorkflowNode>(
+    () => ({ ...node, config: { condition: expression || undefined } }),
+    [node, expression]
+  );
+  const onConditionChange = useCallback(
+    (updater: (current: DataWorkflowNode) => DataWorkflowNode) =>
+      onNodeChange((current) => {
+        const next = updater({
+          ...current,
+          config: { condition: current.config.expression },
+        });
+        const condition = next.config.condition;
+        return {
+          ...current,
+          config: {
+            ...current.config,
+            expression: typeof condition === 'string' && condition.trim() ? condition : undefined,
+          },
+          updatedAt: next.updatedAt,
+        };
+      }),
+    [onNodeChange]
+  );
 
   const setKind = useCallback(
     (next: ExpectKind) => {
@@ -100,10 +134,18 @@ export default function FormExpect({
         />
         <Cell span={2} v={['blank']} />
 
-        {kind === 'expression' && (
+        {kind === 'expression' && builderParses && (
           <>
             <LabelCell>{tr('expect.expression.label')}</LabelCell>
-            <Cell span={5} v={['ctl', !expression.trim() && 'err']}>
+            <Cell span={5} v={['muted']}>
+              {tr('expect.expression.builderHint')}
+            </Cell>
+          </>
+        )}
+        {kind === 'expression' && !builderParses && (
+          <>
+            <LabelCell>{tr('expect.expression.label')}</LabelCell>
+            <Cell span={5} v={['ctl']}>
               <GlassExpressionInput
                 value={expression}
                 onChange={(next) =>
@@ -192,6 +234,19 @@ export default function FormExpect({
           />
         </Cell>
       </FormGrid>
+      {kind === 'expression' && builderParses && (
+        <div className="mt-2" data-testid="expect-condition-builder">
+          <FormFilter
+            embedded
+            node={conditionNode}
+            pipelineId={pipelineId}
+            fieldCompletions={fieldCompletions}
+            sourceNode={sourceNode}
+            otherNodes={otherNodes}
+            onNodeChange={onConditionChange}
+          />
+        </div>
+      )}
     </FormScroll>
   );
 }

@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { MetricExpressionCell, autoMetricAlias } from './shared/MetricExpressionCell';
 import {
   AddRow,
   Cell,
@@ -145,8 +145,18 @@ export default function FormAggregate({
   );
 
   const updateMetric = useCallback(
-    (index: number, partial: Partial<MetricEntry>) => {
+    (index: number, patch: Partial<MetricEntry>) => {
       updateConfig((cfg) => {
+        // Keep the output name in sync while it is empty or still auto-generated.
+        const current = metrics[index] ?? createEmptyMetric();
+        const rowsLabel = tr('metricRowsAlias');
+        const prevAuto = autoMetricAlias(current.function, current.expression ?? '', rowsLabel);
+        const merged = { ...current, ...patch };
+        const nextAuto = autoMetricAlias(merged.function, merged.expression ?? '', rowsLabel);
+        const partial =
+          !('alias' in patch) && (!current.alias || current.alias === prevAuto) && nextAuto
+            ? { ...patch, alias: nextAuto }
+            : patch;
         const next = patchRowAt(
           (cfg.metrics as MetricEntry[] | undefined) ?? [],
           metrics,
@@ -156,7 +166,7 @@ export default function FormAggregate({
         return { ...cfg, metrics: ensureStableRowIds(next, createMetricId) };
       });
     },
-    [metrics, updateConfig]
+    [metrics, tr, updateConfig]
   );
 
   const {
@@ -284,11 +294,12 @@ export default function FormAggregate({
                   />
                 </Cell>
                 <Cell v={['ctl', issue.expressionError && 'err']}>
-                  <GlassExpressionInput
-                    value={metric.expression}
+                  <MetricExpressionCell
+                    value={metric.expression ?? ''}
                     onChange={(value) => updateMetric(index, { expression: value })}
                     fieldCompletions={fieldCompletions}
                     columnTypes={columnTypes}
+                    allowAllRows={metric.function === 'count'}
                     placeholder={tr('aggregateExpressionPlaceholder')}
                   />
                 </Cell>

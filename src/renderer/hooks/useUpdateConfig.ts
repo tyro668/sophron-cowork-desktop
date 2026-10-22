@@ -10,10 +10,7 @@ export function useUpdateConfig(
         const nextConfig = updater(current.config);
         return {
           ...current,
-          config: {
-            ...nextConfig,
-            dsl: undefined,
-          },
+          config: nextConfig,
           updatedAt: Date.now(),
         };
       });

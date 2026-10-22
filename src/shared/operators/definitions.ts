@@ -117,6 +117,9 @@ export const OPERATOR_DEFINITIONS = {
     ports: BINARY_INPUT_PORTS,
     compileKind: 'join',
     dsl: joinCodec,
+    creationDefaults: {
+      conflict: { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' },
+    },
   }),
   aggregate: defineOperator({
     type: 'aggregate',
@@ -149,6 +152,7 @@ export const OPERATOR_DEFINITIONS = {
     ports: TRANSFORM_PORTS,
     compileKind: 'strategy',
     dsl: limitCodec,
+    creationDefaults: { limit: 10 },
   }),
   pivot: defineOperator({
     type: 'pivot',

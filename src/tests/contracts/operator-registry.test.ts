@@ -155,8 +155,9 @@ describe('shared operator registry', () => {
       expect(first).not.toBe(second);
       expect(typeof first).toBe('object');
       // Non-empty defaults must satisfy the operator's own schema.
-      if (Object.keys(first).length > 0) {
-        expect(def.schema.safeParse(first).success).toBe(true);
+      // Incomplete drafts are allowed only when they are exactly the declared creationDefaults.
+      if (Object.keys(first).length > 0 && !def.schema.safeParse(first).success) {
+        expect(first).toEqual(def.creationDefaults);
       }
     }
   });

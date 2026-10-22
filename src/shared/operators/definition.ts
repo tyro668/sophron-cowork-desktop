@@ -71,13 +71,7 @@ export const BINARY_INPUT_PORTS: OperatorPorts = {
  * - `sql_query` — a native query bound against the upstream relation.
  */
 export type OperatorCompileKind =
-  | 'strategy'
-  | 'join'
-  | 'set_op'
-  | 'input_source'
-  | 'output'
-  | 'expect'
-  | 'sql_query';
+  'strategy' | 'join' | 'set_op' | 'input_source' | 'output' | 'expect' | 'sql_query';
 
 /**
  * Process-agnostic operator definition. Everything the platform needs to know
@@ -93,6 +87,8 @@ export interface OperatorDefinition<TConfig = Record<string, unknown>> {
   readonly compileKind: OperatorCompileKind;
   /** Prep DSL parse/format codec; absent for operators not expressible as a step. */
   readonly dsl?: OperatorDslCodec;
+  /** Starting values for a newly created node (may be an incomplete draft). */
+  readonly creationDefaults?: Record<string, unknown>;
   /** Fresh config for a newly created node — schema defaults where expressible. */
   createDefaultConfig(): TConfig;
   /** Schema validation producing PrepDiagnostic list (same codes as the plan pipeline). */
@@ -142,12 +138,14 @@ export function defineOperator<TConfig>(init: {
   readonly ports: OperatorPorts;
   readonly compileKind: OperatorCompileKind;
   readonly dsl?: OperatorDslCodec;
+  /** Starting values for a newly created node (UI defaults, not schema defaults). */
+  readonly creationDefaults?: Record<string, unknown>;
 }): OperatorDefinition<TConfig> {
   return {
     ...init,
     createDefaultConfig(): TConfig {
-      const parsed = init.schema.safeParse({});
-      return parsed.success ? parsed.data : ({} as TConfig);
+      const parsed = init.schema.safeParse({ ...init.creationDefaults });
+      return parsed.success ? parsed.data : ({ ...init.creationDefaults } as TConfig);
     },
     validateConfig(config: Record<string, unknown>): PrepDiagnostic[] {
       return configSchemaDiagnostics(init.type, init.schema, config);

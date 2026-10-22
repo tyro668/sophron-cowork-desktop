@@ -848,7 +848,8 @@
           "copyNameSuffix": "{{name}}_copy",
           "metricExpressionEmpty": "Field / expression is required.",
           "metricAliasDuplicate": "Output name \"{{name}}\" duplicates row {{row}}; rename it.",
-          "metricAliasGroupConflict": "Output name \"{{name}}\" collides with a group-by field; rename it."
+          "metricAliasGroupConflict": "Output name \"{{name}}\" collides with a group-by field; rename it.",
+          "metricRowsAlias": "row_count"
         },
         "filter": {
           "filterDeleteCondition": "Delete this condition",
@@ -1094,7 +1095,8 @@
           "limitHintSorted": "Sort by {{keys}}, then keep the first {{count}} {{unit}}",
           "limitHintKey": "\"{{field}}\" {{dir}}",
           "limitHintInput": "Keep the first {{count}} {{unit}} in input order",
-          "limitSortFieldHeader": "Sort field"
+          "limitSortFieldHeader": "Sort field",
+          "limitCountPlaceholder": "Positive integer"
         },
         "sort": {
           "sortIncompleteField": "Select a field for every sort row or remove blank rows"
@@ -1119,7 +1121,9 @@
           "dedupLatest": "latest",
           "dedupEarliest": "earliest",
           "dedupLargest": "largest",
-          "dedupSmallest": "smallest"
+          "dedupSmallest": "smallest",
+          "dedupHintPickFields": "Pick dedupe fields; each duplicate group keeps the {{keep}} row",
+          "dedupColumnsRequired": "Select at least one dedupe field."
         },
         "missingValue": {
           "rowProcess": "Row process",
@@ -1264,7 +1268,8 @@
           "unnestAliasRequired": "Alias is required; the node cannot be saved without it.",
           "unnestPathTip": "e.g. $.items; $ means the whole value",
           "unnestNoIndex": "None",
-          "unnestIndexRequired": "Index column name is required."
+          "unnestIndexRequired": "Index column name is required.",
+          "unnestAutoAliasSuffix": "item"
         },
         "calculateField": {
           "calcFieldFn_sum": "Sum",
@@ -1602,7 +1607,8 @@
           },
           "expression": {
             "label": "Condition expression",
-            "placeholder": "e.g. [amount] > 0"
+            "placeholder": "e.g. [amount] > 0",
+            "builderHint": "Rows matching these conditions pass; all other rows violate the assertion:"
           },
           "unique": {
             "label": "Unique key fields",
@@ -1707,6 +1713,13 @@
             "status": "status",
             "target": "target"
           }
+        },
+        "metricInput": {
+          "selectField": "Select field",
+          "allRows": "All rows",
+          "useExpression": "Use an expression",
+          "useField": "Pick a field",
+          "expressionPlaceholder": "Expression, e.g. [price] * [qty]"
         }
       },
       "operatorCategories": {

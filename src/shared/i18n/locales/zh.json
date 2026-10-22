@@ -848,7 +848,8 @@
           "copyNameSuffix": "{{name}}_副本",
           "metricExpressionEmpty": "字段 / 表达式不能为空。",
           "metricAliasDuplicate": "输出名称「{{name}}」与第 {{row}} 行重复，请改名。",
-          "metricAliasGroupConflict": "输出名称「{{name}}」与分组字段重名，请改名。"
+          "metricAliasGroupConflict": "输出名称「{{name}}」与分组字段重名，请改名。",
+          "metricRowsAlias": "行数"
         },
         "filter": {
           "filterDeleteCondition": "删除此条件",
@@ -1094,7 +1095,8 @@
           "limitHintSorted": "按{{keys}}后保留前 {{count}} {{unit}}",
           "limitHintKey": "「{{field}}」{{dir}}",
           "limitHintInput": "按输入顺序保留前 {{count}} {{unit}}",
-          "limitSortFieldHeader": "排序字段"
+          "limitSortFieldHeader": "排序字段",
+          "limitCountPlaceholder": "正整数"
         },
         "sort": {
           "sortIncompleteField": "请为每个排序项选择字段，或删除空白行"
@@ -1119,7 +1121,9 @@
           "dedupLatest": "最新",
           "dedupEarliest": "最早",
           "dedupLargest": "值最大的",
-          "dedupSmallest": "值最小的"
+          "dedupSmallest": "值最小的",
+          "dedupHintPickFields": "选择去重字段后，每组重复记录保留{{keep}}",
+          "dedupColumnsRequired": "请至少选择一个去重字段。"
         },
         "missingValue": {
           "rowProcess": "按行处理",
@@ -1264,7 +1268,8 @@
           "unnestAliasRequired": "别名不能为空；留空将无法保存。",
           "unnestPathTip": "如 $.items；$ 表示整个值",
           "unnestNoIndex": "不生成",
-          "unnestIndexRequired": "索引列名不能为空。"
+          "unnestIndexRequired": "索引列名不能为空。",
+          "unnestAutoAliasSuffix": "项"
         },
         "calculateField": {
           "calcFieldFn_sum": "求和",
@@ -1602,7 +1607,8 @@
           },
           "expression": {
             "label": "条件表达式",
-            "placeholder": "例如 [amount] > 0"
+            "placeholder": "例如 [amount] > 0",
+            "builderHint": "满足以下条件的行视为合格，其余行视为违规："
           },
           "unique": {
             "label": "唯一键字段",
@@ -1707,6 +1713,13 @@
             "status": "状态",
             "target": "目标值"
           }
+        },
+        "metricInput": {
+          "selectField": "选择字段",
+          "allRows": "全部行",
+          "useExpression": "改为表达式",
+          "useField": "改为选择字段",
+          "expressionPlaceholder": "输入表达式，如 [单价] * [数量]"
         }
       },
       "operatorCategories": {

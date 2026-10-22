@@ -405,7 +405,11 @@ export default function FormFilter({
   fieldCompletions,
   sourceNode,
   onNodeChange,
-}: OperatorFormProps) {
+  embedded = false,
+}: OperatorFormProps & {
+  /** Render only the grid (host form provides the scroll container). */
+  embedded?: boolean;
+}) {
   const tr = useFormTranslation('filter');
 
   // ── Config sync ────────────────────────────────────────────────────
@@ -649,34 +653,33 @@ export default function FormFilter({
     ]
   );
 
-  return (
-    <FormScroll>
-      <FormGrid columns={FILTER_GRID_COLUMNS} testId="filter-form-grid">
-        {parseError ? (
-          <ErrorRow span={5}>
-            {tr('filterParseError')}: {parseError}
-          </ErrorRow>
-        ) : null}
-        <Cell v={['th']} />
-        <Cell v={['th']}>{tr('filterHeaderField')}</Cell>
-        <Cell v={['th']}>{tr('filterHeaderOp')}</Cell>
-        <Cell v={['th']}>{tr('filterHeaderValue')}</Cell>
-        <Cell v={['th']} />
-        {rows.map((row, index) => (
-          <ConditionLeafRow key={row.leaf.id} row={row} index={index} ctx={leafCtx} />
-        ))}
-        <AddRow
-          span={5}
-          label={tr('filterAddConditionShort')}
-          onClick={appendCondition}
-          extra={
-            <>
-              <span className="text-border">·</span>
-              <span className="font-normal text-text-muted">{tr('filterAddHint')}</span>
-            </>
-          }
-        />
-      </FormGrid>
-    </FormScroll>
+  const grid = (
+    <FormGrid columns={FILTER_GRID_COLUMNS} testId="filter-form-grid">
+      {parseError ? (
+        <ErrorRow span={5}>
+          {tr('filterParseError')}: {parseError}
+        </ErrorRow>
+      ) : null}
+      <Cell v={['th']} />
+      <Cell v={['th']}>{tr('filterHeaderField')}</Cell>
+      <Cell v={['th']}>{tr('filterHeaderOp')}</Cell>
+      <Cell v={['th']}>{tr('filterHeaderValue')}</Cell>
+      <Cell v={['th']} />
+      {rows.map((row, index) => (
+        <ConditionLeafRow key={row.leaf.id} row={row} index={index} ctx={leafCtx} />
+      ))}
+      <AddRow
+        span={5}
+        label={tr('filterAddConditionShort')}
+        onClick={appendCondition}
+        extra={
+          <>
+            <span className="text-border">·</span>
+            <span className="font-normal text-text-muted">{tr('filterAddHint')}</span>
+          </>
+        }
+      />
+    </FormGrid>
   );
+  return embedded ? grid : <FormScroll>{grid}</FormScroll>;
 }

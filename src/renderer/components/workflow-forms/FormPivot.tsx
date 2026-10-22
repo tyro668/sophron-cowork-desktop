@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OperatorFormProps } from './types';
-import { GlassExpressionInput } from './shared/GlassExpressionInput';
+import { MetricExpressionCell } from './shared/MetricExpressionCell';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
 import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
@@ -292,11 +292,12 @@ export default function FormPivot({
                   />
                 </Cell>
                 <Cell v={['ctl', issue.expressionError && 'err']}>
-                  <GlassExpressionInput
-                    value={metric.expression}
+                  <MetricExpressionCell
+                    value={metric.expression ?? ''}
                     onChange={(value) => updateMetric(index, { expression: value })}
                     fieldCompletions={fieldCompletions}
                     columnTypes={columnTypes}
+                    allowAllRows={metric.function === 'count'}
                     placeholder={tr('pivotExpressionPlaceholder')}
                   />
                 </Cell>
