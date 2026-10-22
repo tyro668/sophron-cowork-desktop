@@ -14,6 +14,7 @@ import { isCompleteJoinCondition } from '../../operator-completeness';
 
 const REGULAR_CLAUSE_ORDER = new Map([
   ['on', 0],
+  ['match', 0.5],
   ['keep', 1],
   ['suffix', 2],
   ['right_prefix', 2],
@@ -133,6 +134,7 @@ function parseRegularJoin(
   diagnostics: Parameters<OperatorDslCodec['parse']>[1]
 ) {
   let conditions: PrepJoinCondition[] = [];
+  let expression: string | undefined;
   let keep: unknown[] | undefined;
   let conflict: Record<string, string> = {
     strategy: 'suffix',
@@ -152,6 +154,14 @@ function parseRegularJoin(
       case 'on':
         conditions = parseConditionList(cursor, rightAlias, command, diagnostics, false);
         break;
+      case 'match': {
+        // Free join predicate over qualified fields, ANDed into the join condition.
+        const start = cursor.index;
+        while (!cursor.eof && !isClauseStart(cursor, REGULAR_CLAUSE_ORDER)) cursor.consume();
+        expression = cursor.slice(start).trim() || undefined;
+        if (!expression) cursor.report('invalidJoinCondition', 'match requires an expression');
+        break;
+      }
       case 'keep':
         keep = parseKeep(cursor, REGULAR_CLAUSE_ORDER, command, diagnostics);
         break;
@@ -174,8 +184,11 @@ function parseRegularJoin(
     }
   }
 
-  if (joinType !== 'cross' && conditions.length === 0) {
-    cursor.report('joinMissingCondition', 'Non-cross join requires an on condition');
+  if (joinType !== 'cross' && conditions.length === 0 && !expression) {
+    cursor.report('joinMissingCondition', 'Non-cross join requires an on or match condition');
+  }
+  if (joinType === 'cross' && expression) {
+    cursor.report('invalidJoinCondition', 'Cross join does not support a match condition');
   }
   const isSemiAnti = joinType === 'semi' || joinType === 'anti';
   if (isSemiAnti && (keep || conflictClause)) {
@@ -190,6 +203,7 @@ function parseRegularJoin(
     rightInput,
     rightAlias,
     conditions,
+    expression,
     keep: isSemiAnti ? undefined : keep,
     conflict: isSemiAnti ? undefined : conflict,
     expect: expectation,
@@ -496,9 +510,11 @@ function formatJoin(config: Record<string, unknown> | undefined): string | null 
   }
   const parts = [`join ${joinType} ${rightInput}${asClause}`];
   const conditions = formatConditions(config?.conditions);
+  const expression = typeof config?.expression === 'string' ? config.expression.trim() : '';
   if (joinType !== 'cross') {
-    if (!conditions) return null;
-    parts.push(`on ${conditions}`);
+    if (!conditions && !expression) return null;
+    if (conditions) parts.push(`on ${conditions}`);
+    if (expression) parts.push(`match ${expression}`);
   }
   appendCommonParts(parts, config);
   return parts.join(' ');

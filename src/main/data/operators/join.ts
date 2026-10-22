@@ -3,6 +3,7 @@ import { parseFieldRefExact } from '../../../shared/prep-dsl/parser';
 import { planJoinProjectionColumns } from '../../../shared/prep-dsl/join-projection';
 import { JoinConfigSchema } from '../../../shared/operator-schemas';
 import { z } from 'zod';
+import { compileExpression } from '../../../shared/expression';
 
 const JOIN_CONDITION_OPERATORS = new Set(['=', '<', '<=', '>', '>=']);
 
@@ -33,6 +34,58 @@ export function compileJoinConditionList(value: unknown): string {
       return `l.${quoteIdentifier(leftName)} ${operator} r.${quoteIdentifier(rightName)}`;
     })
     .join(' AND ');
+}
+
+/** Compiles the free `match` predicate: `[<rightAlias>].[x]` → r, any other qualifier → l. */
+export function compileJoinMatchExpression(
+  expression: string | undefined,
+  rightAlias: string,
+  leftColumns: readonly string[] = [],
+  rightColumns: readonly string[] = []
+): string {
+  const text = (expression ?? '').trim();
+  if (!text) return '';
+  const right = rightAlias.trim().toLowerCase();
+  return compileExpression(text, {
+    resolveQualifier: (qualifier, name) => {
+      if (qualifier === undefined) {
+        // An unqualified field resolves to the one side that has it.
+        const inLeft = leftColumns.includes(name);
+        const inRight = rightColumns.includes(name);
+        if (inLeft !== inRight) return inLeft ? 'l' : 'r';
+        throw new Error(
+          `Join match field [${name}] must be qualified: [left].[${name}] or [${rightAlias}].[${name}]`
+        );
+      }
+      return qualifier.toLowerCase() === right ? 'r' : 'l';
+    },
+  });
+}
+
+/** Equality/comparison conditions plus the optional match expression, ANDed. */
+export function compileJoinPredicate(
+  config: {
+    conditions?: unknown;
+    expression?: string;
+    rightAlias?: string;
+    rightInput?: string;
+  },
+  leftColumns: readonly string[] = [],
+  rightColumns: readonly string[] = []
+): string {
+  const parts: string[] = [];
+  if (objectArray(config.conditions).length > 0) {
+    parts.push(compileJoinConditionList(config.conditions));
+  }
+  const match = compileJoinMatchExpression(
+    config.expression,
+    config.rightAlias || config.rightInput || 'right',
+    leftColumns,
+    rightColumns
+  );
+  if (match) parts.push(`(${match})`);
+  if (parts.length === 0) throw new Error('Non-cross join requires at least one valid condition');
+  return parts.join(' AND ');
 }
 
 export function compileJoinProjection(

@@ -1,3 +1,4 @@
+import { parseExpression } from '../expression';
 import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../prep-dsl/syntax/fields';
 import { planJoinProjectionColumns } from '../prep-dsl/join-projection';
@@ -577,6 +578,28 @@ export function setOpOutputSchema(
   return { known: true, columns };
 }
 
+function qualifiedFieldRefs(expr: unknown): Array<{ name: string; qualifier?: string }> {
+  const out: Array<{ name: string; qualifier?: string }> = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, unknown>;
+    if (node.k === 'field' && typeof node.name === 'string') {
+      out.push({
+        name: node.name,
+        qualifier: typeof node.qualifier === 'string' ? node.qualifier : undefined,
+      });
+      return;
+    }
+    Object.values(node).forEach(visit);
+  };
+  visit(expr);
+  return out;
+}
+
 function validateJoinNode(
   node: WorkflowPlanNode,
   config: Record<string, unknown>,
@@ -604,6 +627,43 @@ function validateJoinNode(
       );
     }
   };
+
+  const matchExpression = typeof config.expression === 'string' ? config.expression.trim() : '';
+  if (matchExpression) {
+    const rightAlias = String(config.rightAlias || config.rightInput || '').toLowerCase();
+    try {
+      for (const ref of qualifiedFieldRefs(parseExpression(matchExpression))) {
+        if (ref.qualifier === undefined) {
+          const inLeft = left.columns.some((column) => column.name === ref.name);
+          const inRight = right.columns.some((column) => column.name === ref.name);
+          if (!left.known || !right.known || inLeft !== inRight) continue;
+          push(
+            diagnostics,
+            'error',
+            node,
+            'joinMatchUnqualifiedField',
+            `Join match field "${ref.name}" is ambiguous or missing; qualify it as [left].[field] or [right alias].[field]`,
+            { field: ref.name }
+          );
+          continue;
+        }
+        checkSide(
+          ref.name,
+          ref.qualifier.toLowerCase() === rightAlias ? 'right' : 'left',
+          diagnostics
+        );
+      }
+    } catch (error) {
+      push(
+        diagnostics,
+        'error',
+        node,
+        'invalidExpression',
+        `Join match expression is invalid: ${error instanceof Error ? error.message : String(error)}`,
+        {}
+      );
+    }
+  }
 
   const conditions = recordArray(config.conditions);
   for (const condition of conditions) {

@@ -13,7 +13,7 @@ import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
 import {
   quoteIdentifier,
   compileAsofJoinSql,
-  compileJoinConditionList,
+  compileJoinPredicate,
   compileJoinProjection,
   compileSetOpSql,
   literalToSql,
@@ -307,7 +307,11 @@ export class WorkflowCompiler {
     const joinType = config.joinType;
     if (joinType === 'semi' || joinType === 'anti') {
       const existsOperator = joinType === 'semi' ? 'EXISTS' : 'NOT EXISTS';
-      const condition = compileJoinConditionList(config.conditions);
+      const condition = compileJoinPredicate(
+        { ...config, rightInput: String(node.config.rightInput ?? '') },
+        leftColumns,
+        rightColumns
+      );
       return `
           CREATE TEMP TABLE ${output} AS
           SELECT l.*
@@ -321,7 +325,9 @@ export class WorkflowCompiler {
       return compileAsofJoinSql(output, left, right, leftColumns, rightColumns, config);
     }
     const condition =
-      joinType === 'cross' ? '' : ` ON ${compileJoinConditionList(config.conditions)}`;
+      joinType === 'cross'
+        ? ''
+        : ` ON ${compileJoinPredicate({ ...config, rightInput: String(node.config.rightInput ?? '') }, leftColumns, rightColumns)}`;
     const sqlJoinType = joinType === 'full' ? 'FULL OUTER' : joinType.toUpperCase();
     const projection = compileJoinProjection(
       config.keep,

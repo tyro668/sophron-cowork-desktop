@@ -909,6 +909,8 @@
           "joinType": "连接类型",
           "conditions": "连接条件",
           "addCondition": "添加条件",
+          "joinMatchLabel": "附加条件",
+          "joinMatchPlaceholder": "可选表达式，与上方条件同时满足，如 abs([{{right}}].[金额] - [{{left}}].[金额]) <= 1",
           "removeCondition": "删除条件",
           "operatorEq": "等于",
           "operatorLt": "小于",

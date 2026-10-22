@@ -72,6 +72,8 @@ const JoinConfigObjectSchema = z
   .object({
     joinType: z.enum([...REGULAR_JOIN_TYPES, 'asof']).default('left'),
     conditions: z.array(JoinConditionSchema).max(MAX_JOIN_CONDITION_COUNT).optional(),
+    /** Extra join predicate over qualified fields ([left].[x], [<rightAlias>].[y]). */
+    expression: z.string().trim().optional(),
     conflict: ConflictSchema.optional(),
     keep: z.array(KeepItemSchema).default([]),
     asof: AsofConfigSchema.optional(),
@@ -105,12 +107,20 @@ const JoinConfigObjectSchema = z
     if (
       data.joinType !== 'cross' &&
       data.joinType !== 'asof' &&
-      (!data.conditions || data.conditions.length === 0)
+      (!data.conditions || data.conditions.length === 0) &&
+      !data.expression
     ) {
       ctx.addIssue({
         code: 'custom',
         message: 'Non-cross join requires at least one condition',
         path: ['conditions'],
+      });
+    }
+    if ((data.joinType === 'cross' || data.joinType === 'asof') && data.expression) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `${data.joinType} join does not support a match expression`,
+        path: ['expression'],
       });
     }
     if (data.joinType === 'cross' && data.conditions && data.conditions.length > 0) {

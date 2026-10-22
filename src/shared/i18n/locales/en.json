@@ -909,6 +909,8 @@
           "joinType": "Join type",
           "conditions": "Conditions",
           "addCondition": "Add condition",
+          "joinMatchLabel": "Extra condition",
+          "joinMatchPlaceholder": "Optional expression ANDed with the conditions above, e.g. abs([{{right}}].[amount] - [{{left}}].[amount]) <= 1",
           "removeCondition": "Delete condition",
           "operatorEq": "Equals",
           "operatorLt": "Less than",

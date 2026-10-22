@@ -109,6 +109,11 @@ export const PREP_DSL_OPERATOR_EXAMPLES: PrepDslOperatorExample[] = [
     dsl: 'join left customers on [orders].[customer_id] = [customers].[customer_id] keep left *, [customers].[name] as [customer_name]',
   },
   {
+    type: 'join',
+    title: 'Join with an expression condition',
+    dsl: 'join inner bank on [erp].[客户] = [bank].[户名] match abs([bank].[金额] - [erp].[金额]) <= 1',
+  },
+  {
     type: 'limit',
     title: 'Limit rows',
     dsl: 'limit 100',
@@ -167,6 +172,7 @@ const OVERVIEW = [
   'Always use data_get_workflow_dsl_reference for DSL help. Do not read source-tree design docs; packaged apps may not include them.',
   'A workflow starts with one or more input source lines, optionally chooses a main source with from <alias>, then pipes operators with lines starting with |.',
   'Fields use bracket syntax: [field_name]. Brackets hold the raw name with no quotes — use [Year of Transaction Date], not [`Year of Transaction Date`]. Backtick-quoting inside brackets is only for names that contain ] or a backtick. Qualified fields use [table_alias].[field_name], never [table_alias.field_name].',
+  'Join match <expression> adds a free predicate (ANDed with on conditions, or on its own for non-equi joins); qualify fields as [left].[x] / [<right alias>].[y] — a bare field is allowed only when exactly one side has it. Not available for cross/asof joins.',
   'One type vocabulary everywhere (cast operator, UI, expression cast): text, integer, float, decimal, date, datetime, boolean. In expressions write cast([x] as float) / try_cast([x] as decimal(18,2)); SQL spellings like varchar/double/timestamp are rejected outside SQL nodes.',
   'Quotes follow SQL: \'text\' is a text value (escape a quote by doubling it: \'it\'\'s\'); "name" is an identifier — in expressions "amount" means the same field as [amount], and statement names and file paths (output table "t", input rawTable "id", file "/p.csv") are double-quoted. Formats, JSON paths and prefixes are text values: format \'%Y-%m-%d\', path \'$.items\'.',
   'Cast target types are text, date, datetime, integer, float, decimal, and boolean.',
