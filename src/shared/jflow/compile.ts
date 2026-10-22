@@ -302,9 +302,22 @@ class Compiler {
   colTypes = new Map<string, Map<string, string>>();
   private seq = 0;
   private usedIds = new Set<string>();
+  /** Explicit `#! id:` values anywhere in the file; generated ids never take them. */
+  private reservedIds = new Set<string>();
   private currentSpan: Span = { start: 0, end: 0 };
 
   constructor(private readonly options: JflowCompileOptions) {}
+
+  reserveIds(file: unknown): void {
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object') return;
+      if (Array.isArray(value)) return value.forEach(visit);
+      const record = value as Record<string, unknown>;
+      if (typeof record.id === 'string' && 'span' in record) this.reservedIds.add(record.id);
+      Object.values(record).forEach(visit);
+    };
+    visit(file);
+  }
 
   private stepId(step: { id?: string }): string {
     if (step.id) {
@@ -317,7 +330,7 @@ class Compiler {
     do {
       this.seq += 1;
       id = `n${this.seq}`;
-    } while (this.usedIds.has(id));
+    } while (this.usedIds.has(id) || this.reservedIds.has(id));
     this.usedIds.add(id);
     return id;
   }
@@ -1634,6 +1647,7 @@ export function compileJflow(
 ): JflowCompileResult {
   const c = new Compiler(options);
   try {
+    c.reserveIds(file);
     c.compileFile(file);
   } catch (error) {
     if (!(error instanceof JflowError)) throw error;

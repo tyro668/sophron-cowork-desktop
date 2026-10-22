@@ -1303,7 +1303,7 @@ function ExpressionEditorDialog({
   const titleSpan = wizard ? assistantPanel.titleSpan : 5;
   const rows = wizard
     ? '44px 36px minmax(0,1fr) 48px'
-    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}minmax(0,1fr) 48px`;
+    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}${aggregateIssue && !wizard ? '30px ' : ''}minmax(0,1fr) 48px`;
 
   const tabClass = (active: boolean) =>
     `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors ${ROW_BORDER} ${
@@ -1447,7 +1447,7 @@ function ExpressionEditorDialog({
                 </span>
               </button>
             ))}
-            {aggregateIssue && (
+            {aggregateIssue && !wizard && (
               <div
                 key="aggregate-issue"
                 data-testid="expression-aggregate-issue"

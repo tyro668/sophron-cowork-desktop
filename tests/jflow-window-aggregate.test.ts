@@ -14,6 +14,8 @@ import { parseJflowExpr } from '../src/shared/jflow/parse';
 import { fmtExpr } from '../src/shared/jflow/format';
 import { parseExpression } from '../src/shared/expression/parser';
 import { describeWindowValue, windowSuggestionAt } from '../src/shared/expression/window-suggest';
+import { buildWorkflowPlan } from '../src/shared/workflow-plan/build';
+import { propagateWorkflowPlanSchemas } from '../src/shared/workflow-plan/schema';
 import { buildWindowCompareExpression } from '../src/shared/calculate-field/window-compare';
 import { parseConditionTree, buildFilterConditionTree } from '../src/shared/filter-condition';
 
@@ -58,6 +60,23 @@ describe('jflow window values: diagnostics and quick-fixes', () => {
         (d) => d.severity === 'error'
       )
     ).toEqual([]);
+  });
+
+  it('nested fix on an exported workflow (with #! id pragmas) re-imports without id clashes', () => {
+    const compiled = compileWorkflowJflow(
+      doc('| group [门店] (agg [a] = sum([销售额]), [b] = avg([销售额])) | derive [x] = 1'),
+      { tables: [TABLE] },
+      'p1'
+    );
+    const group = compiled.nodes.find((n) => n.type === 'aggregate')!;
+    (group.config as { metrics: Array<{ expression: string }> }).metrics[1].expression =
+      'sum([销售额])';
+    const text = exportWorkflowJflow(compiled.nodes, compiled.edges, {}).text;
+    const fix = compileWorkflowJflow(text, { tables: [TABLE] }, 'p1').diagnostics.find(
+      (d) => d.code === 'E_AGG_NESTED'
+    )!.fix!;
+    const fixed = applyJflowFix(text, fix);
+    expect(compileWorkflowJflow(fixed, { tables: [TABLE] }, 'p1').diagnostics).toEqual([]);
   });
 
   it.each([
@@ -224,6 +243,30 @@ describe('jflow window values: execute + round-trip', () => {
       ['A', '不达标'],
       ['B', '达标'],
       ['C', '达标'],
+    ]);
+  });
+});
+
+describe('draft schema keeps window / aggregate columns typed', () => {
+  it('group → over () → flag', () => {
+    const compiled = compile(
+      "| group [门店] (agg [合计] = sum([销售额])) | derive [均值] = avg([合计]) over (), [标记] = if [合计] >= [均值] then '达标' else '未达标' end"
+    );
+    const { plan } = buildWorkflowPlan({ nodes: compiled.nodes, edges: compiled.edges } as never);
+    const { schemas } = propagateWorkflowPlanSchemas(plan, (n) =>
+      n.type === 'input'
+        ? [
+            { name: '门店', type: 'text' },
+            { name: '销售额', type: 'decimal' },
+          ]
+        : null
+    );
+    const derive = compiled.nodes.find((n) => n.type === 'derive')!;
+    expect(schemas.get(derive.id)?.columns).toEqual([
+      { name: '门店', type: 'text' },
+      { name: '合计', type: 'decimal' },
+      { name: '均值', type: 'decimal' },
+      { name: '标记', type: 'text' },
     ]);
   });
 });
