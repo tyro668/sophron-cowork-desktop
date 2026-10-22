@@ -21,6 +21,22 @@ describe('SQL node named inputs', () => {
     ]);
   });
 
+  it('resolves aliases by FROM/JOIN position, not by word', () => {
+    // `bank` is a column here, `erp` a relation in a comma FROM list with an alias.
+    expect(sqlNamedInputs('SELECT bank, erp.x FROM input i, erp e WHERE bank > 0', nodes)).toEqual([
+      { alias: 'erp', nodeId: 'a' },
+    ]);
+    expect(
+      sqlNamedInputs('SELECT * FROM input LEFT JOIN "bank" b ON b.id = input.id', nodes)
+    ).toEqual([{ alias: 'bank', nodeId: 'b' }]);
+    expect(sqlNamedInputs('SELECT * FROM (SELECT * FROM bank) t', nodes)).toEqual([
+      { alias: 'bank', nodeId: 'b' },
+    ]);
+    // a CTE with the same name shadows the input
+    expect(sqlNamedInputs('WITH erp AS (SELECT 1) SELECT * FROM erp', nodes)).toEqual([]);
+    expect(sqlNamedInputs('SELECT count(erp) AS bank FROM input', nodes)).toEqual([]);
+  });
+
   it('exposes named inputs as CTEs next to input', () => {
     expect(
       buildSqlQuery('SELECT * FROM erp', 'SELECT 1', [{ alias: 'erp', query: 'SELECT 2' }])
