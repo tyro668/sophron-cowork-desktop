@@ -1087,7 +1087,9 @@ describe('operator DSL executable cases', () => {
 
       expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
       expect(parsed.operator?.type).toBe(type);
-      expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
+      expect(parsed.operator?.dsl).toBe(dsl);
+      expect(parsed.operator?.config).not.toHaveProperty('dsl');
+      expect(parsed.operator?.config).toMatchObject({ ...expectedConfig });
       expect(
         exportPrepOperatorDsl({ id: `${type}_case`, type, config: parsed.operator!.config })
       ).toBe(expectedDsl ?? dsl);
@@ -1148,7 +1150,9 @@ describe('operator DSL executable cases', () => {
     const parsed = parsePrepOperatorDsl(dsl, 'unnest');
 
     expect(errorsOf(parsed.diagnostics), dsl).toHaveLength(0);
-    expect(parsed.operator?.config).toMatchObject({ dsl, ...expectedConfig });
+    expect(parsed.operator?.dsl).toBe(dsl);
+    expect(parsed.operator?.config).not.toHaveProperty('dsl');
+    expect(parsed.operator?.config).toMatchObject({ ...expectedConfig });
     expect(exportPrepOperatorDsl({ id: 'unnest_keywords_case', ...parsed.operator! })).toBe(
       expectedDsl
     );
@@ -1270,35 +1274,11 @@ describe('operator DSL executable cases', () => {
     expect(errorCodes).not.toContain('unsupportedCommand');
   });
 
-  it('ignores empty cached DSL and exports the structured configuration', () => {
-    expect(
-      exportPrepOperatorDsl({
-        id: 'limit',
-        type: 'limit',
-        config: { dsl: '   ', mode: 'fixed', limit: 20, unit: 'rows' },
-      })
-    ).toBe('limit 20');
-
-    expect(
-      exportPrepWorkflowDsl(
-        [
-          { id: 'source', type: 'input_source', config: { dsl: '' } },
-          {
-            id: 'limit',
-            type: 'limit',
-            config: { mode: 'fixed', limit: 20, unit: 'rows' },
-          },
-        ],
-        [{ sourceNodeId: 'source', targetNodeId: 'limit', targetHandle: 'input' }]
-      )
-    ).toBe('input source pipeline as src\n  | limit 20');
-  });
-
   it('rejects workflow export when an incomplete operator cannot be formatted', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline' } },
+          { id: 'source', type: 'input_source', config: { source: 'pipeline' } },
           { id: 'sort-empty', type: 'sort', config: { keys: [] } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'sort-empty', targetHandle: 'input' }]
@@ -1317,7 +1297,7 @@ describe('operator DSL executable cases', () => {
     expect(() =>
       exportPrepWorkflowDsl(
         [
-          { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline' } },
+          { id: 'source', type: 'input_source', config: { source: 'pipeline' } },
           { id: 'filter-empty', type: 'filter', config: { condition: '' } },
         ],
         [{ sourceNodeId: 'source', targetNodeId: 'filter-empty', targetHandle: 'input' }]
@@ -1656,7 +1636,7 @@ describe('operator DSL executable cases', () => {
           config: { keys: [{ field: 'amount', direction: 'desc' }] },
         },
         { id: 'output', type: 'output', config: { table: 'result', mode: 'replace' } },
-        { id: 'source', type: 'input_source', config: { dsl: 'input source pipeline as source' } },
+        { id: 'source', type: 'input_source', config: { source: 'pipeline', alias: 'source' } },
         {
           id: 'select',
           type: 'field_select',

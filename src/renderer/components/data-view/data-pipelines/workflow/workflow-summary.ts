@@ -292,14 +292,8 @@ export function getWorkflowConfigSummary(
   const summary: WorkflowConfigSummary = summarize
     ? summarize(config, t)
     : { primary: [], details: [] };
-
-  const dsl = stringValue(config.dsl);
-  return dsl
-    ? {
-        ...summary,
-        details: [...summary.details, summaryRow(t, 'dsl', dsl, true)],
-      }
-    : summary;
+  // DSL text is never cached in config; the 结构化表达式 tab derives it.
+  return summary;
 }
 
 function getJoinConfigSummary(
@@ -389,8 +383,8 @@ function translateWorkflowValue(
 }
 
 function getMappingMode(config: Record<string, unknown>): string {
-  const dsl = stringValue(config.dsl);
-  return dsl.startsWith('rename ') ? 'rename' : 'map';
+  if (config.targetMode === 'rename') return 'rename';
+  return 'map';
 }
 
 function formatMappings(value: unknown, t: TranslateFn): string {

@@ -1,12 +1,12 @@
 import type { PrepFlowNodeLike } from '../exporter';
+import { formatInputSource } from './input-source-format';
 import { formatRegisteredOperator } from './registry';
 
+/** Structured config is the single source of truth; DSL text is always derived. */
 export function formatOperator(node: PrepFlowNodeLike): string | null {
-  // Structured config is authoritative; a cached `config.dsl` can be stale.
-  const registered = formatRegisteredOperator(node.type, node.config);
-  if (registered !== undefined) return registered;
-  if (typeof node.config?.dsl === 'string' && node.config.dsl.trim().length > 0) {
-    return node.config.dsl;
+  if (node.type === 'input_source') {
+    const alias = typeof node.config?.alias === 'string' ? node.config.alias : 'src';
+    return formatInputSource(node, alias);
   }
-  return registered ?? null;
+  return formatRegisteredOperator(node.type, node.config) ?? null;
 }

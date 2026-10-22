@@ -49,6 +49,43 @@ function joinConflictAlias(conflict: unknown, side: 'left' | 'right', fieldName:
   return fieldName;
 }
 
+function emittedConflicts(
+  items: Record<string, unknown>[],
+  leftColumns: string[],
+  rightColumns: string[],
+  rightAlias?: string
+): Set<string> {
+  const left = new Set<string>();
+  const right = new Set<string>();
+  const lowerLeft = new Set(leftColumns.map((c) => c.toLowerCase()));
+  if (items.length === 0) {
+    leftColumns.forEach((c) => left.add(c.toLowerCase()));
+    rightColumns.forEach((c) => right.add(c.toLowerCase()));
+  }
+  for (const item of items) {
+    if (item.wildcard && item.side === 'left')
+      leftColumns.forEach((c) => left.add(c.toLowerCase()));
+    else if (item.wildcard && item.side === 'right')
+      rightColumns.forEach((c) => right.add(c.toLowerCase()));
+    else if (typeof item.source === 'string' && typeof item.alias !== 'string') {
+      const ref = parseFieldRefExact(item.source);
+      const name = (ref?.name ?? lastQualifiedPart(item.source)).toLowerCase();
+      const side =
+        item.side === 'right' || item.side === 'left'
+          ? item.side
+          : ref?.source && rightAlias && ref.source.toLowerCase() === rightAlias.toLowerCase()
+            ? 'right'
+            : ref?.source
+              ? 'left'
+              : lowerLeft.has(name)
+                ? 'left'
+                : 'right';
+      (side === 'right' ? right : left).add(name);
+    }
+  }
+  return new Set([...left].filter((name) => right.has(name)));
+}
+
 export function planJoinProjectionColumns(
   keep: unknown,
   leftColumns: string[],
@@ -57,10 +94,9 @@ export function planJoinProjectionColumns(
   rightAlias?: string
 ): JoinProjectionColumn[] {
   const items = objectArray(keep);
-  const lowerRight = new Set(rightColumns.map((column) => column.toLowerCase()));
-  const conflictColumns = new Set(
-    leftColumns.filter((column) => lowerRight.has(column.toLowerCase())).map((c) => c.toLowerCase())
-  );
+  // A column only "conflicts" when both sides actually emit it un-aliased into
+  // the output; a right-side column that is not kept must not rename the left one.
+  const conflictColumns = emittedConflicts(items, leftColumns, rightColumns, rightAlias);
   const isSuffix = isRecord(conflict) && conflict.strategy === 'suffix';
   const rightPrefix = joinRightPrefix(conflict);
   const isConflictColumn = (column: string) => conflictColumns.has(column.toLowerCase());
