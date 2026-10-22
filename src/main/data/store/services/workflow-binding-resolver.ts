@@ -132,10 +132,8 @@ export class WorkflowBindingResolver {
     schemaPolicy: 'extend' | 'strict' | 'ignore';
   }> {
     const destination = stringConfigValue(node?.config?.destination);
-    if (destination === 'rawTable' || destination === 'file') {
-      throw new Error(
-        `Output destination "${destination}" is not supported in pipeline workflows; use "output table" instead`
-      );
+    if (destination && destination !== 'duckdb_table') {
+      throw new Error(`Output destination "${destination}" is not supported; use "output table"`);
     }
     const rawMode = stringConfigValue(node?.config?.mode) || 'replace';
     if (

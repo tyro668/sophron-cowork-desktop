@@ -707,13 +707,11 @@ function main() {
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/already exists|error_if_exists/i);
   });
 
-  it('flags output rawTable/file destinations as unsupported at compile time', () => {
-    const parsed = parsePrepDsl(
-      'input pipeline as src\n  | output rawTable "results" mode replace'
-    );
-    expect(parsed.ast).not.toBeNull();
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
-    expect(compiled.diagnostics.map((item) => item.code)).toContain('unsupportedOutputDestination');
+  it('rejects output rawTable/file as non-grammar destinations at parse time', () => {
+    for (const target of ['rawTable "results"', 'file "out.csv"']) {
+      const parsed = parsePrepDsl(`input pipeline as src\n  | output ${target} mode replace`);
+      expect(parsed.diagnostics.map((item) => item.code)).toContain('unsupportedOutputDestination');
+    }
   });
 });
 
