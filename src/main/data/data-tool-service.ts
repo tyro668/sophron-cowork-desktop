@@ -578,7 +578,8 @@ export class DataToolService {
         'Requirement analysis receipt is unavailable in the tool generation flow.'
       );
     }
-    return toolResult(formatRequirementAnalysis(receipt.id, result, receipt.expiresAt), {
+    const clarified = receipt.answersClarification === true && result.status === 'supported';
+    return toolResult(formatRequirementAnalysis(receipt.id, result, receipt.expiresAt, clarified), {
       analysisId: receipt.id,
       status: result.status,
       originalRequirement: receipt.processRequirement,
@@ -590,7 +591,7 @@ export class DataToolService {
       },
       capabilityProfileVersion: result.capabilityProfileVersion,
       expiresAt: receipt.expiresAt,
-      confirmationRequired: true,
+      confirmationRequired: !clarified,
     });
   }
 
@@ -637,10 +638,17 @@ export class DataToolService {
         'Explicit user confirmation is required before generation.'
       );
     }
+    // Answering the clarifying question of an earlier ambiguous analysis is the confirmation:
+    // generation may proceed on that same message once the re-analysis is supported.
+    const confirmedByClarification =
+      receipt.answersClarification === true &&
+      Boolean(context.currentUserMessageId) &&
+      receipt.sourceUserMessageId === context.currentUserMessageId;
     if (
-      !receipt.sourceUserMessageId ||
-      !context.currentUserMessageId ||
-      receipt.sourceUserMessageId === context.currentUserMessageId
+      !confirmedByClarification &&
+      (!receipt.sourceUserMessageId ||
+        !context.currentUserMessageId ||
+        receipt.sourceUserMessageId === context.currentUserMessageId)
     ) {
       throw new DataCommandError(
         'CONFIRMATION_REQUIRED',
@@ -917,7 +925,8 @@ function resolveGeneratedPipelineOutput(
 function formatRequirementAnalysis(
   analysisId: string,
   result: AnalyzePipelineRequirementResult,
-  expiresAt: number
+  expiresAt: number,
+  clarified = false
 ): string {
   const items = result.items.map((item, index) => {
     const reason = item.reason ? ` reason=${item.reason}` : '';
@@ -927,7 +936,9 @@ function formatRequirementAnalysis(
   });
   const nextStep =
     result.status === 'supported'
-      ? TOOL_RESULT_GUIDANCE.dataAnalysisSupported
+      ? clarified
+        ? TOOL_RESULT_GUIDANCE.dataAnalysisClarified
+        : TOOL_RESULT_GUIDANCE.dataAnalysisSupported
       : result.status === 'needs_confirmation'
         ? TOOL_RESULT_GUIDANCE.dataAnalysisNeedsConfirmation
         : TOOL_RESULT_GUIDANCE.dataAnalysisUnsupported;

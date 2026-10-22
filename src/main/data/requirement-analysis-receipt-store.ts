@@ -21,6 +21,11 @@ export interface RequirementAnalysisReceipt {
   expiresAt: number;
   generatedResult?: GeneratePipelineFromRequirementResult;
   authoringRequest: DataPipelineAuthoringRequest;
+  /**
+   * True when this analysis re-ran on a later user message that answered an earlier ambiguous
+   * analysis in the same conversation — that answer is the user's confirmation.
+   */
+  answersClarification?: boolean;
 }
 
 export interface RequirementAnalysisReceiptStoreOptions {
@@ -46,13 +51,30 @@ export class RequirementAnalysisReceiptStore {
   create(
     input: Omit<
       RequirementAnalysisReceipt,
-      'id' | 'createdAt' | 'expiresAt' | 'generatedResult' | 'authoringRequest'
+      | 'id'
+      | 'createdAt'
+      | 'expiresAt'
+      | 'generatedResult'
+      | 'authoringRequest'
+      | 'answersClarification'
     > & { authoringRequest?: DataPipelineAuthoringRequest }
   ): RequirementAnalysisReceipt {
     this.deleteExpired();
     const createdAt = this.now();
+    const previous = [...this.receipts.values()]
+      .filter((receipt) => receipt.sessionId === input.sessionId && !receipt.generatedResult)
+      .at(-1);
+    const answersClarification = Boolean(
+      previous &&
+      previous.analysis.status === 'needs_confirmation' &&
+      previous.sourceUserMessageId &&
+      input.sourceUserMessageId &&
+      previous.sourceUserMessageId !== input.sourceUserMessageId &&
+      previous.rawTableId === input.rawTableId
+    );
     const receipt: RequirementAnalysisReceipt = {
       ...input,
+      ...(answersClarification ? { answersClarification: true } : {}),
       // Snapshot bindings once: later turns may no longer carry the UI request.
       authoringRequest: structuredClone(
         input.authoringRequest ?? {

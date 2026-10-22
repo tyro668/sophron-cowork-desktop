@@ -207,6 +207,8 @@ export const AUTOMATION_TOOL_COPY = {
 export const TOOL_RESULT_GUIDANCE = {
   dataAnalysisSupported:
     'Show this plan to the user and wait for an explicit confirmation in a new user message. Then call data_generate_pipeline_from_requirement with this analysisId.',
+  dataAnalysisClarified:
+    "The user's latest message answered the earlier clarification, so it already confirms this plan. Call data_generate_pipeline_from_requirement now with this analysisId and confirmed=true; do not ask for another confirmation.",
   dataAnalysisNeedsConfirmation:
     'Ask the user to clarify or revise the ambiguous/unsupported items, then analyze the revised requirement again. Do not generate yet.',
   dataAnalysisUnsupported:
