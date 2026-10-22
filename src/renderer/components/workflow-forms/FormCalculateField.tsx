@@ -129,6 +129,14 @@ export default function FormCalculateField({
     drag: tr('rowList.dragToReorder'),
   };
   const issues = validateCalculationRows(activeCalculations, fieldCompletions);
+  const earlierFields = (index: number): string[] => {
+    const seen = new Set(fieldCompletions.map((f) => f.toLowerCase()));
+    const extra = activeCalculations
+      .slice(0, index)
+      .map((row) => row.field.trim())
+      .filter((f) => f && !seen.has(f.toLowerCase()));
+    return [...fieldCompletions, ...new Set(extra)];
+  };
 
   return (
     <FormScroll>
@@ -193,15 +201,10 @@ export default function FormCalculateField({
                     subtitle={tr('calcFieldEditorSubtitle', { index: index + 1 })}
                     value={calculation.expression}
                     onChange={(expression) => updateCalculation(index, { expression })}
-                    fieldCompletions={fieldCompletions}
+                    // Rows run top to bottom: fields created by earlier rows are referenceable.
+                    fieldCompletions={earlierFields(index)}
                     columnTypes={columnTypes}
-                    lintFields={[
-                      ...fieldCompletions,
-                      ...activeCalculations
-                        .slice(0, index)
-                        .map((row) => row.field.trim())
-                        .filter(Boolean),
-                    ]}
+                    lintFields={earlierFields(index)}
                     placeholder={tr('expression.expressionPlaceholder')}
                   />
                 </Cell>

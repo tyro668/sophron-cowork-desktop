@@ -9,6 +9,7 @@ import {
 } from '../../../shared/workflow-plan';
 import { buildSqlQuery, describeSqlQuery } from '../operators/sql-query';
 import { quoteIdentifier } from '../operators/utils';
+import { sqlNamedInputs } from '../../../shared/sql-query';
 
 /** Enrich the shared plan's schema resolver with native SQL binding, without executing queries. */
 export async function resolveSqlQuerySchemas(
@@ -62,15 +63,32 @@ export async function resolveSqlQuerySchemas(
         upstream.columns.some((column) => !column.type && !column.storageType)
       )
         continue;
+      const sqlText = SqlQueryConfigSchema.parse(node.config).sql;
+      const namedSchemas = sqlNamedInputs(
+        sqlText,
+        plan.nodes.map((item) => ({
+          ...item,
+          config: (item.config ?? {}) as Record<string, unknown>,
+        }))
+      ).map((named) => ({ alias: named.alias, schema: schemas.get(named.nodeId) }));
+      if (namedSchemas.some(({ schema }) => !schema?.known)) continue;
       try {
-        const columns = upstream.columns.map(
-          (column) =>
-            `CAST(NULL AS ${column.storageType || duckDbTypeForDataFieldType(column.type)}) AS ${quoteIdentifier(column.name)}`
-        );
-        if (!columns.length) continue;
+        const emptyQuery = (cols: PlanColumn[]) => {
+          const columns = cols.map(
+            (column) =>
+              `CAST(NULL AS ${column.storageType || duckDbTypeForDataFieldType(column.type) || 'VARCHAR'}) AS ${quoteIdentifier(column.name)}`
+          );
+          return columns.length ? `SELECT ${columns.join(', ')} WHERE FALSE` : null;
+        };
+        const inputQuery = emptyQuery(upstream.columns);
+        if (!inputQuery) continue;
         const query = buildSqlQuery(
-          SqlQueryConfigSchema.parse(node.config).sql,
-          `SELECT ${columns.join(', ')} WHERE FALSE`
+          sqlText,
+          inputQuery,
+          namedSchemas.map(({ alias, schema }) => ({
+            alias,
+            query: emptyQuery(schema!.columns) ?? 'SELECT NULL AS __empty WHERE FALSE',
+          }))
         );
         resolved.set(id, await describeSqlQuery(connection, query));
         pending.delete(id);

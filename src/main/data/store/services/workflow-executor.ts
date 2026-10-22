@@ -1,3 +1,4 @@
+import { sqlNamedInputs } from '../../../../shared/sql-query';
 /** Executes workflows into staging tables (temporary output mode). */
 import { resolveCsvReadPath } from '../csv-encoding';
 import type {
@@ -622,12 +623,22 @@ export class WorkflowExecutor {
         }
 
         await this.ctx.dropTableIfExists(outputRelation);
+        const namedRelations: Array<{ alias: string; relation: string }> = [];
+        if (node.type === 'sql_query' && typeof node.config.sql === 'string') {
+          for (const named of sqlNamedInputs(node.config.sql, nodes)) {
+            namedRelations.push({
+              alias: named.alias,
+              relation: await materializeNode(named.nodeId),
+            });
+          }
+        }
         const sql = await this.compiler.compileWorkflowNodeSql(
           node,
           outputRelation,
           relationByNode,
           edges,
-          diagnostics
+          diagnostics,
+          namedRelations
         );
         try {
           await this.ctx.runSql(toPersistentCreateTableSql(sql));

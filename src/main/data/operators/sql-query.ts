@@ -2,8 +2,14 @@ import { StatementType, type DuckDBConnection } from '@duckdb/node-api';
 import { normalizeSqlQuery } from '../../../shared/sql-query';
 import { dataFieldTypeFromDuckDbType } from '../../../shared/data-field-types';
 
-export function buildSqlQuery(sql: string, inputQuery: string): string {
-  return `WITH "input" AS (${inputQuery}) SELECT * FROM (\n${normalizeSqlQuery(sql)}\n) AS "__sql_result"`;
+/** `input` is the wired upstream; `named` adds aliased input sources as extra relations. */
+export function buildSqlQuery(
+  sql: string,
+  inputQuery: string,
+  named: ReadonlyArray<{ alias: string; query: string }> = []
+): string {
+  const ctes = [`"input" AS (${inputQuery})`, ...named.map((n) => `"${n.alias}" AS (${n.query})`)];
+  return `WITH ${ctes.join(', ')} SELECT * FROM (\n${normalizeSqlQuery(sql)}\n) AS "__sql_result"`;
 }
 
 /** Parse and bind without running the query, including a native single-statement check. */
@@ -48,9 +54,8 @@ export function withSqlInputHint(error: unknown): Error {
     return error instanceof Error ? error : new Error(message);
   }
   return new Error(
-    `${message}\nHint: the SQL operator reads exactly one upstream relation, named "input" ` +
-      `("${name}" is not visible). To combine several sources, connect a join or set_op (union) ` +
-      'node upstream and query its output as "input"; columns from both sides keep their names ' +
-      '(conflicting names get the join conflict suffix).'
+    `${message}\nHint: the SQL operator reads its wired upstream as "input", plus every input ` +
+      `source by its alias ("${name}" is not an alias of any input source). Set the alias on the ` +
+      'input node (e.g. erp, bank) and reference it directly, or join/union upstream.'
   );
 }

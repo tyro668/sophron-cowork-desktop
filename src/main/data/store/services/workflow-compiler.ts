@@ -151,7 +151,8 @@ export class WorkflowCompiler {
     outputRelation: string,
     relationByNode: Map<string, string>,
     edges: DataWorkflowEdge[],
-    diagnostics: PrepDiagnostic[] = []
+    diagnostics: PrepDiagnostic[] = [],
+    namedRelations: ReadonlyArray<{ alias: string; relation: string }> = []
   ): Promise<string> {
     const compileKind = getOperatorDefinition(node.type)?.compileKind;
     if (compileKind === 'join') {
@@ -167,7 +168,14 @@ export class WorkflowCompiler {
     }
     if (compileKind === 'sql_query') {
       const { sql } = parseOperatorConfig(SqlQueryConfigSchema, node.config);
-      const query = buildSqlQuery(sql, `SELECT * FROM ${quoteIdentifier(inputRelation)}`);
+      const query = buildSqlQuery(
+        sql,
+        `SELECT * FROM ${quoteIdentifier(inputRelation)}`,
+        namedRelations.map(({ alias, relation }) => ({
+          alias,
+          query: `SELECT * FROM ${quoteIdentifier(relation)}`,
+        }))
+      );
       await describeSqlQuery(this.ctx.connection!, query);
       return `CREATE TEMP TABLE ${quoteIdentifier(outputRelation)} AS ${query}`;
     }

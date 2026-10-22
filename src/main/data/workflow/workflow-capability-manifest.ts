@@ -133,7 +133,7 @@ export function buildWorkflowCapabilityManifest(
     },
     runtime: {
       sqlQuery:
-        'sql_query.config.sql is one DuckDB query (SELECT, WITH, subqueries, joins, window functions). Use input as the upstream relation. Result columns flow downstream. Scripts, write statements, and unbound parameters are not supported.',
+        'sql_query.config.sql is one DuckDB query (SELECT, WITH, subqueries, joins, window functions). Use input as the wired upstream relation; every input_source with config.alias is also readable by that alias (e.g. FROM erp JOIN bank ...), so a SQL node can combine several named inputs. Result columns flow downstream. Scripts, write statements, and unbound parameters are not supported.',
       outputModes: {
         replace: 'default; rebuilds the target table',
         append: 'adds rows to the existing target (UNION ALL BY NAME); not idempotent by design',
