@@ -1702,25 +1702,13 @@ describe('operator DSL executable cases', () => {
     expect(exported).not.toContain('incremental by');
   });
 
-  it('exports graphical rawTable and file output configurations', () => {
+  it('only exports output table targets', () => {
     expect(
       exportPrepOperatorDsl({
-        id: 'rawTable_output',
+        id: 'out',
         type: 'output',
-        config: { destination: 'rawTable', rawTable: 'clean_orders', mode: 'replace' },
+        config: { destination: 'duckdb_table', table: 'clean_orders', mode: 'replace' },
       })
-    ).toBe('output rawTable "clean_orders" mode replace');
-    expect(
-      exportPrepOperatorDsl({
-        id: 'file_output',
-        type: 'output',
-        config: {
-          destination: 'file',
-          filePath: 'exports/orders.csv',
-          format: 'csv',
-          mode: 'replace',
-        },
-      })
-    ).toBe('output file "exports/orders.csv" format csv mode replace');
+    ).toBe('output table "clean_orders" mode replace');
   });
 });

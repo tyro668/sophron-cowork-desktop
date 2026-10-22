@@ -14,23 +14,29 @@ export const outputCodec: OperatorDslCodec = {
     const { text } = command;
     const cursor = new PrepTokenCursor(text, command.line, diagnostics);
     cursor.expect('output', 'invalidOutput');
-    const target = cursor.expectOneOf(['table', 'rawTable', 'file'], 'invalidOutputTarget');
+    // `output table` is the only sink: raw tables are immutable imported sources and
+    // file export is a separate (non-pipeline) action, so rawTable/file are not grammar.
+    const peek = cursor.peek()?.image;
+    if (peek === 'rawTable' || peek === 'file') {
+      diagnostics.push({
+        ...createPrepDiagnostic(
+          'unsupportedOutputDestination',
+          `Output destination "${peek}" is not supported in pipeline workflows; use "output table" instead`,
+          { value: peek }
+        ),
+        line: command.line,
+      });
+      return createOperator('output', text, {});
+    }
+    const target = cursor.expect('table', 'invalidOutputTarget');
     const targetLiteral = cursor.expectStringLiteral('invalidOutputName');
-    let format: string | undefined;
     let mode = 'replace';
     const mergeKeys: string[] = [];
     let schemaPolicy: string | undefined;
     let name: string | undefined;
     const seenOptions = new Set<string>();
     while (!cursor.eof) {
-      if (cursor.match('format')) {
-        if (seenOptions.has('format')) {
-          cursor.report('duplicateOutputOption', 'Duplicate output format option');
-          break;
-        }
-        seenOptions.add('format');
-        format = cursor.expectIdentifier('invalidOutputFormat') ?? undefined;
-      } else if (cursor.match('mode')) {
+      if (cursor.match('mode')) {
         if (seenOptions.has('mode')) {
           cursor.report('duplicateOutputOption', 'Duplicate output mode option');
           break;
@@ -93,11 +99,8 @@ export const outputCodec: OperatorDslCodec = {
     }
     const targetValue = unquoteString(targetLiteral ?? '""');
     return createOperator('output', text, {
-      destination: target === 'table' ? 'duckdb_table' : target,
-      table: target === 'table' ? targetValue : undefined,
-      rawTable: target === 'rawTable' ? targetValue : undefined,
-      filePath: target === 'file' ? targetValue : undefined,
-      format,
+      destination: 'duckdb_table',
+      table: targetValue,
       mode,
       mergeKeys: mergeKeys.length > 0 ? mergeKeys : undefined,
       schemaPolicy,
@@ -105,19 +108,9 @@ export const outputCodec: OperatorDslCodec = {
     });
   },
   format: (config) => {
-    const destination = String(config?.destination ?? 'duckdb_table');
-    const target =
-      destination === 'rawTable'
-        ? `rawTable ${quoteString(String(config?.rawTable ?? ''))}`
-        : destination === 'file'
-          ? `file ${quoteString(String(config?.filePath ?? ''))}`
-          : `table ${quoteString(
-              String(config?.resultTableName ?? config?.table ?? 'clean_result')
-            )}`;
-    const format =
-      destination === 'file' && typeof config?.format === 'string'
-        ? ` format ${config.format}`
-        : '';
+    const target = `table ${quoteString(
+      String(config?.resultTableName ?? config?.table ?? 'clean_result')
+    )}`;
     const modeValue = String(config?.mode ?? 'replace');
     const mergeKeys =
       modeValue === 'merge'
@@ -136,6 +129,6 @@ export const outputCodec: OperatorDslCodec = {
         ? ` schema ${config.schemaPolicy}`
         : '';
     const name = typeof config?.name === 'string' ? ` name ${quoteString(config.name)}` : '';
-    return `output ${target}${format}${mode}${schema}${name}`;
+    return `output ${target}${mode}${schema}${name}`;
   },
 };
