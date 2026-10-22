@@ -7,7 +7,7 @@ import { createDataCustomTools } from '../src/main/data/data-tool-definitions';
 import { DataToolService } from '../src/main/data/data-tool-service';
 import type { AnalyzePipelineRequirementCommand } from '../src/main/data/data-command-types';
 import { RequirementAnalysisReceiptStore } from '../src/main/data/requirement-analysis-receipt-store';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from '../src/main/data/workflow/prep-dsl-capability-profile';
+import { AI_JFLOW_RUNTIME_PROFILE_VERSION } from '../src/main/data/workflow/jflow-capability-profile';
 import { hashColumns } from '../src/main/data/workflow';
 import type {
   DataPipeline,
@@ -406,7 +406,7 @@ describe('DataToolService', () => {
         rawTableName: 'Sales input',
         columnsSnapshot,
         sourceSummaryHash,
-        capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+        capabilityProfileVersion: AI_JFLOW_RUNTIME_PROFILE_VERSION,
       };
       const receipt = analysisReceipts.create({
         authoringRequest: input.authoringRequest,
@@ -656,7 +656,7 @@ describe('DataToolService', () => {
         rawTableName: 'Customers',
         columnsSnapshot,
         sourceSummaryHash,
-        capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+        capabilityProfileVersion: AI_JFLOW_RUNTIME_PROFILE_VERSION,
       };
       const receipt = analysisReceipts.create({
         authoringRequest: input.authoringRequest,
@@ -697,7 +697,7 @@ describe('DataToolService', () => {
 
     const result = await service.getWorkflowDslReference({ topic: 'examples' });
 
-    expect(result.content[0]?.text).toContain('input rawTable "<rawTableId>" as src');
+    expect(result.content[0]?.text).toContain("source orders = @id('local:raw/RAW_ID')");
     expect(result.content[0]?.text).toContain('data_apply_workflow_dsl');
     expect(result.content[0]?.text).not.toContain('design/prep');
   });

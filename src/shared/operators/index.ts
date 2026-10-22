@@ -1,5 +1,5 @@
 import { z, type ZodType } from 'zod';
-import type { PrepDiagnostic } from '../prep-dsl/ast';
+import type { WorkflowDiagnostic } from '../workflow-diagnostics';
 import {
   OPERATOR_CATEGORIES,
   OPERATOR_TYPES,
@@ -90,7 +90,7 @@ export function getOperatorConfigValidation(
 export function validateOperatorConfig(
   type: string,
   config: Record<string, unknown>
-): PrepDiagnostic[] {
+): WorkflowDiagnostic[] {
   const result = getOperatorConfigValidation(type, config);
   return result.success ? [] : issuesToDiagnostics(type, result.error.issues);
 }

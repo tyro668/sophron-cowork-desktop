@@ -1,4 +1,4 @@
-import { splitTopLevel } from '../../prep-dsl/syntax/scanner';
+import { splitTopLevel } from '../../expression-syntax/scanner';
 import {
   getCalculationFunctionBySceneOperation,
   isCalculationSceneDslId,

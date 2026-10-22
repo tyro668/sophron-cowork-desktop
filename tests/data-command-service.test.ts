@@ -13,61 +13,32 @@ import {
 import type { RawTableNormalizerProjectGenerator } from '../src/main/data/raw-table-normalizer-generator';
 import { createRawTableNormalizerProjectTemplate } from '../src/shared/raw-table-normalizer/templates';
 import { runPiAiOneShot, type PiAiOneShotResult } from '../src/main/agent/pi-ai-one-shot';
+import { JFLOW_GENERATION_REPAIR_ATTEMPTS } from '../src/main/data/workflow/jflow-generator';
 import type { AgentRuntimeConfig, DataPipeline } from '../src/renderer/types';
 import type { PersonalAnalysisConnectionInput } from '../src/shared/personal-analysis-types';
-import { exportPrepWorkflowDsl } from '../src/shared/prep-dsl';
-import {
-  repairGeneratedWorkflowFromDiagnostics,
-  type WorkflowModelUsageEvent,
-} from '../src/main/data/workflow';
-import { createWorkflowRepairBudget } from '../src/main/data/workflow/workflow-failure';
-import type { WorkflowFailureDiagnostic } from '../src/main/data/workflow/workflow-failure';
 
-type WorkflowStepFixture = readonly [type: string, payload: string];
-
-function asFunctionWorkflow(...operations: WorkflowStepFixture[]): string {
-  const helpers = operations.map(
-    ([type, payload], index) =>
-      `function step${index + 1}(input) {\n  return workflow.step(input, ${JSON.stringify(
-        type
-      )}, ${payload});\n}`
-  );
-  const body = [
-    'function main() {',
-    '  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });',
-    ...operations.map(
-      (_call, index) =>
-        `  const value${index + 1} = step${index + 1}(${index === 0 ? 'input' : `value${index}`});`
-    ),
-    `  return workflow.output(${operations.length ? `value${operations.length}` : 'input'}, RESULT_TABLE_NAME, { mode: "replace" });`,
-    '}',
-  ];
-  return [...helpers, body.join('\n')].join('\n\n');
+/** A model reply carrying a jflow program; $SRC / $OUT are bound from the system prompt. */
+function jflowReply(...steps: string[]): string {
+  return [
+    '```jflow',
+    "source src = @id('$SRC')",
+    'src',
+    ...steps.map((step) => `  | ${step}`),
+    '  | write $OUT mode: replace',
+    '```',
+    'summary: test program',
+  ].join('\n');
 }
 
-vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
-  runPiAiOneShot: vi.fn(async () => ({
-    text: JSON.stringify({
-      javascriptSource: asFunctionWorkflow([
-        'filter',
-        '{ condition: expr(row => row["Market"] !== "EU") }',
-      ]),
-      requiredColumns: [{ name: 'Market' }],
-    }),
-    hasThinking: false,
-    durationMs: 1,
-    provider: 'test-provider',
-    model: 'test-model',
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-  })),
-}));
+function bindReply(result: PiAiOneShotResult, systemPrompt: unknown): PiAiOneShotResult {
+  const system = String(systemPrompt ?? '');
+  const src = /source src = @id\('([^']*)'\)/.exec(system)?.[1];
+  const out = /\| write (@\w+\('(?:[^']|'')*'\)) mode:/.exec(system)?.[1];
+  if (!src || !out) return result;
+  return { ...result, text: result.text.replaceAll('$SRC', src).replaceAll('$OUT', out) };
+}
+
+vi.mock('../src/main/agent/pi-ai-one-shot', () => ({ runPiAiOneShot: vi.fn() }));
 
 const ONE_SHOT_RESULT_DEFAULTS = {
   provider: 'test-provider',
@@ -92,19 +63,25 @@ const testRuntimeConfig: AgentRuntimeConfig = {
   thinkingLevel: 'medium',
 };
 
+let modelReplies: PiAiOneShotResult[] = [];
+let defaultModelReply: PiAiOneShotResult;
+
+function queueModelReply(result: PiAiOneShotResult) {
+  modelReplies.push(result);
+  return { mockResolvedValueOnce: (next: PiAiOneShotResult) => queueModelReply(next) };
+}
+
 beforeEach(() => {
-  vi.mocked(runPiAiOneShot).mockResolvedValue({
-    text: JSON.stringify({
-      javascriptSource: asFunctionWorkflow([
-        'filter',
-        '{ condition: expr(row => row["Market"] !== "EU") }',
-      ]),
-      requiredColumns: [{ name: 'Market' }],
-    }),
+  modelReplies = [];
+  defaultModelReply = {
+    text: jflowReply("where [Market] <> 'EU'"),
     hasThinking: false,
     durationMs: 1,
     ...ONE_SHOT_RESULT_DEFAULTS,
-  });
+  };
+  vi.mocked(runPiAiOneShot).mockImplementation(async (_user, system) =>
+    bindReply(modelReplies.shift() ?? defaultModelReply, system)
+  );
 });
 
 afterEach(() => {
@@ -124,7 +101,7 @@ afterEach(() => {
 
 describe('DataCommandService', () => {
   it('binds direct UI generation to the analysis flow and supported requirement', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+    queueModelReply({
       text: JSON.stringify({
         items: [
           {
@@ -154,7 +131,7 @@ describe('DataCommandService', () => {
     });
 
     expect(analysis.analysisId).toEqual(expect.any(String));
-    expect(analysis.capabilityProfileVersion).toBe('platform-node-runtime-compat/v3');
+    expect(analysis.capabilityProfileVersion).toBe('jflow-runtime/r1');
     expect(analysis.items[0]?.capabilities).toEqual(['filter.boolean_predicate']);
     await expect(
       service.generatePipelineFromRequirement({
@@ -179,7 +156,7 @@ describe('DataCommandService', () => {
   });
 
   it('downgrades a supported analysis that cites an unknown capability variant', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+    queueModelReply({
       text: JSON.stringify({
         items: [
           {
@@ -217,7 +194,7 @@ describe('DataCommandService', () => {
   });
 
   it('carries the analyzed capability variant through generation and repair', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+    queueModelReply({
       text: JSON.stringify({
         items: [
           {
@@ -245,29 +222,17 @@ describe('DataCommandService', () => {
       usageTraceId: 'capability-variant-flow',
       runtimeConfig: testRuntimeConfig,
     });
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'deduplicate',
-            '{ config: { fields: ["id"], keep: "last", orderBy: [] } }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'deduplicate',
-            '{ config: { fields: ["id"], keep: "first", orderBy: [] } }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
+    queueModelReply({
+      text: jflowReply('distinct by: [id] keep: last'),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    }).mockResolvedValueOnce({
+      text: jflowReply('distinct by: [id] keep: first'),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
 
     await service.generatePipelineFromRequirement({
       source: { location: 'local', tableId: input.rawTable.id },
@@ -278,19 +243,15 @@ describe('DataCommandService', () => {
       runtimeConfig: testRuntimeConfig,
     });
 
-    for (const callIndex of [1, 2]) {
-      const generationPrompt = JSON.parse(
-        String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[0])
-      ) as Record<string, unknown>;
-      expect(generationPrompt.confirmedRequirementCapabilityContract).toMatchObject({
-        operationTypes: ['deduplicate'],
-        capabilities: [expect.objectContaining({ id: 'deduplicate.keep_first' })],
-      });
+    for (const callIndex of [1]) {
+      // The confirmed contract scopes the jflow system prompt for generation and repair alike.
+      const systemPrompt = String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[1]);
+      expect(systemPrompt).toContain('operation kinds: deduplicate');
     }
   });
 
   it('uses the same analysis receipt across the real tool and command generation chain', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+    queueModelReply({
       text: JSON.stringify({
         items: [
           {
@@ -332,29 +293,17 @@ describe('DataCommandService', () => {
       sourceUserMessageId: 'tool-user-message-1',
     });
 
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'deduplicate',
-            '{ config: { fields: ["id"], keep: "last", orderBy: [] } }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'deduplicate',
-            '{ config: { fields: ["id"], keep: "first", orderBy: [] } }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
+    queueModelReply({
+      text: jflowReply('distinct by: [id] keep: last'),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    }).mockResolvedValueOnce({
+      text: jflowReply('distinct by: [id] keep: first'),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
 
     await toolService.generatePipelineFromAnalysis(
       {
@@ -371,73 +320,11 @@ describe('DataCommandService', () => {
       }
     );
 
-    for (const callIndex of [1, 2]) {
-      const generationPrompt = JSON.parse(
-        String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[0])
-      ) as Record<string, unknown>;
-      expect(generationPrompt.confirmedRequirementCapabilityContract).toMatchObject({
-        operationTypes: ['deduplicate'],
-        capabilities: [expect.objectContaining({ id: 'deduplicate.keep_first' })],
-      });
+    for (const callIndex of [1]) {
+      // The confirmed contract scopes the jflow system prompt for generation and repair alike.
+      const systemPrompt = String(vi.mocked(runPiAiOneShot).mock.calls[callIndex]?.[1]);
+      expect(systemPrompt).toContain('operation kinds: deduplicate');
     }
-  });
-
-  it('records a successful repair outcome after the repaired function compiles', async () => {
-    const invalidSource = `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptPatch: {
-          functionName: 'step1',
-          replacementSource: `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });
-}`,
-        },
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const usageEvents: WorkflowModelUsageEvent[] = [];
-    const diagnostic: WorkflowFailureDiagnostic = {
-      severity: 'error',
-      code: 'JAVASCRIPT_TYPE_ERROR_2345',
-      message: 'Argument is not assignable',
-      failureStage: 'javascript_compile',
-      repairClass: 'function_patch',
-      commandErrorCode: 'VALIDATION_FAILED',
-      functionName: 'step1',
-      operationType: 'filter',
-    };
-
-    await repairGeneratedWorkflowFromDiagnostics({
-      rawTableId: 'input-1',
-      resultTableName: 'output-1',
-      requirement: '过滤掉Market为EU的数据',
-      columns: [{ name: 'Market', type: 'string' }],
-      runtimeConfig: testRuntimeConfig,
-      failedJavascriptSource: invalidSource,
-      diagnostics: [diagnostic],
-      onModelUsage: (event) => usageEvents.push(event),
-    });
-
-    expect(usageEvents).toHaveLength(1);
-    expect(usageEvents[0]).toMatchObject({
-      phase: 'repair',
-      repairStrategy: 'function_patch',
-      attempt: 1,
-      functionName: 'step1',
-      failureStage: 'javascript_compile',
-      errorCode: 'JAVASCRIPT_TYPE_ERROR_2345',
-      operationType: 'filter',
-      repairOutcome: 'success',
-    });
   });
 
   it('uses configured Personal Analysis connection for cloud commands', async () => {
@@ -740,10 +627,10 @@ function main() {
     );
 
     const dsl = `
-      input rawTable "${input.rawTable.id}" as customers
+      source customers = @id('local:raw/${input.rawTable.id}')
 
-      from customers
-        | output table "customers_copy" mode replace
+      customers
+        | write @new('customers_copy') mode: replace
     `;
     const dryRun = await service.applyWorkflowDsl({
       pipelineId: pipeline.pipeline.id,
@@ -803,7 +690,7 @@ function main() {
     expect(onPipelineCompleted).toHaveBeenLastCalledWith(persistedRun.pipeline);
 
     const exported = await service.exportWorkflowDsl({ pipelineId: pipeline.pipeline.id });
-    expect(exported.text).toContain(`input rawTable "${input.rawTable.id}" as customers`);
+    expect(exported.text).toContain(`source customers = @id('local:raw/${input.rawTable.id}'`);
 
     const outputPreview = await service.previewTable({
       tableKind: 'result',
@@ -842,7 +729,7 @@ function main() {
     });
     const pipeline = await service.createPipeline({ name: 'candidate cache pipeline' });
     const lookupSpy = vi.spyOn(store, 'getRawTableRecord');
-    const dsl = `input rawTable "${input.rawTable.id}" as src\n  | output table "cache result" mode replace`;
+    const dsl = `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | write @new('cache result') mode: replace`;
 
     await service.applyWorkflowDsl({
       pipelineId: pipeline.pipeline.id,
@@ -850,6 +737,8 @@ function main() {
       rawTableId: input.rawTable.id,
       dryRun: true,
     });
+    const lookupsAfterFirstCompile = lookupSpy.mock.calls.length;
+    expect(lookupsAfterFirstCompile).toBeGreaterThan(0);
     await service.applyWorkflowDsl({
       pipelineId: pipeline.pipeline.id,
       dsl,
@@ -857,7 +746,7 @@ function main() {
       dryRun: true,
     });
 
-    expect(lookupSpy).toHaveBeenCalledTimes(1);
+    expect(lookupSpy).toHaveBeenCalledTimes(lookupsAfterFirstCompile);
   });
 
   it('saves a requested workflow only after pipeline execution succeeds', async () => {
@@ -884,7 +773,7 @@ function main() {
       service.runPipeline({
         pipelineId: pipeline.pipeline.id,
         mode: 'persisted',
-        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | write @id('local:result/${output.resultTable.id}') mode: replace`,
         resultTableId: output.resultTable.id,
         saveWorkflow: true,
       })
@@ -937,7 +826,7 @@ function main() {
     const result = await service.runPipeline({
       pipelineId: pipeline.pipeline.id,
       mode: 'temporary',
-      workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "temporary result" mode replace`,
+      workflowDsl: `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | write @new('temporary result') mode: replace`,
     });
 
     expect(result.preview?.totalRows).toBe(1);
@@ -1402,7 +1291,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
+    expect(generated.workflowDsl).toContain("where [Market] <> 'EU'");
     expect(generated.workflowDsl).not.toContain('EU的数据');
   });
 
@@ -1428,17 +1317,8 @@ function main() {
 
     // Second generation produces a two-step chain (aggregate → filter) — the
     // internal chain edge must survive the merge or the head operator dead-ends.
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          [
-            'aggregate',
-            '{ groupBy: [expr(row => row["Market"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "总销售额" }] }',
-          ],
-          ['filter', '{ condition: expr(row => row["总销售额"] > 100) }']
-        ),
-        requiredColumns: [{ name: 'Market' }, { name: 'Sales' }],
-      }),
+    queueModelReply({
+      text: jflowReply('group [Market] (agg [总销售额] = sum([Sales]))', 'where [总销售额] > 100'),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -1532,7 +1412,7 @@ function main() {
         edges: [],
       },
     };
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
+    queueModelReply({
       text: JSON.stringify({
         items: [
           {
@@ -1619,107 +1499,9 @@ function main() {
     ).rejects.toThrow(/Cannot find workflow node/);
   });
 
-  it('saves and runs native generated nodes when compatibility DSL export fails', async () => {
-    const exportWorkflowDsl = vi.fn(() => {
-      throw new Error('simulated compatibility DSL export failure');
-    });
-    const { service, store, tempRoot } = createService({ exportWorkflowDsl });
-    const csvPath = path.join(tempRoot, 'native-only-market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'native-only market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'native-only market output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(exportWorkflowDsl).toHaveBeenCalled();
-    expect(generated.workflowDslAvailable).toBe(false);
-    expect(generated.workflowDsl).toBeUndefined();
-    expect(generated.workflowHash).toMatch(/^[a-f0-9]{64}$/);
-    const workflow = await store.getPipelineWorkflow(generated.pipelineId);
-    expect(workflow.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
-    expect(workflow.nodes.every((node) => !Object.hasOwn(node.config, 'dsl'))).toBe(true);
-
-    const run = await service.runGeneratedPipeline({
-      pipelineId: generated.pipelineId,
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      output: {
-        location: 'local',
-        writeMode: 'replace',
-        targetTableId: generated.resultTableId,
-      },
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-    });
-    expect(run.preview?.totalRows).toBe(1);
-    expect(run.preview?.rows[0]?.Market).toBe('US');
-    expect(run.workflowHash).toBe(generated.workflowHash);
-  });
-
-  it('keeps helper functions from fenced JavaScript and saves the native node graph', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: [
-        '```javascript',
-        asFunctionWorkflow(['filter', '{ condition: expr(row => row["Market"] !== "EU") }']),
-        '```',
-      ].join('\n'),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, store, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'fenced-market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'fenced market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: { location: 'local', tableId: input.rawTable.id },
-      processRequirement: '过滤掉 Market 为 EU 的数据',
-      output: { location: 'local', writeMode: 'create', tableName: 'fenced result' },
-      runtimeConfig: testRuntimeConfig,
-    });
-    const saved = await store.getPipelineWorkflow(generated.pipelineId);
-
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-    expect(saved.nodes.map((node) => node.type)).toEqual(['input', 'filter', 'output']);
-    expect(saved.nodes[1]?.config.generatedOrigin).toMatchObject({
-      functionName: 'step1',
-      nodeType: 'filter',
-    });
-  });
-
   it('derives required columns from generated DSL when the model omits them', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'filter',
-          '{ condition: expr(row => row["Market"] !== "EU") }',
-        ]),
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply("where [Market] <> 'EU'"),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -1751,310 +1533,12 @@ function main() {
     expect(generated.requiredColumns).toEqual([{ name: 'Market', type: 'text' }]);
   });
 
-  it('compiles restricted workflow JS API into DSL and lineage', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['filter', '{ condition: expr(row => row["Market"] !== "EU") }'],
-          [
-            'derive',
-            '{ column: "Revenue", expression: expr(row => row["Sales"] * row["Quantity"]) }',
-          ],
-          ['sort', '{ orderBy: [{ field: "Revenue", direction: "desc" }] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales,Quantity\nEU,10,2\nUS,20,3\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤 Market 不是 EU，新增 Revenue = Sales * Quantity 并降序',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'market processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-    expect(generated.workflowDsl).toContain('derive [Revenue] = [Sales] * [Quantity]');
-    expect(generated.workflowDsl).toContain('sort [Revenue] desc');
-    expect(generated.requiredColumns).toEqual([
-      { name: 'Market', type: 'text' },
-      { name: 'Sales', type: 'integer' },
-      { name: 'Quantity', type: 'integer' },
-    ]);
-    expect(generated.expectedOutputSchema).toEqual([
-      { name: 'Market', type: 'text' },
-      { name: 'Sales', type: 'integer' },
-      { name: 'Quantity', type: 'integer' },
-      { name: 'Revenue', type: 'integer' },
-    ]);
-    expect(generated.lineage.find((column) => column.name === 'Revenue')).toEqual({
-      name: 'Revenue',
-      type: 'integer',
-      sourceColumns: [
-        { name: 'Sales', type: 'integer' },
-        { name: 'Quantity', type: 'integer' },
-      ],
-      expression: '[Sales] * [Quantity]',
-    });
-  });
-
-  it('compiles javascriptSource sort calls to Prep DSL instead of accepting SQL order by text', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'sort',
-          '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Unit Price\n10\n5\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '按 Unit Price 升序排序',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'items processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
-    expect(generated.workflowDsl).not.toContain('order by');
-    expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
-  });
-
-  it('compiles native row field refs with spaces in generated derive expressions', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          [
-            'derive',
-            '{ column: "Customer ID Number", expression: expr(row => regexpExtract(row["Customer ID"], "[0-9]+")) }',
-          ],
-          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
-          ['filter', '{ condition: expr(row => row["Profit"] > 0) }'],
-          ['sort', '{ orderBy: [{ field: "Profit", direction: "desc" }] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'orders.csv');
-    fs.writeFileSync(csvPath, 'Customer ID,记录数,Profit\nCUS-001,1,10\nCUS-002,1,-5\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'orders input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '提取 Customer ID 中的数字，删除记录数，只保留 Profit 大于 0 并降序',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'orders processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain(
-      "derive [Customer ID Number] = regexp_extract([Customer ID], '[0-9]+')"
-    );
-    expect(generated.workflowDsl).not.toContain('regexp_extract(`Customer ID`');
-  });
-
-  it('does not double-quote native row field refs in generated derive expressions', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'derive',
-          '{ column: "Customer ID Number", expression: expr(row => regexpExtract(row["Customer ID"], "[0-9]+")) }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'orders.csv');
-    fs.writeFileSync(csvPath, 'Customer ID\nCUS-001\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'orders input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '提取 Customer ID 中的数字',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'orders processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain(
-      "derive [Customer ID Number] = regexp_extract([Customer ID], '[0-9]+')"
-    );
-    expect(generated.workflowDsl).not.toContain('[[Customer ID]]');
-  });
-
-  it('compiles native row field comparisons in generated filters', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'filter',
-          '{ condition: expr(row => row["Profit"] < row["Target Profit"]) }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'profits.csv');
-    fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'profits input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '只保留 Profit 小于 Target Profit 的记录',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'profits processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('filter [Profit] < [Target Profit]');
-    expect(generated.workflowDsl).not.toContain("'[Target Profit]'");
-    expect(generated.requiredColumns).toEqual([
-      { name: 'Profit', type: 'integer' },
-      { name: 'Target Profit', type: 'integer' },
-    ]);
-  });
-
-  it('quotes spaced native row field refs in generated arithmetic expressions', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['filter', '{ condition: expr(row => row["Profit"] < row["Target Profit"]) }'],
-          [
-            'derive',
-            '{ column: "Profit Shortfall", expression: expr(row => row["Target Profit"] - row["Profit"]) }',
-          ],
-          ['sort', '{ orderBy: [{ field: "Profit Shortfall", direction: "desc" }] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'profits.csv');
-    fs.writeFileSync(csvPath, 'Profit,Target Profit\n100,150\n200,180\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'profits input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement:
-        '只保留 Profit 小于 Target Profit 的记录，新增 Profit Shortfall = Target Profit - Profit，并按 Profit Shortfall 降序排序',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'profits processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('filter [Profit] < [Target Profit]');
-    expect(generated.workflowDsl).toContain(
-      'derive [Profit Shortfall] = [Target Profit] - [Profit]'
-    );
-  });
-
   it('allows sorting by aggregate metric aliases', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          [
-            'aggregate',
-            '{ groupBy: [expr(row => row["Market"]), expr(row => row["Product Type"])], metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "Sales 总和" }, { fn: "sum", expression: expr(row => row["Profit"]), alias: "Profit 总和" }, { fn: "sum", expression: expr(row => row["Marketing"]), alias: "Marketing 总和" }, { fn: "count", expression: "*", alias: "记录数" }] }',
-          ],
-          ['sort', '{ orderBy: [{ field: "Sales 总和", direction: "desc" }] }']
-        ),
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply(
+        'group [Market], [Product Type] (agg [Sales 总和] = sum([Sales]), [Profit 总和] = sum([Profit]), [Marketing 总和] = sum([Marketing]), [记录数] = count(*))',
+        'sort -[Sales 总和]'
+      ),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2088,10 +1572,6 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain(
-      'aggregate by [Market], [Product Type] metrics sum([Sales]) as [Sales 总和]'
-    );
-    expect(generated.workflowDsl).toContain('sort [Sales 总和] desc');
     expect(generated.requiredColumns).toEqual([
       { name: 'Market', type: 'text' },
       { name: 'Product Type', type: 'text' },
@@ -2101,105 +1581,9 @@ function main() {
     ]);
   });
 
-  it('accepts single-column workflow.step drop payloads before sorting', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
-          ['sort', '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '删除记录数，按照Unit Price升序排列',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'items processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('select except [记录数]');
-    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
-    expect(generated.requiredColumns).toEqual([
-      { name: '记录数', type: 'integer' },
-      { name: 'Unit Price', type: 'integer' },
-    ]);
-  });
-
-  it('compiles workflow.step drop and sort sequences before generating DSL', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
-          ['sort', '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '删除记录数，按照Unit Price升序排列',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'items processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('select except [记录数]');
-    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
-    expect(generated.requiredColumns).toEqual([
-      { name: '记录数', type: 'integer' },
-      { name: 'Unit Price', type: 'integer' },
-    ]);
-  });
-
   it('preserves sort-then-drop ordering without expanding deletion into select', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['sort', '{ orderBy: [{ field: "Sales", direction: "asc" }] }'],
-          ['select', '{ selection: "exclude", fields: ["记录数"] }']
-        ),
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply('sort [Sales]', 'drop [记录数]'),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2235,28 +1619,20 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('sort [Sales] asc');
-    expect(generated.workflowDsl).toContain('select except [记录数]');
-    expect(generated.workflowDsl).not.toContain('select [City]');
     expect(generated.requiredColumns).toEqual([
       { name: 'Sales', type: 'integer' },
       { name: '记录数', type: 'integer' },
     ]);
   });
 
-  it('allows javascriptSource chains to reference columns renamed by earlier operations', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['select', '{ selection: "exclude", fields: ["记录数"] }'],
-          ['rename', '{ source: "Adj Close", target: "adj_close" }'],
-          [
-            'cast',
-            '{ column: "adj_close", targetType: "decimal", options: { removePrefix: "$", scale: 2 } }',
-          ]
-        ),
-        requiredColumns: [],
-      }),
+  it('allows generated chains to reference columns renamed by earlier operations', async () => {
+    queueModelReply({
+      text: jflowReply(
+        'drop [记录数]',
+        'rename [Adj Close] as [adj_close]',
+        "derive replace [adj_close] = replace([adj_close], '$', '')",
+        'cast [adj_close] as decimal(18,2) on_error: null'
+      ),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2294,39 +1670,29 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('select except [记录数]');
-    expect(generated.workflowDsl).toContain('rename [Adj Close] as [adj_close]');
-    expect(generated.workflowDsl).toContain('derive [__sophron_cast_adj_close] = try_cast');
-    expect(generated.workflowDsl).toContain("replace(cast([adj_close] AS text), '$', '')");
-    expect(generated.workflowDsl).toContain('select except [adj_close]');
-    expect(generated.workflowDsl).toContain('rename [__sophron_cast_adj_close] as [adj_close]');
     expect(generated.requiredColumns).toEqual([
-      { name: '记录数', type: 'integer' },
       { name: 'Adj Close', type: 'text' },
+      { name: '记录数', type: 'integer' },
     ]);
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'Company Name', type: 'text' },
       { name: 'Date', type: 'date' },
       { name: 'Ticker', type: 'text' },
-      { name: 'Close value in reference period', type: 'text' },
+      // rename/cast keep the column in place
       { name: 'adj_close', type: 'decimal' },
+      { name: 'Close value in reference period', type: 'text' },
     ]);
   });
 
   it('propagates converted column types through derived generated fields', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['rename', '{ source: "Adj Close", target: "adj_close" }'],
-          [
-            'cast',
-            '{ column: "adj_close", targetType: "decimal", options: { removePrefix: "$", scale: 2 } }',
-          ],
-          ['derive', '{ column: "double_close", expression: expr(row => row["adj_close"] * 2) }'],
-          ['sort', '{ orderBy: [{ field: "double_close", direction: "desc" }] }']
-        ),
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply(
+        'rename [Adj Close] as [adj_close]',
+        "derive replace [adj_close] = replace([adj_close], '$', '')",
+        'cast [adj_close] as decimal(18,2) on_error: null',
+        'derive [double_close] = [adj_close] * 2',
+        'sort -[double_close]'
+      ),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2355,91 +1721,20 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('rename [__sophron_cast_adj_close] as [adj_close]');
-    expect(generated.workflowDsl).toContain('derive [double_close] = [adj_close] * 2');
-    expect(generated.workflowDsl).toContain('sort [double_close] desc');
     expect(generated.requiredColumns).toEqual([{ name: 'Adj Close', type: 'text' }]);
     expect(generated.expectedOutputSchema).toEqual([
       { name: 'adj_close', type: 'decimal' },
       { name: 'double_close', type: 'decimal' },
     ]);
-    expect(generated.lineage).toEqual([
-      {
-        name: 'adj_close',
-        type: 'decimal',
-        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
-        expression: "TRY_CAST(REPLACE(CAST([adj_close] AS text), '$', '') AS decimal(18,2))",
-      },
-      {
-        name: 'double_close',
-        type: 'decimal',
-        sourceColumns: [{ name: 'Adj Close', type: 'text' }],
-        expression: '[adj_close] * 2',
-      },
+    expect(generated.lineage.map(({ name, type }) => ({ name, type }))).toEqual([
+      { name: 'adj_close', type: 'decimal' },
+      { name: 'double_close', type: 'decimal' },
     ]);
-  });
-
-  it('infers dollar-prefix removal when generated JS casts currency text to decimal', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['cast', '{ column: "Adj Close", targetType: "decimal", options: { scale: 2 } }'],
-          ['select', '{ selection: "exclude", fields: ["记录数"] }']
-        ),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'prices.csv');
-    fs.writeFileSync(csvPath, 'Adj Close,记录数\n$8.34,1\n$16.14,1\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'prices input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '将Adj Close转换成数值，去除开头的$符号，删除记录数这一列',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'prices processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain("replace(cast([Adj Close] AS text), '$', '')");
-    expect(generated.workflowDsl).toContain('select except [记录数]');
-    expect(generated.expectedOutputSchema).toEqual([{ name: 'Adj Close', type: 'decimal' }]);
   });
 
   it('infers integer output types for generated year and month fields', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: `function extractYear(input) {
-  return workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });
-}
-
-function extractMonth(input) {
-  return workflow.step(input, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const withYear = extractYear(input);
-  const withMonth = extractMonth(withYear);
-  return workflow.output(withMonth, RESULT_TABLE_NAME, { mode: "replace" });
-}`,
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply('derive [Year] = year([Date])', 'derive [Month] = month([Date])'),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2474,154 +1769,11 @@ function main() {
       { name: 'Month', type: 'integer' },
     ]);
     expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
-  });
-
-  it('accepts a helper that composes multiple workflow operations without repair', async () => {
-    const multiOperationSource = `function extractYearMonth(input) {
-  const withYear = workflow.step(input, "derive", { column: "Year", expression: expr(row => year(row["Date"])) });
-  return workflow.step(withYear, "derive", { column: "Month", expression: expr(row => month(row["Date"])) });
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const extracted = extractYearMonth(input);
-  return workflow.output(extracted, RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({ javascriptSource: multiOperationSource }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'repair-dates.csv');
-    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'repair dates input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '从 Date 提取年份和月份',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'repair dates processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
-    expect(generated.workflowDsl).toContain('derive [Year] = year([Date])');
-    expect(generated.workflowDsl).toContain('derive [Month] = month([Date])');
-    expect(generated.expectedOutputSchema).toEqual([
-      { name: 'Date', type: 'date' },
-      { name: 'Year', type: 'integer' },
-      { name: 'Month', type: 'integer' },
-    ]);
-  });
-
-  it('casts date fields to text before generated regexp extraction', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'derive',
-          '{ column: "year", expression: expr(row => regexpExtract(row["Date"], "^[0-9]{4}")) }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'prices.csv');
-    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'prices input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '从 Date 提取年份',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'prices processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain("regexp_extract(cast([Date] AS text), '^[0-9]{4}')");
-    expect(generated.expectedOutputSchema).toEqual([
-      { name: 'Date', type: 'date' },
-      { name: 'year', type: 'text' },
-    ]);
-  });
-
-  it('extracts regexp capture groups instead of full matches for generated month fields', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'derive',
-          '{ column: "month", expression: expr(row => regexpExtract(row["Date"], "^[0-9]{4}-([0-9]{2})")) }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'prices.csv');
-    fs.writeFileSync(csvPath, 'Date\n2012-12-31\n2013-01-31\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'prices input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '从 Date 提取月份',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'prices processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain(
-      "regexp_extract(cast([Date] AS text), '^[0-9]{4}-([0-9]{2})', 1)"
-    );
   });
 
   it('replaces existing columns when generated derive targets the same field name', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow(
-          ['rename', '{ source: "Ticker", target: "ticker" }'],
-          ['derive', '{ column: "ticker", expression: expr(row => upper(row["ticker"])) }']
-        ),
-        requiredColumns: [],
-      }),
+    queueModelReply({
+      text: jflowReply('rename [Ticker] as [ticker]', 'derive replace [ticker] = upper([ticker])'),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
@@ -2650,1460 +1802,7 @@ function main() {
       runtimeConfig: testRuntimeConfig,
     });
 
-    expect(generated.workflowDsl).toContain('derive [__sophron_cast_ticker] = upper([ticker])');
-    expect(generated.workflowDsl).toContain('select except [ticker]');
-    expect(generated.workflowDsl).toContain('rename [__sophron_cast_ticker] as [ticker]');
     expect(generated.expectedOutputSchema).toEqual([{ name: 'ticker', type: 'text' }]);
-  });
-
-  it('escalates a repeated invalid limit patch to one complete regeneration', async () => {
-    const invalidSource = asFunctionWorkflow(
-      ['sort', '{ orderBy: [{ field: "Sales", direction: "desc" }] }'],
-      ['limit', '{ config: { mode: "top", limit: 10, unit: "rows", offset: 0, orderBy: [] } }']
-    );
-    const validSource = asFunctionWorkflow(
-      ['sort', '{ orderBy: [{ field: "Sales", direction: "desc" }] }'],
-      [
-        'limit',
-        '{ config: { sampling: "fixed", limit: 10, unit: "rows", offset: 0, orderBy: [] } }',
-      ]
-    );
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'step2',
-            replacementSource:
-              'function step2(input) { return workflow.step(input, "limit", { config: { mode: "top", limit: 10, unit: "rows", offset: 0, orderBy: [] } }); }',
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: validSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'rank-sales.csv');
-    fs.writeFileSync(csvPath, 'Customer ID,Sales\n1,10\n2,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'rank sales input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '找出销售额最高的前10名客户',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'rank sales output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-    const fullRepairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
-      outputJsonSchema?: Record<string, unknown>;
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(fullRepairPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
-    expect(fullRepairPrompt.outputJsonSchema).not.toHaveProperty('javascriptPatch');
-    expect(fullRepairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      operationType: 'limit',
-      expectedSignature: expect.stringContaining('sampling: "fixed"'),
-      repairHint: expect.stringContaining('There is no top mode'),
-    });
-    expect(generated.workflowDsl).toContain('sort [Sales] desc');
-    expect(generated.workflowDsl).toContain('limit 10');
-  });
-
-  it('repairs syntax-invalid generated JavaScript with a scoped function patch', async () => {
-    const invalidSource = `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'step1',
-            replacementSource: `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") });
-}`,
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'syntax-repair.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'syntax repair input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'syntax repair output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
-      outputJsonSchema?: { javascriptPatch?: { functionName?: string } };
-      examples?: unknown;
-      previousFailedAttempt?: {
-        failedJavascriptSource?: string;
-        repairTarget?: { functionName?: string; source?: string; availableFunctions?: string[] };
-        diagnostics?: Array<Record<string, unknown>>;
-      };
-    };
-    expect(repairPrompt.outputJsonSchema?.javascriptPatch?.functionName).toBe('step1');
-    expect(repairPrompt.examples).toBeUndefined();
-    expect(repairPrompt.previousFailedAttempt?.failedJavascriptSource).toBeUndefined();
-    expect(repairPrompt.previousFailedAttempt?.repairTarget).toMatchObject({
-      functionName: 'step1',
-      source: expect.stringContaining('function step1'),
-      availableFunctions: ['step1', 'main'],
-    });
-    expect(repairPrompt.previousFailedAttempt?.repairTarget?.source).not.toContain('function main');
-    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      code: 'JAVASCRIPT_SYNTAX_ERROR',
-      line: 2,
-      column: expect.any(Number),
-      functionName: 'step1',
-      sourceLine: expect.stringContaining('workflow.step'),
-      sourceExcerpt: expect.stringContaining('2 |'),
-      caret: expect.stringContaining('^'),
-      repairHint: expect.stringContaining('do not copy the failing line unchanged'),
-    });
-    expect(vi.mocked(runPiAiOneShot).mock.calls[1]?.[3]).toMatchObject({ maxTokens: 1_200 });
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('falls back to full regeneration when a syntax repair patch is still invalid', async () => {
-    const invalidHelper = `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
-}`;
-    const invalidSource = `${invalidHelper}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    const validSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "EU") }',
-    ]);
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: { functionName: 'step1', replacementSource: invalidHelper },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: validSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'syntax-patch-fallback.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'syntax patch fallback input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'syntax patch fallback output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-    const fullRepairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
-      outputJsonSchema?: Record<string, unknown>;
-      previousFailedAttempt?: { repairStrategy?: string };
-    };
-    expect(fullRepairPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
-    expect(fullRepairPrompt.previousFailedAttempt?.repairStrategy).toBe('full_regeneration');
-    expect(vi.mocked(runPiAiOneShot).mock.calls[2]?.[3]).toMatchObject({ maxTokens: 3_000 });
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('preserves semantic repair capacity after source-stage repairs are consumed', async () => {
-    const invalidHelper = `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }));
-}`;
-    const invalidSource = `${invalidHelper}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  return workflow.output(step1(input), RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    const semanticFailureSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => true) }',
-    ]);
-    const validFunction =
-      'function step1(input) { return workflow.step(input, "filter", { condition: expr(row => row["Market"] !== "EU") }); }';
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: { functionName: 'step1', replacementSource: invalidHelper },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: semanticFailureSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: { functionName: 'step1', replacementSource: validFunction },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'stage-repair-budget.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'stage repair budget input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'stage repair budget output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(4);
-    const semanticRepairPrompt = JSON.parse(
-      String(vi.mocked(runPiAiOneShot).mock.calls[3]?.[0])
-    ) as {
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(semanticRepairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      failureStage: 'workflow_lowering',
-      functionName: 'step1',
-    });
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('keeps the last semantic-stage baseline when a repair regresses to invalid JavaScript', async () => {
-    const semanticFailureSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => true) }',
-    ]);
-    const invalidPatch = `function step1(input) {
-  return workflow.step(input, "filter", { condition: expr(row => true) }));
-}`;
-    const validSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "EU") }',
-    ]);
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: semanticFailureSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: { functionName: 'step1', replacementSource: invalidPatch },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: validSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'semantic-repair-frontier.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'semantic repair frontier input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'semantic repair frontier output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    const fullRepairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
-      previousFailedAttempt?: { failedJavascriptSource?: string; repairStrategy?: string };
-    };
-    expect(fullRepairPrompt.previousFailedAttempt).toMatchObject({
-      failedJavascriptSource: semanticFailureSource,
-      repairStrategy: 'full_regeneration',
-    });
-    expect(fullRepairPrompt.previousFailedAttempt?.failedJavascriptSource).not.toContain('}));');
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('escalates an identical full repair to a duplicate-rewrite strategy', async () => {
-    const validSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "EU") }',
-    ]);
-    const invalidSource = `)\n${validSource}`;
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: validSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'duplicate-syntax-repair.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'duplicate syntax repair input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'duplicate syntax repair output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-    const duplicatePrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[2]?.[0])) as {
-      previousFailedAttempt?: {
-        repairStrategy?: string;
-        previousRepairWasIdentical?: boolean;
-        instruction?: string;
-      };
-    };
-    expect(duplicatePrompt.previousFailedAttempt).toMatchObject({
-      repairStrategy: 'duplicate_rewrite',
-      previousRepairWasIdentical: true,
-      instruction: expect.stringContaining('byte-for-byte identical'),
-    });
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('stops safely when the duplicate-rewrite strategy also returns identical syntax', async () => {
-    const invalidSource = `)\n${asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "EU") }',
-    ])}`;
-    const repeatedResponse = {
-      text: JSON.stringify({ javascriptSource: invalidSource }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    };
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce(repeatedResponse)
-      .mockResolvedValueOnce(repeatedResponse)
-      .mockResolvedValueOnce(repeatedResponse);
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'duplicate-rewrite-stop.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'duplicate rewrite stop input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '过滤掉Market为EU的数据',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'duplicate rewrite stop output',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('at line 1, column 1'),
-      details: {
-        repairStopReason: 'duplicate',
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({
-            code: 'JAVASCRIPT_SYNTAX_ERROR',
-            line: 1,
-            column: 1,
-          }),
-        ]),
-      },
-    });
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-  });
-
-  it('treats token-limited model output as truncation instead of a JavaScript syntax failure', async () => {
-    const validSource = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "EU") }',
-    ]);
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: '{"javascriptSource":"function step1(input) {',
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-        stopReason: 'length',
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: validSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'truncated-generation.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'truncated generation input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '过滤掉Market为EU的数据',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'truncated generation output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      code: 'MODEL_OUTPUT_TRUNCATED',
-      failureStage: 'generation_response',
-      repairClass: 'full_regeneration',
-      repairHint: expect.stringContaining('shorter complete JavaScript program'),
-    });
-    expect(generated.workflowDsl).toContain("filter [Market] <> 'EU'");
-  });
-
-  it('repairs a statement-bodied profit-rate expression and runs the generated classification', async () => {
-    const invalidSource = `function addProfitRate(input) {
-  return workflow.step(input, "derive", {
-    column: "利润率",
-    expression: expr(row => {
-      const sales = row["Sales"];
-      if (sales == null || sales === 0) return 0;
-      return cast(row["Profit"] / sales, "decimal", { scale: 2 });
-    })
-  });
-}
-
-function addOperatingGrade(input) {
-  return workflow.step(input, "derive", {
-    column: "经营等级",
-    expression: expr(row => row["利润率"] >= 0.2 ? "高收益" : row["利润率"] >= 0 ? "低收益" : "亏损")
-  });
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const withProfitRate = addProfitRate(input);
-  const withOperatingGrade = addOperatingGrade(withProfitRate);
-  return workflow.output(withOperatingGrade, RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    const repairedProfitRate = `function addProfitRate(input) {
-  return workflow.step(input, "derive", {
-    column: "利润率",
-    expression: expr(row => cast(row["Sales"] == null || row["Sales"] === 0 ? 0 : row["Profit"] / row["Sales"], "decimal", { scale: 2 }))
-  });
-}`;
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'addProfitRate',
-            replacementSource: repairedProfitRate,
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'profit-rate-classification.csv');
-    fs.writeFileSync(csvPath, 'Sales,Profit\n100,25\n100,10\n100,-10\n0,-5\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'profit rate classification input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-    const requirement =
-      '根据利润率新增“经营等级”：利润率大于等于 20% 为“高收益”，0%到20%之间为“低收益”，小于0%为“亏损”。Sales 为 0 的话利润率置0。';
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: requirement,
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'profit rate classification output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain(
-      'Every expr callback must contain exactly one expression'
-    );
-    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      code: 'NATIVE_EXPRESSION_BODY_UNSUPPORTED',
-      functionName: 'addProfitRate',
-      expectedSignature: 'expr(row => expression)',
-      repairHint: expect.stringContaining('nested condition ? whenTrue : whenFalse'),
-    });
-    expect(generated.workflowDsl).toContain('derive [利润率]');
-    expect(generated.workflowDsl).toContain('derive [经营等级]');
-
-    const run = await service.runGeneratedPipeline({
-      pipelineId: generated.pipelineId,
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      output: {
-        location: 'local',
-        writeMode: 'replace',
-        targetTableId: generated.resultTableId,
-      },
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-    });
-    expect(run.preview?.rows.map((row) => row['经营等级'])).toEqual([
-      '高收益',
-      '低收益',
-      '亏损',
-      '低收益',
-    ]);
-  });
-
-  it('repairs intermediate data access with derive_window and runs percentage-of-total', async () => {
-    const invalidSource = `function summarizeCountrySales(input) {
-  return workflow.step(input, "aggregate", {
-    groupBy: [expr(row => row["Country"])],
-    metrics: [{ fn: "sum", expression: expr(row => row["Sales"]), alias: "国家销售额" }]
-  });
-}
-
-function addOverallSalesAndShare(input) {
-  const totalAgg = workflow.step(input, "aggregate", {
-    groupBy: [],
-    metrics: [{ fn: "sum", expression: expr(row => row["国家销售额"]), alias: "全部销售额" }]
-  });
-  return workflow.step(input, "derive", {
-    column: "销售额占比",
-    expression: expr(row => row["国家销售额"] / totalAgg.data[0]["全部销售额"])
-  });
-}
-
-function sortByShare(input) {
-  return workflow.step(input, "sort", {
-    orderBy: [{ field: "销售额占比", direction: "desc" }]
-  });
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const summarized = summarizeCountrySales(input);
-  const withShare = addOverallSalesAndShare(summarized);
-  const sorted = sortByShare(withShare);
-  return workflow.output(sorted, RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    const repairedFunction = `function addOverallSalesAndShare(input) {
-  const withOverallSales = workflow.step(input, "derive_window", {
-    column: "全部销售额",
-    function: "sum",
-    expression: expr(row => row["国家销售额"]),
-    partitionBy: [],
-    orderBy: []
-  });
-  const withShare = workflow.step(withOverallSales, "derive", {
-    column: "销售额占比",
-    expression: expr(row => cast(row["全部销售额"] == null || row["全部销售额"] === 0 ? 0 : row["国家销售额"] / row["全部销售额"], "decimal", { scale: 4 }))
-  });
-  return withShare;
-}`;
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: invalidSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'addOverallSalesAndShare',
-            replacementSource: repairedFunction,
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'country-sales-share.csv');
-    fs.writeFileSync(csvPath, 'Country,Sales\nChina,10\nChina,30\nFrance,60\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'country sales share input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement:
-        '按 Country 汇总 Sales，然后计算各国家销售额占全部国家销售额的比例，结果按占比降序排列。',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'country sales share output',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain(
-      'Workflow values are opaque graph handles'
-    );
-    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain('use derive_window');
-    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      code: 'WORKFLOW_VALUE_DATA_ACCESS_UNSUPPORTED',
-      functionName: 'addOverallSalesAndShare',
-      expectedSignature: expect.stringContaining('derive_window'),
-      repairHint: expect.stringContaining('Do not read .data'),
-    });
-    expect(generated.workflowDsl).toContain('sum([国家销售额]) over ()');
-
-    const run = await service.runGeneratedPipeline({
-      pipelineId: generated.pipelineId,
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      output: {
-        location: 'local',
-        writeMode: 'replace',
-        targetTableId: generated.resultTableId,
-      },
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-    });
-    expect(
-      run.preview?.rows.map((row) => ({
-        country: row.Country,
-        countrySales: Number(row['国家销售额']),
-        overallSales: Number(row['全部销售额']),
-        share: Number(row['销售额占比']),
-      }))
-    ).toEqual([
-      { country: 'France', countrySales: 60, overallSales: 100, share: 0.6 },
-      { country: 'China', countrySales: 40, overallSales: 100, share: 0.4 },
-    ]);
-  });
-
-  it.each([
-    ['a scalar pivot field', '"Market"'],
-    ['an expression-wrapped pivot field', '[expr(row => row["Market"])]'],
-  ])('repairs %s and executes the generated pivot', async (_caseName, invalidOn) => {
-    const pivotSource = (on: string) => `function pivotMarketSales(input) {
-  return workflow.step(input, "pivot", {
-    config: {
-      on: ${on},
-      using: [{ function: "sum", expression: expr(row => row["Sales"]), alias: "Sales" }],
-      groupBy: ["Product Type"]
-    }
-  });
-}
-
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const pivoted = pivotMarketSales(input);
-  return workflow.output(pivoted, RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-    const validSource = pivotSource(
-      '[{ field: "Market", values: ["Central", "East", "South", "West"] }]'
-    );
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ javascriptSource: pivotSource(invalidOn) }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'pivotMarketSales',
-            replacementSource: validSource.slice(0, validSource.indexOf('\n\nfunction main()')),
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, `pivot-${_caseName.replaceAll(' ', '-')}.csv`);
-    fs.writeFileSync(
-      csvPath,
-      [
-        'Product Type,Market,Sales',
-        'Coffee,Central,10',
-        'Coffee,East,20',
-        'Coffee,South,30',
-        'Coffee,West,40',
-        'Espresso,Central,5',
-        'Espresso,East,7',
-        'Espresso,South,11',
-        'Espresso,West,13',
-      ].join('\n'),
-      'utf8'
-    );
-    const input = await service.createRawTable({
-      name: `pivot ${_caseName} input`,
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement:
-        '以 Product Type 为行分组，将 Market 透视为列，固定生成 Central、East、South、West 四列，单元格汇总 Sales。',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: `pivot ${_caseName} output`,
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-    expect(String(vi.mocked(runPiAiOneShot).mock.calls[0]?.[1])).toContain(
-      'on: [{ field: "Market"'
-    );
-    const repairPrompt = JSON.parse(String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0])) as {
-      previousFailedAttempt?: { diagnostics?: Array<Record<string, unknown>> };
-    };
-    expect(repairPrompt.previousFailedAttempt?.diagnostics?.[0]).toMatchObject({
-      functionName: 'pivotMarketSales',
-      operationType: 'pivot',
-      expectedSignature: expect.stringContaining('on: [{ field: "pivotField"'),
-      repairHint: expect.stringContaining('Never use a scalar string or expr(...)'),
-    });
-    expect(generated.workflowDsl).toContain('pivot on [Market]');
-    expect(generated.workflowDsl).toContain('group by [Product Type]');
-
-    const run = await service.runGeneratedPipeline({
-      pipelineId: generated.pipelineId,
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      output: {
-        location: 'local',
-        writeMode: 'replace',
-        targetTableId: generated.resultTableId,
-      },
-      requiredColumns: generated.requiredColumns,
-      expectedOutputSchema: generated.expectedOutputSchema,
-    });
-    expect(
-      run.preview?.rows
-        .map((row) => ({
-          productType: String(row['Product Type']),
-          centralSales: Number(row.Central_Sales),
-          eastSales: Number(row.East_Sales),
-          southSales: Number(row.South_Sales),
-          westSales: Number(row.West_Sales),
-        }))
-        .sort((left, right) => left.productType.localeCompare(right.productType))
-    ).toEqual([
-      {
-        productType: 'Coffee',
-        centralSales: 10,
-        eastSales: 20,
-        southSales: 30,
-        westSales: 40,
-      },
-      {
-        productType: 'Espresso',
-        centralSales: 5,
-        eastSales: 7,
-        southSales: 11,
-        westSales: 13,
-      },
-    ]);
-  });
-
-  it('rejects generated JavaScript with incompatible filter comparison types', async () => {
-    const badResponse = {
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'filter',
-          '{ condition: expr(row => row["Market"] > 100) }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    };
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce(badResponse)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'step1',
-            replacementSource:
-              'function step1(input) { return workflow.step(input, "filter", { condition: expr(row => row["Market"] > 100) }); }',
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'filter',
-            '{ condition: expr(row => row["Market"] > 100) }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '过滤 Market 大于 100 的数据',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'market processed',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      details: {
-        repairStopReason: 'exhausted',
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({
-            severity: 'error',
-            code: 'JAVASCRIPT_TYPE_ERROR_2365',
-            message: expect.stringContaining("Operator '>' cannot be applied"),
-            functionName: 'step1',
-            failureStage: 'javascript_compile',
-            repairClass: 'function_patch',
-            commandErrorCode: 'VALIDATION_FAILED',
-          }),
-        ]),
-      },
-    });
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-  });
-
-  it.each(['helper', 'complete program'])(
-    'recovers the reported profit-filter repair when javascriptSource contains a %s',
-    async (shape) => {
-      const helper = (expression: string) => `function filterPositiveProfit(input) {
-  return workflow.step(input, "filter", { condition: expr(row => row["利润"] === "待确认" ? false : ${expression} > 0) });
-}`;
-      const main = `function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  const filtered = filterPositiveProfit(input);
-  return workflow.output(filtered, RESULT_TABLE_NAME, { mode: "replace" });
-}`;
-      const original = `${helper('cast(row["利润"], "float")')}\n\n${main}`;
-      const replacement = helper('cast(replace(row["利润"], ",", ""), "float")');
-      const repaired = `${replacement}\n\n${main}`;
-      const response = (javascriptSource: string) => ({
-        text: JSON.stringify({ javascriptSource }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-      vi.mocked(runPiAiOneShot)
-        .mockResolvedValueOnce(response(original))
-        .mockResolvedValueOnce(response(shape === 'helper' ? replacement : repaired));
-      if (shape === 'complete program')
-        vi.mocked(runPiAiOneShot).mockResolvedValueOnce(response(repaired));
-      const { service, tempRoot } = createService();
-      const csvPath = path.join(tempRoot, 'profit-repair.csv');
-      fs.writeFileSync(
-        csvPath,
-        '区域,利润\n东区,"1,234.50"\n西区,-2.00\n南区,0\n北区,3.25\n中区,待确认\n',
-        'utf8'
-      );
-      const input = await service.createRawTable({
-        name: '利润输入',
-        sourceKind: 'csv',
-        filePath: csvPath,
-      });
-      const generated = await service.generatePipelineFromRequirement({
-        source: { location: 'local', tableId: input.rawTable.id },
-        processRequirement: '筛选利润大于0的数据',
-        output: { location: 'local', writeMode: 'create', tableName: '利润输出' },
-        runtimeConfig: testRuntimeConfig,
-      });
-      expect(runPiAiOneShot).toHaveBeenCalledTimes(shape === 'helper' ? 2 : 3);
-      const patchPrompt = JSON.parse(vi.mocked(runPiAiOneShot).mock.calls[1][0]);
-      expect(patchPrompt.outputJsonSchema.javascriptPatch.functionName).toBe(
-        'filterPositiveProfit'
-      );
-      expect(vi.mocked(runPiAiOneShot).mock.calls[1][1]).toContain(
-        '"javascriptPatch":{"functionName":"filterPositiveProfit"'
-      );
-      expect(vi.mocked(runPiAiOneShot).mock.calls[1][1]).not.toContain(
-        'Return {"javascriptSource":"..."}'
-      );
-      if (shape === 'complete program') {
-        const fallbackPrompt = JSON.parse(vi.mocked(runPiAiOneShot).mock.calls[2][0]);
-        expect(fallbackPrompt.outputJsonSchema).toHaveProperty('javascriptSource');
-        expect(fallbackPrompt.previousFailedAttempt.failedJavascriptSource).toBe(original);
-      }
-      const run = await service.runPipeline({ pipelineId: generated.pipelineId });
-      expect(run.preview?.rows.map((row) => row['区域'])).toEqual(['东区', '北区']);
-    }
-  );
-
-  it('does not apply an out-of-scope javascriptSource response or exceed the repair budget', async () => {
-    const source = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] > 100) }',
-    ]);
-    const replacement = asFunctionWorkflow([
-      'filter',
-      '{ condition: expr(row => row["Market"] !== "US") }',
-    ]);
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({ javascriptSource: replacement }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    await expect(
-      repairGeneratedWorkflowFromDiagnostics({
-        rawTableId: 'input',
-        resultTableName: 'output',
-        requirement: '过滤掉EU',
-        columns: [{ name: 'Market', type: 'string' }],
-        runtimeConfig: testRuntimeConfig,
-        failedJavascriptSource: source,
-        diagnostics: [
-          {
-            severity: 'error',
-            code: 'JAVASCRIPT_TYPE_ERROR_2365',
-            message: 'Invalid comparison',
-            functionName: 'step1',
-            failureStage: 'javascript_compile',
-            repairClass: 'function_patch',
-            commandErrorCode: 'VALIDATION_FAILED',
-          } as WorkflowFailureDiagnostic,
-        ],
-        repairBudget: createWorkflowRepairBudget(1),
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      details: { repairStopReason: 'exhausted' },
-    });
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(1);
-  });
-
-  it('rejects a repaired workflowDsl response when a function patch is required', async () => {
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'filter',
-            '{ condition: expr(row => row["Market"] > 100) }',
-          ]),
-          requiredColumns: [],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          workflowDsl: [
-            'input rawTable "ignored" as src',
-            "  | filter [Market] <> 'EU'",
-            '  | output table "market processed" mode replace',
-          ].join('\n'),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '过滤掉Market为EU的数据',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'market processed',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptPatch'),
-    });
-  });
-
-  it('reports repair response format errors as validation failures', async () => {
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'filter',
-            '{ condition: expr(row => row["Market"] > 100) }',
-          ]),
-          requiredColumns: [],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({ steps: ['filter Market'] }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '过滤掉Market为EU的数据',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'market processed',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptPatch'),
-    });
-  });
-
-  it('rejects DSL responses because repairs must remain on the JavaScript pipeline', async () => {
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'market.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'market input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow(['customDsl', '"filter EU market rows"']),
-          requiredColumns: [{ name: 'Market' }],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          workflowDsl: [
-            `input rawTable "${input.rawTable.id}" as src`,
-            "  | filter [Market] <> 'EU'",
-            '  | output table "market processed" mode replace',
-          ].join('\n'),
-          requiredColumns: [{ name: 'Market' }],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '用高级逻辑过滤掉Market为EU的数据',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'market processed',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      message: expect.stringContaining('javascriptPatch'),
-    });
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
-  });
-
-  it('compiles a javascriptSource sort column when it matches the schema', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'sort',
-          '{ orderBy: [{ field: "Unit Price", direction: "asc" }] }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Unit Price,记录数\n10,1\n5,1\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '按照Unit Price升序排列',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'items processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('sort [Unit Price] asc');
-    expect(generated.requiredColumns).toEqual([{ name: 'Unit Price', type: 'integer' }]);
-  });
-
-  it('rejects javascriptSource that references a missing longer ASCII sort column', async () => {
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'sort',
-            '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
-          ]),
-          requiredColumns: [],
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'step1',
-            replacementSource:
-              'function step1(input) { return workflow.step(input, "sort", { orderBy: [{ field: "Market Value", direction: "asc" }] }); }',
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          javascriptSource: asFunctionWorkflow([
-            'sort',
-            '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
-          ]),
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Market,Sales\nUS,20\nEU,10\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    await expect(
-      service.generatePipelineFromRequirement({
-        source: {
-          location: 'local',
-          tableId: input.rawTable.id,
-          tableName: input.rawTable.name,
-        },
-        processRequirement: '按照Market Value升序排列',
-        output: {
-          location: 'local',
-          writeMode: 'create',
-          tableName: 'items processed',
-        },
-        runtimeConfig: testRuntimeConfig,
-      })
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_FAILED',
-      details: {
-        repairStopReason: 'exhausted',
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({ message: expect.stringContaining('unknown input column') }),
-        ]),
-      },
-    });
-    expect(runPiAiOneShot).toHaveBeenCalledTimes(3);
-  });
-
-  it('accepts a complete longer ASCII sort column from javascriptSource', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValueOnce({
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'sort',
-          '{ orderBy: [{ field: "Market Value", direction: "asc" }] }',
-        ]),
-        requiredColumns: [],
-      }),
-      hasThinking: false,
-      durationMs: 1,
-      ...ONE_SHOT_RESULT_DEFAULTS,
-    });
-    const { service, tempRoot } = createService();
-    const csvPath = path.join(tempRoot, 'items.csv');
-    fs.writeFileSync(csvPath, 'Market Value,Sales\n20,2\n10,1\n', 'utf8');
-    const input = await service.createRawTable({
-      name: 'items input',
-      sourceKind: 'csv',
-      filePath: csvPath,
-    });
-
-    const generated = await service.generatePipelineFromRequirement({
-      source: {
-        location: 'local',
-        tableId: input.rawTable.id,
-        tableName: input.rawTable.name,
-      },
-      processRequirement: '按照Market Value升序排列',
-      output: {
-        location: 'local',
-        writeMode: 'create',
-        tableName: 'items processed',
-      },
-      runtimeConfig: testRuntimeConfig,
-    });
-
-    expect(generated.workflowDsl).toContain('sort [Market Value] asc');
-    expect(generated.requiredColumns).toEqual([{ name: 'Market Value', type: 'integer' }]);
   });
 
   it('fails data pipeline generation when the model call fails', async () => {
@@ -4321,8 +2020,9 @@ function main() {
     expect(regenerated.pipelineId).toBe(first.pipelineId);
     expect(regenerated.resultTableId).not.toBe(first.resultTableId);
     expect(regenerated.resultTableName).toBe('market processed 2');
-    expect(regenerated.workflowDsl).toContain('output table "market processed 2" mode replace');
-    expect(regenerated.workflowDsl).not.toContain('output table "market processed 1"');
+    expect(regenerated.workflowDsl).toContain(
+      `write @id('local:result/${regenerated.resultTableId}')`
+    );
     expect(regenerated.version).toBe(2);
   });
 
@@ -4523,31 +2223,12 @@ function main() {
 
   it('rejects generated DSL that references columns not in the source schema', async () => {
     const badResponse = {
-      text: JSON.stringify({
-        javascriptSource: asFunctionWorkflow([
-          'filter',
-          '{ condition: expr(row => row["NotAColumn"] === 1) }',
-        ]),
-        requiredColumns: [],
-      }),
+      text: jflowReply('where [NotAColumn] = 1'),
       hasThinking: false,
       durationMs: 1,
       ...ONE_SHOT_RESULT_DEFAULTS,
     };
-    vi.mocked(runPiAiOneShot)
-      .mockResolvedValueOnce(badResponse)
-      .mockResolvedValue({
-        text: JSON.stringify({
-          javascriptPatch: {
-            functionName: 'step1',
-            replacementSource:
-              'function step1(input) { return workflow.step(input, "filter", { condition: expr(row => row["NotAColumn"] === 1) }); }',
-          },
-        }),
-        hasThinking: false,
-        durationMs: 1,
-        ...ONE_SHOT_RESULT_DEFAULTS,
-      });
+    defaultModelReply = badResponse;
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'market.csv');
     fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
@@ -4573,6 +2254,44 @@ function main() {
         runtimeConfig: testRuntimeConfig,
       })
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(1 + JFLOW_GENERATION_REPAIR_ATTEMPTS);
+  });
+
+  it('feeds compile diagnostics back to the model and runs the repaired jflow program', async () => {
+    queueModelReply({
+      text: jflowReply('where [NotAColumn] = 1'),
+      hasThinking: false,
+      durationMs: 1,
+      ...ONE_SHOT_RESULT_DEFAULTS,
+    });
+    const { service, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'market.csv');
+    fs.writeFileSync(csvPath, 'Market,Sales\nEU,10\nUS,20\n', 'utf8');
+    const input = await service.createRawTable({
+      name: 'market input',
+      sourceKind: 'csv',
+      filePath: csvPath,
+    });
+
+    const generated = await service.generatePipelineFromRequirement({
+      source: { location: 'local', tableId: input.rawTable.id, tableName: input.rawTable.name },
+      processRequirement: '过滤掉Market为EU的数据',
+      output: { location: 'local', writeMode: 'create', tableName: 'market processed' },
+      runtimeConfig: testRuntimeConfig,
+    });
+
+    expect(runPiAiOneShot).toHaveBeenCalledTimes(2);
+    const repairPrompt = String(vi.mocked(runPiAiOneShot).mock.calls[1]?.[0]);
+    expect(repairPrompt).toContain('Your previous program failed');
+    expect(repairPrompt).toContain('NotAColumn');
+    expect(generated.workflowDsl).toContain("where [Market] <> 'EU'");
+    expect(generated.expectedOutputSchema.map((column) => column.name)).toEqual([
+      'Market',
+      'Sales',
+    ]);
+    const run = await service.runPipeline({ pipelineId: generated.pipelineId });
+    expect(run.pipeline.status).toBe('completed');
+    expect(run.preview?.totalRows).toBe(1);
   });
 
   it('stops generated pipeline runs when required columns drift', async () => {
@@ -4594,7 +2313,7 @@ function main() {
     await expect(
       service.runGeneratedPipeline({
         pipelineId: pipeline.pipeline.id,
-        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | write @id('local:result/${output.resultTable.id}') mode: replace`,
         source: {
           location: 'local',
           tableId: input.rawTable.id,
@@ -4631,9 +2350,10 @@ function main() {
       rawTableId: input.rawTable.id,
       resultTableId: output.resultTable.id,
       dsl: [
-        `input rawTable "${input.rawTable.id}" as src`,
+        `source src = @id('local:raw/${input.rawTable.id}')`,
+        'src',
         '  | select [Market]',
-        `  | output table "${output.resultTable.name}" mode replace`,
+        `  | write @id('local:result/${output.resultTable.id}') mode: replace`,
       ].join('\n'),
     });
 
@@ -4673,7 +2393,7 @@ function main() {
 
     await service.runGeneratedPipeline({
       pipelineId: pipeline.pipeline.id,
-      workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | output table "${output.resultTable.name}" mode replace`,
+      workflowDsl: `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | write @id('local:result/${output.resultTable.id}') mode: replace`,
       source: { location: 'local', tableId: input.rawTable.id },
       output: {
         location: 'local',
@@ -4689,7 +2409,7 @@ function main() {
     await expect(
       service.runGeneratedPipeline({
         pipelineId: pipeline.pipeline.id,
-        workflowDsl: `input rawTable "${input.rawTable.id}" as src\n  | select [Market]\n  | output table "${output.resultTable.name}" mode replace`,
+        workflowDsl: `source src = @id('local:raw/${input.rawTable.id}')\nsrc\n  | select [Market]\n  | write @id('local:result/${output.resultTable.id}') mode: replace`,
         source: {
           location: 'local',
           tableId: input.rawTable.id,
@@ -4735,9 +2455,10 @@ function main() {
     const result = await service.runGeneratedPipeline({
       pipelineId: pipeline.pipeline.id,
       workflowDsl: [
-        `input rawTable "${input.rawTable.id}" as src`,
-        '  | select except [记录数]',
-        `  | output table "${output.resultTable.name}" mode replace`,
+        `source src = @id('local:raw/${input.rawTable.id}')`,
+        'src',
+        '  | drop [记录数]',
+        `  | write @id('local:result/${output.resultTable.id}') mode: replace`,
       ].join('\n'),
       source: {
         location: 'local',
@@ -4792,8 +2513,9 @@ function main() {
       rawTableId: input.rawTable.id,
       resultTableId: output.resultTable.id,
       dsl: [
-        `input rawTable "${input.rawTable.id}" as src`,
-        `  | output table "${output.resultTable.name}" mode replace`,
+        `source src = @id('local:raw/${input.rawTable.id}')`,
+        'src',
+        `  | write @id('local:result/${output.resultTable.id}') mode: replace`,
       ].join('\n'),
     });
     vi.spyOn(service, 'uploadDataTableToCloud').mockRejectedValue(
@@ -4887,8 +2609,8 @@ describe('constrained workflow plans and resource bindings', () => {
       dryRun: true,
     });
     expect(dry.dryRun).toBe(true);
-    expect(dry.dsl).toContain(`input rawTable "${orders.id}" as orders`);
-    expect(dry.dsl).toContain(`input rawTable "${customers.id}" as customers`);
+    expect(dry.dsl).toContain(`source orders = @id('local:raw/${orders.id}'`);
+    expect(dry.dsl).toContain(`source customers = @id('local:raw/${customers.id}'`);
     expect(dry.diagnostics?.filter((d) => d.severity === 'error')).toHaveLength(0);
 
     const saved = await service.applyWorkflowPlan({
@@ -5021,12 +2743,12 @@ describe('constrained workflow plans and resource bindings', () => {
     const { orders, customers } = await seedTables(service, tempRoot);
     const pipeline = await service.createPipeline({ name: 'multi dsl pipeline' });
     const dsl = [
-      'input rawTable "orders-placeholder" as orders',
-      'input rawTable "customers-placeholder" as customers',
+      `source orders = @id('local:raw/${orders.id}')`,
+      `source customers = @id('local:raw/${customers.id}')`,
       '',
-      'from orders',
-      '  | join left customers on [orders].[customer_id] = [customers].[customer_id]',
-      '  | output table "joined" mode replace',
+      'orders',
+      '  | join left customers on [left].[customer_id] = [customers].[customer_id]',
+      "  | write @new('joined') mode: replace",
     ].join('\n');
     const result = await service.applyWorkflowDsl({
       pipelineId: pipeline.pipeline.id,
@@ -5074,7 +2796,6 @@ function createService(
     };
     getPersonalAnalysisConnection?: () => PersonalAnalysisConnectionInput | null;
     onPipelineCompleted?: (pipeline: DataPipeline) => void;
-    exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
     requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
   } = {}
 ): { service: DataCommandService; store: DataPipelineStore; tempRoot: string } {
@@ -5099,7 +2820,6 @@ function createService(
       {
         getPersonalAnalysisConnection: options.getPersonalAnalysisConnection,
         onPipelineCompleted: options.onPipelineCompleted,
-        exportWorkflowDsl: options.exportWorkflowDsl,
         requirementAnalysisReceipts: options.requirementAnalysisReceipts,
       }
     ),

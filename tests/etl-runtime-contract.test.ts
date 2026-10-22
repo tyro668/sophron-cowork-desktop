@@ -7,7 +7,8 @@ import {
   createDataPipelineStore,
   type DataPipelineStore,
 } from '../src/main/data/data-pipeline-store';
-import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
+import { compileTestJflow, parseTestJflow } from './helpers/jflow-test-workflow';
+import type { DataWorkflowEdgeInput, DataWorkflowNodeInput } from '../src/shared/contracts';
 
 const tempRoots: string[] = [];
 const stores: DataPipelineStore[] = [];
@@ -55,10 +56,21 @@ async function readRows(dbPath: string, sql: string): Promise<Record<string, unk
   }
 }
 
-async function saveCompiledDsl(store: DataPipelineStore, pipelineId: string, dsl: string) {
-  const parsed = parsePrepDsl(dsl);
+type TestGraph = { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] };
+
+/** Saves jflow text, or an operator graph for runtime features jflow R1 cannot express yet. */
+async function saveCompiledDsl(
+  store: DataPipelineStore,
+  pipelineId: string,
+  dsl: string | TestGraph
+) {
+  if (typeof dsl !== 'string') {
+    await store.savePipelineWorkflow(pipelineId, dsl);
+    return;
+  }
+  const parsed = parseTestJflow(dsl);
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
-  const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+  const compiled = compileTestJflow(parsed.ast!);
   expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
   await store.savePipelineWorkflow(pipelineId, { nodes: compiled.nodes, edges: compiled.edges });
 }
@@ -72,8 +84,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "orders_out" mode merge by [order_id]`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('orders_out') mode: merge keys: [order_id]
+    `
     );
     const first = await store.runPipeline(pipeline.id);
     expect(first.status).toBe('completed');
@@ -117,8 +133,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "s_out" mode append`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('s_out') mode: append
+    `
     );
     await store.runPipeline(pipeline.id);
 
@@ -127,8 +147,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "s_out" mode append schema strict`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('s_out') mode: append schema: strict
+    `
     );
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/schema drift|strict/i);
     store = reopenStore(dbPath);
@@ -140,8 +164,40 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "s_out" mode append schema ignore`
+      /* input pipeline as src… — not expressible in jflow R1 */ {
+        nodes: [
+          {
+            id: 'source_src',
+            type: 'input',
+            label: 'input',
+            x: 64,
+            y: 72,
+            config: { source: 'pipeline', alias: 'src' },
+          },
+          {
+            id: 'output_main',
+            type: 'output',
+            label: 'output',
+            x: 264,
+            y: 72,
+            config: {
+              destination: 'duckdb_table',
+              table: 's_out',
+              mode: 'append',
+              schemaPolicy: 'ignore',
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge_source_src_output_main_input',
+            sourceNodeId: 'source_src',
+            targetNodeId: 'output_main',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+        ],
+      }
     );
     const ignored = await store.runPipeline(pipeline.id);
     expect(ignored.rowCount).toBe(4);
@@ -159,8 +215,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "s_out" mode append`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('s_out') mode: append
+    `
     );
     const extended = await store.runPipeline(pipeline.id);
     expect(extended.rowCount).toBe(5);
@@ -177,9 +237,13 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect [amount] > 0
-        | output table "e_out" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | check [amount] > 0
+        | write @new('e_out')
+    `
     );
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat/i);
     // nothing committed
@@ -194,9 +258,13 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect [amount] > 0
-        | output table "et_out" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | check [amount] > 0
+        | write @new('et_out')
+    `
     );
     // Temporary runs never persist stats — the failed run comes back as a
     // structured result carrying the stats/samples collected so far.
@@ -220,13 +288,55 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-
-      step checked = src
-        | expect [amount] > 0 reject to bad_rows
-
-      step rejects = bad_rows
-        | output table "rejects_out" mode replace`
+      /* input pipeline as src… — not expressible in jflow R1 */ {
+        nodes: [
+          {
+            id: 'source_src',
+            type: 'input',
+            label: 'input',
+            x: 64,
+            y: 72,
+            config: { source: 'pipeline', alias: 'src' },
+          },
+          {
+            id: 'checked_1',
+            type: 'expect',
+            label: 'expect',
+            x: 264,
+            y: 72,
+            config: {
+              kind: 'expression',
+              expression: '[amount] > 0',
+              rejectStream: 'bad_rows',
+              stepName: 'checked',
+            },
+          },
+          {
+            id: 'output_rejects',
+            type: 'output',
+            label: 'output',
+            x: 464,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 'rejects_out', mode: 'replace' },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge_source_src_checked_1_input',
+            sourceNodeId: 'source_src',
+            targetNodeId: 'checked_1',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_checked_1_reject_output_rejects_input',
+            sourceNodeId: 'checked_1',
+            targetNodeId: 'output_rejects',
+            sourceHandle: 'reject',
+            targetHandle: 'input',
+          },
+        ],
+      }
     );
     const result = await store.runPipelineWithDiagnostics(pipeline.id);
     expect(result.pipeline.status).toBe('completed');
@@ -252,9 +362,13 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect unique [k]
-        | output table "u_out" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | check unique [k]
+        | write @new('u_out')
+    `
     );
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat|duplicate/i);
   });
@@ -267,8 +381,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline incremental by [id] as src
-        | output table "w_out" mode append`
+      `
+      source src = @id('local:pipeline/self') incremental: [id]
+
+      src
+        | write @new('w_out') mode: append
+    `
     );
     const first = await store.runPipeline(pipeline.id);
     expect(first.rowCount).toBe(2);
@@ -312,8 +430,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input rawTable "${rawTable.id}" as src
-        | output table "bound_full_out" mode replace`
+      `
+      source src = @id('local:raw/${rawTable.id}')
+
+      src
+        | write @new('bound_full_out')
+    `
     );
     const workflow = await store.getPipelineWorkflow(pipeline.id);
     await store.savePipelineWorkflow(pipeline.id, {
@@ -350,8 +472,12 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline incremental by [id] as src
-        | output table "wf_out" mode append`
+      `
+      source src = @id('local:pipeline/self') incremental: [id]
+
+      src
+        | write @new('wf_out') mode: append
+    `
     );
     await store.runPipeline(pipeline.id);
     // now the workflow gains a failing assertion; new rows appear but the run fails
@@ -359,9 +485,13 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline incremental by [id] as src
-        | expect [amount] > 0
-        | output table "wf_out" mode append`
+      `
+      source src = @id('local:pipeline/self') incremental: [id]
+
+      src
+        | check [amount] > 0
+        | write @new('wf_out') mode: append
+    `
     );
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/expect|violat/i);
     store = reopenStore(dbPath);
@@ -383,9 +513,50 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect [amount] > 0 reject to bad_rows
-        | output table "s2_out" mode replace`
+      /* input pipeline as src… — not expressible in jflow R1 */ {
+        nodes: [
+          {
+            id: 'source_src',
+            type: 'input',
+            label: 'input',
+            x: 64,
+            y: 72,
+            config: { source: 'pipeline', alias: 'src' },
+          },
+          {
+            id: 'main_1',
+            type: 'expect',
+            label: 'expect',
+            x: 264,
+            y: 72,
+            config: { kind: 'expression', expression: '[amount] > 0', rejectStream: 'bad_rows' },
+          },
+          {
+            id: 'output_main',
+            type: 'output',
+            label: 'output',
+            x: 464,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 's2_out', mode: 'replace' },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge_source_src_main_1_input',
+            sourceNodeId: 'source_src',
+            targetNodeId: 'main_1',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_main_1_output_main_input',
+            sourceNodeId: 'main_1',
+            targetNodeId: 'output_main',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+        ],
+      }
     );
     await store.runPipeline(pipeline.id);
     const persisted = await store.getPipelineNodeStats(pipeline.id);
@@ -405,10 +576,14 @@ describe('ETL runtime contract', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | filter [amount] > 20
-        | deduplicate by [id]
-        | output table "n_out" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | where [amount] > 20
+        | distinct by: [id]
+        | write @new('n_out')
+    `
     );
     const result = await store.runPipelineWithDiagnostics(pipeline.id);
     expect(result.pipeline.status).toBe('completed');
@@ -436,11 +611,65 @@ describe('ETL runtime contract — review fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect [amount] > 0 reject to bad
-        | output table "nulls_out" mode replace
-      step bad_out = bad
-        | output table "nulls_bad" mode replace`
+      /* input pipeline as src… — not expressible in jflow R1 */ {
+        nodes: [
+          {
+            id: 'source_src',
+            type: 'input',
+            label: 'input',
+            x: 64,
+            y: 72,
+            config: { source: 'pipeline', alias: 'src' },
+          },
+          {
+            id: 'main_1',
+            type: 'expect',
+            label: 'expect',
+            x: 264,
+            y: 72,
+            config: { kind: 'expression', expression: '[amount] > 0', rejectStream: 'bad' },
+          },
+          {
+            id: 'output_main',
+            type: 'output',
+            label: 'output',
+            x: 464,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 'nulls_out', mode: 'replace' },
+          },
+          {
+            id: 'output_bad_out',
+            type: 'output',
+            label: 'output',
+            x: 664,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 'nulls_bad', mode: 'replace' },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge_source_src_main_1_input',
+            sourceNodeId: 'source_src',
+            targetNodeId: 'main_1',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_main_1_output_main_input',
+            sourceNodeId: 'main_1',
+            targetNodeId: 'output_main',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_main_1_reject_output_bad_out_input',
+            sourceNodeId: 'main_1',
+            targetNodeId: 'output_bad_out',
+            sourceHandle: 'reject',
+            targetHandle: 'input',
+          },
+        ],
+      }
     );
     const run = await store.runPipelineWithDiagnostics(pipeline.id);
     expect(run.pipeline.status).toBe('completed');
@@ -460,11 +689,65 @@ describe('ETL runtime contract — review fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect unique [k] reject to dup
-        | output table "uniq_out" mode replace
-      step dup_out = dup
-        | output table "uniq_dup" mode replace`
+      /* input pipeline as src… — not expressible in jflow R1 */ {
+        nodes: [
+          {
+            id: 'source_src',
+            type: 'input',
+            label: 'input',
+            x: 64,
+            y: 72,
+            config: { source: 'pipeline', alias: 'src' },
+          },
+          {
+            id: 'main_1',
+            type: 'expect',
+            label: 'expect',
+            x: 264,
+            y: 72,
+            config: { kind: 'unique', fields: ['k'], rejectStream: 'dup' },
+          },
+          {
+            id: 'output_main',
+            type: 'output',
+            label: 'output',
+            x: 464,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 'uniq_out', mode: 'replace' },
+          },
+          {
+            id: 'output_dup_out',
+            type: 'output',
+            label: 'output',
+            x: 664,
+            y: 72,
+            config: { destination: 'duckdb_table', table: 'uniq_dup', mode: 'replace' },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge_source_src_main_1_input',
+            sourceNodeId: 'source_src',
+            targetNodeId: 'main_1',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_main_1_output_main_input',
+            sourceNodeId: 'main_1',
+            targetNodeId: 'output_main',
+            sourceHandle: 'output',
+            targetHandle: 'input',
+          },
+          {
+            id: 'edge_main_1_reject_output_dup_out_input',
+            sourceNodeId: 'main_1',
+            targetNodeId: 'output_dup_out',
+            sourceHandle: 'reject',
+            targetHandle: 'input',
+          },
+        ],
+      }
     );
     await store.runPipeline(pipeline.id);
     store = reopenStore(dbPath);
@@ -484,8 +767,12 @@ describe('ETL runtime contract — review fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | output table "mk_out" mode merge by [k]`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('mk_out') mode: merge keys: [k]
+    `
     );
     const first = await store.runPipeline(pipeline.id);
     expect(first.status).toBe('completed');
@@ -508,22 +795,31 @@ describe('ETL runtime contract — review fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline incremental by [updated] as src
-        | output table "wm_out" mode replace`
+      `
+      source src = @id('local:pipeline/self') incremental: [updated]
+
+      src
+        | write @new('wm_out') mode: append
+    `
     );
     await store.runPipeline(pipeline.id);
     // switch the watermark column: must not reuse the `updated` watermark for `id`
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline incremental by [id] as src
-        | output table "wm_out" mode replace`
+      `
+      source src = @id('local:pipeline/self') incremental: [id]
+
+      src
+        | write @new('wm_out') mode: append
+    `
     );
     const run = await store.runPipeline(pipeline.id);
     expect(run.status).toBe('completed');
     store = reopenStore(dbPath);
     const rows = await readRows(dbPath, 'SELECT count(*) AS n FROM wm_out');
-    expect(Number(rows[0]?.n)).toBe(2);
+    // append: both rows are read again under the new column (a reused watermark would add 0)
+    expect(Number(rows[0]?.n)).toBe(4);
   });
 
   it('writes every output sink in a multi-output workflow', async () => {
@@ -534,12 +830,16 @@ describe('ETL runtime contract — review fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-      step full = src
-        | output table "multi_all" mode replace
-      step big = src
-        | filter [amount] > 50
-        | output table "multi_big" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('multi_all')
+
+      src
+        | where [amount] > 50
+        | write @new('multi_big')
+    `
     );
     const run = await store.runPipeline(pipeline.id);
     expect(run.status).toBe('completed');
@@ -554,8 +854,13 @@ describe('ETL runtime contract — review fixes', () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'cfg.csv', 'id,amount\n1,10\n');
     const pipeline = await store.createPipeline({ name: 'bad config', sourcePath: csvPath });
-    const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl(`input pipeline as src\n  | sort [id]`).ast!
+    const compiled = compileTestJflow(
+      parseTestJflow(`
+      source src = @id('local:pipeline/self')
+
+      src
+        | sort [id]
+    `).ast!
     );
     // corrupt the compiled sort config: direction must be asc|desc
     const sortNode = compiled.nodes.find((node) => node.type === 'sort')!;
@@ -576,11 +881,15 @@ describe('ETL runtime contract — commit safety fixes', () => {
       saveCompiledDsl(
         store,
         pipeline.id,
-        `input pipeline as src
-        step a = src
-          | output table "same_table" mode replace
-        step b = src
-          | output table "same_table" mode replace`
+        `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('same_table')
+
+      src
+        | write @new('same_table')
+    `
       )
     ).rejects.toThrow(/same table|duplicate|target/i);
   });
@@ -589,8 +898,13 @@ describe('ETL runtime contract — commit safety fixes', () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'mode.csv', 'id\n1\n');
     const pipeline = await store.createPipeline({ name: 'bad mode', sourcePath: csvPath });
-    const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl('input pipeline as src\n  | output table "m_out" mode replace').ast!
+    const compiled = compileTestJflow(
+      parseTestJflow(`
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('m_out')
+    `).ast!
     );
     const outputNode = compiled.nodes.find((node) => node.type === 'output')!;
     outputNode.config = { ...outputNode.config, mode: 'upsert_everything' };
@@ -606,9 +920,13 @@ describe('ETL runtime contract — commit safety fixes', () => {
     await saveCompiledDsl(
       store,
       pipeline.id,
-      `input pipeline as src
-        | expect [amount] > 0
-        | output table "fe_out" mode replace`
+      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | check [amount] > 0
+        | write @new('fe_out')
+    `
     );
     const run = await store.runPipelineWithDiagnostics(pipeline.id).catch((error: Error) => error);
     expect(run).toBeInstanceOf(Error);
@@ -625,9 +943,9 @@ describe('ETL runtime contract — validation consistency', () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'rows_reject.csv', 'id\n1\n');
     const pipeline = await store.createPipeline({ name: 'rows reject', sourcePath: csvPath });
-    const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl(
-        'input pipeline as src\n  | expect rows >= 1 reject to bad\n  | output table "x" mode replace'
+    const compiled = compileTestJflow(
+      parseTestJflow(
+        "source src = @id('local:pipeline/self')\nsrc\n  | check rows >= 1\n  | write @new('x')\n"
       ).ast!
     );
     const expectNode = compiled.nodes.find((node) => node.type === 'expect')!;
@@ -647,8 +965,13 @@ describe('ETL runtime contract — validation consistency', () => {
     const { store, tempRoot } = makeStore();
     const csvPath = writeCsv(tempRoot, 'dest.csv', 'id\n1\n');
     const pipeline = await store.createPipeline({ name: 'bad dest', sourcePath: csvPath });
-    const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl('input pipeline as src\n  | output table "d_out" mode replace').ast!
+    const compiled = compileTestJflow(
+      parseTestJflow(`
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('d_out')
+    `).ast!
     );
     const outputNode = compiled.nodes.find((node) => node.type === 'output')!;
     outputNode.config = { ...outputNode.config, destination: 'rawTable' };
@@ -671,13 +994,17 @@ describe('ETL runtime contract — validation consistency', () => {
       sourcePath: csvPath,
       resultTableId: resultTable.id,
     });
-    const compiled = compilePrepWorkflowToFlow(
-      parsePrepDsl(
-        `input pipeline as src
-        step a = src
-          | output table "task_out" mode replace
-        step b = src
-          | output table "other_out" mode replace`
+    const compiled = compileTestJflow(
+      parseTestJflow(
+        `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('task_out')
+
+      src
+        | write @new('other_out')
+    `
       ).ast!
     );
     const outA = compiled.nodes.find((n) => n.type === 'output' && n.config?.table === 'task_out')!;

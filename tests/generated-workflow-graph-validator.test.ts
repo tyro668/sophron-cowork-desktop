@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DataWorkflowSaveInput } from '../src/renderer/types';
 import { validateGeneratedExecutableWorkflow } from '../src/main/data/workflow/generated-workflow-graph-validator';
-import {
-  AI_GENERATED_WORKFLOW_NODE_TYPE_SET,
-  AI_PREP_DSL_OPERATION_CAPABILITIES,
-} from '../src/main/data/workflow/prep-dsl-capability-profile';
+import { AI_GENERATED_WORKFLOW_NODE_TYPE_SET } from '../src/main/data/workflow/jflow-capability-profile';
 
 function validWorkflow(): DataWorkflowSaveInput {
   return {
@@ -42,19 +39,9 @@ function validWorkflow(): DataWorkflowSaveInput {
 }
 
 describe('validateGeneratedExecutableWorkflow', () => {
-  it('derives the generated-node allowlist from enabled operation recipes', () => {
-    for (const capability of Object.values(AI_PREP_DSL_OPERATION_CAPABILITIES)) {
-      expect(capability.emittedNodeTypes).toContain(capability.nodeType);
-    }
-    expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET).toEqual(
-      new Set([
-        'input',
-        'output',
-        ...Object.values(AI_PREP_DSL_OPERATION_CAPABILITIES).flatMap((capability) =>
-          capability.aiEnabled ? capability.emittedNodeTypes : []
-        ),
-      ])
-    );
+  it('limits AI-generated nodes to single-input jflow steps', () => {
+    expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET.has('input')).toBe(true);
+    expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET.has('derive')).toBe(true);
     expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET.has('join')).toBe(false);
     expect(AI_GENERATED_WORKFLOW_NODE_TYPE_SET.has('set_op')).toBe(false);
   });

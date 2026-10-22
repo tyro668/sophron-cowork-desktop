@@ -11,7 +11,7 @@ import type {
   DataWorkflowSaveInput,
 } from '../../../../shared/contracts';
 import { isDataFieldType } from '../../../../shared/data-field-types';
-import { parseFieldRefExact } from '../../../../shared/prep-dsl';
+import { parseFieldRefExact } from '../../../../shared/expression-syntax/fields';
 import {
   buildWorkflowPlan,
   propagateWorkflowPlanSchemas,

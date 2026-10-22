@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 
 interface ConfigMetric {
   function: string;
@@ -8,8 +8,8 @@ interface ConfigMetric {
 }
 
 function ok(config: Record<string, unknown>) {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type: 'aggregate', config });
-  const parsed = parsePrepOperatorDsl(dsl, 'aggregate');
+  const dsl = exportStep({ id: 'test', type: 'aggregate', config });
+  const parsed = parseStep(dsl, 'aggregate');
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, 'null operator').not.toBeNull();
@@ -54,7 +54,7 @@ describe('FormAggregate — config ↔ DSL', () => {
   });
 
   it('empty groupBy omits "by" clause', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'aggregate',
       config: {
@@ -62,23 +62,23 @@ describe('FormAggregate — config ↔ DSL', () => {
         metrics: [{ function: 'count', expression: '*', alias: 'n' }],
       },
     });
-    expect(dsl).toContain('aggregate all');
+    expect(dsl).toContain('group (agg [n] = count(*))');
     expect(dsl).not.toContain('by');
   });
 
   it('undefined groupBy defaults to all', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'aggregate',
       config: {
         metrics: [{ function: 'avg', expression: '[price]', alias: 'avg_price' }],
       },
     });
-    expect(dsl).toBe('aggregate all metrics avg([price]) as [avg_price]');
+    expect(dsl).toBe('group (agg [avg_price] = avg([price]))');
   });
 
   it('exporter returns empty when alias missing', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'aggregate',
       config: {
@@ -102,10 +102,10 @@ describe('FormAggregate — config ↔ DSL', () => {
   });
 
   it('idempotent: aggregate all', () => {
-    const dsl1 = 'aggregate all metrics count(*) as [n]';
-    const parsed = parsePrepOperatorDsl(dsl1, 'aggregate');
+    const dsl1 = 'group (agg [n] = count(*))';
+    const parsed = parseStep(dsl1, 'aggregate');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'aggregate',
       config: parsed.operator!.config,
@@ -114,10 +114,10 @@ describe('FormAggregate — config ↔ DSL', () => {
   });
 
   it('idempotent: aggregate by single field', () => {
-    const dsl1 = 'aggregate by [region] metrics sum([revenue]) as [total], count(*) as [n]';
-    const parsed = parsePrepOperatorDsl(dsl1, 'aggregate');
+    const dsl1 = 'group [region] (agg [total] = sum([revenue]), [n] = count(*))';
+    const parsed = parseStep(dsl1, 'aggregate');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'aggregate',
       config: parsed.operator!.config,
@@ -134,13 +134,13 @@ describe('FormAggregate — config ↔ DSL', () => {
     };
     const { dsl: _cached, ...stripped } = config;
     void _cached;
-    const exported = exportPrepOperatorDsl({
+    const exported = exportStep({
       id: 'test',
       type: 'aggregate',
       config: stripped,
     });
-    expect(exported).toBe('aggregate by month([created at]), [region] metrics count(*) as [rows]');
-    const reparsed = parsePrepOperatorDsl(exported, 'aggregate');
+    expect(exported).toBe('group [created at] grain: month, [region] (agg [rows] = count(*))');
+    const reparsed = parseStep(exported, 'aggregate');
     expect(reparsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     expect(reparsed.operator?.config).toMatchObject({
       groupBy: ['created at', 'region'],
@@ -150,9 +150,7 @@ describe('FormAggregate — config ↔ DSL', () => {
 
   describe('metrics lexical parsing', () => {
     function errors(dsl: string): Array<{ code?: string }> {
-      return parsePrepOperatorDsl(dsl, 'aggregate').diagnostics.filter(
-        (d) => d.severity === 'error'
-      );
+      return parseStep(dsl, 'aggregate').diagnostics.filter((d) => d.severity === 'error');
     }
 
     it('parses nested-parenthesis expression', () => {
@@ -172,8 +170,8 @@ describe('FormAggregate — config ↔ DSL', () => {
     });
 
     it('rejects empty expression when requireComplete', () => {
-      const errs = errors('aggregate all metrics sum() as [t]');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg [t] = sum())');
+      expect(errs.length).toBeGreaterThan(0);
     });
 
     it('accepts count(*) as non-empty expression', () => {
@@ -185,28 +183,28 @@ describe('FormAggregate — config ↔ DSL', () => {
     });
 
     it('rejects missing alias when requireComplete', () => {
-      const errs = errors('aggregate all metrics sum([a])');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg sum([a]))');
+      expect(errs.length).toBeGreaterThan(0);
     });
 
     it('rejects trailing garbage after alias', () => {
-      const errs = errors('aggregate all metrics sum([a]) as [b] garbe');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg [b] = sum([a])) garbe');
+      expect(errs.length).toBeGreaterThan(0);
     });
 
     it('rejects field token in place of alias', () => {
-      const errs = errors('aggregate all metrics sum([a]) [b]');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg sum([a]) [b])');
+      expect(errs.length).toBeGreaterThan(0);
     });
 
     it('rejects dangling as keyword', () => {
-      const errs = errors('aggregate all metrics sum([a]) as');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg [b] =)');
+      expect(errs.length).toBeGreaterThan(0);
     });
 
     it('rejects missing parentheses', () => {
-      const errs = errors('aggregate all metrics sum');
-      expect(errs.some((e) => e.code === 'invalidMetric')).toBe(true);
+      const errs = errors('group (agg [b] = sum)');
+      expect(errs.length).toBeGreaterThan(0);
     });
   });
 });

@@ -1,6 +1,5 @@
 import type { ZodIssue, ZodType } from 'zod';
-import type { PrepDiagnostic } from '../prep-dsl/ast';
-import type { OperatorDslCodec } from '../prep-dsl/operators/codec';
+import type { WorkflowDiagnostic } from '../workflow-diagnostics';
 
 /**
  * Canonical workflow operator registry contract.
@@ -12,8 +11,8 @@ import type { OperatorDslCodec } from '../prep-dsl/operators/codec';
  * per type — enforced by `satisfies` at compile time and by
  * `src/tests/contracts/operator-registry.test.ts` at runtime.
  *
- * Adding an operator means: schema file in `operator-schemas/`, codec in
- * `prep-dsl/operators/`, SQL compile in `main/data/operators/` when the
+ * Adding an operator means: schema file in `operator-schemas/`, its jflow
+ * spelling in `shared/jflow/` (compile + export), SQL compile in `main/data/operators/` when the
  * compileKind is `strategy`, one entry here, and one UI entry in the renderer
  * `OPERATOR_UI` registry.
  */
@@ -90,14 +89,12 @@ export interface OperatorDefinition<TConfig = Record<string, unknown>> {
   readonly schema: ZodType<TConfig>;
   readonly ports: OperatorPorts;
   readonly compileKind: OperatorCompileKind;
-  /** Prep DSL parse/format codec; absent for operators not expressible as a step. */
-  readonly dsl?: OperatorDslCodec;
   /** Starting values for a newly created node (may be an incomplete draft). */
   readonly creationDefaults?: Record<string, unknown>;
   /** Fresh config for a newly created node — schema defaults where expressible. */
   createDefaultConfig(): TConfig;
-  /** Schema validation producing PrepDiagnostic list (same codes as the plan pipeline). */
-  validateConfig(config: Record<string, unknown>): PrepDiagnostic[];
+  /** Schema validation producing WorkflowDiagnostic list (same codes as the plan pipeline). */
+  validateConfig(config: Record<string, unknown>): WorkflowDiagnostic[];
 }
 
 /** Strips GUI/DSL metadata keys that are not part of the operator contract. */
@@ -106,10 +103,11 @@ export function withoutOperatorMetadata(config: Record<string, unknown>): Record
   delete operatorConfig.generatedOrigin;
   delete operatorConfig.stepName;
   delete operatorConfig.dsl;
+  delete operatorConfig.layout;
   return operatorConfig;
 }
 
-export function issuesToDiagnostics(type: string, issues: ZodIssue[]): PrepDiagnostic[] {
+export function issuesToDiagnostics(type: string, issues: ZodIssue[]): WorkflowDiagnostic[] {
   return issues.flatMap((issue) => {
     const parentPath = issue.path.join('.');
     const paths =
@@ -131,7 +129,7 @@ export function configSchemaDiagnostics(
   type: string,
   schema: ZodType,
   config: Record<string, unknown>
-): PrepDiagnostic[] {
+): WorkflowDiagnostic[] {
   const result = schema.safeParse(withoutOperatorMetadata(config));
   return result.success ? [] : issuesToDiagnostics(type, result.error.issues);
 }
@@ -142,7 +140,6 @@ export function defineOperator<TConfig>(init: {
   readonly schema: ZodType<TConfig>;
   readonly ports: OperatorPorts;
   readonly compileKind: OperatorCompileKind;
-  readonly dsl?: OperatorDslCodec;
   /** Starting values for a newly created node (UI defaults, not schema defaults). */
   readonly creationDefaults?: Record<string, unknown>;
 }): OperatorDefinition<TConfig> {
@@ -152,7 +149,7 @@ export function defineOperator<TConfig>(init: {
       const parsed = init.schema.safeParse({ ...init.creationDefaults });
       return parsed.success ? parsed.data : ({ ...init.creationDefaults } as TConfig);
     },
-    validateConfig(config: Record<string, unknown>): PrepDiagnostic[] {
+    validateConfig(config: Record<string, unknown>): WorkflowDiagnostic[] {
       return configSchemaDiagnostics(init.type, init.schema, config);
     },
   };

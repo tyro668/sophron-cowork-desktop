@@ -5,12 +5,8 @@ import { tmpdir } from 'os';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { formatSqlQuery, normalizeSqlQuery } from '../src/shared/sql-query';
 import { SqlQueryConfigSchema } from '../src/shared/operator-schemas/sql-query';
-import {
-  parsePrepOperatorDsl,
-  parsePrepDsl,
-  compilePrepWorkflowToFlow,
-  exportPrepWorkflowDsl,
-} from '../src/shared/prep-dsl';
+import { exportJflow, parseJflowStep } from '../src/shared/jflow';
+import { compileTestJflow, parseTestJflow } from './helpers/jflow-test-workflow';
 import {
   createDataPipelineStore,
   type DataPipelineStore,
@@ -32,11 +28,11 @@ async function fixture(sql: string, tail = '') {
   const store = createDataPipelineStore(join(root, 'workspace.duckdb'));
   stores.push(store);
   const pipeline = await store.createPipeline({ name: 'SQL test', sourcePath });
-  const parsed = parsePrepDsl(
-    `input pipeline as src\n | sql ${JSON.stringify(sql)}\n${tail}\n | output table "sql_result"`
+  const parsed = parseTestJflow(
+    `source src = @id('local:pipeline/self')\nsrc\n  | sql '''${sql}'''\n${tail}\n  | write @new('sql_result')\n`
   );
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
-  const flow = compilePrepWorkflowToFlow(parsed.ast!);
+  const flow = compileTestJflow(parsed.ast!);
   expect(flow.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
   const workflow = { nodes: flow.nodes, edges: flow.edges };
   return { store, pipeline, workflow };
@@ -81,19 +77,19 @@ describe('SQL query lexical contract and DSL', () => {
   it('round-trips multiline SQL, quotes, backslashes, comments and pipes through DSL', async () => {
     const sql = `-- # comment | stays intact\nWITH totals AS (SELECT group_name, sum(amount) AS total FROM input GROUP BY group_name)\nSELECT *, 'a|b\\c' AS "引用" FROM totals;`;
     const { workflow } = await fixture(sql);
-    const exported = exportPrepWorkflowDsl(workflow.nodes, workflow.edges);
-    const parsed = parsePrepDsl(exported);
+    const exported = exportJflow(workflow.nodes as never, workflow.edges as never).text;
+    const parsed = parseTestJflow(exported);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
-    const again = compilePrepWorkflowToFlow(parsed.ast!);
+    const again = compileTestJflow(parsed.ast!);
     expect(again.nodes.find((node) => node.type === 'sql')?.config?.sql).toBe(sql);
-    expect(parsePrepOperatorDsl(`sql ${JSON.stringify(sql)}`, 'sql').diagnostics).toEqual([]);
+    expect(parseJflowStep(`sql '''${sql}'''`).diagnostics).toEqual([]);
   });
 });
 
 describe('SQL query native execution', () => {
   it('binds CTEs and window functions, infers downstream fields before running, and previews actual results', async () => {
     const sql = `WITH totals AS (SELECT group_name, sum(amount) AS total FROM input GROUP BY group_name)\nSELECT *, row_number() OVER (ORDER BY total DESC) AS position FROM totals; -- done`;
-    const { store, pipeline, workflow } = await fixture(sql, ' | filter [total] > 10');
+    const { store, pipeline, workflow } = await fixture(sql, '  | where [total] > 10');
     const saved = await store.savePipelineWorkflow(pipeline.id, workflow);
     const node = saved.nodes.find((item) => item.type === 'sql')!;
     const columns = await store.getWorkflowNodeColumns({
@@ -120,7 +116,7 @@ describe('SQL query native execution', () => {
   it('infers chained SQL outputs including list types and executes a self join', async () => {
     const { store, pipeline, workflow } = await fixture(
       'SELECT id, [amount, amount * 2] AS values_list FROM input',
-      ` | sql ${JSON.stringify('SELECT a.id, list_sum(a.values_list) AS total FROM input a JOIN input b ON a.id = b.id')}\n | filter [total] > 25`
+      "  | sql '''SELECT a.id, list_sum(a.values_list) AS total FROM input a JOIN input b ON a.id = b.id'''\n  | where [total] > 25"
     );
     await store.savePipelineWorkflow(pipeline.id, workflow);
     await store.runPipeline(pipeline.id);
@@ -131,7 +127,7 @@ describe('SQL query native execution', () => {
   it('reports SQL syntax and binding failures before save, and checks downstream renamed fields', async () => {
     const { store, pipeline, workflow } = await fixture(
       'SELECT amount AS renamed FROM input',
-      ' | filter [amount] > 0'
+      '  | where [amount] > 0'
     );
     await expect(store.savePipelineWorkflow(pipeline.id, workflow)).rejects.toThrow(/amount/);
     const node = workflow.nodes.find((item) => item.type === 'sql')!;
@@ -144,8 +140,8 @@ describe('SQL query native execution', () => {
   });
   it('keeps SQL after an untyped calculated column executable', async () => {
     const { store, pipeline, workflow } = await fixture('SELECT * FROM input');
-    const dsl = `input pipeline as src\n | derive [doubled] = [amount] * 2\n | sql ${JSON.stringify('SELECT sum(doubled) AS total FROM input')}\n | output table "sql_result"`;
-    const flow = compilePrepWorkflowToFlow(parsePrepDsl(dsl).ast!);
+    const dsl = `source src = @id('local:pipeline/self')\nsrc\n  | derive [doubled] = [amount] * 2\n  | sql '''SELECT sum(doubled) AS total FROM input'''\n  | write @new('sql_result')\n`;
+    const flow = compileTestJflow(parseTestJflow(dsl).ast!);
     await store.savePipelineWorkflow(pipeline.id, {
       ...workflow,
       nodes: flow.nodes,

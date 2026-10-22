@@ -1,4 +1,4 @@
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import {
   getOperatorConfigValidation,
   validateOperatorConfig,
@@ -14,7 +14,7 @@ import {
 export function validateGeneratedOperatorConfig(
   type: string,
   config: Record<string, unknown>
-): PrepDiagnostic[] {
+): WorkflowDiagnostic[] {
   const diagnostics = validateOperatorConfig(type, config);
   if (diagnostics.length > 0) return diagnostics;
 

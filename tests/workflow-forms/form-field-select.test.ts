@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 
 function ok(config: Record<string, unknown>) {
   const type = 'select' as const;
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, `null operator: ${dsl}`).not.toBeNull();
@@ -21,7 +21,7 @@ describe('FormFieldSelect — config ↔ DSL', () => {
 
   it('exclude columns', () => {
     const r = ok({ selection: 'exclude', fields: ['debug_col'] });
-    expect(r.dsl).toContain('select except');
+    expect(r.dsl).toContain('drop [debug_col]');
     expect(r.config.selection).toBe('exclude');
   });
 
@@ -45,14 +45,14 @@ describe('FormFieldSelect — DSL idempotent', () => {
       { selection: 'include', fields: ['single_col'] },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({
+      const dsl1 = exportStep({
         id: 't',
         type: 'select',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'select');
+      const parsed = parseStep(dsl1, 'select');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'select',
         config: parsed.operator!.config,
@@ -64,7 +64,7 @@ describe('FormFieldSelect — DSL idempotent', () => {
 
 describe('FormFieldSelect — edge cases', () => {
   it('empty columns produce empty DSL (no-op)', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'select',
       config: { selection: 'include', fields: [] },

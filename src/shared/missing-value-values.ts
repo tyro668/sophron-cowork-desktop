@@ -1,6 +1,6 @@
 import { normalizeDataFieldType } from './data-field-types';
-import { formatLiteral, parseLiteral } from './prep-dsl/syntax/literals';
-import { splitTopLevel } from './prep-dsl/syntax/scanner';
+import { formatLiteral, parseLiteral } from './expression-syntax/literals';
+import { splitTopLevel } from './expression-syntax/scanner';
 
 export type MissingValueInputError = 'required' | 'number' | 'boolean';
 

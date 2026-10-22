@@ -8,7 +8,8 @@ import {
   createDataPipelineStore,
   type DataPipelineStore,
 } from '../src/main/data/data-pipeline-store';
-import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
+import type { DataWorkflowEdgeInput, DataWorkflowNodeInput } from '../src/shared/contracts';
+import { compileTestJflow, parseTestJflow } from './helpers/jflow-test-workflow';
 import { getWorkflowUpstreamSignature } from '../src/shared/workflow-plan';
 
 const tempRoots: string[] = [];
@@ -37,18 +38,18 @@ describe('DuckDB data pipeline store', () => {
     const store = createDataPipelineStore(dbPath, { now: () => 1_780_000_000_000 });
     stores.push(store);
     const pipeline = await store.createPipeline({ name: 'Dynamic empty pivot', sourcePath });
-    const parsed = parsePrepDsl(`
-      input pipeline as source
+    const parsed = parseTestJflow(`
+      source src = @id('local:pipeline/self')
 
-      from source
-        | derive [status] = case when [id] = 1 then '' when [id] = 2 then 'empty' when [id] = 3 then 'empty_0' else 'paid' end
-        | derive [segment] = case when [id] = 1 or [id] = 3 then 'east' else 'west' end
+      src
+        | derive [status] = if [id] = 1 then '' elseif [id] = 2 then 'empty' elseif [id] = 3 then 'empty_0' else 'paid' end
+        | derive [segment] = if [id] = 1 or [id] = 3 then 'east' else 'west' end
         | select [status], [segment], [amount]
-        | pivot on [status], [segment] using sum([amount])
-        | output table "pivot_empty_output" mode replace
+        | pivot [status], [segment] values: sum([amount])
+        | write @new('pivot_empty_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -89,15 +90,16 @@ describe('DuckDB data pipeline store', () => {
     });
     stores.push(store);
     const pipeline = await store.createPipeline({ name: 'Empty dynamic pivot', sourcePath });
-    const parsed = parsePrepDsl(`
-      input pipeline as source
+    const parsed = parseTestJflow(`
+      source source_2 = @id('local:pipeline/self')
 
-      from source
-        | pivot on [status] using sum([amount]) group by [region]
-        | output table "empty_pivot_output" mode replace
+      source_2
+        | select [region], [status], [amount]
+        | pivot [status] values: sum([amount])
+        | write @new('empty_pivot_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -422,21 +424,15 @@ describe('DuckDB data pipeline store', () => {
     );
 
     const pipeline = await store.createPipeline({ name: 'Typed pipeline' });
-    const parsed = parsePrepDsl(`
-      input rawTable "${imported.id}" as typed
+    const parsed = parseTestJflow(`
+      source typed = @id('local:raw/${imported.id}')
 
-      from typed
-        | cast [text_col] as text,
-               [date_col] as date format '%Y-%m-%d',
-               [datetime_col] as datetime format '%Y-%m-%d %H:%M:%S',
-               [integer_col] as integer,
-               [float_col] as float,
-               [decimal_col] as decimal,
-               [boolean_col] as boolean
-        | output table "typed_task_output" mode replace
+      typed
+        | cast [text_col] as text on_error: null, [date_col] as date on_error: null format: '%Y-%m-%d', [datetime_col] as datetime on_error: null format: '%Y-%m-%d %H:%M:%S', [integer_col] as integer on_error: null, [float_col] as float on_error: null, [decimal_col] as decimal on_error: null, [boolean_col] as boolean on_error: null
+        | write @new('typed_task_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -474,16 +470,16 @@ describe('DuckDB data pipeline store', () => {
     const imported = await store.importRawTable({ filePath: csvPath, name: 'Typed source' });
 
     const pipeline = await store.createPipeline({ name: 'Schema inference pipeline' });
-    const parsed = parsePrepDsl(`
-      input rawTable "${imported.id}" as src
+    const parsed = parseTestJflow(`
+      source src = @id('local:raw/${imported.id}')
 
-      from src
+      src
         | select [id], [amount]
-        | filter [amount] > 0
-        | output table "inferred_output" mode replace
+        | where [amount] > 0
+        | write @new('inferred_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -534,14 +530,14 @@ describe('DuckDB data pipeline store', () => {
     const imported = await store.importRawTable({ filePath: csvPath, name: 'Draft source' });
 
     const pipeline = await store.createPipeline({ name: 'Draft schema pipeline' });
-    const parsed = parsePrepDsl(`
-      input rawTable "${imported.id}" as src
+    const parsed = parseTestJflow(`
+      source src = @id('local:raw/${imported.id}')
 
-      from src
+      src
         | select [id], [amount]
-        | output table "draft_schema_output" mode replace
+        | write @new('draft_schema_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -967,14 +963,14 @@ describe('DuckDB data pipeline store', () => {
     stores.push(store);
 
     const pipeline = await store.createPipeline({ name: 'Auto publish', sourcePath });
-    const parsed = parsePrepDsl(`
-      input pipeline as sales
+    const parsed = parseTestJflow(`
+      source sales = @id('local:pipeline/self')
 
-      from sales
-        | output table "temporary_name" mode replace
+      sales
+        | write @new('temporary_name')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes.map((node) =>
         node.type === 'output'
@@ -1096,21 +1092,18 @@ describe('DuckDB data pipeline store', () => {
 
     await store.importRawTable({ filePath: customersPath, name: 'customers' });
     const pipeline = await store.createPipeline({ name: 'Join orders', sourcePath: ordersPath });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
-      input rawTable "customers" as customers
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
+      source customers = @id('local:raw/customers')
 
-      from orders
-        | cast [revenue] as float on_error null
-        | join left customers
-            on [orders].[customer_id] = [customers].[customer_id]
-            keep left *, [customers].[name] as [customer_name]
-            expect many_to_one
-        | filter [revenue] > 10
-        | output table "orders_joined" mode replace
+      orders
+        | cast [revenue] as float on_error: null
+        | join left customers on [customer_id] keep: [left].*, [customer_name] = [customers].[name] expect: many_to_one
+        | where [revenue] > 10
+        | write @new('orders_joined')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -1164,18 +1157,15 @@ describe('DuckDB data pipeline store', () => {
       name: 'Cardinality warning',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
-      input rawTable "customers" as customers
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
+      source customers = @id('local:raw/customers')
 
-      from orders
-        | join left customers
-            on [orders].[customer_id] = [customers].[customer_id]
-            keep left *, [customers].[name]
-            expect many_to_one
-        | output table "cardinality_warning" mode replace
+      orders
+        | join left customers on [customer_id] keep: [left].*, [customers].[name] expect: many_to_one
+        | write @new('cardinality_warning')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     await store.savePipelineWorkflow(pipeline.id, { nodes: compiled.nodes, edges: compiled.edges });
 
     const result = await store.runPipelineWithDiagnostics(pipeline.id);
@@ -1209,16 +1199,16 @@ describe('DuckDB data pipeline store', () => {
 
     const resultTable = await store.createResultTable({ name: 'Orders output' });
     const pipeline = await store.createPipeline({ name: 'Publish orders', sourcePath: ordersPath });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | cast [revenue] as float on_error null
-        | filter [revenue] > 10
-        | output table "ignored_output" mode replace
+      orders
+        | cast [revenue] as float on_error: null
+        | where [revenue] > 10
+        | write @new('ignored_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes.map((node) =>
         node.type === 'output'
@@ -1281,13 +1271,13 @@ describe('DuckDB data pipeline store', () => {
 
     await store.importRawTable({ filePath: customersPath, name: 'customers' });
     const pipeline = await store.createPipeline({ name: 'RawTable only workflow' });
-    const parsed = parsePrepDsl(`
-      input rawTable "customers" as customers
+    const parsed = parseTestJflow(`
+      source customers = @id('local:raw/customers')
 
-      from customers
-        | output table "customers_copy" mode replace
+      customers
+        | write @new('customers_copy')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1317,15 +1307,15 @@ describe('DuckDB data pipeline store', () => {
 
     const resultTable = await store.createResultTable({ name: 'Formal output' });
     const pipeline = await store.createPipeline({ name: 'Draft run', sourcePath: ordersPath });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | cast [revenue] as float on_error null
-        | filter [revenue] > 25
-        | output table "ignored_output" mode replace
+      orders
+        | cast [revenue] as float on_error: null
+        | where [revenue] > 25
+        | write @new('ignored_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes.map((node) =>
         node.type === 'output'
@@ -1407,15 +1397,15 @@ describe('DuckDB data pipeline store', () => {
       name: 'Preview cached node',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | cast [revenue] as float on_error null
-        | filter [revenue] > 10
-        | output table "cached_node_output" mode replace
+      orders
+        | cast [revenue] as float on_error: null
+        | where [revenue] > 10
+        | write @new('cached_node_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1494,14 +1484,14 @@ describe('DuckDB data pipeline store', () => {
       name: 'Cache signature',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | filter [revenue] > 10
-        | output table "signature_output" mode replace
+      orders
+        | where [revenue] > 10
+        | write @new('signature_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1568,14 +1558,14 @@ describe('DuckDB data pipeline store', () => {
       name: 'Temporary cache',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | filter [revenue] > 10
-        | output table "temporary_cache_output" mode replace
+      orders
+        | where [revenue] > 10
+        | write @new('temporary_cache_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1618,14 +1608,14 @@ describe('DuckDB data pipeline store', () => {
 
     const rawTable = await store.importRawTable({ filePath: ordersPath });
     const pipeline = await store.createPipeline({ name: 'Input source columns' });
-    const parsed = parsePrepDsl(`
-      input rawTable "${rawTable.id}" as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:raw/${rawTable.id}')
 
-      from orders
-        | filter [revenue] > 10
-        | output table "input_source_columns_output" mode replace
+      orders
+        | where [revenue] > 10
+        | write @new('input_source_columns_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1672,15 +1662,15 @@ describe('DuckDB data pipeline store', () => {
       name: 'Chinese field filter',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | filter [订单ID]='A1000001'
-        | output table "filtered_cn_orders" mode replace
+      orders
+        | where [订单ID] = 'A1000001'
+        | write @new('filtered_cn_orders')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
@@ -1730,14 +1720,14 @@ describe('DuckDB data pipeline store', () => {
       name: 'Regex filter conditions',
       sourcePath: citiesPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as cities
+    const parsed = parseTestJflow(`
+      source cities = @id('local:pipeline/self')
 
-      from cities
-        | filter ([City] matches '.*en$' or [City] begin 'Al') and [Category] not matches 'Office.*'
-        | output table "filtered_cities_regex" mode replace
+      cities
+        | where ([City] matches '.*en$' or starts_with([City], 'Al')) and [Category] not matches 'Office.*'
+        | write @new('filtered_cities_regex')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1781,14 +1771,14 @@ describe('DuckDB data pipeline store', () => {
       name: 'Like filter conditions',
       sourcePath: citiesPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as cities
+    const parsed = parseTestJflow(`
+      source cities = @id('local:pipeline/self')
 
-      from cities
-        | filter [City] like '%ach%' and [Category] not like 'Office%' and [City] end 'en'
-        | output table "filtered_cities_like" mode replace
+      cities
+        | where [City] like '%ach%' and [Category] not like 'Office%' and ends_with([City], 'en')
+        | write @new('filtered_cities_like')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     const saved = await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,
@@ -1825,15 +1815,15 @@ describe('DuckDB data pipeline store', () => {
       name: 'Unordered graph',
       sourcePath: ordersPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as orders
+    const parsed = parseTestJflow(`
+      source orders = @id('local:pipeline/self')
 
-      from orders
-        | cast [revenue] as float on_error null
-        | filter [revenue] > 10
-        | output table "unordered_output" mode replace
+      orders
+        | cast [revenue] as float on_error: null
+        | where [revenue] > 10
+        | write @new('unordered_output')
     `);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    const compiled = compileTestJflow(parsed.ast!);
     await store.savePipelineWorkflow(pipeline.id, {
       nodes: [...compiled.nodes].reverse(),
       edges: compiled.edges,
@@ -1872,22 +1862,98 @@ describe('DuckDB data pipeline store', () => {
 
     await store.importRawTable({ filePath: statusPath, name: 'status' });
     const pipeline = await store.createPipeline({ name: 'Asof events', sourcePath: eventsPath });
-    const parsed = parsePrepDsl(`
-      input pipeline as events
-      input rawTable "status" as status
-
-      from events
-        | cast [event_time] as datetime
-        | join asof status
-            on [events].[event_time] >= [status].[snapshot_time]
-            by [events].[device_id] = [status].[device_id]
-            tolerance 2h
-            keep left *, [status].[region] as [status_region]
-            expect many_to_one
-        | output table "events_with_status" mode replace
-    `);
-    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+    // asof join is not expressible in jflow R1 — the graph is given as operator configs.
+    const compiled = {
+      nodes: [
+        {
+          id: 'source_events',
+          type: 'input',
+          label: 'input',
+          x: 64,
+          y: 72,
+          config: { source: 'pipeline', alias: 'events' },
+        },
+        {
+          id: 'source_status',
+          type: 'input',
+          label: 'input',
+          x: 264,
+          y: 72,
+          config: { source: 'rawTable', rawTableId: 'status', alias: 'status' },
+        },
+        {
+          id: 'step1_1',
+          type: 'cast',
+          label: 'cast',
+          x: 464,
+          y: 72,
+          config: { conversions: [{ field: 'event_time', type: 'datetime', onError: 'null' }] },
+        },
+        {
+          id: 'step1_2',
+          type: 'join',
+          label: 'join',
+          x: 664,
+          y: 72,
+          config: {
+            joinType: 'asof',
+            rightInput: 'status',
+            rightAlias: 'status',
+            asof: {
+              leftTime: '[events].[event_time]',
+              operator: '>=',
+              rightTime: '[status].[snapshot_time]',
+              by: [{ left: '[events].[device_id]', operator: '=', right: '[status].[device_id]' }],
+              tolerance: '2h',
+            },
+            keep: [
+              { side: 'left', wildcard: true },
+              { source: '[status].[region]', alias: 'status_region' },
+            ],
+            conflict: { strategy: 'suffix', leftSuffix: '_left', rightSuffix: '_right' },
+            expect: 'many_to_one',
+          },
+        },
+        {
+          id: 'output_step1',
+          type: 'output',
+          label: 'output',
+          x: 64,
+          y: 136,
+          config: { destination: 'duckdb_table', table: 'events_with_status', mode: 'replace' },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge_source_events_step1_1_input',
+          sourceNodeId: 'source_events',
+          targetNodeId: 'step1_1',
+          sourceHandle: 'output',
+          targetHandle: 'input',
+        },
+        {
+          id: 'edge_step1_1_step1_2_left',
+          sourceNodeId: 'step1_1',
+          targetNodeId: 'step1_2',
+          sourceHandle: 'output',
+          targetHandle: 'left',
+        },
+        {
+          id: 'edge_source_status_step1_2_right',
+          sourceNodeId: 'source_status',
+          targetNodeId: 'step1_2',
+          sourceHandle: 'output',
+          targetHandle: 'right',
+        },
+        {
+          id: 'edge_step1_2_output_step1_input',
+          sourceNodeId: 'step1_2',
+          targetNodeId: 'output_step1',
+          sourceHandle: 'output',
+          targetHandle: 'input',
+        },
+      ],
+    } as { nodes: DataWorkflowNodeInput[]; edges: DataWorkflowEdgeInput[] };
     await store.savePipelineWorkflow(pipeline.id, {
       nodes: compiled.nodes,
       edges: compiled.edges,

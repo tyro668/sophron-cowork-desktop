@@ -36,12 +36,6 @@ function buildCheckList(platform, arch) {
   const checks = [
     // Common checks (all platforms, FATAL)
     {
-      label: 'Workflow sandbox runner',
-      relPath: 'src/main/data/workflow/workflow-sandbox-runner.js',
-      type: 'file',
-      severity: 'fatal',
-    },
-    {
       label: 'GUI Operate MCP server bundle',
       relPath: '.bundle-resources/mcp/gui-operate-server.js',
       type: 'file',

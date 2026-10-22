@@ -7,10 +7,11 @@ import {
 } from '../../../shared/operators';
 import { OPERATOR_NAMING } from '../../../shared/operators/naming';
 import { WORKFLOW_PLAN_VERSION } from '../../../shared/workflow-plan';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
+import { AI_JFLOW_RUNTIME_PROFILE_VERSION } from './jflow-capability-profile';
+import { JFLOW_REFERENCE_VERSION } from '../../../shared/jflow';
 
 export const WORKFLOW_CAPABILITY_MANIFEST_VERSION = 'workflow-capability-manifest/v1' as const;
-export const PREP_DSL_LANGUAGE_VERSION = 'prep-dsl/v3' as const;
+export const WORKFLOW_DSL_LANGUAGE_VERSION = JFLOW_REFERENCE_VERSION;
 
 export interface ManifestColumnSnapshot {
   name: string;
@@ -108,8 +109,8 @@ export function buildWorkflowCapabilityManifest(
   return {
     manifestVersion: WORKFLOW_CAPABILITY_MANIFEST_VERSION,
     planVersion: WORKFLOW_PLAN_VERSION,
-    dslVersion: PREP_DSL_LANGUAGE_VERSION,
-    capabilityProfileVersion: AI_PREP_DSL_RUNTIME_PROFILE_VERSION,
+    dslVersion: WORKFLOW_DSL_LANGUAGE_VERSION,
+    capabilityProfileVersion: AI_JFLOW_RUNTIME_PROFILE_VERSION,
     plan: {
       description:
         'Submit {version, nodes, edges} to data_apply_workflow_plan. Each node config must satisfy plan.operatorConfigSchemas[node.type]; field names in configs must exist on the upstream stream schema (validation runs against the real bound-table schemas).',

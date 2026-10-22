@@ -228,5 +228,8 @@ export class JflowError extends Error {
     readonly hint?: string
   ) {
     super(`${code}: ${message}${hint ? `（建议：${hint}）` : ''}`);
+    this.detail = message;
   }
+  /** Message without code/hint decoration (diagnostics carry those separately). */
+  readonly detail: string;
 }

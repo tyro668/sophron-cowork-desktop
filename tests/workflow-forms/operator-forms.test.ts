@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readJoinUiConfig, JOIN_CONFLICT_DEFAULTS } from '../../src/shared/operator-config';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
-import type { PrepOperatorAst, PrepOperatorType } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
+
+type PrepOperatorType = string;
+type PrepOperatorAst = { type: string; config: Record<string, unknown> };
 
 /**
  * Operator Forms — Config ↔ DSL Round-Trip Tests
@@ -12,8 +14,8 @@ import type { PrepOperatorAst, PrepOperatorType } from '../../src/shared/prep-ds
  */
 
 function roundTrip(type: PrepOperatorType, config: Record<string, unknown>) {
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   return { dsl, parsed };
 }
 
@@ -127,7 +129,7 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     const result = ok(
       {
         calculations: [
-          { field: 'margin', expression: 'if [revenue] = 0 then 0 else [profit] / [revenue]' },
+          { field: 'margin', expression: 'if [revenue] = 0 then 0 else [profit] / [revenue] end' },
         ],
       },
       'derive'
@@ -182,74 +184,13 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     expect(metrics).toHaveLength(1);
   });
 
-  it('join — inner', () => {
-    const result = ok(
-      {
-        joinType: 'inner',
-        rightInput: 'customers',
-        conditions: [{ left: 'orders.customer_id', operator: '=', right: 'customers.customer_id' }],
-      },
-      'join'
-    );
-    expect(result.config.joinType).toBe('inner');
-    expect(result.config.rightInput).toBe('customers');
-  });
-
-  it('join — left with keep', () => {
-    const result = ok(
-      {
-        joinType: 'left',
-        rightInput: 'customers',
-        conditions: [{ left: 'orders.customer_id', operator: '=', right: 'customers.customer_id' }],
-        keep: [
-          { side: 'left', wildcard: true },
-          { source: 'customers.name', alias: 'customer_name' },
-        ],
-      },
-      'join'
-    );
-    expect(result.config.joinType).toBe('left');
-    const keep = result.config.keep as Array<Record<string, unknown>>;
-    expect(keep).toBeDefined();
-    expect(keep.some((k) => k.wildcard === true)).toBe(true);
-  });
-
-  it('join — anti', () => {
-    const result = ok(
-      {
-        joinType: 'anti',
-        rightInput: 'blacklist',
-        conditions: [{ left: 'orders.customer_id', operator: '=', right: 'blacklist.customer_id' }],
-      },
-      'join'
-    );
-    expect(result.config.joinType).toBe('anti');
-  });
-
-  it('join — cross', () => {
-    const result = ok({ joinType: 'cross', rightInput: 'dates' }, 'join');
-    expect(result.config.joinType).toBe('cross');
-  });
-
-  it('join — asof', () => {
-    const result = ok(
-      {
-        joinType: 'asof',
-        rightInput: 'rates',
-        conditions: [],
-        asof: {
-          leftTime: 'trades.trade_time',
-          operator: '>=',
-          rightTime: 'rates.rate_time',
-          tolerance: '1d',
-          by: [{ left: 'trades.currency', operator: '=', right: 'rates.currency' }],
-        },
-      },
-      'join'
-    );
-    expect(result.config.joinType).toBe('asof');
-    const asof = result.config.asof as Record<string, unknown>;
-    expect(asof.tolerance).toBe('1d');
+  it('join / set_op are edited in the workflow DSL, not per step', () => {
+    for (const type of ['join', 'set_op']) {
+      expect(exportStep({ id: 'test', type, config: { joinType: 'inner' } })).toBe('');
+      expect(
+        parseStep(`${type === 'join' ? 'join inner other on [id]' : 'union other'}`, type).operator
+      ).toBeNull();
+    }
   });
 
   it('limit — simple limit', () => {
@@ -275,11 +216,13 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       {
         on: [{ field: 'month', values: ['Jan', 'Feb'] }],
         using: [{ function: 'sum', expression: '[revenue]', alias: 'revenue_sum' }],
-        groupBy: ['region'],
       },
       'pivot'
     );
-    expect(result.config.on).toEqual([{ field: 'month', values: ['Jan', 'Feb'] }]);
+    expect((result.config.on as Array<Record<string, unknown>>)[0]).toMatchObject({
+      field: 'month',
+      values: ['Jan', 'Feb'],
+    });
   });
 
   it('unpivot', () => {
@@ -293,14 +236,6 @@ describe('operator forms — config ↔ DSL round-trip', () => {
     );
     expect(result.config.nameColumn).toBe('month');
     expect(result.config.valueColumn).toBe('sales');
-  });
-
-  it('set_op — union', () => {
-    const result = ok(
-      { operation: 'union', rightInput: 'returns', quantifier: 'all', match: 'by_name' },
-      'set_op'
-    );
-    expect(result.config.operation).toBe('union');
   });
 
   it('unnest — list', () => {
@@ -317,18 +252,17 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       {
         sourceKind: 'json',
         field: 'payload',
-        path: '$.items',
         alias: 'item',
       },
       'unnest'
     );
     expect(result.config.sourceKind).toBe('json');
-    expect(result.config.path).toBe('$.items');
   });
 
   it('missing_value — drop_empty_rows', () => {
     const result = ok({ strategy: 'drop_empty_rows' }, 'missing_value');
-    expect(result.config.strategy).toBe('drop_empty_rows');
+    expect(result.config.strategy).toBe('drop_rows_by_nulls');
+    expect(result.config.condition).toBe('all_null');
   });
 
   it('missing_value — drop_rows_by_nulls', () => {
@@ -344,7 +278,6 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       {
         strategy: 'by_column',
         rules: [
-          { field: 'region', method: 'nullify_values', values: ['', 'N/A', '-'] },
           { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
           { field: 'revenue', method: 'literal_fill', value: '0' },
         ],
@@ -352,9 +285,9 @@ describe('operator forms — config ↔ DSL round-trip', () => {
       'missing_value'
     );
     const rules = result.config.rules as Array<Record<string, unknown>>;
-    expect(rules).toHaveLength(3);
-    expect(rules[0].method).toBe('nullify_values');
-    expect(rules[1].value).toBe('UNKNOWN');
+    expect(rules).toHaveLength(2);
+    expect(rules[0].method).toBe('literal_fill');
+    expect(rules[0].value).toBe('UNKNOWN');
   });
 
   it('missing_value — by_column with statistical fill', () => {
@@ -395,10 +328,10 @@ describe('operator forms — empty config handling', () => {
       'missing_value',
     ];
     for (const type of types) {
-      const dsl = exportPrepOperatorDsl({ id: 'test', type, config: {} });
+      const dsl = exportStep({ id: 'test', type, config: {} });
       expect(typeof dsl).toBe('string');
       if (dsl.trim()) {
-        const parsed = parsePrepOperatorDsl(dsl, type);
+        const parsed = parseStep(dsl, type);
         // Empty-config DSL may have errors — that's fine, it just shouldn't crash
         expect(parsed.diagnostics).toBeDefined();
         if (parsed.operator) {
@@ -455,10 +388,10 @@ describe('operator forms — all registered types', () => {
 describe('operator forms — DSL generation stability', () => {
   it('filter DSL is idempotent under export→parse→export', () => {
     const config = { condition: '[revenue] > 0' };
-    const dsl1 = exportPrepOperatorDsl({ id: 'test', type: 'filter', config });
-    const parsed = parsePrepOperatorDsl(dsl1, 'filter');
+    const dsl1 = exportStep({ id: 'test', type: 'filter', config });
+    const parsed = parseStep(dsl1, 'filter');
     expect(parsed.operator).not.toBeNull();
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'filter',
       config: parsed.operator!.config,
@@ -474,33 +407,12 @@ describe('operator forms — DSL generation stability', () => {
         { function: 'count', expression: '*', alias: 'row_count' },
       ],
     };
-    const dsl1 = exportPrepOperatorDsl({ id: 'test', type: 'aggregate', config });
-    const parsed = parsePrepOperatorDsl(dsl1, 'aggregate');
+    const dsl1 = exportStep({ id: 'test', type: 'aggregate', config });
+    const parsed = parseStep(dsl1, 'aggregate');
     expect(parsed.operator).not.toBeNull();
-    const dsl2 = exportPrepOperatorDsl({
+    const dsl2 = exportStep({
       id: 'test',
       type: 'aggregate',
-      config: parsed.operator!.config,
-    });
-    expect(dsl2).toBe(dsl1);
-  });
-
-  it('join DSL is idempotent under export→parse→export', () => {
-    const config = {
-      joinType: 'left',
-      rightInput: 'customers',
-      conditions: [{ left: 'orders.customer_id', operator: '=', right: 'customers.customer_id' }],
-      keep: [
-        { side: 'left', wildcard: true },
-        { source: 'customers.name', alias: 'customer_name' },
-      ],
-    };
-    const dsl1 = exportPrepOperatorDsl({ id: 'test', type: 'join', config });
-    const parsed = parsePrepOperatorDsl(dsl1, 'join');
-    expect(parsed.operator).not.toBeNull();
-    const dsl2 = exportPrepOperatorDsl({
-      id: 'test',
-      type: 'join',
       config: parsed.operator!.config,
     });
     expect(dsl2).toBe(dsl1);

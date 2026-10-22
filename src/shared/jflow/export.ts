@@ -5,6 +5,7 @@
  * step; a composite whose shape no longer matches (e.g. edited on the canvas) is exported node by
  * node. Every step carries `#! id:` so re-import keeps the node ids (data_workflow_nodes.id).
  */
+import { normalizeCalculationDomainExpression } from '../calculate-field/domain-dsl';
 import type {
   Chain,
   Expr,
@@ -20,7 +21,7 @@ import type {
   Step,
   TableExp,
 } from './ast';
-import { formatJflow, fmtField } from './format';
+import { formatJflow, fmtField, intervalsToDurations } from './format';
 import { parseJflowExpr } from './parse';
 import { unfield } from './parser';
 
@@ -53,8 +54,65 @@ const arr = (v: unknown): Array<Record<string, unknown>> =>
 const strs = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
-function expr(text: string): Expr {
-  const r = parseJflowExpr(text);
+const SQL_KEYWORDS = new Set(
+  (
+    'and or not is null in like ilike between case when then else end cast as over partition by ' +
+    'order rows range groups unbounded preceding following current row interval asc desc nulls ' +
+    'first last distinct true false exists filter within'
+  ).split(' ')
+);
+
+/** Lower-cases SQL keywords written in upper case (outside strings and fields). */
+function lowerSqlKeywords(text: string): string {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === "'" || ch === '"') {
+      let j = i + 1;
+      while (j < text.length && !(text[j] === ch && text[j + 1] !== ch))
+        j += text[j] === ch ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (ch === '[') {
+      let j = i + 1;
+      while (j < text.length && !(text[j] === ']' && text[j + 1] !== ']'))
+        j += text[j] === ']' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (/[A-Za-z_]/.test(ch)) {
+      let j = i;
+      while (j < text.length && /[A-Za-z0-9_]/.test(text[j])) j += 1;
+      const word = text.slice(i, j);
+      out += SQL_KEYWORDS.has(word.toLowerCase()) ? word.toLowerCase() : word;
+      i = j;
+    } else {
+      out += ch;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/** Calculation-domain wrappers are exported with canonical function names. */
+function canonicalCalculation(text: string): string {
+  try {
+    return normalizeCalculationDomainExpression(text, { allowLegacySql: true });
+  } catch {
+    return text;
+  }
+}
+
+function expr(source: string): Expr {
+  const text = intervalsToDurations(source);
+  let r = parseJflowExpr(text);
+  if (!r.ast) {
+    const lowered = lowerSqlKeywords(text);
+    if (lowered !== text) {
+      const retry = parseJflowExpr(lowered);
+      if (retry.ast) r = retry;
+    }
+  }
   if (!r.ast)
     throw new ExportError(`表达式无法转换为 jflow：${text}（${r.diagnostics[0]?.message ?? ''}）`);
   return r.ast;
@@ -90,11 +148,13 @@ function newStep(op: string): Step {
 }
 
 function sortKeysOf(v: unknown): SortKey[] {
-  return arr(v).map((k) => ({
-    desc: k.direction === 'desc',
-    field: field(str(k.field)),
-    nulls: k.nulls === 'first' || k.nulls === 'last' ? k.nulls : null,
-  }));
+  return arr(v)
+    .filter((k) => str(k.field).trim())
+    .map((k) => ({
+      desc: k.direction === 'desc',
+      field: field(str(k.field)),
+      nulls: k.nulls === 'first' || k.nulls === 'last' ? k.nulls : null,
+    }));
 }
 
 function isWhole(re: RegExp, s: string): RegExpExecArray | null {
@@ -233,6 +293,7 @@ export function exportJflow(
         }
         case 'select': {
           const fields = strs(c.fields);
+          if (!fields.length) throw new ExportError('选择列为空');
           const s = st(c.selection === 'exclude' ? 'drop' : 'select');
           s.items = fields.map((f) => ({ k: 'col', e: field(f) }));
           u.step = s;
@@ -240,14 +301,14 @@ export function exportJflow(
         }
         case 'derive': {
           const s = st('derive');
-          s.derives = arr(c.calculations).map((x) => ({
+          const calculations = arr(c.calculations);
+          if (!calculations.length || calculations.some((x) => !str(x.field)))
+            throw new ExportError('派生计算缺少字段名');
+          s.derives = calculations.map((x) => ({
             name: str(x.field),
-            e: expr(str(x.expression)),
+            e: expr(canonicalCalculation(str(x.expression))),
             replace: x.action === 'replace',
           }));
-          if (arr(c.calculations).some((x) => x.action !== 'add' && x.action !== 'replace')) {
-            throw new ExportError('derive 计算项缺少 add/replace，无法确定写法');
-          }
           u.step = s;
           break;
         }
@@ -258,6 +319,7 @@ export function exportJflow(
           break;
         }
         case 'limit': {
+          if (!(Number(c.limit) > 0)) throw new ExportError('行数必须大于 0');
           if (c.sampling === 'random') {
             const s = st('sample');
             s.n = String(c.limit);
@@ -286,7 +348,12 @@ export function exportJflow(
             e: null,
             grain: grains[g] ?? null,
           }));
-          s.aggs = arr(c.metrics).map((m) => ({ name: str(m.alias), e: metricExpr(m) }));
+          s.aggs = arr(c.metrics).map((m) => {
+            if (!str(m.alias)) throw new ExportError('聚合指标缺少别名');
+            return { name: str(m.alias), e: metricExpr(m) };
+          });
+          if (!s.aggs.length && !s.groupKeys.length)
+            throw new ExportError('聚合没有分组也没有指标');
           u.step = s;
           break;
         }
@@ -294,6 +361,7 @@ export function exportJflow(
           const s = st('join');
           const alias = str(c.rightAlias) || null;
           s.kind = str(c.joinType) || 'inner';
+          if (s.kind === 'asof') throw new ExportError('asof join 在 R1 中还不能用 jflow 表达');
           s.table = { src: { k: 'name', v: '?' }, as: alias };
           u.refs.push({
             node: ins.right!,
@@ -335,6 +403,8 @@ export function exportJflow(
         }
         case 'expect': {
           const s = st('check');
+          if (str(c.rejectStream) || (str(c.onFail) && c.onFail !== 'error'))
+            throw new ExportError('expect 的 reject 分流在 R1 中还不能用 jflow 表达');
           if (c.kind === 'unique') s.check = { kind: 'unique', fields: strs(c.fields) };
           else if (c.kind === 'row_count')
             s.check = { kind: 'rows', cmp: str(c.operator) || '>=', n: Number(c.value ?? 0) };
@@ -399,8 +469,16 @@ export function exportJflow(
             u.step = s;
             break;
           }
-          const rules = arr(c.rules);
-          if (rules.every((r) => r.method === 'nullify_values') && rules.length) {
+          const rules = arr(c.rules).filter((r) => r.method !== 'skip');
+          if (!rules.length) throw new ExportError('缺失值处理没有有效规则');
+          if (rules.every((r) => r.method === 'drop')) {
+            const s = st('drop_empty');
+            s.which = 'any';
+            named(s, 'fields', { k: 'fields', v: rules.map((r) => str(r.field)) });
+            u.step = s;
+            break;
+          }
+          if (rules.every((r) => r.method === 'nullify_values')) {
             const s = st('nullify');
             const values = JSON.stringify(rules[0].values);
             if (rules.some((r) => JSON.stringify(r.values) !== values))
@@ -413,7 +491,11 @@ export function exportJflow(
           const s = st('fill');
           s.fills = rules.map((r) => {
             const method = str(r.method);
-            if (method === 'literal_fill') return { name: str(r.field), with: literal(r.value) };
+            if (method === 'literal_fill') {
+              if (r.value === null || r.value === undefined)
+                throw new ExportError('缺失值不能用 null 填充');
+              return { name: str(r.field), with: literal(r.value) };
+            }
             const m = /^(mean|median|mode|forward|backward)_fill$/.exec(method);
             if (!m) throw new ExportError(`缺失值方法 ${method} 无法表达`);
             return { name: str(r.field), with: m[1] };
@@ -451,6 +533,9 @@ export function exportJflow(
         }
         case 'pivot': {
           const s = st('pivot');
+          if (!arr(c.on).some((a) => str(a.field))) throw new ExportError('透视缺少列字段');
+          if (!arr(c.using).length || arr(c.using).some((m) => !str(m.expression)))
+            throw new ExportError('透视缺少完整的汇总指标');
           if (strs(c.groupBy).length) {
             // groupBy = keep only these columns besides the axes/values: a select before the pivot.
             const used = new Set<string>([
@@ -492,7 +577,11 @@ export function exportJflow(
           if (id2 || str(c.mode) !== 'replace')
             named(s, 'mode', enumValue(str(c.mode) || 'replace'));
           if (strs(c.mergeKeys).length) named(s, 'keys', { k: 'fields', v: strs(c.mergeKeys) });
-          if (str(c.schemaPolicy)) named(s, 'schema', enumValue(str(c.schemaPolicy)));
+          if (str(c.schemaPolicy)) {
+            if (!['strict', 'extend', 'replace'].includes(str(c.schemaPolicy)))
+              throw new ExportError(`schema ${str(c.schemaPolicy)} 在 R1 中还不能用 jflow 表达`);
+            named(s, 'schema', enumValue(str(c.schemaPolicy)));
+          }
           if (c.allowPartial === true)
             named(s, 'allow_partial', exprValue({ k: 'lit', t: 'bool', v: true }));
           u.step = s;

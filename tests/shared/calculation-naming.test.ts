@@ -4,7 +4,7 @@ import {
   normalizeCalculationDomainExpression,
 } from '../../src/shared/calculate-field/domain-dsl';
 import { parseCalculationFunctionWizardInput } from '../../src/shared/calculate-field/wizard-input';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 
 const aliases = [
   ['group(percentoftotal([Amount]))', 'group(percent_of_total([Amount]))'],
@@ -53,14 +53,14 @@ describe('canonical calculation names and compatibility', () => {
       parseCalculationFunctionWizardInput(canonical)
     );
     expect(parseCalculationFunctionWizardInput(canonical)).toBeDefined();
-    const parsed = parsePrepOperatorDsl(`derive [result] = ${legacy}`, 'derive');
+    const parsed = parseStep(`derive [result] = ${legacy}`, 'derive');
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
     expect(parsed.operator?.config.calculations).toEqual([
-      { field: 'result', expression: canonical },
+      { field: 'result', action: 'add', expression: canonical },
     ]);
     // Export a stored legacy config directly, without first parsing its DSL.
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'test',
         type: 'derive',
         config: { calculations: [{ field: 'result', expression: legacy }] },
@@ -85,14 +85,14 @@ describe('canonical calculation names and compatibility', () => {
 
   it('preserves native SQL window expressions when exporting saved configs', () => {
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'sql',
         type: 'derive',
         config: {
           calculations: [{ field: 'n', expression: 'ROW_NUMBER() OVER (ORDER BY [Date])' }],
         },
       })
-    ).toBe('derive [n] = row_number() over (ORDER BY [Date])');
+    ).toBe('derive [n] = row_number() over(order by [Date])');
   });
 
   it.each([
@@ -104,7 +104,7 @@ describe('canonical calculation names and compatibility', () => {
     `accumulate(rolling(sum([Amount]), [Date], 7, 'hour'))`,
   ])('does not let legacy aliases bypass validation: %s', (expression) => {
     expect(() => normalizeCalculationDomainExpression(expression)).toThrow();
-    const parsed = parsePrepOperatorDsl(`derive [result] = ${expression}`, 'derive');
+    const parsed = parseStep(`derive [result] = ${expression}`, 'derive');
     expect(parsed.diagnostics.some((item) => item.severity === 'error')).toBe(true);
   });
 });

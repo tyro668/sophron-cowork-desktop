@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
-import { parseFieldRef } from '@/shared/prep-dsl/parser';
+import { parseFieldRef } from '../../../../shared/expression-syntax/fields';
 import './form-grid.css';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { DataTypeIcon } from './DataTypeIcon';

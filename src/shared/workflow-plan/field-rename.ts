@@ -14,7 +14,7 @@
  */
 import { tokenizeExpression } from '../expression-tokenizer';
 import { unwrapField } from '../expression/parser';
-import { formatFieldName } from '../prep-dsl/syntax/fields';
+import { formatFieldName } from '../expression-syntax/fields';
 
 type Config = Record<string, unknown>;
 type Row = Record<string, unknown>;

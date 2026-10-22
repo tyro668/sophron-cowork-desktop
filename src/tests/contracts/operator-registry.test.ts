@@ -19,6 +19,7 @@ import {
   isWorkflowOperatorType,
 } from '../../shared/operators';
 import { COMPILE_STRATEGIES } from '../../main/data/operators/strategy';
+import { JFLOW_STEP_UNSUPPORTED_TYPES } from '../../shared/jflow';
 import {
   OPERATOR_UI,
   OPERATOR_CATALOG_GROUPS,
@@ -27,7 +28,7 @@ import {
   buildWorkflowCapabilityManifest,
   sliceWorkflowCapabilityManifest,
 } from '../../main/data/workflow/workflow-capability-manifest';
-import { AI_GENERATED_WORKFLOW_NODE_TYPES } from '../../main/data/workflow/prep-dsl-capability-profile';
+import { AI_GENERATED_WORKFLOW_NODE_TYPES } from '../../main/data/workflow/jflow-capability-profile';
 
 const ALL_TYPES = [...OPERATOR_TYPES].sort();
 
@@ -103,13 +104,9 @@ describe('shared operator registry', () => {
     }
   });
 
-  it('declares a DSL codec for every step-expressible operator', () => {
-    // input binds via `from <ref>`/resources — it has no step codec.
-    const withoutDsl = OPERATOR_TYPES.filter((type) => !OPERATOR_DEFINITIONS[type].dsl);
-    expect(withoutDsl).toEqual(['input']);
-    for (const type of OPERATOR_TYPES) {
-      const codec = OPERATOR_DEFINITIONS[type].dsl;
-      if (codec) expect(codec.type).toBe(type);
+  it('names only registered operators as not expressible as a single jflow step', () => {
+    for (const type of JFLOW_STEP_UNSUPPORTED_TYPES) {
+      expect(OPERATOR_TYPES as readonly string[]).toContain(type);
     }
   });
 

@@ -67,7 +67,7 @@ describe('WorkflowOperatorConfigPanel inspector tabs', () => {
     expect(source).toContain("t('data.workflow.formatDsl', 'Format')");
     expect(source).toContain("t('common.expand', 'Expand')");
     expect(source).toContain('WorkflowOperatorDslDialog');
-    expect(source).toContain('editable');
+    expect(source).toContain('onChange={onDslChange}');
     expect(source).toContain('isDslDialogOpen');
   });
 });

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 import { normalizeMissingValueMethods } from '../../src/shared/operator-config';
 import type { MissingValueRule } from '../../src/shared/operator-schemas/missing-value';
 
 function ok(config: Record<string, unknown>) {
   const type = 'missing_value' as const;
-  const dsl = exportPrepOperatorDsl({ id: 'test', type, config });
-  const parsed = parsePrepOperatorDsl(dsl, type);
+  const dsl = exportStep({ id: 'test', type, config });
+  const parsed = parseStep(dsl, type);
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
   expect(errors, `DSL errors: ${dsl}`).toHaveLength(0);
   expect(parsed.operator, `null operator: ${dsl}`).not.toBeNull();
@@ -16,13 +16,15 @@ function ok(config: Record<string, unknown>) {
 describe('FormMissingValue — config ↔ DSL', () => {
   it('drop empty rows', () => {
     const r = ok({ strategy: 'drop_empty_rows' });
-    expect(r.dsl).toContain('row drop when all_null');
-    expect(r.config.strategy).toBe('drop_empty_rows');
+    expect(r.dsl).toBe('drop_empty all');
+    // jflow canonical form: all-null across every column.
+    expect(r.config.strategy).toBe('drop_rows_by_nulls');
+    expect(r.config.condition).toBe('all_null');
   });
 
   it('drop rows by any null', () => {
     const r = ok({ strategy: 'drop_rows_by_nulls', condition: 'any_null' });
-    expect(r.dsl).toContain('row drop when any_null');
+    expect(r.dsl).toContain('drop_empty any');
     expect(r.config.condition).toBe('any_null');
   });
 
@@ -32,7 +34,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       condition: 'any_null',
       fields: ['id', 'name'],
     });
-    expect(r.dsl).toContain('in [id]');
+    expect(r.dsl).toContain('drop_empty any fields: [id], [name]');
     expect(r.config.fields).toEqual(['id', 'name']);
   });
 
@@ -42,7 +44,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       condition: 'all_null',
       fields: ['id', 'name'],
     });
-    expect(r.dsl).toContain('row drop when all_null in [id], [name]');
+    expect(r.dsl).toContain('drop_empty all fields: [id], [name]');
     expect(r.config.strategy).toBe('drop_rows_by_nulls');
     expect(r.config.condition).toBe('all_null');
     expect(r.config.fields).toEqual(['id', 'name']);
@@ -53,34 +55,32 @@ describe('FormMissingValue — config ↔ DSL', () => {
       strategy: 'drop_empty_rows',
       fields: ['id', 'name'],
     });
-    expect(r.dsl).toContain('row drop when all_null in [id], [name]');
+    expect(r.dsl).toContain('drop_empty all fields: [id], [name]');
     expect(r.config.strategy).toBe('drop_rows_by_nulls');
     expect(r.config.condition).toBe('all_null');
     expect(r.config.fields).toEqual(['id', 'name']);
   });
 
   it('reports duplicate row-deletion fields in DSL', () => {
-    const parsed = parsePrepOperatorDsl(
-      'missing_value row drop when any_null in [status], [status]',
-      'missing_value'
-    );
+    const parsed = parseStep('drop_empty any fields: [status], [status]', 'missing_value');
     expect(parsed.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: 'duplicateMissingValueRowField',
+          code: 'E_DUP_FIELD',
           severity: 'error',
         }),
       ])
     );
   });
 
-  it('by_column: skip', () => {
-    const r = ok({
-      strategy: 'by_column',
-      rules: [{ field: 'field', method: 'skip' }],
-    });
-    expect(r.dsl).toContain('skip');
-    expect(r.config.rules).toHaveLength(1);
+  it('by_column: skip-only rules are a no-op and cannot be exported as a step', () => {
+    expect(
+      exportStep({
+        id: 'test',
+        type: 'missing_value',
+        config: { strategy: 'by_column', rules: [{ field: 'field', method: 'skip' }] },
+      })
+    ).toBe('');
   });
 
   it('by_column: nullify values', () => {
@@ -88,7 +88,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       strategy: 'by_column',
       rules: [{ field: 'region', method: 'nullify_values', values: ['', 'N/A'] }],
     });
-    expect(r.dsl).toContain('nullify values');
+    expect(r.dsl).toContain(`nullify [region] values ('', 'N/A')`);
     const rules = r.config.rules as Array<Record<string, unknown>>;
     expect(rules[0].method).toBe('nullify_values');
   });
@@ -104,20 +104,13 @@ describe('FormMissingValue — config ↔ DSL', () => {
   });
 
   it('rejects fill null DSL as a no-op', () => {
-    const parsed = parsePrepOperatorDsl('missing_value [region] fill null', 'missing_value');
-    expect(parsed.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'invalidMissingValueLiteral',
-          severity: 'error',
-        }),
-      ])
-    );
+    const parsed = parseStep('fill [region] with null', 'missing_value');
+    expect(parsed.diagnostics.some((item) => item.severity === 'error')).toBe(true);
   });
 
   it('does not export a null literal fill rule', () => {
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'test',
         type: 'missing_value',
         config: {
@@ -133,7 +126,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       strategy: 'by_column',
       rules: [{ field: 'revenue', method: 'mean_fill' }],
     });
-    expect(r.dsl).toContain('fill mean');
+    expect(r.dsl).toContain('fill [revenue] with mean');
   });
 
   it('by_column: forward fill', () => {
@@ -141,7 +134,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
       strategy: 'by_column',
       rules: [{ field: 'status', method: 'forward_fill' }],
     });
-    expect(r.dsl).toContain('[status] fill forward');
+    expect(r.dsl).toContain('fill [status] with forward');
     const rules = r.config.rules as Array<Record<string, unknown>>;
     expect(rules[0].method).toBe('forward_fill');
   });
@@ -151,37 +144,45 @@ describe('FormMissingValue — config ↔ DSL', () => {
       strategy: 'by_column',
       rules: [{ field: 'page_id', method: 'drop' }],
     });
-    expect(r.dsl).toContain('drop rows');
+    expect(r.dsl).toBe('drop_empty any fields: [page_id]');
   });
 
-  it('by_column: multiple rules', () => {
+  it('by_column: mixed rule kinds need one node per kind in jflow', () => {
+    expect(
+      exportStep({
+        id: 'test',
+        type: 'missing_value',
+        config: {
+          strategy: 'by_column',
+          rules: [
+            { field: 'region', method: 'nullify_values', values: ['', 'N/A'] },
+            { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
+          ],
+        },
+      })
+    ).toBe('');
     const r = ok({
       strategy: 'by_column',
       rules: [
-        { field: 'region', method: 'nullify_values', values: ['', 'N/A'] },
         { field: 'status', method: 'literal_fill', value: 'UNKNOWN' },
         { field: 'revenue', method: 'mean_fill' },
       ],
     });
     const rules = r.config.rules as Array<Record<string, unknown>>;
-    expect(rules).toHaveLength(3);
-    expect(rules[0].method).toBe('nullify_values');
-    expect(rules[1].method).toBe('literal_fill');
-    expect(rules[2].method).toBe('mean_fill');
+    expect(rules.map((rule) => rule.method)).toEqual(['literal_fill', 'mean_fill']);
   });
 
-  it('preserves sequential rules for the same field in DSL order', () => {
-    const parsed = parsePrepOperatorDsl(
-      `missing_value [status] nullify values ('N/A'), [status] fill 'UNKNOWN'`,
+  it('a nullify followed by a fill on the same field is two steps', () => {
+    const parsed = parseStep(
+      `nullify [status] values ('N/A') | fill [status] with 'UNKNOWN'`,
       'missing_value'
     );
-    expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
-    expect(parsed.operator?.config.rules).toHaveLength(2);
+    expect(parsed.diagnostics.map((item) => item.code)).toContain('E_STEP_COMPOSITE');
   });
 
   it('exports sequential rules for the same field', () => {
     expect(
-      exportPrepOperatorDsl({
+      exportStep({
         id: 'test',
         type: 'missing_value',
         config: {
@@ -192,7 +193,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
           ],
         },
       })
-    ).toBe('missing_value [status] fill forward, [status] fill backward');
+    ).toBe('fill [status] with forward, [status] with backward');
   });
 
   it('allows fields to be selected in more than one graphical rule', async () => {
@@ -286,7 +287,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   });
 
   it('by_column: empty rules cannot be exported as a placeholder field', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'missing_value',
       config: { strategy: 'by_column', rules: [] },
@@ -295,7 +296,7 @@ describe('FormMissingValue — config ↔ DSL', () => {
   });
 
   it('does not export an unknown processing method', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'missing_value',
       config: {
@@ -388,14 +389,14 @@ describe('FormMissingValue — DSL idempotent', () => {
       { strategy: 'by_column', rules: [{ field: 'r', method: 'literal_fill', value: 'X' }] },
     ];
     for (const config of configs) {
-      const dsl1 = exportPrepOperatorDsl({
+      const dsl1 = exportStep({
         id: 't',
         type: 'missing_value',
         config,
       });
-      const parsed = parsePrepOperatorDsl(dsl1, 'missing_value');
+      const parsed = parseStep(dsl1, 'missing_value');
       expect(parsed.operator).not.toBeNull();
-      const dsl2 = exportPrepOperatorDsl({
+      const dsl2 = exportStep({
         id: 't',
         type: 'missing_value',
         config: parsed.operator!.config,

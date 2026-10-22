@@ -3,7 +3,6 @@ import type {
   CloudOutputSyncConfig,
 } from '../../shared/automation/cloud-sync';
 import { dirname, join } from 'path';
-import { exportPrepWorkflowDsl } from '../../shared/prep-dsl';
 import type { DataPipeline } from '../../shared/contracts';
 import type {
   PersonalAnalysisConnectionInput,
@@ -105,8 +104,6 @@ export interface DataCommandServiceOptions {
     rejectedAccessToken?: string
   ) => PersonalAnalysisConnectionInput | null | Promise<PersonalAnalysisConnectionInput | null>;
   recordLlmUsage?: DataPipelineLlmUsageRecorder;
-  /** Test seam and optional compatibility exporter; native nodes remain the source of truth. */
-  exportWorkflowDsl?: typeof exportPrepWorkflowDsl;
   /** Shared only with the AI data-pipeline tool chain; avoids process-global receipt state. */
   requirementAnalysisReceipts?: RequirementAnalysisReceiptStore;
 }
@@ -148,7 +145,7 @@ export class DataCommandService {
     const locks = new DataCommandLockCoordinator();
     this.resources = new DataCommandResources(store);
     this.preview = new WorkflowPreviewService(store, this.resources);
-    const compiler = new WorkflowDslCompiler(this.resources);
+    const compiler = new WorkflowDslCompiler(this.resources, store);
     this.pipelines = new PipelineCommandService(store, this.resources);
     const requirementAnalysisReceipts =
       options.requirementAnalysisReceipts ?? new RequirementAnalysisReceiptStore();
@@ -183,7 +180,6 @@ export class DataCommandService {
       requirementAnalysisReceipts,
       {
         recordLlmUsage: options.recordLlmUsage,
-        exportWorkflowDsl: options.exportWorkflowDsl,
       }
     );
     this.pipelineExecution = new PipelineExecutionCommandService(

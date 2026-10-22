@@ -29,7 +29,7 @@ import type {
   DataWorkflowOperatorType,
   DataWorkflowSaveInput,
 } from '../../shared/contracts';
-import type { PrepDiagnostic } from '../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../shared/workflow-diagnostics';
 import type {
   PersonalAnalysisConnectionInput,
   PersonalAnalysisDriveFile,
@@ -415,7 +415,7 @@ export interface GetWorkflowCapabilityManifestCommand {
 
 export interface WorkflowResult {
   workflow: DataPipelineWorkflow;
-  diagnostics?: PrepDiagnostic[];
+  diagnostics?: WorkflowDiagnostic[];
   dryRun?: boolean;
   /** Canonical Prep DSL exported from the applied graph. */
   dsl?: string;
@@ -513,7 +513,7 @@ export interface RunPipelineResult {
   /** User-managed output resource ID, never the physical DuckDB table name. */
   resultTableId?: string;
   preview?: DataRawTablePreview;
-  diagnostics?: PrepDiagnostic[];
+  diagnostics?: WorkflowDiagnostic[];
   nodeStats?: WorkflowNodeRunStat[];
 }
 

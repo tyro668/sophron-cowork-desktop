@@ -1,5 +1,5 @@
-import { parseFieldRefExact, toFieldName } from '../../prep-dsl/syntax/fields';
-import { parseLiteral } from '../../prep-dsl/syntax/literals';
+import { parseFieldRefExact, toFieldName } from '../../expression-syntax/fields';
+import { parseLiteral } from '../../expression-syntax/literals';
 function isIntegerString(value: string): boolean {
   return /^\d+$/.test(value);
 }

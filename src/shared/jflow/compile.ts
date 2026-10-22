@@ -7,6 +7,11 @@
  */
 import { lookupExpressionFunction } from '../expression/functions';
 import { parseExpression } from '../expression/parser';
+import {
+  expandCalculationDomainExpression,
+  normalizeCalculationDomainExpression,
+  parseCalculationFunctionDslExpression,
+} from '../calculate-field/domain-dsl';
 import type {
   Chain,
   Expr,
@@ -64,6 +69,10 @@ export interface JflowEdge {
 }
 
 export interface JflowCompileResult {
+  /** Columns of the last chain's result (null when unknown). */
+  lastColumns?: string[] | null;
+  /** Columns of every named relation (sources and lets). */
+  relationColumns?: Record<string, string[] | null>;
   nodes: JflowNode[];
   edges: JflowEdge[];
   diagnostics: JflowDiagnostic[];
@@ -203,13 +212,36 @@ function cx(e: Expr, span?: Span): string {
   try {
     parseExpression(text);
   } catch (error) {
+    // Calculation-domain wrappers (group/compare/ranking/… over (…)) are stored verbatim; the SQL
+    // compiler expands them.
+    let domainError: unknown = null;
+    try {
+      if (parseCalculationFunctionDslExpression(text)) {
+        expandCalculationDomainExpression(text); // validates arguments
+        return normalizeCalculationDomainExpression(text);
+      }
+    } catch (err) {
+      domainError = err;
+    }
+    const reason = domainError ?? error;
     throw new JflowError(
       'E_EXPR_UNSUPPORTED',
-      `表达式不能转换成现有配置：${text}（${error instanceof Error ? error.message : String(error)}）`,
+      `表达式不能转换成现有配置：${text}（${reason instanceof Error ? reason.message : String(reason)}）`,
       span
     );
   }
   return text;
+}
+
+/** take / sample counts must be positive (percent ≤ 100). */
+function checkLimitCount(st: Step): void {
+  const n = Number(st.n);
+  if (!Number.isFinite(n) || n <= 0 || (st.pct && n > 100))
+    throw new JflowError(
+      'E_ARG_RANGE',
+      st.pct ? '百分比必须在 (0, 100] 之间' : '行数必须大于 0',
+      st.span
+    );
 }
 
 function sortKeys(keys: SortKey[], span: Span): Array<Record<string, unknown>> {
@@ -257,6 +289,8 @@ class Compiler {
   diagnostics: JflowDiagnostic[] = [];
   /** step id → display label (`#! label:` pragma). */
   labels = new Map<string, string>();
+  /** Columns of the last evaluated chain (editor completion). */
+  lastCols: Cols = null;
   env = new Map<string, Rel>();
   colTypes = new Map<string, Map<string, string>>();
   private seq = 0;
@@ -386,6 +420,7 @@ class Compiler {
     for (const s of f.sources) this.compileSource(s);
     for (const flow of f.flows) {
       const rel = this.chain(flow.chain);
+      this.lastCols = rel.cols;
       if (flow.let) {
         if (this.env.has(flow.let))
           throw new JflowError('E_NAME_DUP', `名字 ${flow.let} 重复定义`, flow.span);
@@ -407,6 +442,15 @@ class Compiler {
     if (ref.form === '@id') {
       const parsed = parseResourceUri(ref.arg);
       if (!parsed) throw new JflowError('E_REF_NOT_FOUND', `无法识别的资源 ${ref.arg}`, ref.span);
+      // With a catalog, local tables must exist: an unknown id is an error, not a guess.
+      if (this.options.resolve && (parsed.kind === 'raw' || parsed.kind === 'result')) {
+        throw new JflowError(
+          'E_REF_NOT_FOUND',
+          `找不到${parsed.kind === 'raw' ? '原始表' : '结果表'} ${ref.arg}${ref.snap ? `（${ref.snap}）` : ''}`,
+          ref.span,
+          ref.snap ? `如果表已重建，可改用 @name('${ref.snap}')` : undefined
+        );
+      }
       return { ...parsed, name: ref.snap };
     }
     if (ref.form === '@path')
@@ -698,6 +742,7 @@ class Compiler {
   }
 
   L_take(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
+    checkLimitCount(st);
     const sort = args.sort?.t === 'sortlist' ? args.sort.v : [];
     for (const k of sort) this.checkField(k.field.name, cur.cols, st.span);
     const ties = args.ties?.t === 'enum' && args.ties.v === 'include';
@@ -762,6 +807,7 @@ class Compiler {
   L_sample(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
     if (args.per)
       throw new JflowError('E_NOT_SUPPORTED_R1', 'sample per: 在 R1 中还不能转换', st.span);
+    checkLimitCount(st);
     const cfg: Record<string, unknown> = {
       sampling: 'random',
       limit: Number(st.n),
@@ -1340,6 +1386,8 @@ class Compiler {
   L_drop_empty(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
     const fields = args.fields?.t === 'fields' ? args.fields.v : undefined;
     fields?.forEach((f) => this.checkField(f, cur.cols, st.span));
+    const dup = fields?.find((f, i) => fields.indexOf(f) !== i);
+    if (dup) throw new JflowError('E_DUP_FIELD', `字段 [${dup}] 重复`, st.span);
     const cfg: Record<string, unknown> = {
       strategy: 'drop_rows_by_nulls',
       rules: [],
@@ -1556,11 +1604,18 @@ export function compileJflow(
     c.diagnostics.push({
       code: error.code,
       severity: 'error',
-      message: error.message,
+      message: error.detail,
       span: error.span,
       hint: error.hint,
     });
-    return { nodes: [], edges: [], diagnostics: c.diagnostics, sourceMap: {} };
+    return {
+      nodes: [],
+      edges: [],
+      diagnostics: c.diagnostics,
+      sourceMap: {},
+      lastColumns: c.lastCols,
+      relationColumns: Object.fromEntries([...c.env].map(([k, v]) => [k, v.cols])),
+    };
   }
   for (const n of c.nodes) {
     const base = n.layout?.composite ?? n.id;
@@ -1568,8 +1623,17 @@ export function compileJflow(
     if (label)
       n.label = n.id === base ? label : `${label}·${n.layout?.role ?? n.id.slice(base.length + 1)}`;
   }
+  const relationColumns: Record<string, string[] | null> = {};
+  for (const [name, rel] of c.env) relationColumns[name] = rel.cols;
   layout(c.nodes, c.edges);
-  return { nodes: c.nodes, edges: c.edges, diagnostics: c.diagnostics, sourceMap: c.sourceMap };
+  return {
+    nodes: c.nodes,
+    edges: c.edges,
+    diagnostics: c.diagnostics,
+    sourceMap: c.sourceMap,
+    lastColumns: c.lastCols,
+    relationColumns,
+  };
 }
 
 export type { Source };

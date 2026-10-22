@@ -1,14 +1,24 @@
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import type { DataAutomationColumnSnapshot, DataRawTablePreview } from '../../../shared/contracts';
 import { DataCommandError } from '../data-command-types';
-import {
-  type GeneratedDataPipelineWorkflow,
-  areComparableColumnTypes,
-  toAutomationColumnSnapshot,
-} from './workflow-ir-lowerer';
-import { normalizeColumnType } from './utils';
-import { AI_PREP_DSL_RUNTIME_PROFILE_VERSION } from './prep-dsl-capability-profile';
-import { computeWorkflowIrSemanticHash, validateAndNormalizeWorkflowIr } from './workflow-ir';
+import { isNumericDslType, normalizeColumnType, normalizeDslTypeName } from './utils';
+
+export function toAutomationColumnSnapshot(column: {
+  name: string;
+  type?: string;
+}): DataAutomationColumnSnapshot {
+  return { name: column.name, type: column.type ? normalizeDslTypeName(column.type) : undefined };
+}
+
+export function areComparableColumnTypes(left: string, right: string): boolean {
+  const normalizedLeft = normalizeDslTypeName(left);
+  const normalizedRight = normalizeDslTypeName(right);
+  return (
+    normalizedLeft === normalizedRight ||
+    (isNumericDslType(normalizedLeft) && isNumericDslType(normalizedRight))
+  );
+}
+
 export function hashColumns(columns: Array<{ name: string; type?: string }>): string {
   const value = JSON.stringify(
     columns.map((column) => ({ name: column.name, type: column.type ?? null }))
@@ -61,195 +71,7 @@ export function validateGeneratedPipelineSchema(
   }
 }
 
-export function validateGeneratedWorkflowGenerationContract(
-  generated: GeneratedDataPipelineWorkflow,
-  sourceColumns: DataAutomationColumnSnapshot[]
-): PrepDiagnostic[] {
-  const diagnostics: PrepDiagnostic[] = [];
-  const sourceByName = new Map(sourceColumns.map((column) => [column.name.toLowerCase(), column]));
-
-  if (generated.runtimeCompatibilityProfileVersion !== AI_PREP_DSL_RUNTIME_PROFILE_VERSION) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'runtimeCompatibilityProfileMismatch',
-      message: `Generated workflow runtime compatibility profile mismatch: expected ${AI_PREP_DSL_RUNTIME_PROFILE_VERSION}, got ${generated.runtimeCompatibilityProfileVersion || 'missing'}`,
-    });
-  }
-
-  try {
-    const normalizedIr = validateAndNormalizeWorkflowIr(generated.workflowIr);
-    const semanticHash = computeWorkflowIrSemanticHash(normalizedIr);
-    if (!generated.workflowIrSemanticHash) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'workflowIrSemanticHashMissing',
-        message: 'Generated workflow is missing its Workflow IR semantic hash',
-      });
-    } else if (generated.workflowIrSemanticHash !== semanticHash) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'workflowIrSemanticHashMismatch',
-        message:
-          'Generated workflow JavaScript, Workflow IR, and derived artifacts no longer describe the same semantics',
-      });
-    }
-  } catch (error) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'workflowIrInvalid',
-      message: `Generated workflow contains invalid Workflow IR: ${
-        error instanceof Error ? error.message.replace(/^\[[A-Z_]+\]\s*/, '') : String(error)
-      }`,
-    });
-  }
-
-  if (generated.expectedOutputSchema.length === 0) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'outputSchemaMissing',
-      message:
-        'Generated workflow must infer a non-empty expected output schema before it can be saved',
-    });
-  }
-
-  const outputNames = new Set<string>();
-  for (const column of generated.expectedOutputSchema) {
-    const key = column.name.trim().toLowerCase();
-    if (!key) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'outputSchemaInvalid',
-        message: 'Generated workflow output schema contains an unnamed column',
-      });
-      continue;
-    }
-    if (outputNames.has(key)) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'outputSchemaInvalid',
-        message: `Generated workflow output schema contains duplicate column: ${column.name}`,
-      });
-    }
-    outputNames.add(key);
-    if (!column.type) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'outputSchemaInvalid',
-        message: `Generated workflow output schema must infer a type for column: ${column.name}`,
-      });
-    }
-  }
-
-  for (const column of generated.requiredColumns) {
-    const source = sourceByName.get(column.name.toLowerCase());
-    if (!source) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'inputSchemaInvalid',
-        message: `Generated workflow requires unknown input column: ${column.name}`,
-      });
-      continue;
-    }
-    if (column.type && source.type && !areComparableColumnTypes(column.type, source.type)) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'inputSchemaInvalid',
-        message: `Generated workflow required column type mismatch: ${column.name} expected ${column.type}, source has ${source.type}`,
-      });
-    }
-  }
-
-  if (generated.lineage.length !== generated.expectedOutputSchema.length) {
-    diagnostics.push({
-      severity: 'error',
-      code: 'lineageInvalid',
-      message: `Generated workflow lineage count mismatch: expected ${generated.expectedOutputSchema.length}, got ${generated.lineage.length}`,
-    });
-  }
-
-  const lineageLength = Math.min(generated.lineage.length, generated.expectedOutputSchema.length);
-  for (let index = 0; index < lineageLength; index += 1) {
-    const expected = generated.expectedOutputSchema[index];
-    const lineage = generated.lineage[index];
-    if (!expected || !lineage) continue;
-    if (lineage.name !== expected.name) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'lineageInvalid',
-        message: `Generated workflow lineage mismatch at position ${index + 1}: expected ${expected.name}, got ${lineage.name}`,
-      });
-    }
-    if (expected.type && lineage.type && !areComparableColumnTypes(expected.type, lineage.type)) {
-      diagnostics.push({
-        severity: 'error',
-        code: 'lineageInvalid',
-        message: `Generated workflow lineage type mismatch: ${expected.name} expected ${expected.type}, got ${lineage.type}`,
-      });
-    }
-    for (const sourceColumn of lineage.sourceColumns ?? []) {
-      const source = sourceByName.get(sourceColumn.name.toLowerCase());
-      if (!source) {
-        diagnostics.push({
-          severity: 'error',
-          code: 'lineageInvalid',
-          message: `Generated workflow lineage references unknown source column: ${sourceColumn.name}`,
-        });
-        continue;
-      }
-      if (
-        sourceColumn.type &&
-        source.type &&
-        !areComparableColumnTypes(sourceColumn.type, source.type)
-      ) {
-        diagnostics.push({
-          severity: 'error',
-          code: 'lineageInvalid',
-          message: `Generated workflow lineage source type mismatch: ${sourceColumn.name} expected ${sourceColumn.type}, source has ${source.type}`,
-        });
-      }
-    }
-  }
-
-  return diagnostics;
-}
-
-export function reconcileGeneratedWorkflowWithOutputPreview(
-  generated: GeneratedDataPipelineWorkflow,
-  preview: DataRawTablePreview | undefined,
-  sourceColumns: DataAutomationColumnSnapshot[]
-): GeneratedDataPipelineWorkflow {
-  const actualOutputSchema = outputSchemaFromPreview(preview);
-  if (actualOutputSchema.length === 0) return generated;
-
-  const sourceByName = new Map(
-    sourceColumns.map((column) => [column.name.toLowerCase(), toAutomationColumnSnapshot(column)])
-  );
-  const lineageByName = new Map(
-    generated.lineage.map((entry) => [entry.name.toLowerCase(), entry])
-  );
-  const lineage = actualOutputSchema.map((column) => {
-    const existing = lineageByName.get(column.name.toLowerCase());
-    if (existing) {
-      return {
-        ...existing,
-        type: column.type ?? existing.type,
-      };
-    }
-    const source = sourceByName.get(column.name.toLowerCase());
-    return {
-      ...column,
-      sourceColumns: source ? [source] : [],
-    };
-  });
-
-  return {
-    ...generated,
-    expectedOutputSchema: actualOutputSchema,
-    lineage,
-  };
-}
-
-function outputSchemaFromPreview(
+export function outputSchemaFromPreview(
   preview: DataRawTablePreview | undefined
 ): DataAutomationColumnSnapshot[] {
   if (!preview) return [];
@@ -262,7 +84,7 @@ function outputSchemaFromPreview(
 export function validateGeneratedOutputPreviewSchema(
   preview: DataRawTablePreview | undefined,
   expectedOutputSchema: Array<{ name: string; type?: string }>
-): PrepDiagnostic[] {
+): WorkflowDiagnostic[] {
   if (expectedOutputSchema.length === 0) return [];
   if (!preview) {
     return [
@@ -274,7 +96,7 @@ export function validateGeneratedOutputPreviewSchema(
     ];
   }
   const actualColumns = outputSchemaFromPreview(preview);
-  const diagnostics: PrepDiagnostic[] = [];
+  const diagnostics: WorkflowDiagnostic[] = [];
   if (actualColumns.length !== expectedOutputSchema.length) {
     diagnostics.push({
       severity: 'error',
@@ -304,4 +126,17 @@ export function validateGeneratedOutputPreviewSchema(
     }
   }
   return diagnostics;
+}
+
+export function normalizeColumnSnapshot(
+  primary?: Array<{ name?: string; type?: string }>,
+  fallback?: Array<{ name?: string; type?: string }>
+): Array<{ name: string; type?: string }> {
+  const source = primary?.length ? primary : fallback;
+  return (source ?? [])
+    .map((column) => ({
+      name: String(column.name ?? '').trim(),
+      type: typeof column.type === 'string' ? column.type : undefined,
+    }))
+    .filter((column) => Boolean(column.name));
 }

@@ -11,7 +11,7 @@ import type {
   DataUpdatePipelineInput,
   DataWorkflowSaveInput,
 } from '../../../../shared/contracts';
-import type { PrepDiagnostic } from '../../../../shared/prep-dsl/ast';
+import type { WorkflowDiagnostic } from '../../../../shared/workflow-diagnostics';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import { DataStoreContext } from '../data-store-context';
 import { normalizeSourcePath } from '../input-source';
@@ -108,7 +108,7 @@ export class PipelineService {
     input: DataRunPipelineInput = {}
   ): Promise<{
     pipeline: DataPipeline;
-    diagnostics: PrepDiagnostic[];
+    diagnostics: WorkflowDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
     failure?: { message: string };
   }> {
@@ -295,7 +295,7 @@ export class PipelineService {
     input: DataRunPipelineInput
   ): Promise<{
     pipeline: DataPipeline;
-    diagnostics: PrepDiagnostic[];
+    diagnostics: WorkflowDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
     watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;

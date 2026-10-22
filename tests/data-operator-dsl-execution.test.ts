@@ -7,13 +7,7 @@ import {
   createDataPipelineStore,
   type DataPipelineStore,
 } from '../src/main/data/data-pipeline-store';
-import {
-  compilePrepWorkflowToFlow,
-  exportPrepWorkflowDsl,
-  parsePrepDsl,
-} from '../src/shared/prep-dsl';
-import { compileGeneratedJavaScriptWorkflow } from '../src/main/data/workflow/workflow-generator';
-import { compileLoweredWorkflowToPlatformNodes } from '../src/main/data/workflow/workflow-node-compiler';
+import { compileTestJflow, jflowTestWorkflow, parseTestJflow } from './helpers/jflow-test-workflow';
 
 const tempRoots: string[] = [];
 const stores: DataPipelineStore[] = [];
@@ -31,77 +25,6 @@ afterEach(() => {
 });
 
 describe('operator DSL execution cases', () => {
-  it('executes an AI-lowered date range filter through the existing DSL runtime', async () => {
-    const { dbPath, store, tempRoot } = createStore();
-    const ordersPath = path.join(tempRoot, 'ai-date-range-orders.csv');
-    fs.writeFileSync(
-      ordersPath,
-      [
-        'Order ID,Order Date,Product Name',
-        '1,2009-12-31,Office Chair',
-        '2,2010-01-01,Office Chair',
-        '3,2010-02-15,Desk',
-        '4,2010-03-31,Conference Chair',
-        '5,2010-04-01,Office Chair',
-      ].join('\n') + '\n',
-      'utf8'
-    );
-    const input = await store.importRawTable({
-      name: 'AI date range orders',
-      sourceKind: 'csv',
-      filePath: ordersPath,
-    });
-    const pipeline = await store.createPipeline({
-      name: 'AI compatible date range filter',
-      sourceRawTableId: input.id,
-    });
-    const generated = compileGeneratedJavaScriptWorkflow({
-      javascriptSource: `function keepDateRange(input) {
-  return workflow.step(input, "filter", {
-    condition: expr(row =>
-      row["Order Date"] >= cast("2010-01-01", "date") &&
-      row["Order Date"] <= cast("2010-03-31", "date") &&
-      contains(row["Product Name"], "Chair")
-    )
-  });
-}
-function main() {
-  const input = workflow.input(RAW_TABLE_ID, { alias: "src" });
-  return workflow.output(keepDateRange(input), RESULT_TABLE_NAME, { mode: "replace" });
-}`,
-      rawTableId: input.id,
-      resultTableName: 'ai_date_range_output',
-      requirement:
-        '筛选 Order Date 在 2010-01-01 至 2010-03-31 之间且 Product Name 包含 Chair 的记录',
-      columns: [
-        { name: 'Order ID', type: 'text' },
-        { name: 'Order Date', type: 'date' },
-        { name: 'Product Name', type: 'text' },
-      ],
-    });
-    const nodePlan = compileLoweredWorkflowToPlatformNodes({
-      semantics: generated,
-      bindings: {
-        rawTableId: input.id,
-        resultTableName: 'ai_date_range_output',
-      },
-    });
-    const compatibilityDsl = exportPrepWorkflowDsl(nodePlan.nodes, nodePlan.edges);
-
-    expect(compatibilityDsl).toContain('derive [__sophron_ai_filter_predicate] =');
-    expect(compatibilityDsl).toContain('filter [__sophron_ai_filter_predicate] = true');
-    expect(compatibilityDsl).toContain('select except [__sophron_ai_filter_predicate]');
-    await saveWorkflowDsl(store, pipeline.id, compatibilityDsl);
-
-    const completed = await store.runPipeline(pipeline.id);
-    expect(completed.status).toBe('completed');
-    const rows = await queryRows(
-      dbPath,
-      'SELECT "Order ID" FROM ai_date_range_output ORDER BY "Order ID"'
-    );
-    expect(rows.map((row) => String(row['Order ID']))).toEqual(['2', '4']);
-  });
-
   it('sorts by a backtick-quoted field containing spaces', async () => {
     const { dbPath, store, tempRoot } = createStore();
     const pricesPath = path.join(tempRoot, 'unit-prices.csv');
@@ -119,11 +42,13 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as prices
-          | select except [记录数]
-          | sort [\`Unit Price\`] asc
-          | output table "operator_quoted_sort_output" mode replace
-      `
+      source prices = @id('local:pipeline/self')
+
+      prices
+        | drop [记录数]
+        | sort [Unit Price]
+        | write @new('operator_quoted_sort_output')
+    `
     );
 
     const workflow = await store.getPipelineWorkflow(pipeline.id);
@@ -164,17 +89,20 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as orders
+        source orders = @id('local:pipeline/self')
+
+        orders
           | select [order_id], [dt], [region], [rev], [profit], [status], [updated_at]
           | rename [dt] as [order_date], [rev] as [revenue]
-          | cast [order_date] as date format '%Y-%m-%d' on_error null, [revenue] as float on_error null, [profit] as float on_error null
-          | missing_value [region] nullify values ('', 'N/A'), [region] fill 'UNKNOWN'
-          | deduplicate by [order_id] keep first order by [updated_at] desc
+          | cast [order_date] as date format: '%Y-%m-%d' on_error: null, [revenue] as float on_error: null, [profit] as float on_error: null
+          | nullify [region] values ('', 'N/A')
+          | fill [region] with 'UNKNOWN'
+          | distinct by: [order_id] sort: -[updated_at] keep: first
           | derive [margin] = [profit] / nullif([revenue], 0)
-          | filter [status] = 'PAID' and [revenue] > 0
-          | aggregate by [region] metrics sum([revenue]) as [total_revenue], count(*) as [row_count]
-          | sort [total_revenue] desc
-          | output table "operator_cleaning_output" mode replace
+          | where [status] = 'PAID' and [revenue] > 0
+          | group [region] (agg [total_revenue] = sum([revenue]), [row_count] = count(*))
+          | sort -[total_revenue]
+          | write @new('operator_cleaning_output')
       `
     );
 
@@ -212,11 +140,13 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as prices
-          | cast [adj_close] as decimal on_error null
-          | missing_value [adj_close] nullify values ('NULL', 'N/A')
-          | output table "typed_missing_marker_output" mode replace
-      `
+      source prices = @id('local:pipeline/self')
+
+      prices
+        | cast [adj_close] as decimal on_error: null
+        | nullify [adj_close] values ('NULL', 'N/A')
+        | write @new('typed_missing_marker_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -254,12 +184,14 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as orders
-          | cast [revenue] as float on_error null
-          | derive [rn] = ranking(row_number()) over(partition by [region] order by [revenue] desc)
-          | filter [rn] <= 2
-          | sort [region] asc, [rn] asc
-          | output table "operator_window_derive_output" mode replace
+        source orders = @id('local:pipeline/self')
+
+        orders
+          | cast [revenue] as float on_error: null
+          | derive [rn] = row_number() over (partition by [region] order by [revenue] desc)
+          | where [rn] <= 2
+          | sort [region], [rn]
+          | write @new('operator_window_derive_output')
       `
     );
 
@@ -304,9 +236,11 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as prices
-          | derive [\`Adj Close\`] = CAST(REPLACE([\`Adj Close\`], '$', '') AS DECIMAL(18,2))
-          | output table "operator_same_field_derive_output" mode replace
+        source prices = @id('local:pipeline/self')
+
+        prices
+          | derive replace [Adj Close] = cast(replace([Adj Close], '$', '') as decimal(18,2))
+          | write @new('operator_same_field_derive_output')
       `
     );
 
@@ -347,11 +281,13 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as profit
-          | filter [Profit] >= 0
-          | sort [Profit] asc
-          | output table "operator_profit_filter_sort_output" mode replace
-      `
+      source profit = @id('local:pipeline/self')
+
+      profit
+        | where [Profit] >= 0
+        | sort [Profit]
+        | write @new('operator_profit_filter_sort_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -394,11 +330,13 @@ function main() {
       store,
       pipeline.id,
       `
-        input rawTable "${input.id}" as src
-          | filter [Profit] >= 0
-          | sort [Profit] asc
-          | output table "operator_profit_rawTable_filter_sort_output" mode replace
-      `
+      source src = @id('local:raw/${input.id}')
+
+      src
+        | where [Profit] >= 0
+        | sort [Profit]
+        | write @new('operator_profit_rawTable_filter_sort_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -429,10 +367,12 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as dates
-          | cast [val] as date format '%Y-%m-%d' on_error null
-          | output table "operator_try_strptime_output" mode replace
-      `
+      source dates = @id('local:pipeline/self')
+
+      dates
+        | cast [val] as date on_error: null format: '%Y-%m-%d'
+        | write @new('operator_try_strptime_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -468,10 +408,12 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as timestamps
-          | cast [val] as datetime on_error null
-          | output table "operator_try_strptime_tz_output" mode replace
-      `
+      source timestamps = @id('local:pipeline/self')
+
+      timestamps
+        | cast [val] as datetime on_error: null
+        | write @new('operator_try_strptime_tz_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -501,10 +443,12 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as dec0
-          | cast [val] as decimal scale 0 on_error null
-          | output table "operator_decimal_scale_0_output" mode replace
-      `
+      source dec0 = @id('local:pipeline/self')
+
+      dec0
+        | cast [val] as decimal(18,0) on_error: null
+        | write @new('operator_decimal_scale_0_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -532,10 +476,12 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as dec18
-          | cast [val] as decimal scale 18 on_error null
-          | output table "operator_decimal_scale_18_output" mode replace
-      `
+      source dec18 = @id('local:pipeline/self')
+
+      dec18
+        | cast [val] as decimal(19,18) on_error: null
+        | write @new('operator_decimal_scale_18_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -559,17 +505,21 @@ function main() {
       name: 'decimal scale 19',
       sourcePath: decPath,
     });
-    const dsl = `
-      input pipeline as dec19
-        | cast [val] as decimal scale 19 on_error null
-        | output table "operator_decimal_scale_19_output" mode replace
+    const dsl = (type: string) => `
+      source dec19 = @id('local:pipeline/self')
+      dec19
+        | cast [val] as ${type} on_error: null
+        | write @new('operator_decimal_scale_19_output')
     `;
-    const parsed = parsePrepDsl(dsl);
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
-    // save-time plan validation rejects the out-of-range scale before any run
+    // jflow rejects the scale up front …
+    const rejected = compileTestJflow(parseTestJflow(dsl('decimal(18,19)')).ast!);
+    expect(rejected.diagnostics.map((d) => d.code)).toContain('E_TYPE_DECIMAL');
+    // … and save-time plan validation rejects a node config carrying it before any run
+    const compiled = compileTestJflow(parseTestJflow(dsl('decimal(18,2)')).ast!);
+    const nodes = JSON.parse(JSON.stringify(compiled.nodes).replace('"scale":2', '"scale":19'));
     await expect(
       store.savePipelineWorkflow(pipeline.id, {
-        nodes: compiled.nodes,
+        nodes,
         edges: compiled.edges,
       })
     ).rejects.toThrow(/scale|Too big/i);
@@ -588,10 +538,12 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as keep
-          | cast [val] as integer on_error keep
-          | output table "operator_keep_output" mode replace
-      `
+      source keep = @id('local:pipeline/self')
+
+      keep
+        | cast [val] as integer on_error: keep
+        | write @new('operator_keep_output')
+    `
     );
 
     const completed = await store.runPipeline(pipeline.id);
@@ -618,14 +570,16 @@ function main() {
       name: 'unnest json no config leak',
       sourcePath: jsonPath,
     });
-    const parsed = parsePrepDsl(`
-      input pipeline as json_src
-        | unnest json [payload] path '$'
-        | output table "operator_unnest_json_output" mode replace
+    const parsed = parseTestJflow(`
+      source json_src = @id('local:pipeline/self')
+
+      json_src
+        | unnest json [payload]
+        | write @new('operator_unnest_json_output')
     `);
     expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     expect(parsed.ast).not.toBeNull();
-    const workflow = compilePrepWorkflowToFlow(parsed.ast!);
+    const workflow = compileTestJflow(parsed.ast!);
     expect(workflow.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
     const unnestNode = workflow.nodes.find((node) => node.type === 'unnest');
     expect(unnestNode).toBeDefined();
@@ -652,10 +606,12 @@ function main() {
         store,
         pipeline.id,
         `
-          input pipeline as json_src
-            | unnest json [ghost_column] path '$'
-            | output table "operator_unnest_json_missing_output" mode replace
-        `
+      source json_src = @id('local:pipeline/self')
+
+      json_src
+        | unnest json [ghost_column]
+        | write @new('operator_unnest_json_missing_output')
+    `
       )
     ).rejects.toThrow(/ghost_column|not in the upstream columns/i);
   });
@@ -673,9 +629,11 @@ function main() {
       store,
       pipeline.id,
       `
-        input pipeline as src
-          | output table "operator_append_output" mode append
-      `
+      source src = @id('local:pipeline/self')
+
+      src
+        | write @new('operator_append_output') mode: append
+    `
     );
 
     await expect(store.runPipeline(pipeline.id)).resolves.toMatchObject({ status: 'completed' });
@@ -694,24 +652,21 @@ function main() {
       name: 'error_if_exists output mode',
       sourcePath,
     });
-    await saveWorkflowDsl(
-      store,
-      pipeline.id,
-      `
-        input pipeline as src
-          | output table "operator_exists_output" mode error_if_exists
-      `
+    // error_if_exists is a physical-table write mode with no jflow spelling; set it on the node.
+    const graph = jflowTestWorkflow(
+      "source src = @id('local:pipeline/self')\nsrc | write @new('operator_exists_output')\n"
     );
+    await store.savePipelineWorkflow(pipeline.id, {
+      nodes: graph.nodes.map((node) =>
+        node.type === 'output'
+          ? { ...node, config: { ...node.config, mode: 'error_if_exists' } }
+          : node
+      ),
+      edges: graph.edges,
+    });
 
     await expect(store.runPipeline(pipeline.id)).resolves.toMatchObject({ status: 'completed' });
     await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/already exists|error_if_exists/i);
-  });
-
-  it('rejects output rawTable/file as non-grammar destinations at parse time', () => {
-    for (const target of ['rawTable "results"', 'file "out.csv"']) {
-      const parsed = parsePrepDsl(`input pipeline as src\n  | output ${target} mode replace`);
-      expect(parsed.diagnostics.map((item) => item.code)).toContain('unsupportedOutputDestination');
-    }
   });
 });
 
@@ -731,11 +686,11 @@ async function saveWorkflowDsl(
   pipelineId: string,
   dsl: string
 ): Promise<void> {
-  const parsed = parsePrepDsl(dsl);
+  const parsed = parseTestJflow(dsl);
   expect(parsed.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   expect(parsed.ast).not.toBeNull();
 
-  const compiled = compilePrepWorkflowToFlow(parsed.ast!);
+  const compiled = compileTestJflow(parsed.ast!);
   expect(compiled.diagnostics.filter((item) => item.severity === 'error')).toHaveLength(0);
   await store.savePipelineWorkflow(pipelineId, {
     nodes: compiled.nodes,

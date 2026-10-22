@@ -96,8 +96,6 @@ win:
       to: tray-icon.png
     - from: resources/tray-icon-fold.png
       to: tray-icon-fold.png
-    - from: src/main/data/workflow/workflow-sandbox-runner.js
-      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/win32-x64
@@ -142,8 +140,6 @@ mac:
       to: tray-iconTemplate.png
     - from: resources/tray-icon-foldTemplate.png
       to: tray-icon-foldTemplate.png
-    - from: src/main/data/workflow/workflow-sandbox-runner.js
-      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/darwin-${arch}
@@ -177,8 +173,6 @@ linux:
       to: tray-icon.png
     - from: resources/tray-icon-fold.png
       to: tray-icon-fold.png
-    - from: src/main/data/workflow/workflow-sandbox-runner.js
-      to: workflow/workflow-sandbox-runner.js
     - from: .bundle-resources/mcp
       to: mcp
     - from: resources/node/linux-x64

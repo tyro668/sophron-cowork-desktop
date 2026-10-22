@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { exportStep, parseStep } from '../helpers/jflow-step';
 
 describe('FormSort — copy semantics at config level', () => {
   it('a copied sort key inherits direction and nulls while leaving the field empty', () => {
@@ -9,7 +9,7 @@ describe('FormSort — copy semantics at config level', () => {
   });
 
   it('an incomplete copied key is filtered out of DSL export without crashing', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'sort',
       config: {
@@ -19,11 +19,11 @@ describe('FormSort — copy semantics at config level', () => {
         ],
       },
     });
-    expect(dsl).toBe('sort [revenue] desc nulls last');
+    expect(dsl).toBe('sort -[revenue] nulls: last');
   });
 
   it('a completed copied key round-trips through DSL', () => {
-    const dsl = exportPrepOperatorDsl({
+    const dsl = exportStep({
       id: 'test',
       type: 'sort',
       config: {
@@ -33,7 +33,7 @@ describe('FormSort — copy semantics at config level', () => {
         ],
       },
     });
-    const parsed = parsePrepOperatorDsl(dsl, 'sort');
+    const parsed = parseStep(dsl, 'sort');
     expect(parsed.diagnostics.filter((d) => d.severity === 'error')).toHaveLength(0);
     const keys = parsed.operator!.config.orderBy as Array<Record<string, string>>;
     expect(keys).toHaveLength(2);

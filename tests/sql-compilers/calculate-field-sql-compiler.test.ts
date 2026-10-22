@@ -9,7 +9,7 @@ import {
   normalizeCalculationEntries,
   type CalculationConfigEntry,
 } from '../../src/shared/calculate-field';
-import { parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
+import { parseStep } from '../helpers/jflow-step';
 
 async function connect(): Promise<DuckDBConnection> {
   const instance = await DuckDBInstance.create(':memory:');
@@ -647,7 +647,7 @@ describe('compileCalculateFieldSql', () => {
 
 describe('DuckDB integration — compileCalculateFieldSql execution', () => {
   it('keeps an imported DSL replacement executable after form normalization and editing', async () => {
-    const parsed = parsePrepOperatorDsl('derive [amount] = [amount] * 2', 'derive');
+    const parsed = parseStep('derive replace [amount] = [amount] * 2', 'derive');
     expect(parsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toEqual([]);
     const imported = parsed.operator?.config.calculations as CalculationConfigEntry[];
     const calculations = normalizeCalculationEntries(imported, [

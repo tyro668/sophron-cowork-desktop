@@ -7,7 +7,6 @@ import {
   type PlanColumn,
   type WorkflowPlan,
 } from '../src/shared/workflow-plan';
-import { compilePrepWorkflowToFlow, parsePrepDsl } from '../src/shared/prep-dsl';
 
 const COLUMNS: PlanColumn[] = [
   { name: 'id', type: 'integer' },
@@ -640,27 +639,6 @@ describe('ETL runtime contract validation', () => {
         (item) => item.code === 'NODE_GRAPH_REJECT_STREAM_UNCONSUMED' && item.severity === 'warning'
       )
     ).toBe(true);
-  });
-});
-
-describe('compilePrepWorkflowToFlow plan output', () => {
-  it('returns a typed versioned plan alongside nodes and edges', () => {
-    const parsed = parsePrepDsl(
-      'input pipeline as src\n  | sort [id] asc\n  | output table "out" mode replace'
-    );
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
-    expect(compiled.plan?.version).toBe(WORKFLOW_PLAN_VERSION);
-    const sortNode = compiled.plan?.nodes.find((item) => item.type === 'sort');
-    expect(sortNode?.config).toMatchObject({ orderBy: [{ field: 'id', direction: 'asc' }] });
-  });
-
-  it('emits graph diagnostics for malformed compiled workflows', () => {
-    const parsed = parsePrepDsl(
-      'input pipeline as src\n  | sort [id] asc\n  | output table "out" mode replace'
-    );
-    const compiled = compilePrepWorkflowToFlow(parsed.ast!);
-    const errors = compiled.diagnostics.filter((item) => item.severity === 'error');
-    expect(errors).toHaveLength(0);
   });
 });
 

@@ -1,4 +1,4 @@
-import { parseLiteral } from '../../prep-dsl/syntax/literals';
+import { parseLiteral } from '../../expression-syntax/literals';
 import {
   parseWindowFrameBound,
   validateWindowFrameOrder,

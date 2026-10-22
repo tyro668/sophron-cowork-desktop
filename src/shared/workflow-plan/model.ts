@@ -1,6 +1,6 @@
 import type { DataWorkflowOperatorType } from '../data-workflow-types';
 import type { WorkflowOperatorConfigMap } from '../operators';
-import type { PrepDiagnostic } from '../prep-dsl/ast';
+import type { WorkflowDiagnostic } from '../workflow-diagnostics';
 
 /**
  * Versioned, strongly-typed workflow plan shared by the human-written Prep DSL
@@ -60,7 +60,7 @@ export interface WorkflowPlanInput {
 }
 
 /** Diagnostics emitted by plan validation may carry node context. */
-export interface WorkflowPlanDiagnostic extends PrepDiagnostic {
+export interface WorkflowPlanDiagnostic extends WorkflowDiagnostic {
   nodeId?: string;
   nodeType?: string;
 }

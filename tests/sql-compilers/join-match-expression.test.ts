@@ -1,25 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DuckDBInstance } from '@duckdb/node-api';
 import { compileJoinPredicate } from '../../src/main/data/operators/join';
-import { exportPrepOperatorDsl, parsePrepOperatorDsl } from '../../src/shared/prep-dsl';
 import { JoinConfigSchema } from '../../src/shared/operator-schemas';
 
 describe('join match expression', () => {
-  it('round-trips through DSL as a match clause', () => {
-    const dsl =
-      'join left bank on [erp].[客户] = [bank].[户名] match abs([bank].[金额] - [erp].[金额]) <= 1';
-    const parsed = parsePrepOperatorDsl(dsl, 'join');
-    expect(parsed.diagnostics).toEqual([]);
-    expect(parsed.operator?.config.expression).toBe('abs([bank].[金额] - [erp].[金额]) <= 1');
-    expect(exportPrepOperatorDsl({ id: 'j', type: 'join', config: parsed.operator!.config })).toBe(
-      dsl
-    );
-    // a match expression alone is a valid (non-equi) join condition
-    const only = parsePrepOperatorDsl(
-      'join inner bank match [bank].[日期] >= [erp].[日期]',
-      'join'
-    );
-    expect(only.diagnostics).toEqual([]);
+  it('rejects a match expression on a cross join', () => {
     expect(() =>
       JoinConfigSchema.parse({ joinType: 'cross', expression: '[a].[x] > 1' })
     ).toThrow();

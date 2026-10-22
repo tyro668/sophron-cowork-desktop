@@ -1,7 +1,7 @@
-import type { PrepDiagnostic } from '../../../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../../../shared/workflow-diagnostics';
 
-export function formatPrepDiagnosticForUi(
-  diagnostic: PrepDiagnostic,
+export function formatWorkflowDiagnosticForUi(
+  diagnostic: WorkflowDiagnostic,
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
   if (!diagnostic.code) {

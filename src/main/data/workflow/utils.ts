@@ -1,5 +1,5 @@
 import { DataCommandError } from '../data-command-types';
-import type { PrepDiagnostic } from '../../../shared/prep-dsl';
+import type { WorkflowDiagnostic } from '../../../shared/workflow-diagnostics';
 import {
   extractExpressionFieldNames,
   normalizePlanDslType,
@@ -27,13 +27,13 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function diagnosticsWithSeverity(
-  diagnostics: PrepDiagnostic[],
-  severity: PrepDiagnostic['severity']
-): PrepDiagnostic[] {
+  diagnostics: WorkflowDiagnostic[],
+  severity: WorkflowDiagnostic['severity']
+): WorkflowDiagnostic[] {
   return diagnostics.filter((diagnostic) => diagnostic.severity === severity);
 }
 
-export function summarizeDiagnostics(diagnostics: PrepDiagnostic[]): string {
+export function summarizeDiagnostics(diagnostics: WorkflowDiagnostic[]): string {
   if (diagnostics.length === 0) {
     return 'DSL validation failed';
   }

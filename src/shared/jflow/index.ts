@@ -12,3 +12,19 @@ export type {
   JflowLintDiagnostic,
   JflowCompletionResult,
 } from './editor-support';
+export {
+  exportJflowStep,
+  jflowDiagnosticToWorkflow,
+  jflowStepCompletions,
+  jflowStepLint,
+  parseJflowStep,
+  JFLOW_STEP_UNSUPPORTED_TYPES,
+} from './step';
+export type { JflowStepExport, JflowStepParse, JflowStepNode } from './step';
+export {
+  JFLOW_EXAMPLES,
+  JFLOW_REFERENCE_VERSION,
+  getJflowQuickReference,
+  getJflowReference,
+} from './reference';
+export type { JflowExample, JflowReferenceTopic } from './reference';

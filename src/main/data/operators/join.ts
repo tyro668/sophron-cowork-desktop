@@ -1,6 +1,6 @@
 import { quoteIdentifier, objectArray, lastQualifiedPart, durationToMilliseconds } from './utils';
-import { parseFieldRefExact } from '../../../shared/prep-dsl/parser';
-import { planJoinProjectionColumns } from '../../../shared/prep-dsl/join-projection';
+import { parseFieldRefExact } from '../../../shared/expression-syntax/fields';
+import { planJoinProjectionColumns } from '../../../shared/workflow-plan/join-projection';
 import { JoinConfigSchema } from '../../../shared/operator-schemas';
 import { z } from 'zod';
 import { compileExpression } from '../../../shared/expression';
