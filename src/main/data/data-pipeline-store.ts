@@ -11,6 +11,7 @@
  *   store/repositories/*    — row-level access per metadata table
  *   store/services/*        — workflow/rawTable/normalizer application logic
  */
+import type { WatermarkUpdate } from './store/repositories/watermark-repository';
 import type {
   DataPipeline,
   DataColumnTypeInfo,
@@ -323,7 +324,7 @@ export class DataPipelineStore {
     pipeline: DataPipeline;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     return this.pipelineService.validatePipelineWorkflow(id, input);
@@ -338,7 +339,7 @@ export class DataPipelineStore {
     id: string,
     temporaryPipeline: DataPipeline,
     workflow: DataWorkflowSaveInput,
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
+    watermarkUpdates?: WatermarkUpdate[],
     nodeStats?: WorkflowNodeRunStat[],
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>,
     runId?: string

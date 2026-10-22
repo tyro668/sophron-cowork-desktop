@@ -1,4 +1,5 @@
 /** Pipeline lifecycle orchestration: CRUD, run, save workflow, cleanup. */
+import type { WatermarkUpdate } from '../repositories/watermark-repository';
 import type {
   DataPipeline,
   DataCreatePipelineInput,
@@ -296,7 +297,7 @@ export class PipelineService {
     pipeline: DataPipeline;
     diagnostics: PrepDiagnostic[];
     nodeStats?: WorkflowNodeRunStat[];
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>;
+    watermarkUpdates?: WatermarkUpdate[];
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>;
   }> {
     return this.ctx.runExclusive(

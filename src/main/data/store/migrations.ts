@@ -20,6 +20,8 @@ import { migrateConfigToV3Naming } from './v3-config-naming';
 import { computeNextAutomationRunAt } from '../../automation/automation-trigger';
 import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+import { inputSourceFingerprint } from './source-fingerprint';
 import {
   LEGACY_DEMO_TASK_NAMES,
   RESULT_TABLE_CONFIG_KIND,
@@ -950,7 +952,233 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'expression_cast_field_type_names',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, migrateConfigCastTypeNames),
   },
+  {
+    version: 23,
+    name: 'decimal_precision',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, addDecimalPrecision),
+  },
+  {
+    version: 24,
+    name: 'output_write_intent_and_resource_refs',
+    up: (ctx) => migrateOutputWriteIntent(ctx),
+  },
+  {
+    version: 25,
+    name: 'incremental_replace_allow_partial',
+    up: (ctx) => migrateIncrementalReplaceAllowPartial(ctx),
+  },
+  {
+    version: 26,
+    name: 'watermark_source_fingerprint',
+    up: (ctx) => migrateWatermarkFingerprint(ctx),
+  },
 ];
+
+function readNodeConfig(json: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(json || '{}') as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function configString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * v24: separates creation intent from write mode and gives boundary nodes a resource ref.
+ *  - output with a result id → intent=bound, ref local:result/{id} (mode unchanged, also auto+merge);
+ *  - output with only a physical table that has metadata → bound to that id;
+ *  - output with only a physical table without metadata → registered once as a result table of
+ *    this pipeline (same physical table, so it keeps writing where it did) — no local:physical
+ *    ref survives the migration;
+ *  - auto output without id → intent=new;
+ *  - input → ref local:raw/{id} | local:pipeline/{pipelineId} | file:{path}.
+ */
+async function migrateOutputWriteIntent(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    pipeline_id: string;
+    operator_type: string;
+    config_json: string;
+  }>(
+    `SELECT id, pipeline_id, operator_type, config_json FROM data_workflow_nodes
+     WHERE operator_type IN ('output', 'input')`
+  );
+  for (const row of rows) {
+    const config = readNodeConfig(row.config_json);
+    if (!config) continue;
+    const next: Record<string, unknown> = { ...config };
+    if (row.operator_type === 'input') {
+      const rawTableId = configString(config.rawTableId);
+      const source = configString(config.source) || (rawTableId ? 'rawTable' : 'pipeline');
+      const uri =
+        source === 'rawTable'
+          ? rawTableId
+            ? `local:raw/${rawTableId}`
+            : ''
+          : source === 'file'
+            ? `file:${configString(config.filePath)}`
+            : `local:pipeline/${row.pipeline_id}`;
+      if (!uri) continue;
+      let name: string | null = null;
+      if (rawTableId) {
+        const found = await ctx.metaQueryRows<{ name: string }>(
+          'SELECT name FROM data_raw_tables WHERE id = $id',
+          { id: rawTableId }
+        );
+        name = found[0]?.name ?? null;
+      }
+      next.ref = { uri, name };
+    } else {
+      let id = configString(config.outputResultTableId) || configString(config.resultTableId);
+      const table = configString(config.table);
+      if (!id && table && configString(config.outputStrategy) !== 'auto') {
+        const found = await ctx.metaQueryRows<{ id: string }>(
+          'SELECT id FROM data_raw_tables WHERE table_name = $table LIMIT 1',
+          { table }
+        );
+        id = found[0]?.id ?? '';
+        if (!id) {
+          id = uuidv4();
+          const now = ctx.now();
+          await ctx.metaRunSql(
+            `INSERT INTO data_raw_tables (
+               id, name, source_path, source_kind, config_json, file_count,
+               table_name, row_count, column_count, created_at, updated_at
+             ) VALUES ($id, $name, $sourcePath, 'output', $configJson, 0, $table, 0, 0, $now, $now)`,
+            {
+              id,
+              name: table,
+              sourcePath: `duckdb://outputs/${table}`,
+              configJson: resultTableConfigJson(),
+              table,
+              now,
+            }
+          );
+          log(`[DataPipelineStore] v24 registered legacy output table ${table} as result ${id}`);
+        }
+        next.outputStrategy = 'existing';
+        next.outputResultTableId = id;
+        next.resultTableId = id;
+      }
+      if (id) {
+        const found = await ctx.metaQueryRows<{ name: string }>(
+          'SELECT name FROM data_raw_tables WHERE id = $id',
+          { id }
+        );
+        next.intent = 'bound';
+        next.ref = {
+          uri: `local:result/${id}`,
+          name: found[0]?.name ?? (configString(config.resultTableName) || null),
+        };
+      } else {
+        next.intent = 'new';
+      }
+    }
+    if (JSON.stringify(next) === JSON.stringify(config)) continue;
+    await ctx.metaRunSql('UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id', {
+      id: row.id,
+      config: JSON.stringify(next),
+    });
+  }
+}
+
+/** v25: incremental (non-raw) input + replace output used to keep only the new rows; that
+ *  behaviour is now opt-in via allowPartial, so existing nodes get allowPartial: true. */
+async function migrateIncrementalReplaceAllowPartial(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    pipeline_id: string;
+    operator_type: string;
+    config_json: string;
+  }>(
+    `SELECT id, pipeline_id, operator_type, config_json FROM data_workflow_nodes
+     WHERE operator_type IN ('output', 'input')`
+  );
+  const incrementalPipelines = new Set<string>();
+  for (const row of rows) {
+    if (row.operator_type !== 'input') continue;
+    const config = readNodeConfig(row.config_json);
+    if (!config || !configString(config.incrementalBy)) continue;
+    const usesRaw =
+      config.source === 'rawTable' ||
+      (typeof config.source !== 'string' && Boolean(configString(config.rawTableId)));
+    if (!usesRaw) incrementalPipelines.add(row.pipeline_id);
+  }
+  for (const row of rows) {
+    if (row.operator_type !== 'output' || !incrementalPipelines.has(row.pipeline_id)) continue;
+    const config = readNodeConfig(row.config_json);
+    if (!config || (configString(config.mode) || 'replace') !== 'replace') continue;
+    if (config.allowPartial === true) continue;
+    await ctx.metaRunSql('UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id', {
+      id: row.id,
+      config: JSON.stringify({ ...config, allowPartial: true }),
+    });
+  }
+}
+
+/** v26: watermarks are keyed by source fingerprint; backfill from the current configs so the
+ *  migration itself never resets incremental progress. */
+async function migrateWatermarkFingerprint(ctx: DataStoreContext): Promise<void> {
+  const columns = await ctx.metaQueryRows<{ name: string }>(
+    'PRAGMA table_info(data_pipeline_watermarks)'
+  );
+  if (!columns.some((column) => column.name === 'source_fingerprint')) {
+    await ctx.metaRunSql(
+      "ALTER TABLE data_pipeline_watermarks ADD COLUMN source_fingerprint VARCHAR DEFAULT ''"
+    );
+  }
+  const rows = await ctx.metaQueryRows<{
+    pipeline_id: string;
+    node_id: string;
+    config_json: string | null;
+    source_path: string | null;
+  }>(
+    `SELECT w.pipeline_id, w.node_id, n.config_json, p.source_path
+       FROM data_pipeline_watermarks w
+       LEFT JOIN data_workflow_nodes n ON n.id = w.node_id
+       LEFT JOIN data_pipelines p ON p.id = w.pipeline_id`
+  );
+  for (const row of rows) {
+    const config = readNodeConfig(row.config_json ?? '');
+    if (!config) continue;
+    await ctx.metaRunSql(
+      `UPDATE data_pipeline_watermarks SET source_fingerprint = $fingerprint
+       WHERE pipeline_id = $pipelineId AND node_id = $nodeId`,
+      {
+        fingerprint: inputSourceFingerprint(config, row.source_path),
+        pipelineId: row.pipeline_id,
+        nodeId: row.node_id,
+      }
+    );
+  }
+}
+
+/** v23: decimal cast entries that only stored a scale get precision = max(18, scale+1), the
+ *  physical type they already had, so the migration changes no result; from now on an
+ *  explicit decimal(p,s) means DECIMAL(p,s). */
+export function addDecimalPrecision(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (type !== 'cast' || !Array.isArray(config.conversions)) return null;
+  let changed = false;
+  const conversions = config.conversions.map((entry: unknown) => {
+    if (!entry || typeof entry !== 'object') return entry;
+    const item = entry as Record<string, unknown>;
+    if (item.type !== 'decimal' || item.precision !== undefined) return item;
+    const scale = Number(item.scale);
+    if (item.scale === undefined || item.scale === '' || !Number.isFinite(scale)) return item;
+    changed = true;
+    return { ...item, precision: Math.max(18, Math.max(0, Math.min(18, Math.trunc(scale))) + 1) };
+  });
+  return changed ? { ...config, conversions } : null;
+}
 
 const LIMIT_FIXED_KEYS = new Set(['orderBy', 'ties', 'offset']);
 const LIMIT_RANDOM_KEYS = new Set(['method', 'seed']);

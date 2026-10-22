@@ -39,6 +39,8 @@ export const DATE_FORMAT_PRESETS: Array<{ value: DateFormat; example: string }> 
 
 export const SCALE_MIN = 0;
 export const SCALE_MAX = 18;
+export const PRECISION_MIN = 1;
+export const PRECISION_MAX = 38;
 
 export const TypeConversionEntrySchema = z
   .object({
@@ -54,6 +56,11 @@ export const TypeConversionEntrySchema = z
       (v) => (v === '' || v === undefined ? undefined : Number(v)),
       z.number().int().min(SCALE_MIN).max(SCALE_MAX).optional()
     ),
+    /** decimal(p,s): p is the physical precision (v23). Absent → DECIMAL(18,6) default. */
+    precision: z.preprocess(
+      (v) => (v === '' || v === undefined ? undefined : Number(v)),
+      z.number().int().min(PRECISION_MIN).max(PRECISION_MAX).optional()
+    ),
   })
   .superRefine((data, ctx) => {
     if (data.format && data.type !== 'date' && data.type !== 'datetime') {
@@ -61,6 +68,20 @@ export const TypeConversionEntrySchema = z
         code: 'custom',
         message: `Format is only valid for date/datetime conversions, not ${data.type}`,
         path: ['format'],
+      });
+    }
+    if (data.precision !== undefined && data.type !== 'decimal') {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Precision is only valid for decimal conversions, not ${data.type}`,
+        path: ['precision'],
+      });
+    }
+    if (data.precision !== undefined && (data.scale ?? 0) > data.precision) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `decimal(${data.precision},${data.scale}) needs scale <= precision`,
+        path: ['scale'],
       });
     }
     if (data.scale !== undefined && data.type !== 'decimal') {

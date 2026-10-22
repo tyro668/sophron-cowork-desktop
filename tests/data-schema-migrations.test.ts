@@ -443,7 +443,7 @@ describe('metadata migrations', () => {
     // Ledger records every migration in order.
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -468,6 +468,10 @@ describe('metadata migrations', () => {
       'unpivot_selection_exclude',
       'limit_config_per_mode',
       'expression_cast_field_type_names',
+      'decimal_precision',
+      'output_write_intent_and_resource_refs',
+      'incremental_replace_allow_partial',
+      'watermark_source_fingerprint',
     ]);
 
     // v12: group table + member columns exist.

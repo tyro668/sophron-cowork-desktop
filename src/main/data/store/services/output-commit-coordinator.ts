@@ -1,4 +1,5 @@
 /** Commits validated staging outputs with journaled rollback + recovery. */
+import type { WatermarkUpdate } from '../repositories/watermark-repository';
 import type { DataPipeline, DataWorkflowSaveInput } from '../../../../shared/contracts';
 import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
@@ -32,7 +33,7 @@ export class OutputCommitCoordinator {
     id: string,
     temporaryPipeline: DataPipeline,
     workflow: DataWorkflowSaveInput,
-    watermarkUpdates?: Array<{ nodeId: string; column: string; value: string }>,
+    watermarkUpdates?: WatermarkUpdate[],
     nodeStats?: WorkflowNodeRunStat[],
     stagedSinks?: Array<{ nodeId: string; stagingTable: string }>,
     runId?: string
