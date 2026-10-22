@@ -1,0 +1,182 @@
+[
+  {
+    "scenario": "recon",
+    "id": "R1",
+    "description": "银行流水为空（anti 右侧为空集）",
+    "mutate": {
+      "bank": "SELECT * FROM S WHERE false"
+    },
+    "expect": {
+      "rows": 40,
+      "hash": "456ec8da9616"
+    }
+  },
+  {
+    "scenario": "recon",
+    "id": "R2",
+    "description": "ERP 一行收款单号为 NULL",
+    "mutate": {
+      "erp": "SELECT * FROM S UNION ALL SELECT NULL, DATE '2026-09-30', '测试客户', 100.0, NULL"
+    },
+    "expect": {
+      "rows": 8,
+      "hash": "9b2c4f756b78"
+    }
+  },
+  {
+    "scenario": "recon",
+    "id": "R3",
+    "description": "空集 + NULL 同时出现：银行为空且 ERP 有 NULL 单号（NULL NOT IN 空集 = TRUE）",
+    "mutate": {
+      "bank": "SELECT * FROM S WHERE false",
+      "erp": "SELECT * FROM S UNION ALL SELECT NULL, DATE '2026-09-30', '测试客户', 100.0, NULL"
+    },
+    "expect": {
+      "rows": 41,
+      "hash": "3423b43bfb18"
+    }
+  },
+  {
+    "scenario": "recon",
+    "id": "R4",
+    "description": "银行一行流水号为 NULL（收入>0）",
+    "mutate": {
+      "bank": "SELECT * FROM S UNION ALL SELECT DATE '2026-09-30', '测试客户', '无单号', 88.00, 0, 0, NULL"
+    },
+    "expect": {
+      "rows": 7,
+      "hash": "4fadefaf8241"
+    }
+  },
+  {
+    "scenario": "recon",
+    "id": "R5",
+    "description": "并列：同一 AR 有两笔同日同额流水（take per 的确定性）",
+    "mutate": {
+      "bank": "SELECT * FROM S UNION ALL (SELECT 交易日期, 对方户名, 摘要, 收入金额, 支出金额, 余额, 流水号 || 'X' FROM S WHERE 摘要 LIKE '%AR%' ORDER BY 流水号 LIMIT 1)"
+    },
+    "expect": {
+      "rows": 8,
+      "hash": "9ddc6d993349"
+    }
+  },
+  {
+    "scenario": "recon",
+    "id": "R6",
+    "description": "ERP 为空",
+    "mutate": {
+      "erp": "SELECT * FROM S WHERE false"
+    },
+    "expect": {
+      "rows": 40,
+      "hash": "91b076b9c0aa"
+    }
+  },
+  {
+    "scenario": "stock",
+    "id": "S1",
+    "description": "安全库存标准维键重复（门店+SKU 重复一行）",
+    "mutate": {
+      "std": "SELECT * FROM S UNION ALL (SELECT * FROM S ORDER BY 门店, SKU LIMIT 1)"
+    },
+    "expect": {
+      "rows": 14,
+      "hash": "38768ee2672d"
+    }
+  },
+  {
+    "scenario": "stock",
+    "id": "S2",
+    "description": "安全库存标准为空",
+    "mutate": {
+      "std": "SELECT * FROM S WHERE false"
+    },
+    "expect": {
+      "rows": 0,
+      "hash": "cd0d4cc32346"
+    }
+  },
+  {
+    "scenario": "stock",
+    "id": "S3",
+    "description": "期末库存为 NULL",
+    "mutate": {
+      "stock": "SELECT * REPLACE (CASE WHEN SKU = (SELECT min(SKU) FROM S) THEN NULL ELSE 期末库存 END AS 期末库存) FROM S"
+    },
+    "expect": {
+      "rows": 10,
+      "hash": "4ef157a7e56a"
+    }
+  },
+  {
+    "scenario": "stock",
+    "id": "S4",
+    "description": "最新日期有 NULL 日期行",
+    "mutate": {
+      "stock": "SELECT * FROM S UNION ALL (SELECT * REPLACE (NULL AS 日期) FROM S LIMIT 2)"
+    },
+    "expect": {
+      "rows": 13,
+      "hash": "e23a439b12e2"
+    }
+  },
+  {
+    "scenario": "sales",
+    "id": "A1",
+    "description": "目标表维键重复",
+    "mutate": {
+      "target": "SELECT * FROM S UNION ALL (SELECT * FROM S ORDER BY ALL LIMIT 1)"
+    },
+    "expect": {
+      "rows": 45,
+      "hash": "c3f1fabfdbc2"
+    }
+  },
+  {
+    "scenario": "sales",
+    "id": "A2",
+    "description": "目标表为空",
+    "mutate": {
+      "target": "SELECT * FROM S WHERE false"
+    },
+    "expect": {
+      "rows": 44,
+      "hash": "e7dfa75e27e3"
+    }
+  },
+  {
+    "scenario": "sales",
+    "id": "A3",
+    "description": "华东一行区域为 NULL",
+    "mutate": {
+      "east": "SELECT * REPLACE (CASE WHEN 门店 = (SELECT min(门店) FROM S) THEN NULL ELSE 区域 END AS 区域) FROM S"
+    },
+    "expect": {
+      "rows": 44,
+      "hash": "290623ff1fbe"
+    }
+  },
+  {
+    "scenario": "sales",
+    "id": "A4",
+    "description": "精度：华北销售额 123456789012345.67（超过 DECIMAL(18,4)）",
+    "mutate": {
+      "north": "SELECT * REPLACE (CASE WHEN 门店 = (SELECT min(门店) FROM S) THEN 123456789012345.67 ELSE 销售额 END AS 销售额) FROM S"
+    },
+    "expect": {
+      "error": "Conversion Error"
+    }
+  },
+  {
+    "scenario": "sales",
+    "id": "A5",
+    "description": "目标为 0（nullif 除零）",
+    "mutate": {
+      "target": "SELECT * REPLACE (0 AS 目标销售额) FROM S"
+    },
+    "expect": {
+      "rows": 44,
+      "hash": "1ed114b9e95e"
+    }
+  }
+]
