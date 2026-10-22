@@ -359,7 +359,7 @@ function validateNode(
       checkFields(node, columns, left, diagnostics);
       if (!left.known) return UNKNOWN;
       const kept =
-        config.selection === 'except'
+        config.selection === 'exclude'
           ? left.columns.filter((column) => columns.includes(column.name))
           : left.columns.filter((column) => !columns.includes(column.name));
       const nameColumn = String(config.nameColumn ?? '') || 'name';

@@ -37,7 +37,7 @@ export default function FormUnpivot({
 
   const columns = useMemo(
     () =>
-      mode === 'except'
+      mode === 'exclude'
         ? fieldCompletions.filter((c) => !rawColumns.includes(c))
         : // Keep configured columns even when unresolved — the picker flags
           // them as missing/pending instead of silently dropping the config.

@@ -6,13 +6,13 @@ describe('UnpivotConfigSchema', () => {
   it('parses valid config with all fields', () => {
     const result = UnpivotConfigSchema.parse({
       fields: ['q1', 'q2'],
-      selection: 'except',
+      selection: 'exclude',
       nameColumn: 'quarter',
       valueColumn: 'revenue',
       includeNulls: true,
     });
     expect(result.fields).toEqual(['q1', 'q2']);
-    expect(result.selection).toBe('except');
+    expect(result.selection).toBe('exclude');
     expect(result.includeNulls).toBe(true);
   });
 
