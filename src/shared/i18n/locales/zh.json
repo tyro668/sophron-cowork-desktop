@@ -1725,6 +1725,7 @@
         }
       },
       "operatorCategories": {
+        "cleaning": "清洗",
         "input_output": "输入输出",
         "data_transform": "数据变换",
         "advanced_compute": "高级计算"

@@ -42,7 +42,12 @@ export const OPERATOR_TYPES = [
 export type DataWorkflowOperatorType = (typeof OPERATOR_TYPES)[number];
 
 /** Product categories, independent of how an operator is compiled/executed. */
-export const OPERATOR_CATEGORIES = ['input_output', 'data_transform', 'advanced_compute'] as const;
+export const OPERATOR_CATEGORIES = [
+  'input_output',
+  'cleaning',
+  'data_transform',
+  'advanced_compute',
+] as const;
 export type OperatorCategory = (typeof OPERATOR_CATEGORIES)[number];
 
 export type OperatorInputHandle = 'input' | 'left' | 'right';

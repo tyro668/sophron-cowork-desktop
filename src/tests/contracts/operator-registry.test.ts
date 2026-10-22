@@ -35,23 +35,23 @@ const VALID_INPUT_HANDLES = new Set(['input', 'left', 'right']);
 const VALID_OUTPUT_HANDLES = new Set(['output', 'reject']);
 
 describe('shared operator registry', () => {
-  it('partitions operators into IO, transforms and advanced compute', () => {
-    expect(OPERATOR_CATEGORIES).toEqual(['input_output', 'data_transform', 'advanced_compute']);
-    const ADVANCED_COMPUTE_TYPES = [
-      'sql_query',
-      'deduplicate',
-      'missing_value',
-      'pivot',
-      'unpivot',
-      'unnest',
-      'expect',
-    ];
+  it('partitions operators into IO, cleaning, transforms and advanced compute', () => {
+    expect(OPERATOR_CATEGORIES).toEqual([
+      'input_output',
+      'cleaning',
+      'data_transform',
+      'advanced_compute',
+    ]);
+    const CLEANING_TYPES = ['deduplicate', 'missing_value', 'type_convert', 'field_mapping'];
+    const ADVANCED_COMPUTE_TYPES = ['sql_query', 'pivot', 'unpivot', 'unnest', 'expect'];
     expect(OPERATOR_GROUPS.map(({ operatorTypes }) => operatorTypes)).toEqual([
       ['input_source', 'output'],
+      OPERATOR_TYPES.filter((type) => CLEANING_TYPES.includes(type)),
       OPERATOR_TYPES.filter(
-        (type) => !['input_source', 'output', ...ADVANCED_COMPUTE_TYPES].includes(type)
+        (type) =>
+          !['input_source', 'output', ...CLEANING_TYPES, ...ADVANCED_COMPUTE_TYPES].includes(type)
       ),
-      ADVANCED_COMPUTE_TYPES,
+      OPERATOR_TYPES.filter((type) => ADVANCED_COMPUTE_TYPES.includes(type)),
     ]);
     expect(OPERATOR_GROUPS.flatMap(({ operatorTypes }) => operatorTypes).sort()).toEqual(ALL_TYPES);
   });
