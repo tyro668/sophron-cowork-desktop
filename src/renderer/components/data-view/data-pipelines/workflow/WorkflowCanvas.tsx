@@ -41,8 +41,14 @@ import { DataToolbarButton } from '../../shared';
 import { useSystemDarkMode, useThemeSetting } from '../../../../store/selectors';
 import { getWorkflowAlignmentSnap, getWorkflowConnectionDropTarget } from './canvas-utils';
 import { isWorkflowOperatorType } from './operator-catalog';
+import { collapseWorkflowComposites } from './workflow-composites';
 import { canConnectWorkflowNodes } from './workflow-graph-operations';
-import { WorkflowAlignmentGuidesOverlay, WorkflowEdge, WorkflowOperatorNode } from './WorkflowUi';
+import {
+  WorkflowAlignmentGuidesOverlay,
+  WorkflowCompositeFrames,
+  WorkflowEdge,
+  WorkflowOperatorNode,
+} from './WorkflowUi';
 import {
   EMPTY_WORKFLOW_ALIGNMENT_GUIDES,
   WORKFLOW_NODE_HEIGHT,
@@ -239,36 +245,70 @@ function WorkflowCanvasContent({
   );
   const allSelectedDisabled =
     selectedNodes.length > 0 && selectedNodes.every((node) => node.config.disabled === true);
+  // jflow composite steps ({stepId}~k helpers + {stepId}) render as one expandable node.
+  const [expandedComposites, setExpandedComposites] = useState<ReadonlySet<string>>(new Set());
+  const toggleComposite = useCallback((id: string) => {
+    setExpandedComposites((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const compositeView = useMemo(
+    () => collapseWorkflowComposites(nodes, edges, expandedComposites),
+    [nodes, edges, expandedComposites]
+  );
   const mappedFlowNodes = useMemo<WorkflowFlowNode[]>(
     () =>
-      nodes.map((node) => ({
-        id: node.id,
-        type: 'operator',
-        position: { x: node.x, y: node.y },
-        width: WORKFLOW_NODE_WIDTH,
-        height: WORKFLOW_NODE_HEIGHT,
-        initialWidth: WORKFLOW_NODE_WIDTH,
-        initialHeight: WORKFLOW_NODE_HEIGHT,
-        // adoptUserNodes rebuilds the internal node whenever a new node object
-        // arrives; without `measured`, parseHandles wipes internals.handleBounds
-        // and every edge on that node hides until a re-measure (which can get
-        // stuck, leaving all edges invisible until remount). Passing the known
-        // fixed size keeps measured handleBounds across rebuilds.
-        measured: { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT },
-        dragHandle: '.workflow-node-drag-handle',
-        draggable: true,
-        selectable: true,
-        selected: selectedIdSet.has(node.id),
-        data: {
-          workflowNode: node,
-          invalid: invalidNodeIds?.has(node.id),
-        },
-      })),
-    [nodes, selectedIdSet, invalidNodeIds]
+      compositeView.nodes.map((node) => {
+        const composite = compositeView.composites.get(node.id);
+        const collapsed = composite && !composite.expanded ? composite : undefined;
+        const member = compositeView.memberOf.get(node.id);
+        const invalid =
+          invalidNodeIds?.has(node.id) ||
+          (collapsed?.memberIds.some((id) => invalidNodeIds?.has(id)) ?? false);
+        const selected =
+          selectedIdSet.has(node.id) ||
+          (collapsed?.memberIds.some((id) => selectedIdSet.has(id)) ?? false);
+        return {
+          id: node.id,
+          type: 'operator' as const,
+          position: { x: node.x, y: node.y },
+          width: WORKFLOW_NODE_WIDTH,
+          height: WORKFLOW_NODE_HEIGHT,
+          initialWidth: WORKFLOW_NODE_WIDTH,
+          initialHeight: WORKFLOW_NODE_HEIGHT,
+          // adoptUserNodes rebuilds the internal node whenever a new node object
+          // arrives; without `measured`, parseHandles wipes internals.handleBounds
+          // and every edge on that node hides until a re-measure (which can get
+          // stuck, leaving all edges invisible until remount). Passing the known
+          // fixed size keeps measured handleBounds across rebuilds.
+          measured: { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT },
+          dragHandle: '.workflow-node-drag-handle',
+          draggable: true,
+          selectable: true,
+          selected,
+          data: {
+            workflowNode: node,
+            invalid,
+            composite: collapsed
+              ? {
+                  label: collapsed.label,
+                  size: collapsed.memberIds.length,
+                  inputs: collapsed.inputs,
+                }
+              : undefined,
+            compositeMember: member ? member.id : undefined,
+            onToggleComposite: collapsed || member ? toggleComposite : undefined,
+          },
+        };
+      }),
+    [compositeView, selectedIdSet, invalidNodeIds, toggleComposite]
   );
   const mappedFlowEdges = useMemo<WorkflowFlowEdge[]>(
     () =>
-      edges.map((edge) => ({
+      compositeView.edges.map((edge) => ({
         id: edge.id,
         source: edge.sourceNodeId,
         target: edge.targetNodeId,
@@ -279,7 +319,7 @@ function WorkflowCanvasContent({
         reconnectable: true,
         interactionWidth: 18,
       })),
-    [edges]
+    [compositeView]
   );
   const [flowNodes, setFlowNodes] = useState<WorkflowFlowNode[]>(mappedFlowNodes);
   const [flowEdges, setFlowEdges] = useState<WorkflowFlowEdge[]>(mappedFlowEdges);
@@ -355,7 +395,9 @@ function WorkflowCanvasContent({
     let raf = 0;
     const timer = window.setTimeout(() => {
       raf = window.requestAnimationFrame(() => {
-        const node = getInternalNode(revealRequest.nodeId);
+        const node = getInternalNode(
+          compositeView.hiddenToMain.get(revealRequest.nodeId) ?? revealRequest.nodeId
+        );
         if (!node || paneWidth <= 0 || paneHeight <= 0) return;
         const viewport = getViewport();
         const zoom = Math.max(viewport.zoom, openFitZoomRef.current ?? viewport.zoom);
@@ -385,7 +427,15 @@ function WorkflowCanvasContent({
       window.clearTimeout(timer);
       window.cancelAnimationFrame(raf);
     };
-  }, [revealRequest, getInternalNode, getViewport, setViewport, paneWidth, paneHeight]);
+  }, [
+    revealRequest,
+    compositeView,
+    getInternalNode,
+    getViewport,
+    setViewport,
+    paneWidth,
+    paneHeight,
+  ]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<WorkflowFlowNode>[]) => {
@@ -687,6 +737,11 @@ function WorkflowCanvasContent({
           )}
           <ViewportPortal>
             <WorkflowAlignmentGuidesOverlay guides={alignmentGuides} />
+            <WorkflowCompositeFrames
+              nodes={flowNodes}
+              composites={compositeView.composites}
+              onCollapse={toggleComposite}
+            />
           </ViewportPortal>
         </ReactFlow>
         {nodes.length === 0 && (

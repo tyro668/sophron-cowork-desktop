@@ -972,6 +972,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'watermark_source_fingerprint',
     up: (ctx) => migrateWatermarkFingerprint(ctx),
   },
+  {
+    version: 27,
+    name: 'composite_node_layout',
+    up: (ctx) => migrateCompositeLayout(ctx),
+  },
 ];
 
 function readNodeConfig(json: string): Record<string, unknown> | null {
@@ -1272,5 +1277,52 @@ export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void
       version: migration.version,
       name: migration.name,
     });
+  }
+}
+
+/**
+ * v27: jflow composite steps compile to `{stepId}~k` helper nodes plus the `{stepId}` main node.
+ * Nodes written before composites carried their grouping get `config.layout` backfilled so the
+ * canvas can render each group as one (expandable) node. Ids are stored scoped (`pid__stepId~k`).
+ */
+async function migrateCompositeLayout(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    pipeline_id: string;
+    label: string;
+    config_json: string;
+  }>('SELECT id, pipeline_id, label, config_json FROM data_workflow_nodes');
+  const byPipeline = new Map<string, typeof rows>();
+  for (const row of rows)
+    byPipeline.set(row.pipeline_id, [...(byPipeline.get(row.pipeline_id) ?? []), row]);
+  for (const pipelineRows of byPipeline.values()) {
+    const ids = new Map(pipelineRows.map((row) => [row.id, row]));
+    const groups = new Map<string, typeof rows>();
+    for (const row of pipelineRows) {
+      const match = /^(.+)~\d+$/.exec(row.id);
+      if (!match || !ids.has(match[1])) continue;
+      groups.set(match[1], [...(groups.get(match[1]) ?? []), row]);
+    }
+    for (const [baseId, helpers] of groups) {
+      const base = ids.get(baseId)!;
+      const members = [...helpers, base];
+      for (const row of members) {
+        const config = readNodeConfig(row.config_json);
+        if (!config || (config.layout && typeof config.layout === 'object')) continue;
+        const layout = {
+          composite: baseId,
+          role: row.id === baseId ? 'main' : 'step',
+          label: base.label,
+          size: members.length,
+        };
+        await ctx.metaRunSql(
+          'UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id',
+          {
+            config: JSON.stringify({ ...config, layout }),
+            id: row.id,
+          }
+        );
+      }
+    }
   }
 }

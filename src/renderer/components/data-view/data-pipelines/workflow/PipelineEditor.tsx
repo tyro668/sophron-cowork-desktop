@@ -1455,9 +1455,14 @@ export function PipelineEditor({
       targetHandle: edge.targetHandle ?? 'input',
       createdAt: now,
     }));
+    setLayoutEpoch((current) => current + 1);
     setWorkflow({
       ...workflow,
-      nodes: nextNodes,
+      nodes: layoutWorkflowNodes(
+        nextNodes,
+        nextEdges,
+        canvasViewportSizeRef.current.width || Number.POSITIVE_INFINITY
+      ),
       edges: nextEdges,
     });
     selectSingleNode(nextNodes[0]?.id ?? null);

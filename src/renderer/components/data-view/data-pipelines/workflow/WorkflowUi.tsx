@@ -8,7 +8,16 @@ import {
   type EdgeProps,
   type NodeProps,
 } from '@xyflow/react';
-import { AlertCircle, Copy, Upload, Workflow, X } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
+  Copy,
+  Layers,
+  Upload,
+  Workflow,
+  X,
+} from 'lucide-react';
 import type { DataRawTablePreview } from '../../../../types';
 import { GlassDataGridPreview } from '../../../GlassDataGridPreview';
 import { Button } from '../../../ui/button';
@@ -17,6 +26,7 @@ export { WorkflowOperatorPalette } from './WorkflowOperatorPalette';
 import { getOperatorCatalog } from './operator-catalog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import type { WorkflowSummaryRow } from './workflow-summary';
+import type { WorkflowCompositeInfo } from './workflow-composites';
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -137,8 +147,11 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
   const node = data.workflowNode;
   const catalog = getOperatorCatalog(node.type);
   // Edge endpoints declared by the operator registry (empty => no handles).
-  const ports = getOperatorDefinition(node.type)?.ports ?? { inputs: [], outputs: [] };
-  const Icon = catalog.Icon;
+  const operatorPorts = getOperatorDefinition(node.type)?.ports ?? { inputs: [], outputs: [] };
+  const composite = data.composite;
+  // A collapsed composite shows one input per distinct upstream and a single output.
+  const ports = composite ? { inputs: composite.inputs, outputs: ['output'] } : operatorPorts;
+  const Icon = composite ? Layers : catalog.Icon;
   const disabled = node.config.disabled === true;
   const invalid = data.invalid === true;
   return (
@@ -151,7 +164,10 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
           : selected
             ? 'border-accent text-accent ring-2 ring-accent/15'
             : catalog.nodeClassName
-      } ${disabled ? 'opacity-45 grayscale' : ''}`}
+      } ${disabled ? 'opacity-45 grayscale' : ''} ${
+        composite ? 'workflow-node-composite border-2 border-double' : ''
+      }`}
+      data-composite={composite ? 'collapsed' : data.compositeMember ? 'member' : undefined}
     >
       {ports.inputs.length === 0
         ? null
@@ -206,12 +222,33 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
         <span
           className={`truncate text-xs font-medium ${invalid ? 'text-error' : 'text-text-primary'}`}
         >
-          {node.label}
+          {composite ? composite.label : node.label}
         </span>
-        {t(catalog.labelKey) !== node.label && (
-          <span className="truncate text-[11px] text-text-muted">{t(catalog.labelKey)}</span>
+        {composite ? (
+          <span className="truncate text-[11px] text-text-muted">
+            {t('data.workflow.compositeSteps', { count: composite.size })}
+          </span>
+        ) : (
+          t(catalog.labelKey) !== node.label && (
+            <span className="truncate text-[11px] text-text-muted">{t(catalog.labelKey)}</span>
+          )
         )}
       </span>
+      {composite && data.onToggleComposite && (
+        <button
+          type="button"
+          className="nodrag flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-accent-muted hover:text-accent"
+          title={t('data.workflow.expandComposite')}
+          aria-label={t('data.workflow.expandComposite')}
+          data-testid="workflow-composite-expand"
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onToggleComposite?.(node.id);
+          }}
+        >
+          <ChevronsLeftRight className="h-3.5 w-3.5" />
+        </button>
+      )}
       {invalid && (
         <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-error text-[10px] font-bold text-white">
           !
@@ -264,6 +301,54 @@ export const WorkflowEdge = memo(function WorkflowEdge({
     </>
   );
 });
+
+/** Dashed frame + collapse control around each expanded composite's members. */
+export function WorkflowCompositeFrames({
+  nodes,
+  composites,
+  onCollapse,
+}: {
+  nodes: readonly WorkflowFlowNode[];
+  composites: ReadonlyMap<string, WorkflowCompositeInfo>;
+  onCollapse: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const frames: ReactNode[] = [];
+  for (const info of composites.values()) {
+    if (!info.expanded) continue;
+    const members = nodes.filter((node) => info.memberIds.includes(node.id));
+    if (members.length === 0) continue;
+    const pad = 14;
+    const left = Math.min(...members.map((n) => n.position.x)) - pad;
+    const top = Math.min(...members.map((n) => n.position.y)) - pad - 18;
+    const right = Math.max(...members.map((n) => n.position.x + WORKFLOW_NODE_WIDTH)) + pad;
+    const bottom = Math.max(...members.map((n) => n.position.y + WORKFLOW_NODE_HEIGHT)) + pad;
+    frames.push(
+      <div
+        key={info.id}
+        data-testid="workflow-composite-frame"
+        className="pointer-events-none absolute rounded-xl border border-dashed border-accent/50 bg-accent/5"
+        style={{ left, top, width: right - left, height: bottom - top }}
+      >
+        <div className="pointer-events-auto absolute left-2 top-0.5 flex items-center gap-1 text-[11px] text-accent">
+          <Layers className="h-3 w-3" />
+          <span className="max-w-[200px] truncate">{info.label}</span>
+          <button
+            type="button"
+            className="nodrag flex h-4 w-4 items-center justify-center rounded hover:bg-accent-muted"
+            title={t('data.workflow.collapseComposite')}
+            aria-label={t('data.workflow.collapseComposite')}
+            data-testid="workflow-composite-collapse"
+            onClick={() => onCollapse(info.id)}
+          >
+            <ChevronsRightLeft className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return <>{frames}</>;
+}
 
 export function WorkflowAlignmentGuidesOverlay({ guides }: { guides: WorkflowAlignmentGuides }) {
   const lines = [guides.horizontal, guides.vertical].filter((line): line is WorkflowAlignmentLine =>

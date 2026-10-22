@@ -92,6 +92,30 @@ export function compileWorkflowJflow(
     idPrefix && !id.startsWith(`${idPrefix}__`) ? `${idPrefix}__${id}` : id;
   const sourceMap: CompiledWorkflow['sourceMap'] = {};
   for (const [k, v] of Object.entries(compiled.sourceMap)) sourceMap[scope(k)] = v;
+  // Composite steps ({stepId}~k + stepId) carry their grouping in config.layout so the canvas can
+  // show them as one node; the step's label names the group.
+  const groups = new Map<string, JflowNode[]>();
+  for (const n of compiled.nodes) {
+    const key = n.layout?.composite;
+    if (key) groups.set(key, [...(groups.get(key) ?? []), n]);
+  }
+  for (const [key, members] of groups) {
+    const base = compiled.nodes.find((n) => n.id === key);
+    if (base && !members.includes(base)) members.push(base);
+    if (members.length < 2) continue;
+    const label = base?.label ?? key;
+    for (const m of members) {
+      m.config = {
+        ...m.config,
+        layout: {
+          composite: scope(key),
+          role: m.id === key ? 'main' : (m.layout?.role ?? 'step'),
+          label,
+          size: members.length,
+        },
+      };
+    }
+  }
   return {
     nodes: compiled.nodes.map((n) => ({ ...n, id: scope(n.id) })),
     edges: compiled.edges.map((e) => ({

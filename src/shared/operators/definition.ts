@@ -106,6 +106,7 @@ export function withoutOperatorMetadata(config: Record<string, unknown>): Record
   delete operatorConfig.generatedOrigin;
   delete operatorConfig.stepName;
   delete operatorConfig.dsl;
+  delete operatorConfig.layout;
   return operatorConfig;
 }
 

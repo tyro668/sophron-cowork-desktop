@@ -289,7 +289,7 @@ function stripWorkflowCompatibilityMetadata(value: unknown): unknown {
     Object.entries(value)
       .filter(
         ([key, entryValue]) =>
-          key !== 'dsl' && key !== 'generatedOrigin' && entryValue !== undefined
+          key !== 'dsl' && key !== 'generatedOrigin' && key !== 'layout' && entryValue !== undefined
       )
       .map(([key, entryValue]) => [key, stripWorkflowCompatibilityMetadata(entryValue)])
   );

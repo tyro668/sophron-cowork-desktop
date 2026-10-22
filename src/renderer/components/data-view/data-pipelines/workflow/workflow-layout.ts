@@ -1,5 +1,6 @@
 import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../types';
 import { WORKFLOW_NODE_HEIGHT, WORKFLOW_NODE_WIDTH } from './workflow-model';
+import { collapseWorkflowComposites } from './workflow-composites';
 
 const LAYER_STEP = 260; // column pitch — matches the merge offset used elsewhere
 const ROW_STEP = WORKFLOW_NODE_HEIGHT + 44;
@@ -33,6 +34,33 @@ export function layoutWorkflowNodes(
   nodes: DataWorkflowNode[],
   edges: DataWorkflowEdge[],
   viewportWidth = Number.POSITIVE_INFINITY
+): DataWorkflowNode[] {
+  // Composite steps lay out as their (collapsed) main node; the helpers sit in a row just below it
+  // so expanding a group shows its chain without disturbing the rest of the canvas.
+  const view = collapseWorkflowComposites(nodes, edges, new Set());
+  if (view.hiddenToMain.size === 0) return layoutFlat(nodes, edges, viewportWidth);
+  const placed = new Map(layoutFlat(view.nodes, view.edges, viewportWidth).map((n) => [n.id, n]));
+  for (const info of view.composites.values()) {
+    const main = placed.get(info.id);
+    if (!main) continue;
+    const helpers = info.memberIds.filter((id) => id !== info.id);
+    helpers.forEach((id, index) => {
+      const node = nodes.find((item) => item.id === id);
+      if (!node) return;
+      placed.set(id, {
+        ...node,
+        x: Math.round(main.x - (helpers.length - index) * (WORKFLOW_NODE_WIDTH + 24)),
+        y: Math.round(main.y + ROW_STEP),
+      });
+    });
+  }
+  return nodes.map((node) => placed.get(node.id) ?? node);
+}
+
+function layoutFlat(
+  nodes: DataWorkflowNode[],
+  edges: DataWorkflowEdge[],
+  viewportWidth: number
 ): DataWorkflowNode[] {
   if (nodes.length === 0) return nodes;
 

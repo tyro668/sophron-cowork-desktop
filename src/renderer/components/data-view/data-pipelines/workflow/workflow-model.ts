@@ -12,7 +12,15 @@ export const WORKFLOW_ALIGNMENT_THRESHOLD = 6;
 export const WORKFLOW_ALIGNMENT_GUIDE_PADDING = 32;
 
 export type WorkflowFlowNode = Node<
-  { workflowNode: DataWorkflowNode; invalid?: boolean },
+  {
+    workflowNode: DataWorkflowNode;
+    invalid?: boolean;
+    /** Set when this node stands for a collapsed jflow composite step. */
+    composite?: { label: string; size: number; inputs: string[] };
+    /** Main node id of the expanded composite this node belongs to. */
+    compositeMember?: string;
+    onToggleComposite?: (compositeId: string) => void;
+  },
   'operator'
 >;
 export type WorkflowFlowEdge = Edge<Record<string, never>>;
