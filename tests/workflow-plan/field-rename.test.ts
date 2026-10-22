@@ -72,3 +72,78 @@ describe('operator naming table', () => {
     );
   });
 });
+
+describe('AST / origin-based rename propagation', () => {
+  it('rewrites only field tokens, leaving strings and other tables alone', async () => {
+    const { renameExpressionField } = await import('../../src/shared/workflow-plan/field-rename');
+    expect(renameExpressionField(`[利润] > 0 and [备注] = '[利润]'`, '利润', '毛利')).toBe(
+      `[毛利] > 0 and [备注] = '[利润]'`
+    );
+    expect(renameExpressionField(`"利润" + 1`, '利润', '毛利')).toBe(`"毛利" + 1`);
+    expect(
+      renameExpressionField(
+        '[orders].[amount] + [customers].[amount]',
+        'amount',
+        'net',
+        (q) => q === 'orders'
+      )
+    ).toBe('[orders].[net] + [customers].[amount]');
+  });
+
+  it('only rewrites the join side the renamed field flows into', () => {
+    const graph = {
+      nodes: [
+        { id: 'a', type: 'input', config: { alias: 'orders' } },
+        { id: 'r', type: 'rename', config: {} },
+        { id: 'b', type: 'input', config: { alias: 'customers' } },
+        {
+          id: 'j',
+          type: 'join',
+          config: {
+            conditions: [{ left: 'id', operator: '=', right: 'id' }],
+            keep: [
+              { side: 'left', source: 'id' },
+              { side: 'right', source: 'id', alias: 'cid' },
+            ],
+          },
+        },
+      ],
+      edges: [
+        { sourceNodeId: 'a', targetNodeId: 'r' },
+        { sourceNodeId: 'r', targetNodeId: 'j', targetHandle: 'left' },
+        { sourceNodeId: 'b', targetNodeId: 'j', targetHandle: 'right' },
+      ],
+    };
+    const next = propagateFieldRenames(graph, 'r', [['id', 'order_id']]);
+    expect(next.nodes[3].config).toEqual({
+      conditions: [{ left: 'order_id', operator: '=', right: 'id' }],
+      keep: [
+        { side: 'left', source: 'order_id' },
+        { side: 'right', source: 'id', alias: 'cid' },
+      ],
+    });
+  });
+
+  it('stops when a downstream node re-defines the old name and never renames outputs', () => {
+    const graph = {
+      nodes: [
+        { id: 'r', type: 'rename', config: {} },
+        {
+          id: 'd',
+          type: 'derive',
+          config: { calculations: [{ field: 'x', expression: '[x] * 2' }] },
+        },
+        { id: 'f', type: 'filter', config: { condition: '[x] > 1' } },
+      ],
+      edges: [
+        { sourceNodeId: 'r', targetNodeId: 'd' },
+        { sourceNodeId: 'd', targetNodeId: 'f' },
+      ],
+    };
+    const next = propagateFieldRenames(graph, 'r', [['x', 'y']]);
+    expect(next.nodes[1].config).toEqual({
+      calculations: [{ field: 'x', expression: '[y] * 2' }],
+    });
+    expect(next.nodes[2].config).toEqual({ condition: '[x] > 1' });
+  });
+});
