@@ -1424,6 +1424,8 @@ class Compiler {
     throw new JflowError('E_NOT_SUPPORTED_R1', 'split 在 R1 中还不能转换成算子配置', st.span);
   }
 
+  // TODO(jflow R2): cloud resources (`cloud:` URIs) need optimistic concurrency — carry the
+  // resolved resource version as `expectedVersion` on write; out of scope for R1 (local only).
   L_write(cur: Rel, st: Step, sid: string, args: StepArgs): Rel {
     const ref = st.ref!;
     const mode = args.mode?.t === 'enum' ? args.mode.v : null;
