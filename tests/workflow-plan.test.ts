@@ -663,3 +663,47 @@ describe('compilePrepWorkflowToFlow plan output', () => {
     expect(errors).toHaveLength(0);
   });
 });
+
+describe('schema validation follows the executor grammar', () => {
+  it('accepts full scalar-expression filter conditions (boolean column, cast, nested calls)', () => {
+    for (const condition of [
+      '[flag]',
+      'cast([amount] as decimal(18,2)) > 0',
+      "[name] is not null and abs(date_diff('day', [created], [created])) > 3",
+    ]) {
+      const columns = [...COLUMNS, { name: 'flag', type: 'boolean' }];
+      const diagnostics = schemaDiagnostics(linearPlan({ condition }, 'filter'), columns);
+      expect(diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+    }
+  });
+
+  it('still rejects unparseable filter conditions and unknown fields', () => {
+    const bad = schemaDiagnostics(linearPlan({ condition: '[amount] >' }, 'filter'));
+    expect(bad.map((item) => item.code)).toContain('filterConditionInvalid');
+    const unknown = schemaDiagnostics(linearPlan({ condition: 'abs([missing]) > 1' }, 'filter'));
+    expect(unknown.some((item) => item.severity === 'error')).toBe(true);
+  });
+
+  it('gives semi/anti joins exactly the left schema', () => {
+    const plan = buildWorkflowPlan({
+      nodes: [
+        node('a', 'input', { source: 'pipeline' }),
+        node('b', 'input', { source: 'pipeline' }),
+        node('j', 'join', {
+          joinType: 'anti',
+          conditions: [{ left: 'id', operator: '=', right: 'id' }],
+        }),
+        node('s', 'select', { fields: ['id', 'name', 'amount', 'created'], selection: 'include' }),
+        node('out', 'output', { table: 'result', mode: 'replace' }),
+      ],
+      edges: [
+        edge('e1', 'a', 'j', 'left'),
+        edge('e2', 'b', 'j', 'right'),
+        edge('e3', 'j', 's'),
+        edge('e4', 's', 'out'),
+      ],
+    }).plan;
+    const diagnostics = schemaDiagnostics(plan);
+    expect(diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+  });
+});

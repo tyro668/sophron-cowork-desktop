@@ -2,7 +2,6 @@ import { parseExpression } from '../expression';
 import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../prep-dsl/syntax/fields';
 import { planJoinProjectionColumns } from '../prep-dsl/join-projection';
-import { parseConditionTree, type FilterConditionNode } from '../filter-condition';
 import { pivotColumnName, pivotMetricSuffixes } from '../operator-config/pivot';
 import {
   extractExpressionFieldNames,
@@ -172,10 +171,9 @@ function validateNode(
     case 'filter': {
       const condition = typeof config.condition === 'string' ? config.condition : '';
       if (condition.trim()) {
-        try {
-          const fields = collectConditionFields(parseConditionTree(condition));
-          checkFields(node, fields, left, diagnostics);
-        } catch {
+        if (isConditionSyntaxValid(condition)) {
+          checkFields(node, extractExpressionFieldNames(condition), left, diagnostics);
+        } else {
           push(
             diagnostics,
             'error',
@@ -479,6 +477,8 @@ function validateNode(
     }
     case 'join': {
       validateJoinNode(node, config, left, right ?? UNKNOWN, diagnostics);
+      // Semi/anti joins filter the left side; their output schema is exactly the left schema.
+      if (config.joinType === 'semi' || config.joinType === 'anti') return left;
       if (!left.known && !(right && right.known)) return UNKNOWN;
       const leftColumns = left.columns;
       const rightColumns = right?.columns ?? [];
@@ -520,14 +520,9 @@ function validateNode(
       if (kind === 'expression') {
         const expression = typeof config.expression === 'string' ? config.expression : '';
         if (expression.trim()) {
-          try {
-            checkFields(
-              node,
-              collectConditionFields(parseConditionTree(expression)),
-              left,
-              diagnostics
-            );
-          } catch {
+          if (isConditionSyntaxValid(expression)) {
+            checkFields(node, extractExpressionFieldNames(expression), left, diagnostics);
+          } else {
             push(
               diagnostics,
               'error',
@@ -806,9 +801,14 @@ function validateSetOpNode(
   }
 }
 
-function collectConditionFields(node: FilterConditionNode): string[] {
-  if (node.kind === 'leaf') return node.field ? [node.field] : [];
-  return node.items.flatMap(collectConditionFields);
+/** Filter/expect conditions are compiled with the scalar expression grammar (see operators/filter). */
+function isConditionSyntaxValid(condition: string): boolean {
+  try {
+    parseExpression(condition);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function checkFields(
