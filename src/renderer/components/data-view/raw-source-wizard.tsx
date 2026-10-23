@@ -553,11 +553,13 @@ export function RawSourceWizard({
                     ))}
                   </select>
                   <span className="ml-auto" />
-                  <Toggle
-                    on={autoInclude}
-                    onChange={setAutoInclude}
-                    label={tr('mode.autoIncludeFiles')}
-                  />
+                  {effectiveMode === 'folder_per_file' && (
+                    <Toggle
+                      on={autoInclude}
+                      onChange={setAutoInclude}
+                      label={tr('mode.autoIncludeFiles')}
+                    />
+                  )}
                 </div>
                 {effectiveMode === 'folder_merge' ? (
                   <FolderMergeTable
@@ -770,10 +772,10 @@ export function Toggle({
       className="inline-flex items-center gap-2 text-[12.5px] text-text-secondary disabled:opacity-50"
     >
       <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${on ? 'bg-accent' : 'bg-border-strong'}`}
+        className={`relative h-4 w-7 rounded-full transition-colors ${on ? 'bg-accent' : 'border border-border bg-surface-active'}`}
       >
         <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}`}
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-soft transition-all ${on ? 'left-3.5' : 'left-0.5'}`}
         />
       </span>
       {label}
@@ -899,11 +901,13 @@ function SheetConfigurator(props: {
                     : ''}
             </span>
             <span className="ml-auto" />
-            <Toggle
-              on={props.autoInclude}
-              onChange={props.setAutoInclude}
-              label={tr('excel.autoIncludeSheets')}
-            />
+            {!merged && (
+              <Toggle
+                on={props.autoInclude}
+                onChange={props.setAutoInclude}
+                label={tr('excel.autoIncludeSheets')}
+              />
+            )}
           </div>
         )}
         {!multi && props.singleSheet && (

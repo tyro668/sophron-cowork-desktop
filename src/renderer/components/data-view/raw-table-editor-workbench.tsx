@@ -324,8 +324,16 @@ export function RawTableEditorWorkbench({
     setPreviewPage(1);
   }, [initialConfigKey, initialName, initialSourceKind, targetId]);
 
+  const initialViewTabRef = useRef(initialViewTab);
   useEffect(() => {
-    setActiveViewTab('config');
+    if (initialViewTabRef.current === 'data' && rawTable) {
+      // Opened from the source wizard's "打开数据页": show the data tab with page 1 loaded.
+      void previewRawTableRef.current();
+    } else {
+      setActiveViewTab('config');
+    }
+    initialViewTabRef.current = undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId]);
 
   useEffect(() => {

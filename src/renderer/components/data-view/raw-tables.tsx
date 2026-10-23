@@ -272,7 +272,7 @@ export function RawTablesPanel({
         onDoubleClick={() => onOpenSource?.(source)}
         className="h-11 border-b border-dashed border-border-muted/85 bg-[var(--data-grid-header-surface)]"
       >
-        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
+        <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-2">
             {source.sourceKind === 'folder' ? (
               <Folder className="h-4 w-4 flex-shrink-0 text-accent" />
@@ -281,7 +281,7 @@ export function RawTablesPanel({
             )}
             <button
               type="button"
-              className="min-w-0 truncate text-[13px] font-medium text-text-primary hover:text-accent"
+              className="min-w-0 max-w-[65%] flex-shrink-0 truncate text-[13px] font-medium text-text-primary hover:text-accent"
               title={source.sourcePath}
               onClick={() => onOpenSource?.(source)}
             >
@@ -297,7 +297,6 @@ export function RawTablesPanel({
             </span>
           </div>
         </td>
-        <td className="px-2" />
         <td className="whitespace-nowrap px-2 pr-6 text-right text-[12.5px] tabular-nums text-text-muted">
           {rows.toLocaleString('en-US')}
         </td>
