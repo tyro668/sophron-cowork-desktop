@@ -2,7 +2,8 @@
  * Gate: the three 场景_ pipelines, written in jflow (tests/jflow/fixtures), compiled by the app's
  * compiler and run by the app's own executor against a copy of the local workspace data, must
  * reproduce the reviewed baselines — and so must the export → re-import round trip and the 15
- * counterexamples (mutated inputs). Skipped when the local workspace data is not present.
+ * counterexamples (mutated inputs). Skipped (with the reason logged) when the local workspace data
+ * or any of the three 场景_ pipelines is absent.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
@@ -177,23 +178,47 @@ async function runScenario(key: ScenarioKey, mutate: Record<string, string> = {}
   }
 }
 
-describe.skipIf(!HAVE_DATA)('jflow gate (app executor, local workspace data)', () => {
-  for (const key of Object.keys(SCENARIOS) as ScenarioKey[]) {
-    it(`${key}: baseline ${SCENARIOS[key].rows} rows / ${SCENARIOS[key].hash}, also after export → re-import`, async () => {
-      const { first, second } = await runScenario(key);
-      expect(first).toEqual({ rows: SCENARIOS[key].rows, hash: SCENARIOS[key].hash });
-      expect(second).toEqual(first);
-    }, 180_000);
+function missingGatePipelines(): string[] {
+  if (!HAVE_DATA) return [];
+  const db = new Database(path.join(DATA, 'cowork.db'), { readonly: true, fileMustExist: true });
+  try {
+    return Object.values(SCENARIOS)
+      .map((s) => s.pipeline)
+      .filter((name) => !db.prepare('select 1 from data_pipelines where name = ?').get(name));
+  } catch {
+    return Object.values(SCENARIOS).map((s) => s.pipeline);
+  } finally {
+    db.close();
   }
-  for (const cx of COUNTEREXAMPLES) {
-    it(`counterexample ${cx.id} (${cx.scenario}): ${cx.description}`, async () => {
-      if ('error' in cx.expect) {
-        await expect(runScenario(cx.scenario, cx.mutate)).rejects.toThrow(cx.expect.error);
-      } else {
-        const { first, second } = await runScenario(cx.scenario, cx.mutate);
-        expect(first).toEqual(cx.expect);
+}
+const MISSING_PIPELINES = missingGatePipelines();
+const GATE_SKIP_REASON = !HAVE_DATA
+  ? `local workspace data not found in ${DATA}`
+  : MISSING_PIPELINES.length
+    ? `required 场景_ pipelines absent from the local workspace (${MISSING_PIPELINES.join(', ')})`
+    : '';
+if (GATE_SKIP_REASON) console.warn(`[jflow gate] skipped: ${GATE_SKIP_REASON}`);
+
+describe.skipIf(Boolean(GATE_SKIP_REASON))(
+  'jflow gate (app executor, local workspace data)',
+  () => {
+    for (const key of Object.keys(SCENARIOS) as ScenarioKey[]) {
+      it(`${key}: baseline ${SCENARIOS[key].rows} rows / ${SCENARIOS[key].hash}, also after export → re-import`, async () => {
+        const { first, second } = await runScenario(key);
+        expect(first).toEqual({ rows: SCENARIOS[key].rows, hash: SCENARIOS[key].hash });
         expect(second).toEqual(first);
-      }
-    }, 180_000);
+      }, 180_000);
+    }
+    for (const cx of COUNTEREXAMPLES) {
+      it(`counterexample ${cx.id} (${cx.scenario}): ${cx.description}`, async () => {
+        if ('error' in cx.expect) {
+          await expect(runScenario(cx.scenario, cx.mutate)).rejects.toThrow(cx.expect.error);
+        } else {
+          const { first, second } = await runScenario(cx.scenario, cx.mutate);
+          expect(first).toEqual(cx.expect);
+          expect(second).toEqual(first);
+        }
+      }, 180_000);
+    }
   }
-});
+);
