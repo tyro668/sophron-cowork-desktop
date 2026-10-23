@@ -515,6 +515,39 @@ describe('ETL runtime contract', () => {
     ).rejects.toThrow(/missing_col/);
   });
 
+  it('refuses replace output with an incremental bound input table at save and at run', async () => {
+    const { store, tempRoot } = makeStore();
+    const csv = writeCsv(tempRoot, 'r.csv', 'id,v\n1,a\n2,b\n');
+    const rawTable = await store.importRawTable({ filePath: csv });
+    const pipeline = await store.createPipeline({ name: 'Raw incremental replace' });
+    await saveCompiledDsl(
+      store,
+      pipeline.id,
+      `
+      source src = @id('local:raw/${rawTable.id}') incremental: [id]
+
+      src
+        | write @new('raw_incr_rep') mode: append
+    `
+    );
+    const first = await store.runPipeline(pipeline.id);
+    expect(first.rowCount).toBe(2);
+    const workflow = await store.getPipelineWorkflow(pipeline.id);
+    const replaced = workflow.nodes.map((node) =>
+      node.type === 'output' ? { ...node, config: { ...node.config, mode: 'replace' } } : node
+    );
+    await expect(
+      store.savePipelineWorkflow(pipeline.id, { nodes: replaced, edges: workflow.edges })
+    ).rejects.toThrow(/E_INCR_REPLACE/);
+    // A run handed the same graph directly (e.g. an unsaved draft) is refused too, and the
+    // existing result table keeps its rows.
+    await expect(
+      store.runPipeline(pipeline.id, { workflow: { nodes: replaced, edges: workflow.edges } })
+    ).rejects.toThrow(/E_INCR_REPLACE/);
+    const after = await store.getPipeline(pipeline.id);
+    expect(after?.rowCount).toBe(2);
+  });
+
   it('does not advance the watermark when the run fails', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;

@@ -281,6 +281,8 @@ export class WorkflowExecutor {
       );
     }
     diagnostics.push(...planDiagnostics);
+    // Runs stage into a temporary table and commit later, so check the write contract here.
+    assertIncrementalWriteAllowed(runtimeWorkflow.nodes);
 
     try {
       const result = await this.cleanSourceIntoPipelineOutput(
