@@ -23,6 +23,7 @@ const RESERVED_WORDS = new Set([
   'or',
   'then',
   'else',
+  'elseif',
   'when',
   'end',
   'from',
@@ -334,7 +335,11 @@ class Parser {
     if (word === 'true' || word === 'false') return { k: 'bool', value: word === 'true' };
     if (word === 'null') return { k: 'null' };
     if (word === 'if') return this.parseIf();
-    if (word === 'case') return this.parseCase();
+    if (word === 'case')
+      this.fail(
+        'CASE WHEN is not supported; use if … then … elseif … else … end (simple case: [x] = v, several values: [x] in (a, b))',
+        'caseRemoved'
+      );
     if ((word === 'cast' || word === 'try_cast') && callFollows)
       return this.parseCast(word === 'try_cast');
     if (word === 'extract' && callFollows) return this.parseExtract();
@@ -400,31 +405,17 @@ class Parser {
 
   private parseIf(): Expr {
     this.blockDepth++;
-    const condition = this.parseOr();
-    this.expectWord('then');
-    const then = this.parseOr();
-    let otherwise: Expr | undefined;
-    if (this.acceptWord('else')) otherwise = this.parseOr();
-    this.blockDepth--;
-    this.expectWord('end');
-    return { k: 'case', whens: [[condition, then]], else: otherwise };
-  }
-
-  private parseCase(): Expr {
-    this.blockDepth++;
-    const operand = this.isWord('when') ? undefined : this.parseOr();
     const whens: Array<[Expr, Expr]> = [];
-    while (this.acceptWord('when')) {
-      const when = this.parseOr();
+    do {
+      const condition = this.parseOr();
       this.expectWord('then');
-      whens.push([when, this.parseOr()]);
-    }
-    if (whens.length === 0) this.fail('CASE needs at least one WHEN');
+      whens.push([condition, this.parseOr()]);
+    } while (this.acceptWord('elseif'));
     let otherwise: Expr | undefined;
     if (this.acceptWord('else')) otherwise = this.parseOr();
     this.blockDepth--;
     this.expectWord('end');
-    return { k: 'case', operand, whens, else: otherwise };
+    return { k: 'case', whens, else: otherwise };
   }
 
   private parseCast(isTry: boolean): Expr {

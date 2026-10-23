@@ -181,6 +181,6 @@ describe('E_INCR_REPLACE', () => {
     });
     expect(() =>
       assertIncrementalWriteAllowed([rawInput, node('o', 'output', { mode: 'replace' })])
-    ).not.toThrow();
+    ).toThrow(/E_INCR_REPLACE/);
   });
 });

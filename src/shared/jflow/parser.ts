@@ -70,6 +70,8 @@ const k = (word: string): TokenType => KW[word];
 class JflowParser extends EmbeddedActionsParser {
   /** Key of the named argument being parsed (drives list-vs-single value parsing). */
   private curKey = '';
+  /** `case … end` sites seen in the last parse (case is removed: reported with an if/elseif fix). */
+  caseSites: Array<{ start: number; end: number; expr: Expr }> = [];
 
   constructor() {
     super(ALL_TOKENS, { maxLookahead: 4, recoveryEnabled: false, skipValidations: true });
@@ -1470,9 +1472,12 @@ class JflowParser extends EmbeddedActionsParser {
     return this.ACTION(() => ({ k: 'if', branches, else: els }) as Expr);
   });
 
-  /** `case` is accepted and normalized into the same `if` AST (simple case → [x] = v). */
+  /**
+   * `case` is no longer part of the language: it is parsed only so it can be reported
+   * (E_CASE_REMOVED) with a one-click rewrite to the equivalent if/elseif (simple case → [x] = v).
+   */
   private caseExpr = this.RULE('caseExpr', (): Expr => {
-    this.CONSUME(k('case'));
+    const caseTok = this.CONSUME(k('case'));
     let operand: Expr | null = null;
     this.OPTION(() => {
       operand = this.SUBRULE(this.expr);
@@ -1492,8 +1497,16 @@ class JflowParser extends EmbeddedActionsParser {
       this.CONSUME(k('else'));
       els = this.SUBRULE4(this.expr);
     });
-    this.CONSUME(k('end'));
-    return this.ACTION(() => ({ k: 'if', branches, else: els }) as Expr);
+    const endTok = this.CONSUME(k('end'));
+    return this.ACTION(() => {
+      const expr = { k: 'if', branches, else: els } as Expr;
+      this.caseSites.push({
+        start: caseTok.startOffset,
+        end: (endTok.endOffset ?? endTok.startOffset) + 1,
+        expr,
+      });
+      return expr;
+    });
   });
 
   private castExpr = this.RULE('castExpr', (): Expr => {

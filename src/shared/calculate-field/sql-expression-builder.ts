@@ -94,7 +94,7 @@ function buildPeriodComparisonExpression(
     .join(' ')})`;
   const previous = `lag(${value})${over}`;
   const previousYear = `lag(${year})${over}`;
-  const guardedPrevious = `CASE WHEN (${year} - ${previousYear}) = 1 THEN ${previous} ELSE NULL END`;
+  const guardedPrevious = `if (${year} - ${previousYear}) = 1 then ${previous} else null end`;
   return comparisonResult(functionId, value, guardedPrevious);
 }
 
@@ -163,7 +163,7 @@ function timePeriodPartition(
   if (functionId === 'year_to_date') {
     const fiscalMonth = integerParameter(input, 'fiscalStartMonth', '1');
     if (fiscalMonth === '1') return year;
-    return `CASE WHEN extract('month' FROM ${date}) >= ${fiscalMonth} THEN ${year} ELSE ${year} - 1 END`;
+    return `if extract('month' FROM ${date}) >= ${fiscalMonth} then ${year} else ${year} - 1 end`;
   }
   if (functionId === 'quarter_to_date') {
     return `${year}, extract('quarter' FROM ${date})`;

@@ -59,10 +59,11 @@ describe('expression language highlighting', () => {
   });
 
   it('still highlights plain SQL expressions', () => {
-    const spans = tokenSpans("case [status] when 'PAID' then 1 else 0 end");
+    const spans = tokenSpans("if [status] = 'PAID' then 1 elseif [x] in (1) then 2 else 0 end");
     const byText = new Map(spans.map((s) => [s.text, s.name]));
-    expect(byText.get('case')).toBe('keyword');
-    expect(byText.get('when')).toBe('keyword');
+    expect(byText.get('if')).toBe('keyword');
+    expect(byText.get('elseif')).toBe('keyword');
+    expect(byText.get('in')).toBe('keyword');
     expect(byText.get('then')).toBe('keyword');
     expect(byText.get('else')).toBe('keyword');
     expect(byText.get('end')).toBe('keyword');
