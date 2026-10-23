@@ -2637,7 +2637,7 @@ describe('constrained workflow plans and resource bindings', () => {
     expect(run.pipeline.status).toBe('completed');
   });
 
-  it('removes incremental settings when binding an input table', async () => {
+  it('keeps incremental settings when binding an input table', async () => {
     const { service, tempRoot } = createService();
     const { orders, output } = await seedTables(service, tempRoot);
     const pipeline = await service.createPipeline({ name: 'Full input table' });
@@ -2649,9 +2649,9 @@ describe('constrained workflow plans and resource bindings', () => {
           {
             id: 'orders',
             type: 'input',
-            config: { source: 'rawTable', alias: 'orders', incrementalBy: 'old_column' },
+            config: { source: 'rawTable', alias: 'orders', incrementalBy: 'id' },
           },
-          { id: 'sink', type: 'output', config: { mode: 'replace' } },
+          { id: 'sink', type: 'output', config: { mode: 'append' } },
         ],
         edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
       },
@@ -2659,8 +2659,7 @@ describe('constrained workflow plans and resource bindings', () => {
       resultTableId: output.id,
     });
     const inputNode = result.workflow.nodes.find((node) => node.type === 'input');
-    expect(inputNode?.config).not.toHaveProperty('incrementalBy');
-    expect(result.dsl).not.toContain('incremental by');
+    expect(inputNode?.config.incrementalBy).toBe('id');
   });
 
   it('rejects plan version mismatch, unknown node types, and unbound rawTable sources', async () => {
