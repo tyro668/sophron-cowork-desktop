@@ -332,6 +332,8 @@ export interface DataRawTableExcelConfig {
   /** Per-column target types applied when rows are materialized into DuckDB. */
   columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
+  /** When set, these sheets are stacked into one table with a `_sheet` system column. */
+  mergeSheets?: string[];
 }
 
 export interface DataRawTableCsvConfig {
@@ -377,6 +379,12 @@ export interface DataRawTableFolderConfig {
   fileRange: 'excel_csv' | 'excel' | 'csv';
   skipEmptyFiles: boolean;
   keepSourceFileName: boolean;
+  /** Which sheet of a multi-sheet Excel file is read; files without it are excluded. */
+  sheetSelector?: DataRawSheetSelector;
+  /** Relative paths the user (or the compatibility check) left out of the merge. */
+  excludedFiles?: string[];
+  /** Result of the last merge: what was filled with nulls and what was left out. */
+  mergeReport?: DataRawFolderMergeReport;
   /** Per-column target types applied to every imported file. */
   columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
@@ -388,10 +396,174 @@ export type DataRawTableConfig =
   | DataRawTableFolderConfig
   | DataRawTableCloudConfig;
 
+/** Sheet choice for Excel files inside a folder source. Index is 1-based. */
+export type DataRawSheetSelector = { by: 'name'; name: string } | { by: 'index'; index: number };
+
+export interface DataRawFolderMergeReport {
+  includedFiles: string[];
+  missingSheetFiles: string[];
+  typeConflictFiles: Array<{ file: string; columns: string[] }>;
+  filledColumns: Array<{ name: string; missingInFiles: string[] }>;
+}
+
+/**
+ * How a raw-table source turns into tables. A source (file or folder) owns 1..N raw tables.
+ * - excel_single: one chosen sheet → one table
+ * - excel_per_sheet: each chosen sheet → its own table
+ * - excel_merge_sheets: chosen sheets stacked into one table (`_sheet` column)
+ * - folder_merge: all files appended into one table (`_来源文件` column)
+ * - folder_per_file: one table per file
+ * - single: a CSV file or a cloud table (always one table)
+ */
+export type DataRawSourceBuildMode =
+  | 'excel_single'
+  | 'excel_per_sheet'
+  | 'excel_merge_sheets'
+  | 'folder_merge'
+  | 'folder_per_file'
+  | 'single';
+
+export type DataRawSourceKind = 'excel' | 'csv' | 'folder' | 'cloud';
+
+export type DataRawSourceMemberStatus = 'ok' | 'missing';
+
+export interface DataRawSourceConfig {
+  sheetSelector?: DataRawSheetSelector;
+  /** Folder per-file mode: per-file sheet override, keyed by relative path. */
+  fileSheetOverrides?: Record<string, string>;
+  excludedFiles?: string[];
+  fileRange?: DataRawTableFolderConfig['fileRange'];
+  /** New sheets / files found on refresh become tables automatically. */
+  autoInclude: boolean;
+  /** Excel per-sheet / merge: the sheets the user picked. */
+  sheets?: string[];
+  /** Sheets / files present at the last scan, so refresh can tell what is new. */
+  knownMembers?: string[];
+  lastScannedAt?: number | null;
+}
+
+export interface DataRawSource {
+  id: string;
+  name: string;
+  sourcePath: string;
+  sourceKind: DataRawSourceKind;
+  buildMode: DataRawSourceBuildMode;
+  config: DataRawSourceConfig;
+  /** Member raw-table ids, in creation order. */
+  memberIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DataScanRawSourceInput {
+  sourcePath: string;
+  sheetSelector?: DataRawSheetSelector;
+  fileSheetOverrides?: Record<string, string>;
+  fileRange?: DataRawTableFolderConfig['fileRange'];
+}
+
+export interface DataRawSourceSheetScan {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  columns: string[];
+  /** Sheet has no tabular data (only free text or empty). */
+  empty: boolean;
+}
+
+export type DataRawSourceFileStatus =
+  'ready' | 'missing_sheet' | 'type_conflict' | 'skipped' | 'unreadable';
+
+export interface DataRawSourceFileScan {
+  path: string;
+  relativePath: string;
+  kind: 'excel' | 'csv';
+  status: DataRawSourceFileStatus;
+  /** Why the file is skipped / unreadable / conflicting. */
+  reason?: string;
+  sheetNames: string[];
+  usedSheet: string | null;
+  rowCount: number;
+  columns: string[];
+  conflictColumns?: string[];
+}
+
+export interface DataRawSourceScan {
+  sourcePath: string;
+  kind: 'excel' | 'csv' | 'folder';
+  name: string;
+  sizeBytes: number;
+  sheets: DataRawSourceSheetScan[];
+  files: DataRawSourceFileScan[];
+  /** Folder merge estimate over the `ready` files. */
+  merge: {
+    fileCount: number;
+    rowCount: number;
+    filledColumns: Array<{ name: string; missingInFiles: string[] }>;
+  } | null;
+}
+
+export interface DataRawSourceMemberPlan {
+  /** Sheet name (excel modes) or relative file path (folder per-file). */
+  key: string;
+  name?: string;
+  /** Folder per-file: sheet to read for this file (overrides the selector). */
+  sheetName?: string;
+  headerRow?: number;
+}
+
+export interface DataCreateRawSourceInput {
+  sourcePath: string;
+  name?: string;
+  buildMode: DataRawSourceBuildMode;
+  /** excel_single / excel_per_sheet / folder_per_file: the tables to create. */
+  members?: DataRawSourceMemberPlan[];
+  /** excel_merge_sheets: sheets to stack. */
+  sheets?: string[];
+  /** excel_merge_sheets / folder_merge: name of the single table. */
+  tableName?: string;
+  sheetSelector?: DataRawSheetSelector;
+  fileSheetOverrides?: Record<string, string>;
+  excludedFiles?: string[];
+  fileRange?: DataRawTableFolderConfig['fileRange'];
+  autoInclude?: boolean;
+}
+
+export interface DataRawSourceCreateResult {
+  source: DataRawSource;
+  tables: DataRawTable[];
+  /** Files / sheets that were not turned into tables, with the reason. */
+  skipped: Array<{ key: string; reason: string }>;
+}
+
+export interface DataRawSourceRebuildImpact {
+  sourceId: string;
+  tables: Array<{ id: string; name: string; rowCount: number; pipelineNames: string[] }>;
+}
+
+export interface DataRebuildRawSourceInput extends DataCreateRawSourceInput {
+  sourceId: string;
+  /** Must be true: the user confirmed deleting the existing tables. */
+  confirmDeleteExistingTables: boolean;
+}
+
+export interface DataRawSourceRefreshResult {
+  source: DataRawSource;
+  refreshed: string[];
+  added: string[];
+  missing: string[];
+  failed: Array<{ id: string; error: string }>;
+}
+
 export interface DataRawTable {
   id: string;
   name: string;
   groupId: string | null;
+  /** Owning raw-table source (every input table belongs to exactly one). */
+  sourceId?: string | null;
+  /** Sheet name or relative file path inside the source. */
+  memberKey?: string | null;
+  memberStatus?: DataRawSourceMemberStatus;
   /** Runtime source; for cloud tables this is a private cache path, never a UI source binding. */
   sourcePath: string;
   sourceKind: DataRawTableSourceKind;
@@ -684,6 +856,9 @@ export interface DataImportRawTableInput {
   name?: string;
   sourceKind?: DataRawTableSourceKind;
   config?: DataRawTableConfig;
+  /** Attach to this source instead of creating a single-table source. Internal. */
+  sourceId?: string;
+  memberKey?: string | null;
 }
 
 export interface DataUpdateRawTableInput {

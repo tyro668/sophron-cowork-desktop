@@ -34,7 +34,11 @@ import { useDataViewEditors } from '../hooks/use-data-view-editors';
 import { useStoredPreview } from '../hooks/use-stored-preview';
 import { useDataActions } from '../hooks/use-data-actions';
 import { useDataNavigation } from '../hooks/use-data-navigation';
-import type { DataRawTable } from '../../../types';
+import type { DataRawSource, DataRawSourceBuildMode, DataRawTable } from '../../../types';
+import { RawSourceWizard } from '../../../components/data-view/raw-source-wizard';
+import { RawSourceDetail } from '../../../components/data-view/raw-source-detail';
+import { useAppStore } from '../../../store';
+import { formatDataErrorMessage } from '../model/errors';
 import { DataPipelineAiGenerateDialog } from '../../../components/data-view/data-pipelines/DataPipelineAiGenerateDialog';
 import type { DataTab } from '../model/types';
 
@@ -91,6 +95,67 @@ export function DataViewPage() {
   });
 
   const { activeTab, searchQuery, error, actionId } = ui;
+  const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
+  const [sourceWizard, setSourceWizard] = useState<{
+    rebuild?: { source: DataRawSource; buildMode: DataRawSourceBuildMode };
+  } | null>(null);
+  const [rawSources, setRawSources] = useState<DataRawSource[]>([]);
+  const [openSourceId, setOpenSourceId] = useState<string | null>(null);
+  const [sourceTables, setSourceTables] = useState<DataRawTable[]>([]);
+  const [editorInitialTab, setEditorInitialTab] = useState<'data' | undefined>(undefined);
+  const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
+  const loadRawSources = useCallback(async () => {
+    if (!isDataApiAvailable || !dataClient.has('listRawSources')) return;
+    try {
+      setRawSources(await dataClient.listRawSources());
+    } catch {
+      setRawSources([]);
+    }
+  }, [isDataApiAvailable]);
+  useEffect(() => {
+    void loadRawSources();
+  }, [loadRawSources, rawTables.rawTables]);
+  useEffect(() => {
+    if (!editors.editingRawTableId) setEditorInitialTab(undefined);
+  }, [editors.editingRawTableId]);
+  const openSource = rawSources.find((source) => source.id === openSourceId) ?? null;
+  useEffect(() => {
+    if (!openSource) return;
+    let cancelled = false;
+    void Promise.all(
+      openSource.memberIds.map((id) => dataClient.getRawTable(id).catch(() => null))
+    ).then((tables) => {
+      if (!cancelled) setSourceTables(tables.filter((table): table is DataRawTable => !!table));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openSource]);
+  const openRawTableOnData = (table: DataRawTable) => {
+    editors.setFocusedRawTable(table);
+    editors.setEditingRawTableDraftId(null);
+    setEditorInitialTab('data');
+    editors.setEditingRawTableId(table.id);
+  };
+  const handleRefreshSource = async (source: DataRawSource) => {
+    setRefreshingSourceId(source.id);
+    try {
+      const result = await dataClient.refreshRawSource(source.id);
+      showToast(
+        result.failed.length ? 'error' : 'success',
+        t('data.rawSources.detail.refreshed', {
+          refreshed: result.refreshed.length,
+          added: result.added.length,
+          missing: result.missing.length,
+        })
+      );
+      void loadRawTables({ preserveError: true });
+    } catch (err) {
+      showToast('error', formatDataErrorMessage(err, t));
+    } finally {
+      setRefreshingSourceId(null);
+    }
+  };
   const pipelineGroups = useMemo(
     () => dashboard.dashboard.groups.filter((group) => group.scope === 'pipeline'),
     [dashboard.dashboard.groups]
@@ -206,7 +271,34 @@ export function DataViewPage() {
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div className="flex h-full min-h-0 w-full flex-col">
-        {editors.editingPipeline ? (
+        {sourceWizard ? (
+          <RawSourceWizard
+            key={sourceWizard.rebuild ? `rebuild:${sourceWizard.rebuild.source.id}` : 'new'}
+            rebuild={sourceWizard.rebuild}
+            onBack={() => setSourceWizard(null)}
+            onOpenCloud={() => {
+              setSourceWizard(null);
+              navigateToAutomation({ newRawTableName: '' });
+            }}
+            onCreated={() => {
+              void loadRawTables({ preserveError: true });
+              void loadRawSources();
+            }}
+            onOpenData={(tableId) => {
+              void dataClient.getRawTable(tableId).then((table) => {
+                setSourceWizard(null);
+                setOpenSourceId(null);
+                if (table) openRawTableOnData(table);
+              });
+            }}
+            onCreatePipeline={(tableId) => {
+              void dataClient.getRawTable(tableId).then((table) => {
+                setSourceWizard(null);
+                if (table) actions.handleCreatePipelineFromTable(table);
+              });
+            }}
+          />
+        ) : editors.editingPipeline ? (
           <PipelineEditor
             pipeline={editors.editingPipeline}
             resultTables={dashboard.dashboard.resultTables}
@@ -236,6 +328,25 @@ export function DataViewPage() {
             onUpdateRawTableConfig={actions.handleUpdateRawTableConfig}
             onSyncCloudSource={actions.handleRefreshCloudRawTable}
             onDelete={actions.handleDeleteRawTable}
+            initialViewTab={editorInitialTab}
+          />
+        ) : openSource ? (
+          <RawSourceDetail
+            source={openSource}
+            rawTables={sourceTables}
+            onBack={() => setOpenSourceId(null)}
+            onOpenTable={(table) => {
+              setEditorInitialTab(undefined);
+              editors.setFocusedRawTable(table);
+              editors.setEditingRawTableId(table.id);
+            }}
+            onChangeMode={(source, buildMode) =>
+              setSourceWizard({ rebuild: { source, buildMode } })
+            }
+            onChanged={() => {
+              void loadRawTables({ preserveError: true });
+              void loadRawSources();
+            }}
           />
         ) : editors.editingResultTable ? (
           <ResultTableEditor
@@ -327,7 +438,14 @@ export function DataViewPage() {
                       searchQuery={searchQuery}
                       isLoading={isRawTablesLoading}
                       onSearchChange={handleSearchChange}
-                      onCreate={actions.handleCreateRawTableDraft}
+                      onCreate={() =>
+                        dataClient.has('createRawSource')
+                          ? setSourceWizard({})
+                          : actions.handleCreateRawTableDraft()
+                      }
+                      sources={rawSources}
+                      onOpenSource={(source) => setOpenSourceId(source.id)}
+                      onRefreshSource={(source) => void handleRefreshSource(source)}
                       onRefresh={() => rawTables.loadRawTables({ preserveError: true })}
                       onPreviewRawTable={preview.previewRawTable}
                       onDelete={actions.handleDeleteRawTable}
@@ -344,7 +462,9 @@ export function DataViewPage() {
                       onDeleteGroup={(group) => actions.handleDeleteGroup('raw', group)}
                       onGroupPageChange={rawTables.setRawTableGroupPage}
                       isCreateDisabled={!isDataApiAvailable}
-                      actionId={actionId}
+                      actionId={
+                        refreshingSourceId ? `refresh-source:${refreshingSourceId}` : actionId
+                      }
                     />
                   </TabsContent>
                   <TabsContent value="result_tables" className="min-h-0 flex-1 bg-transparent">

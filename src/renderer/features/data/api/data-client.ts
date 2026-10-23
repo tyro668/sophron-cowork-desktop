@@ -96,6 +96,16 @@ export const dataClient = {
     dataApi().previewRawTableSource(...args),
   summarizeRawTableSource: (...args: Parameters<DataApi['summarizeRawTableSource']>) =>
     dataApi().summarizeRawTableSource(...args),
+  listRawSources: () => dataApi().listRawSources(),
+  scanRawSource: (...args: Parameters<DataApi['scanRawSource']>) =>
+    dataApi().scanRawSource(...args),
+  createRawSource: (...args: Parameters<DataApi['createRawSource']>) =>
+    dataApi().createRawSource(...args),
+  refreshRawSource: (id: string) => dataApi().refreshRawSource(id),
+  getRawSourceRebuildImpact: (id: string) => dataApi().getRawSourceRebuildImpact(id),
+  rebuildRawSource: (...args: Parameters<DataApi['rebuildRawSource']>) =>
+    dataApi().rebuildRawSource(...args),
+  deleteRawSource: (id: string) => dataApi().deleteRawSource(id),
 
   // ---- output tables ----
   getResultTable: (...args: Parameters<DataApi['getResultTable']>) =>

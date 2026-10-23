@@ -55,6 +55,14 @@ import type {
   DataRawTableNormalizerDraftProgressEvent,
   DataRawTablePreview,
   DataRawTableSourceSummary,
+  DataRawSource,
+  DataRawSourceScan,
+  DataScanRawSourceInput,
+  DataCreateRawSourceInput,
+  DataRawSourceCreateResult,
+  DataRawSourceRefreshResult,
+  DataRawSourceRebuildImpact,
+  DataRebuildRawSourceInput,
   DataRawTableSourceKind,
   DataRawTableSourceSelection,
   DataImportRawTableInput,
@@ -225,6 +233,13 @@ export interface ElectronApi {
     summarizeRawTableSource: (
       payload: DataSummarizeRawTableSourceInput
     ) => Promise<DataRawTableSourceSummary>;
+    listRawSources: () => Promise<DataRawSource[]>;
+    scanRawSource: (payload: DataScanRawSourceInput) => Promise<DataRawSourceScan>;
+    createRawSource: (payload: DataCreateRawSourceInput) => Promise<DataRawSourceCreateResult>;
+    refreshRawSource: (id: string) => Promise<DataRawSourceRefreshResult>;
+    getRawSourceRebuildImpact: (id: string) => Promise<DataRawSourceRebuildImpact>;
+    rebuildRawSource: (payload: DataRebuildRawSourceInput) => Promise<DataRawSourceCreateResult>;
+    deleteRawSource: (id: string) => Promise<boolean>;
     generateRawTableNormalizerDraft: (
       payload: DataGenerateRawTableNormalizerDraftInput
     ) => Promise<DataGenerateRawTableNormalizerDraftResult>;

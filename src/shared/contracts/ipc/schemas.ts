@@ -766,6 +766,27 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'data.listRawTableNormalizerVersions': [z.looseObject({ artifactId: str })],
   'data.deletePipeline': [str],
   'data.deleteRawTable': [str],
+  'data.listRawSources': [],
+  'data.scanRawSource': [
+    z.looseObject({
+      sourcePath: str,
+      sheetSelector: objOpt,
+      fileSheetOverrides: objOpt,
+      fileRange: strOpt,
+    }),
+  ],
+  'data.createRawSource': [z.looseObject({ sourcePath: str, buildMode: str, name: strOpt })],
+  'data.refreshRawSource': [str],
+  'data.getRawSourceRebuildImpact': [str],
+  'data.rebuildRawSource': [
+    z.looseObject({
+      sourceId: str,
+      sourcePath: str,
+      buildMode: str,
+      confirmDeleteExistingTables: z.boolean(),
+    }),
+  ],
+  'data.deleteRawSource': [str],
   'data.listCloudSpaces': [personalAnalysisConnection.optional()],
   'data.listCloudProjects': [personalAnalysisConnection.extend({ spaceId: str })],
   'data.listCloudTables': [personalAnalysisConnection.extend({ spaceId: str, projectId: str })],

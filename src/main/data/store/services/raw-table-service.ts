@@ -45,8 +45,12 @@ import {
 } from '../input-source';
 import { RawTableRepository } from '../repositories/raw-table-repository';
 import { TableCommitJournal } from '../repositories/table-commit-journal';
+import { RawSourceRepository } from '../repositories/raw-source-repository';
 import { NormalizerService } from './normalizer-service';
-import { basename } from 'path';
+import { basename, relative } from 'path';
+import type { DataColumnTypeInfo } from '../../../../shared/data-field-types';
+import type { DataRawFolderMergeReport } from '../../../../shared/contracts';
+import { getWorkbookSheetNames, resolveSheetBySelector } from '../input-source';
 import { v4 as uuidv4 } from 'uuid';
 
 export class RawTableService {
@@ -57,7 +61,8 @@ export class RawTableService {
     private readonly ctx: DataStoreContext,
     private readonly rawTables: RawTableRepository,
     private readonly normalizerService: NormalizerService,
-    private readonly tableCommits: TableCommitJournal
+    private readonly tableCommits: TableCommitJournal,
+    private readonly sources?: RawSourceRepository
   ) {}
   async importRawTable(input: DataImportRawTableInput): Promise<DataRawTable> {
     return this.ctx.runExclusive(() => this.importRawTableUnsafe(input), 'importRawTable');
@@ -90,11 +95,59 @@ export class RawTableService {
         createdAt: now,
         updatedAt: now,
       });
+      await this.attachToSource(id, name, sourcePath, sourceKind, prepared.config, input);
       return this.rawTables.requireRawTable(id);
     } catch (error) {
       await this.ctx.dropTableIfExists(tableName);
       throw error;
     }
+  }
+  /** Every input table belongs to a source; a plain import gets its own single-table source. */
+  private async attachToSource(
+    id: string,
+    name: string,
+    sourcePath: string,
+    sourceKind: DataRawTableSourceKind,
+    config: DataRawTableConfig,
+    input: DataImportRawTableInput
+  ): Promise<void> {
+    if (!this.sources) return;
+    if (input.sourceId) {
+      await this.sources.attachMember({
+        rawTableId: id,
+        sourceId: input.sourceId,
+        memberKey: input.memberKey ?? null,
+      });
+      return;
+    }
+    const sheet = config.sourceKind === 'excel' ? config.sheetName : null;
+    const sourceId = uuidv4();
+    await this.sources.insertSource({
+      id: sourceId,
+      name,
+      sourcePath,
+      sourceKind,
+      buildMode:
+        sourceKind === 'excel'
+          ? config.sourceKind === 'excel' && config.mergeSheets
+            ? 'excel_merge_sheets'
+            : 'excel_single'
+          : sourceKind === 'folder'
+            ? 'folder_merge'
+            : 'single',
+      config: {
+        autoInclude: false,
+        ...(config.sourceKind === 'excel'
+          ? { sheets: config.mergeSheets ?? (sheet ? [sheet] : []) }
+          : {}),
+        ...(config.sourceKind === 'folder' && config.sheetSelector
+          ? { sheetSelector: config.sheetSelector }
+          : {}),
+        lastScannedAt: this.ctx.now(),
+      },
+      at: this.ctx.now(),
+    });
+    await this.sources.attachMember({ rawTableId: id, sourceId, memberKey: sheet });
   }
   async updateRawTable(input: DataUpdateRawTableInput): Promise<DataRawTable> {
     return this.ctx.runExclusive(
@@ -438,24 +491,10 @@ export class RawTableService {
     const tempTables: string[] = [];
     let previewTable: string | null = null;
     try {
-      const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
-      const forceVarchar = sourceKind === 'folder';
-      for (const [index, filePath] of importFiles.entries()) {
-        const tempTable = tableNameFromId('rawTable_preview', `${uuidv4()}_${index}`);
-        tempTables.push(tempTable);
-        await this.createImportTempTable(tempTable, filePath, index, forceVarchar, config);
-        if (sourceKind === 'folder') {
-          const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
-          if (folderConfig.skipEmptyFiles && (await this.ctx.countRows(tempTable)) === 0) {
-            await this.ctx.dropTableIfExists(tempTable);
-            tempTables.pop();
-            continue;
-          }
-          if (folderConfig.keepSourceFileName) {
-            await this.appendSourceFileNameColumn(tempTable, filePath);
-          }
-        }
-      }
+      tempTables.push(
+        ...(await this.buildSourceTempTables(sourcePath, sourceKind, config, 'rawTable_preview'))
+          .tempTables
+      );
       if (tempTables.length === 0) {
         throw new Error('No Excel or Csv files were found for the input table');
       }
@@ -576,6 +615,7 @@ export class RawTableService {
       // reverse order would orphan an invisible physical table.
       await this.ctx.dropTableIfExists(rawTable.tableName);
       await this.rawTables.deleteRawTableRow(id);
+      await this.sources?.deleteEmptySources();
       return true;
     }, `deleteRawTable:${id}`);
   }
@@ -596,39 +636,158 @@ export class RawTableService {
     }
     const tempTables: string[] = [];
     try {
-      const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
-      const forceVarchar = sourceKind === 'folder';
-      for (const [index, filePath] of importFiles.entries()) {
-        const tempTable = tableNameFromId('rawTable_import', `${uuidv4()}_${index}`);
-        tempTables.push(tempTable);
-        await this.createImportTempTable(tempTable, filePath, index, forceVarchar, config);
-        if (sourceKind === 'folder') {
-          const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
-          if (folderConfig.skipEmptyFiles && (await this.ctx.countRows(tempTable)) === 0) {
-            await this.ctx.dropTableIfExists(tempTable);
-            tempTables.pop();
-            continue;
-          }
-          if (folderConfig.keepSourceFileName) {
-            await this.appendSourceFileNameColumn(tempTable, filePath);
-          }
-        }
+      const built = await this.buildSourceTempTables(
+        sourcePath,
+        sourceKind,
+        config,
+        'rawTable_import'
+      );
+      tempTables.push(...built.tempTables);
+      if (tempTables.length === 0 && built.report) {
+        throw new Error(
+          `No file in the folder can be merged (${built.report.missingSheetFiles.length} missing the sheet, ${built.report.typeConflictFiles.length} with type conflicts)`
+        );
       }
 
       await this.createRawTableTableFromTempTables(tableName, tempTables);
       const rowCount = await this.ctx.countRows(tableName);
       const columnCount = (await this.ctx.getTableColumns(tableName)).length;
+      const nextConfig: DataRawTableConfig =
+        built.report && config.sourceKind === 'folder'
+          ? { ...config, mergeReport: built.report }
+          : config;
       return {
         rowCount,
         columnCount,
         fileCount: tempTables.length,
-        config,
+        config: nextConfig,
       };
     } finally {
       for (const tempTable of tempTables) {
         await this.ctx.dropTableIfExists(tempTable).catch(() => undefined);
       }
     }
+  }
+  /**
+   * Temp tables for one raw table: one per file (folder merge), one per sheet (Excel sheet
+   * merge, with a `_sheet` column) or a single one. Folder merge reads the configured sheet of
+   * each Excel file, adds `_来源文件`, leaves out files without that sheet and files whose column
+   * types conflict with the rest; missing columns are filled with nulls by the UNION BY NAME.
+   */
+  async buildSourceTempTables(
+    sourcePath: string,
+    sourceKind: DataRawTableSourceKind,
+    config: DataRawTableConfig,
+    prefix: string
+  ): Promise<{ tempTables: string[]; report: DataRawFolderMergeReport | null }> {
+    const tempTables: string[] = [];
+    if (config.sourceKind === 'excel' && config.mergeSheets && config.mergeSheets.length > 1) {
+      for (const [index, sheetName] of config.mergeSheets.entries()) {
+        const tempTable = tableNameFromId(prefix, `${uuidv4()}_${index}`);
+        await this.createImportTempTable(tempTable, sourcePath, index, false, {
+          ...config,
+          sheetName,
+        });
+        tempTables.push(tempTable);
+        await this.appendConstantColumn(tempTable, SHEET_SYSTEM_COLUMN, sheetName);
+      }
+      return { tempTables, report: null };
+    }
+    const importFiles = getImportSourceFiles(sourcePath, sourceKind, config);
+    if (sourceKind !== 'folder') {
+      for (const [index, filePath] of importFiles.entries()) {
+        const tempTable = tableNameFromId(prefix, `${uuidv4()}_${index}`);
+        await this.createImportTempTable(tempTable, filePath, index, false, config);
+        tempTables.push(tempTable);
+      }
+      return { tempTables, report: null };
+    }
+    const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
+    const excluded = new Set(folderConfig.excludedFiles ?? []);
+    const report: DataRawFolderMergeReport = {
+      includedFiles: [],
+      missingSheetFiles: [],
+      typeConflictFiles: [],
+      filledColumns: [],
+    };
+    const perFile: Array<{ file: string; table: string; types: DataColumnTypeInfo[] }> = [];
+    for (const [index, filePath] of importFiles.entries()) {
+      const file = relative(sourcePath, filePath) || basename(filePath);
+      if (excluded.has(file)) continue;
+      let fileConfig: DataRawTableConfig = config;
+      if (isExcelFile(filePath)) {
+        const sheetName = resolveSheetBySelector(
+          folderConfig.sheetSelector,
+          getWorkbookSheetNames(filePath)
+        );
+        if (!sheetName) {
+          report.missingSheetFiles.push(file);
+          continue;
+        }
+        fileConfig = { ...defaultExcelConfig(filePath), sheetName };
+      }
+      const tempTable = tableNameFromId(prefix, `${uuidv4()}_${index}`);
+      await this.createImportTempTable(tempTable, filePath, index, true, fileConfig);
+      if (folderConfig.skipEmptyFiles && (await this.ctx.countRows(tempTable)) === 0) {
+        await this.ctx.dropTableIfExists(tempTable);
+        continue;
+      }
+      const types = await this.ctx.inferTableColumnTypes(tempTable);
+      await this.castTempTableToVarchar(tempTable);
+      if (folderConfig.keepSourceFileName) {
+        await this.appendConstantColumn(tempTable, SOURCE_FILE_SYSTEM_COLUMN, basename(filePath));
+      }
+      perFile.push({ file, table: tempTable, types });
+    }
+    const conflicts = findTypeConflicts(perFile.map((f) => ({ file: f.file, types: f.types })));
+    for (const entry of perFile) {
+      const columns = conflicts.get(entry.file);
+      if (columns) {
+        report.typeConflictFiles.push({ file: entry.file, columns });
+        await this.ctx.dropTableIfExists(entry.table);
+        continue;
+      }
+      report.includedFiles.push(entry.file);
+      tempTables.push(entry.table);
+    }
+    report.filledColumns = findFilledColumns(
+      perFile
+        .filter((f) => !conflicts.has(f.file))
+        .map((f) => ({ file: f.file, columns: f.types.map((t) => t.name) }))
+    );
+    return { tempTables, report };
+  }
+  /** Folder files are stacked as text, then the merged table is re-typed once. */
+  private async castTempTableToVarchar(tableName: string): Promise<void> {
+    const types = await this.ctx.getTableColumnTypes(tableName);
+    if (types.every((column) => column.storageType.toUpperCase() === 'VARCHAR')) return;
+    const casted = tableNameFromId('rawTable_cast', uuidv4());
+    const projection = types
+      .map(
+        (column) =>
+          `CAST(${quoteValueIdentifier(column.name)} AS VARCHAR) AS ${quoteValueIdentifier(column.name)}`
+      )
+      .join(', ');
+    await this.ctx.runSql(
+      `CREATE TEMP TABLE ${quoteIdentifier(casted)} AS SELECT ${projection} FROM ${quoteIdentifier(tableName)}`
+    );
+    await this.ctx.dropTableIfExists(tableName);
+    await this.ctx.runSql(
+      `ALTER TABLE ${quoteIdentifier(casted)} RENAME TO ${quoteIdentifier(tableName)}`
+    );
+  }
+  async appendConstantColumn(tableName: string, columnName: string, value: string): Promise<void> {
+    const existing = new Set(
+      (await this.ctx.getTableColumns(tableName)).map((column) => column.toLowerCase())
+    );
+    if (existing.has(columnName.toLowerCase())) return;
+    await this.ctx.runSql(
+      `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteValueIdentifier(columnName)} VARCHAR`
+    );
+    await this.ctx.runSql(
+      `UPDATE ${quoteIdentifier(tableName)} SET ${quoteValueIdentifier(columnName)} = $value`,
+      { value }
+    );
   }
   async createImportTempTable(
     tableName: string,
@@ -745,4 +904,67 @@ export class RawTableService {
       await this.ctx.dropTableIfExists(unionTable).catch(() => undefined);
     }
   }
+}
+
+/** System column naming the file each merged row came from. */
+export const SOURCE_FILE_SYSTEM_COLUMN = '_来源文件';
+/** System column naming the sheet each merged row came from. */
+export const SHEET_SYSTEM_COLUMN = '_sheet';
+
+type TypeFamily = 'number' | 'date' | 'boolean' | 'text';
+function typeFamily(type: string): TypeFamily {
+  if (type === 'integer' || type === 'float' || type === 'decimal') return 'number';
+  if (type === 'date' || type === 'datetime') return 'date';
+  if (type === 'boolean') return 'boolean';
+  return 'text';
+}
+
+/**
+ * A file conflicts when one of its columns has a different type family than most files
+ * (ties go to the earliest file). Columns only some files have are not conflicts.
+ */
+export function findTypeConflicts(
+  files: Array<{ file: string; types: Array<{ name: string; type: string }> }>
+): Map<string, string[]> {
+  const byColumn = new Map<string, Array<{ file: string; family: TypeFamily }>>();
+  for (const entry of files) {
+    for (const column of entry.types) {
+      const list = byColumn.get(column.name) ?? [];
+      list.push({ file: entry.file, family: typeFamily(column.type) });
+      byColumn.set(column.name, list);
+    }
+  }
+  const conflicts = new Map<string, string[]>();
+  for (const [column, list] of byColumn) {
+    if (list.length < 2) continue;
+    const counts = new Map<TypeFamily, number>();
+    for (const item of list) counts.set(item.family, (counts.get(item.family) ?? 0) + 1);
+    if (counts.size < 2) continue;
+    let winner = list[0].family;
+    for (const [family, count] of counts) {
+      if (count > (counts.get(winner) ?? 0)) winner = family;
+    }
+    for (const item of list) {
+      if (item.family === winner) continue;
+      conflicts.set(item.file, [...(conflicts.get(item.file) ?? []), column]);
+    }
+  }
+  return conflicts;
+}
+
+/** Columns some merged files lack (their values become null), with the files that lack them. */
+export function findFilledColumns(
+  files: Array<{ file: string; columns: string[] }>
+): Array<{ name: string; missingInFiles: string[] }> {
+  const all: string[] = [];
+  for (const entry of files) {
+    for (const column of entry.columns) if (!all.includes(column)) all.push(column);
+  }
+  return all
+    .filter((column) => column !== SOURCE_FILE_SYSTEM_COLUMN)
+    .map((name) => ({
+      name,
+      missingInFiles: files.filter((f) => !f.columns.includes(name)).map((f) => f.file),
+    }))
+    .filter((entry) => entry.missingInFiles.length > 0);
 }

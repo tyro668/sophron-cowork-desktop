@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
+  ChevronRight,
+  FileSpreadsheet,
+  Folder,
   CalendarClock,
   CloudDownload,
   Eye,
@@ -15,7 +18,7 @@ import {
   Trash2,
   Workflow,
 } from 'lucide-react';
-import type { DataRawTable, DataGroup } from '../../types';
+import type { DataRawTable, DataGroup, DataRawSource } from '../../types';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
@@ -77,6 +80,9 @@ export function RawTablesPanel({
   onGroupPageChange,
   isCreateDisabled,
   actionId,
+  sources = [],
+  onOpenSource,
+  onRefreshSource,
 }: {
   rawTables: DataRawTable[];
   drafts: RawTableDraft[];
@@ -103,6 +109,10 @@ export function RawTablesPanel({
   onGroupPageChange: (groupKey: string, page: number) => void;
   isCreateDisabled: boolean;
   actionId: string | null;
+  /** Raw-table sources; multi-member sources render as a header row with child rows (layout A). */
+  sources?: DataRawSource[];
+  onOpenSource?: (source: DataRawSource) => void;
+  onRefreshSource?: (source: DataRawSource) => void;
 }) {
   const { t } = useTranslation();
   const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
@@ -124,19 +134,15 @@ export function RawTablesPanel({
         ? []
         : [
             ...pageDrafts.map((draft) => ({ kind: 'draft' as const, id: draft.id, draft })),
-            ...rawTables.map((rawTable) => ({
-              kind: 'rawTable' as const,
-              id: rawTable.id,
-              rawTable,
-            })),
+            ...groupBySource(rawTables, sources),
           ],
-    [rawTables, isLoading, pageDrafts]
+    [rawTables, isLoading, pageDrafts, sources]
   );
   const pageRows = visibleRows;
   const pageSections = useMemo(
     () =>
       buildGroupSections(pageRows, groups, (row) =>
-        row.kind === 'rawTable' ? (row.rawTable?.groupId ?? null) : null
+        row.kind === 'rawTable' || row.kind === 'source' ? (row.rawTable?.groupId ?? null) : null
       ),
     [pageRows, groups]
   );
@@ -163,6 +169,11 @@ export function RawTablesPanel({
   }, [isLoading, selectedRawTableId, visibleRows]);
 
   const renderRow = (row: (typeof visibleRows)[number], indented = false) => {
+    if (row.kind === 'source') {
+      return renderSourceRow(row.source, row.members, indented);
+    }
+    const isChild = row.kind === 'rawTable' && row.child;
+    indented = indented || !!isChild;
     const rawTable = row.kind === 'rawTable' ? row.rawTable : null;
     const draft = row.kind === 'draft' ? row.draft : null;
     const sourceKind = rawTable ? rawTable.sourceKind : 'draft';
@@ -235,9 +246,91 @@ export function RawTablesPanel({
         </td>
         <td className="px-2">
           <RawTableStatusBadge
-            label={draft ? t('data.rawTables.status.draft') : t('data.rawTables.status.available')}
-            tone={draft ? 'warning' : 'success'}
+            label={
+              draft
+                ? t('data.rawTables.status.draft')
+                : rawTable?.memberStatus === 'missing'
+                  ? t('data.rawSources.list.memberMissing')
+                  : t('data.rawTables.status.available')
+            }
+            tone={draft || rawTable?.memberStatus === 'missing' ? 'warning' : 'success'}
           />
+        </td>
+      </tr>
+    );
+  };
+
+  const renderSourceRow = (source: DataRawSource, members: DataRawTable[], indented: boolean) => {
+    const missing = members.filter((member) => member.memberStatus === 'missing').length;
+    const merged = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
+    const rows = members.reduce((sum, member) => sum + member.rowCount, 0);
+    const updatedAt = Math.max(...members.map((member) => member.updatedAt));
+    return (
+      <tr
+        key={`source:${source.id}`}
+        data-testid="raw-source-group-row"
+        onDoubleClick={() => onOpenSource?.(source)}
+        className="h-11 border-b border-dashed border-border-muted/85 bg-[var(--data-grid-header-surface)]"
+      >
+        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
+          <div className="flex min-w-0 items-center gap-2">
+            {source.sourceKind === 'folder' ? (
+              <Folder className="h-4 w-4 flex-shrink-0 text-accent" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
+            )}
+            <button
+              type="button"
+              className="min-w-0 truncate text-[13px] font-medium text-text-primary hover:text-accent"
+              title={source.sourcePath}
+              onClick={() => onOpenSource?.(source)}
+            >
+              {source.name}
+            </button>
+            <span className="flex-shrink-0 rounded bg-accent-muted px-1.5 py-0.5 text-[11px] text-accent">
+              {merged
+                ? t('data.rawSources.list.mergeBadge')
+                : t('data.rawSources.list.tablesBadge', { count: source.memberIds.length })}
+            </span>
+            <span className="min-w-0 truncate text-[11.5px] text-text-muted">
+              {source.sourcePath}
+            </span>
+          </div>
+        </td>
+        <td className="px-2" />
+        <td className="whitespace-nowrap px-2 pr-6 text-right text-[12.5px] tabular-nums text-text-muted">
+          {rows.toLocaleString('en-US')}
+        </td>
+        <td className="px-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-[12.5px] text-accent disabled:opacity-50"
+            disabled={actionId === `refresh-source:${source.id}`}
+            onClick={() => onRefreshSource?.(source)}
+            data-testid="raw-source-group-refresh"
+          >
+            <RefreshCw className="h-3 w-3" />
+            {t('data.rawSources.list.refreshSource')}
+          </button>
+          <button
+            type="button"
+            className="ml-3 inline-flex items-center text-[12.5px] text-text-secondary hover:text-accent"
+            onClick={() => onOpenSource?.(source)}
+          >
+            {t('data.rawSources.list.sourceDetail')}
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </td>
+        <td className="whitespace-nowrap px-2 text-[12.5px] text-text-muted">
+          {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
+        </td>
+        <td className="px-2">
+          {missing > 0 ? (
+            <RawTableStatusBadge
+              label={t('data.rawSources.list.missingMembers', { count: missing })}
+              tone="warning"
+            />
+          ) : null}
         </td>
       </tr>
     );
@@ -508,6 +601,58 @@ export function RawTablesPanel({
       )}
     </div>
   );
+}
+
+type PanelRow =
+  | { kind: 'rawTable'; id: string; rawTable: DataRawTable; child?: boolean }
+  | {
+      kind: 'source';
+      id: string;
+      source: DataRawSource;
+      members: DataRawTable[];
+      rawTable: DataRawTable;
+    };
+
+/**
+ * Layout A: a source with more than one member table becomes a header row followed by its
+ * members as flush child rows; single-table sources stay one plain row.
+ */
+export function groupBySource(rawTables: DataRawTable[], sources: DataRawSource[]): PanelRow[] {
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const membersBySource = new Map<string, DataRawTable[]>();
+  for (const table of rawTables) {
+    const source = table.sourceId ? byId.get(table.sourceId) : undefined;
+    if (!source || source.memberIds.length <= 1) continue;
+    const list = membersBySource.get(source.id) ?? [];
+    list.push(table);
+    membersBySource.set(source.id, list);
+  }
+  const rows: PanelRow[] = [];
+  const emitted = new Set<string>();
+  for (const table of rawTables) {
+    const members = table.sourceId ? membersBySource.get(table.sourceId) : undefined;
+    if (!members) {
+      rows.push({ kind: 'rawTable', id: table.id, rawTable: table });
+      continue;
+    }
+    if (emitted.has(table.sourceId!)) continue;
+    emitted.add(table.sourceId!);
+    const source = byId.get(table.sourceId!)!;
+    const ordered = [...members].sort(
+      (a, b) => source.memberIds.indexOf(a.id) - source.memberIds.indexOf(b.id)
+    );
+    rows.push({
+      kind: 'source',
+      id: `source:${source.id}`,
+      source,
+      members: ordered,
+      rawTable: table,
+    });
+    for (const member of ordered) {
+      rows.push({ kind: 'rawTable', id: member.id, rawTable: member, child: true });
+    }
+  }
+  return rows;
 }
 
 export function RawTableEditor(props: RawTableEditorProps) {

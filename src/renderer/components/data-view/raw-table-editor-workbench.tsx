@@ -115,6 +115,8 @@ export type RawTableEditorProps = {
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
   /** Opens the delete confirmation (never deletes without the dialog). */
   onDelete?: (rawTable: DataRawTable) => void | Promise<void>;
+  /** Tab to show first (the source wizard opens a new table on its Data tab). */
+  initialViewTab?: 'config' | 'data' | 'automation';
 };
 
 export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
@@ -139,6 +141,7 @@ export function RawTableEditorWorkbench({
   onUpdateRawTableConfig,
   onSyncCloudSource,
   onDelete,
+  initialViewTab,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
@@ -185,7 +188,9 @@ export function RawTableEditorWorkbench({
       setExportBusy(false);
     }
   };
-  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>('config');
+  const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>(
+    initialViewTab ?? 'config'
+  );
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Import / source-change failure, shown inline under the source row (B11).
