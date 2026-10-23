@@ -104,6 +104,8 @@ export class DataToolService {
     Omit<DataToolExecutionContext, 'toolCallId' | 'signal' | 'onActivity'>
   >();
   private readonly sessionResources = new Map<string, SessionResourceLedger>();
+  /** Input tables created by data tools in each conversation (only these may be deleted by the agent). */
+  private readonly sessionCreatedRawTables = new Map<string, Set<string>>();
 
   constructor(
     private readonly commandService: DataCommandService,
@@ -133,6 +135,7 @@ export class DataToolService {
     this.executionContexts.delete(sessionId);
     this.analysisReceipts.deleteForSession(sessionId);
     this.sessionResources.delete(sessionId);
+    this.sessionCreatedRawTables.delete(sessionId);
   }
 
   hasSupportedAnalysis(sessionId: string): boolean {
@@ -155,6 +158,28 @@ export class DataToolService {
     details: unknown
   ): void {
     if (!sessionId) return;
+    if (
+      (toolName === 'data_create_raw_table' ||
+        toolName === 'data_create_raw_table_with_processing_strategy') &&
+      details &&
+      typeof details === 'object'
+    ) {
+      const created = (details as { rawTable?: { id?: unknown } }).rawTable?.id;
+      if (typeof created === 'string' && created) {
+        const set = this.sessionCreatedRawTables.get(sessionId) ?? new Set<string>();
+        set.add(created);
+        this.sessionCreatedRawTables.set(sessionId, set);
+      }
+    }
+    if (toolName === 'data_delete_raw_table') {
+      const deleted = (details as { deletedRawTableId?: unknown } | undefined)?.deletedRawTableId;
+      const ledger = this.sessionResources.get(sessionId);
+      if (typeof deleted === 'string' && ledger) {
+        ledger.RawTable.delete(deleted);
+        if (ledger.current.RawTable?.id === deleted) delete ledger.current.RawTable;
+      }
+      return;
+    }
     const ledger = this.sessionResources.get(sessionId) ?? {
       RawTable: new Map<string, SessionResourceEntry>(),
       ResultTable: new Map<string, SessionResourceEntry>(),
@@ -356,6 +381,32 @@ export class DataToolService {
         .join('\n\n'),
       result
     );
+  }
+
+  /**
+   * Delete an input table the agent created earlier in the same conversation (e.g. a wrong
+   * import). Tables from elsewhere, or still used by a data pipeline, are refused; the tool
+   * name goes through the destructive-operation permission review like other deletes.
+   */
+  async deleteRawTableCreatedInSession(
+    sessionId: string | undefined,
+    input: { id: string; reason?: string }
+  ): Promise<DataToolResult> {
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    const created = sessionId ? this.sessionCreatedRawTables.get(sessionId) : undefined;
+    if (!id || !created?.has(id)) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        `Input table ${id || '(missing id)'} was not created in this conversation; only tables created by this task can be deleted here. Ask the user to delete other tables from the data page.`
+      );
+    }
+    const result = await this.commandService.deleteRawTableCreatedByAgent(id);
+    created.delete(id);
+    return toolResult(`Deleted input table: ${result.name} (${id})`, {
+      deletedRawTableId: id,
+      name: result.name,
+      reason: input.reason ?? null,
+    });
   }
 
   async updateRawTable(input: UpdateRawTableCommand): Promise<DataToolResult> {

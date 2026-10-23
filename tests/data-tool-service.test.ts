@@ -41,6 +41,37 @@ function firstText(result: AgentToolResult<unknown> | undefined): string | undef
 }
 
 describe('DataToolService', () => {
+  it('only deletes input tables created earlier in the same conversation', async () => {
+    const deleteRawTableCreatedByAgent = vi.fn(async () => ({ name: '九月目标' }));
+    const service = new DataToolService(
+      { deleteRawTableCreatedByAgent } as unknown as DataCommandService,
+      new RequirementAnalysisReceiptStore()
+    );
+    await expect(
+      service.deleteRawTableCreatedInSession('s1', { id: 'other_table' })
+    ).rejects.toThrow(/not created in this conversation/);
+    service.rememberResolvedResources(
+      's1',
+      'data_create_raw_table_with_processing_strategy',
+      {},
+      {
+        rawTable: { id: 'wrong_sheet', name: '九月目标' },
+      }
+    );
+    await expect(
+      service.deleteRawTableCreatedInSession('s2', { id: 'wrong_sheet' })
+    ).rejects.toThrow(/not created in this conversation/);
+    const result = await service.deleteRawTableCreatedInSession('s1', {
+      id: 'wrong_sheet',
+      reason: 'imported the wrong sheet',
+    });
+    expect(deleteRawTableCreatedByAgent).toHaveBeenCalledWith('wrong_sheet');
+    expect(result.content[0]?.text).toContain('Deleted input table');
+    await expect(
+      service.deleteRawTableCreatedInSession('s1', { id: 'wrong_sheet' })
+    ).rejects.toThrow(/not created in this conversation/);
+  });
+
   it('formats command results as short tool content with structured details', async () => {
     const rawTable: DataRawTable = {
       id: 'rawTable_1',

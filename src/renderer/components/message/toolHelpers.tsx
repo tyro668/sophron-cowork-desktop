@@ -127,6 +127,7 @@ function getDataToolLabel(name: string, input: Record<string, unknown>): string 
   if (name === 'data_list_raw_tables') return 'List raw tables';
   if (name === 'data_create_raw_table') return `Create raw table${nameArg ? ` ${nameArg}` : ''}`;
   if (name === 'data_update_raw_table') return `Update raw table${id ? ` ${id}` : ''}`;
+  if (name === 'data_delete_raw_table') return `Delete raw table${id ? ` ${id}` : ''}`;
   if (name === 'data_list_result_tables') return 'List result tables';
   if (name === 'data_create_result_table')
     return `Create result table${nameArg ? ` ${nameArg}` : ''}`;

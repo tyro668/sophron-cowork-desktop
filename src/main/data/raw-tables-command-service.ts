@@ -1,4 +1,5 @@
 import { extname } from 'path';
+import { getWorkbookSheetNames } from './store/input-source';
 import type { DataPipelineStore } from './data-pipeline-store';
 import {
   DataCommandError,
@@ -71,12 +72,17 @@ export class RawTablesCommandService {
       await this.ensureUniqueRawTableName(name);
     }
 
+    const sourceKind = input.folderPath
+      ? input.sourceKind
+      : resolveInputSourceKindForCommand(input, sourcePath);
+    const config = withRequestedExcelSheet(input.config, sourceKind, sourcePath, input.sheetName);
+
     try {
       const rawTable = await this.store.importRawTable({
         filePath: sourcePath,
         name,
-        sourceKind: input.sourceKind,
-        config: input.config,
+        sourceKind: input.sourceKind ?? (config?.sourceKind === 'excel' ? 'excel' : undefined),
+        config,
       });
       const preview = await this.previewIfRequested(rawTable.id, input.previewRows);
       return { rawTable, preview };
@@ -90,7 +96,15 @@ export class RawTablesCommandService {
   ): Promise<CreateRawTableWithProcessingStrategyResult> {
     const sourcePath = normalizeSourcePathInput(input);
     const sourceKind = resolveInputSourceKindForCommand(input, sourcePath);
-    const baseConfig = withRawTableDataProcessing(input.config, sourceKind, { strategy: 'auto' });
+    const requestedConfig = withRequestedExcelSheet(
+      input.config,
+      sourceKind,
+      sourcePath,
+      input.sheetName
+    );
+    const baseConfig = withRawTableDataProcessing(requestedConfig, sourceKind, {
+      strategy: 'auto',
+    });
 
     if (input.processingStrategy.strategy === 'auto') {
       const result = await this.createRawTable({
@@ -98,6 +112,7 @@ export class RawTablesCommandService {
         sourceKind,
         filePath: input.folderPath ? undefined : sourcePath,
         folderPath: input.folderPath ? sourcePath : undefined,
+        sheetName: undefined,
         config: baseConfig,
       });
       return {
@@ -139,7 +154,7 @@ export class RawTablesCommandService {
     const published = await this.publishRawTableNormalizerVersion({
       versionId: draft.version.id,
     });
-    const customConfig = withRawTableDataProcessing(input.config, sourceKind, {
+    const customConfig = withRawTableDataProcessing(requestedConfig, sourceKind, {
       strategy: 'customize',
       rulePrompt,
       artifactId: published.artifact.id,
@@ -158,6 +173,7 @@ export class RawTablesCommandService {
       sourceKind,
       filePath: input.folderPath ? undefined : sourcePath,
       folderPath: input.folderPath ? sourcePath : undefined,
+      sheetName: undefined,
       config: customConfig,
     });
     return {
@@ -173,6 +189,33 @@ export class RawTablesCommandService {
     };
   }
 
+  async deleteRawTableCreatedByAgent(id: string): Promise<{ name: string }> {
+    const existing = await this.store.getRawTableRecord(id);
+    if (!existing) {
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Input table not found: ${id}`);
+    }
+    const dashboard = await this.store.getDashboard({
+      includeSummary: false,
+      includePipelines: false,
+      includeRawTables: true,
+      includeResultTables: false,
+      rawTableSourceKind: 'all',
+      rawTableLimit: 1000,
+      rawTableOffset: 0,
+    });
+    const related =
+      dashboard.rawTables.find((table) => table.id === id)?.relatedPipelineNames ??
+      existing.relatedPipelineNames;
+    if (related.length > 0) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        `Input table ${existing.name} is used by data pipeline(s): ${related.join(', ')}; it cannot be deleted by the agent`
+      );
+    }
+    await this.store.deleteRawTable(id);
+    return { name: existing.name };
+  }
+
   async updateRawTable(input: UpdateRawTableCommand): Promise<RawTableResult> {
     const existing = await this.store.getRawTableRecord(input.id);
     if (!existing) {
@@ -183,13 +226,25 @@ export class RawTablesCommandService {
       await this.ensureUniqueRawTableName(name, input.id);
     }
     const sourcePath = input.filePath || input.folderPath;
+    const effectivePath = sourcePath || existing.sourcePath;
+    const effectiveKind = input.sourceKind ?? existing.sourceKind;
+    const requestedSheet = requestedExcelSheet(input.config, input.sheetName);
+    const config = requestedSheet
+      ? withRequestedExcelSheet(
+          input.config ??
+            (existing.inputConfig?.sourceKind === 'excel' ? existing.inputConfig : undefined),
+          effectiveKind,
+          effectivePath,
+          requestedSheet
+        )
+      : input.config;
     try {
       const rawTable = await this.store.updateRawTable({
         id: input.id,
         name,
-        filePath: sourcePath,
-        sourceKind: input.sourceKind,
-        config: input.config,
+        filePath: sourcePath ?? (requestedSheet ? existing.sourcePath : undefined),
+        sourceKind: input.sourceKind ?? (requestedSheet ? effectiveKind : undefined),
+        config,
       });
       const preview = await this.previewIfRequested(rawTable.id, input.previewRows);
       return { rawTable, preview };
@@ -445,13 +500,71 @@ function resolveInputSourceKindForCommand(
     : 'csv';
 }
 
+function requestedExcelSheet(
+  config: DataRawTableConfig | undefined,
+  sheetName: string | undefined
+): string | undefined {
+  const direct = typeof sheetName === 'string' ? sheetName.trim() : '';
+  if (direct) return direct;
+  const record = config as { sourceKind?: unknown; sheetName?: unknown } | undefined;
+  if (record && (record.sourceKind === undefined || record.sourceKind === 'excel')) {
+    const fromConfig = typeof record.sheetName === 'string' ? record.sheetName.trim() : '';
+    if (fromConfig) return fromConfig;
+  }
+  return undefined;
+}
+
+/**
+ * Agents often pass `{ sheetName }` without `sourceKind`, or a top-level sheetName.
+ * Normalize both into an explicit excel config and fail loudly (listing the
+ * workbook's sheets) when the sheet does not exist instead of importing sheet 1.
+ */
+export function withRequestedExcelSheet(
+  config: DataRawTableConfig | undefined,
+  sourceKind: DataRawTableSourceKind | undefined,
+  sourcePath: string,
+  sheetName: string | undefined
+): DataRawTableConfig | undefined {
+  const requested = requestedExcelSheet(config, sheetName);
+  if (!requested) return config;
+  if (sourceKind !== 'excel') {
+    throw new DataCommandError(
+      'INVALID_ARGUMENT',
+      `sheetName "${requested}" only applies to Excel sources (source kind: ${sourceKind ?? 'unknown'})`
+    );
+  }
+  let sheetNames: string[] = [];
+  try {
+    sheetNames = getWorkbookSheetNames(sourcePath);
+  } catch (error) {
+    throw toCommandError(error, 'FILE_ACCESS_DENIED');
+  }
+  if (!sheetNames.includes(requested)) {
+    throw new DataCommandError(
+      'INVALID_ARGUMENT',
+      `Sheet "${requested}" not found in ${sourcePath}. Available sheets: ${sheetNames.join(', ') || '(none)'}`
+    );
+  }
+  const base = (config ?? {}) as Record<string, unknown>;
+  return {
+    ...base,
+    sourceKind: 'excel',
+    sheetName: requested,
+    sheetNames,
+  } as DataRawTableConfig;
+}
+
 function withRawTableDataProcessing(
   config: DataRawTableConfig | undefined,
   sourceKind: DataRawTableSourceKind,
   dataProcessing: DataRawTableProcessingConfig
 ): DataRawTableConfig {
   if (sourceKind === 'excel') {
-    const excelConfig = config?.sourceKind === 'excel' ? config : undefined;
+    const loose = config as { sourceKind?: unknown } | undefined;
+    const excelConfig =
+      config && (loose?.sourceKind === 'excel' || loose?.sourceKind === undefined)
+        ? (config as Extract<DataRawTableConfig, { sourceKind: 'excel' }>)
+        : undefined;
     return {
       sourceKind: 'excel',
       sheetName: excelConfig?.sheetName ?? null,

@@ -234,6 +234,9 @@ export function createDataCustomTools(
         folderPath: Type.Optional(
           Type.String({ description: TOOL_SCHEMA_COPY.data.authorizedFolderPath })
         ),
+        sheetName: Type.Optional(
+          Type.String({ minLength: 1, description: TOOL_SCHEMA_COPY.data.sheetName })
+        ),
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
       }),
@@ -251,6 +254,9 @@ export function createDataCustomTools(
         ),
         folderPath: Type.Optional(
           Type.String({ description: TOOL_SCHEMA_COPY.data.authorizedFolderPath })
+        ),
+        sheetName: Type.Optional(
+          Type.String({ minLength: 1, description: TOOL_SCHEMA_COPY.data.sheetName })
         ),
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
@@ -270,11 +276,27 @@ export function createDataCustomTools(
         sourceKind: SourceKindSchema,
         filePath: Type.Optional(Type.String()),
         folderPath: Type.Optional(Type.String()),
+        sheetName: Type.Optional(
+          Type.String({ minLength: 1, description: TOOL_SCHEMA_COPY.data.sheetName })
+        ),
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
       }),
       execute: async (_toolCallId, params) =>
         dataToolService.updateRawTable(resolveLocalSourcePathParams(params, context) as never),
+    },
+    {
+      name: 'data_delete_raw_table',
+      ...DATA_TOOL_COPY.data_delete_raw_table,
+      parameters: Type.Object({
+        id: Type.String({ minLength: 1 }),
+        reason: Type.Optional(Type.String({ description: TOOL_SCHEMA_COPY.data.deleteReason })),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.deleteRawTableCreatedInSession(
+          executionContext?.sessionId ?? context?.sessionId,
+          params as { id: string; reason?: string }
+        ),
     },
     {
       name: 'data_summarize_raw_table_source',

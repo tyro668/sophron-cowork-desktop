@@ -2637,6 +2637,72 @@ describe('constrained workflow plans and resource bindings', () => {
     expect(run.pipeline.status).toBe('completed');
   });
 
+  it('imports the requested Excel sheet and rejects unknown sheets with the sheet list', async () => {
+    const { service, tempRoot } = createService();
+    const workbookPath = path.join(tempRoot, 'stores.xlsx');
+    writeWorkbook(workbookPath, {
+      门店: [
+        ['门店编码', '门店名称'],
+        ['S01', '一店'],
+        ['S02', '二店'],
+      ],
+      九月目标: [
+        ['门店编码', '月目标'],
+        ['S01', 100],
+      ],
+    });
+    const viaConfig = await service.createRawTableWithProcessingStrategy({
+      name: '九月目标',
+      sourceKind: 'excel',
+      filePath: workbookPath,
+      config: { sheetName: '九月目标' } as never,
+      processingStrategy: { strategy: 'auto' },
+    });
+    expect(viaConfig.rawTable.rowCount).toBe(1);
+    expect(viaConfig.rawTable.inputConfig).toMatchObject({ sheetName: '九月目标' });
+    const viaParam = await service.createRawTable({
+      name: '门店',
+      filePath: workbookPath,
+      sheetName: '门店',
+    });
+    expect(viaParam.rawTable.rowCount).toBe(2);
+    await expect(
+      service.createRawTable({ name: 'x', filePath: workbookPath, sheetName: '不存在' })
+    ).rejects.toThrow(/Available sheets: 门店, 九月目标/);
+    const switched = await service.updateRawTable({
+      id: viaParam.rawTable.id,
+      sheetName: '九月目标',
+    });
+    expect(switched.rawTable.rowCount).toBe(1);
+  });
+
+  it('lets the agent delete only unused input tables', async () => {
+    const { service, tempRoot } = createService();
+    const { orders } = await seedTables(service, tempRoot);
+    const csv = path.join(tempRoot, 'tmp.csv');
+    fs.writeFileSync(csv, 'a\n1\n', 'utf8');
+    const temp = await service.createRawTable({ name: 'tmp', filePath: csv });
+    const pipeline = await service.createPipeline({ name: 'uses orders' });
+    await service.applyWorkflowPlan({
+      pipelineId: pipeline.pipeline.id,
+      plan: {
+        version: 'workflow-plan/v1',
+        nodes: [
+          { id: 'orders', type: 'input', config: { source: 'rawTable', alias: 'orders' } },
+          { id: 'sink', type: 'output', config: { mode: 'replace' } },
+        ],
+        edges: [{ sourceNodeId: 'orders', targetNodeId: 'sink' }],
+      },
+      inputResources: { orders: orders.id },
+    });
+    await expect(service.deleteRawTableCreatedByAgent(orders.id)).rejects.toThrow(
+      /used by data pipeline/
+    );
+    await expect(service.deleteRawTableCreatedByAgent(temp.rawTable.id)).resolves.toEqual({
+      name: 'tmp',
+    });
+  });
+
   it('keeps incremental settings when binding an input table', async () => {
     const { service, tempRoot } = createService();
     const { orders, output } = await seedTables(service, tempRoot);
