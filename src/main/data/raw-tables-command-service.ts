@@ -22,6 +22,8 @@ import {
   type SummarizeRawTableSourceCommand,
   type SummarizeRawTableSourceResult,
   type UpdateRawTableCommand,
+  type RefreshRawSourceCommand,
+  type RefreshRawSourceResult,
 } from './data-command-types';
 import {
   createNormalizerDependencyLockHash,
@@ -66,6 +68,9 @@ export class RawTablesCommandService {
   }
 
   async createRawTable(input: CreateRawTableCommand): Promise<RawTableResult> {
+    if (wantsSourceBuild(input)) {
+      return this.createRawTablesFromSource(input);
+    }
     const sourcePath = normalizeSourcePathInput(input);
     const name = normalizeOptionalName(input.name);
     if (name) {
@@ -86,6 +91,69 @@ export class RawTablesCommandService {
       });
       const preview = await this.previewIfRequested(rawTable.id, input.previewRows);
       return { rawTable, preview };
+    } catch (error) {
+      throw toCommandError(error, 'FILE_ACCESS_DENIED');
+    }
+  }
+
+  /** 1:N creation: several sheets, merged sheets, or a folder build mode. */
+  private async createRawTablesFromSource(input: CreateRawTableCommand): Promise<RawTableResult> {
+    const sourcePath = normalizeSourcePathInput(input);
+    const name = normalizeOptionalName(input.name);
+    const sheets = (input.sheetNames ?? []).map((sheet) => sheet.trim()).filter(Boolean);
+    const isFolder = Boolean(input.folderPath) || input.sourceKind === 'folder';
+    const buildMode = isFolder
+      ? input.folderMode === 'per_file'
+        ? 'folder_per_file'
+        : 'folder_merge'
+      : input.mergeSheets
+        ? 'excel_merge_sheets'
+        : sheets.length > 1
+          ? 'excel_per_sheet'
+          : 'excel_single';
+    if (!isFolder && sheets.length === 0) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'sheetNames must list at least one sheet');
+    }
+    try {
+      const result = await this.store.createRawSource({
+        sourcePath,
+        buildMode,
+        sheets: isFolder ? undefined : sheets,
+        members:
+          buildMode === 'excel_single' ? [{ key: sheets[0], name: name ?? undefined }] : undefined,
+        tableName: name ?? undefined,
+        sheetSelector: input.sheetSelector,
+      });
+      const first = result.tables[0];
+      const preview = first
+        ? await this.previewIfRequested(first.id, input.previewRows)
+        : undefined;
+      return {
+        rawTable: first,
+        rawTables: result.tables,
+        source: result.source,
+        skipped: result.skipped,
+        preview,
+      };
+    } catch (error) {
+      throw toCommandError(error, 'FILE_ACCESS_DENIED');
+    }
+  }
+
+  /** Re-import every table of a source (sheets / files), adding new members when enabled. */
+  async refreshRawSource(input: RefreshRawSourceCommand): Promise<RefreshRawSourceResult> {
+    const id = input.id?.trim();
+    if (!id) throw new DataCommandError('INVALID_ARGUMENT', 'id is required');
+    let sourceId = (await this.store.getRawSource(id))?.id;
+    if (!sourceId) {
+      const table = await this.store.getRawTableRecord(id);
+      sourceId = table?.sourceId ?? undefined;
+    }
+    if (!sourceId) {
+      throw new DataCommandError('RESOURCE_NOT_FOUND', `Raw table or source not found: ${id}`);
+    }
+    try {
+      return await this.store.refreshRawSource(sourceId);
     } catch (error) {
       throw toCommandError(error, 'FILE_ACCESS_DENIED');
     }
@@ -639,4 +707,13 @@ function toCommandError(error: unknown, fallbackCode: DataCommandError['code']):
     return new DataCommandError('RESOURCE_NOT_FOUND', message);
   }
   return new DataCommandError(fallbackCode, message || 'Data command failed');
+}
+
+function wantsSourceBuild(input: CreateRawTableCommand): boolean {
+  return (
+    (input.sheetNames?.length ?? 0) > 0 ||
+    Boolean(input.mergeSheets) ||
+    Boolean(input.folderMode) ||
+    Boolean(input.sheetSelector)
+  );
 }

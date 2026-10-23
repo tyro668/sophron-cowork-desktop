@@ -7,6 +7,7 @@ import {
   createDataPipelineStore,
   type DataPipelineStore,
 } from '../../src/main/data/data-pipeline-store';
+import { RawTablesCommandService } from '../../src/main/data/raw-tables-command-service';
 import {
   findFilledColumns,
   findTypeConflicts,
@@ -273,5 +274,40 @@ describe('merge compatibility helpers', () => {
         { file: 'b', columns: ['x'] },
       ])
     ).toEqual([{ name: 'y', missingInFiles: ['b'] }]);
+  });
+
+  it('agent command creates per-sheet tables via sheetNames and refreshes the whole source', async () => {
+    const { store, root } = makeStore();
+    const file = writeWorkbook(path.join(root, '经营.xlsx'), { 销售流水: SALES, 门店: STORES });
+    const commands = new RawTablesCommandService(store, {} as never);
+    const created = await commands.createRawTable({
+      filePath: file,
+      sourceKind: 'excel',
+      sheetNames: ['销售流水', '门店'],
+    });
+    expect(created.rawTables?.map((table) => table.name).sort()).toEqual([
+      '经营 / 销售流水',
+      '经营 / 门店',
+    ]);
+    expect(created.source?.buildMode).toBe('excel_per_sheet');
+    writeWorkbook(file, { 销售流水: [...SALES, ['2026-09-03', 'S03', 300]], 门店: STORES });
+    const refreshed = await commands.refreshRawSource({ id: created.rawTable.id });
+    expect(refreshed.refreshed).toHaveLength(2);
+    const sales = (await store.getRawTableRecord(
+      created.rawTables!.find((table) => table.memberKey === '销售流水')!.id
+    ))!;
+    expect(sales.rowCount).toBe(3);
+    const twoMonths = writeWorkbook(path.join(root, '月度.xlsx'), { '1月': SALES, '2月': SALES });
+    const merged = await commands.createRawTable({
+      filePath: twoMonths,
+      sourceKind: 'excel',
+      name: '合并销售',
+      sheetNames: ['1月', '2月'],
+      mergeSheets: true,
+    });
+    expect(merged.source?.buildMode).toBe('excel_merge_sheets');
+    expect(merged.rawTables).toHaveLength(1);
+    expect(merged.rawTable.rowCount).toBe(4);
+    await expect(commands.refreshRawSource({ id: 'nope' })).rejects.toThrow(/not found/i);
   });
 });

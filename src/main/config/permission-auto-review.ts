@@ -47,6 +47,7 @@ const LOCAL_DATA_TOOLS = new Set([
   'data_create_raw_table',
   'data_create_raw_table_with_processing_strategy',
   'data_update_raw_table',
+  'data_refresh_raw_source',
   'data_summarize_raw_table_source',
   'data_generate_raw_table_normalizer_draft',
   'data_preview_raw_table_normalizer_version',

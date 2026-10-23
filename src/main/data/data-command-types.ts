@@ -5,6 +5,8 @@ import type {
   DataAutomationColumnSnapshot,
   DataPipeline,
   DataRawTable,
+  DataRawSheetSelector,
+  DataRawSource,
   DataDeleteRawTableNormalizerVersionInput,
   DataDeleteRawTableNormalizerVersionResult,
   DataGenerateRawTableNormalizerDraftInput,
@@ -96,6 +98,13 @@ export interface CreateRawTableCommand {
   folderPath?: string;
   /** Excel sheet to import; must exist in the workbook (no silent fallback). */
   sheetName?: string;
+  /** Several Excel sheets: one table per sheet, or one merged table with mergeSheets. */
+  sheetNames?: string[];
+  mergeSheets?: boolean;
+  /** Folder build mode: merge all files (default) or one table per file. */
+  folderMode?: 'merge' | 'per_file';
+  /** Sheet used for multi-sheet Excel files inside a folder. */
+  sheetSelector?: DataRawSheetSelector;
   config?: DataRawTableConfig;
   previewRows?: number;
 }
@@ -148,6 +157,23 @@ export interface UpdateRawTableCommand {
 export interface RawTableResult {
   rawTable: DataRawTable;
   preview?: DataRawTablePreview;
+  /** Every table created from the source (1:N); rawTable is the first. */
+  rawTables?: DataRawTable[];
+  source?: DataRawSource;
+  skipped?: Array<{ key: string; reason: string }>;
+}
+
+export interface RefreshRawSourceCommand {
+  /** Source id or the id of any raw table in the source. */
+  id: string;
+}
+
+export interface RefreshRawSourceResult {
+  source: DataRawSource;
+  refreshed: string[];
+  added: string[];
+  missing: string[];
+  failed: Array<{ id: string; error: string }>;
 }
 
 export type SummarizeRawTableSourceCommand = DataSummarizeRawTableSourceInput;
