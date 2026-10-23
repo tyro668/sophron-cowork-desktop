@@ -2,6 +2,9 @@ import type {
   CloudOutputAction,
   DataPipeline,
   DataRawTable,
+  DataRawSource,
+  DataRawSourceBuildMode,
+  DataRawSourceConfig,
   DataGroup,
   DataRawTableNormalizerArtifact,
   DataRawTableNormalizerArtifactVersion,
@@ -75,6 +78,21 @@ export interface DataRawTableRow {
   row_count: number | string;
   column_count: number | string;
   group_id?: string | null;
+  source_id?: string | null;
+  member_key?: string | null;
+  member_status?: string | null;
+  created_at: number | string;
+  updated_at: number | string;
+}
+
+export interface DataRawSourceRow {
+  id: string;
+  name: string;
+  source_path: string;
+  source_kind: string;
+  build_mode: string;
+  config_json: string | null;
+  member_ids?: string | null;
   created_at: number | string;
   updated_at: number | string;
 }
@@ -206,6 +224,43 @@ export function mapRawTableRow(row: DataRawTableRow): DataRawTable {
     rowCount: toNumber(row.row_count),
     columnCount: toNumber(row.column_count),
     groupId: row.group_id ? String(row.group_id) : null,
+    sourceId: row.source_id ? String(row.source_id) : null,
+    memberKey: row.member_key ? String(row.member_key) : null,
+    memberStatus: row.member_status === 'missing' ? 'missing' : 'ok',
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+  };
+}
+
+const RAW_SOURCE_BUILD_MODES: ReadonlySet<string> = new Set([
+  'excel_single',
+  'excel_per_sheet',
+  'excel_merge_sheets',
+  'folder_merge',
+  'folder_per_file',
+  'single',
+]);
+
+export function mapRawSourceRow(row: DataRawSourceRow): DataRawSource {
+  let config: DataRawSourceConfig = { autoInclude: false };
+  try {
+    const parsed = row.config_json ? JSON.parse(row.config_json) : null;
+    if (parsed && typeof parsed === 'object') config = { autoInclude: false, ...parsed };
+  } catch {
+    // keep the default
+  }
+  const kind = String(row.source_kind);
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    sourcePath: String(row.source_path),
+    sourceKind:
+      kind === 'excel' || kind === 'csv' || kind === 'folder' || kind === 'cloud' ? kind : 'csv',
+    buildMode: RAW_SOURCE_BUILD_MODES.has(String(row.build_mode))
+      ? (String(row.build_mode) as DataRawSourceBuildMode)
+      : 'single',
+    config,
+    memberIds: row.member_ids ? String(row.member_ids).split(',').filter(Boolean) : [],
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };

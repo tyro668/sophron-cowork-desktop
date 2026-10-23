@@ -11,6 +11,7 @@ import type {
   DataRawTableExcelConfig,
   DataRawTableExcelMergedCellSummary,
   DataRawTableFolderConfig,
+  DataRawSheetSelector,
   DataRawTableHeaderCandidate,
   DataRawTableSourceFileSummary,
   DataRawTableSourceKind,
@@ -303,6 +304,7 @@ export function normalizeRawTableConfig(
       headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
       columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
+      ...normalizeMergeSheets(config.mergeSheets, fallback.sheetNames),
     };
   }
 
@@ -320,10 +322,57 @@ export function normalizeRawTableConfig(
       keepSourceFileName: config.keepSourceFileName !== false,
       columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
+      ...normalizeFolderSelection(config),
     };
   }
 
   return defaultCsvConfig(config);
+}
+
+export function normalizeSheetSelector(value: unknown): DataRawSheetSelector | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const v = value as Record<string, unknown>;
+  if (v.by === 'name' && typeof v.name === 'string' && v.name.trim()) {
+    return { by: 'name', name: v.name.trim() };
+  }
+  if (v.by === 'index') {
+    const index = Math.floor(Number(v.index));
+    if (Number.isFinite(index) && index >= 1) return { by: 'index', index };
+  }
+  return undefined;
+}
+
+/** Resolves a sheet selector against a workbook's sheets; null when the file has no such sheet. */
+export function resolveSheetBySelector(
+  selector: DataRawSheetSelector | undefined,
+  sheetNames: string[]
+): string | null {
+  if (!selector) return sheetNames[0] ?? null;
+  if (selector.by === 'name') return sheetNames.includes(selector.name) ? selector.name : null;
+  return sheetNames[selector.index - 1] ?? null;
+}
+
+function normalizeMergeSheets(value: unknown, available: string[]): { mergeSheets?: string[] } {
+  if (!Array.isArray(value)) return {};
+  const sheets = value.filter(
+    (item): item is string => typeof item === 'string' && available.includes(item)
+  );
+  return sheets.length > 1 ? { mergeSheets: sheets } : {};
+}
+
+function normalizeFolderSelection(
+  config: DataRawTableFolderConfig
+): Partial<DataRawTableFolderConfig> {
+  const out: Partial<DataRawTableFolderConfig> = {};
+  const selector = normalizeSheetSelector(config.sheetSelector);
+  if (selector) out.sheetSelector = selector;
+  if (Array.isArray(config.excludedFiles)) {
+    out.excludedFiles = config.excludedFiles.filter((f): f is string => typeof f === 'string');
+  }
+  if (config.mergeReport && typeof config.mergeReport === 'object') {
+    out.mergeReport = config.mergeReport;
+  }
+  return out;
 }
 
 export function normalizeStoredRawTableConfig(
@@ -358,6 +407,9 @@ export function normalizeStoredRawTableConfig(
       dataProcessing: normalizeRawTableDataProcessing(
         config?.sourceKind === 'excel' ? config.dataProcessing : undefined
       ),
+      ...(config?.sourceKind === 'excel'
+        ? normalizeMergeSheets(config.mergeSheets, sheetNames)
+        : {}),
     };
   }
 

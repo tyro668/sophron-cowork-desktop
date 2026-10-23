@@ -20,6 +20,8 @@ import {
   type ConfigureInputOperatorCommand,
   type ConfigureOutputOperatorCommand,
   type CreateRawTableCommand,
+  type RefreshRawSourceCommand,
+  type RefreshRawSourceResult,
   type CreateRawTableWithProcessingStrategyCommand,
   type CreateRawTableWithProcessingStrategyResult,
   type CreateResultTableCommand,
@@ -204,6 +206,10 @@ export class DataCommandService {
 
   async createRawTable(input: CreateRawTableCommand): Promise<RawTableResult> {
     return this.rawTables.createRawTable(input);
+  }
+
+  async refreshRawSource(input: RefreshRawSourceCommand): Promise<RefreshRawSourceResult> {
+    return this.rawTables.refreshRawSource(input);
   }
 
   async createRawTableWithProcessingStrategy(

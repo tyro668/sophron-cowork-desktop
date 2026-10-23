@@ -66,6 +66,18 @@ import { WorkflowRepository } from './store/repositories/workflow-repository';
 import { DashboardService } from './store/services/dashboard-service';
 import { InputSourceSummaryService } from './store/services/input-source-summary-service';
 import { RawTableService } from './store/services/raw-table-service';
+import { RawSourceRepository } from './store/repositories/raw-source-repository';
+import { RawSourceService } from './store/services/raw-source-service';
+import type {
+  DataCreateRawSourceInput,
+  DataRawSource,
+  DataRawSourceCreateResult,
+  DataRawSourceRebuildImpact,
+  DataRawSourceRefreshResult,
+  DataRawSourceScan,
+  DataRebuildRawSourceInput,
+  DataScanRawSourceInput,
+} from '../../shared/contracts';
 import { NormalizerService } from './store/services/normalizer-service';
 import { OutputCommitCoordinator } from './store/services/output-commit-coordinator';
 import {
@@ -89,6 +101,7 @@ export class DataPipelineStore {
   private readonly summarizer: InputSourceSummaryService;
   private readonly normalizerService: NormalizerService;
   private readonly rawTables: RawTableService;
+  private readonly rawSources: RawSourceService;
   private readonly pipelineService: PipelineService;
   private readonly validator: WorkflowValidator;
   private readonly commitCoordinator: OutputCommitCoordinator;
@@ -116,7 +129,14 @@ export class DataPipelineStore {
 
     const summarizer = new InputSourceSummaryService(this.ctx);
     const normalizerService = new NormalizerService(this.ctx, normalizers, summarizer);
-    const rawTables = new RawTableService(this.ctx, rawTableRepo, normalizerService, tableCommits);
+    const rawSourceRepo = new RawSourceRepository(this.ctx);
+    const rawTables = new RawTableService(
+      this.ctx,
+      rawTableRepo,
+      normalizerService,
+      tableCommits,
+      rawSourceRepo
+    );
     const binding = new WorkflowBindingResolver(rawTableRepo);
     const compiler = new WorkflowCompiler(this.ctx, rawTableRepo, caches);
     const validator = new WorkflowValidator(this.ctx, pipelines, compiler, binding);
@@ -174,6 +194,7 @@ export class DataPipelineStore {
     this.summarizer = summarizer;
     this.normalizerService = normalizerService;
     this.rawTables = rawTables;
+    this.rawSources = new RawSourceService(this.ctx, rawSourceRepo, rawTableRepo, rawTables);
     this.pipelineService = pipelineService;
     this.validator = validator;
     this.commitCoordinator = commitCoordinator;
@@ -184,6 +205,32 @@ export class DataPipelineStore {
 
   close(): void {
     this.ctx.close();
+  }
+
+  // ---- raw-table sources (1:N) ----
+  listRawSources(): Promise<DataRawSource[]> {
+    return this.rawSources.listSources();
+  }
+  getRawSource(id: string): Promise<DataRawSource | null> {
+    return this.rawSources.getSource(id);
+  }
+  scanRawSource(input: DataScanRawSourceInput): Promise<DataRawSourceScan> {
+    return this.rawSources.scanSource(input);
+  }
+  createRawSource(input: DataCreateRawSourceInput): Promise<DataRawSourceCreateResult> {
+    return this.rawSources.createSource(input);
+  }
+  refreshRawSource(id: string): Promise<DataRawSourceRefreshResult> {
+    return this.rawSources.refreshSource(id);
+  }
+  getRawSourceRebuildImpact(id: string): Promise<DataRawSourceRebuildImpact> {
+    return this.rawSources.getRebuildImpact(id);
+  }
+  rebuildRawSource(input: DataRebuildRawSourceInput): Promise<DataRawSourceCreateResult> {
+    return this.rawSources.rebuildSource(input);
+  }
+  deleteRawSource(id: string): Promise<boolean> {
+    return this.rawSources.deleteSource(id);
   }
 
   // ---- rawTables / input & output tables ----

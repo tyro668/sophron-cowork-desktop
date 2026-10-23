@@ -16,6 +16,14 @@ import type {
   DataRawTableNormalizerVersionSaveResult,
   DataRawTablePreview,
   DataRawTableSourceSummary,
+  DataRawSource,
+  DataRawSourceScan,
+  DataScanRawSourceInput,
+  DataCreateRawSourceInput,
+  DataRawSourceCreateResult,
+  DataRawSourceRefreshResult,
+  DataRawSourceRebuildImpact,
+  DataRebuildRawSourceInput,
   DataListRawTableNormalizerVersionsInput,
   DataListRawTableNormalizerVersionsResult,
   DataExportTableInput,
@@ -173,6 +181,19 @@ export function createDataApi(): ElectronApi['data'] {
       payload: DataSummarizeRawTableSourceInput
     ): Promise<DataRawTableSourceSummary> =>
       ipcRenderer.invoke('data.summarizeRawTableSource', payload),
+    listRawSources: (): Promise<DataRawSource[]> => ipcRenderer.invoke('data.listRawSources'),
+    scanRawSource: (payload: DataScanRawSourceInput): Promise<DataRawSourceScan> =>
+      ipcRenderer.invoke('data.scanRawSource', payload),
+    createRawSource: (payload: DataCreateRawSourceInput): Promise<DataRawSourceCreateResult> =>
+      ipcRenderer.invoke('data.createRawSource', payload),
+    refreshRawSource: (id: string): Promise<DataRawSourceRefreshResult> =>
+      ipcRenderer.invoke('data.refreshRawSource', id),
+    getRawSourceRebuildImpact: (id: string): Promise<DataRawSourceRebuildImpact> =>
+      ipcRenderer.invoke('data.getRawSourceRebuildImpact', id),
+    rebuildRawSource: (payload: DataRebuildRawSourceInput): Promise<DataRawSourceCreateResult> =>
+      ipcRenderer.invoke('data.rebuildRawSource', payload),
+    deleteRawSource: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke('data.deleteRawSource', id),
     generateRawTableNormalizerDraft: (
       payload: DataGenerateRawTableNormalizerDraftInput
     ): Promise<DataGenerateRawTableNormalizerDraftResult> =>

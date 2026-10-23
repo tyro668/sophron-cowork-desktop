@@ -41,7 +41,12 @@ export const DATA_TOOL_COPY = {
   data_create_raw_table: {
     label: 'Create raw table',
     description:
-      'Create a raw table from a user-selected or explicitly authorized local file/folder. For Excel workbooks, pass sheetName to import a specific sheet (one table per sheet); call data_summarize_raw_table_source first to list the sheets.',
+      'Create raw table(s) from a user-selected or explicitly authorized local file/folder. A source can produce several tables. Excel: sheetName imports one sheet; sheetNames imports one table per sheet, or one merged table (with a _sheet column) when mergeSheets=true. Folder: folderMode=merge (default; one table with a _来源文件 column, missing columns filled with null, files missing the sheet or with type conflicts are excluded) or per_file (one table per file); sheetSelector picks the sheet of multi-sheet Excel files by name or 1-based index. Call data_summarize_raw_table_source first to list the sheets.',
+  },
+  data_refresh_raw_source: {
+    label: 'Refresh raw source',
+    description:
+      'Re-import every table of a raw-table source (all its sheets or files) from the local file/folder. Pass the source id or any of its raw table ids. New sheets/files are added when auto-include is on; members no longer in the source are marked missing.',
   },
   data_create_raw_table_with_processing_strategy: {
     label: 'Create raw table with processing strategy',
@@ -232,6 +237,15 @@ export const TOOL_SCHEMA_COPY = {
     inputConfig: 'Raw table configuration. Use the data page config shape when known.',
     sheetName:
       'Excel only: exact sheet name to import. Must exist in the workbook; otherwise the call fails and lists the available sheets.',
+    sheetNames:
+      'Excel only: several exact sheet names. Creates one table per sheet (or one merged table with mergeSheets=true).',
+    mergeSheets:
+      'Excel with sheetNames: merge the sheets into one table with a _sheet column. Sheets must have the same columns.',
+    folderMode:
+      'Folder only: merge = one table with a _来源文件 column (default); per_file = one table per file.',
+    sheetSelector:
+      'Folder only: which sheet to use for multi-sheet Excel files, {by:"name",name} or {by:"index",index>=1}. Files without that sheet are excluded.',
+    rawSourceId: 'Raw-table source id, or the id of any raw table in that source.',
     deleteReason: 'Short reason shown to the user, e.g. "imported the wrong sheet".',
     resourceQuery: 'Search by resource name.',
     resultPreviewRows:

@@ -15,6 +15,7 @@ import type {
   ConfigureInputOperatorCommand,
   ConfigureOutputOperatorCommand,
   CreateRawTableCommand,
+  RefreshRawSourceCommand,
   CreateRawTableWithProcessingStrategyCommand,
   CreateResultTableCommand,
   CreatePipelineCommand,
@@ -164,11 +165,14 @@ export class DataToolService {
       details &&
       typeof details === 'object'
     ) {
-      const created = (details as { rawTable?: { id?: unknown } }).rawTable?.id;
-      if (typeof created === 'string' && created) {
-        const set = this.sessionCreatedRawTables.get(sessionId) ?? new Set<string>();
-        set.add(created);
-        this.sessionCreatedRawTables.set(sessionId, set);
+      const typed = details as { rawTable?: { id?: unknown }; rawTables?: Array<{ id?: unknown }> };
+      const createdIds = [typed.rawTable?.id, ...(typed.rawTables ?? []).map((table) => table.id)];
+      for (const created of createdIds) {
+        if (typeof created === 'string' && created) {
+          const set = this.sessionCreatedRawTables.get(sessionId) ?? new Set<string>();
+          set.add(created);
+          this.sessionCreatedRawTables.set(sessionId, set);
+        }
       }
     }
     if (toolName === 'data_delete_raw_table') {
@@ -351,12 +355,31 @@ export class DataToolService {
 
   async createRawTable(input: CreateRawTableCommand): Promise<DataToolResult> {
     const result = await this.commandService.createRawTable(input);
+    const tables = result.rawTables ?? [result.rawTable];
+    const created =
+      tables.length > 1
+        ? `Created ${tables.length} input tables from source ${result.source?.name ?? ''}:\n${tables.map(formatRawTable).join('\n')}`
+        : `Created input table: ${formatRawTable(result.rawTable)}`;
+    const skipped = result.skipped?.length
+      ? `Skipped: ${result.skipped.map((item) => `${item.key} (${item.reason})`).join('; ')}`
+      : '';
     return toolResult(
-      [`Created input table: ${formatRawTable(result.rawTable)}`, formatPreview(result.preview)]
-        .filter(Boolean)
-        .join('\n\n'),
+      [created, skipped, formatPreview(result.preview)].filter(Boolean).join('\n\n'),
       result
     );
+  }
+
+  async refreshRawSource(input: RefreshRawSourceCommand): Promise<DataToolResult> {
+    const result = await this.commandService.refreshRawSource(input);
+    const parts = [
+      `Refreshed source ${result.source.name}: ${result.refreshed.length} table(s) re-imported`,
+      result.added.length ? `${result.added.length} new table(s) added` : '',
+      result.missing.length ? `${result.missing.length} table(s) no longer in the source` : '',
+      result.failed.length
+        ? `failed: ${result.failed.map((item) => `${item.id} (${item.error})`).join('; ')}`
+        : '',
+    ].filter(Boolean);
+    return toolResult(parts.join(', '), result);
   }
 
   async createRawTableWithProcessingStrategy(

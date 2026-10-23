@@ -1034,7 +1034,85 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'conditional_if_only',
     up: (ctx) => migrateWorkflowNodeConfigs(ctx, rewriteCaseInNodeConfig),
   },
+  {
+    version: 29,
+    name: 'raw_table_sources',
+    up: (ctx) => migrateRawTableSources(ctx),
+  },
 ];
+
+/** Raw-table 1:N model: every input table belongs to a source (file / folder / cloud table).
+ *  Existing tables each get their own single-member source; nothing else changes. */
+async function migrateRawTableSources(ctx: DataStoreContext): Promise<void> {
+  await ctx.metaRunSql(`
+    CREATE TABLE IF NOT EXISTS data_raw_sources (
+      id VARCHAR PRIMARY KEY,
+      name VARCHAR NOT NULL,
+      source_path VARCHAR NOT NULL,
+      source_kind VARCHAR NOT NULL,
+      build_mode VARCHAR NOT NULL,
+      config_json VARCHAR,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL
+    )
+  `);
+  await ctx.ensureMetadataColumn('data_raw_tables', 'source_id', 'VARCHAR');
+  await ctx.ensureMetadataColumn('data_raw_tables', 'member_key', 'VARCHAR');
+  await ctx.ensureMetadataColumn('data_raw_tables', 'member_status', 'VARCHAR');
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    name: string;
+    source_path: string;
+    source_kind: string | null;
+    config_json: string | null;
+    created_at: number;
+    updated_at: number;
+  }>(
+    `SELECT id, name, source_path, source_kind, config_json, created_at, updated_at
+       FROM data_raw_tables
+      WHERE source_id IS NULL AND coalesce(source_kind, '') <> 'output'
+        AND source_path NOT LIKE 'duckdb://%' AND source_path NOT LIKE 'raw-table://%'`
+  );
+  for (const row of rows) {
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(row.config_json || '{}') as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+    const kindRaw = String(row.source_kind || config.sourceKind || '');
+    const kind =
+      kindRaw === 'excel' || kindRaw === 'folder' || kindRaw === 'cloud' ? kindRaw : 'csv';
+    const buildMode =
+      kind === 'excel' ? 'excel_single' : kind === 'folder' ? 'folder_merge' : 'single';
+    const memberKey =
+      kind === 'excel' && typeof config.sheetName === 'string' ? config.sheetName : null;
+    const sourceId = uuidv4();
+    await ctx.metaRunSql(
+      `INSERT INTO data_raw_sources
+         (id, name, source_path, source_kind, build_mode, config_json, created_at, updated_at)
+       VALUES ($id, $name, $path, $kind, $mode, $config, $createdAt, $updatedAt)`,
+      {
+        id: sourceId,
+        name: row.name,
+        path: row.source_path,
+        kind,
+        mode: buildMode,
+        config: JSON.stringify({
+          autoInclude: false,
+          ...(memberKey ? { sheets: [memberKey] } : {}),
+        }),
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+      }
+    );
+    await ctx.metaRunSql(
+      `UPDATE data_raw_tables SET source_id = $sourceId, member_key = $memberKey,
+              member_status = 'ok' WHERE id = $id`,
+      { sourceId, memberKey, id: row.id }
+    );
+  }
+}
 
 /** case … when was removed from the expression language: rewrite stored expressions to if/elseif.
  *  Raw SQL nodes keep their SQL CASE WHEN untouched. */

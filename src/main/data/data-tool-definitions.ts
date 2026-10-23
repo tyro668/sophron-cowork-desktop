@@ -237,6 +237,28 @@ export function createDataCustomTools(
         sheetName: Type.Optional(
           Type.String({ minLength: 1, description: TOOL_SCHEMA_COPY.data.sheetName })
         ),
+        sheetNames: Type.Optional(
+          Type.Array(Type.String({ minLength: 1 }), {
+            description: TOOL_SCHEMA_COPY.data.sheetNames,
+          })
+        ),
+        mergeSheets: Type.Optional(
+          Type.Boolean({ description: TOOL_SCHEMA_COPY.data.mergeSheets })
+        ),
+        folderMode: Type.Optional(
+          Type.Union([Type.Literal('merge'), Type.Literal('per_file')], {
+            description: TOOL_SCHEMA_COPY.data.folderMode,
+          })
+        ),
+        sheetSelector: Type.Optional(
+          Type.Union(
+            [
+              Type.Object({ by: Type.Literal('name'), name: Type.String({ minLength: 1 }) }),
+              Type.Object({ by: Type.Literal('index'), index: Type.Integer({ minimum: 1 }) }),
+            ],
+            { description: TOOL_SCHEMA_COPY.data.sheetSelector }
+          )
+        ),
         config: ConfigSchema,
         previewRows: PreviewRowsSchema,
       }),
@@ -284,6 +306,15 @@ export function createDataCustomTools(
       }),
       execute: async (_toolCallId, params) =>
         dataToolService.updateRawTable(resolveLocalSourcePathParams(params, context) as never),
+    },
+    {
+      name: 'data_refresh_raw_source',
+      ...DATA_TOOL_COPY.data_refresh_raw_source,
+      parameters: Type.Object({
+        id: Type.String({ minLength: 1, description: TOOL_SCHEMA_COPY.data.rawSourceId }),
+      }),
+      execute: async (_toolCallId, params) =>
+        dataToolService.refreshRawSource(params as { id: string }),
     },
     {
       name: 'data_delete_raw_table',

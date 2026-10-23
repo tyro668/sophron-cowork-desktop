@@ -444,7 +444,7 @@ describe('metadata migrations', () => {
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-      27, 28,
+      27, 28, 29,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -475,7 +475,11 @@ describe('metadata migrations', () => {
       'watermark_source_fingerprint',
       'composite_node_layout',
       'conditional_if_only',
+      'raw_table_sources',
     ]);
+    // v29: one source per legacy input table.
+    expect(tableNames(raw)).toContain('data_raw_sources');
+    expect(columnNames(raw, 'data_raw_tables')).toContain('source_id');
 
     // v12: group table + member columns exist.
     expect(tableNames(raw)).toContain('data_groups');
