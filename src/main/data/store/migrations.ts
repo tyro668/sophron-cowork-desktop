@@ -17,7 +17,7 @@ import { dataFieldTypeOfSpelling } from '../../../shared/data-field-types';
  *   deadlock on the in-flight initialization promise.
  */
 import { migrateConfigToV3Naming } from './v3-config-naming';
-import { parseJflowStep } from '../../../shared/jflow';
+import { parseJflowStep, rewriteCaseExpression } from '../../../shared/jflow';
 import { computeNextAutomationRunAt } from '../../automation/automation-trigger';
 import type { AutomationTrigger } from '../../../shared/automation/types';
 import { log, logWarn } from '../../utils/logger';
@@ -1029,7 +1029,41 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'composite_node_layout',
     up: (ctx) => migrateCompositeLayout(ctx),
   },
+  {
+    version: 28,
+    name: 'conditional_if_only',
+    up: (ctx) => migrateWorkflowNodeConfigs(ctx, rewriteCaseInNodeConfig),
+  },
 ];
+
+/** case … when was removed from the expression language: rewrite stored expressions to if/elseif.
+ *  Raw SQL nodes keep their SQL CASE WHEN untouched. */
+export function rewriteCaseInNodeConfig(
+  type: string,
+  config: Record<string, unknown>
+): Record<string, unknown> | null {
+  if (type === 'sql' || type === 'sql_query') return null;
+  let changed = false;
+  const visit = (value: unknown, key?: string): unknown => {
+    if (typeof value === 'string') {
+      if (key && /sql/i.test(key)) return value;
+      if (!/\bcase\b/i.test(value) || !/\bwhen\b/i.test(value)) return value;
+      const rewritten = rewriteCaseExpression(value);
+      if (rewritten === null || rewritten === value) return value;
+      changed = true;
+      return rewritten;
+    }
+    if (Array.isArray(value)) return value.map((item) => visit(item));
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) out[k] = visit(v, k);
+      return out;
+    }
+    return value;
+  };
+  const next = visit(config) as Record<string, unknown>;
+  return changed ? next : null;
+}
 
 function readNodeConfig(json: string): Record<string, unknown> | null {
   try {

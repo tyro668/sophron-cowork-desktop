@@ -167,8 +167,9 @@ export class WorkflowExecutor {
     return toNumber(rows[0]?.count);
   }
   /**
-   * Bound input tables always materialize in full. File sources may use
-   * `incremental by [col]` to read rows newer than the stored watermark.
+   * Input sources (bound raw/result tables, files, pipelines) may use `incremental by [col]`
+   * to read only rows newer than the stored watermark. The watermark is keyed by the source
+   * fingerprint, so changing the source or its read options resets it.
    */
   private async materializeInputSourceWithContract(
     pipeline: DataPipeline,
@@ -180,15 +181,18 @@ export class WorkflowExecutor {
     const incrementalBy =
       typeof node.config.incrementalBy === 'string' ? node.config.incrementalBy.trim() : '';
     const relation = await this.compiler.materializeInputSource(node, sourcePath, outputRelation);
-    const usesRawTable =
-      node.config.source === 'rawTable' ||
-      (typeof node.config.source !== 'string' && Boolean(node.config.rawTableId));
-    // Older saved workflows may still contain incrementalBy on a bound table.
-    if (usesRawTable) return relation;
     if (!incrementalBy) return relation;
 
     const column = quoteIdentifier(incrementalBy);
     const table = quoteIdentifier(relation);
+    const described = await this.ctx.queryRows<{ column_name: string }>(
+      `DESCRIBE SELECT * FROM ${table}`
+    );
+    if (!described.some((row) => row.column_name === incrementalBy)) {
+      throw new Error(
+        `E_INCR_COLUMN: incremental column "${incrementalBy}" does not exist in input ${node.label || node.id}`
+      );
+    }
     const fingerprint = inputSourceFingerprint(node.config, sourcePath);
     const lookup = await this.watermarks.getPipelineWatermark(
       pipeline.id,
@@ -277,6 +281,8 @@ export class WorkflowExecutor {
       );
     }
     diagnostics.push(...planDiagnostics);
+    // Runs stage into a temporary table and commit later, so check the write contract here.
+    assertIncrementalWriteAllowed(runtimeWorkflow.nodes);
 
     try {
       const result = await this.cleanSourceIntoPipelineOutput(
@@ -798,7 +804,7 @@ export class WorkflowExecutor {
 }
 
 /**
- * E_INCR_REPLACE (jflow v4 §11.3): an incremental file/pipeline source feeding a replace output
+ * E_INCR_REPLACE (jflow v4 §11.3): an incremental source feeding a replace output
  * keeps only the newly read rows. That is only allowed when the output opts in with
  * allowPartial: true (v25 set it on every pre-existing node, so old behaviour is unchanged).
  */
@@ -808,10 +814,7 @@ export function assertIncrementalWriteAllowed(nodes: DataWorkflowNode[]): void {
     if (typeof node.config.incrementalBy !== 'string' || !node.config.incrementalBy.trim()) {
       return false;
     }
-    const usesRaw =
-      node.config.source === 'rawTable' ||
-      (typeof node.config.source !== 'string' && Boolean(node.config.rawTableId));
-    return !usesRaw;
+    return true;
   });
   if (!incremental) return;
   for (const node of nodes) {

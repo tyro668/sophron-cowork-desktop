@@ -430,7 +430,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', granularity: 'month' },
       })
-    ).toContain("CASE WHEN (extract('year' FROM [date]) - lag(extract('year' FROM [date]))");
+    ).toContain("if (extract('year' FROM [date]) - lag(extract('year' FROM [date]))");
     expect(
       buildCalculationFunctionExpression({
         functionId: 'year_over_year_value',
@@ -438,7 +438,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', granularity: 'month' },
       })
-    ).toContain('= 1 THEN lag([sales])');
+    ).toContain('= 1 then lag([sales])');
     expect(
       buildCalculationFunctionExpression({
         functionId: 'year_over_year_value',
@@ -446,7 +446,7 @@ describe('calculation function registry', () => {
         partitionBy: ['region'],
         parameters: { dateField: 'date', granularity: 'month' },
       })
-    ).toContain('ELSE NULL END');
+    ).toContain('else null end');
   });
 
   it('builds current-row time accumulation and rolling-time expressions', () => {

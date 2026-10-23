@@ -121,6 +121,10 @@ describe('automatic permission risk classification', () => {
     expect(reviewAutoPermission('list_files', { action: 'delete' }).decision).toBe('ask');
   });
 
+  it('asks before the agent deletes an input table it created', () => {
+    expect(reviewAutoPermission('data_delete_raw_table', { id: 't1' }).decision).toBe('ask');
+  });
+
   it('does not downgrade destructive commands after an opaque earlier segment', () => {
     expect(
       reviewAutoPermission('bash', { command: 'custom-tool inspect && rm -rf /tmp/data' }).reason

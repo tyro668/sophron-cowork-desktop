@@ -94,6 +94,8 @@ export interface CreateRawTableCommand {
   sourceKind?: DataRawTableSourceKind;
   filePath?: string;
   folderPath?: string;
+  /** Excel sheet to import; must exist in the workbook (no silent fallback). */
+  sheetName?: string;
   config?: DataRawTableConfig;
   previewRows?: number;
 }
@@ -137,6 +139,8 @@ export interface UpdateRawTableCommand {
   sourceKind?: DataRawTableSourceKind;
   filePath?: string;
   folderPath?: string;
+  /** Excel sheet to import; must exist in the workbook (no silent fallback). */
+  sheetName?: string;
   config?: DataRawTableConfig;
   previewRows?: number;
 }

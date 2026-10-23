@@ -212,6 +212,10 @@ export class DataCommandService {
     return this.rawTables.createRawTableWithProcessingStrategy(input);
   }
 
+  async deleteRawTableCreatedByAgent(id: string): Promise<{ name: string }> {
+    return this.rawTables.deleteRawTableCreatedByAgent(id);
+  }
+
   async updateRawTable(input: UpdateRawTableCommand): Promise<RawTableResult> {
     return this.rawTables.updateRawTable(input);
   }

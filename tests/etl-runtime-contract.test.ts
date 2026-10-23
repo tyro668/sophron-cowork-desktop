@@ -420,13 +420,78 @@ describe('ETL runtime contract', () => {
     expect(third.rowCount).toBe(4);
   });
 
-  it('reads every row of a bound input table even with a legacy incremental setting', async () => {
+  it('incremental on a bound input table appends only new rows across file updates', async () => {
     const { store: initialStore, dbPath, tempRoot } = makeStore();
     let store = initialStore;
-    const firstCsv = writeCsv(tempRoot, 'bound-first.csv', 'id,value\n1,old\n2,keep\n');
-    const nextCsv = writeCsv(tempRoot, 'bound-next.csv', 'id,value\n2,changed\n3,new\n');
-    const rawTable = await store.importRawTable({ filePath: firstCsv });
-    const pipeline = await store.createPipeline({ name: 'Bound input table' });
+    const v1 = writeCsv(
+      tempRoot,
+      'att-v1.csv',
+      'day,emp,status\n2026-09-01,E1,ok\n2026-09-02,E1,absent\n'
+    );
+    const v2 = writeCsv(
+      tempRoot,
+      'att-v2.csv',
+      'day,emp,status\n2026-09-01,E1,ok\n2026-09-02,E1,absent\n2026-10-08,E1,absent\n2026-10-08,E2,ok\n'
+    );
+    const rawTable = await store.importRawTable({ filePath: v1 });
+    const pipeline = await store.createPipeline({ name: 'Raw incremental' });
+    await saveCompiledDsl(
+      store,
+      pipeline.id,
+      `
+      source src = @id('local:raw/${rawTable.id}') incremental: [day]
+
+      src
+        | write @new('raw_incr_out') mode: append
+    `
+    );
+    const workflow = await store.getPipelineWorkflow(pipeline.id);
+    expect(workflow.nodes.find((n) => n.type === 'input')?.config.incrementalBy).toBe('day');
+
+    const first = await store.runPipeline(pipeline.id);
+    expect(first.rowCount).toBe(2);
+    // re-running without new data must not re-append
+    const rerun = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(rerun.nodeStats?.find((stat) => stat.nodeType === 'input')?.outputRows).toBe(0);
+    expect(rerun.pipeline.rowCount).toBe(2);
+
+    await store.updateRawTable({ id: rawTable.id, filePath: v2 });
+    const second = await store.runPipelineWithDiagnostics(pipeline.id);
+    expect(second.nodeStats?.find((stat) => stat.nodeType === 'input')?.outputRows).toBe(2);
+    expect(second.pipeline.rowCount).toBe(4);
+
+    store = reopenStore(dbPath);
+    const rows = await readRows(dbPath, 'SELECT count(*) AS n FROM raw_incr_out');
+    expect(Number(rows[0].n)).toBe(4);
+    const watermarks = await readRows(
+      dbPath,
+      `SELECT watermark_value, source_fingerprint FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
+    );
+    expect(watermarks).toHaveLength(1);
+    expect(String(watermarks[0].watermark_value)).toContain('2026-10-08');
+    expect(String(watermarks[0].source_fingerprint)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('rejects incremental on a bound input table with replace output or an unknown column', async () => {
+    const { store, tempRoot } = makeStore();
+    const csv = writeCsv(tempRoot, 'r.csv', 'id,v\n1,a\n');
+    const rawTable = await store.importRawTable({ filePath: csv });
+    const parsed = parseTestJflow(`
+      source src = @id('local:raw/${rawTable.id}') incremental: [id]
+
+      src
+        | write @new('raw_incr_replace') mode: replace
+    `);
+    let codes: string[] = [];
+    try {
+      codes = compileTestJflow(parsed.ast!).diagnostics.map((d) => d.code);
+    } catch (error) {
+      codes = [String((error as { code?: string }).code ?? error)];
+    }
+    expect(codes.join(',')).toMatch(/E_INCR_REPLACE/);
+    expect(codes).not.toContain('W_INCR_IGNORED');
+
+    const pipeline = await store.createPipeline({ name: 'Raw incremental invalid' });
     await saveCompiledDsl(
       store,
       pipeline.id,
@@ -434,30 +499,53 @@ describe('ETL runtime contract', () => {
       source src = @id('local:raw/${rawTable.id}')
 
       src
-        | write @new('bound_full_out')
+        | write @new('raw_incr_missing') mode: append
     `
     );
     const workflow = await store.getPipelineWorkflow(pipeline.id);
-    await store.savePipelineWorkflow(pipeline.id, {
-      nodes: workflow.nodes.map((node) =>
-        node.type === 'input' ? { ...node, config: { ...node.config, incrementalBy: 'id' } } : node
-      ),
-      edges: workflow.edges,
-    });
+    await expect(
+      store.savePipelineWorkflow(pipeline.id, {
+        nodes: workflow.nodes.map((node) =>
+          node.type === 'input'
+            ? { ...node, config: { ...node.config, incrementalBy: 'missing_col' } }
+            : node
+        ),
+        edges: workflow.edges,
+      })
+    ).rejects.toThrow(/missing_col/);
+  });
 
-    await store.runPipeline(pipeline.id);
-    await store.updateRawTable({ id: rawTable.id, filePath: nextCsv });
-    const second = await store.runPipelineWithDiagnostics(pipeline.id);
-    expect(second.nodeStats?.find((stat) => stat.nodeType === 'input')?.outputRows).toBe(2);
+  it('refuses replace output with an incremental bound input table at save and at run', async () => {
+    const { store, tempRoot } = makeStore();
+    const csv = writeCsv(tempRoot, 'r.csv', 'id,v\n1,a\n2,b\n');
+    const rawTable = await store.importRawTable({ filePath: csv });
+    const pipeline = await store.createPipeline({ name: 'Raw incremental replace' });
+    await saveCompiledDsl(
+      store,
+      pipeline.id,
+      `
+      source src = @id('local:raw/${rawTable.id}') incremental: [id]
 
-    store = reopenStore(dbPath);
-    const rows = await readRows(dbPath, 'SELECT id, value FROM bound_full_out ORDER BY id');
-    expect(rows.map((row) => `${row.id}:${row.value}`)).toEqual(['2:changed', '3:new']);
-    const watermarks = await readRows(
-      dbPath,
-      `SELECT watermark_value FROM data_pipeline_watermarks WHERE pipeline_id = '${pipeline.id}'`
+      src
+        | write @new('raw_incr_rep') mode: append
+    `
     );
-    expect(watermarks).toEqual([]);
+    const first = await store.runPipeline(pipeline.id);
+    expect(first.rowCount).toBe(2);
+    const workflow = await store.getPipelineWorkflow(pipeline.id);
+    const replaced = workflow.nodes.map((node) =>
+      node.type === 'output' ? { ...node, config: { ...node.config, mode: 'replace' } } : node
+    );
+    await expect(
+      store.savePipelineWorkflow(pipeline.id, { nodes: replaced, edges: workflow.edges })
+    ).rejects.toThrow(/E_INCR_REPLACE/);
+    // A run handed the same graph directly (e.g. an unsaved draft) is refused too, and the
+    // existing result table keeps its rows.
+    await expect(
+      store.runPipeline(pipeline.id, { workflow: { nodes: replaced, edges: workflow.edges } })
+    ).rejects.toThrow(/E_INCR_REPLACE/);
+    const after = await store.getPipeline(pipeline.id);
+    expect(after?.rowCount).toBe(2);
   });
 
   it('does not advance the watermark when the run fails', async () => {

@@ -29,7 +29,7 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete';
 import { windowSuggestionAt } from '../../../../shared/expression/window-suggest';
-import { expressionAggregateIssue } from '../../../../shared/jflow';
+import { expressionAggregateIssue, rewriteCaseExpression } from '../../../../shared/jflow';
 import { tags } from '@lezer/highlight';
 import { DataTypeIcon } from './DataTypeIcon';
 import './form-grid.css';
@@ -121,17 +121,21 @@ export const COMMON_EXPRESSION_FUNCTION_GROUPS: ExpressionFunctionGroup[] = [
         examples: ['if [amount] < 0 then 0 end'],
       },
       {
-        label: 'case … when … then … end',
-        apply: 'case  when  then  end',
-        cursorOffset: 5,
-        i18nDescKey: 'expressionFunctionDesc_caseWhenEnd',
+        label: 'if … then … elseif … else … end',
+        apply: 'if  then  elseif  then  else  end',
+        cursorOffset: 3,
+        i18nDescKey: 'expressionFunctionDesc_ifElseifEnd',
         params: [
-          { name: 'value', type: 'any' },
-          { name: 'match', type: 'any' },
-          { name: 'result', type: 'any' },
+          { name: 'condition', type: 'boolean' },
+          { name: 'thenExpr', type: 'any' },
+          { name: 'condition2', type: 'boolean' },
+          { name: 'thenExpr2', type: 'any' },
+          { name: 'elseExpr', type: 'any' },
         ],
         returnType: 'any',
-        examples: ["case [status] when 'PAID' then 1 else 0 end"],
+        examples: [
+          "if [status] = 'PAID' then 1 elseif [status] in ('PART', 'DUE') then 0.5 else 0 end",
+        ],
       },
     ],
   },
@@ -635,8 +639,7 @@ const EXPR_KEYWORDS = new Set([
   'or',
   'not',
   'as',
-  'case',
-  'when',
+  'elseif',
   'in',
   'is',
   'like',
@@ -1200,6 +1203,16 @@ function ExpressionEditorDialog({
     () => (draft.trim() ? analyzeExpression(draft, columnTypes ?? {}) : null),
     [draft, columnTypes]
   );
+  const caseRewrite = useMemo(
+    () => (/\bcase\b/i.test(draft) ? rewriteCaseExpression(draft) : null),
+    [draft]
+  );
+  const applyCaseRewrite = useCallback(() => {
+    const view = viewRef.current;
+    if (!view || caseRewrite === null) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: caseRewrite } });
+    view.focus();
+  }, [caseRewrite]);
   const dirty = draft !== initialDraftRef.current;
   const placeholderText = useMemo(() => tr('expressionPlaceholder'), [tr]);
 
@@ -1285,11 +1298,13 @@ function ExpressionEditorDialog({
     view.focus();
   }, []);
 
+  // Never save an expression that failed lint or grammar validation.
+  const confirmBlocked = issues.length > 0 || Boolean(analysis && !analysis.ok);
   const handleConfirm = useCallback(() => {
-    if (issues.length > 0) return;
+    if (confirmBlocked) return;
     onChange(draft);
     onClose();
-  }, [draft, issues.length, onChange, onClose]);
+  }, [confirmBlocked, draft, onChange, onClose]);
   confirmRef.current = handleConfirm;
 
   const requestClose = useCallback(() => {
@@ -1570,6 +1585,17 @@ function ExpressionEditorDialog({
                       {analysis.error?.message}
                     </span>
                   )}
+                  {caseRewrite !== null && (
+                    <button
+                      type="button"
+                      data-testid="expression-case-quickfix"
+                      onClick={applyCaseRewrite}
+                      title={caseRewrite}
+                      className="shrink-0 rounded-md border border-primary/30 px-2 py-0.5 text-[12.5px] text-primary hover:bg-primary/[0.08]"
+                    >
+                      {tr('expressionCaseQuickFix')}
+                    </button>
+                  )}
                   <span className="truncate">{tr('expressionShortcutHint')}</span>
                 </div>
                 <button
@@ -1584,9 +1610,9 @@ function ExpressionEditorDialog({
                   key="confirm"
                   type="button"
                   onClick={handleConfirm}
-                  disabled={issues.length > 0}
-                  aria-disabled={issues.length > 0}
-                  title={issues.length > 0 ? tr('expressionConfirmBlocked') : undefined}
+                  disabled={confirmBlocked}
+                  aria-disabled={confirmBlocked}
+                  title={confirmBlocked ? tr('expressionConfirmBlocked') : undefined}
                   style={{ gridColumn: 'span 2' }}
                   className={`${footerButton} bg-accent text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent`}
                 >

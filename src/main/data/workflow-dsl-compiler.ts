@@ -115,7 +115,6 @@ export class WorkflowDslCompiler {
         const table = alias ? bound.get(alias) : undefined;
         if (!table) return node;
         const config = { ...(node.config ?? {}) };
-        delete config.incrementalBy;
         return {
           ...node,
           config: {
@@ -164,16 +163,6 @@ export class WorkflowDslCompiler {
           : node
       );
     }
-    nodes = nodes.map((node) => {
-      if (node.type !== 'input') return node;
-      const config = { ...(node.config ?? {}) };
-      const source =
-        stringConfigValue(config.source) ||
-        (stringConfigValue(config.rawTableId) ? 'rawTable' : 'pipeline');
-      if (source !== 'rawTable' || !('incrementalBy' in config)) return node;
-      delete config.incrementalBy;
-      return { ...node, config };
-    });
     return { nodes, edges: workflow.edges };
   }
 

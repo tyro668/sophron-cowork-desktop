@@ -79,10 +79,13 @@ describe('compileScalarExpression', () => {
     );
   });
 
-  it('case/when then/else/end uppercased by DSL transform', () => {
-    expect(compileScalarExpression("case [status] when 'PAID' then 1 else 0 end")).toBe(
-      `CASE "status" WHEN 'PAID' THEN 1 ELSE 0 END`
+  it('case/when is rejected; elseif compiles to a CASE chain', () => {
+    expect(() => compileScalarExpression("case [status] when 'PAID' then 1 else 0 end")).toThrow(
+      /CASE WHEN is not supported/
     );
+    expect(
+      compileScalarExpression("if [s] = 'A' then 1 elseif [s] in ('B', 'C') then 2 else 0 end")
+    ).toBe(`CASE WHEN "s" = 'A' THEN 1 WHEN "s" IN ('B', 'C') THEN 2 ELSE 0 END`);
   });
 
   it('string function', () => {
@@ -204,10 +207,10 @@ describe('compileScalarExpression', () => {
     );
   });
 
-  it('nested case inside if', () => {
+  it('nested if inside if', () => {
     expect(
-      compileScalarExpression("if [a] > 0 then case [b] when 'x' then 1 else 2 end else 0 end")
-    ).toBe(`CASE WHEN "a" > 0 THEN CASE "b" WHEN 'x' THEN 1 ELSE 2 END ELSE 0 END`);
+      compileScalarExpression("if [a] > 0 then if [b] = 'x' then 1 else 2 end else 0 end")
+    ).toBe(`CASE WHEN "a" > 0 THEN CASE WHEN "b" = 'x' THEN 1 ELSE 2 END ELSE 0 END`);
   });
 
   it('date function', () => {

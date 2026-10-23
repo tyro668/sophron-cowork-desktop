@@ -19,7 +19,7 @@ const OVERVIEW = `jflow (${JFLOW_REFERENCE_VERSION}) — pipe-style data-prep la
 - Tables: source <alias> = @id('local:raw/<RAW_TABLE_ID>') (exact, preferred) or @name('<表名>') (must be unique).
   Results: write @new('<结果表名>') creates a result table; write @id('local:result/<ID>') overwrites an existing one.
   Unknown ids fail with E_REF_NOT_FOUND — copy ids verbatim from the catalog.
-- Conditions: if <cond> then <v> elseif <cond> then <v> else <v> end   (CASE WHEN … is also accepted).
+- Conditions: if <cond> then <v> elseif <cond> then <v> else <v> end   (the only conditional; case when is an error E_CASE_REMOVED — several values: [x] in (a, b)).
 - Conditional aggregates: sumif([金额], [状态] = '已付'), countif([金额] > 0), avgif/minif/maxif/countdistinctif.
 - Comments: ## comment line. Optional node label: #! label: 中文名 on the line before a step.`;
 

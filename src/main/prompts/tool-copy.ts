@@ -41,7 +41,7 @@ export const DATA_TOOL_COPY = {
   data_create_raw_table: {
     label: 'Create raw table',
     description:
-      'Create a raw table from a user-selected or explicitly authorized local file/folder.',
+      'Create a raw table from a user-selected or explicitly authorized local file/folder. For Excel workbooks, pass sheetName to import a specific sheet (one table per sheet); call data_summarize_raw_table_source first to list the sheets.',
   },
   data_create_raw_table_with_processing_strategy: {
     label: 'Create raw table with processing strategy',
@@ -50,7 +50,13 @@ export const DATA_TOOL_COPY = {
   },
   data_update_raw_table: {
     label: 'Update raw table',
-    description: 'Rename or re-import an existing raw table.',
+    description:
+      'Rename or re-import an existing raw table. For Excel, pass sheetName to switch the imported sheet (it must exist; the error lists the available sheets).',
+  },
+  data_delete_raw_table: {
+    label: 'Delete raw table',
+    description:
+      'Delete an input table that you created earlier in this same conversation (for example a wrong import or wrong sheet). Tables created elsewhere or used by a data pipeline are refused. Requires user confirmation like other deletes; prefer data_update_raw_table with sheetName to fix a wrong sheet in place.',
   },
   data_summarize_raw_table_source: {
     label: 'Summarize raw table source',
@@ -224,6 +230,9 @@ export const TOOL_RESULT_GUIDANCE = {
 export const TOOL_SCHEMA_COPY = {
   data: {
     inputConfig: 'Raw table configuration. Use the data page config shape when known.',
+    sheetName:
+      'Excel only: exact sheet name to import. Must exist in the workbook; otherwise the call fails and lists the available sheets.',
+    deleteReason: 'Short reason shown to the user, e.g. "imported the wrong sheet".',
     resourceQuery: 'Search by resource name.',
     resultPreviewRows:
       'Number of result rows returned to the conversation (default and max 20). If the result has more rows, read them with data_preview_table(includeRows=true, offset) before describing them.',

@@ -3,6 +3,7 @@ import type { IToken } from 'chevrotain';
 import type { Expr, JflowDiagnostic, JflowFile, Span, Step } from './ast';
 import { DoubleQuoted, FieldOpen, JflowLexer, Pipe, VERB_WORDS } from './lexer';
 import { getJflowParser } from './parser';
+import { fmtExpr } from './format';
 
 export interface JflowParseResult<T> {
   ast: T | null;
@@ -115,6 +116,7 @@ function runRule<T>(
   const { tokens, groups, diagnostics } = lex(text);
   if (diagnostics.length > 0) return { ast: null, diagnostics, tokens, groups };
   const parser = getJflowParser();
+  parser.caseSites = [];
   parser.input = tokens;
   let ast: T | null = null;
   try {
@@ -144,6 +146,25 @@ function runRule<T>(
       groups,
     };
   }
+  const caseDiagnostics = parser.caseSites
+    // nested case inside case: report only the outermost (its fix rewrites both)
+    .filter(
+      (site, _i, all) => !all.some((o) => o !== site && o.start <= site.start && o.end >= site.end)
+    )
+    .map((site): JflowDiagnostic => ({
+      code: 'E_CASE_REMOVED',
+      severity: 'error',
+      message: 'jflow 不再支持 case when，请改用 if … then … elseif … else … end',
+      hint: '简单 case [x] when v 写成 if [x] = v then …；多个取值用 [x] in (v1, v2)',
+      span: { start: site.start, end: site.end },
+      fix: {
+        title: '改写为 if … elseif',
+        span: { start: site.start, end: site.end },
+        text: fmtExpr(site.expr),
+      },
+    }));
+  if (caseDiagnostics.length > 0)
+    return { ast: null, diagnostics: caseDiagnostics, tokens, groups };
   return { ast, diagnostics: [], tokens, groups };
 }
 

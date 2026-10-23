@@ -1,3 +1,4 @@
+import { assertIncrementalWriteAllowed } from './workflow-executor';
 /** Pipeline lifecycle orchestration: CRUD, run, save workflow, cleanup. */
 import type { WatermarkUpdate } from '../repositories/watermark-repository';
 import type {
@@ -398,6 +399,9 @@ export class PipelineService {
         `Workflow plan validation failed: ${planErrors.map((item) => item.message).join('; ')}`
       );
     }
+    assertIncrementalWriteAllowed(
+      nodes as unknown as Parameters<typeof assertIncrementalWriteAllowed>[0]
+    );
 
     await this.ctx.metaRunSql('BEGIN TRANSACTION');
     try {

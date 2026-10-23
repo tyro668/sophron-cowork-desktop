@@ -379,10 +379,6 @@ class Compiler {
     return id;
   }
 
-  private warn(code: string, message: string, span?: Span) {
-    this.diagnostics.push({ code, severity: 'warning', message, span: span ?? this.currentSpan });
-  }
-
   private checkField(name: string, cols: Cols, span: Span, where = ''): void {
     if (name.startsWith('__')) {
       throw new JflowError('E_NAME_RESERVED', `字段名不能以 __ 开头：[${name}]`, span);
@@ -514,9 +510,14 @@ class Compiler {
         throw new JflowError('E_NOT_SUPPORTED_R1', 'lookback 在 R1 运行时还未实现', s.span);
       }
       config.incrementalBy = s.incr.field;
-      if (config.source === 'rawTable')
-        this.warn('W_INCR_IGNORED', 'raw 表上的 incremental 被忽略，始终读全量', s.span);
-      else incremental = true;
+      if (r.columns && !r.columns.some((c) => c.name === s.incr!.field)) {
+        throw new JflowError(
+          'E_INCR_COLUMN',
+          `incremental 列 [${s.incr.field}] 不在来源 ${r.name ?? s.alias} 中`,
+          s.span
+        );
+      }
+      incremental = true;
     }
     if (s.pragmas?.disabled === 'true') config.disabled = true;
     this.node(sid, 0, 'input', config, {}, undefined, s.alias);

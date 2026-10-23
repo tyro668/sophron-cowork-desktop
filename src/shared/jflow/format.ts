@@ -1,7 +1,6 @@
 /**
- * Canonical formatter: AST → jflow text. `case` always prints as if…elseif…else…end.
- * The `cfg` dialect prints expressions the way existing operator configs store them
- * (multi-branch if → case when), so lowered configs pass the existing expression parser.
+ * Canonical formatter: AST → jflow text. Conditionals always print as if…elseif…else…end
+ * (in both the jflow and the operator-config `cfg` dialect; case when is not supported).
  */
 import type {
   Chain,
@@ -141,14 +140,6 @@ export function fmtExpr(e: Expr, dialect: Dialect = 'jflow'): string {
     case 'cast':
       return `${e.try ? 'try_cast' : 'cast'}(${X(e.e)} as ${fmtType(e.type)})`;
     case 'if': {
-      if (dialect === 'cfg' && e.branches.length > 1) {
-        return (
-          'case' +
-          e.branches.map(([c, v]) => ` when ${X(c)} then ${X(v)}`).join('') +
-          (e.else ? ` else ${X(e.else)}` : '') +
-          ' end'
-        );
-      }
       let s = '';
       e.branches.forEach(([c, v], i) => {
         s += `${i === 0 ? 'if ' : ' elseif '}${X(c)} then ${X(v)}`;

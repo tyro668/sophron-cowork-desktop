@@ -27,6 +27,7 @@ export const DATA_TOOL_PACKS = {
       'data_create_raw_table',
       'data_create_raw_table_with_processing_strategy',
       'data_update_raw_table',
+      'data_delete_raw_table',
       'data_summarize_raw_table_source',
       'data_create_result_table',
       'data_update_result_table',
