@@ -17,14 +17,13 @@
   --radius-group: 6px;
 }
 .opg-frame {
-  margin: var(--space-inset);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-group);
+  /* Flush with the config panel: no inset, no side borders or radius; a bottom rule closes the grid. */
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-radius: 0;
   overflow: hidden;
   flex-shrink: 0;
-}
-.opg-frame + .opg-frame {
-  margin-top: 0;
 }
 .opg {
   display: grid;
@@ -385,6 +384,7 @@
 }
 .opg-lgc {
   border: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
   cursor: pointer;
 }
 .opg-lgc:hover {
