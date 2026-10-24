@@ -666,6 +666,8 @@ export function mergeParts(table: DataRawTable): MergePart[] | null {
   const config = table.inputConfig as {
     sourceKind?: string;
     mergeSheets?: string[];
+    /** Sheets that were gone at the last refresh. */
+    missingMergeSheets?: string[];
     mergeReport?: {
       includedFiles?: string[];
       missingSheetFiles?: string[];
@@ -673,7 +675,12 @@ export function mergeParts(table: DataRawTable): MergePart[] | null {
     };
   };
   if (config.sourceKind === 'excel' && (config.mergeSheets?.length ?? 0) > 1) {
-    return config.mergeSheets!.map((name) => ({ name, included: true }));
+    const missing = new Set(config.missingMergeSheets ?? []);
+    return config.mergeSheets!.map((name) =>
+      missing.has(name)
+        ? { name, included: false, reason: 'missing_sheet' as const }
+        : { name, included: true }
+    );
   }
   if (config.sourceKind === 'folder' && config.mergeReport) {
     const report = config.mergeReport;

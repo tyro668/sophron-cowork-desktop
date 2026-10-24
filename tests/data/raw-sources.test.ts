@@ -256,7 +256,7 @@ describe('raw-table sources (1:N)', () => {
     fs.writeFileSync(csv, 'id\n1\n');
     await expect(
       store.createRawSource({ sourcePath: csv, buildMode: 'folder_merge' })
-    ).rejects.toThrow(/does not apply/);
+    ).rejects.toThrow(/E_BUILD_MODE_INVALID/);
   });
 });
 

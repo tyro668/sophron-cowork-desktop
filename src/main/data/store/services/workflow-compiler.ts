@@ -141,7 +141,9 @@ export class WorkflowCompiler {
       );
       const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
       if (!rawTable) {
-        throw new Error(`RawTable source not found: ${rawTableRef}`);
+        throw new Error(
+          `E_INPUT_TABLE_DELETED: 输入节点“${node.label || node.id}”引用的原始表已删除，请重新选择。`
+        );
       }
       if (rawTable.memberStatus === 'missing' && node.config.allowMissingSourceMember !== true) {
         throw new Error(await this.sourceMemberMissingMessage(rawTable));

@@ -334,6 +334,8 @@ export interface DataRawTableExcelConfig {
   dataProcessing?: DataRawTableProcessingConfig;
   /** When set, these sheets are stacked into one table with a `_sheet` system column. */
   mergeSheets?: string[];
+  /** Merged sheets that were missing at the last refresh (the table keeps the last import). */
+  missingMergeSheets?: string[];
 }
 
 export interface DataRawTableCsvConfig {

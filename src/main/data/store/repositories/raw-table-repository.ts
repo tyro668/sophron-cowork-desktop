@@ -306,6 +306,27 @@ export class RawTableRepository {
       }
     );
   }
+  /** Merge-sheets table: records sheets missing at the last refresh (no re-import). */
+  async setMissingMergeSheets(id: string, sheets: string[]): Promise<void> {
+    const rows = await this.ctx.metaQueryRows<{ config_json: string | null }>(
+      'SELECT config_json FROM data_raw_tables WHERE id = $id LIMIT 1',
+      { id }
+    );
+    if (!rows[0]) return;
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(rows[0].config_json || '{}') as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    if (sheets.length) config.missingMergeSheets = sheets;
+    else delete config.missingMergeSheets;
+    await this.ctx.metaRunSql('UPDATE data_raw_tables SET config_json = $config WHERE id = $id', {
+      config: JSON.stringify(config),
+      id,
+    });
+  }
+
   async renameRawTable(id: string, name: string, updatedAt: number): Promise<void> {
     await this.ctx.metaRunSql(
       `

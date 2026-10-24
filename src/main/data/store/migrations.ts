@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { dataFieldTypeOfSpelling } from '../../../shared/data-field-types';
 /**
  * Versioned metadata schema migrations.
@@ -1044,6 +1045,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'cloud_raw_sources',
     up: (ctx) => migrateCloudRawSources(ctx),
   },
+  {
+    version: 31,
+    name: 'source_file_relative_paths',
+    up: (ctx) => migrateSourceFileRelativePaths(ctx),
+  },
 ];
 
 /** Raw-table 1:N model: every input table belongs to a source (file / folder / cloud table).
@@ -1514,5 +1520,37 @@ async function migrateCloudRawSources(ctx: DataStoreContext): Promise<void> {
         WHERE id = $id`,
       { id: row.source_id }
     );
+  }
+}
+
+/** v31: folder-merge `_来源文件` held the bare file name; it now holds the path relative to the
+ *  source folder. Rewrites values whose file name is unique inside the (still existing) folder. */
+export async function migrateSourceFileRelativePaths(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{ table_name: string; source_path: string }>(
+    `SELECT table_name, source_path FROM data_raw_tables WHERE source_kind = 'folder'`
+  );
+  for (const row of rows) {
+    let files: string[];
+    try {
+      files = (fs.readdirSync(row.source_path, { recursive: true }) as string[]).map((file) =>
+        String(file).split(/[\\/]/).join('/')
+      );
+    } catch {
+      continue;
+    }
+    const columns = await ctx.getTableColumns(row.table_name).catch(() => [] as string[]);
+    if (!columns.includes('_来源文件')) continue;
+    const byName = new Map<string, string[]>();
+    for (const file of files) {
+      const name = file.split('/').pop()!;
+      byName.set(name, [...(byName.get(name) ?? []), file]);
+    }
+    for (const [name, paths] of byName) {
+      if (paths.length !== 1 || paths[0] === name) continue;
+      await ctx.runSql(
+        `UPDATE "${row.table_name.replace(/"/g, '""')}" SET "_来源文件" = $path WHERE "_来源文件" = $name`,
+        { path: paths[0], name }
+      );
+    }
   }
 }
