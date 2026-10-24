@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
-  ChevronRight,
   FileSpreadsheet,
   FileText,
   Folder,
@@ -124,6 +123,13 @@ export function RawTablesPanel({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedMerges, setExpandedMerges] = useState<Set<string>>(new Set());
   const [collapsedSources, setCollapsedSources] = useState<Set<string>>(loadCollapsedSources);
+  const toggleMerge = (id: string) =>
+    setExpandedMerges((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const toggleSource = (id: string) =>
     setCollapsedSources((current) => {
       const next = new Set(current);
@@ -248,7 +254,12 @@ export function RawTablesPanel({
     return (
       <tr
         key={row.id}
-        onClick={() => setSelectedRawTableId(row.id)}
+        aria-expanded={parts ? expandedMerges.has(row.id) : undefined}
+        data-merge-row={parts ? 'true' : undefined}
+        onClick={() => {
+          setSelectedRawTableId(row.id);
+          if (parts && rawTable) toggleMerge(rawTable.id);
+        }}
         onDoubleClick={() => {
           if (draft) {
             onEditDraft(draft.id);
@@ -279,30 +290,6 @@ export function RawTablesPanel({
           } ${isChild && selected ? 'shadow-[inset_2px_0_0_var(--color-accent)]' : ''}`}
         >
           <div className="flex min-w-0 items-center gap-2">
-            {rawTable && parts ? (
-              <button
-                type="button"
-                aria-expanded={expandedMerges.has(rawTable.id)}
-                data-testid="raw-merge-expand"
-                title={t('data.rawSources.list.mergeFiles', {
-                  count: parts.filter((part) => part.included).length,
-                })}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setExpandedMerges((current) => {
-                    const next = new Set(current);
-                    if (next.has(rawTable.id)) next.delete(rawTable.id);
-                    else next.add(rawTable.id);
-                    return next;
-                  });
-                }}
-                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
-              >
-                <ChevronRight
-                  className={`h-3.5 w-3.5 transition-transform ${expandedMerges.has(rawTable.id) ? 'rotate-90' : ''}`}
-                />
-              </button>
-            ) : null}
             {isChild ? <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" /> : typeIcon}
             <div
               className={`min-w-0 truncate text-[13px] text-text-primary ${
@@ -390,7 +377,10 @@ export function RawTablesPanel({
         data-testid="raw-source-group-row"
         aria-expanded={expanded}
         aria-selected={selected}
-        onClick={() => setSelectedRawTableId(`source:${source.id}`)}
+        onClick={() => {
+          setSelectedRawTableId(`source:${source.id}`);
+          toggleSource(source.id);
+        }}
         onDoubleClick={() => onOpenSource?.(source)}
         className={`h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 ${
           selected
@@ -400,20 +390,6 @@ export function RawTablesPanel({
       >
         <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-2">
-            <button
-              type="button"
-              data-testid="raw-source-toggle"
-              aria-label={expanded ? t('common.collapse') : t('common.expand')}
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleSource(source.id);
-              }}
-              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
-            >
-              <ChevronRight
-                className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`}
-              />
-            </button>
             {icon}
             <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
               {source.name}
