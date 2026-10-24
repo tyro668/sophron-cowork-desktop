@@ -2223,15 +2223,12 @@
         "sourceDetail": "Source details",
         "deleteSource": "Delete source",
         "partMissingSheet": "missing sheet, not merged",
-        "partConflict": "type conflict, not merged",
-        "partFiles": "{{count}} files",
-        "partSheets": "{{count}} sheets"
+        "partConflict": "type conflict, not merged"
       },
       "detail": {
         "section": "Source",
         "path": "Path",
         "buildMode": "Build mode",
-        "buildModeHint": "(changing it deletes the existing tables and recreates them)",
         "autoInclude": "Include new sheets / files",
         "on": "On",
         "off": "Off",

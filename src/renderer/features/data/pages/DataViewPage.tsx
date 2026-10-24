@@ -269,6 +269,11 @@ export function DataViewPage() {
               navigateToAutomation({ newRawTableName: '' });
             }}
             onCreated={() => {
+              // A rebuild deletes the tables that were open behind the wizard.
+              if (sourceWizard.rebuild) {
+                editors.setEditingRawTableId(null);
+                setOpenSourceId(null);
+              }
               void loadRawTables({ preserveError: true });
               void loadRawSources();
             }}
@@ -317,6 +322,12 @@ export function DataViewPage() {
             onSyncCloudSource={actions.handleRefreshCloudRawTable}
             onDelete={actions.handleDeleteRawTable}
             initialViewTab={editorInitialTab}
+            rawSource={
+              rawSources.find((source) => source.id === editors.editingRawTable?.sourceId) ?? null
+            }
+            onChangeBuildMode={(source, buildMode) =>
+              setSourceWizard({ rebuild: { source, buildMode } })
+            }
           />
         ) : openSource ? (
           <RawSourceDetail

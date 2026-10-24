@@ -53,9 +53,6 @@ export function RawSourceDetail({
           {tr('back')}
         </button>
         <span className="text-[14px] font-medium text-text-primary">{source.name}</span>
-        <span className="rounded bg-accent-muted px-1.5 py-0.5 text-[11.5px] text-accent">
-          {tr('list.tablesBadge', { count: source.memberIds.length })}
-        </span>
         {!isCloud && (
           <button
             type="button"
@@ -93,7 +90,6 @@ export function RawSourceDetail({
               </option>
             ))}
           </select>
-          <span className="text-[12px] text-text-muted">{tr('detail.buildModeHint')}</span>
         </div>
         <div className={row}>
           <span className="w-36 text-text-muted">{tr('detail.autoInclude')}</span>
