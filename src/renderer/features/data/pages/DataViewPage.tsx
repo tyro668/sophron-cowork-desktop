@@ -34,7 +34,12 @@ import { useDataViewEditors } from '../hooks/use-data-view-editors';
 import { useStoredPreview } from '../hooks/use-stored-preview';
 import { useDataActions } from '../hooks/use-data-actions';
 import { useDataNavigation } from '../hooks/use-data-navigation';
-import type { DataRawSource, DataRawSourceBuildMode, DataRawTable } from '../../../types';
+import type {
+  DataRawSource,
+  DataRawSourceBuildMode,
+  DataRawSourceCreateResult,
+  DataRawTable,
+} from '../../../types';
 import { RawSourceWizard } from '../../../components/data-view/raw-source-wizard';
 import { RawSourceDetail } from '../../../components/data-view/raw-source-detail';
 import { useRawSourceRefresh } from '../../../components/data-view/raw-source-refresh-dialog';
@@ -255,6 +260,22 @@ export function DataViewPage() {
     ui.loadingTab === 'result_tables' ||
     (activeTab === 'result_tables' && ui.pendingNavigationTab === 'result_tables');
 
+  // Inline 组织方式 change saved: the old tables are gone — land on the rebuilt source
+  // (its detail page for several tables, the table editor for one).
+  const handleBuildModeRebuilt = (result: DataRawSourceCreateResult) => {
+    void loadRawTables({ preserveError: true });
+    void loadRawSources();
+    const [only, ...rest] = result.tables;
+    if (only && rest.length === 0) {
+      setOpenSourceId(null);
+      editors.setFocusedRawTable(only);
+      editors.setEditingRawTableId(only.id);
+    } else {
+      editors.setEditingRawTableId(null);
+      setOpenSourceId(result.source.id);
+    }
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -325,9 +346,7 @@ export function DataViewPage() {
             rawSource={
               rawSources.find((source) => source.id === editors.editingRawTable?.sourceId) ?? null
             }
-            onChangeBuildMode={(source, buildMode) =>
-              setSourceWizard({ rebuild: { source, buildMode } })
-            }
+            onBuildModeRebuilt={handleBuildModeRebuilt}
           />
         ) : openSource ? (
           <RawSourceDetail
@@ -339,9 +358,7 @@ export function DataViewPage() {
               editors.setFocusedRawTable(table);
               editors.setEditingRawTableId(table.id);
             }}
-            onChangeMode={(source, buildMode) =>
-              setSourceWizard({ rebuild: { source, buildMode } })
-            }
+            onRebuilt={handleBuildModeRebuilt}
             onChanged={() => {
               void loadRawTables({ preserveError: true });
               void loadRawSources();

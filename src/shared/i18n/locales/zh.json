@@ -2346,6 +2346,9 @@
         "sizeCompact": "{{rows}} × {{cols}}",
         "rechooseMode": "更改组织方式",
         "selectAll": "全选"
+      },
+      "modeChange": {
+        "hint": "组织方式将从「{{from}}」改为「{{to}}」。保存后会删除现有原始表并按新方式重建，取消则保持不变。"
       }
     }
   },

@@ -7,6 +7,10 @@ const client = vi.hoisted(() => ({
   setRawSourceAutoInclude: vi.fn(),
   previewRawTable: vi.fn(),
   refreshRawSource: vi.fn(),
+  scanRawSource: vi.fn(),
+  rebuildRawSource: vi.fn(),
+  getRawSourceRebuildImpact: vi.fn(),
+  pickRawTableSourcePath: vi.fn(),
 }));
 vi.mock('../../src/renderer/features/data/api/data-client', () => ({ dataClient: client }));
 
@@ -52,7 +56,7 @@ function renderDetail(src = source(), tables = [table('客户主数据'), table(
   const handlers = {
     onBack: vi.fn(),
     onOpenTable: vi.fn(),
-    onChangeMode: vi.fn(),
+    onRebuilt: vi.fn(),
     onChanged: vi.fn(),
   };
   render(<RawSourceDetail source={fixed as never} rawTables={tables} {...handlers} />);
@@ -94,12 +98,8 @@ describe('RawSourceDetail (方案 A)', () => {
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('build-mode change goes through onChangeMode; actions preview / open', async () => {
+  it('row actions preview / open', async () => {
     const h = renderDetail();
-    fireEvent.change(screen.getByTestId('raw-source-build-mode'), {
-      target: { value: 'excel_merge_sheets' },
-    });
-    expect(h.onChangeMode).toHaveBeenCalledWith(expect.anything(), 'excel_merge_sheets');
     fireEvent.click(screen.getAllByTestId('raw-source-member-open')[1]);
     expect(h.onOpenTable).toHaveBeenCalledWith(expect.objectContaining({ id: '关联说明' }));
     fireEvent.click(screen.getAllByTestId('raw-source-member-preview')[1]);
@@ -142,5 +142,89 @@ describe('RawSourceDetail (方案 A)', () => {
     expect(memberShortName(table('a', { name: 'per_sheet / 客户' }), s)).toBe('客户');
     expect(memberShortName(table('a', { name: 'U_PS / 客户' }), s)).toBe('客户');
     expect(memberShortName(table('a', { name: '其他' }), s)).toBe('其他');
+  });
+
+  describe('inline 组织方式 change', () => {
+    const sheet = (name: string, rows: number) => ({
+      name,
+      rowCount: rows,
+      columnCount: 2,
+      columns: ['日期', '金额'],
+      empty: false,
+    });
+    beforeEach(() => {
+      client.scanRawSource.mockResolvedValue({
+        sourcePath: '/d/01_客户主数据.xlsx',
+        kind: 'excel',
+        name: '01_客户主数据.xlsx',
+        sizeBytes: 1,
+        sheets: [sheet('客户主数据', 30), sheet('关联说明', 3)],
+        files: [],
+        merge: null,
+      });
+      client.getRawSourceRebuildImpact.mockResolvedValue({
+        sourceId: 's1',
+        tables: [{ id: '客户主数据', name: '客户主数据', rowCount: 30, pipelineNames: [] }],
+      });
+    });
+
+    it('stays on the page, shows the new options with 保存 / 取消, and 取消 restores', async () => {
+      const h = renderDetail();
+      fireEvent.change(screen.getByTestId('raw-source-build-mode'), {
+        target: { value: 'excel_single' },
+      });
+      expect(screen.getByTestId('raw-source-detail')).toBeTruthy();
+      expect(screen.getByTestId('raw-source-mode-change-hint').textContent).toContain('改为');
+      expect(screen.queryByTestId('raw-source-detail-tables')).toBeNull();
+      expect(screen.queryByTestId('raw-source-refresh')).toBeNull();
+      await waitFor(() =>
+        expect(screen.getByTestId('raw-source-mode-editor').textContent).toContain('关联说明')
+      );
+      fireEvent.click(screen.getByTestId('raw-source-mode-cancel'));
+      expect(screen.queryByTestId('raw-source-mode-change')).toBeNull();
+      expect(screen.getByTestId('raw-source-detail-tables')).toBeTruthy();
+      expect((screen.getByTestId('raw-source-build-mode') as HTMLSelectElement).value).toBe(
+        'excel_per_sheet'
+      );
+      expect(client.rebuildRawSource).not.toHaveBeenCalled();
+      expect(h.onRebuilt).not.toHaveBeenCalled();
+    });
+
+    it('picking the original mode again also cancels', async () => {
+      renderDetail();
+      const select = screen.getByTestId('raw-source-build-mode');
+      fireEvent.change(select, { target: { value: 'excel_single' } });
+      expect(screen.getByTestId('raw-source-mode-change')).toBeTruthy();
+      fireEvent.change(select, { target: { value: 'excel_per_sheet' } });
+      expect(screen.queryByTestId('raw-source-mode-change')).toBeNull();
+    });
+
+    it('保存 opens the delete confirmation, then rebuilds and reports back', async () => {
+      const result = { source: { id: 's1' }, tables: [{ id: 'n1' }], skipped: [] };
+      client.rebuildRawSource.mockResolvedValue(result);
+      const h = renderDetail();
+      fireEvent.change(screen.getByTestId('raw-source-build-mode'), {
+        target: { value: 'excel_single' },
+      });
+      const save = screen.getByTestId('raw-source-mode-save') as HTMLButtonElement;
+      await waitFor(() => expect(save.disabled).toBe(false));
+      fireEvent.click(save);
+      const confirm = await screen.findByTestId('raw-source-rebuild-confirm');
+      expect(client.rebuildRawSource).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId('raw-source-rebuild-ack'));
+      fireEvent.click(confirm);
+      await waitFor(() =>
+        expect(client.rebuildRawSource).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sourceId: 's1',
+            buildMode: 'excel_single',
+            confirmDeleteExistingTables: true,
+          })
+        )
+      );
+      await waitFor(() => expect(h.onRebuilt).toHaveBeenCalledWith(result));
+      expect(h.onChanged).toHaveBeenCalled();
+      expect(screen.queryByTestId('raw-source-mode-change')).toBeNull();
+    });
   });
 });

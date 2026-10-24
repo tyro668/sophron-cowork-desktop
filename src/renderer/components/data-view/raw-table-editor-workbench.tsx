@@ -1,4 +1,5 @@
 import { modesForSource } from './raw-source-detail';
+import { useInlineModeChange } from './raw-source-mode-change';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
@@ -33,6 +34,7 @@ import type {
   DataRawTable,
   DataRawSource,
   DataRawSourceBuildMode,
+  DataRawSourceCreateResult,
   DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTableExcelConfig,
@@ -122,7 +124,8 @@ export type RawTableEditorProps = {
   initialViewTab?: 'config' | 'data' | 'automation';
   /** The table's source; Excel / folder sources can switch build mode (rebuild wizard). */
   rawSource?: DataRawSource | null;
-  onChangeBuildMode?: (source: DataRawSource, mode: DataRawSourceBuildMode) => void;
+  /** Enables the inline 组织方式 change; called after it was saved (tables rebuilt). */
+  onBuildModeRebuilt?: (result: DataRawSourceCreateResult) => void;
 };
 
 export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
@@ -149,7 +152,7 @@ export function RawTableEditorWorkbench({
   onDelete,
   initialViewTab,
   rawSource,
-  onChangeBuildMode,
+  onBuildModeRebuilt,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
@@ -196,6 +199,8 @@ export function RawTableEditorWorkbench({
       setExportBusy(false);
     }
   };
+  const modeChange = useInlineModeChange(rawSource, (result) => onBuildModeRebuilt?.(result));
+  const changingMode = modeChange.pending !== null;
   const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>(
     initialViewTab ?? 'config'
   );
@@ -884,7 +889,8 @@ export function RawTableEditorWorkbench({
             </div>
           </div>
           <div className="flex items-stretch">
-            {activeViewTab === 'data' ? (
+            {modeChange.actions}
+            {changingMode ? null : activeViewTab === 'data' ? (
               <button
                 type="button"
                 onClick={() => void refreshData()}
@@ -900,7 +906,7 @@ export function RawTableEditorWorkbench({
             ) : null}
             <button
               type="button"
-              hidden={activeViewTab === 'data'}
+              hidden={activeViewTab === 'data' || changingMode}
               onClick={() => void handlePreviewToggle()}
               disabled={!canPreview && activeViewTab !== 'data'}
               aria-pressed={activeViewTab === 'data'}
@@ -922,7 +928,7 @@ export function RawTableEditorWorkbench({
             <button
               type="button"
               onClick={saveRawTable}
-              hidden={activeViewTab === 'data'}
+              hidden={activeViewTab === 'data' || changingMode}
               disabled={!canSave}
               data-testid="raw-editor-save"
               className={`inline-flex h-full w-[92px] items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
@@ -1053,15 +1059,14 @@ export function RawTableEditorWorkbench({
                     )}
                   </RawTableConfigRow>
 
-                  {rawSource && onChangeBuildMode && modesForSource(rawSource).length > 1 && (
+                  {rawSource && onBuildModeRebuilt && modesForSource(rawSource).length > 1 && (
                     <RawTableConfigRow label={t('data.rawSources.detail.buildMode')}>
                       <GlassSelect
                         ariaLabel={t('data.rawSources.detail.buildMode')}
-                        value={rawSource.buildMode}
-                        onValueChange={(value) => {
-                          if (value !== rawSource.buildMode)
-                            onChangeBuildMode(rawSource, value as DataRawSourceBuildMode);
-                        }}
+                        value={modeChange.value ?? rawSource.buildMode}
+                        onValueChange={(value) =>
+                          modeChange.choose(value as DataRawSourceBuildMode)
+                        }
                         options={modesForSource(rawSource).map((mode) => ({
                           value: mode,
                           label: t(`data.rawSources.modes.${mode}`),
@@ -1095,7 +1100,7 @@ export function RawTableEditorWorkbench({
                     />
                   </RawTableConfigRow>
                 </section>
-                <div className="grid">
+                <div className="grid" hidden={changingMode}>
                   <section className="ui-group ui-form-flush bg-surface">
                     <div className="ui-group-title">
                       {t('data.rawTables.editor.sectionParsing')}
@@ -1133,7 +1138,9 @@ export function RawTableEditorWorkbench({
               </div>
             </div>
 
-            {dataProcessing.strategy === 'customize' ? (
+            {changingMode ? (
+              <div className="min-h-0 flex-1 overflow-auto bg-surface p-2">{modeChange.editor}</div>
+            ) : dataProcessing.strategy === 'customize' ? (
               <div
                 className="flex min-h-0 flex-1 flex-col overflow-hidden"
                 data-testid="raw-customize-flow"

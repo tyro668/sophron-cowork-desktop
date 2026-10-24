@@ -54,6 +54,19 @@ export interface RawSourceWizardProps {
   onCreatePipeline?: (tableId: string) => void;
   /** Rebuild an existing source with a new build mode (tables are deleted after confirmation). */
   rebuild?: { source: DataRawSource; buildMode: DataRawSourceBuildMode };
+  /**
+   * Inline mode for changing the build mode from an edit page: no title bar, tabs, source
+   * group or done step — the host page keeps its own header and drives 保存 / 取消 through
+   * `onControls`. `rebuild.buildMode` may change while mounted (the host's mode select).
+   */
+  embedded?: boolean;
+  onControls?: (controls: RawSourceWizardControls) => void;
+}
+
+export interface RawSourceWizardControls {
+  canSave: boolean;
+  saving: boolean;
+  save: () => void;
 }
 
 export function stemOf(name: string): string {
@@ -80,6 +93,8 @@ export function RawSourceWizard({
   onCreated,
   onCreatePipeline,
   rebuild,
+  embedded = false,
+  onControls,
 }: RawSourceWizardProps) {
   const { t } = useTranslation();
   const tr: Tr = useCallback(
@@ -181,6 +196,19 @@ export function RawSourceWizard({
     if (rebuild.source.config.fileRange) setFileRange(rebuild.source.config.fileRange);
     void runScan(rebuild.source.sourcePath, { keepStep: true });
   }, [rebuild, runScan]);
+
+  // Embedded: the host's mode select changes the target mode in place.
+  const targetMode = rebuild?.buildMode;
+  useEffect(() => {
+    if (!targetMode) return;
+    setMode(targetMode);
+    setMergeSheets(targetMode === 'excel_merge_sheets');
+  }, [targetMode]);
+
+  useEffect(() => {
+    if (!rebuild || !scan || scan.kind !== 'folder') return;
+    setMergedName((current) => current || `${stemOf(scan.name)}（合并）`);
+  }, [rebuild, scan]);
 
   useEffect(() => {
     if (!rebuild || !scan || scan.kind !== 'excel') return;
@@ -325,7 +353,7 @@ export function RawSourceWizard({
         : await dataClient.createRawSource({ ...input, name: sourceName });
       setImpact(null);
       setResult(created);
-      setStep(4);
+      if (!embedded) setStep(4);
       onCreated?.(created);
     } catch (err) {
       setImpact(null);
@@ -354,6 +382,157 @@ export function RawSourceWizard({
     !creating &&
     !scanning &&
     (effectiveMode !== 'folder_merge' || (scan?.merge?.fileCount ?? 0) > 0);
+
+  function configBody() {
+    if (!scan) return null;
+    return (
+      <>
+        {scan.kind === 'csv' && (
+          <section className={groupClass}>
+            <div className="ui-group-title">{tr('config.tableGroup')}</div>
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{tr('excel.tableName')}</div>
+              <div className="ui-form-value">
+                <input
+                  value={names.__single ?? fileStem}
+                  onChange={(event) => setNames({ ...names, __single: event.target.value })}
+                  className={cellInputClass}
+                  data-testid="raw-source-table-name"
+                />
+              </div>
+            </div>
+          </section>
+        )}
+        {scan.kind === 'excel' && (
+          <SheetConfigurator
+            tr={tr}
+            scan={scan}
+            multi={effectiveMode !== 'excel_single'}
+            singleSheet={singleSheet}
+            setSingleSheet={setSingleSheet}
+            checked={checkedSheets}
+            setChecked={setChecked}
+            names={names}
+            setNames={setNames}
+            headerRows={headerRows}
+            setHeaderRows={setHeaderRows}
+            fileStem={fileStem}
+            mergeSheets={mergeSheets}
+            setMergeSheets={setMergeSheets}
+            mergeable={mergeable}
+            mergedName={mergedName}
+            setMergedName={setMergedName}
+            autoInclude={autoInclude}
+            setAutoInclude={setAutoInclude}
+          />
+        )}
+        {scan.kind === 'folder' && (
+          <section className={groupClass}>
+            <div className="ui-group-title">{tr('config.importGroup')}</div>
+            <SheetStrategyRow
+              tr={tr}
+              files={files}
+              by={selectorBy}
+              setBy={setSelectorBy}
+              name={selectorName}
+              setName={setSelectorName}
+              index={selectorIndex}
+              setIndex={setSelectorIndex}
+            />
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{tr('mode.fileType')}</div>
+              <div className="ui-form-value !flex-row items-stretch">
+                <select
+                  value={fileRange}
+                  onChange={(event) => setFileRange(event.target.value as FileRange)}
+                  className={`${cellSelectClass} w-[220px] flex-none`}
+                  style={{ backgroundImage: SELECT_CHEVRON }}
+                  data-testid="raw-source-file-range"
+                >
+                  {(['excel_csv', 'excel', 'csv'] as const).map((value) => (
+                    <option key={value} value={value}>
+                      {tr(`mode.fileRange.${value}`)}
+                    </option>
+                  ))}
+                </select>
+                {effectiveMode === 'folder_per_file' && (
+                  <div className="ml-auto flex items-center px-2.5">
+                    <Toggle
+                      on={autoInclude}
+                      onChange={setAutoInclude}
+                      label={tr('mode.autoIncludeFiles')}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-border-subtle p-2">
+              {effectiveMode === 'folder_merge' ? (
+                <FolderMergeTable
+                  tr={tr}
+                  scan={scan}
+                  mergedName={mergedName}
+                  setMergedName={setMergedName}
+                />
+              ) : (
+                <FolderPerFileTable
+                  tr={tr}
+                  files={files}
+                  fileStem={fileStem}
+                  names={names}
+                  setNames={setNames}
+                  overrides={overrides}
+                  setOverrides={setOverrides}
+                  unchecked={unchecked}
+                  setUnchecked={setUnchecked}
+                  willCreate={willCreate}
+                />
+              )}
+            </div>
+          </section>
+        )}
+      </>
+    );
+  }
+
+  const createRef = useRef(create);
+  createRef.current = create;
+  const save = useCallback(() => void createRef.current(), []);
+  useEffect(() => {
+    onControls?.({ canSave: canCreate, saving: creating, save });
+  }, [canCreate, creating, onControls, save]);
+
+  if (embedded) {
+    return (
+      <div className="flex min-h-0 flex-col" data-testid="raw-source-mode-editor">
+        {error && (
+          <div
+            className="mb-2 rounded-md bg-error/[0.08] px-3 py-2 text-[12.5px] text-error"
+            data-testid="raw-source-error"
+          >
+            {error}
+          </div>
+        )}
+        {!scan ? (
+          <div className="px-3 py-4 text-[12.5px] text-text-muted">{tr('source.scanning')}</div>
+        ) : (
+          configBody()
+        )}
+        {rebuild && impact && (
+          <RebuildConfirmDialog
+            open
+            sourceName={rebuild.source.name}
+            fromMode={tr(`modes.${rebuild.source.buildMode}`)}
+            toMode={tr(`modes.${effectiveMode ?? rebuild.buildMode}`)}
+            impact={impact}
+            busy={creating}
+            onCancel={() => setImpact(null)}
+            onConfirm={() => void create(true)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="raw-source-wizard">
@@ -548,110 +727,7 @@ export function RawSourceWizard({
             scannedAt={scannedAt}
             onChange={rebuild ? undefined : () => setStep(1)}
           />
-          {scan.kind === 'csv' && (
-            <section className={groupClass}>
-              <div className="ui-group-title">{tr('config.tableGroup')}</div>
-              <div className="ui-form-row">
-                <div className="ui-form-label items-center">{tr('excel.tableName')}</div>
-                <div className="ui-form-value">
-                  <input
-                    value={names.__single ?? fileStem}
-                    onChange={(event) => setNames({ ...names, __single: event.target.value })}
-                    className={cellInputClass}
-                    data-testid="raw-source-table-name"
-                  />
-                </div>
-              </div>
-            </section>
-          )}
-          {scan.kind === 'excel' && (
-            <SheetConfigurator
-              tr={tr}
-              scan={scan}
-              multi={effectiveMode !== 'excel_single'}
-              singleSheet={singleSheet}
-              setSingleSheet={setSingleSheet}
-              checked={checkedSheets}
-              setChecked={setChecked}
-              names={names}
-              setNames={setNames}
-              headerRows={headerRows}
-              setHeaderRows={setHeaderRows}
-              fileStem={fileStem}
-              mergeSheets={mergeSheets}
-              setMergeSheets={setMergeSheets}
-              mergeable={mergeable}
-              mergedName={mergedName}
-              setMergedName={setMergedName}
-              autoInclude={autoInclude}
-              setAutoInclude={setAutoInclude}
-            />
-          )}
-          {scan.kind === 'folder' && (
-            <section className={groupClass}>
-              <div className="ui-group-title">{tr('config.importGroup')}</div>
-              <SheetStrategyRow
-                tr={tr}
-                files={files}
-                by={selectorBy}
-                setBy={setSelectorBy}
-                name={selectorName}
-                setName={setSelectorName}
-                index={selectorIndex}
-                setIndex={setSelectorIndex}
-              />
-              <div className="ui-form-row">
-                <div className="ui-form-label items-center">{tr('mode.fileType')}</div>
-                <div className="ui-form-value !flex-row items-stretch">
-                  <select
-                    value={fileRange}
-                    onChange={(event) => setFileRange(event.target.value as FileRange)}
-                    className={`${cellSelectClass} w-[220px] flex-none`}
-                    style={{ backgroundImage: SELECT_CHEVRON }}
-                    data-testid="raw-source-file-range"
-                  >
-                    {(['excel_csv', 'excel', 'csv'] as const).map((value) => (
-                      <option key={value} value={value}>
-                        {tr(`mode.fileRange.${value}`)}
-                      </option>
-                    ))}
-                  </select>
-                  {effectiveMode === 'folder_per_file' && (
-                    <div className="ml-auto flex items-center px-2.5">
-                      <Toggle
-                        on={autoInclude}
-                        onChange={setAutoInclude}
-                        label={tr('mode.autoIncludeFiles')}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-col gap-3 border-t border-border-subtle p-2">
-                {effectiveMode === 'folder_merge' ? (
-                  <FolderMergeTable
-                    tr={tr}
-                    scan={scan}
-                    mergedName={mergedName}
-                    setMergedName={setMergedName}
-                  />
-                ) : (
-                  <FolderPerFileTable
-                    tr={tr}
-                    files={files}
-                    fileStem={fileStem}
-                    names={names}
-                    setNames={setNames}
-                    overrides={overrides}
-                    setOverrides={setOverrides}
-                    unchecked={unchecked}
-                    setUnchecked={setUnchecked}
-                    willCreate={willCreate}
-                  />
-                )}
-              </div>
-            </section>
-          )}
+          {configBody()}
         </div>
       )}
       {step === 3 && scan && <ConfigTabBar tr={tr} />}

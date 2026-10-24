@@ -321,3 +321,55 @@ describe('groupBySource (layout A)', () => {
     expect(rows[3]).not.toMatchObject({ child: true });
   });
 });
+
+describe('RawSourceWizard embedded (inline 组织方式 change)', () => {
+  it('renders only the mode options, reports controls and defaults the merged name', async () => {
+    client.scanRawSource.mockResolvedValue({
+      sourcePath: '/d/门店',
+      kind: 'folder',
+      name: '门店',
+      sizeBytes: 1,
+      sheets: [],
+      files: [
+        {
+          path: '/d/门店/a.xlsx',
+          relativePath: 'a.xlsx',
+          kind: 'excel',
+          status: 'ready',
+          sheetNames: ['明细'],
+          usedSheet: '明细',
+          rowCount: 5,
+          columns: ['日期'],
+        },
+      ],
+      merge: { fileCount: 1, rowCount: 5, columns: ['日期'], filledColumns: [] },
+    });
+    const onControls = vi.fn();
+    render(
+      <RawSourceWizard
+        {...props({
+          embedded: true,
+          onControls,
+          rebuild: {
+            source: source({
+              name: '门店',
+              sourcePath: '/d/门店',
+              sourceKind: 'folder',
+              buildMode: 'folder_per_file',
+            }),
+            buildMode: 'folder_merge',
+          },
+        })}
+      />
+    );
+    await waitFor(() =>
+      expect(onControls).toHaveBeenLastCalledWith(expect.objectContaining({ canSave: true }))
+    );
+    expect(screen.getByTestId('raw-source-mode-editor')).toBeTruthy();
+    expect(screen.queryByTestId('raw-source-create')).toBeNull();
+    expect(screen.queryByTestId('raw-source-config-tabs')).toBeNull();
+    expect(screen.queryByTestId('raw-source-source-group')).toBeNull();
+    expect(screen.getByTestId('raw-source-selector-by')).toBeTruthy();
+    expect(screen.getByDisplayValue('门店（合并）')).toBeTruthy();
+  });
+});
