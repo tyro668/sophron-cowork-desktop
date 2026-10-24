@@ -725,7 +725,7 @@ export function ResultTableEditor({
 
   // The pipeline that produced this table — matched by id (name fallback for
   // dashboards loaded before relatedPipelineIds existed).
-  const relatedPipeline = useMemo(() => {
+  const listedPipeline = useMemo(() => {
     for (const id of resultTable.relatedPipelineIds ?? []) {
       const found = pipelines.find((pipeline) => pipeline.id === id);
       if (found) return found;
@@ -734,6 +734,24 @@ export function ResultTableEditor({
       pipelines.find((pipeline) => resultTable.relatedPipelineNames.includes(pipeline.name)) ?? null
     );
   }, [pipelines, resultTable.relatedPipelineIds, resultTable.relatedPipelineNames]);
+  // Opened from a chat link the dashboard may not have loaded pipelines yet: fetch it directly.
+  const [fetchedPipeline, setFetchedPipeline] = useState<DataPipeline | null>(null);
+  const firstRelatedPipelineId = resultTable.relatedPipelineIds?.[0] ?? null;
+  useEffect(() => {
+    setFetchedPipeline(null);
+    if (listedPipeline || !firstRelatedPipelineId || !dataClient.has('getPipeline')) return;
+    let active = true;
+    void Promise.resolve()
+      .then(() => dataClient.getPipeline(firstRelatedPipelineId))
+      .then((pipeline) => {
+        if (active && pipeline) setFetchedPipeline(pipeline);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [listedPipeline, firstRelatedPipelineId]);
+  const relatedPipeline = listedPipeline ?? fetchedPipeline;
 
   const loadPreview = useCallback(
     async (page: number) => {
@@ -1011,18 +1029,13 @@ export function ResultTableEditor({
                 </div>
                 <div className="ui-form-value !flex-row">
                   <div className="flex min-h-[35px] min-w-0 flex-1 flex-wrap items-center gap-1.5 px-[10px] py-1 text-[12.5px]">
-                    <LineageChip
-                      kind={t('data.resultTables.lineage.raw')}
-                      name={
-                        rawTables.find(
-                          (item) =>
-                            item.id ===
-                            (resultTable.sourceRawTableId ??
-                              relatedPipeline?.sourceRawTableId ??
-                              '')
-                        )?.name ?? '—'
-                      }
-                    />
+                    {upstreamRawNames(resultTable, relatedPipeline, rawTables).map((name) => (
+                      <LineageChip
+                        key={name}
+                        kind={t('data.resultTables.lineage.raw')}
+                        name={name}
+                      />
+                    ))}
                     <ArrowRight className="h-3 w-3 text-text-muted" />
                     <LineageChip
                       kind={t('data.resultTables.lineage.pipeline')}
@@ -1208,6 +1221,25 @@ function StatCard({
       </div>
     </div>
   );
+}
+
+/** Every raw table the producing pipeline reads (a join over child tables has several). */
+export function upstreamRawNames(
+  resultTable: { sourceRawTableId: string | null },
+  pipeline: { name: string; sourceRawTableId: string | null } | null | undefined,
+  rawTables: ReadonlyArray<{ id: string; name: string; relatedPipelineNames?: string[] }>
+): string[] {
+  const byId = (id: string | null | undefined) =>
+    id ? rawTables.find((item) => item.id === id)?.name : undefined;
+  const direct = byId(resultTable.sourceRawTableId);
+  if (direct) return [direct];
+  const read = pipeline
+    ? rawTables
+        .filter((item) => item.relatedPipelineNames?.includes(pipeline.name))
+        .map((item) => item.name)
+    : [];
+  if (read.length) return read;
+  return [byId(pipeline?.sourceRawTableId) ?? '—'];
 }
 
 function LineageChip({
