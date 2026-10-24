@@ -727,12 +727,12 @@ function SourceCard(props: {
 }
 
 /** Config page (design raw_sheetcfg_v1): full-width groups in an 8px-padded content area. */
-const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface';
+export const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface';
 /** Borderless control filling its table / form cell; focus draws an inner outline. */
 const cellInputClass =
   'h-full min-h-[35px] w-full border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)] disabled:text-text-muted';
-const cellSelectClass = `${'h-full min-h-[35px] border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)]'} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7 hover:bg-surface-hover`;
-const titleCellClass =
+export const cellSelectClass = `${'h-full min-h-[35px] border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)]'} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7 hover:bg-surface-hover`;
+export const titleCellClass =
   'inline-flex h-full items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle px-4 text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50';
 
 function ConfigTitleBar(props: {
@@ -828,7 +828,7 @@ function ConfigTabBar({ tr }: { tr: Tr }) {
   );
 }
 
-function formatScanTime(at: number): string {
+export function formatScanTime(at: number): string {
   const d = new Date(at);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -1149,7 +1149,7 @@ function SheetConfigurator(props: {
   );
 }
 
-const SELECT_CHEVRON =
+export const SELECT_CHEVRON =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";
 
 function SourceSummary({

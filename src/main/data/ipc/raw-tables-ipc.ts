@@ -67,6 +67,12 @@ export function registerRawTablesIpc({
     (input: DataResolveRawSourceRenamesInput) =>
       requireDataPipelineStore().resolveRawSourceRenames(input)
   );
+  sourceChannel(
+    'data.setRawSourceAutoInclude',
+    'updating raw source',
+    (id: string, autoInclude: boolean) =>
+      requireDataPipelineStore().setRawSourceAutoInclude(id, autoInclude)
+  );
   sourceChannel('data.refreshRawSource', 'refreshing raw source', (id: string) =>
     requireDataPipelineStore().refreshRawSource(id)
   );

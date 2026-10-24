@@ -457,6 +457,23 @@ export class RawSourceService {
 
   // ---- refresh ------------------------------------------------------------------------------
 
+  /** Turns auto-include of new sheets / files on or off (multi-table sources only). */
+  async setAutoInclude(id: string, autoInclude: boolean): Promise<DataRawSource> {
+    await this.ctx.ensureReady();
+    const source = await this.sources.requireSource(id);
+    if (autoInclude && !MULTI_TABLE_MODES.has(source.buildMode)) {
+      throw new Error(
+        'E_AUTO_INCLUDE_UNSUPPORTED: 只有每个 Sheet / 文件一张表的数据源可以自动纳入'
+      );
+    }
+    await this.sources.updateSource({
+      id,
+      config: { ...source.config, autoInclude },
+      at: this.ctx.now(),
+    });
+    return this.sources.requireSource(id);
+  }
+
   /** Re-imports every table of the source; per-sheet / per-file sources also pick up new
    *  sheets / files (when auto-include is on) and flag members that disappeared. A missing
    *  member whose fingerprint matches a new sheet / file is reported as a suspected rename and

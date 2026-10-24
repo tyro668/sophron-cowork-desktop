@@ -192,6 +192,8 @@ export function createDataApi(): ElectronApi['data'] {
       input: DataResolveRawSourceRenamesInput
     ): Promise<DataResolveRawSourceRenamesResult> =>
       ipcRenderer.invoke('data.resolveRawSourceRenames', input),
+    setRawSourceAutoInclude: (id: string, autoInclude: boolean) =>
+      ipcRenderer.invoke('data.setRawSourceAutoInclude', id, autoInclude),
     refreshRawSource: (id: string): Promise<DataRawSourceRefreshResult> =>
       ipcRenderer.invoke('data.refreshRawSource', id),
     getRawSourceRebuildImpact: (id: string): Promise<DataRawSourceRebuildImpact> =>
