@@ -9,7 +9,11 @@ import {
   RawSourceRefreshDialog,
   shouldShowRefreshDialog,
 } from '../../src/renderer/components/data-view/raw-source-refresh-dialog';
-import { groupBySource, mergeParts } from '../../src/renderer/components/data-view/raw-tables';
+import {
+  childDisplayName,
+  groupBySource,
+  mergeParts,
+} from '../../src/renderer/components/data-view/raw-tables';
 import { rawTableOptionsBySource } from '../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowInputSourceConfig';
 import { groupOptions } from '../../src/renderer/components/GlassSelect';
 
@@ -158,5 +162,25 @@ describe('expandable merged sources', () => {
     const expanded = groupBySource([merged] as never, sources as never, new Set(['门店（合并）']));
     expect(expanded.map((row) => row.kind)).toEqual(['rawTable', 'part', 'part', 'part']);
     expect(mergeParts(table('plain') as never)).toBeNull();
+  });
+});
+
+describe('source tree (layout A)', () => {
+  it('nests members under the source, hides them when collapsed, shows short child names', () => {
+    const tables = [
+      table('t1', { name: '9月经营数据 / 销售流水' }),
+      table('t2', { name: '9月经营数据 / 门店' }),
+      table('solo', { name: 'S3_SKU维表', sourceId: 's2' }),
+    ];
+    const sources = [source(), source({ id: 's2', name: 'sku.csv', memberIds: ['solo'] })];
+    const open = groupBySource(tables as never, sources as never);
+    expect(open.map((row) => row.kind)).toEqual(['source', 'rawTable', 'rawTable', 'rawTable']);
+    const child = open[1] as unknown as { rawTable: never; sourceName?: string; child?: boolean };
+    expect(child.child).toBe(true);
+    expect(childDisplayName(child.rawTable, child.sourceName)).toBe('销售流水');
+    expect((open[3] as { child?: boolean }).child).toBeUndefined();
+    const closed = groupBySource(tables as never, sources as never, new Set(), new Set(['s1']));
+    expect(closed.map((row) => row.id)).toEqual(['source:s1', 'solo']);
+    expect(childDisplayName({ name: '自定义名' } as never, '9月经营数据.xlsx')).toBe('自定义名');
   });
 });

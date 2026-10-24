@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   ChevronRight,
   FileSpreadsheet,
+  FileText,
   Folder,
   CalendarClock,
   CloudDownload,
@@ -122,6 +123,15 @@ export function RawTablesPanel({
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedMerges, setExpandedMerges] = useState<Set<string>>(new Set());
+  const [collapsedSources, setCollapsedSources] = useState<Set<string>>(loadCollapsedSources);
+  const toggleSource = (id: string) =>
+    setCollapsedSources((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      saveCollapsedSources(next);
+      return next;
+    });
   const filteredDrafts = useMemo(
     () => drafts.filter((draft) => matchesSearchText(draft.name, searchQuery)),
     [drafts, searchQuery]
@@ -135,9 +145,9 @@ export function RawTablesPanel({
         ? []
         : [
             ...pageDrafts.map((draft) => ({ kind: 'draft' as const, id: draft.id, draft })),
-            ...groupBySource(rawTables, sources, expandedMerges),
+            ...groupBySource(rawTables, sources, expandedMerges, collapsedSources),
           ],
-    [rawTables, isLoading, pageDrafts, sources, expandedMerges]
+    [rawTables, isLoading, pageDrafts, sources, expandedMerges, collapsedSources]
   );
   const pageRows = visibleRows;
   const pageSections = useMemo(
@@ -180,34 +190,59 @@ export function RawTablesPanel({
           data-testid="raw-merge-part-row"
           className="h-8 border-b border-dashed border-border-muted/60 text-[12px]"
         >
-          <td colSpan={6} className={row.child || indented ? 'pl-16 pr-2' : 'pl-14 pr-2'}>
-            <span
-              className={row.part.included ? 'text-text-secondary' : 'text-text-muted line-through'}
-            >
-              {row.part.name}
-            </span>
-            {!row.part.included && (
-              <span className="ml-2 text-warning">
-                {t(
-                  row.part.reason === 'type_conflict'
-                    ? 'data.rawSources.list.partConflict'
-                    : 'data.rawSources.list.partMissingSheet'
-                )}
+          <td
+            colSpan={6}
+            className={`pr-2 ${
+              row.child ? (indented ? 'pl-[5.5rem]' : 'pl-16') : indented ? 'pl-[4.25rem]' : 'pl-12'
+            }`}
+          >
+            <span className="inline-flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+              <span
+                className={
+                  row.part.included ? 'text-text-secondary' : 'text-text-muted line-through'
+                }
+              >
+                {row.part.name}
               </span>
-            )}
+              {!row.part.included && (
+                <span className="ml-2 text-warning">
+                  {t(
+                    row.part.reason === 'type_conflict'
+                      ? 'data.rawSources.list.partConflict'
+                      : 'data.rawSources.list.partMissingSheet'
+                  )}
+                </span>
+              )}
+            </span>
           </td>
         </tr>
       );
     }
     const isChild = row.kind === 'rawTable' && row.child;
-    indented = indented || !!isChild;
+    const sectionIndented = indented;
     const rawTable = row.kind === 'rawTable' ? row.rawTable : null;
     const draft = row.kind === 'draft' ? row.draft : null;
     const sourceKind = rawTable ? rawTable.sourceKind : 'draft';
     const cloudMirror = getCloudMirror(rawTable);
     const sourceMeta = cloudMirror ? getCloudMirrorSourceMeta() : getRawTableSourceMeta(sourceKind);
+    const parts = rawTable && !isChild ? mergeParts(rawTable) : null;
+    const typeIcon = cloudMirror ? (
+      <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+    ) : parts && sourceKind === 'folder' ? (
+      <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+    ) : sourceKind === 'excel' ? (
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+    ) : sourceKind === 'csv' ? (
+      <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+    ) : (
+      <Table2 className="h-4 w-4 flex-shrink-0 text-accent" />
+    );
     const selected = row.id === selectedRawTableId;
-    const rowName = rawTable?.name ?? draft?.name ?? '';
+    const rowName =
+      isChild && rawTable
+        ? childDisplayName(rawTable, row.sourceName)
+        : (rawTable?.name ?? draft?.name ?? '');
     const rowUpdatedAt = rawTable?.updatedAt ?? draft?.updatedAt ?? null;
     return (
       <tr
@@ -220,19 +255,36 @@ export function RawTablesPanel({
             onEditRawTable(rawTable.id);
           }
         }}
-        className={`h-[3.25rem] cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
-          selected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
+        data-testid={isChild ? 'raw-source-child-row' : undefined}
+        className={`cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
+          isChild ? 'h-[2.625rem]' : 'h-[2.875rem]'
+        } ${
+          selected
+            ? 'bg-accent-muted'
+            : parts
+              ? 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
+              : 'hover:bg-surface-hover'
         }`}
       >
-        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
-          <div className="flex min-w-0 items-center gap-3">
-            {rawTable && mergeParts(rawTable) ? (
+        <td
+          className={`relative pr-2 ${
+            isChild
+              ? sectionIndented
+                ? 'pl-[4.25rem]'
+                : 'pl-12'
+              : sectionIndented
+                ? 'pl-9'
+                : 'pl-2'
+          } ${isChild && selected ? 'shadow-[inset_2px_0_0_var(--color-accent)]' : ''}`}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            {rawTable && parts ? (
               <button
                 type="button"
                 aria-expanded={expandedMerges.has(rawTable.id)}
                 data-testid="raw-merge-expand"
                 title={t('data.rawSources.list.mergeFiles', {
-                  count: mergeParts(rawTable)!.filter((part) => part.included).length,
+                  count: parts.filter((part) => part.included).length,
                 })}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -243,22 +295,18 @@ export function RawTablesPanel({
                     return next;
                   });
                 }}
-                className="-mr-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
+                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
               >
                 <ChevronRight
                   className={`h-3.5 w-3.5 transition-transform ${expandedMerges.has(rawTable.id) ? 'rotate-90' : ''}`}
                 />
               </button>
             ) : null}
-            {indented ? (
-              <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-            ) : (
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                <Table2 className="h-4 w-4" />
-              </div>
-            )}
+            {isChild ? <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" /> : typeIcon}
             <div
-              className="min-w-0 truncate text-[13px] font-medium text-text-primary"
+              className={`min-w-0 truncate text-[13px] text-text-primary ${
+                isChild ? '' : parts ? 'font-semibold' : 'font-medium'
+              }`}
               title={
                 cloudMirror
                   ? formatCloudMirrorLocation(cloudMirror)
@@ -269,6 +317,21 @@ export function RawTablesPanel({
             >
               {rowName}
             </div>
+            {parts && (
+              <>
+                <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
+                  {t('data.rawSources.list.mergeBadge')}
+                </span>
+                <span className="flex-shrink-0 text-[11.5px] text-text-muted">
+                  {t(
+                    sourceKind === 'folder'
+                      ? 'data.rawSources.list.partFiles'
+                      : 'data.rawSources.list.partSheets',
+                    { count: parts.filter((part) => part.included).length }
+                  )}
+                </span>
+              </>
+            )}
           </div>
         </td>
         <td className="px-2">
@@ -314,75 +377,106 @@ export function RawTablesPanel({
   const renderSourceRow = (source: DataRawSource, members: DataRawTable[], indented: boolean) => {
     const missing = members.filter((member) => member.memberStatus === 'missing').length;
     const merged = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
-    const rows = members.reduce((sum, member) => sum + member.rowCount, 0);
     const updatedAt = Math.max(...members.map((member) => member.updatedAt));
+    const pipelines = [...new Set(members.flatMap((member) => member.relatedPipelineNames ?? []))];
+    const expanded = !collapsedSources.has(source.id);
+    const icon =
+      source.sourceKind === 'cloud' ? (
+        <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+      ) : source.sourceKind === 'folder' ? (
+        <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+      ) : source.sourceKind === 'csv' ? (
+        <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+      ) : (
+        <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+      );
     return (
       <tr
         key={`source:${source.id}`}
         data-testid="raw-source-group-row"
+        aria-expanded={expanded}
+        onClick={() => toggleSource(source.id)}
         onDoubleClick={() => onOpenSource?.(source)}
-        className="h-11 border-b border-dashed border-border-muted/85 bg-[var(--data-grid-header-surface)]"
+        className="h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 bg-[var(--data-grid-header-surface)] hover:bg-surface-hover"
       >
         <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-2">
-            {source.sourceKind === 'cloud' ? (
-              <CloudDownload className="h-4 w-4 flex-shrink-0 text-accent" />
-            ) : source.sourceKind === 'folder' ? (
-              <Folder className="h-4 w-4 flex-shrink-0 text-accent" />
-            ) : (
-              <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
-            )}
             <button
               type="button"
-              className="min-w-0 max-w-[65%] flex-shrink-0 truncate text-[13px] font-medium text-text-primary hover:text-accent"
+              data-testid="raw-source-toggle"
+              aria-label={expanded ? t('common.collapse') : t('common.expand')}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleSource(source.id);
+              }}
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
+            >
+              <ChevronRight
+                className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              />
+            </button>
+            {icon}
+            <button
+              type="button"
+              className="min-w-0 max-w-[60%] flex-shrink-0 truncate text-[13px] font-semibold text-text-primary hover:text-accent"
               title={source.sourcePath}
-              onClick={() => onOpenSource?.(source)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenSource?.(source);
+              }}
             >
               {source.name}
             </button>
-            <span className="flex-shrink-0 rounded bg-accent-muted px-1.5 py-0.5 text-[11px] text-accent">
+            <span
+              className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+                merged ? 'bg-warning/10 text-warning' : 'bg-accent-muted text-accent'
+              }`}
+            >
               {merged
                 ? t('data.rawSources.list.mergeBadge')
                 : t('data.rawSources.list.tablesBadge', { count: source.memberIds.length })}
             </span>
-            <span className="min-w-0 truncate text-[11.5px] text-text-muted">
+            <span
+              className="min-w-0 truncate text-[11.5px] text-text-muted"
+              title={source.sourcePath}
+            >
               {source.sourcePath}
             </span>
           </div>
         </td>
-        <td className="whitespace-nowrap px-2 pr-6 text-right text-[12.5px] tabular-nums text-text-muted">
-          {rows.toLocaleString('en-US')}
-        </td>
+        <td />
         <td className="px-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-[12.5px] text-accent disabled:opacity-50"
-            disabled={actionId === `refresh-source:${source.id}`}
-            onClick={() => onRefreshSource?.(source)}
-            data-testid="raw-source-group-refresh"
-          >
-            <RefreshCw className="h-3 w-3" />
-            {t('data.rawSources.list.refreshSource')}
-          </button>
-          <button
-            type="button"
-            className="ml-3 inline-flex items-center text-[12.5px] text-text-secondary hover:text-accent"
-            onClick={() => onOpenSource?.(source)}
-          >
-            {t('data.rawSources.list.sourceDetail')}
-            <ChevronRight className="h-3 w-3" />
-          </button>
+          <div className="truncate text-[13px] font-medium text-text-secondary">
+            {formatRelatedPipelineNames(pipelines, t)}
+          </div>
         </td>
-        <td className="whitespace-nowrap px-2 text-[12.5px] text-text-muted">
+        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
           {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
         </td>
         <td className="px-2">
-          {missing > 0 ? (
+          <div className="flex items-center gap-1">
             <RawTableStatusBadge
-              label={t('data.rawSources.list.missingMembers', { count: missing })}
-              tone="warning"
+              label={
+                missing > 0
+                  ? t('data.rawSources.list.missingMembers', { count: missing })
+                  : t('data.rawTables.status.available')
+              }
+              tone={missing > 0 ? 'warning' : 'success'}
             />
-          ) : null}
+            <button
+              type="button"
+              className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-accent disabled:opacity-50"
+              disabled={actionId === `refresh-source:${source.id}`}
+              title={t('data.rawSources.list.refreshSource')}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRefreshSource?.(source);
+              }}
+              data-testid="raw-source-group-refresh"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </td>
       </tr>
     );
@@ -702,7 +796,7 @@ export function mergeParts(table: DataRawTable): MergePart[] | null {
 }
 
 type PanelRow =
-  | { kind: 'rawTable'; id: string; rawTable: DataRawTable; child?: boolean }
+  | { kind: 'rawTable'; id: string; rawTable: DataRawTable; child?: boolean; sourceName?: string }
   | { kind: 'part'; id: string; rawTable: DataRawTable; part: MergePart; child?: boolean }
   | {
       kind: 'source';
@@ -719,7 +813,8 @@ type PanelRow =
 export function groupBySource(
   rawTables: DataRawTable[],
   sources: DataRawSource[],
-  expandedMerges: ReadonlySet<string> = new Set()
+  expandedMerges: ReadonlySet<string> = new Set(),
+  collapsedSources: ReadonlySet<string> = new Set()
 ): PanelRow[] {
   const pushParts = (rows: PanelRow[], table: DataRawTable, child: boolean) => {
     if (!expandedMerges.has(table.id)) return;
@@ -758,12 +853,45 @@ export function groupBySource(
       members: ordered,
       rawTable: table,
     });
+    if (collapsedSources.has(source.id)) continue;
     for (const member of ordered) {
-      rows.push({ kind: 'rawTable', id: member.id, rawTable: member, child: true });
+      rows.push({
+        kind: 'rawTable',
+        id: member.id,
+        rawTable: member,
+        child: true,
+        sourceName: source.name,
+      });
       pushParts(rows, member, true);
     }
   }
   return rows;
+}
+
+const COLLAPSED_SOURCES_KEY = 'sophron.rawSources.collapsed';
+
+function loadCollapsedSources(): Set<string> {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(COLLAPSED_SOURCES_KEY) ?? '[]');
+    return new Set(Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedSources(ids: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_SOURCES_KEY, JSON.stringify([...ids]));
+  } catch {
+    // storage unavailable: the state just isn't remembered
+  }
+}
+
+/** Child rows show only the sheet / file part ("经营 / 目标" → "目标"). */
+export function childDisplayName(table: DataRawTable, sourceName?: string): string {
+  const stem = (sourceName ?? '').replace(/\.[^./\\]+$/, '');
+  if (stem && table.name.startsWith(`${stem} / `)) return table.name.slice(stem.length + 3);
+  return table.name;
 }
 
 export function RawTableEditor(props: RawTableEditorProps) {

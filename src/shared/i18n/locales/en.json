@@ -2223,7 +2223,9 @@
         "sourceDetail": "Source details",
         "deleteSource": "Delete source",
         "partMissingSheet": "missing sheet, not merged",
-        "partConflict": "type conflict, not merged"
+        "partConflict": "type conflict, not merged",
+        "partFiles": "{{count}} files",
+        "partSheets": "{{count}} sheets"
       },
       "detail": {
         "section": "Source",
