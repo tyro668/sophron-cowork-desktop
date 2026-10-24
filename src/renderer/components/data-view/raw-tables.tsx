@@ -23,6 +23,7 @@ import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { RawTableAutomations } from './table-automations';
+import { ExcelMultiSheetIcon } from './excel-multi-sheet-icon';
 import {
   TabBarAction,
   tabBarNewCellClass,
@@ -368,6 +369,8 @@ export function RawTablesPanel({
         <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
       ) : source.sourceKind === 'csv' ? (
         <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+      ) : source.buildMode === 'excel_per_sheet' ? (
+        <ExcelMultiSheetIcon className="h-4 w-4 flex-shrink-0 text-emerald-600" />
       ) : (
         <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
       );
