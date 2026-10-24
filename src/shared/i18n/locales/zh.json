@@ -2223,7 +2223,9 @@
         "sourceDetail": "数据源详情",
         "deleteSource": "删除数据源",
         "partMissingSheet": "缺少 Sheet，未合并",
-        "partConflict": "类型冲突，未合并"
+        "partConflict": "类型冲突，未合并",
+        "partFiles": "{{count}} 个文件",
+        "partSheets": "{{count}} 个 Sheet"
       },
       "detail": {
         "section": "来源",
