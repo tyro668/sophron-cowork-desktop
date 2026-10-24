@@ -239,6 +239,7 @@ export interface ElectronApi {
     scanRawSource: (payload: DataScanRawSourceInput) => Promise<DataRawSourceScan>;
     createRawSource: (payload: DataCreateRawSourceInput) => Promise<DataRawSourceCreateResult>;
     refreshRawSource: (id: string) => Promise<DataRawSourceRefreshResult>;
+    setRawSourceAutoInclude: (id: string, autoInclude: boolean) => Promise<DataRawSource>;
     resolveRawSourceRenames: (
       input: DataResolveRawSourceRenamesInput
     ) => Promise<DataResolveRawSourceRenamesResult>;

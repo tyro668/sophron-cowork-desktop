@@ -222,6 +222,9 @@ export class DataPipelineStore {
   createRawSource(input: DataCreateRawSourceInput): Promise<DataRawSourceCreateResult> {
     return this.rawSources.createSource(input);
   }
+  setRawSourceAutoInclude(id: string, autoInclude: boolean): Promise<DataRawSource> {
+    return this.rawSources.setAutoInclude(id, autoInclude);
+  }
   refreshRawSource(id: string): Promise<DataRawSourceRefreshResult> {
     return this.rawSources.refreshSource(id);
   }

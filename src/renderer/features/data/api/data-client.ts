@@ -19,6 +19,8 @@ function dataApi(): DataApi {
 }
 
 export const dataClient = {
+  showItemInFolder: (filePath: string) =>
+    window.electronAPI?.showItemInFolder?.(filePath) ?? Promise.resolve(false),
   replaceTableAutomationAssociation: (
     ...args: Parameters<ElectronApi['automation']['replaceTableAssociation']>
   ) => window.electronAPI.automation.replaceTableAssociation(...args),
@@ -102,6 +104,8 @@ export const dataClient = {
   createRawSource: (...args: Parameters<DataApi['createRawSource']>) =>
     dataApi().createRawSource(...args),
   refreshRawSource: (id: string) => dataApi().refreshRawSource(id),
+  setRawSourceAutoInclude: (id: string, autoInclude: boolean) =>
+    dataApi().setRawSourceAutoInclude(id, autoInclude),
   resolveRawSourceRenames: (...args: Parameters<DataApi['resolveRawSourceRenames']>) =>
     dataApi().resolveRawSourceRenames(...args),
   getRawSourceRebuildImpact: (id: string) => dataApi().getRawSourceRebuildImpact(id),
