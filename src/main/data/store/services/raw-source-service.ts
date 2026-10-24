@@ -506,6 +506,15 @@ export class RawSourceService {
         result.missingItems.push(await this.changeItem(member));
         continue;
       }
+      const lostSheets = this.lostMergeSheets(source, member);
+      if (lostSheets.length) {
+        // Re-importing would silently drop those sheets' rows; keep the last import instead.
+        result.failed.push({
+          id: member.id,
+          error: `E_MERGE_SHEET_MISSING: 合并的 Sheet 已不存在：${lostSheets.join('、')}。原始表保留上次导入的数据，请重新选择要合并的 Sheet。`,
+        });
+        continue;
+      }
       try {
         await this.rawTables.updateRawTable({ id: member.id, config: member.inputConfig });
         await this.sources.setMemberStatus(member.id, 'ok');
@@ -536,6 +545,20 @@ export class RawSourceService {
     });
     result.source = await this.sources.requireSource(source.id);
     return result;
+  }
+
+  /** Merge-sheets member: configured sheets that are no longer in the workbook. */
+  private lostMergeSheets(source: DataRawSource, member: { inputConfig?: unknown }): string[] {
+    if (source.buildMode !== 'excel_merge_sheets') return [];
+    const wanted = (member.inputConfig as { mergeSheets?: string[] } | undefined)?.mergeSheets;
+    if (!wanted?.length) return [];
+    let present: string[];
+    try {
+      present = getWorkbookSheetNames(source.sourcePath);
+    } catch {
+      return [];
+    }
+    return wanted.filter((sheet) => !present.includes(sheet));
   }
 
   /** Applies the user's rename decisions from the refresh dialog. */

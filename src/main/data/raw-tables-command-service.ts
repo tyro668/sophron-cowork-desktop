@@ -119,8 +119,13 @@ export class RawTablesCommandService {
         sourcePath,
         buildMode,
         sheets: isFolder ? undefined : sheets,
+        // Only the requested sheets: without members per-sheet mode would import every sheet.
         members:
-          buildMode === 'excel_single' ? [{ key: sheets[0], name: name ?? undefined }] : undefined,
+          buildMode === 'excel_single'
+            ? [{ key: sheets[0], name: name ?? undefined }]
+            : buildMode === 'excel_per_sheet'
+              ? sheets.map((key) => ({ key }))
+              : undefined,
         tableName: name ?? undefined,
         sheetSelector: input.sheetSelector,
       });
