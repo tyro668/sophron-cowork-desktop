@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { withNormalizedLineEndings } from './csv-line-endings';
 
 export type CsvEncoding = 'auto' | 'utf-8' | 'gbk';
 
@@ -119,4 +120,20 @@ export function isCsvDecodeError(error: unknown): boolean {
     message.includes(CSV_ENCODING_ERROR_CODE) ||
     /not utf-8 encoded|Invalid unicode \(byte sequence mismatch\)/i.test(message)
   );
+}
+
+/**
+ * The shared CSV read path (import, refresh, file watch, chat import, workflow inputs):
+ * resolves the encoding, normalizes mixed line endings into a temp copy when needed, runs
+ * `read` with the resulting path and always removes that temp copy. Callers keep using the
+ * original `filePath` for anything user-visible (`_来源文件`, source paths).
+ */
+export async function withCsvReadPath<T>(
+  filePath: string,
+  encoding: CsvEncoding,
+  read: (readPath: string) => Promise<T>
+): Promise<T> {
+  const readPath = resolveCsvReadPath(filePath, encoding);
+  if (!isCsvLikePath(filePath)) return read(readPath);
+  return withNormalizedLineEndings(readPath, read);
 }

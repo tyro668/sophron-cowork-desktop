@@ -3,7 +3,7 @@ import { inputSourceFingerprint } from '../source-fingerprint';
 import type { WatermarkUpdate } from '../repositories/watermark-repository';
 import { sqlNamedInputs } from '../../../../shared/sql-query';
 /** Executes workflows into staging tables (temporary output mode). */
-import { resolveCsvReadPath } from '../csv-encoding';
+import { withCsvReadPath } from '../csv-encoding';
 import type {
   DataWorkflowEdge,
   DataWorkflowNode,
@@ -355,9 +355,11 @@ export class WorkflowExecutor {
     await this.ctx.dropTableIfExists(stagingTable);
     await this.ctx.dropTableIfExists(resultTable);
     try {
-      await this.ctx.runSql(
-        `CREATE TEMP TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${relation}`,
-        { sourcePath: resolveCsvReadPath(sourcePath) }
+      await withCsvReadPath(sourcePath, 'auto', (readPath) =>
+        this.ctx.runSql(
+          `CREATE TEMP TABLE ${quoteIdentifier(stagingTable)} AS SELECT * FROM ${relation}`,
+          { sourcePath: readPath }
+        )
       );
       const columns = await this.ctx.getTableColumns(stagingTable);
       const nonEmptyFilter =

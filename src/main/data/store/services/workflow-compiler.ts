@@ -1,5 +1,5 @@
 /** Compiles workflow nodes to SQL and resolves input-source schemas. */
-import { resolveCsvReadPath } from '../csv-encoding';
+import { withCsvReadPath } from '../csv-encoding';
 import { buildSqlQuery, describeSqlQuery } from '../../operators/sql-query';
 import { SqlQueryConfigSchema } from '../../../../shared/operator-schemas/sql-query';
 import type {
@@ -97,9 +97,11 @@ export class WorkflowCompiler {
     await this.ctx.dropTableIfExists(schemaTableName);
     try {
       const relation = readRelationForPath(filePath, 'sourcePath');
-      await this.ctx.runSql(
-        `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
-        { sourcePath: resolveCsvReadPath(filePath) }
+      await withCsvReadPath(filePath, 'auto', (readPath) =>
+        this.ctx.runSql(
+          `CREATE TEMP TABLE ${quoteIdentifier(schemaTableName)} AS SELECT * FROM ${relation} LIMIT 0`,
+          { sourcePath: readPath }
+        )
       );
       return await this.ctx.getTableColumnTypes(schemaTableName);
     } finally {
@@ -164,11 +166,10 @@ export class WorkflowCompiler {
       throw new Error('Data source file is required before running a cleaning pipeline');
     }
     const relation = readRelationForPath(filePath, 'sourcePath');
-    await this.ctx.runSql(
-      `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
-      {
-        sourcePath: resolveCsvReadPath(filePath),
-      }
+    await withCsvReadPath(filePath, 'auto', (readPath) =>
+      this.ctx.runSql(`CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`, {
+        sourcePath: readPath,
+      })
     );
     return tableName;
   }
